@@ -25,6 +25,14 @@ export const roomCodeSchema = z
 export const roleSchema = z.enum(["host", "viewer"]);
 export type Role = z.infer<typeof roleSchema>;
 
+export const qualityProfileIdSchema = z.enum([
+  "1080p60",
+  "1080p30",
+  "720p30",
+]);
+export type QualityProfileId = z.infer<typeof qualityProfileIdSchema>;
+export const DEFAULT_QUALITY_PROFILE_ID: QualityProfileId = "1080p60";
+
 const iceServerSchema = z
   .object({
     urls: z.union([
@@ -125,6 +133,12 @@ export const clientMessageSchema = z.union([
     })
     .strict(),
   z.object({ type: z.literal("refresh-ice") }).strict(),
+  z
+    .object({
+      type: z.literal("set-quality-profile"),
+      qualityProfileId: qualityProfileIdSchema,
+    })
+    .strict(),
   z.object({ type: z.literal("stop-sharing") }).strict(),
   // Kept as a compatibility alias while previously deployed clients age out.
   z.object({ type: z.literal("close-room") }).strict(),
@@ -163,6 +177,7 @@ const authenticatedMessageSchema = z.union([
       ...authenticatedMessageShape,
       mediaMode: z.literal("peer-assisted"),
       mediaAssignment: mediaAssignmentSchema,
+      qualityProfileId: qualityProfileIdSchema,
     })
     .strict(),
 ]);
@@ -200,6 +215,12 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("media-assignment"),
       mediaAssignment: mediaAssignmentSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("quality-profile"),
+      qualityProfileId: qualityProfileIdSchema,
     })
     .strict(),
   z

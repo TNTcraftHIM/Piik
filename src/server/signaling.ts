@@ -5,9 +5,11 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer } from "ws";
 
 import {
+  DEFAULT_QUALITY_PROFILE_ID,
   MAX_SIGNAL_BYTES,
   decodeClientMessage,
   type ClientMessage,
+  type QualityProfileId,
   type Role,
   type ServerMessage,
 } from "../shared/protocol.js";
@@ -65,6 +67,10 @@ export class SignalingServer {
   private readonly socketsBySessionId = new Map<string, WebSocket>();
   private readonly viewerGraceTimers = new Map<string, NodeJS.Timeout>();
   private readonly connectionIdsByViewer = new Map<string, string>();
+  private readonly qualityProfileIdsByRoom = new Map<
+    string,
+    QualityProfileId
+  >();
   private readonly peerRelayTopology = new PeerRelayTopology();
   private readonly now: () => number;
   private readonly authenticationTimeoutMs: number;
@@ -348,6 +354,9 @@ export class SignalingServer {
         ...authenticatedMessage,
         mediaMode: "peer-assisted",
         mediaAssignment,
+        qualityProfileId:
+          this.qualityProfileIdsByRoom.get(participant.roomId) ??
+          DEFAULT_QUALITY_PROFILE_ID,
       });
     } else {
       this.send(socket, authenticatedMessage);
@@ -445,6 +454,28 @@ export class SignalingServer {
             authenticated.roomExpiresAtMs,
           ),
         });
+        return;
+      case "set-quality-profile":
+        if (!this.options.peerAssistedMedia || authenticated.role !== "host") {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "Only a peer-assisted host may set the quality profile",
+          );
+          return;
+        }
+        this.qualityProfileIdsByRoom.set(
+          authenticated.roomId,
+          message.qualityProfileId,
+        );
+        for (const viewer of this.options.roomStore.getConnectedViewers(
+          authenticated.roomId,
+        )) {
+          this.sendToSession(viewer.sessionId, {
+            type: "quality-profile",
+            qualityProfileId: message.qualityProfileId,
+          });
+        }
         return;
       case "stop-sharing":
       case "close-room":
@@ -729,6 +760,7 @@ export class SignalingServer {
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
     this.peerRelayTopology.deleteRoom(roomId);
+    this.qualityProfileIdsByRoom.delete(roomId);
     for (const sessionId of abandoned.sessionIds) {
       const socket = this.socketsBySessionId.get(sessionId);
       if (!socket) {
@@ -744,6 +776,7 @@ export class SignalingServer {
       this.clearRoomGraceTimers(expired.roomId);
       this.clearRoomConnectionIds(expired.roomId);
       this.peerRelayTopology.deleteRoom(expired.roomId);
+      this.qualityProfileIdsByRoom.delete(expired.roomId);
       for (const sessionId of expired.sessionIds) {
         const socket = this.socketsBySessionId.get(sessionId);
         if (!socket) {

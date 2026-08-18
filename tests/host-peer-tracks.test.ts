@@ -9,12 +9,22 @@ const statsCallbacks: Array<() => void> = [];
 class FakeSender {
   failNextReplace = false;
   failNextSetParameters = false;
+  deferNextSetParameters = false;
+  readonly appliedMaxBitrates: Array<number | undefined> = [];
+  private releaseSetParameters: (() => void) | null = null;
   readonly setParameters = vi.fn(
-    async (_parameters: RTCRtpSendParameters) => {
+    async (parameters: RTCRtpSendParameters) => {
       if (this.failNextSetParameters) {
         this.failNextSetParameters = false;
         throw new Error("setParameters failed");
       }
+      if (this.deferNextSetParameters) {
+        this.deferNextSetParameters = false;
+        await new Promise<void>((resolve) => {
+          this.releaseSetParameters = resolve;
+        });
+      }
+      this.appliedMaxBitrates.push(parameters.encodings[0]?.maxBitrate);
     },
   );
   readonly replaceTrack = vi.fn(async (track: MediaStreamTrack | null) => {
@@ -29,6 +39,11 @@ class FakeSender {
 
   getParameters(): RTCRtpSendParameters {
     return { encodings: [{}] } as RTCRtpSendParameters;
+  }
+
+  releaseDeferredSetParameters(): void {
+    this.releaseSetParameters?.();
+    this.releaseSetParameters = null;
   }
 }
 
@@ -246,10 +261,7 @@ describe("HostPeer source replacement", () => {
     const nextVideo = createTrack("video", "next-video");
     const nextAudio = createTrack("audio", "next-audio");
     await expect(
-      peer.replaceStream(
-        createStream(nextVideo, nextAudio),
-        QUALITY_PROFILES["1080p60"],
-      ),
+      peer.replaceStream(createStream(nextVideo, nextAudio)),
     ).resolves.toBe(true);
 
     expect(connection.senders[0]?.track).toBe(nextVideo);
@@ -272,7 +284,6 @@ describe("HostPeer source replacement", () => {
     await expect(
       peer.replaceStream(
         createStream(createTrack("video", "next-video"), nextAudio),
-        QUALITY_PROFILES["1080p30"],
       ),
     ).resolves.toBe(true);
     expect(connection.senders[1]?.track).toBe(nextAudio);
@@ -291,7 +302,6 @@ describe("HostPeer source replacement", () => {
     await expect(
       peer.replaceStream(
         createStream(createTrack("video", "next-video"), null),
-        QUALITY_PROFILES["720p30"],
       ),
     ).resolves.toBe(true);
 
@@ -318,6 +328,55 @@ describe("HostPeer source replacement", () => {
       degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
+  });
+
+  it("serializes initial sender configuration with a live profile update", async () => {
+    const peer = createPeer(
+      createStream(
+        createTrack("video", "video"),
+        createTrack("audio", "audio"),
+      ),
+    );
+
+    const starting = peer.start();
+    const videoSender = FakePeerConnection.latest!.senders[0]!;
+    videoSender.deferNextSetParameters = true;
+    await vi.waitFor(() =>
+      expect(videoSender.setParameters).toHaveBeenCalledTimes(1),
+    );
+
+    const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
+    await Promise.resolve();
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(1);
+
+    videoSender.releaseDeferredSetParameters();
+    await expect(starting).resolves.toBe(true);
+    await expect(updating).resolves.toBe(true);
+    expect(videoSender.appliedMaxBitrates).toEqual([3_000_000, 8_000_000]);
+  });
+
+  it("continues queued profile updates after initial configuration rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const peer = createPeer(
+        createStream(
+          createTrack("video", "video"),
+          createTrack("audio", "audio"),
+        ),
+      );
+
+      const starting = peer.start();
+      const videoSender = FakePeerConnection.latest!.senders[0]!;
+      videoSender.failNextSetParameters = true;
+      const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
+
+      await expect(starting).resolves.toBe(true);
+      await expect(updating).resolves.toBe(true);
+      expect(videoSender.setParameters).toHaveBeenCalledTimes(2);
+      expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("can retry the selected quality after a sender update fails", async () => {
@@ -359,10 +418,7 @@ describe("HostPeer source replacement", () => {
     const nextVideo = createTrack("video", "next-video");
     const nextAudio = createTrack("audio", "next-audio");
     await expect(
-      peer.replaceStream(
-        createStream(nextVideo, nextAudio),
-        QUALITY_PROFILES["1080p60"],
-      ),
+      peer.replaceStream(createStream(nextVideo, nextAudio)),
     ).resolves.toBe(false);
 
     expect(videoSender.replaceTrack).toHaveBeenNthCalledWith(1, nextVideo);
@@ -629,5 +685,44 @@ describe("ViewerRelay downstream ownership", () => {
     await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBe(connection));
     expect(connection.connectionState).toBe("closed");
     await vi.waitFor(() => expect(targets.at(-1)).toBe("child-peer-two"));
+  });
+
+  it("applies the latest profile to the current and future child", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["1080p60"],
+      { sendSignal: () => true },
+    );
+    relay.setChild("first-profile-child");
+    relay.setStream(createStream(createTrack("video", "profile-video"), null));
+    await vi.waitFor(() =>
+      expect(
+        FakePeerConnection.latest?.senders[0]?.setParameters,
+      ).toHaveBeenCalled(),
+    );
+    const firstConnection = FakePeerConnection.latest!;
+
+    await expect(
+      relay.updateProfile(QUALITY_PROFILES["720p30"]),
+    ).resolves.toBe(true);
+    expect(
+      firstConnection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+    });
+
+    relay.setChild("second-profile-child");
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.latest).not.toBe(firstConnection),
+    );
+    const secondConnection = FakePeerConnection.latest!;
+    await vi.waitFor(() =>
+      expect(secondConnection.senders[0]?.setParameters).toHaveBeenCalled(),
+    );
+    expect(
+      secondConnection.senders[0]?.setParameters.mock.calls[0]?.[0],
+    ).toMatchObject({
+      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+    });
   });
 });

@@ -328,6 +328,94 @@ describe("WebSocket signaling", () => {
     expect(authenticated.hostOnline).toBe(false);
   });
 
+  it("synchronizes a bounded quality profile across a peer-assisted room", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-host"),
+    );
+    expect(hostAuth.qualityProfileId).toBe("1080p60");
+
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(viewer, harness.room, "viewer", "quality-viewer"),
+    );
+    expect(viewerAuth.qualityProfileId).toBe("1080p60");
+    await host.inbox.next("media-assignment");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+      }),
+    );
+    expect(await viewer.inbox.next("quality-profile")).toEqual({
+      type: "quality-profile",
+      qualityProfileId: "1080p30",
+    });
+
+    const lateViewer = await openClient(harness.webSocketUrl);
+    const lateViewerAuth = peerAssisted(
+      await authenticate(
+        lateViewer,
+        harness.room,
+        "viewer",
+        "quality-viewer-late",
+      ),
+    );
+    expect(lateViewerAuth.qualityProfileId).toBe("1080p30");
+    await host.inbox.next("media-assignment");
+
+    viewer.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "720p30",
+      }),
+    );
+    expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    await lateViewer.inbox.expectNone(30);
+  });
+
+  it("keeps the P2P authenticated wire unchanged and forbids profile updates", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "p2p-quality-host",
+    );
+    expect("mediaMode" in hostAuth).toBe(false);
+    expect("qualityProfileId" in hostAuth).toBe(false);
+
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "p2p-quality-viewer",
+    );
+    expect("mediaMode" in viewerAuth).toBe(false);
+    expect("qualityProfileId" in viewerAuth).toBe(false);
+    await host.inbox.next("peer-joined");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+      }),
+    );
+    expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
+    viewer.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "720p30",
+      }),
+    );
+    expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    await viewer.inbox.expectNone(30);
+  });
+
   it("routes offer and answer only between the host and the targeted viewer", async () => {
     const harness = await startHarness();
     const secondRoom = harness.roomStore.createRoom();
@@ -806,6 +894,17 @@ describe("WebSocket signaling", () => {
 
     host.socket.send(
       JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "720p30",
+      }),
+    );
+    expect(await viewer.inbox.next("quality-profile")).toEqual({
+      type: "quality-profile",
+      qualityProfileId: "720p30",
+    });
+
+    host.socket.send(
+      JSON.stringify({
         type: "signal",
         targetPeerId: viewerAuth.peerId,
         payload: {
@@ -844,6 +943,7 @@ describe("WebSocket signaling", () => {
         parentPeerId: hostAuth.peerId,
         childPeerIds: [],
       },
+      qualityProfileId: "720p30",
     });
 
     const resumedHost = await openClient(harness.webSocketUrl);
@@ -861,6 +961,7 @@ describe("WebSocket signaling", () => {
         parentPeerId: null,
         childPeerIds: [viewerAuth.peerId],
       },
+      qualityProfileId: "720p30",
     });
     expect(await reconnectedViewer.inbox.next("host-status")).toMatchObject({
       online: true,

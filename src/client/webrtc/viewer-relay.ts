@@ -18,7 +18,7 @@ export class ViewerRelay {
 
   constructor(
     private iceConfig: IceConfig,
-    private readonly profile: QualityProfile,
+    private desiredProfile: QualityProfile,
     private readonly events: ViewerRelayEvents,
     private readonly forceRelay = false,
   ) {}
@@ -59,6 +59,19 @@ export class ViewerRelay {
     this.syncQueue = this.syncQueue
       .then(() => this.syncStream(stream))
       .catch(() => undefined);
+  }
+
+  updateProfile(profile: QualityProfile): Promise<boolean> {
+    if (this.disposed) {
+      return Promise.resolve(false);
+    }
+    this.desiredProfile = profile;
+    const result = this.syncQueue.then(() => this.syncProfile(profile));
+    this.syncQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result.catch(() => false);
   }
 
   async acceptSignal(
@@ -134,7 +147,7 @@ export class ViewerRelay {
 
     let replaced = false;
     try {
-      replaced = await peer.replaceStream(stream, this.profile);
+      replaced = await peer.replaceStream(stream);
     } catch {
       // Rebuilding below is safer than leaving a stopped upstream track.
     }
@@ -149,6 +162,17 @@ export class ViewerRelay {
     }
     this.disposePeer();
     this.startPeer(childPeerId, stream);
+  }
+
+  private async syncProfile(profile: QualityProfile): Promise<boolean> {
+    if (this.disposed || this.desiredProfile !== profile) {
+      return false;
+    }
+    const peer = this.peer;
+    if (!peer) {
+      return true;
+    }
+    return peer.updateProfile(this.desiredProfile);
   }
 
   private startPeer(
@@ -170,7 +194,7 @@ export class ViewerRelay {
       childPeerId,
       this.iceConfig,
       stream,
-      this.profile,
+      this.desiredProfile,
       {
         sendSignal: (targetPeerId, payload) =>
           !this.disposed &&

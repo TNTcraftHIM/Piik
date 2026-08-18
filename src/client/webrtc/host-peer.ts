@@ -33,13 +33,14 @@ export class HostPeer {
   private statsTimer: number | null = null;
   private disposed = false;
   private negotiating = false;
+  private senderMutationTail: Promise<void> = Promise.resolve();
   private snapshot: PeerSnapshot;
 
   constructor(
     readonly peerId: string,
     iceConfig: IceConfig,
     private stream: MediaStream,
-    private profile: QualityProfile,
+    private desiredProfile: QualityProfile,
     private readonly events: HostPeerEvents,
     private readonly forceRelay = false,
   ) {
@@ -74,7 +75,12 @@ export class HostPeer {
       streams: [this.stream],
     }).sender;
     try {
-      await configureVideoSender(this.videoSender, this.profile);
+      await this.enqueueSenderMutation(async () => {
+        if (this.disposed || !this.videoSender) {
+          return;
+        }
+        await configureVideoSender(this.videoSender, this.desiredProfile);
+      });
     } catch (error) {
       console.warn("Browser rejected preferred sender parameters", error);
     }
@@ -88,74 +94,79 @@ export class HostPeer {
     return true;
   }
 
-  async replaceStream(
-    nextStream: MediaStream,
-    profile: QualityProfile,
-  ): Promise<boolean> {
+  async replaceStream(nextStream: MediaStream): Promise<boolean> {
     const nextVideoTrack = nextStream.getVideoTracks()[0];
-    if (
-      this.disposed ||
-      !this.videoSender ||
-      !this.audioSender ||
-      !nextVideoTrack
-    ) {
+    if (this.disposed || !nextVideoTrack) {
       return false;
     }
 
-    const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
-    const previousVideoTrack = this.videoSender.track;
-    const previousAudioTrack = this.audioSender.track;
+    return this.enqueueSenderMutation(async () => {
+      const videoSender = this.videoSender;
+      const audioSender = this.audioSender;
+      if (this.disposed || !videoSender || !audioSender) {
+        return false;
+      }
 
-    try {
-      await this.videoSender.replaceTrack(nextVideoTrack);
-      await this.audioSender.replaceTrack(nextAudioTrack);
-    } catch (error) {
-      await Promise.allSettled([
-        this.videoSender.replaceTrack(previousVideoTrack),
-        this.audioSender.replaceTrack(previousAudioTrack),
-      ]);
-      this.setError(error, "切换共享源失败");
-      return false;
-    }
+      const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
+      const previousVideoTrack = videoSender.track;
+      const previousAudioTrack = audioSender.track;
 
-    if (this.disposed) {
-      return false;
-    }
-    this.stream = nextStream;
-    this.profile = profile;
-    this.statsAccumulator.bytes = null;
-    this.statsAccumulator.frames = null;
-    this.statsAccumulator.timestamp = null;
-    try {
-      await configureVideoSender(this.videoSender, this.profile);
-    } catch (error) {
-      console.warn("Browser rejected preferred sender parameters", error);
-    }
-    this.snapshot = { ...this.snapshot, error: null };
-    this.emit();
-    return true;
+      try {
+        await videoSender.replaceTrack(nextVideoTrack);
+        await audioSender.replaceTrack(nextAudioTrack);
+      } catch (error) {
+        await Promise.allSettled([
+          videoSender.replaceTrack(previousVideoTrack),
+          audioSender.replaceTrack(previousAudioTrack),
+        ]);
+        this.setError(error, "切换共享源失败");
+        return false;
+      }
+
+      if (this.disposed) {
+        return false;
+      }
+      this.stream = nextStream;
+      this.statsAccumulator.bytes = null;
+      this.statsAccumulator.frames = null;
+      this.statsAccumulator.timestamp = null;
+      try {
+        await configureVideoSender(videoSender, this.desiredProfile);
+      } catch (error) {
+        console.warn("Browser rejected preferred sender parameters", error);
+      }
+      this.snapshot = { ...this.snapshot, error: null };
+      this.emit();
+      return true;
+    });
   }
 
-  async updateProfile(profile: QualityProfile): Promise<boolean> {
-    if (this.disposed || !this.videoSender) {
-      return false;
-    }
-    try {
-      await configureVideoSender(this.videoSender, profile);
-    } catch (error) {
-      this.setError(error, "调整画质失败");
-      return false;
-    }
+  updateProfile(profile: QualityProfile): Promise<boolean> {
     if (this.disposed) {
-      return false;
+      return Promise.resolve(false);
     }
-    this.profile = profile;
-    this.statsAccumulator.bytes = null;
-    this.statsAccumulator.frames = null;
-    this.statsAccumulator.timestamp = null;
-    this.snapshot = { ...this.snapshot, error: null };
-    this.emit();
-    return true;
+    this.desiredProfile = profile;
+    return this.enqueueSenderMutation(async () => {
+      const videoSender = this.videoSender;
+      if (this.disposed || !videoSender) {
+        return false;
+      }
+      try {
+        await configureVideoSender(videoSender, this.desiredProfile);
+      } catch (error) {
+        this.setError(error, "调整画质失败");
+        return false;
+      }
+      if (this.disposed) {
+        return false;
+      }
+      this.statsAccumulator.bytes = null;
+      this.statsAccumulator.frames = null;
+      this.statsAccumulator.timestamp = null;
+      this.snapshot = { ...this.snapshot, error: null };
+      this.emit();
+      return true;
+    });
   }
 
   async acceptSignal(payload: SignalPayload): Promise<void> {
@@ -240,6 +251,15 @@ export class HostPeer {
     });
     this.connection.addEventListener("connectionstatechange", () => this.emit());
     this.connection.addEventListener("iceconnectionstatechange", () => this.emit());
+  }
+
+  private enqueueSenderMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.senderMutationTail.then(operation);
+    this.senderMutationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   private async createOffer(restart: boolean): Promise<boolean> {

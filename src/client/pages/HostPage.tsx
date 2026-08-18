@@ -10,10 +10,11 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  CreateRoomResponse,
-  IceConfig,
-  ServerMessage,
+import {
+  DEFAULT_QUALITY_PROFILE_ID,
+  type CreateRoomResponse,
+  type IceConfig,
+  type ServerMessage,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import {
@@ -109,7 +110,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     () => new URLSearchParams(window.location.search).get("relay") === "1",
     [],
   );
-  const [qualityId, setQualityId] = useState<QualityProfileId>("1080p60");
+  const [qualityId, setQualityId] = useState<QualityProfileId>(
+    DEFAULT_QUALITY_PROFILE_ID,
+  );
   const [phase, setPhase] = useState<HostPhase>("idle");
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
@@ -137,7 +140,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const activeGenerationRef = useRef<number | null>(null);
   const sourceSwitchRef = useRef<object | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
-  const qualityIdRef = useRef<QualityProfileId>("1080p60");
+  const qualityIdRef = useRef<QualityProfileId>(DEFAULT_QUALITY_PROFILE_ID);
   const picturePausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
 
@@ -302,6 +305,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
       commitQuality(nextId);
       setDetails(captureDetails(activeStream));
+      if (peerAssistedRef.current) {
+        signalRef.current?.send({
+          type: "set-quality-profile",
+          qualityProfileId: nextId,
+        });
+      }
       const results = await Promise.all(
         [...peersRef.current.values()].map((peer) => peer.updateProfile(profile)),
       );
@@ -507,6 +516,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         message.mediaMode === "peer-assisted"
       ) {
         peerAssistedRef.current = true;
+        signalRef.current?.send({
+          type: "set-quality-profile",
+          qualityProfileId: qualityIdRef.current,
+        });
         reconcilePeerAssistedChildren(
           message.mediaAssignment.childPeerIds,
           generation,
@@ -812,10 +825,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             return {
               peerId,
               peer,
-              replaced: await peer.replaceStream(
-                captured,
-                QUALITY_PROFILES[qualityIdRef.current],
-              ),
+              replaced: await peer.replaceStream(captured),
             };
           } catch {
             return { peerId, peer, replaced: false };

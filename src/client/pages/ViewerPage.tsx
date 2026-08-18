@@ -7,10 +7,11 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  IceConfig,
-  MediaAssignment,
-  ServerMessage,
+import {
+  DEFAULT_QUALITY_PROFILE_ID,
+  type IceConfig,
+  type MediaAssignment,
+  type ServerMessage,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import {
@@ -22,7 +23,10 @@ import {
 import { StatsGrid } from "../components/StatsGrid";
 import { getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
-import { QUALITY_PROFILES } from "../media/quality";
+import {
+  QUALITY_PROFILES,
+  type QualityProfileId,
+} from "../media/quality";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -65,6 +69,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
     let peerAssisted = false;
+    let currentQualityProfileId: QualityProfileId = DEFAULT_QUALITY_PROFILE_ID;
     let currentAssignment: MediaAssignment = {
       parentPeerId: null,
       childPeerIds: [],
@@ -118,7 +123,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       }
       viewerRelay = new ViewerRelay(
         currentIceConfig,
-        QUALITY_PROFILES["1080p60"],
+        QUALITY_PROFILES[currentQualityProfileId],
         {
           sendSignal: (targetPeerId, payload) =>
             active &&
@@ -249,7 +254,11 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         currentHostOnline = message.hostOnline;
         setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
-        if (nextPeerAssisted) {
+        if (nextPeerAssisted && "qualityProfileId" in message) {
+          currentQualityProfileId = message.qualityProfileId;
+          void viewerRelay?.updateProfile(
+            QUALITY_PROFILES[currentQualityProfileId],
+          );
           applyMediaAssignment(message.mediaAssignment);
         }
         if (
@@ -292,6 +301,15 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       if (message.type === "media-assignment") {
         if (peerAssisted) {
           applyMediaAssignment(message.mediaAssignment);
+        }
+        return;
+      }
+      if (message.type === "quality-profile") {
+        if (peerAssisted) {
+          currentQualityProfileId = message.qualityProfileId;
+          void viewerRelay?.updateProfile(
+            QUALITY_PROFILES[currentQualityProfileId],
+          );
         }
         return;
       }

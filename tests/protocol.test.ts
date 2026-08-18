@@ -132,6 +132,28 @@ describe("client signaling protocol", () => {
       true,
     );
   });
+
+  it("accepts only a bounded quality profile update", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-profile",
+        qualityProfileId: "1440p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+        bitrate: 5_000_000,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("server signaling protocol", () => {
@@ -187,6 +209,7 @@ describe("server signaling protocol", () => {
         parentPeerId: null,
         childPeerIds: ["viewer_12345678", "viewer_87654321"],
       },
+      qualityProfileId: "1080p60",
     };
 
     expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);
@@ -200,6 +223,14 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
         mediaMode: "peer-assisted",
+        qualityProfileId: "1080p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        mediaMode: "peer-assisted",
+        mediaAssignment: peerAssisted.mediaAssignment,
       }).success,
     ).toBe(false);
     expect(
@@ -213,6 +244,30 @@ describe("server signaling protocol", () => {
             "viewer_overflow",
           ],
         },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...peerAssisted,
+        qualityProfileId: "1440p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        qualityProfileId: "1080p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "quality-profile",
+        qualityProfileId: "720p30",
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "quality-profile",
+        qualityProfileId: "1440p60",
       }).success,
     ).toBe(false);
   });

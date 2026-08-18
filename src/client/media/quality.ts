@@ -1,3 +1,7 @@
+import type { QualityProfileId } from "../../shared/protocol";
+
+export type { QualityProfileId } from "../../shared/protocol";
+
 export const QUALITY_PROFILES = {
   "1080p60": {
     label: "1080p 60",
@@ -20,9 +24,17 @@ export const QUALITY_PROFILES = {
     frameRate: 30,
     maxBitrate: 3_000_000,
   },
-} as const;
+} as const satisfies Record<
+  QualityProfileId,
+  {
+    label: string;
+    width: number;
+    height: number;
+    frameRate: number;
+    maxBitrate: number;
+  }
+>;
 
-export type QualityProfileId = keyof typeof QUALITY_PROFILES;
 export type QualityProfile = (typeof QUALITY_PROFILES)[QualityProfileId];
 
 function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
