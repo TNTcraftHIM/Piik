@@ -1,72 +1,68 @@
 # Project Memory
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Confirmed Intent
 
-- The product is a Discord/KOOK/Oopz/TeamSpeak-like screen-sharing tool for gaming with friends.
-- One user broadcasts a game, application, or display; several friends watch with very low latency.
-- The normal use case is a small, trusted friend group. Public or large-scale streaming is explicitly out of scope and can be handled by OBS/Twitch-class services.
-- Viewers should be able to open an invite link in a desktop or mobile browser without installing a dedicated client.
-- The system should resemble a Photon-style developer experience: a central room/rendezvous service establishes sessions while realtime traffic is carried by clients whenever possible.
-- Server bandwidth cost is a primary constraint. The default media path remains P2P-first, with servers used for signaling, STUN, TURN fallback, and observability. A deployment-level SFU mode is acceptable when measured multi-viewer P2P behavior is unusable; it must remain explicit and independently reversible.
-- Avoiding TeamSpeak-like partial reachability is a primary requirement: every broadcaster-viewer pair must independently have TURN/UDP and TURN/TCP candidates available when direct ICE cannot connect. TURN/TLS is an optional compatibility enhancement, not a production prerequisite.
-- A web experience is preferred for convenience, but using a desktop sender is acceptable when it materially improves game capture, audio capture, or hardware encoding.
-- All project documentation, memory, code, `AGENTS.md`, and `.codex/` configuration must live in this Git repository and remain tracked for cross-device development.
-- Normal maintenance uses short-lived branches, focused commits, remote backup, pull requests, checks, merge, and branch deletion.
-- Long conversations require explicit repository checkpoints. Current memory is curated and rewritten when facts change; it must not grow as a transcript or duplicate Git history.
-- Material designs, fixes, and implementations begin with current online research of official docs and established projects, supplemented by community reports or papers where useful.
-- Engineering follows Occam's razor: use the simplest complete solution for verified needs and reject speculative scale, abstractions, services, and compatibility work until evidence justifies them.
+- Build Discord/KOOK/Oopz/TeamSpeak-like low-latency game screen sharing for one broadcaster and a small trusted friend group. Public or large broadcasts belong on OBS/Twitch-class services.
+- Viewers should join from a normal desktop or mobile browser. A packaged sender is acceptable later when measurements justify native capture, audio, or shared encoding.
+- Use a Photon-style central rendezvous service for access, rooms, signaling, deterministic topology, STUN, TURN fallback, and observability while clients carry media whenever practical.
+- Server bandwidth cost is a primary constraint. The media priority is direct P2P, then measured peer assistance, then an explicit user-operated or central SFU fallback. Never migrate topology silently.
+- The broadcaster has a hard target of at most two downstream media edges. Every assigned edge independently uses ICE and authenticated TURN/UDP or TURN/TCP when direct connectivity fails; P2P-first never means direct-only.
+- Browser-only convenience does not override reachability, measurable performance, or honest resource accounting. Shared encoding reduces compute, not the network copy required by each viewer.
+- Durable decisions, current snapshots, research, code, `AGENTS.md`, and `.codex/` belong in Git. Memory and status are rewritten in place rather than kept as transcripts.
+- Research current official sources and established implementations before material work. Apply Occam's razor and reject speculative protocols, services, scoring, and scale.
 
 ## Current Recommendation
 
-- Start with a Windows Chrome/Edge sharing MVP and a responsive Web viewer using one `RTCPeerConnection` per viewer. Validate current Android Chrome and iOS Safari as viewing endpoints.
-- Rooms default to one broadcaster and at most eight viewers, with a deployment range of 1 through 16. Treat eight as an admission default rather than a validated performance claim; measure publisher upload, encoder load, latency, and stability before describing a supported 1:8 envelope.
-- Use HTTPS/WSS signaling, trickle ICE, STUN, and authenticated coturn candidates. Prefer direct UDP, then relay UDP, with TURN/TCP as the required non-UDP fallback. Optional TURN/TLS uses standard TCP 5349 by default; TCP 443 is reserved for deployments with a dedicated public IP or validated L4/SNI routing.
-- Allow mixed connectivity in one room: direct viewers stay direct while only incompatible network pairs consume TURN bandwidth.
-- Treat 1080p60 as a best-effort quality profile, not a universal guarantee. Provide 720p60 and 720p30 fallbacks.
-- Do not add custom scene detection or dynamic-FPS control until WebRTC statistics and host resource measurements show that browser capture, encoding, and congestion behavior leave a material problem.
-- Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
-- Add an Electron or native Windows sender only after browser measurements identify capture, application-audio, or encode bottlenecks.
-- Keep P2P as the default and add only an explicit deployment-level `p2p|sfu` choice. Multi-viewer use has already shown severe user-observed P2P degradation, consistent with one sender and encoder per viewer. The first SFU experiment should use a single node, one published layer, and no automatic switching, hybrid path, Redis, or peer forwarding tree.
-- Keep room policy deployment-driven and small. Public and password-only deployments use random temporary rooms. A deployment that configures both the whole-site password and a SQLite path gets sequential, non-expiring protected rooms; stopping a share leaves viewers waiting and does not destroy the room.
+- Keep the deployed Windows Chrome/Edge broadcaster and responsive Web viewer as the measurement baseline. Validate current Android Chrome and iOS Safari as leaves.
+- Use direct host P2P for one or two viewers. ADR-0004 owns the default-off experiment for later viewers: two sticky deterministic chains, host capacity two, viewer capacity one, no proactive rebalance or composite score, and no more than eight viewers when `PEER_ASSISTED_MEDIA=true`.
+- Standard browser relays resend remote `MediaStreamTrack` values and therefore decode and re-encode at every hop. Browser WebRTC does not guarantee one shared encoder across peer connections; measure this cost rather than hiding it.
+- Every ADR-0004 gate is mandatory. Reject the browser experiment if it needs Encoded Transform/DataChannel/WebCodecs media, custom congestion or RTP recovery, multiple trees, relay scoring, transcoding, codec ladders, browser RTP injection, or more than two host edges.
+- Only if topology, churn, connectivity, compatibility, and latency pass and re-encoding is the sole failure may a separate ADR propose a native shared-encode host plus opt-in native volunteer encoded-RTP relays. Any other failure closes peer assistance.
+- Keep user-operated mini-SFU deployment and central single-node SFU Draft PR #12 as explicit fallbacks. They transfer fanout egress to their operator and do not justify automatic switching, Redis, or multi-node infrastructure.
+- Prefer direct UDP, then TURN/UDP, with TURN/TCP as the required non-UDP fallback. Optional TURN/TLS uses TCP 5349 by default; TCP 443 needs a dedicated address or validated L4/SNI routing.
+- Treat 1080p60 as best effort and retain 720p60 and 720p30 fallbacks. Keep browser codec order until target hardware proves a more efficient common codec; do not add custom dynamic-FPS logic without stats showing a real gap.
+- Keep room policy deployment-driven. Public and password-only deployments use random temporary rooms. A site password plus SQLite path enables sequential persistent rooms; stopping sharing leaves the room and viewer link available.
 
 ## Current Implementation
 
-- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The server defaults to an all-interface listener for LAN development and containers; the bare-metal reverse-proxy baseline explicitly binds loopback. It provides a process-only `/healthz` endpoint and requires STUN plus explicit TURN/UDP and TURN/TCP URLs before production startup. TURN/TLS is accepted but optional; configuration checks do not establish public-network reachability.
-- The Web PoC implements capture-before-room creation, live source replacement without renegotiating healthy peers, one independent peer connection per viewer, stable signaling reconnect identities that also work for LAN viewers on HTTP, explicit ICE restart or peer rebuild, host session generation isolation, viewer connection-generation guards for asynchronous signaling and stats, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
-- Access is deliberately small: `ACCESS_PASSWORD` is optional, site-wide, and accepts 1 through 128 visible ASCII characters when non-empty. When configured, host and viewer routes first establish a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie; room creation and WebSocket upgrade accept that cookie and no direct room-creation Bearer bypass. There are no accounts, JWTs, server-side access-session maps, or logout flow.
-- ADR-0002 accepts an optional `ROOM_DATABASE_PATH` only alongside `ACCESS_PASSWORD`. In that mode, built-in `node:sqlite` stores only an auto-incremented room ID and host-token digest; links do not expire and stopping sharing leaves the room waiting. Without the path, rooms remain random and temporary. Public mode can never use sequential persistent rooms. Commit `2f66770f8e90` is deployed with `/var/lib/screener/rooms.sqlite`; the state directory and database permissions are verified, and the empty database preserves ID `1` for the first real browser room.
-- `/r/{code}` carries no viewer token or fragment, `/join` accepts only the numeric code, and the 256-bit host token stays internal to host authentication. In public mode the random code is the sole viewing capability and is not a strong privacy guarantee, so private Internet deployments should configure `ACCESS_PASSWORD`.
-- The Web control plane is deployed at `https://share.bonfire.icu` behind nginx with Node.js 24.19.0, and `turn.bonfire.icu` runs authenticated coturn 4.17.2 on standard UDP/TCP 3478. HTTPS, WSS, room authentication, certificate renewal, public STUN, authenticated TURN/UDP and TURN/TCP allocations, and relay-only bidirectional data paths are verified. TURN/TLS is intentionally not enabled.
-- Automated checks pass on current `main` with 102 Vitest tests and both production builds. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remains from the earlier baseline. Production storage startup and permissions are verified; a real persistent-room stop/reuse/restart cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
-- No infrastructure blocker remains for the current staging deployment. The immediate control-plane milestone and the separate real-device/media matrix are bounded in `docs/status.md`; neither justifies a native sender yet.
+- The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn. LAN/container listening defaults to all interfaces; bare-metal reverse proxy deployment binds loopback and exposes `/healthz`.
+- The deployed media path still creates one independent host `RTCPeerConnection` per viewer. It supports capture-before-room creation, live source replacement, stable signaling identities, reconnect/ICE recovery, generation guards, short-lived TURN credentials, three manual quality profiles, and local WebRTC stats. It violates the new fanout target above two viewers.
+- The spike branch contains deterministic server/client peer-assisted assignment and standard remote-track relay. It defaults off, is capped at eight viewers, re-encodes at every relay, and is neither merged nor deployed. Native shared encoding and custom encoded browser transport are not implemented.
+- Access remains deliberately small: optional site-wide `ACCESS_PASSWORD`, a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie, internal host token, role-bound signaling, Origin/payload checks, and no accounts, JWTs, session map, or logout flow.
+- With `ROOM_DATABASE_PATH` and the site password, built-in SQLite stores only auto-incremented room ID and host-token digest. Links persist and stopping sharing leaves viewers waiting. Without the path, rooms remain random and temporary; public mode cannot use sequential rooms.
+- Commit `2f66770f8e90` is deployed at `https://share.bonfire.icu` behind nginx. Authenticated coturn at `turn.bonfire.icu:3478` has verified public STUN, TURN/UDP, TURN/TCP, and relay-only traffic. TURN/TLS is intentionally disabled.
+- Chromium 151 has now demonstrated the intended three-viewer peer-assisted shape: exactly two connected host outbound peers; viewer 1 with one inbound plus one outbound forwarding to viewer 3; viewer 2 direct from the host; and decoded frames at all three viewers. Closing the first-level relay reattached its branch and resumed decoding in about 5.3 seconds while host active connected outbound edges peaked at two.
+- A Chromium 151 one-to-eight synthetic functional smoke formed two depth-four chains: two connected host outbound peers, one inbound plus one outbound at viewers 1 through 6, inbound-only viewers 7 and 8, and decoded frames everywhere. This is short functional evidence, not proof of 720p60 quality, performance, latency, or endurance.
+- That recovery covers only a page close immediately observed by the server. A silent partition waits for the 30-second heartbeat, so detection can take 30 to 60 seconds before the default 5-second viewer grace; it is unverified. The controlled server-observed recovery gate remains 5 seconds of grace plus at most 3 seconds to a decodable picture.
+- Relay outbound stats are observable, but relay senders still use a fixed `1080p60`/8 Mbps envelope rather than the host-selected profile; profile propagation blocks valid comparative measurements. Real persistent-room reuse/restart, screen and game audio, heterogeneous networks, relay resource and generational-quality cost, depth-four latency, endurance, silent partition recovery, and mobile leaves remain unverified.
+- On the current spike branch, `npm run check` passes type checking, 11 Vitest files with 129 tests, and both client and server production builds.
+- Draft SFU PR #12 and ADR-0003 remain unmerged, undeployed, and independently reversible. There is no infrastructure blocker for the current Web deployment or bounded spike.
 
 ## Provisional Quality Targets
 
-- Under a controlled direct path with RTT at or below 40 ms and packet loss at or below 1%: glass-to-glass latency p50 at or below 150 ms and p95 at or below 250 ms.
-- Under a regional TURN/UDP path with the same endpoint conditions: glass-to-glass latency p95 at or below 350 ms.
-- First picture within 3 seconds after a viewer requests to watch, excluding explicit user permission time.
-- A stable 60 fps profile should not silently fall below 50 decoded fps for more than 5 consecutive seconds; it must visibly downgrade or report the limiting reason.
-- These are engineering targets to validate with timestamp/high-speed-camera tests, not claims about untested networks.
+- Controlled direct path at RTT no more than 40 ms and loss no more than 1%: glass-to-glass p50 no more than 150 ms and p95 no more than 250 ms.
+- Regional TURN/UDP under the same endpoint conditions: glass-to-glass p95 no more than 350 ms.
+- First picture within 3 seconds after a watch request, excluding explicit permission time.
+- A 60 fps profile must not remain below 50 decoded fps for more than 5 seconds without a visible downgrade or limiting reason.
+
+These are measurement gates, not performance claims.
 
 ## Open Decisions
 
-- The sustainable viewer count for each publisher hardware, quality profile, network class, and media mode. Current P2P use degraded severely as viewers increased; that observation needs instrumented 1/3/5/8 comparison rather than a 1:8 support claim.
-- Exact mobile browser support matrix and the required behavior around autoplay, backgrounding, orientation changes, and network handoff.
-- Whether the first release is open source, source-available, or proprietary; this affects whether GPL/AGPL projects can be reused rather than only studied.
-- Initial deployment regions and expected mainland China/Hong Kong/overseas network mix.
-- Whether Windows per-application audio is P0 or whether whole-system loopback is acceptable initially.
-- Whether voice chat is ever in scope or the product remains complementary to an existing voice application.
+- Sustainable viewer count by broadcaster hardware, quality profile, network class, and media route; use instrumented 1/3/5/8 comparisons rather than a 1:8 claim.
+- Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
+- Exact mobile lifecycle behavior and whether Windows per-application audio is required for the first release.
+- Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
+- Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
+- Whether voice chat ever enters scope or Screener stays complementary to an existing voice application.
 
 ## Source Of Truth
 
-- Requirements: `docs/需求理解.md`
-- First PoC technical design: `docs/方案设计.md`
-- Minimal production-shaped deployment: `docs/deployment.md`
-- Research and feasibility: `docs/research/webrtc-p2p-screen-sharing.md`
-- Topology decision: `docs/adr/0001-p2p-first-media-topology.md`
-- Persistent protected-room decision: `docs/adr/0002-persistent-protected-rooms.md`
-- Current phase and next step: `docs/status.md`
-- Maintenance and context lifecycle: `docs/maintenance.md`
-- Agent workflow: `AGENTS.md` and `.codex/`
+- Documentation index: `docs/README.md`
+- Current phase: `docs/status.md`
+- Requirements and first PoC design: linked from the documentation index
+- Media research: `docs/research/webrtc-p2p-screen-sharing.md`, `docs/research/peer-assisted-media.md`, and `docs/research/low-server-media-routes.md`
+- Architecture: ADR-0001, ADR-0002, proposed experiment ADR-0004, and Draft PR #12's unaccepted ADR-0003
+- Deployment and maintenance: `docs/deployment.md`, `docs/maintenance.md`, `AGENTS.md`, and `.codex/`

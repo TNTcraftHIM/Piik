@@ -1,0 +1,175 @@
+# ADR-0004: Peer-Assisted Media Experiment
+
+- Status: Proposed - Experiment Only
+- Date: 2026-08-19
+
+## Context
+
+ADR-0001 accepted standard browser WebRTC P2P for the MVP and rejected a viewer
+relay tree because it adds churn, latency, and either browser re-encoding or a
+custom packet-forwarding protocol. Real multi-viewer use later degraded severely.
+The product now also has a hard target that a broadcaster must never carry more
+than two outgoing media edges.
+
+Draft PR #12 proposes an independently reversible deployment-level SFU under
+ADR-0003, but it is not merged or accepted. Making an SFU the normal path would
+move every viewer's egress cost to the server. TeamSpeak-style shared encoding
+reduces host encode work but still sends one network copy to every viewer, so it
+cannot meet the new fanout target alone.
+
+The research in `docs/research/peer-assisted-media.md` finds no browser API that
+can move one encoded frame between `RTCRtpSender` pipelines. Standard browser
+track relay decodes and re-encodes at each hop. The first experiment accepts
+that measurable cost because avoiding it requires a custom encoded-frame media
+plane.
+
+This ADR does not accept peer-assisted media for production. It proposes one
+bounded experiment that must either meet explicit gates or be removed.
+
+## Proposed Experiment
+
+Preserve the product priority in this order:
+
+1. direct P2P for one or two viewers;
+2. peer-assisted forwarding for later viewers when this experiment is active
+   and every required capability is present; and
+3. the optional SFU as an explicit deployment alternative, not a silent
+   in-room migration.
+
+The experiment is gated by `PEER_ASSISTED_MEDIA`, which defaults to `false`.
+Enabling it requires `MAX_VIEWERS_PER_ROOM` at or below eight; larger configured
+rooms fail configuration rather than silently running a different topology.
+
+The signaling server assigns two sticky, balanced chains with a deterministic
+breadth-first walk. The host has capacity for at most two children and each
+viewer for at most one. Candidate parents are ordered by depth and server-issued
+join sequence. Joining a viewer does not move existing assignments. If a parent
+leaves, only its orphaned subtree root is assigned to the first available slot;
+the root's descendants stay attached. No RTT, bandwidth, CPU, geography,
+capability, or quality scoring is added.
+
+For this ADR, one media edge is one downstream `RTCPeerConnection` carrying the
+shared stream. Using TURN for that connection does not alter the edge count. The
+host's two-child limit is a hard invariant across join, reconnect,
+reparent, and recovery paths. If the deterministic topology has no connected
+eligible parent, the viewer remains admitted but waits without media until a
+slot becomes reachable; it must not create a third host connection.
+Each logical edge still uses its own ICE process and authenticated TURN fallback
+when direct connectivity is unavailable.
+
+Every edge uses the existing standard WebRTC media path. A viewer receives the
+remote `MediaStream`, renders it, and sends those remote tracks through one new
+downstream `RTCPeerConnection`. The browser therefore decodes and re-encodes at
+every relay hop. Existing audio follows the same stream when capture provides
+it; the experiment does not invent a separate audio protocol.
+
+Encoded Transform, DataChannel media, WebCodecs rendering, dummy-sender byte
+replacement, custom congestion control, codec ladders, multiple trees, mobile
+background relay, and automatic SFU migration are excluded. They are not rescue
+work if standard track relay fails.
+
+## Shared Encoding Boundary
+
+The browser spike may encode once for each of the host's one or two seed
+connections because browsers do not guarantee cross-connection encoder reuse.
+Each viewer relay also performs one downstream encode. This is tolerated only
+for the experiment and must be measured honestly.
+
+A production peer-assisted design must eventually use a packaged/native sender
+whose custom libwebrtc encoder proxies share one encoded output while retaining
+independent standard WebRTC packetizers for the host's edges. That native work
+requires a separate ADR and measurements. It is not implemented or abstracted
+in advance by this spike. Standard browser viewing remains required.
+
+## Acceptance Gate
+
+Test 1, 3, 5, and 8 viewers for 30 minutes at 720p60 with controlled per-edge
+RTT at or below 40 ms and loss at or below 1%. Current desktop Chrome and Edge
+form the relay cohort; current Android Chrome and iOS Safari join last as leaf
+checks. The protocol has no relay-capability bit, so controlled join order is
+the only enforcement and this spike is not safe for arbitrary-user deployment.
+
+The proposal advances only if every condition holds:
+
+- host media fanout is never greater than two and viewer fanout is never greater
+  than one, including relay loss and reparenting;
+- assignments are reproducible from depth and server join order, without a
+  composite score, live optimization loop, or proactive rebalancing;
+- every relay's expected outbound RTP encoder is measured through encode time,
+  CPU/GPU load, and `qualityLimitationReason`; no result calls this shared or
+  zero-copy forwarding;
+- excluding explicit TURN paths, the application server carries no media;
+- host and relay upload remain within 20% of `childCount * observedBitrate`;
+- first picture is at most 3 seconds, a 60 fps run does not remain below 50
+  decoded fps for more than 5 seconds, and depth-four p95 glass-to-glass
+  latency is at most 350 ms;
+- relay delta encode time per frame stays at or below 16.7 ms on the reference
+  cohort and CPU limitation does not persist for more than 5 seconds;
+- loss of either first-level relay that the server observes immediately first
+  receives the default 5-second disconnect grace; if it does not reconnect,
+  the same deterministic assignment rule produces a new decodable picture
+  within the following 3 seconds (about 8 seconds total under defaults); and
+- the common codec path works on the required desktop relays and mobile leaves.
+
+The about-8-second gate covers a controlled page close that the server observes
+immediately. A silent network partition depends on the default 30-second
+heartbeat and can take 30 to 60 seconds to detect before the same 5-second
+grace; that path is a separate, currently unverified measurement.
+
+Fixing an ordinary implementation bug inside the bounded spike is allowed. If
+meeting a gate requires Encoded Transform/DataChannel/WebCodecs media, custom
+congestion control, FEC/RTX changes, multiple trees, relay scoring, transcoding,
+a codec ladder, relaxed host fanout, or a browser-specific RTP injection hack,
+stop. Change this ADR to Rejected and delete the experimental runtime path and
+dependencies. Only when every non-encoding gate passes and relay re-encoding is
+the sole failure may a separate ADR propose a native shared-encode host with
+opt-in native volunteer encoded-RTP relays. Any other failure closes peer
+assistance and keeps standard P2P plus explicit user-operated or central SFU
+fallbacks.
+
+Passing the gate does not change this ADR to Accepted. It permits a separate ADR
+to propose a production design, including broader game-audio/A-V verification,
+voluntary relay policy, privacy disclosure, and the native shared-encode sender.
+
+## Consequences If The Spike Proceeds
+
+Positive:
+
+- The host upload and connection count become bounded without assigning normal
+  viewer egress to an SFU.
+- ICE, TURN, DTLS-SRTP, RTP recovery, congestion control, codec negotiation,
+  jitter buffering, and browser rendering remain provided by WebRTC.
+- Deterministic assignment is small enough to inspect and reproduce.
+
+Negative:
+
+- Every relay decodes and re-encodes, adding CPU/GPU load, latency, and
+  generational quality loss.
+- Every relay adds a network hop and becomes an availability dependency for its
+  descendants.
+- Relay upload, battery, background suspension, and peer IP exposure affect
+  viewers, not just the broadcaster.
+- Two one-child chains need depth four for eight viewers, so the latency target
+  is uncertain by design.
+
+## Relationship To Existing ADRs
+
+- ADR-0001 remains the accepted production baseline. This proposal narrows its
+  peer-tree rejection only enough to run an isolated experiment.
+- Draft ADR-0003 in PR #12 remains the separate explicit optional-SFU proposal.
+  This proposal neither accepts/removes it nor adds automatic P2P/SFU switching.
+- If a later ADR accepts peer-assisted media, it must state exactly which parts
+  of ADR-0001 and ADR-0003 it supersedes.
+
+## References
+
+Sources were checked on 2026-08-19:
+
+- [WebRTC](https://w3c.github.io/webrtc-pc/)
+- [WebRTC Encoded Transform](https://w3c.github.io/webrtc-encoded-transform/)
+- [WebCodecs](https://www.w3.org/TR/webcodecs/)
+- [WebRTC Data Channels, RFC 8831](https://www.rfc-editor.org/rfc/rfc8831.html)
+- [libwebrtc video send stream](https://webrtc.googlesource.com/src/+/refs/heads/main/video/video_send_stream_impl.cc)
+- [libwebrtc video encoder factory](https://webrtc.googlesource.com/src/+/refs/heads/main/api/video_codecs/video_encoder_factory.h)
+- [TeamSpeak single-encoding explanation](https://community.teamspeak.com/t/ts6-beta-community-update-insights/58116/208)
+- [SplitStream, SOSP 2003](https://www.microsoft.com/en-us/research/publication/splitstream-high-bandwidth-multicast-in-a-cooperative-environment/)

@@ -1,73 +1,79 @@
 # Current Status
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Phase
 
-The WebRTC proof of concept is deployed at `https://share.bonfire.icu`. Commit
-`2f66770f8e90` adds protected SQLite persistence, sequential room IDs, reusable
-links, and a waiting state after sharing stops. The production database is
-initialized and empty, so the first real persistent room can receive ID `1`.
-Real capture, game audio, mobile lifecycle, and performance targets remain
-unverified. Increasing the P2P viewer count has already caused severe user-
-observed degradation, so an explicitly configured SFU mode is the next media
-experiment; P2P remains the default topology.
+The standard one-`RTCPeerConnection`-per-viewer WebRTC PoC is deployed at
+`https://share.bonfire.icu`. Commit `2f66770f8e90` is the deployed baseline for
+protected SQLite rooms, sequential reusable IDs, and waiting after sharing
+stops. This path still exceeds the new host-fanout target above two viewers.
 
-## Established Baseline
+The spike branch contains a default-off, standard-WebRTC peer-assisted
+experiment for later viewers. It assigns two sticky chains with host capacity
+two and viewer capacity one, then relays remote tracks with a decode/re-encode
+at every browser hop. `PEER_ASSISTED_MEDIA=false` remains the default and the
+mode cannot be enabled above eight viewers. Limited Chromium evidence now proves
+the intended three-viewer shape, a synthetic eight-viewer functional topology,
+and one controlled page-close recovery, but the mode is not merged, deployed,
+or production-validated. Draft SFU PR #12 is also unmerged and undeployed.
 
-- Runtime: Node.js 24, React, TypeScript, Vite, native browser WebRTC, `ws`, Zod, and a separate coturn deployment.
-- Product scope: private game sharing for one broadcaster and a small friend group. Rooms default to eight viewers and accept a configured limit from 1 through 16; this is an admission limit, not a verified performance envelope.
-- Client behavior: screen capture precedes room creation; live source changes preserve healthy peer connections; `/r/{code}` invitations and `/join` use a numeric room code with no viewer token or URL fragment; every viewer has an independent `RTCPeerConnection`.
-- Control plane contract: optional whole-site `ACCESS_PASSWORD` with 1 through 128 visible ASCII characters, a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie, an internal host token, role-bound signaling, stable reconnect identities, short-lived coturn credentials, and Origin/payload checks. There are no accounts, JWTs, server-side access-session maps, or logout flow.
-- Room policies: no `ROOM_DATABASE_PATH` means random temporary rooms governed by `ROOM_TTL_SECONDS`; configuring it together with `ACCESS_PASSWORD` enables protected rooms whose numeric IDs increment from `1` and whose links do not expire. A database path without the whole-site password is invalid. Stopping sharing leaves the room available and viewers waiting. SQLite stores only room ID and host-token digest.
-- Media topology: direct ICE is preferred per viewer, with authenticated TURN/UDP and TURN/TCP required in production. TURN/TLS is an optional deployment capability, using standard TCP 5349 by default; mixed direct and relay paths are supported by design.
-- Diagnostics: per-peer path, candidate types, ICE protocol, local TURN protocol, RTT, bitrate, frame rate, dimensions, loss, jitter, codec, and quality-limitation fields are read locally from WebRTC stats.
-- Large public broadcasts are out of scope and should use OBS/Twitch-class services.
+## Current Snapshot
 
-## Verification
+- Product scope is private game sharing for one broadcaster and a small trusted friend group; public broadcasting remains out of scope.
+- Runtime is Node.js 24, React, TypeScript, Vite, native browser WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment.
+- Capture precedes room creation. Healthy peers survive source replacement, and local stats report path, candidate, RTT, bitrate, frame, loss, jitter, codec, and quality-limitation data.
+- Whole-site `ACCESS_PASSWORD` is optional. Protected sessions use a stateless 12-hour HMAC HttpOnly `SameSite=Strict` cookie; host authentication remains internal and signaling is role-bound.
+- Without `ROOM_DATABASE_PATH`, rooms are random and temporary. With both the database path and site password, room IDs start at `1`, links persist, and stopping a share leaves viewers waiting. SQLite stores only room ID and host-token digest.
+- Direct ICE is preferred independently per media edge. Authenticated TURN/UDP and TURN/TCP are required production fallbacks; TURN/TLS is optional.
+- The experimental media priority remains direct P2P for one or two viewers, peer-assisted only after its gates pass, then user-operated or central single-node SFU as an explicit fallback. There is no automatic migration.
 
-- On current `main`, `npm run check` passes type checking,
-  102 Vitest tests, the client production build, and the server production build.
+## Verified Evidence
 
-The remaining browser and network evidence predates the persistent-room rollout;
-it does not verify a real browser stop-and-republish cycle with room ID `1`.
+- On the current spike branch, `npm run check` passes type checking, 11 Vitest files with 129 tests, and both client and server production builds.
+- The production site runs behind nginx on Debian 12 with Node.js 24.19.0. Authenticated coturn 4.17.2 serves public STUN and TURN/UDP+TCP on `turn.bonfire.icu:3478`; TURN/TLS is intentionally disabled.
+- HTTPS/WSS, the site gate and cookie, room/WebSocket authorization, certificate renewal, SQLite permissions and clean service restart are verified. Public Chromium relay-only connections passed bidirectional traffic over TURN/UDP and TURN/TCP.
+- Earlier Chromium 151 synthetic-media checks covered direct UDP media, offer/answer/create-offer recovery, signaling reconnect generation isolation, live video/audio source replacement, and the protected 390 px viewer flow.
+- In a real Chromium 151 one-to-three-viewer run, the host held exactly two connected outbound media peers. Viewer 1 held one inbound and one outbound peer and forwarded media to viewer 3; viewer 2 remained directly attached to the host. All three viewers decoded frames.
+- A Chromium 151 one-to-eight synthetic functional smoke formed two depth-four chains. The host held two connected outbound peers; viewers 1 through 6 each held one inbound and one outbound peer; viewers 7 and 8 were inbound-only leaves; all viewers decoded frames. This short smoke proves functional topology only, not 720p60 quality, resource cost, latency, or endurance.
+- Closing that first-level relay page caused its branch to reattach and decode again after about 5.3 seconds. The host's peak active connected outbound media-edge count remained two.
+- That recovery proves only the path where the server observes a page close immediately. A silent network partition depends on the 30-second heartbeat, so detection can take 30 to 60 seconds before the 5-second viewer grace begins; that path is unverified.
 
-- Headless Chromium 151 created real local peer connections from animated canvas streams. The viewer reached `connected`, received a live video track, and reported a direct UDP path.
-- Browser fault injection recovered after dropping the first offer, dropping the first answer, and failing the first `createOffer`. A viewer-only signaling reconnect preserved the existing healthy media peer; replacing that viewer tab rebuilt media, released the old peer, and did not enter a reconnect loop.
-- Delayed ViewerPeer answer, candidate flush, ICE event, and stats results are discarded after a connection generation is replaced, so an old peer cannot signal through or overwrite the new peer snapshot.
-- Injecting a live picker-cancellation result preserved the old stream. Replacing synthetic video, adding synthetic audio, and removing it all kept the same connected host/viewer peer objects and did not create another offer; retired capture tracks stopped after each successful change.
-- Chrome 151 at 390 px completed the protected-site gate, login, host, and manual room-code join flow without horizontal overflow. The unauthenticated gate shows no application header or sharing controls.
-- Production configuration fails closed when required HTTPS, STUN, TURN, or TURN-secret constraints are missing.
-- Production startup rejects malformed ICE URLs and requires STUN plus explicit TURN/UDP and TURN/TCP entries. Optional TURN/TLS entries may use standard TCP 5349 or, when separately routed, TCP 443. Configuration validation remains distinct from the runtime relay checks below.
-- The application defaults to `LISTEN_HOST=0.0.0.0` for LAN development and containers, while the bare-metal reverse-proxy deployment explicitly uses loopback. It exposes a process-only `GET /healthz` liveness response.
-- Viewer session identities use `crypto.getRandomValues()` rather than the secure-context-only `crypto.randomUUID()`, so a phone can initialize the viewer over trusted LAN HTTP while the host keeps screen capture on `localhost`.
-- The staging host runs Debian 12, nginx, Node.js 24.19.0, and source-built coturn 4.17.2. Screener binds loopback behind nginx; authenticated STUN and TURN/UDP+TCP bind `turn.bonfire.icu:3478`. TURN/TLS remains intentionally disabled.
-- Commit `2f66770f8e90` is deployed. Production verification covered rejection of the previous password, login with the current password, the `Secure`/`HttpOnly`/`SameSite=Strict` cookie, the initialized empty SQLite schema, service state directory mode `0700`, database mode `0600`, and a clean service restart with zero automatic restarts. The prior room and WebSocket authentication checks remain applicable. The existing blog continued returning HTTP 200.
-- Public STUN Binding succeeds over both UDP and TCP 3478. Chromium 151 obtained authenticated relay candidates through TURN/UDP and TURN/TCP, then two relay-only peer connections completed a bidirectional DataChannel ping/pong over each transport. Simultaneous guest conntrack samples observed both 3478 control traffic and relay-range UDP traffic, independently confirming the public TURN path through the cloud and host firewalls.
-- The existing TeamSpeak files, services, timers, and ports were not changed.
+## Unverified Boundaries
+
+- The peer-assisted mode has not completed 1/3/5/8-viewer 30-minute runs, relay CPU/GPU and generational-quality measurements, controlled loss/RTT tests, or depth-four latency gates.
+- Android Chrome and iOS Safari remain required leaves but are not verified for this topology. The protocol has no relay-capability bit; controlled join order is the only mobile-leaf enforcement, so arbitrary-user deployment is excluded.
+- Real screen/game audio, heterogeneous machines and networks, browser lifecycle behavior, and sustained 1080p60 or 720p60 performance remain unverified.
+- The first real protected room still needs room ID `1`, stop-and-republish, link reuse, and service-restart verification.
+- Shared browser encoding is not available. Encoded Transform, DataChannel/WebCodecs media, custom congestion control, multiple trees, relay scoring, and automatic SFU switching remain outside the spike.
+- Relay outbound diagnostics are visible, but relays still use a fixed `1080p60`/8 Mbps sender envelope instead of the host's selected profile. Profile propagation must be unified before quality or resource comparisons are valid.
 
 ## Next Milestone
 
-Preserve the first real room for the normal browser workflow, then verify room ID
-`1`, stop-and-republish waiting behavior, link reuse, and recovery after a service
-restart. In a separate PR and ADR, add a deployment-level `p2p|sfu` media mode
-using a single-node SFU; do not add automatic switching, hybrid sending, Redis,
-or multi-node infrastructure before measurements justify them.
+Complete only the bounded ADR-0004 experiment:
 
-Execute and record the manual browser/network matrix for both applicable modes:
+- preserve host fanout at two and viewer fanout at one across joins, reconnects, grace expiry, and reparenting;
+- propagate one room quality profile to host and relay senders before comparative media measurements;
+- run reproducible 1/3/5/8-viewer 720p60 measurements for topology depth, selected ICE path, host/relay upload, encode/decode work, first picture, decoded FPS, quality limitation, and glass-to-glass latency;
+- repeat first-level relay loss with server-observed close and separately measure silent heartbeat-detected partition recovery; and
+- verify current Chrome/Edge relays plus Android Chrome and iOS Safari leaves.
 
-- real screen/window capture and available game or system audio on Windows Chrome and Edge;
-- one broadcaster with 1, 3, 5, and 8 heterogeneous viewers, recording publisher upload and encode load plus server ingress and egress to locate each sustainable envelope;
-- same-LAN direct, cross-network direct, a forced-relay Screener media session, mixed direct/relay, and a UDP-blocked TURN/TCP path; test TURN/TLS separately only when deployed;
-- Android Chrome and iOS Safari playback, orientation, backgrounding, and network handoff;
-- actual codec implementation, encode load, publisher upload, bitrate, frame rate, first picture, and glass-to-glass latency. Custom dynamic-FPS logic remains intentionally unimplemented until these measurements show a gap in browser capture, encoding, and congestion behavior.
+For a disconnect immediately observed by the server, the recovery gate retains
+the default 5-second grace followed by at most 3 seconds to restore a decodable
+picture, about 8 seconds total. Silent partitions must be reported separately
+with their heartbeat-detection delay.
 
-## Current Blocker
+All gates fail closed. If success requires a custom browser media plane, changed
+RTP recovery, multiple trees, scoring, transcoding, a codec ladder, or more than
+two host edges, remove this experiment. Only an isolated re-encoding failure may
+advance to a separate native shared-encode and volunteer encoded-RTP proposal.
 
-- No infrastructure blocker remains for the current deployment. Persistent storage and systemd filesystem permissions are active; the first real browser room lifecycle and the separate P2P/SFU media matrix remain unverified.
+## Blockers And Decisions
 
-## Blocking Decisions
+No infrastructure blocker remains. Production adoption is blocked on the
+measurement matrix above, not implementation claims.
 
 - Whole-system versus selected-game audio for the first release.
-- Initial deployment region and network test cohort.
-- Project license and intended distribution model.
+- Initial deployment region and network cohort.
+- Project license and distribution model.
+- Whether peer assistance passes every non-encoding gate; any other failure closes that route.
