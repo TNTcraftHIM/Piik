@@ -1,0 +1,22 @@
+# Local secrets and machine-specific overrides
+.env
+.env.*
+!.env.example
+*.local
+*.key
+*.p12
+*.pem
+*.pfx
+.claude/settings.local.json
+
+# Dependencies and generated output
+node_modules/
+build/
+coverage/
+dist/
+.cache/
+
+# Editor and operating-system noise
+.DS_Store
+Thumbs.db
+*.swp

@@ -1,0 +1,23 @@
+name: Repository hygiene
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  project-state:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate tracked project state
+        run: sh scripts/check-project-state.sh
+        env:
+          SCREENER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
