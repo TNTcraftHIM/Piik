@@ -188,14 +188,9 @@ function requireProductionTurnCoverage(turnUrls: readonly string[]): void {
   const hasTurnTcp = endpoints.some(
     ({ scheme, transport }) => scheme === "turn" && transport === "tcp",
   );
-  const hasTurnsTcp443 = endpoints.some(
-    ({ scheme, port, transport }) =>
-      scheme === "turns" && port === 443 && transport === "tcp",
-  );
-
-  if (!hasTurnUdp || !hasTurnTcp || !hasTurnsTcp443) {
+  if (!hasTurnUdp || !hasTurnTcp) {
     throw new Error(
-      "TURN_URLS must include explicit TURN/UDP, TURN/TCP, and TURN/TLS on TCP port 443 endpoints in production",
+      "TURN_URLS must include explicit TURN/UDP and TURN/TCP endpoints in production",
     );
   }
 }

@@ -1,0 +1,39 @@
+[Unit]
+Description=Screener coturn relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=turnserver
+Group=turnserver
+RuntimeDirectory=coturn
+RuntimeDirectoryMode=0750
+ExecStartPre=/usr/bin/test -r /etc/screener/turnserver.conf
+ExecStart=/usr/local/bin/turnserver -c /etc/screener/turnserver.conf
+Restart=on-failure
+RestartSec=3s
+LimitNOFILE=65536
+UMask=0077
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

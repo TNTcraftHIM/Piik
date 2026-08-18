@@ -24,9 +24,11 @@ must remain on `localhost` or HTTPS because screen capture requires a secure
 context. The default has no STUN or TURN, so cross-network use still requires
 HTTPS and the production ICE configuration documented separately.
 
-Production startup requires separate TURN/UDP, TURN/TCP, and
-TURN/TLS-on-TCP-443 URLs; this is a configuration preflight, not evidence that
-the external relay path works.
+Production startup requires STUN plus separate TURN/UDP and TURN/TCP URLs.
+TURN/TLS is an optional restrictive-network enhancement: use its standard TCP
+port 5349 by default, or port 443 only when the deployment has a dedicated
+public IP or a validated layer-4/SNI route. This configuration preflight is not
+evidence that any external relay path works.
 
 Run the complete automated validation with:
 

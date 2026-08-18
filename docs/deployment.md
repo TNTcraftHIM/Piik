@@ -14,9 +14,10 @@ unverified until the direct, relay, and mixed-network checks at the end pass.
 
 ## Topology and prerequisites
 
-Use two DNS names, for example `share.example.com` and `turn.example.com`.
-The simplest deployment gives the TURN name a separate public IP so coturn can
-bind TCP 443; otherwise use an explicitly validated layer-4/SNI gateway:
+Use two DNS names, for example `share.example.com` and `turn.example.com`. They
+may resolve to the same public IP in the minimal deployment: the Web ingress
+owns TCP 443 while coturn owns UDP and TCP 3478. TURN/TLS is optional and uses
+its standard TCP port 5349 by default, which can also share that public IP.
 
 ```text
 browser -- HTTPS/WSS --> Caddy or nginx :443 --> Node.js :8787
@@ -25,10 +26,11 @@ browser -- TURN only for failed ICE pairs --> coturn
 ```
 
 The minimum runtime is Node.js 24 LTS and coturn 4.17.2 or a newer patched
-release. Provision a valid TLS certificate for each public name, enable operating
-system time synchronization, and keep the Node application port reachable only
-from its reverse proxy. A single Node process is intentional: rooms are held in
-memory, so restarting it ends signaling and invalidates room state.
+release. Provision a valid TLS certificate for the Web name and, only when
+enabling TURN/TLS, for the TURN name. Enable operating system time
+synchronization and keep the Node application port reachable only from its
+reverse proxy. A single Node process is intentional: rooms are held in memory,
+so restarting it ends signaling and invalidates room state.
 
 Build and validate the exact revision before starting it:
 
@@ -72,7 +74,7 @@ ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
 
 STUN_URLS=stun:turn.example.com:3478
-TURN_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp,turns:turn.example.com:443?transport=tcp
+TURN_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp
 TURN_SHARED_SECRET=<SAME_VALUE_AS_COTURN_STATIC_AUTH_SECRET>
 TURN_CREDENTIAL_TTL_SECONDS=3600
 ```
@@ -85,15 +87,16 @@ browsers receive HMAC-SHA1-derived, time-limited credentials after room
 authentication. Keep host clocks synchronized because the credential username
 contains its Unix expiry time.
 
-Production startup validates the configured TURN transport mix before the
-server listens. The baseline must contain separate `TURN_URLS` entries for
-`turn:` with explicit `transport=udp`, `turn:` with explicit `transport=tcp`,
-and `turns:` with explicit port 443 and `transport=tcp`. This startup check only
-validates configuration shape; it does not prove that DNS, certificates,
-firewall rules, NAT mappings, or the coturn listeners work from an external
-network. Every STUN and TURN entry is also syntax-checked; use the exact
-lowercase TURN query forms shown above because one malformed ICE URL can make a
-browser reject the whole peer-connection configuration.
+Production startup validates the configured ICE transport mix before the
+server listens. The baseline must contain STUN and separate `TURN_URLS` entries
+for `turn:` with explicit `transport=udp` and `turn:` with explicit
+`transport=tcp`. TURN/TLS is optional; when enabled, append
+`turns:turn.example.com:5349?transport=tcp`. This startup check only validates
+configuration shape; it does not prove that DNS, certificates, firewall rules,
+NAT mappings, or the coturn listeners work from an external network. Every STUN
+and TURN entry is also syntax-checked; use the exact lowercase TURN query forms
+shown above because one malformed ICE URL can make a browser reject the whole
+peer-connection configuration.
 
 ## HTTPS and WSS ingress
 
@@ -121,6 +124,18 @@ location / {
 }
 ```
 
+The tracked
+[`share.bonfire.icu.conf.example`](../deploy/nginx/share.bonfire.icu.conf.example)
+follows this simple model and listens directly on public TCP 443. It does not
+depend on the optional SNI router.
+
+When Certbot manages the Web certificate, install the tracked
+[`reload-nginx.sh`](../deploy/certbot/reload-nginx.sh) as an executable under
+`/etc/letsencrypt/renewal-hooks/deploy/`. Run `certbot renew --dry-run` after
+the first certificate is installed. This hook only reloads the Web ingress;
+if optional TURN/TLS later uses a renewed certificate, configure and verify a
+separate coturn reload or restart action.
+
 Keep the proxy's access-log retention bounded and access controlled. Viewer
 tokens are URL fragments and therefore are not sent in HTTP requests, but logs
 still contain network metadata and must not be treated as public artifacts.
@@ -135,9 +150,19 @@ end-to-end media check.
 ## coturn
 
 Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.example)
-to an untracked service-owned location. Replace the FQDN, certificate paths, and
-secret. The `static-auth-secret` value must exactly match the application's
+to an untracked service-owned location. Replace the FQDN and secret. The
+`static-auth-secret` value must exactly match the application's
 `TURN_SHARED_SECRET`; do not configure `no-auth` or permanent browser users.
+Certificate paths are needed only if the optional TURN/TLS block is enabled.
+
+When the application and coturn configs share a parent directory, both service
+accounts must be able to traverse that directory. One minimal layout is a
+`root:root` directory with mode `0751`, an application environment file owned
+by `root:screener` with mode `0640`, and a coturn config owned by
+`root:turnserver` with mode `0640`. Verify readability as the actual service
+user before starting coturn. The tracked systemd unit deliberately fails its
+pre-start check when the coturn config is missing or unreadable; coturn itself
+may otherwise warn and continue with unsafe defaults.
 
 On a host with a public address directly on its interface, coturn can select the
 single listen/relay address automatically. On a multi-homed host, set
@@ -146,10 +171,21 @@ single listen/relay address automatically. On a multi-homed host, set
 without port translation. A normal consumer NAT that changes relay port numbers
 is not a supported TURN-host topology.
 
-The example binds TURN/TLS to 443 because that is the required restrictive-network
-fallback. It requires a separate public IP for `turn.example.com` or an ingress
-that explicitly supports TURN at layer 4/SNI. A normal HTTPS reverse proxy and
-coturn cannot both bind the same IP and port.
+The minimum deployment exposes TURN/UDP and TURN/TCP on 3478. `turn:` over TCP
+does not add TLS between the client and coturn, but relayed WebRTC media remains
+protected end to end by DTLS-SRTP. Optional TURN/TLS should listen directly on
+standard TCP 5349 and use `turns:turn.example.com:5349?transport=tcp`.
+
+TCP 443 is an optional enhancement for networks that block uncommon ports. On
+the same public IP, coturn cannot bind it while the Web ingress already owns it.
+Use a second public IP or an explicitly validated layer-4/SNI router, such as
+the optional
+[`tls-sni-router.conf.example`](../deploy/nginx/tls-sni-router.conf.example).
+That router requires moving the site's TLS virtual host to loopback TCP 8443;
+the default nginx site template intentionally does not do this. A normal
+Cloudflare HTTP proxy does not carry TURN even on port 443. Keep the TURN DNS
+record DNS-only, or use a compatible layer-4 service such as Cloudflare
+Spectrum; the Web hostname may remain HTTP-proxied independently.
 
 Open only these public listeners:
 
@@ -157,8 +193,9 @@ Open only these public listeners:
 | --- | --- | --- |
 | `share.example.com:443` | TCP | HTTPS and WSS |
 | `turn.example.com:3478` | UDP and TCP | STUN, TURN/UDP, and TURN/TCP |
-| `turn.example.com:443` | TCP | TURN/TLS on a dedicated IP or L4/SNI route |
 | `turn.example.com:49152-49251` | UDP, bidirectional | Relayed media endpoints |
+| `turn.example.com:5349` | TCP, optional | Standard TURN/TLS |
+| `turn.example.com:443` | TCP, optional | TURN/TLS on a dedicated IP or validated L4/SNI route |
 
 The 100-port relay range is an initial small-room limit, not a universal sizing
 rule. Monitor 508/allocation failures and concurrent allocations before widening
@@ -177,8 +214,9 @@ rotate by size and time with a finite retention, such as seven days initially,
 then reduce or extend it only for a documented operational need. coturn and the
 reverse proxy necessarily see client IP addresses; restrict log access, do not
 enable `verbose` or `log-binding` continuously, and never log credentials, SDP,
-ICE candidates, or the shared secret. Reload or restart coturn after certificate
-renewal and confirm time synchronization remains healthy.
+ICE candidates, or the shared secret. When TURN/TLS is enabled, reload or
+restart coturn after certificate renewal. Confirm time synchronization remains
+healthy in every deployment.
 
 ## Verification
 
@@ -186,20 +224,26 @@ Run these checks from real external networks before calling the deployment usabl
 
 1. Open the official [Trickle ICE sample](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
    and test each configured TURN URL separately with a short-lived credential.
-   Each UDP, TCP, and TLS test must produce a `relay` candidate; a successful
-   STUN-only `srflx` candidate does not prove TURN works.
+   Each required UDP and TCP test must produce a `relay` candidate; test TLS too
+   when it is configured. A successful STUN-only `srflx` candidate does not
+   prove TURN works.
 2. Create a normal Screener room on two different networks. Confirm media flows
    and the selected-pair stats report a non-relay path when direct ICE succeeds.
 3. Open the host at `https://share.example.com/?relay=1`, create a new room, and
    connect a viewer. This diagnostic flag sets `iceTransportPolicy=relay`; media
    must still flow and the stats panel must report `relay`.
-4. Block UDP on a test client while leaving the TURN/TLS endpoint reachable.
-   Confirm a new session succeeds through the configured `turns:` URL.
-5. Repeat with three viewers and a mixed direct/restrictive-network cohort. Record
+4. Block UDP on a test client while leaving TURN/TCP reachable. Confirm a new
+   session succeeds through `turn:turn.example.com:3478?transport=tcp`.
+5. If TURN/TLS is enabled, test its `turns:` URL separately on 5349 or the
+   explicitly configured 443 route. Failure of an optional endpoint must be
+   diagnosed, but an intentionally omitted endpoint is not a deployment failure.
+6. Repeat with three viewers and a mixed direct/restrictive-network cohort. Record
    the selected path, RTT, bitrate, frame rate, packet loss, and coturn egress for
    each viewer. Verify a direct viewer does not start consuming relay bandwidth
    merely because another viewer needs TURN.
 
 References: [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2),
 [turnserver documentation](https://github.com/coturn/coturn/blob/master/README.turnserver),
-and the [official example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf).
+the [official example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf),
+[TURN URI scheme RFC 7065](https://www.rfc-editor.org/rfc/rfc7065.html), and
+[Cloudflare network-port guidance](https://developers.cloudflare.com/fundamentals/reference/network-ports/).

@@ -10,7 +10,7 @@ Last updated: 2026-08-18
 - Viewers should be able to open an invite link in a desktop or mobile browser without installing a dedicated client.
 - The system should resemble a Photon-style developer experience: a central room/rendezvous service establishes sessions while realtime traffic is carried by clients whenever possible.
 - Server bandwidth cost is a primary constraint. The media path must be P2P-first, with servers used for signaling, STUN, TURN fallback, and observability. SFU is outside the normal small-room scope.
-- Avoiding TeamSpeak-like partial reachability is a primary requirement: every broadcaster-viewer pair must independently have TURN/UDP, TURN/TCP, and TURN/TLS candidates available when direct ICE cannot connect.
+- Avoiding TeamSpeak-like partial reachability is a primary requirement: every broadcaster-viewer pair must independently have TURN/UDP and TURN/TCP candidates available when direct ICE cannot connect. TURN/TLS is an optional compatibility enhancement, not a production prerequisite.
 - A web experience is preferred for convenience, but using a desktop sender is acceptable when it materially improves game capture, audio capture, or hardware encoding.
 - All project documentation, memory, code, `AGENTS.md`, and `.codex/` configuration must live in this Git repository and remain tracked for cross-device development.
 - Normal maintenance uses short-lived branches, focused commits, remote backup, pull requests, checks, merge, and branch deletion.
@@ -22,7 +22,7 @@ Last updated: 2026-08-18
 
 - Start with a Windows Chrome/Edge sharing MVP and a responsive Web viewer using one `RTCPeerConnection` per viewer. Validate current Android Chrome and iOS Safari as viewing endpoints.
 - The current PoC hard limit is one broadcaster and three viewers. Do not add a fourth viewer until publisher upload and encoder measurements justify changing the tested envelope.
-- Use HTTPS/WSS signaling, trickle ICE, STUN, and authenticated coturn candidates. Prefer direct UDP, then relay UDP, while keeping TURN/TCP and TURN/TLS on port 443 available for restrictive networks.
+- Use HTTPS/WSS signaling, trickle ICE, STUN, and authenticated coturn candidates. Prefer direct UDP, then relay UDP, with TURN/TCP as the required non-UDP fallback. Optional TURN/TLS uses standard TCP 5349 by default; TCP 443 is reserved for deployments with a dedicated public IP or validated L4/SNI routing.
 - Allow mixed connectivity in one room: direct viewers stay direct while only incompatible network pairs consume TURN bandwidth.
 - Treat 1080p60 as a best-effort quality profile, not a universal guarantee. Provide 720p60 and 720p30 fallbacks.
 - Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
@@ -31,10 +31,11 @@ Last updated: 2026-08-18
 
 ## Current Implementation
 
-- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The server defaults to an all-interface listener for LAN development and containers; the bare-metal reverse-proxy baseline explicitly binds loopback. It provides a process-only `/healthz` endpoint and requires the full TURN/UDP, TURN/TCP, and TURN/TLS-on-TCP-443 URL mix before production startup; these checks do not establish public-network reachability.
+- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The server defaults to an all-interface listener for LAN development and containers; the bare-metal reverse-proxy baseline explicitly binds loopback. It provides a process-only `/healthz` endpoint and requires STUN plus explicit TURN/UDP and TURN/TCP URLs before production startup. TURN/TLS is accepted but optional; configuration checks do not establish public-network reachability.
 - The Web PoC implements capture-before-room creation, live source replacement without renegotiating healthy peers, expiring role tokens, one independent peer connection per viewer, stable signaling reconnect identities that also work for LAN viewers on HTTP, explicit ICE restart or peer rebuild, host generation isolation, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
-- Automated checks and same-machine synthetic-media Chromium recovery tests pass, including lost offer/answer, one transient offer failure, signaling-only viewer reconnect, viewer-tab replacement with old-peer cleanup, cancelled-room cleanup, and video/audio source changes on an existing connection. Real screen/game audio, public TURN/NAT behavior, mobile lifecycle handling, and latency or quality targets remain unverified.
-- The next milestone is a staging coturn deployment and the manual matrix in `docs/status.md`, not additional product surface or a native sender.
+- The Web control plane is deployed at `https://share.bonfire.icu` behind nginx with Node.js 24.19.0, and `turn.bonfire.icu` runs authenticated coturn 4.17.2 on standard UDP/TCP 3478. HTTPS, WSS, room authentication, certificate renewal, public STUN, authenticated TURN/UDP and TURN/TCP allocations, and relay-only bidirectional data paths are verified. TURN/TLS is intentionally not enabled.
+- Automated checks and same-machine synthetic-media Chromium recovery tests pass, including lost offer/answer, one transient offer failure, signaling-only viewer reconnect, viewer-tab replacement with old-peer cleanup, cancelled-room cleanup, video/audio source changes, and public relay-only DataChannel tests. Real screen/game audio, full Screener media sessions across heterogeneous networks, mobile lifecycle handling, and latency or quality targets remain unverified.
+- No infrastructure blocker remains for the current staging deployment. The next milestone is the real-device and real-media matrix in `docs/status.md`, not additional product surface or a native sender.
 
 ## Provisional Quality Targets
 

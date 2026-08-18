@@ -14,7 +14,7 @@ Use separate control and media planes:
 - A small HTTPS/WSS service owns identity, rooms, invitations, presence, and WebRTC signaling.
 - A viewer can join through an authenticated, expiring Web link on desktop or mobile without installing the sharing client.
 - ICE attempts a direct UDP path for every broadcaster-viewer pair, using STUN to discover candidates.
-- Only pairs that cannot connect directly use authenticated TURN, preferring UDP and falling back to TCP and TLS on port 443. TURN is required production infrastructure, not an optional enhancement.
+- Only pairs that cannot connect directly use authenticated TURN. Production requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement, using its standard TCP port 5349 by default. Port 443 is optional and requires a dedicated public IP or a validated layer-4/SNI route when HTTPS already owns that address and port.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
 - The broadcaster creates one peer connection per viewer. The PoC hard limit is three viewers; a later release may reconsider it only after publisher upload and encoder measurements.
 - No SFU is planned for the normal product envelope. It is only a future reconsideration point if the small-room scope changes or measured relay/upload/encoder pressure makes the chosen envelope unworkable.
@@ -34,7 +34,8 @@ Negative:
 - Browser APIs do not guarantee that several peer connections share a single hardware encode.
 - Direct peers learn one another's network addresses; this is acceptable only for the initial trusted-friends threat model.
 - A room-level P2P-to-SFU migration adds state, keyframe, and reconnection complexity and is not part of the first prototype.
-- TURN/TLS on port 443 materially improves compatibility but cannot guarantee success through every authenticated proxy or policy-controlled network; failures still need actionable diagnostics.
+- TURN over TCP can suffer head-of-line blocking, and its `turn:` client-to-server transport is not TLS-wrapped. The WebRTC media remains protected by DTLS-SRTP independently of that TURN transport.
+- Optional TURN/TLS on port 5349 or 443 can improve compatibility but cannot guarantee success through every authenticated proxy or policy-controlled network. A normal Cloudflare HTTP proxy does not proxy TURN; using Cloudflare for TURN requires a compatible layer-4 product such as Spectrum.
 
 ## Rejected For The MVP
 
