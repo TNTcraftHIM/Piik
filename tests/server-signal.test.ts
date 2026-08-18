@@ -92,6 +92,7 @@ interface TestClient {
 }
 
 interface SignalHarness {
+  baseUrl: string;
   webSocketUrl: string;
   roomStore: RoomStore;
   room: CreatedRoom;
@@ -106,6 +107,7 @@ function testConfig(): ServerConfig {
     allowedOrigins: new Set([allowedOrigin]),
     roomTtlMs: 14_400_000,
     maxRooms: 10,
+    maxViewersPerRoom: 8,
     stunUrls: [],
     turnUrls: [],
     turnCredentialTtlSeconds: 3_600,
@@ -116,14 +118,20 @@ async function startHarness(
   overrides: {
     authenticationTimeoutMs?: number;
     viewerDisconnectGraceMs?: number;
+    maxViewersPerRoom?: number;
     maxSignalConnections?: number;
     maxUnauthenticatedSignalConnections?: number;
+    accessPassword?: string;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
+  config.accessPassword = overrides.accessPassword;
+  const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
+  config.maxViewersPerRoom = maxViewersPerRoom;
   const roomStore = new RoomStore({
     ttlMs: config.roomTtlMs,
     maxRooms: config.maxRooms,
+    maxViewersPerRoom,
   });
   const room = roomStore.createRoom();
   runningServer = await createScreenerServer({
@@ -139,11 +147,22 @@ async function startHarness(
       overrides.maxUnauthenticatedSignalConnections,
   });
   const port = await runningServer.listen(0, "127.0.0.1");
-  return { webSocketUrl: `ws://127.0.0.1:${port}/signal`, roomStore, room };
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    webSocketUrl: `ws://127.0.0.1:${port}/signal`,
+    roomStore,
+    room,
+  };
 }
 
-async function openClient(webSocketUrl: string): Promise<TestClient> {
-  const socket = new WebSocket(webSocketUrl, { origin: allowedOrigin });
+async function openClient(
+  webSocketUrl: string,
+  cookie?: string,
+): Promise<TestClient> {
+  const socket = new WebSocket(webSocketUrl, {
+    origin: allowedOrigin,
+    headers: cookie ? { Cookie: cookie } : undefined,
+  });
   await new Promise<void>((resolve, reject) => {
     socket.once("open", resolve);
     socket.once("error", reject);
@@ -151,8 +170,11 @@ async function openClient(webSocketUrl: string): Promise<TestClient> {
   return { socket, inbox: new MessageInbox(socket) };
 }
 
-async function rejectedUpgradeStatus(webSocketUrl: string): Promise<number | undefined> {
-  const socket = new WebSocket(webSocketUrl, { origin: allowedOrigin });
+async function rejectedUpgradeStatus(
+  webSocketUrl: string,
+  origin = allowedOrigin,
+): Promise<number | undefined> {
+  const socket = new WebSocket(webSocketUrl, { origin });
   socket.on("error", () => {
     // The HTTP status is asserted through unexpected-response below.
   });
@@ -203,13 +225,22 @@ async function authenticate(
   clientId: string,
 ) {
   client.socket.send(
-    JSON.stringify({
-      type: "authenticate",
-      roomId: room.roomId,
-      role,
-      token: role === "host" ? room.hostToken : room.viewerToken,
-      clientId,
-    }),
+    JSON.stringify(
+      role === "host"
+        ? {
+            type: "authenticate",
+            roomId: room.roomId,
+            role,
+            token: room.hostToken,
+            clientId,
+          }
+        : {
+            type: "authenticate",
+            roomId: room.roomId,
+            role,
+            clientId,
+          },
+    ),
   );
   return client.inbox.next("authenticated");
 }
@@ -224,6 +255,28 @@ async function closeClient(client: TestClient): Promise<void> {
 }
 
 describe("WebSocket signaling", () => {
+  it("requires the global access session when protection is enabled", async () => {
+    const accessPassword = "protected-instance-password";
+    const harness = await startHarness({ accessPassword });
+
+    expect(await rejectedUpgradeStatus(harness.webSocketUrl)).toBe(401);
+
+    const login = await fetch(`${harness.baseUrl}/api/session`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessPassword}`,
+        Origin: allowedOrigin,
+      },
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";", 1)[0];
+    expect(cookie).toBeTruthy();
+
+    const viewer = await openClient(harness.webSocketUrl, cookie);
+    await expect(
+      authenticate(viewer, harness.room, "viewer", "viewer-client-protected"),
+    ).resolves.toMatchObject({ role: "viewer" });
+  });
+
   it("lets viewers arrive first and replays their snapshot when the host joins", async () => {
     const harness = await startHarness();
     const viewer = await openClient(harness.webSocketUrl);
@@ -587,29 +640,41 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("rejects a fourth viewer and lets the host close the room", async () => {
-    const harness = await startHarness();
+  it("advertises a non-default capacity and rejects viewer N+1", async () => {
+    const maxViewersPerRoom = 5;
+    const harness = await startHarness({ maxViewersPerRoom });
     const host = await openClient(harness.webSocketUrl);
-    await authenticate(host, harness.room, "host", "host-client-stable");
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "host-client-stable",
+    );
+    expect(hostAuth.maxViewers).toBe(maxViewersPerRoom);
     const viewers: TestClient[] = [];
-    for (let index = 1; index <= 3; index += 1) {
+    for (let index = 1; index <= maxViewersPerRoom; index += 1) {
       const viewer = await openClient(harness.webSocketUrl);
-      await authenticate(viewer, harness.room, "viewer", `viewer-client-${index}`);
+      const viewerAuth = await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        `viewer-client-${index}`,
+      );
+      expect(viewerAuth.maxViewers).toBe(maxViewersPerRoom);
       await host.inbox.next("peer-joined");
       viewers.push(viewer);
     }
 
-    const fourth = await openClient(harness.webSocketUrl);
-    fourth.socket.send(
+    const overflow = await openClient(harness.webSocketUrl);
+    overflow.socket.send(
       JSON.stringify({
         type: "authenticate",
         roomId: harness.room.roomId,
         role: "viewer",
-        token: harness.room.viewerToken,
-        clientId: "viewer-client-4",
+        clientId: `viewer-client-${maxViewersPerRoom + 1}`,
       }),
     );
-    expect((await fourth.inbox.next("error")).code).toBe("ROOM_FULL");
+    expect((await overflow.inbox.next("error")).code).toBe("ROOM_FULL");
 
     host.socket.send(JSON.stringify({ type: "close-room" }));
     expect(await host.inbox.next("room-closed")).toMatchObject({ reason: "host-ended" });
@@ -622,6 +687,9 @@ describe("WebSocket signaling", () => {
 
   it("requires an allowed Origin, timely authentication, and bounded payloads", async () => {
     const harness = await startHarness({ authenticationTimeoutMs: 30 });
+    expect(
+      await rejectedUpgradeStatus(harness.webSocketUrl, `${allowedOrigin}/path`),
+    ).toBe(403);
     const foreign = new WebSocket(harness.webSocketUrl, {
       origin: "https://foreign.example.test",
     });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol.ts";
 import {
   RoomStore,
   RoomStoreError,
@@ -18,20 +19,25 @@ function expectRoomError(action: () => unknown, code: RoomStoreError["code"]): v
 describe("RoomStore", () => {
   it("creates a four-hour room and authenticates both roles", () => {
     const now = Date.UTC(2026, 7, 18, 12);
-    const store = new RoomStore({ ttlMs: 14_400_000, maxRooms: 10, now: () => now });
+    const store = new RoomStore({
+      ttlMs: 14_400_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 3,
+      now: () => now,
+    });
     const room = store.createRoom();
 
-    expect(room.hostToken).not.toBe(room.viewerToken);
+    expect(room.roomId).toMatch(/^\d{12}$/);
+    expect(room.hostToken).toHaveLength(43);
     expect(room.expiresAt).toBe(new Date(now + 14_400_000).toISOString());
     expect(
       store.connectParticipant({
         roomId: room.roomId,
         role: "viewer",
-        token: room.viewerToken,
         clientId: "viewer-client-1",
         sessionId: "viewer-session-1",
       }),
-    ).toMatchObject({ role: "viewer", hostOnline: false, isNewParticipant: true });
+    ).toMatchObject({ role: "viewer", hostOnline: false });
     expect(
       store.connectParticipant({
         roomId: room.roomId,
@@ -47,8 +53,12 @@ describe("RoomStore", () => {
     });
   });
 
-  it("rejects the wrong role token without exposing which value failed", () => {
-    const store = new RoomStore({ ttlMs: 10_000, maxRooms: 10 });
+  it("rejects an invalid host token without exposing which value failed", () => {
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 3,
+    });
     const room = store.createRoom();
 
     expectRoomError(
@@ -56,7 +66,7 @@ describe("RoomStore", () => {
         store.connectParticipant({
           roomId: room.roomId,
           role: "host",
-          token: room.viewerToken,
+          token: "wrong-host-token".padEnd(32, "x"),
           clientId: "host-client-1",
           sessionId: "host-session-1",
         }),
@@ -65,25 +75,26 @@ describe("RoomStore", () => {
   });
 
   it("keeps peer identity stable and ignores disconnect from a replaced socket", () => {
-    const store = new RoomStore({ ttlMs: 10_000, maxRooms: 10 });
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 3,
+    });
     const room = store.createRoom();
     const first = store.connectParticipant({
       roomId: room.roomId,
       role: "viewer",
-      token: room.viewerToken,
       clientId: "stable-viewer-client",
       sessionId: "viewer-session-old",
     });
     const replacement = store.connectParticipant({
       roomId: room.roomId,
       role: "viewer",
-      token: room.viewerToken,
       clientId: "stable-viewer-client",
       sessionId: "viewer-session-new",
     });
 
     expect(replacement.peerId).toBe(first.peerId);
-    expect(replacement.isNewParticipant).toBe(false);
     expect(replacement.replacedSessionId).toBe("viewer-session-old");
     expect(
       store.disconnectParticipant(room.roomId, first.peerId, "viewer-session-old"),
@@ -93,14 +104,17 @@ describe("RoomStore", () => {
     );
   });
 
-  it("reserves at most three viewer slots until a disconnected viewer is released", () => {
-    const store = new RoomStore({ ttlMs: 10_000, maxRooms: 10 });
+  it("reserves the configured viewer slots until a disconnected viewer is released", () => {
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 2,
+    });
     const room = store.createRoom();
-    const viewers = [1, 2, 3].map((number) =>
+    const viewers = [1, 2].map((number) =>
       store.connectParticipant({
         roomId: room.roomId,
         role: "viewer",
-        token: room.viewerToken,
         clientId: `viewer-client-${number}`,
         sessionId: `viewer-session-${number}`,
       }),
@@ -111,9 +125,8 @@ describe("RoomStore", () => {
         store.connectParticipant({
           roomId: room.roomId,
           role: "viewer",
-          token: room.viewerToken,
-          clientId: "viewer-client-4",
-          sessionId: "viewer-session-4",
+          clientId: "viewer-client-3",
+          sessionId: "viewer-session-3",
         }),
       "ROOM_FULL",
     );
@@ -124,9 +137,8 @@ describe("RoomStore", () => {
         store.connectParticipant({
           roomId: room.roomId,
           role: "viewer",
-          token: room.viewerToken,
-          clientId: "viewer-client-4",
-          sessionId: "viewer-session-4",
+          clientId: "viewer-client-3",
+          sessionId: "viewer-session-3",
         }),
       "ROOM_FULL",
     );
@@ -135,15 +147,19 @@ describe("RoomStore", () => {
       store.connectParticipant({
         roomId: room.roomId,
         role: "viewer",
-        token: room.viewerToken,
-        clientId: "viewer-client-4",
-        sessionId: "viewer-session-4",
-      }).isNewParticipant,
-    ).toBe(true);
+        clientId: "viewer-client-3",
+        sessionId: "viewer-session-3",
+      }).role,
+    ).toBe("viewer");
+    expect(store.maxViewersPerRoom).toBe(2);
   });
 
   it("allows only the same host identity to replace an online host", () => {
-    const store = new RoomStore({ ttlMs: 10_000, maxRooms: 10 });
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 3,
+    });
     const room = store.createRoom();
     const first = store.connectParticipant({
       roomId: room.roomId,
@@ -177,7 +193,12 @@ describe("RoomStore", () => {
 
   it("expires, closes, and globally bounds rooms", () => {
     let now = 1_000;
-    const expiringStore = new RoomStore({ ttlMs: 100, maxRooms: 1, now: () => now });
+    const expiringStore = new RoomStore({
+      ttlMs: 100,
+      maxRooms: 1,
+      maxViewersPerRoom: 3,
+      now: () => now,
+    });
     const room = expiringStore.createRoom();
     expectRoomError(() => expiringStore.createRoom(), "ROOM_LIMIT");
 
@@ -204,7 +225,6 @@ describe("RoomStore", () => {
         expiringStore.connectParticipant({
           roomId: openRoom.roomId,
           role: "viewer",
-          token: openRoom.viewerToken,
           clientId: "viewer-client-1",
           sessionId: "viewer-session-1",
         }),
@@ -212,4 +232,20 @@ describe("RoomStore", () => {
     );
     expect(expiringStore.createRoom()).toBeDefined();
   });
+
+  it.each([0, 1.5, MAX_VIEWERS_PER_ROOM_LIMIT + 1])(
+    "rejects invalid per-room viewer limit %s",
+    (maxViewersPerRoom) => {
+      expect(
+        () =>
+          new RoomStore({
+            ttlMs: 10_000,
+            maxRooms: 10,
+            maxViewersPerRoom,
+          }),
+      ).toThrow(
+        `Room viewer limit must be an integer between 1 and ${MAX_VIEWERS_PER_ROOM_LIMIT}`,
+      );
+    },
+  );
 });

@@ -1,9 +1,13 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../shared/protocol.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 3_600;
-const MIN_PRODUCTION_SECRET_BYTES = 32;
+const MIN_ACCESS_PASSWORD_BYTES = 12;
+const MAX_ACCESS_PASSWORD_BYTES = 128;
+const MIN_TURN_SECRET_BYTES = 32;
+const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
+const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
 
 export interface ServerConfig {
   nodeEnv: RuntimeEnvironment;
@@ -11,9 +15,10 @@ export interface ServerConfig {
   listenHost: string;
   publicBaseUrl: URL;
   allowedOrigins: ReadonlySet<string>;
-  roomCreationToken?: string;
+  accessPassword?: string;
   roomTtlMs: number;
   maxRooms: number;
+  maxViewersPerRoom: number;
   stunUrls: readonly string[];
   turnUrls: readonly string[];
   turnSharedSecret?: string;
@@ -222,11 +227,22 @@ export function loadConfig(
   ) {
     throw new Error("PUBLIC_BASE_URL must use http or https");
   }
+  if (
+    publicBaseUrl.username ||
+    publicBaseUrl.password ||
+    publicBaseUrl.pathname !== "/" ||
+    publicBaseUrl.search ||
+    publicBaseUrl.hash
+  ) {
+    throw new Error(
+      "PUBLIC_BASE_URL must be an origin without credentials, path, query, or fragment",
+    );
+  }
   if (nodeEnv === "production" && publicBaseUrl.protocol !== "https:") {
     throw new Error("PUBLIC_BASE_URL must use https in production");
   }
 
-  const roomCreationToken = environment.ROOM_CREATION_TOKEN?.trim() || undefined;
+  const accessPassword = environment.ACCESS_PASSWORD?.trim() || undefined;
   const turnSharedSecret = environment.TURN_SHARED_SECRET?.trim() || undefined;
   const stunUrls = parseIceUrlList(
     environment.STUN_URLS,
@@ -244,15 +260,21 @@ export function loadConfig(
       "TURN_URLS and TURN_SHARED_SECRET must either both be configured or both be absent",
     );
   }
-  if (nodeEnv === "production" && !roomCreationToken) {
-    throw new Error("ROOM_CREATION_TOKEN is required in production");
+  if (
+    accessPassword &&
+    (!VISIBLE_ASCII_PATTERN.test(accessPassword) ||
+      Buffer.byteLength(accessPassword) > MAX_ACCESS_PASSWORD_BYTES)
+  ) {
+    throw new Error(
+      "ACCESS_PASSWORD must contain at most 128 visible ASCII characters",
+    );
   }
   if (
     nodeEnv === "production" &&
-    roomCreationToken &&
-    Buffer.byteLength(roomCreationToken) < MIN_PRODUCTION_SECRET_BYTES
+    accessPassword &&
+    Buffer.byteLength(accessPassword) < MIN_ACCESS_PASSWORD_BYTES
   ) {
-    throw new Error("ROOM_CREATION_TOKEN must contain at least 32 bytes in production");
+    throw new Error("ACCESS_PASSWORD must contain at least 12 bytes in production");
   }
   if (nodeEnv === "production" && turnUrls.length === 0) {
     throw new Error("TURN is required in production");
@@ -263,7 +285,7 @@ export function loadConfig(
   if (
     nodeEnv === "production" &&
     turnSharedSecret &&
-    Buffer.byteLength(turnSharedSecret) < MIN_PRODUCTION_SECRET_BYTES
+    Buffer.byteLength(turnSharedSecret) < MIN_TURN_SECRET_BYTES
   ) {
     throw new Error("TURN_SHARED_SECRET must contain at least 32 bytes in production");
   }
@@ -280,11 +302,18 @@ export function loadConfig(
       environment.ALLOWED_ORIGINS,
       publicBaseUrl.origin,
     ),
-    roomCreationToken,
+    accessPassword,
     roomTtlMs:
       parsePositiveInteger(environment.ROOM_TTL_SECONDS, 14_400, "ROOM_TTL_SECONDS") *
       1_000,
     maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
+    maxViewersPerRoom: parseBoundedInteger(
+      environment.MAX_VIEWERS_PER_ROOM,
+      DEFAULT_MAX_VIEWERS_PER_ROOM,
+      "MAX_VIEWERS_PER_ROOM",
+      1,
+      MAX_VIEWERS_PER_ROOM_LIMIT,
+    ),
     stunUrls,
     turnUrls,
     turnSharedSecret,
@@ -296,10 +325,4 @@ export function loadConfig(
       MAX_TURN_CREDENTIAL_TTL_SECONDS,
     ),
   };
-}
-
-export function secretsEqual(actual: string, expected: string): boolean {
-  const actualDigest = createHash("sha256").update(actual).digest();
-  const expectedDigest = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(actualDigest, expectedDigest);
 }

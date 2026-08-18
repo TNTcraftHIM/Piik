@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-export const MAX_VIEWERS = 3;
+export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
+export const ROOM_CODE_LENGTH = 12;
 
 const opaqueIdSchema = z
   .string()
@@ -14,6 +15,11 @@ const tokenSchema = z
   .min(32)
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
+
+export const roomCodeSchema = z
+  .string()
+  .length(ROOM_CODE_LENGTH)
+  .regex(/^\d+$/);
 
 export const roleSchema = z.enum(["host", "viewer"]);
 export type Role = z.infer<typeof roleSchema>;
@@ -72,16 +78,28 @@ export const signalPayloadSchema = z.discriminatedUnion("kind", [
 ]);
 export type SignalPayload = z.infer<typeof signalPayloadSchema>;
 
-export const clientMessageSchema = z.discriminatedUnion("type", [
+const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
       type: z.literal("authenticate"),
-      roomId: opaqueIdSchema,
-      role: roleSchema,
+      roomId: roomCodeSchema,
+      role: z.literal("host"),
       token: tokenSchema,
       clientId: opaqueIdSchema,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("authenticate"),
+      roomId: roomCodeSchema,
+      role: z.literal("viewer"),
+      clientId: opaqueIdSchema,
+    })
+    .strict(),
+]);
+
+export const clientMessageSchema = z.union([
+  authenticateMessageSchema,
   z
     .object({
       type: z.literal("signal"),
@@ -105,7 +123,6 @@ const errorCodeSchema = z.enum([
   "AUTH_REQUIRED",
   "INVALID_MESSAGE",
   "INVALID_TOKEN",
-  "ROOM_CLOSED",
   "ROOM_EXPIRED",
   "ROOM_FULL",
   "HOST_ALREADY_CONNECTED",
@@ -121,10 +138,10 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
       role: roleSchema,
       peerId: opaqueIdSchema,
       roomExpiresAt: z.string().datetime(),
-      maxViewers: z.literal(MAX_VIEWERS),
+      maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
       hostOnline: z.boolean(),
       connectionId: opaqueIdSchema.nullable(),
-      viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS),
+      viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
       iceConfig: iceConfigSchema,
     })
     .strict(),
@@ -185,11 +202,10 @@ export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
 export const createRoomResponseSchema = z
   .object({
-    roomId: opaqueIdSchema,
+    roomId: roomCodeSchema,
     hostToken: tokenSchema,
     inviteUrl: z.string().url().max(2048),
     expiresAt: z.string().datetime(),
-    iceConfig: iceConfigSchema,
   })
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;

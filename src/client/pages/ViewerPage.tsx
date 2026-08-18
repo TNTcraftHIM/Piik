@@ -26,24 +26,17 @@ import { ViewerPeer } from "../webrtc/viewer-peer";
 
 interface ViewerPageProps {
   roomId: string;
-  token: string | null;
+  onAuthorizationRequired: () => void;
 }
 
-type ViewerRoomState = "waiting" | "active" | "closed" | "error";
-
-export function ViewerPage({ roomId, token }: ViewerPageProps) {
+export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps) {
   const forceRelay = useMemo(
     () => new URLSearchParams(window.location.search).get("relay") === "1",
     [],
   );
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
-  const [roomState, setRoomState] = useState<ViewerRoomState>(
-    token ? "waiting" : "error",
-  );
-  const [statusText, setStatusText] = useState(
-    token ? "正在进入房间" : "邀请链接无效或已失效",
-  );
+  const [statusText, setStatusText] = useState("正在进入房间");
   const [hostOnline, setHostOnline] = useState(false);
   const [relayAvailable, setRelayAvailable] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -53,13 +46,8 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
-  const signalRef = useRef<SignalingClient | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      return;
-    }
-
     let active = true;
     let currentIceConfig: IceConfig | null = null;
 
@@ -67,7 +55,6 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
       {
         roomId,
         role: "viewer",
-        token,
         clientId: getStableClientId("viewer", roomId),
       },
       {
@@ -90,8 +77,12 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
           setRemoteStream(null);
           setPeerSnapshot(null);
           setPlaybackBlocked(false);
-          setRoomState("error");
           setStatusText(message);
+        },
+        onAccessRequired: () => {
+          if (active) {
+            onAuthorizationRequired();
+          }
         },
         onMessage: (message) => {
           if (!active) {
@@ -118,7 +109,6 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
           onStream: (nextStream) => {
             if (active) {
               setRemoteStream(nextStream);
-              setRoomState("active");
               setStatusText("正在播放");
             }
           },
@@ -126,7 +116,6 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
             if (active) {
               setPeerSnapshot(snapshot);
               if (snapshot.connectionState === "connected") {
-                setRoomState("active");
                 setStatusText("已连接");
               } else if (
                 snapshot.connectionState === "failed" ||
@@ -148,7 +137,6 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
         currentIceConfig = message.iceConfig;
         setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
-        setRoomState(peerRef.current?.isConnected() ? "active" : "waiting");
         setStatusText(message.hostOnline ? "等待分享画面" : "等待分享者上线");
         const peer = peerRef.current;
         peer?.updateIceConfig(message.iceConfig);
@@ -193,7 +181,6 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
         peerRef.current = null;
         setRemoteStream(null);
         setPeerSnapshot(null);
-        setRoomState("closed");
         setStatusText(message.reason === "expired" ? "房间已过期" : "分享已结束");
         signal.stop();
         return;
@@ -203,7 +190,6 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
           [
             "AUTH_REQUIRED",
             "INVALID_TOKEN",
-            "ROOM_CLOSED",
             "ROOM_EXPIRED",
             "ROOM_FULL",
           ].includes(message.code)
@@ -213,21 +199,18 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
           setRemoteStream(null);
           setPeerSnapshot(null);
         }
-        setRoomState("error");
         setStatusText(message.message);
       }
     }
 
-    signalRef.current = signal;
     signal.start();
     return () => {
       active = false;
       signal.stop();
-      signalRef.current = null;
       peerRef.current?.dispose();
       peerRef.current = null;
     };
-  }, [forceRelay, roomId, token]);
+  }, [forceRelay, onAuthorizationRequired, roomId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -300,7 +283,7 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
         <div className="viewer-title-row">
           <div>
             <h1>好友屏幕</h1>
-            <p className="section-meta">房间 {roomId.slice(0, 8)}</p>
+            <p className="section-meta">房间 {roomId}</p>
           </div>
           <div className="viewer-badges">
             {forceRelay && <span className="diagnostic-badge">强制中继</span>}
@@ -354,7 +337,7 @@ export function ViewerPage({ roomId, token }: ViewerPageProps) {
               className="icon-button"
               title="恢复连接"
               aria-label="恢复连接"
-              disabled={!peerSnapshot || roomState === "closed"}
+              disabled={!peerSnapshot}
               onClick={retryConnection}
             >
               <RefreshCw size={19} />
