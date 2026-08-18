@@ -2,7 +2,7 @@
 
 Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its media path is WebRTC P2P-first, with authenticated TURN fallback for network pairs that cannot connect directly. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
 
-The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and creates an expiring invitation for up to three viewers. Each viewer receives an independent WebRTC connection, so direct and TURN-relayed paths can coexist in one room. The Node.js service carries only room, authentication, ICE credential, and signaling traffic.
+The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and creates an expiring invitation for up to three viewers. The host can change the shared source without replacing healthy peer connections. Each viewer receives an independent WebRTC connection, so direct and TURN-relayed paths can coexist in one room. The Node.js service carries only room, authentication, ICE credential, and signaling traffic.
 
 This is not yet a production release. Real cross-network TURN behavior, game audio, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
 

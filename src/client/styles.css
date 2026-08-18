@@ -165,6 +165,12 @@ h3 {
   line-height: 20px;
 }
 
+.broadcast-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .video-stage {
   position: relative;
   width: 100%;
@@ -357,6 +363,16 @@ h3 {
 
 .button-primary:hover:not(:disabled) {
   background: #59df91;
+}
+
+.button-secondary {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.button-secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
 }
 
 .button-danger {
@@ -705,8 +721,13 @@ h3 {
     flex-wrap: wrap;
   }
 
-  .section-heading .button-danger {
+  .broadcast-actions {
     width: 100%;
+  }
+
+  .broadcast-actions .button {
+    min-width: 0;
+    flex: 1;
   }
 
   .viewer-badges {

@@ -138,6 +138,8 @@ Web 版本能直接使用 `getDisplayMedia()` + WebRTC，最适合验证产品�
 - 1080p60 可以请求但不能保证。选择来源后用 `track.getSettings()` 验证实际分辨率和帧率。
 - 最小化窗口、受保护内容、UAC secure desktop 和某些独占全屏路径可能黑屏或停止。游戏使用无边框窗口，或分享整个显示器，通常更稳。
 
+直播中换源不需要先关房间。`RTCRtpSender.replaceTrack()` 可在同类媒体且协商 envelope 允许时替换 sender 的来源而不重新协商；分辨率、帧率块率、音频声道或编码约束不兼容时会拒绝，因此应用必须把失败限制在该 viewer 并重建其连接。为支持浏览器有时返回音频、有时不返回，初始 offer 可以预留 send-only audio transceiver，再将 audio sender 在 `null` 与真实 track 间替换。新的 `getDisplayMedia()` 仍必须由用户手势触发并重新选源，取消选择时旧流应继续工作。
+
 游戏轨建议设置：
 
 ```js
@@ -156,6 +158,7 @@ await sender.setParameters(parameters);
 来源：
 
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
+- [W3C RTCRtpSender.replaceTrack](https://www.w3.org/TR/webrtc/#dom-rtcrtpsender-replacetrack)
 - [MDN getDisplayMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [MediaStreamTrack content hints](https://www.w3.org/TR/mst-content-hint/)
 - [RTCRtpSender 参数](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
@@ -239,6 +242,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 | --- | --- | --- | --- |
 | [MiroTalk BRO](https://github.com/miroslavpejic85/mirotalkbro) | 最贴近一人广播、多名观看；可用部署级开关选择 P2P 或 mediasoup SFU | AGPL-3.0。最快验证概念，闭源前只能研究或另购许可 | [broadcast.js](https://github.com/miroslavpejic85/mirotalkbro/blob/main/public/js/broadcast.js)、[server.js](https://github.com/miroslavpejic85/mirotalkbro/blob/main/app/server.js)、[mediasoup handler](https://github.com/miroslavpejic85/mirotalkbro/blob/main/app/mediasoup-handler.js) |
 | [Screego](https://github.com/screego/server) | 极简屏幕分享、P2P fan-out、WebSocket 信令、内置 Pion TURN | GPL-3.0。最适合学习轻控制面和按需 TURN | [useRoom.ts](https://github.com/screego/server/blob/master/ui/src/useRoom.ts)、[ws](https://github.com/screego/server/tree/master/ws)、[turn/server.go](https://github.com/screego/server/blob/master/turn/server.go)、[NAT 文档](https://github.com/screego/server/blob/master/docs/nat-traversal.md) |
+| [Tailchat Meeting](https://github.com/msgbyte/tailchat-meeting) | React 捕获生命周期与会议产品交互参考 | Apache-2.0，但媒体基于 mediasoup/SFU，不能作为当前 P2P 拓扑底座 | [ScreenShare.ts](https://github.com/msgbyte/tailchat-meeting/blob/master/app/src/features/ScreenShare.ts)、[media.ts](https://github.com/msgbyte/tailchat-meeting/blob/master/packages/sdk/src/client/media.ts) |
 | [WebRTC samples](https://github.com/webrtc/samples) | 官方浏览器 API 最小示例 | BSD 风格。用于理解 API，不是产品框架 | [getDisplayMedia](https://github.com/webrtc/samples/tree/gh-pages/src/content/getusermedia/getdisplaymedia)、[peer connection examples](https://github.com/webrtc/samples/tree/gh-pages/src/content/peerconnection) |
 | [PeerJS](https://github.com/peers/peerjs) | 快速 P2P 原型与简单信令抽象 | MIT。原型快，但产品最终可能需要直接控制 RTCPeerConnection 和统计 | [PeerJS server](https://github.com/peers/peerjs-server) |
 | [coturn](https://github.com/coturn/coturn) | 生产 STUN/TURN fallback | BSD-3-Clause。P2P-first 必需基础设施 | [turnserver 文档](https://github.com/coturn/coturn/blob/master/README.turnserver)、[Docker](https://github.com/coturn/coturn/blob/master/docker/coturn/README.md) |
@@ -262,6 +266,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - coturn 使用 `use-auth-secret` 支持的 TURN REST 短期凭据：`base64(HMAC-SHA1(secret, expiry + ":" + subject))`。coturn 不提供 HTTP 凭据接口，必须由已鉴权的应用服务生成。
 - 截至本次复核，coturn 应使用 4.17.2 或更新补丁版本；4.17.2 修复了此前补丁版本的 UDP TTL 回归。
 - MiroTalk BRO 当前 P2P 模式仍是 broadcaster 对每位 viewer 建独立连接；Screego 也采用独立 session 和 HMAC TURN 凭据。这验证了拓扑，但两者的静态/长时凭据与轻量恢复策略不直接照搬。
+- Screego 的分享生命周期保持简单，当前客户端在分享停止时关闭 peers，未提供 `replaceTrack()` 换源路径，且为 GPL-3.0；本项目只借鉴其边界清晰的生命周期，不复制实现。Tailchat Meeting 使用 Apache-2.0，但其媒体生产者生命周期绑定 mediasoup/SFU；只参考捕获状态，不引入与 ADR-0001 冲突的拓扑。
 
 新增来源，访问日期 2026-08-18：
 
