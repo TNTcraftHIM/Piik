@@ -1,2 +1,19 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normalize repository text for cross-platform development.
+* text=auto eol=lf
+
+# Windows command scripts are consumed most reliably with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh text eol=lf
+*.ps1 text eol=lf
+
+# Never apply text conversion to common binary assets.
+*.avif binary
+*.gif binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary
+*.woff binary
+*.woff2 binary
