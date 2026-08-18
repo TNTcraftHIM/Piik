@@ -7,6 +7,7 @@ import type { ViteDevServer } from "vite";
 import type { CreateRoomResponse } from "../shared/protocol.js";
 import { AccessSession } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
+import { RoomDatabase } from "./room-database.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer } from "./signaling.js";
 
@@ -45,6 +46,9 @@ export async function createScreenerServer(
       ttlMs: config.roomTtlMs,
       maxRooms: config.maxRooms,
       maxViewersPerRoom: config.maxViewersPerRoom,
+      database: config.roomDatabasePath
+        ? new RoomDatabase(config.roomDatabasePath)
+        : undefined,
       now,
     });
   const accessSession = new AccessSession({
@@ -167,13 +171,17 @@ export async function createScreenerServer(
       });
     },
     async close() {
-      await signaling.close();
-      if (httpServer.listening) {
-        await new Promise<void>((resolve, reject) => {
-          httpServer.close((error) => (error ? reject(error) : resolve()));
-        });
+      try {
+        await signaling.close();
+        if (httpServer.listening) {
+          await new Promise<void>((resolve, reject) => {
+            httpServer.close((error) => (error ? reject(error) : resolve()));
+          });
+        }
+        await vite?.close();
+      } finally {
+        roomStore.close();
       }
-      await vite?.close();
     },
   };
 }

@@ -59,7 +59,23 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
-        roomId: "1234",
+        roomId: "1",
+        role: "viewer",
+        clientId: "client_12345678",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        roomId: "0123",
+        role: "viewer",
+        clientId: "client_12345678",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        roomId: "1".repeat(13),
         role: "viewer",
         clientId: "client_12345678",
       }).success,
@@ -98,6 +114,18 @@ describe("client signaling protocol", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts explicit and legacy sharing-stop messages", () => {
+    expect(clientMessageSchema.safeParse({ type: "stop-sharing" }).success).toBe(
+      true,
+    );
+    expect(clientMessageSchema.safeParse({ type: "close-room" }).success).toBe(
+      true,
+    );
+    expect(clientMessageSchema.safeParse({ type: "abandon-room" }).success).toBe(
+      true,
+    );
+  });
 });
 
 describe("server signaling protocol", () => {
@@ -130,6 +158,18 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse(
         authenticatedMessage(MAX_VIEWERS_PER_ROOM_LIMIT),
       ).success,
+    ).toBe(true);
+  });
+
+  it("represents persistent rooms without a room expiry", () => {
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        roomExpiresAt: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({ type: "sharing-stopped" }).success,
     ).toBe(true);
   });
 

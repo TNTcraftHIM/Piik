@@ -50,6 +50,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
   useEffect(() => {
     let active = true;
     let currentIceConfig: IceConfig | null = null;
+    let currentHostOnline = false;
 
     const signal = new SignalingClient(
       {
@@ -72,11 +73,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           if (!active) {
             return;
           }
-          peerRef.current?.dispose();
-          peerRef.current = null;
-          setRemoteStream(null);
-          setPeerSnapshot(null);
-          setPlaybackBlocked(false);
+          clearPeerState();
           setStatusText(message);
         },
         onAccessRequired: () => {
@@ -92,6 +89,14 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         },
       },
     );
+
+    function clearPeerState(): void {
+      peerRef.current?.dispose();
+      peerRef.current = null;
+      setRemoteStream(null);
+      setPeerSnapshot(null);
+      setPlaybackBlocked(false);
+    }
 
     function ensurePeer(): ViewerPeer | null {
       if (peerRef.current) {
@@ -114,6 +119,14 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           },
           onUpdate: (snapshot) => {
             if (active) {
+              if (
+                !currentHostOnline &&
+                snapshot.connectionState === "failed"
+              ) {
+                clearPeerState();
+                setStatusText("等待分享者再次开始");
+                return;
+              }
               setPeerSnapshot(snapshot);
               if (snapshot.connectionState === "connected") {
                 setStatusText("已连接");
@@ -135,9 +148,19 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     async function handleMessage(message: ServerMessage): Promise<void> {
       if (message.type === "authenticated") {
         currentIceConfig = message.iceConfig;
+        currentHostOnline = message.hostOnline;
         setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
-        setStatusText(message.hostOnline ? "等待分享画面" : "等待分享者上线");
+        if (
+          !message.hostOnline &&
+          message.connectionId === null &&
+          !peerRef.current?.isConnected()
+        ) {
+          clearPeerState();
+        }
+        setStatusText(
+          message.hostOnline ? "等待分享画面" : "等待分享者开始分享",
+        );
         const peer = peerRef.current;
         peer?.updateIceConfig(message.iceConfig);
         if (
@@ -170,22 +193,34 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         return;
       }
       if (message.type === "host-status") {
+        currentHostOnline = message.online;
         setHostOnline(message.online);
         if (!message.online && !peerRef.current?.isConnected()) {
-          setStatusText("等待分享者上线");
+          setStatusText("等待分享者开始分享");
+        } else if (message.online && !peerRef.current?.isConnected()) {
+          setStatusText("等待分享画面");
         }
         return;
       }
+      if (message.type === "sharing-stopped") {
+        currentHostOnline = false;
+        clearPeerState();
+        setHostOnline(false);
+        setStatusText("分享已停止，等待分享者再次开始");
+        return;
+      }
       if (message.type === "room-closed") {
-        peerRef.current?.dispose();
-        peerRef.current = null;
-        setRemoteStream(null);
-        setPeerSnapshot(null);
+        clearPeerState();
         setStatusText(message.reason === "expired" ? "房间已过期" : "分享已结束");
         signal.stop();
         return;
       }
       if (message.type === "error") {
+        if (message.code === "PEER_NOT_FOUND" && !currentHostOnline) {
+          clearPeerState();
+          setStatusText("等待分享者再次开始");
+          return;
+        }
         if (
           [
             "AUTH_REQUIRED",
@@ -194,10 +229,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             "ROOM_FULL",
           ].includes(message.code)
         ) {
-          peerRef.current?.dispose();
-          peerRef.current = null;
-          setRemoteStream(null);
-          setPeerSnapshot(null);
+          clearPeerState();
         }
         setStatusText(message.message);
       }
@@ -269,7 +301,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
 
   function retryConnection(): void {
     if (!peerRef.current?.requestRecovery()) {
-      setStatusText(hostOnline ? "等待分享画面" : "等待分享者上线");
+      setStatusText(hostOnline ? "等待分享画面" : "等待分享者开始分享");
     } else {
       setStatusText("正在恢复媒体连接");
     }

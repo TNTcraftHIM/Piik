@@ -7,8 +7,11 @@ import {
   getSession,
 } from "../src/client/lib/api.ts";
 import {
+  clearHostRoom,
   getStableClientId,
+  readHostRoom,
   isValidRoomId,
+  writeHostRoom,
 } from "../src/client/lib/session.ts";
 import {
   shouldReconnectSignaling,
@@ -40,6 +43,55 @@ describe("client session identity", () => {
 
     expect(first).toBe("ab".repeat(16));
     expect(getStableClientId("viewer", "room-id-1234")).toBe(first);
+  });
+
+  it("persists one validated host room across browser sessions", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+    const room = {
+      roomId: "7",
+      hostToken: "a".repeat(32),
+      inviteUrl: "https://share.test/r/7",
+      expiresAt: null,
+    };
+
+    writeHostRoom(room);
+
+    expect(readHostRoom()).toEqual(room);
+    clearHostRoom();
+    expect(readHostRoom()).toBeNull();
+  });
+
+  it("discards expired or malformed host room records", () => {
+    const values = new Map<string, string>();
+    const removeItem = vi.fn((key: string) => values.delete(key));
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem,
+      },
+    });
+    const expired = {
+      roomId: "12",
+      hostToken: "b".repeat(32),
+      inviteUrl: "https://share.test/r/12",
+      expiresAt: "2026-08-18T00:00:00.000Z",
+    };
+
+    writeHostRoom(expired);
+    expect(readHostRoom(Date.parse(expired.expiresAt) + 1)).toBeNull();
+    expect(removeItem).toHaveBeenCalledOnce();
+
+    values.set("screener:host-room:v1", "not-json");
+    expect(readHostRoom()).toBeNull();
+    expect(removeItem).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -113,12 +165,36 @@ describe("site access API", () => {
     const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
     expect(headers.has("Authorization")).toBe(false);
   });
+
+  it("accepts a persistent room without an expiry", async () => {
+    const room = {
+      roomId: "42",
+      hostToken: "c".repeat(32),
+      inviteUrl: "https://share.test/r/42",
+      expiresAt: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify(room), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(createRoom()).resolves.toEqual(room);
+  });
 });
 
 describe("room codes", () => {
-  it("accepts exactly 12 decimal digits", () => {
+  it("accepts one to twelve decimal digits without a leading zero", () => {
+    expect(isValidRoomId("1")).toBe(true);
     expect(isValidRoomId("123456789012")).toBe(true);
-    expect(isValidRoomId("12345678901")).toBe(false);
+    expect(isValidRoomId("12345678901")).toBe(true);
+    expect(isValidRoomId("0")).toBe(false);
+    expect(isValidRoomId("012345")).toBe(false);
+    expect(isValidRoomId("1234567890123")).toBe(false);
     expect(isValidRoomId("12345678901a")).toBe(false);
   });
 });

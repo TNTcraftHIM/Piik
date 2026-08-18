@@ -1,6 +1,11 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol.ts";
+import { RoomDatabase } from "../src/server/room-database.ts";
 import {
   RoomStore,
   RoomStoreError,
@@ -27,7 +32,7 @@ describe("RoomStore", () => {
     });
     const room = store.createRoom();
 
-    expect(room.roomId).toMatch(/^\d{12}$/);
+    expect(room.roomId).toMatch(/^[1-9]\d{11}$/);
     expect(room.hostToken).toHaveLength(43);
     expect(room.expiresAt).toBe(new Date(now + 14_400_000).toISOString());
     expect(
@@ -191,7 +196,7 @@ describe("RoomStore", () => {
     );
   });
 
-  it("expires, closes, and globally bounds rooms", () => {
+  it("expires and globally bounds transient rooms", () => {
     let now = 1_000;
     const expiringStore = new RoomStore({
       ttlMs: 100,
@@ -217,20 +222,75 @@ describe("RoomStore", () => {
     expect(expiringStore.expireRooms()).toHaveLength(1);
     expect(expiringStore.size).toBe(0);
 
-    const openRoom = expiringStore.createRoom();
-    expect(expiringStore.closeRoom(openRoom.roomId)).toBeDefined();
-    expect(expiringStore.size).toBe(0);
-    expectRoomError(
-      () =>
-        expiringStore.connectParticipant({
-          roomId: openRoom.roomId,
-          role: "viewer",
-          clientId: "viewer-client-1",
-          sessionId: "viewer-session-1",
-        }),
-      "INVALID_TOKEN",
-    );
     expect(expiringStore.createRoom()).toBeDefined();
+  });
+
+  it("persists permanent room identity and host authorization across restarts", () => {
+    const directory = mkdtempSync(join(tmpdir(), "screener-room-store-"));
+    const databasePath = join(directory, "rooms.sqlite");
+    const now = Date.UTC(2026, 7, 18, 12);
+    let store: RoomStore | undefined;
+
+    try {
+      store = new RoomStore({
+        ttlMs: 100,
+        maxRooms: 10,
+        maxViewersPerRoom: 3,
+        now: () => now,
+        database: new RoomDatabase(databasePath),
+      });
+      const first = store.createRoom();
+      expect(first).toMatchObject({ roomId: "1", expiresAt: null });
+      expect(store.expireRooms(now + 1_000_000)).toEqual([]);
+      store.close();
+      store = undefined;
+
+      expect(readFileSync(databasePath).includes(Buffer.from(first.hostToken))).toBe(
+        false,
+      );
+
+      store = new RoomStore({
+        ttlMs: 100,
+        maxRooms: 10,
+        maxViewersPerRoom: 3,
+        now: () => now + 1_000_000,
+        database: new RoomDatabase(databasePath),
+      });
+      expect(
+        store.connectParticipant({
+          roomId: first.roomId,
+          role: "viewer",
+          clientId: "viewer-after-restart",
+          sessionId: "viewer-session-after-restart",
+        }),
+      ).toMatchObject({ expiresAt: null, hostOnline: false });
+      expect(
+        store.connectParticipant({
+          roomId: first.roomId,
+          role: "host",
+          token: first.hostToken,
+          clientId: "host-after-restart",
+          sessionId: "host-session-after-restart",
+        }),
+      ).toMatchObject({ expiresAt: null, hostOnline: true });
+      const second = store.createRoom();
+      expect(second).toMatchObject({ roomId: "2", expiresAt: null });
+      expect(store.abandonRoom(first.roomId)).toBeDefined();
+      expectRoomError(
+        () =>
+          store!.connectParticipant({
+            roomId: first.roomId,
+            role: "viewer",
+            clientId: "viewer-after-abandon",
+            sessionId: "viewer-session-after-abandon",
+          }),
+        "INVALID_TOKEN",
+      );
+      expect(store.createRoom()).toMatchObject({ roomId: "3", expiresAt: null });
+    } finally {
+      store?.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it.each([0, 1.5, MAX_VIEWERS_PER_ROOM_LIMIT + 1])(

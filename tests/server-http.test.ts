@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createRoomResponseSchema } from "../src/shared/protocol.ts";
@@ -11,11 +15,21 @@ import type { ServerConfig } from "../src/server/config.ts";
 const allowedOrigin = "http://allowed.test";
 const accessPassword = "instance-access-password";
 let runningServer: ScreenerServer | undefined;
+const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   await runningServer?.close();
   runningServer = undefined;
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
+
+function temporaryDatabasePath(): string {
+  const directory = mkdtempSync(join(tmpdir(), "screener-http-"));
+  temporaryDirectories.push(directory);
+  return join(directory, "rooms.sqlite");
+}
 
 function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
@@ -251,6 +265,41 @@ describe("room HTTP API", () => {
       headers: { Origin: allowedOrigin },
     });
     expect(response.status).toBe(201);
+  });
+
+  it("persists sequential protected rooms across server restarts", async () => {
+    const config = testConfig({ roomDatabasePath: temporaryDatabasePath() });
+    let baseUrl = await start(config);
+    const authenticated = await login(baseUrl);
+    const cookie = cookiePair(authenticated);
+    const create = () =>
+      fetch(`${baseUrl}/api/rooms`, {
+        method: "POST",
+        headers: { Cookie: cookie, Origin: allowedOrigin },
+      });
+
+    const responses = await Promise.all([create(), create()]);
+    const rooms = await Promise.all(
+      responses.map(async (response) =>
+        createRoomResponseSchema.parse(await response.json()),
+      ),
+    );
+    expect(
+      rooms.map((room) => Number(room.roomId)).sort((left, right) => left - right),
+    ).toEqual([1, 2]);
+    expect(rooms.every((room) => room.expiresAt === null)).toBe(true);
+
+    await runningServer?.close();
+    runningServer = undefined;
+    baseUrl = await start(config);
+    const third = await fetch(`${baseUrl}/api/rooms`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: allowedOrigin },
+    });
+    expect(createRoomResponseSchema.parse(await third.json())).toMatchObject({
+      roomId: "3",
+      expiresAt: null,
+    });
   });
 
   it("rejects request bodies and foreign browser origins", async () => {

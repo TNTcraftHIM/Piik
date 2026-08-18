@@ -4,39 +4,51 @@ Last updated: 2026-08-18
 
 ## Phase
 
-The first measurable WebRTC Web proof of concept is implemented at `https://share.bonfire.icu`, including an authenticated public TURN fallback. The current revision adds an optional whole-site password gate and simple numeric room joining. Automated checks and same-machine Chromium tests with synthetic video and audio sources pass, including live source replacement and relay-only data paths. Real display capture, game audio, a sustained 1:8 room, mobile lifecycle behavior, and performance targets remain unverified.
+The WebRTC proof of concept is deployed at `https://share.bonfire.icu`. The `feat/persistent-rooms` branch adds optional protected SQLite persistence, sequential room IDs, reusable links, and a waiting state after sharing stops. Checks pass locally, but the branch is not yet deployed. Real capture, game audio, sustained 1:8 behavior, mobile lifecycle, and performance targets remain unverified.
 
 ## Established Baseline
 
 - Runtime: Node.js 24, React, TypeScript, Vite, native browser WebRTC, `ws`, Zod, and a separate coturn deployment.
 - Product scope: private game sharing for one broadcaster and a small friend group. Rooms default to eight viewers and accept a configured limit from 1 through 16; this is an admission limit, not a verified performance envelope.
-- Client behavior: screen capture precedes room creation; live source changes preserve healthy peer connections; `/r/{code}` invitations and `/join` use a 12-digit numeric room code with no viewer token or URL fragment; every viewer has an independent `RTCPeerConnection`.
-- Control plane: optional whole-site `ACCESS_PASSWORD`, a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie, in-memory rooms, an internal host token, role-bound signaling, stable reconnect identities, short-lived coturn credentials, Origin and payload checks, and explicit room expiry/closure. There are no accounts, database, JWTs, server-side access-session map, or logout flow. In public mode, the room code is the sole viewing capability and is not a strong privacy guarantee.
+- Client behavior: screen capture precedes room creation; live source changes preserve healthy peer connections; `/r/{code}` invitations and `/join` use a numeric room code with no viewer token or URL fragment; every viewer has an independent `RTCPeerConnection`.
+- Control plane contract: optional whole-site `ACCESS_PASSWORD` with 1 through 128 visible ASCII characters, a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie, an internal host token, role-bound signaling, stable reconnect identities, short-lived coturn credentials, and Origin/payload checks. There are no accounts, JWTs, server-side access-session maps, or logout flow.
+- Room policies: no `ROOM_DATABASE_PATH` means random temporary rooms governed by `ROOM_TTL_SECONDS`; configuring it together with `ACCESS_PASSWORD` enables protected rooms whose numeric IDs increment from `1` and whose links do not expire. A database path without the whole-site password is invalid. Stopping sharing leaves the room available and viewers waiting. SQLite stores only room ID and host-token digest.
 - Media topology: direct ICE is preferred per viewer, with authenticated TURN/UDP and TURN/TCP required in production. TURN/TLS is an optional deployment capability, using standard TCP 5349 by default; mixed direct and relay paths are supported by design.
 - Diagnostics: per-peer path, candidate types, ICE protocol, local TURN protocol, RTT, bitrate, frame rate, dimensions, loss, jitter, codec, and quality-limitation fields are read locally from WebRTC stats.
 - Large public broadcasts are out of scope and should use OBS/Twitch-class services.
 
-## Verified In This Revision
+## Verification
 
-- `npm run check` passes type checking, 90 Vitest tests, the client production build, and the server production build.
+- On the current persistent-room branch, `npm run check` passes type checking,
+  102 Vitest tests, the client production build, and the server production build.
+
+The remaining browser and network evidence predates this branch; it does not
+verify the new storage or lifecycle contract.
+
 - Headless Chromium 151 created real local peer connections from animated canvas streams. The viewer reached `connected`, received a live video track, and reported a direct UDP path.
 - Browser fault injection recovered after dropping the first offer, dropping the first answer, and failing the first `createOffer`. A viewer-only signaling reconnect preserved the existing healthy media peer; replacing that viewer tab rebuilt media, released the old peer, and did not enter a reconnect loop.
 - Delayed ViewerPeer answer, candidate flush, ICE event, and stats results are discarded after a connection generation is replaced, so an old peer cannot signal through or overwrite the new peer snapshot.
-- Cancelling a delayed room A and immediately starting room B left B live, stopped only A's capture, and invalidated A's invitation after bounded cleanup.
 - Injecting a live picker-cancellation result preserved the old stream. Replacing synthetic video, adding synthetic audio, and removing it all kept the same connected host/viewer peer objects and did not create another offer; retired capture tracks stopped after each successful change.
 - Chrome 151 at 390 px completed the protected-site gate, login, host, and manual room-code join flow without horizontal overflow. The unauthenticated gate shows no application header or sharing controls.
-- Production configuration fails closed when HTTPS, STUN, TURN, or sufficiently strong secrets are missing.
+- Production configuration fails closed when required HTTPS, STUN, TURN, or TURN-secret constraints are missing.
 - Production startup rejects malformed ICE URLs and requires STUN plus explicit TURN/UDP and TURN/TCP entries. Optional TURN/TLS entries may use standard TCP 5349 or, when separately routed, TCP 443. Configuration validation remains distinct from the runtime relay checks below.
 - The application defaults to `LISTEN_HOST=0.0.0.0` for LAN development and containers, while the bare-metal reverse-proxy deployment explicitly uses loopback. It exposes a process-only `GET /healthz` liveness response.
 - Viewer session identities use `crypto.getRandomValues()` rather than the secure-context-only `crypto.randomUUID()`, so a phone can initialize the viewer over trusted LAN HTTP while the host keeps screen capture on `localhost`.
 - The staging host runs Debian 12, nginx, Node.js 24.19.0, and source-built coturn 4.17.2. Screener binds loopback behind nginx; authenticated STUN and TURN/UDP+TCP bind `turn.bonfire.icu:3478`. TURN/TLS remains intentionally disabled.
-- Commit `8e6039d89bc8` is deployed. Production verification covered the anonymous session response, rejection of anonymous room creation and WebSocket upgrades, the `Secure`/`HttpOnly`/`SameSite=Strict` host-only cookie, 12-digit room creation, host and token-free viewer WebSocket authentication, and explicit room cleanup. Certbot's renewal dry run also passed for both the existing blog and Screener certificates; the existing blog continued returning HTTP 200.
+- Commit `8e6039d89bc8` is deployed. Production verification covered the anonymous session response, rejection of anonymous room creation and WebSocket upgrades, the `Secure`/`HttpOnly`/`SameSite=Strict` host-only cookie, numeric room creation, and host/token-free viewer WebSocket authentication. Certbot's renewal dry run also passed for both the existing blog and Screener certificates; the existing blog continued returning HTTP 200.
 - Public STUN Binding succeeds over both UDP and TCP 3478. Chromium 151 obtained authenticated relay candidates through TURN/UDP and TURN/TCP, then two relay-only peer connections completed a bidirectional DataChannel ping/pong over each transport. Simultaneous guest conntrack samples observed both 3478 control traffic and relay-range UDP traffic, independently confirming the public TURN path through the cloud and host firewalls.
 - The existing TeamSpeak files, services, timers, and ports were not changed.
 
 ## Next Milestone
 
-Execute and record the manual browser/network matrix:
+First complete and record branch verification without conflating it with the deployed baseline:
+
+- configuration boundaries for 1 through 128 visible-ASCII access passwords and rejection of a database path without a password;
+- SQLite allocation from `1`, restart recovery, data minimization, non-expiring room links, and stop-sharing waiting behavior;
+- public and password-only random temporary rooms, including TTL cleanup;
+- the writable `/var/lib/screener/rooms.sqlite` path under the tracked systemd hardening policy.
+
+Performance measurement and any topology reconsideration stay in a separate PR/ADR. Execute and record the manual browser/network matrix there:
 
 - real screen/window capture and available game or system audio on Windows Chrome and Edge;
 - one broadcaster with eight heterogeneous viewers for 30 minutes, while also recording lower viewer counts to locate the sustainable envelope;
@@ -46,7 +58,7 @@ Execute and record the manual browser/network matrix:
 
 ## Current Blocker
 
-- No infrastructure blocker remains for the current staging deployment. The remaining work is the real-device and real-media validation matrix above.
+- No infrastructure blocker remains for the current staging deployment. Automated restart persistence is covered locally; the persistent-room branch still needs real systemd filesystem-permission and deployment verification before rollout. The real-device and real-media matrix remains separate work.
 
 ## Blocking Decisions
 

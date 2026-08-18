@@ -14,6 +14,7 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
+import { RoomDatabase } from "../src/server/room-database.ts";
 import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
 
 const allowedOrigin = "http://allowed.test";
@@ -122,6 +123,7 @@ async function startHarness(
     maxSignalConnections?: number;
     maxUnauthenticatedSignalConnections?: number;
     accessPassword?: string;
+    persistent?: boolean;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
@@ -132,6 +134,7 @@ async function startHarness(
     ttlMs: config.roomTtlMs,
     maxRooms: config.maxRooms,
     maxViewersPerRoom,
+    database: overrides.persistent ? new RoomDatabase(":memory:") : undefined,
   });
   const room = roomStore.createRoom();
   runningServer = await createScreenerServer({
@@ -297,6 +300,21 @@ describe("WebSocket signaling", () => {
     });
   });
 
+  it("authenticates a persistent room without a room expiry", async () => {
+    const harness = await startHarness({ persistent: true });
+    expect(harness.room).toMatchObject({ roomId: "1", expiresAt: null });
+
+    const viewer = await openClient(harness.webSocketUrl);
+    const authenticated = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "viewer-persistent-room",
+    );
+    expect(authenticated.roomExpiresAt).toBeNull();
+    expect(authenticated.hostOnline).toBe(false);
+  });
+
   it("routes offer and answer only between the host and the targeted viewer", async () => {
     const harness = await startHarness();
     const secondRoom = harness.roomStore.createRoom();
@@ -424,6 +442,52 @@ describe("WebSocket signaling", () => {
 
     await closeClient(reconnectedViewer);
     expect((await host.inbox.next("peer-left", 500)).peerId).toBe(firstAuth.peerId);
+  });
+
+  it("clears the previous media generation when sharing stops", async () => {
+    const harness = await startHarness({ viewerDisconnectGraceMs: 300 });
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "host-client-stop");
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "viewer-client-stop",
+    );
+    await host.inbox.next("peer-joined");
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "connection-before-stop",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+
+    const hostClosed = new Promise<number>((resolve) =>
+      host.socket.once("close", (code) => resolve(code)),
+    );
+    host.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    await viewer.inbox.next("sharing-stopped");
+    expect(await viewer.inbox.next("host-status")).toMatchObject({ online: false });
+    expect(await hostClosed).toBe(1000);
+    await closeClient(viewer);
+
+    const reconnected = await openClient(harness.webSocketUrl);
+    const reconnectedAuth = await authenticate(
+      reconnected,
+      harness.room,
+      "viewer",
+      "viewer-client-stop",
+    );
+    expect(reconnectedAuth.connectionId).toBeNull();
+    expect(reconnectedAuth.peerId).toBe(viewerAuth.peerId);
+    expect(reconnectedAuth.hostOnline).toBe(false);
   });
 
   it("atomically replaces the same client socket without leave churn", async () => {
@@ -640,7 +704,7 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("advertises a non-default capacity and rejects viewer N+1", async () => {
+  it("stops sharing without deleting the room and restricts room abandonment", async () => {
     const maxViewersPerRoom = 5;
     const harness = await startHarness({ maxViewersPerRoom });
     const host = await openClient(harness.webSocketUrl);
@@ -676,13 +740,63 @@ describe("WebSocket signaling", () => {
     );
     expect((await overflow.inbox.next("error")).code).toBe("ROOM_FULL");
 
-    host.socket.send(JSON.stringify({ type: "close-room" }));
-    expect(await host.inbox.next("room-closed")).toMatchObject({ reason: "host-ended" });
+    const stoppedHostClosed = new Promise<number>((resolve) =>
+      host.socket.once("close", (code) => resolve(code)),
+    );
+    host.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    for (const viewer of viewers) {
+      expect(await viewer.inbox.next("sharing-stopped")).toEqual({
+        type: "sharing-stopped",
+      });
+      expect(await viewer.inbox.next("host-status")).toMatchObject({ online: false });
+    }
+    expect(await stoppedHostClosed).toBe(1000);
+    expect(harness.roomStore.size).toBe(1);
+
+    const legacyHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      legacyHost,
+      harness.room,
+      "host",
+      "host-client-stable",
+    );
+    for (const viewer of viewers) {
+      expect(await viewer.inbox.next("host-status")).toMatchObject({ online: true });
+    }
+    const legacyHostClosed = new Promise<number>((resolve) =>
+      legacyHost.socket.once("close", (code) => resolve(code)),
+    );
+    legacyHost.socket.send(JSON.stringify({ type: "close-room" }));
+    for (const viewer of viewers) {
+      expect(await viewer.inbox.next("sharing-stopped")).toEqual({
+        type: "sharing-stopped",
+      });
+      expect(await viewer.inbox.next("host-status")).toMatchObject({ online: false });
+    }
+    expect(await legacyHostClosed).toBe(1000);
+    expect(harness.roomStore.size).toBe(1);
+
+    viewers[0]!.socket.send(JSON.stringify({ type: "abandon-room" }));
+    expect((await viewers[0]!.inbox.next("error")).code).toBe("FORBIDDEN");
+    expect(harness.roomStore.size).toBe(1);
+
+    const abandonHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      abandonHost,
+      harness.room,
+      "host",
+      "host-client-stable",
+    );
+    abandonHost.socket.send(JSON.stringify({ type: "abandon-room" }));
+    expect(await abandonHost.inbox.next("room-closed")).toMatchObject({
+      reason: "host-ended",
+    });
     for (const viewer of viewers) {
       expect(await viewer.inbox.next("room-closed")).toMatchObject({
         reason: "host-ended",
       });
     }
+    expect(harness.roomStore.size).toBe(0);
   });
 
   it("requires an allowed Origin, timely authentication, and bounded payloads", async () => {
