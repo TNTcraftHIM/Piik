@@ -14,17 +14,19 @@ The smallest current plan is:
 2. For later viewers, test the fixed two-chain browser relay in ADR-0004. It is
    disabled by default with `PEER_ASSISTED_MEDIA=false`, is limited to at most
    eight viewers, and decodes and re-encodes at every relay.
-3. Only if that spike passes every topology, churn, connectivity, compatibility,
-   and latency gate but fails solely because of relay re-encoding may a separate
-   experiment combine a native shared-encode host with opt-in native volunteer
-   encoded-RTP relays.
-4. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
+3. Plan a separate native shared-encode sender regardless of the browser relay
+   result. It reduces duplicate host encoding while retaining at most two
+   standard WebRTC edges, so it does not remove their upload cost.
+4. Only if browser relay re-encoding is the isolated failure should another
+   experiment add opt-in native volunteer encoded-RTP relays.
+5. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
    explicit fallbacks. They transfer fanout bandwidth to their operator; they do
    not make it disappear.
 
-Any browser-spike failure other than the isolated re-encoding cost closes the
-peer-assisted route. Draft SFU PR #12 remains unmerged and undeployed. There is
-no automatic topology migration in this plan.
+Any browser-spike failure other than isolated relay re-encoding closes that
+browser-relay route. It does not cancel the separate native sender plan. Draft
+SFU PR #12 remains unmerged and undeployed. There is no automatic topology
+migration in this plan.
 
 ## Traffic Conservation And The Impossible Triangle
 
@@ -56,7 +58,8 @@ lost.
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per viewer | Host upload and sender pipelines grow with viewers | Keep for one or two viewers |
 | Fixed two-chain browser relay | Host emits at most two copies; each relay emits at most one | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current default-off, maximum-eight-viewer spike |
-| Native shared host plus native volunteer encoded-RTP relay | Host encodes once for up to two edges; each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional next experiment only if re-encoding is the sole browser-spike failure |
+| Native shared-encode host | Host encodes once for at most two standard WebRTC edges | Native sender packaging and custom libwebrtc encoder fanout | Planned separate sender phase; still pays per-edge upload |
+| Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
 | User-operated mini-SFU | User's SFU emits viewer copies | Separate deployment and its egress bill; running it on the host does not reduce that host's uplink | Explicit fallback |
 | Central single-node SFU | Service SFU emits viewer copies | Lowest endpoint relay burden; service pays approximately `N * B` egress | Explicit fallback; Draft PR #12 only |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Reject for the current product |
@@ -65,7 +68,7 @@ lost.
 | Peer-assisted CDN | Peers cache or upload segments/objects | Discovery, locality, scheduling, incentives, abuse, and privacy systems | Reject for this trusted group |
 | IP multicast | Multicast routers replicate packets | Requires multicast-enabled hosts and routed networks unavailable to ordinary Internet browsers | Reject outside managed networks |
 
-## Conditional Native Encoded-RTP Route
+## Planned Native Sender And Conditional Encoded-RTP Relay
 
 Pion exposes the necessary native building blocks: `TrackRemote.ReadRTP()` reads
 encoded RTP, `TrackLocalStaticRTP.WriteRTP()` writes pre-packetized RTP into
@@ -82,9 +85,11 @@ also needs a separate native shared encoder so its two WebRTC packetizers consum
 one encoded result. Pion's broadcast example demonstrates server-side RTP
 fanout, but it does not supply this end-user topology or product behavior.
 
-This route is permitted only after measurements isolate re-encoding as the sole
-failure. It must not rescue failures in deterministic assignment, host fanout,
-relay loss recovery, ICE/TURN connectivity, mobile leaves, or end-to-end latency.
+The native shared-encode sender is a planned independent phase. Native volunteer
+relays remain conditional on measurements isolating relay re-encoding as the
+sole browser-spike failure. They must not rescue failures in deterministic
+assignment, host fanout, relay loss recovery, ICE/TURN connectivity, mobile
+leaves, or end-to-end latency.
 
 ## Rejected For The Current Implementation
 

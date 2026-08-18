@@ -113,9 +113,9 @@ application messages no larger than 16 KB when interleaving is unavailable.
 
 This is a custom media plane over a proven transport, not a custom UDP stack.
 It remains materially more complex than standard WebRTC media and is rejected
-for the first spike. It cannot rescue a failed gate; only when re-encoding is
-the sole failure may the separate native encoded-RTP route described in
-`low-server-media-routes.md` be proposed.
+for the first spike. It cannot rescue a failed browser-relay gate. The separate
+native shared-encode sender described in `low-server-media-routes.md` is planned
+independently and requires its own ADR and measurements.
 
 Sources:
 
@@ -129,7 +129,7 @@ sending the result directly to viewers. This removes repeated encoding and
 memory cost, but it does not remove one network copy per viewer. It therefore
 does not satisfy a hard host fanout of two by itself.
 
-A future native Screener sender can preserve standard browser receivers without
+A planned native Screener sender can preserve standard browser receivers without
 writing a new transport. libwebrtc accepts an application-supplied
 `VideoEncoderFactory`; a factory can return per-send-stream proxy encoders
 backed by one shared hardware encoder and fan the resulting `EncodedImage` into
@@ -180,6 +180,33 @@ parent so the spike does not pretend to solve background mobile relay policy.
 Per-edge ICE remains independent. An edge may be direct or may use authenticated
 TURN, so peer assistance reduces normal server media traffic but cannot promise
 zero server traffic in restrictive networks.
+
+## Implemented Quality Profile Coordination
+
+The current Draft implementation coordinates one room profile across the
+peer-assisted tree without adding adaptation logic. Its strict ID set is
+`1080p60`, `1080p30`, and `720p30`, matching the existing capture and sender
+profiles. The signaling server stores the current ID in a room-count-bounded
+in-memory map, defaults to `1080p60`, includes it in peer-assisted authenticated
+snapshots, and broadcasts host changes to online viewers. The value is retained
+when sharing stops, removed when the room is abandoned or expires, and is not
+written to SQLite. The standard P2P authenticated variant is unchanged and
+profile-control messages are forbidden in that mode.
+
+After peer-assisted authentication, the host reasserts its local selection
+before reconciling assigned children. A viewer records the snapshot or update
+before applying its assignment. `ViewerRelay` keeps a synchronously updated
+desired profile and serializes profile changes with stream replacement, so both
+an existing child and a later replacement start from the latest target. Inside
+`HostPeer`, initial sender configuration, stream replacement, and profile
+updates share one mutation queue; operations read the latest desired profile at
+execution time, giving rapid changes last-wins behavior without versions or
+acknowledgements.
+
+This only removes the previous fixed-1080p60 relay envelope. Browser constraints
+and RTP sender parameters remain targets, so achieved bitrate, frame rate,
+resolution, encode work, and cross-hop quality still require the measurement
+matrix below. It does not add or imply shared encoding.
 
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
@@ -239,12 +266,12 @@ existing screen-audio track when the browser provides one. SVC/simulcast,
 custom encoded transport, FEC changes, multi-tree striping, transcoding,
 background mobile relay, and automatic SFU migration are excluded.
 
-Run 1, 3, 5, and 8 viewers for 30 minutes at 720p60 under controlled per-edge
-RTT at or below 40 ms and loss at or below 1%. Record topology generation and
-depth, selected candidate type, host and relay upload, packets lost, jitter,
-frames encoded/decoded/dropped, total encode/decode time, decoded FPS,
-`qualityLimitationReason`, first picture, reparent time, CPU, GPU, and
-glass-to-glass latency.
+Run 1, 3, 5, and 8 viewers for 30 minutes across the 1080p60, 1080p30, and
+720p30 profiles under controlled per-edge RTT at or below 40 ms and loss at or
+below 1%. Record topology generation and depth, selected candidate type, host
+and relay upload, packets lost, jitter, frames encoded/decoded/dropped, total
+encode/decode time, decoded FPS, `qualityLimitationReason`, first picture,
+reparent time, CPU, GPU, and glass-to-glass latency.
 
 All hard gates must pass:
 
@@ -276,15 +303,17 @@ requires an encoded DataChannel/WebCodecs media plane, custom congestion
 control, FEC/RTX changes, multiple distribution trees, relay scoring,
 transcoding, a codec ladder, or relaxed host fanout, abandon this browser
 architecture. Mark ADR-0004 rejected, remove its experimental runtime code and
-dependencies, and retain this research. Only if relay re-encoding is the sole
-failed gate may a separate ADR propose the native shared-encode/encoded-RTP
-route; every other failure keeps standard P2P plus explicit user-operated or
-central SFU fallbacks.
+dependencies, and retain this research. The separate planned native
+shared-encode sender still requires its own ADR, lowers encode work rather than
+per-edge upload, and cannot rescue other failed browser-relay gates. A rejected
+relay experiment keeps standard P2P plus explicit user-operated or central SFU
+fallbacks.
 
 Passing these gates proves only that a second design phase is justified. It
 does not accept peer-assisted media for production. Production adoption would
-need a new ADR, voluntary relay policy, broader audio/A-V verification, and the
-native host shared-encode design.
+need a new ADR, voluntary relay policy, and broader audio/A-V verification. The
+native host shared-encode sender is a separate planned phase regardless of this
+experiment's result and is not implemented here.
 
 The recovery gate above does not cover silent network partitions. With the
 default 30-second heartbeat, server detection can take 30 to 60 seconds before

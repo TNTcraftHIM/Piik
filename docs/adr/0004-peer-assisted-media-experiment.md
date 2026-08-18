@@ -63,6 +63,18 @@ downstream `RTCPeerConnection`. The browser therefore decodes and re-encodes at
 every relay hop. Existing audio follows the same stream when capture provides
 it; the experiment does not invent a separate audio protocol.
 
+The peer-assisted wire accepts exactly `1080p60`, `1080p30`, and `720p30` as
+room quality profile IDs. The signaling server holds the current ID in bounded,
+per-room memory only; it is not persisted. An authenticated peer-assisted
+snapshot includes the current value, the host reasserts its local choice before
+reconciling assigned children, and live changes are sent to all online viewers.
+The viewer relay keeps one desired profile for its current and future child.
+Sender setup, stream replacement, and profile changes are serialized inside
+each `HostPeer`, with the latest desired value winning. The ordinary P2P
+authenticated wire remains unchanged and profile-control messages are forbidden
+in that mode. This coordinates sender targets; it does not prove achieved
+resolution, bitrate, frame rate, or resource cost.
+
 Encoded Transform, DataChannel media, WebCodecs rendering, dummy-sender byte
 replacement, custom congestion control, codec ladders, multiple trees, mobile
 background relay, and automatic SFU migration are excluded. They are not rescue
@@ -75,19 +87,22 @@ connections because browsers do not guarantee cross-connection encoder reuse.
 Each viewer relay also performs one downstream encode. This is tolerated only
 for the experiment and must be measured honestly.
 
-A production peer-assisted design must eventually use a packaged/native sender
-whose custom libwebrtc encoder proxies share one encoded output while retaining
-independent standard WebRTC packetizers for the host's edges. That native work
-requires a separate ADR and measurements. It is not implemented or abstracted
-in advance by this spike. Standard browser viewing remains required.
+A separate planned packaged/native sender must use custom libwebrtc encoder
+proxies that share one encoded output while retaining independent standard
+WebRTC packetizers for the host's edges. That work requires its own ADR and
+measurements regardless of this browser relay experiment's result. It reduces
+host encoding work but does not remove the upload copy for each outgoing edge.
+It is not implemented or abstracted in advance by this spike. Standard browser
+viewing remains required.
 
 ## Acceptance Gate
 
-Test 1, 3, 5, and 8 viewers for 30 minutes at 720p60 with controlled per-edge
-RTT at or below 40 ms and loss at or below 1%. Current desktop Chrome and Edge
-form the relay cohort; current Android Chrome and iOS Safari join last as leaf
-checks. The protocol has no relay-capability bit, so controlled join order is
-the only enforcement and this spike is not safe for arbitrary-user deployment.
+Test 1, 3, 5, and 8 viewers for 30 minutes across the 1080p60, 1080p30, and
+720p30 profiles with controlled per-edge RTT at or below 40 ms and loss at or
+below 1%. Current desktop Chrome and Edge form the relay cohort; current Android
+Chrome and iOS Safari join last as leaf checks. The protocol has no
+relay-capability bit, so controlled join order is the only enforcement and this
+spike is not safe for arbitrary-user deployment.
 
 The proposal advances only if every condition holds:
 
@@ -100,6 +115,8 @@ The proposal advances only if every condition holds:
   zero-copy forwarding;
 - excluding explicit TURN paths, the application server carries no media;
 - host and relay upload remain within 20% of `childCount * observedBitrate`;
+- authentication and live profile changes leave every current and future child
+  sender targeting the same latest room profile without altering the P2P wire;
 - first picture is at most 3 seconds, a 60 fps run does not remain below 50
   decoded fps for more than 5 seconds, and depth-four p95 glass-to-glass
   latency is at most 350 ms;
@@ -120,16 +137,17 @@ Fixing an ordinary implementation bug inside the bounded spike is allowed. If
 meeting a gate requires Encoded Transform/DataChannel/WebCodecs media, custom
 congestion control, FEC/RTX changes, multiple trees, relay scoring, transcoding,
 a codec ladder, relaxed host fanout, or a browser-specific RTP injection hack,
-stop. Change this ADR to Rejected and delete the experimental runtime path and
-dependencies. Only when every non-encoding gate passes and relay re-encoding is
-the sole failure may a separate ADR propose a native shared-encode host with
-opt-in native volunteer encoded-RTP relays. Any other failure closes peer
-assistance and keeps standard P2P plus explicit user-operated or central SFU
-fallbacks.
+stop. Change this ADR to Rejected and delete the experimental browser-relay
+runtime path and dependencies. That result keeps standard P2P plus explicit
+user-operated or central SFU fallbacks. It does not cancel the separate planned
+native shared-encode sender, and that sender cannot be used to mark an otherwise
+failed browser-relay topology as passing.
 
 Passing the gate does not change this ADR to Accepted. It permits a separate ADR
 to propose a production design, including broader game-audio/A-V verification,
-voluntary relay policy, privacy disclosure, and the native shared-encode sender.
+voluntary relay policy, and privacy disclosure. The native shared-encode sender
+is the independent planned work described above, not a reward for passing this
+gate.
 
 ## Consequences If The Spike Proceeds
 
