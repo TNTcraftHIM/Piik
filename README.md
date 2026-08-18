@@ -17,6 +17,11 @@ npm run dev
 
 Open `http://localhost:8787`. The default development configuration uses a localhost origin and has no STUN or TURN server, so it is suitable only for same-machine checks. Multi-device or cross-network use requires HTTPS and the production-shaped ICE configuration documented separately.
 
+The server binds `127.0.0.1` by default. Set `LISTEN_HOST=0.0.0.0` explicitly
+only when a container or trusted LAN deployment requires it. Production startup
+also requires separate TURN/UDP, TURN/TCP, and TURN/TLS-on-TCP-443 URLs; this is
+a configuration preflight, not evidence that the external relay path works.
+
 Run the complete automated validation with:
 
 ```sh

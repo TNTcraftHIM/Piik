@@ -15,7 +15,9 @@ const config = loadConfig();
 const server = await createScreenerServer({ config });
 const port = await server.listen();
 
-console.log(`Screener is listening on ${config.publicBaseUrl.origin} (port ${port})`);
+console.log(
+  `Screener is listening on ${config.listenHost}:${port}; public URL ${config.publicBaseUrl.origin}`,
+);
 
 let shuttingDown = false;
 async function shutdown(): Promise<void> {

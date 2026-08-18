@@ -130,7 +130,7 @@ export async function createScreenerServer(
   return {
     httpServer,
     roomStore,
-    listen(port = config.port, host = "0.0.0.0") {
+    listen(port = config.port, host = config.listenHost) {
       return new Promise<number>((resolve, reject) => {
         const onError = (error: Error) => {
           httpServer.off("listening", onListening);
@@ -172,6 +172,17 @@ async function handleRequest(
   getFrontendHandler: () => FrontendHandler | undefined,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", config.publicBaseUrl);
+  if (url.pathname === "/healthz") {
+    response.setHeader("Cache-Control", "no-store");
+    if (request.method !== "GET") {
+      response.setHeader("Allow", "GET");
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    sendJson(response, 200, { status: "ok" });
+    return;
+  }
+
   if (url.pathname === "/api/rooms") {
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("X-Content-Type-Options", "nosniff");

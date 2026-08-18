@@ -42,7 +42,10 @@ Run `npm start` under a service supervisor that injects the environment, restart
 on failure, and applies bounded logs. For a simple untracked environment file,
 the equivalent direct launch is
 `node --env-file=.env.production dist/server/server/index.js`. Do not expose port
-8787 to the Internet.
+8787 to the Internet. The application binds `127.0.0.1` by default. Set
+`LISTEN_HOST=0.0.0.0` explicitly only when a container runtime or trusted LAN
+path requires an externally reachable listener, then enforce the intended
+network boundary with container publishing rules or a host firewall.
 
 ## Production application environment
 
@@ -59,6 +62,7 @@ Use this production baseline:
 
 ```dotenv
 NODE_ENV=production
+LISTEN_HOST=127.0.0.1
 PORT=8787
 PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
@@ -79,6 +83,16 @@ bytes. They must be independently generated rather than reused.
 browsers receive HMAC-SHA1-derived, time-limited credentials after room
 authentication. Keep host clocks synchronized because the credential username
 contains its Unix expiry time.
+
+Production startup validates the configured TURN transport mix before the
+server listens. The baseline must contain separate `TURN_URLS` entries for
+`turn:` with explicit `transport=udp`, `turn:` with explicit `transport=tcp`,
+and `turns:` with explicit port 443 and `transport=tcp`. This startup check only
+validates configuration shape; it does not prove that DNS, certificates,
+firewall rules, NAT mappings, or the coturn listeners work from an external
+network. Every STUN and TURN entry is also syntax-checked; use the exact
+lowercase TURN query forms shown above because one malformed ICE URL can make a
+browser reject the whole peer-connection configuration.
 
 ## HTTPS and WSS ingress
 
@@ -109,6 +123,13 @@ location / {
 Keep the proxy's access-log retention bounded and access controlled. Viewer
 tokens are URL fragments and therefore are not sent in HTTP requests, but logs
 still contain network metadata and must not be treated as public artifacts.
+
+For a process-level liveness probe, send `GET /healthz`. A running process
+returns HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`; other
+methods return 405 with `Allow: GET`. The endpoint does not inspect room state,
+TURN reachability, or any external dependency, so use it only to decide whether
+the Node process can accept HTTP requests. It is not a deployment-readiness or
+end-to-end media check.
 
 ## coturn
 
