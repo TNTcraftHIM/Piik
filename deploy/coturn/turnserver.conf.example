@@ -41,7 +41,9 @@ max-allocate-lifetime=3600
 
 # Initial abuse controls. max-bps and bps-capacity use bytes per second, not bits.
 # 2,000,000 bytes/s permits roughly 16 Mbit/s in each direction per allocation.
-user-quota=8
+# The per-user quota leaves room for the host's independent peer connections
+# and overlapping ICE restarts; it is not a verified media capacity.
+user-quota=32
 total-quota=100
 max-bps=2000000
 

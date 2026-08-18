@@ -21,10 +21,11 @@ Last updated: 2026-08-18
 ## Current Recommendation
 
 - Start with a Windows Chrome/Edge sharing MVP and a responsive Web viewer using one `RTCPeerConnection` per viewer. Validate current Android Chrome and iOS Safari as viewing endpoints.
-- The current PoC hard limit is one broadcaster and three viewers. Do not add a fourth viewer until publisher upload and encoder measurements justify changing the tested envelope.
+- Rooms default to one broadcaster and at most eight viewers, with a deployment range of 1 through 16. Treat eight as an admission default rather than a validated performance claim; measure publisher upload, encoder load, latency, and stability before describing a supported 1:8 envelope.
 - Use HTTPS/WSS signaling, trickle ICE, STUN, and authenticated coturn candidates. Prefer direct UDP, then relay UDP, with TURN/TCP as the required non-UDP fallback. Optional TURN/TLS uses standard TCP 5349 by default; TCP 443 is reserved for deployments with a dedicated public IP or validated L4/SNI routing.
 - Allow mixed connectivity in one room: direct viewers stay direct while only incompatible network pairs consume TURN bandwidth.
 - Treat 1080p60 as a best-effort quality profile, not a universal guarantee. Provide 720p60 and 720p30 fallbacks.
+- Do not add custom scene detection or dynamic-FPS control until WebRTC statistics and host resource measurements show that browser capture, encoding, and congestion behavior leave a material problem.
 - Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
 - Add an Electron or native Windows sender only after browser measurements identify capture, application-audio, or encode bottlenecks.
 - Do not plan an SFU for the normal small-room product path. Reconsider it only if the product scope or real telemetry later invalidates the P2P envelope; never implement peer forwarding trees in the MVP.
@@ -32,7 +33,9 @@ Last updated: 2026-08-18
 ## Current Implementation
 
 - The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The server defaults to an all-interface listener for LAN development and containers; the bare-metal reverse-proxy baseline explicitly binds loopback. It provides a process-only `/healthz` endpoint and requires STUN plus explicit TURN/UDP and TURN/TCP URLs before production startup. TURN/TLS is accepted but optional; configuration checks do not establish public-network reachability.
-- The Web PoC implements capture-before-room creation, live source replacement without renegotiating healthy peers, expiring role tokens, one independent peer connection per viewer, stable signaling reconnect identities that also work for LAN viewers on HTTP, explicit ICE restart or peer rebuild, host generation isolation, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
+- The Web PoC implements capture-before-room creation, live source replacement without renegotiating healthy peers, one independent peer connection per viewer, stable signaling reconnect identities that also work for LAN viewers on HTTP, explicit ICE restart or peer rebuild, host generation isolation, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
+- Access is deliberately small: `ACCESS_PASSWORD` is optional and site-wide. When configured, host and viewer routes first establish a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie; room creation and WebSocket upgrade accept that cookie and no direct room-creation Bearer bypass. There are no accounts, database, JWTs, server-side access-session map, or logout flow.
+- A room uses a random 12-digit numeric code. `/r/{code}` carries no viewer token or fragment, `/join` accepts only the code, and the 256-bit host token stays internal to the host signaling session. In public mode the code is the sole viewing capability and is not a strong privacy guarantee, so private Internet deployments should configure `ACCESS_PASSWORD`.
 - The Web control plane is deployed at `https://share.bonfire.icu` behind nginx with Node.js 24.19.0, and `turn.bonfire.icu` runs authenticated coturn 4.17.2 on standard UDP/TCP 3478. HTTPS, WSS, room authentication, certificate renewal, public STUN, authenticated TURN/UDP and TURN/TCP allocations, and relay-only bidirectional data paths are verified. TURN/TLS is intentionally not enabled.
 - Automated checks and same-machine synthetic-media Chromium recovery tests pass, including lost offer/answer, one transient offer failure, signaling-only viewer reconnect, viewer-tab replacement with old-peer cleanup, cancelled-room cleanup, video/audio source changes, and public relay-only DataChannel tests. Real screen/game audio, full Screener media sessions across heterogeneous networks, mobile lifecycle handling, and latency or quality targets remain unverified.
 - No infrastructure blocker remains for the current staging deployment. The next milestone is the real-device and real-media matrix in `docs/status.md`, not additional product surface or a native sender.
@@ -47,10 +50,9 @@ Last updated: 2026-08-18
 
 ## Open Decisions
 
-- Minimum supported publisher upload speed and whether a later release should remain capped at three viewers.
+- The sustainable viewer count for each publisher hardware, quality profile, and network class; real 1:8 behavior is still unverified.
 - Exact mobile browser support matrix and the required behavior around autoplay, backgrounding, orientation changes, and network handoff.
 - Whether the first release is open source, source-available, or proprietary; this affects whether GPL/AGPL projects can be reused rather than only studied.
-- Account model versus expiring room links, and whether friends require an allowlist.
 - Initial deployment regions and expected mainland China/Hong Kong/overseas network mix.
 - Whether Windows per-application audio is P0 or whether whole-system loopback is acceptable initially.
 - Whether voice chat is ever in scope or the product remains complementary to an existing voice application.
