@@ -27,10 +27,11 @@ export class HostPeer {
 
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
-  private readonly statsAccumulator = createStatsAccumulator();
+  private statsAccumulator = createStatsAccumulator();
   private videoSender: RTCRtpSender | null = null;
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
+  private statsInFlight = false;
   private disposed = false;
   private negotiating = false;
   private senderMutationTail: Promise<void> = Promise.resolve();
@@ -127,9 +128,7 @@ export class HostPeer {
         return false;
       }
       this.stream = nextStream;
-      this.statsAccumulator.bytes = null;
-      this.statsAccumulator.frames = null;
-      this.statsAccumulator.timestamp = null;
+      this.statsAccumulator = createStatsAccumulator();
       try {
         await configureVideoSender(videoSender, this.desiredProfile);
       } catch (error) {
@@ -160,9 +159,7 @@ export class HostPeer {
       if (this.disposed) {
         return false;
       }
-      this.statsAccumulator.bytes = null;
-      this.statsAccumulator.frames = null;
-      this.statsAccumulator.timestamp = null;
+      this.statsAccumulator = createStatsAccumulator();
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();
       return true;
@@ -310,19 +307,30 @@ export class HostPeer {
   }
 
   private async updateStats(): Promise<void> {
-    if (this.disposed || this.connection.connectionState === "closed") {
+    if (
+      this.disposed ||
+      this.connection.connectionState === "closed" ||
+      this.statsInFlight
+    ) {
       return;
     }
+    this.statsInFlight = true;
+    const statsAccumulator = this.statsAccumulator;
     try {
       const metrics = await collectConnectionMetrics(
         this.connection,
         "send",
-        this.statsAccumulator,
+        statsAccumulator,
       );
+      if (this.disposed || this.statsAccumulator !== statsAccumulator) {
+        return;
+      }
       this.snapshot = { ...this.snapshot, metrics };
       this.emit();
     } catch {
       // Stats are observational and must never disrupt a healthy media path.
+    } finally {
+      this.statsInFlight = false;
     }
   }
 

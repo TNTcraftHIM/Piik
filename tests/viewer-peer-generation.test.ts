@@ -354,4 +354,25 @@ describe("ViewerPeer connection generations", () => {
     expect(newSnapshots).toHaveLength(newSnapshotCount);
     expect(newSnapshots.at(-1)?.metrics.resolution).toBeNull();
   });
+
+  it("skips overlapping stats ticks on the same connection", async () => {
+    const peer = createPeer([], []);
+    await peer.acceptSignal("host", offer("connection"));
+    const connection = FakePeerConnection.instances[0]!;
+    const stats = createDeferred<RTCStatsReport>();
+    connection.statsGate = stats.promise;
+    const statsCallback = intervalCallbacks.get(1)!;
+
+    statsCallback();
+    statsCallback();
+    await vi.waitFor(() => expect(connection.getStats).toHaveBeenCalledOnce());
+
+    stats.resolve(new Map() as unknown as RTCStatsReport);
+    await flushAsyncWork();
+    connection.statsGate = null;
+    statsCallback();
+    await vi.waitFor(() =>
+      expect(connection.getStats).toHaveBeenCalledTimes(2),
+    );
+  });
 });

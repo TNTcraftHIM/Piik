@@ -37,6 +37,7 @@ export class ViewerPeer {
   >();
   private statsAccumulator: StatsAccumulator = createStatsAccumulator();
   private statsTimer: number | null = null;
+  private statsInFlightConnection: RTCPeerConnection | null = null;
   private disconnectTimer: number | null = null;
   private restartRequested = false;
   private offerRecoveryAttempts = 0;
@@ -346,6 +347,10 @@ export class ViewerPeer {
     if (!this.isCurrentConnection(connection, connectionId)) {
       return;
     }
+    if (this.statsInFlightConnection === connection) {
+      return;
+    }
+    this.statsInFlightConnection = connection;
     const statsAccumulator = this.statsAccumulator;
     try {
       const metrics = await collectConnectionMetrics(
@@ -362,6 +367,10 @@ export class ViewerPeer {
       }
     } catch {
       // Stats are observational and must never disrupt a healthy media path.
+    } finally {
+      if (this.statsInFlightConnection === connection) {
+        this.statsInFlightConnection = null;
+      }
     }
   }
 
