@@ -187,6 +187,7 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 观看端不需要屏幕捕获权限，做成响应式 Web 页面比绑定桌面客户端更符合本项目的便利性目标。首版至少要实测当前 Android Chrome 和 iOS Safari，并处理：
 
+- Web Crypto Level 2 将 `crypto.randomUUID()` 限定在安全上下文，但没有这样限制 `crypto.getRandomValues()`。因此，通过 `http://<lan-ip>` 打开的局域网观看端不能在启动阶段依赖 `randomUUID()`，可改用 `getRandomValues()` 编码 128-bit 不透明标识。该例外只支持本地观看，并不放宽分享端或生产部署的 HTTPS 要求。([W3C Web Cryptography Level 2](https://www.w3.org/TR/WebCryptoAPI/)，访问于 2026-08-18)
 - 浏览器自动播放策略：先显示明确的“进入并播放”操作，再启动含声音的媒体。
 - `playsinline`、横竖屏切换、全屏和安全区域，避免视频被强制弹出或裁切。
 - 页面进入后台、锁屏后恢复，以及 Wi-Fi/蜂窝网络切换导致的 ICE restart。

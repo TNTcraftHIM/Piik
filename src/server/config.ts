@@ -216,7 +216,7 @@ export function loadConfig(
   if (port > 65_535) {
     throw new Error("PORT must be at most 65535");
   }
-  const listenHost = environment.LISTEN_HOST?.trim() || "127.0.0.1";
+  const listenHost = environment.LISTEN_HOST?.trim() || "0.0.0.0";
 
   const publicBaseUrl = new URL(
     environment.PUBLIC_BASE_URL ?? `http://localhost:${port}`,

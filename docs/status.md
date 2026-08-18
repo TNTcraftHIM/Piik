@@ -18,7 +18,7 @@ The first measurable WebRTC Web proof of concept is implemented. Automated check
 
 ## Verified In This Revision
 
-- `npm run check` passes type checking, 54 Vitest tests, the client production build, and the server production build.
+- `npm run check` passes type checking, 55 Vitest tests, the client production build, and the server production build.
 - Headless Chromium 151 created real local peer connections from animated canvas streams. The viewer reached `connected`, received a live video track, and reported a direct UDP path.
 - Browser fault injection recovered after dropping the first offer, dropping the first answer, and failing the first `createOffer`. A viewer-only signaling reconnect preserved the existing healthy media peer; replacing that viewer tab rebuilt media, released the old peer, and did not enter a reconnect loop.
 - Cancelling a delayed room A and immediately starting room B left B live, stopped only A's capture, and invalidated A's invitation after bounded cleanup.
@@ -26,7 +26,8 @@ The first measurable WebRTC Web proof of concept is implemented. Automated check
 - Desktop and 390 px responsive layouts were smoke-checked without horizontal overflow.
 - Production configuration fails closed when HTTPS, TURN, or sufficiently strong secrets are missing.
 - Production startup rejects malformed ICE URLs and requires explicit TURN/UDP, TURN/TCP, and TURN/TLS-on-TCP-443 entries. This checks configuration only; external relay reachability remains unverified.
-- The application binds to loopback by default and exposes a process-only `GET /healthz` liveness response; containers and trusted LAN deployments must opt in to `LISTEN_HOST=0.0.0.0`.
+- The application defaults to `LISTEN_HOST=0.0.0.0` for LAN development and containers, while the bare-metal reverse-proxy deployment explicitly uses loopback. It exposes a process-only `GET /healthz` liveness response.
+- Viewer session identities use `crypto.getRandomValues()` rather than the secure-context-only `crypto.randomUUID()`, so a phone can initialize the viewer over trusted LAN HTTP while the host keeps screen capture on `localhost`.
 - coturn is not installed on this workstation; its configuration has only been checked against upstream documentation and local application tests.
 
 ## Next Milestone
