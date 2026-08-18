@@ -110,14 +110,14 @@ IETF 对 mesh/SFU 的拓扑说明见 [RFC 7667](https://www.rfc-editor.org/rfc/r
 MVP（也是预期的正常产品形态）：
 
 - 一至三名观看者默认 P2P。
-- 第四名观看者加入前测量可用上行、当前发送码率、`qualityLimitationReason`、编码耗时和发送队列；不足时先降档。
+- 当前 PoC 明确拒绝第四名观看者；收集可用上行、实际发送码率、`qualityLimitationReason`、编码耗时和发送队列后，再决定后续版本是否放宽。
 - 每条链路独立使用 ICE；只有失败的链路走 TURN。
 - 若一开始就有多条 `relay`，应提示服务器带宽正在增加。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
 本项目不以 SFU 作为正常扩容路径；超过小房间上限时直接建议使用外部直播服务。只有以后改变产品范围时，才根据遥测重新评估房间级 SFU，观察项包括：
 
-- 观看者多于三或四名。
+- 正常工作负载需要多于三名观看者。
 - 第一名或多名观看者已使用 TURN，继续 P2P 会重复占用服务器上行。
 - 分享者上行安全余量不足。
 - 分享者因 CPU/encoder 限制降质。
@@ -219,6 +219,8 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 - `qualityLimitationReason` 和各原因累计时长
 - jitter buffer delay、decode time 和 total packet send delay
 
+`RTCIceCandidateStats.protocol` 表示 ICE candidate 的 UDP/TCP；只有本地 relay candidate 的 `relayProtocol` 才表示本端到 TURN 的 UDP/TCP/TLS。规范要求远端 candidate 不暴露 `relayProtocol`，所以本端只能确认远端使用 relay，不能从 `remoteCandidate.protocol` 推断其 TURN 传输。首版分别展示 ICE protocol 与本地 TURN protocol，不为补齐远端字段扩展信令或遥测。
+
 WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件，并使用画面时间码或高速摄像机测量玻璃到玻璃延迟。60 fps 的单帧周期是 16.7 ms，端到端延迟还包含采集等待、编码、单程网络、jitter buffer、解码和显示。
 
 建议原型目标：受控 direct/RTT <= 40 ms/丢包 <= 1% 时 p50 <= 150 ms、p95 <= 250 ms；区域 TURN/UDP p95 <= 350 ms。先测量，再决定是否需要原生或 SFU。
@@ -248,6 +250,29 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 不建议新项目以休眠的 `ion-sfu` 为底座。Janus 和 Galene 均可用，但分别偏底层网关和完整会议系统，不如上述项目贴合当前边界。
 
+## 2026-08-18 实施基线复核
+
+进入 PoC 实现前再次核对当前官方版本和参考代码：
+
+- 本机原 Node 20 已结束维护；当前实现基线改为 Node 24 LTS。Vite 8 要求 Node `^20.19.0 || >=22.12.0`，仓库应通过 `engines`、`.node-version` 和 CI 固定受支持运行时。
+- 使用 React + TypeScript 的官方 Vite SPA 模板，不引入 SSR 或全栈框架。生产环境不能使用 `vite preview`，由同一个 Node HTTP 服务提供静态构建、房间 API 与 WebSocket。
+- `ws` 只用于服务端，浏览器使用原生 `WebSocket`。小信令禁用 `perMessageDeflate`、收紧 `maxPayload`，并采用官方 ping/pong heartbeat 模式。
+- `ws.close()` 默认会等待关闭握手，不能用“升级成功后发送 close frame”实现公网连接硬上限。总连接和未鉴权连接容量应在 `handleUpgrade()` 前检查，超限直接返回 HTTP 503 并销毁底层 socket。
+- Node 的 `IncomingMessage.url` 是未经应用路由解析的 request-target，而 WHATWG `URL` 构造器会拒绝部分输入。upgrade handler 必须捕获解析失败并关闭 socket，不能让未鉴权输入抛到 EventEmitter 顶层。
+- coturn 使用 `use-auth-secret` 支持的 TURN REST 短期凭据：`base64(HMAC-SHA1(secret, expiry + ":" + subject))`。coturn 不提供 HTTP 凭据接口，必须由已鉴权的应用服务生成。
+- 截至本次复核，coturn 应使用 4.17.2 或更新补丁版本；4.17.2 修复了此前补丁版本的 UDP TTL 回归。
+- MiroTalk BRO 当前 P2P 模式仍是 broadcaster 对每位 viewer 建独立连接；Screego 也采用独立 session 和 HMAC TURN 凭据。这验证了拓扑，但两者的静态/长时凭据与轻量恢复策略不直接照搬。
+
+新增来源，访问日期 2026-08-18：
+
+- [Node.js release status](https://nodejs.org/en/about/previous-releases)
+- [Vite Getting Started](https://vite.dev/guide/)
+- [Vite static deployment](https://vite.dev/guide/static-deploy.html)
+- [ws official README](https://github.com/websockets/ws/blob/master/README.md)
+- [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2)
+- [coturn turnserver documentation](https://github.com/coturn/coturn/blob/master/README.turnserver)
+- [coturn example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
+
 ## 实施难度与预估
 
 以下以一名熟悉 Web/TypeScript、具备基本网络经验的全职工程师为基准，只用于量级判断：
@@ -263,7 +288,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 ## 最终建议
 
-1. 首版坚持 P2P-first，但明确只服务小房间，暂定一至三名观看者、条件允许时四名。
+1. 首版坚持 P2P-first，但明确只服务小房间，硬上限为三名观看者；测量完成前不开放第四名。
 2. Web 先行，目标 Windows Chrome/Edge；把 1080p60 写成 best effort，同时提供降档。
 3. 从第一天部署 coturn，并验证 direct、TURN/UDP、TURN/TCP、TURN/TLS 443 以及移动网络切换；这是避免“部分好友永远看不了”的必要条件。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。

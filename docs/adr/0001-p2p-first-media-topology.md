@@ -16,7 +16,7 @@ Use separate control and media planes:
 - ICE attempts a direct UDP path for every broadcaster-viewer pair, using STUN to discover candidates.
 - Only pairs that cannot connect directly use authenticated TURN, preferring UDP and falling back to TCP and TLS on port 443. TURN is required production infrastructure, not an optional enhancement.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
-- The broadcaster initially creates one peer connection per viewer. The provisional default envelope is one to three viewers, with a measured fourth-viewer admission check.
+- The broadcaster creates one peer connection per viewer. The PoC hard limit is three viewers; a later release may reconsider it only after publisher upload and encoder measurements.
 - No SFU is planned for the normal product envelope. It is only a future reconsideration point if the small-room scope changes or measured relay/upload/encoder pressure makes the chosen envelope unworkable.
 
 ## Consequences

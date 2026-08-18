@@ -1,4 +1,4 @@
-name: Repository hygiene
+name: CI
 
 on:
   pull_request:
@@ -10,14 +10,23 @@ permissions:
   contents: read
 
 jobs:
-  project-state:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Validate tracked project state
         run: sh scripts/check-project-state.sh
         env:
           SCREENER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check, test, and build
+        run: npm run check

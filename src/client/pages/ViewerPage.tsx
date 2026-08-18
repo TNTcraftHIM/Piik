@@ -1,0 +1,392 @@
+import {
+  Maximize2,
+  Play,
+  RefreshCw,
+  VideoOff,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { IceConfig, ServerMessage } from "../../shared/protocol";
+import { AppHeader } from "../components/AppHeader";
+import {
+  PathBadge,
+  PeerStatusBadge,
+  SignalStatusBadge,
+  WarningBanner,
+} from "../components/StatusBadge";
+import { StatsGrid } from "../components/StatsGrid";
+import { getStableClientId } from "../lib/session";
+import { SignalingClient } from "../lib/signaling";
+import type {
+  PeerSnapshot,
+  SignalConnectionState,
+} from "../types";
+import { ViewerPeer } from "../webrtc/viewer-peer";
+
+interface ViewerPageProps {
+  roomId: string;
+  token: string | null;
+}
+
+type ViewerRoomState = "waiting" | "active" | "closed" | "error";
+
+export function ViewerPage({ roomId, token }: ViewerPageProps) {
+  const forceRelay = useMemo(
+    () => new URLSearchParams(window.location.search).get("relay") === "1",
+    [],
+  );
+  const [signalStatus, setSignalStatus] =
+    useState<SignalConnectionState>("offline");
+  const [roomState, setRoomState] = useState<ViewerRoomState>(
+    token ? "waiting" : "error",
+  );
+  const [statusText, setStatusText] = useState(
+    token ? "正在进入房间" : "邀请链接无效或已失效",
+  );
+  const [hostOnline, setHostOnline] = useState(false);
+  const [relayAvailable, setRelayAvailable] = useState(false);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const [muted, setMuted] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const peerRef = useRef<ViewerPeer | null>(null);
+  const signalRef = useRef<SignalingClient | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+    let currentIceConfig: IceConfig | null = null;
+
+    const signal = new SignalingClient(
+      {
+        roomId,
+        role: "viewer",
+        token,
+        clientId: getStableClientId("viewer", roomId),
+      },
+      {
+        onStatus: (status) => {
+          if (active) {
+            setSignalStatus(status);
+          }
+        },
+        onProtocolError: (message) => {
+          if (active) {
+            setStatusText(message);
+          }
+        },
+        onTerminated: (message) => {
+          if (!active) {
+            return;
+          }
+          peerRef.current?.dispose();
+          peerRef.current = null;
+          setRemoteStream(null);
+          setPeerSnapshot(null);
+          setPlaybackBlocked(false);
+          setRoomState("error");
+          setStatusText(message);
+        },
+        onMessage: (message) => {
+          if (!active) {
+            return;
+          }
+          void handleMessage(message);
+        },
+      },
+    );
+
+    function ensurePeer(): ViewerPeer | null {
+      if (peerRef.current) {
+        return peerRef.current;
+      }
+      if (!currentIceConfig) {
+        return null;
+      }
+      const peer = new ViewerPeer(
+        currentIceConfig,
+        {
+          sendSignal: (payload) => signal.send({ type: "signal", payload }),
+          sendRestartRequest: (connectionId, rebuild) =>
+            signal.send({ type: "restart-request", connectionId, rebuild }),
+          onStream: (nextStream) => {
+            if (active) {
+              setRemoteStream(nextStream);
+              setRoomState("active");
+              setStatusText("正在播放");
+            }
+          },
+          onUpdate: (snapshot) => {
+            if (active) {
+              setPeerSnapshot(snapshot);
+              if (snapshot.connectionState === "connected") {
+                setRoomState("active");
+                setStatusText("已连接");
+              } else if (
+                snapshot.connectionState === "failed" ||
+                snapshot.connectionState === "disconnected"
+              ) {
+                setStatusText("正在恢复媒体连接");
+              }
+            }
+          },
+        },
+        forceRelay,
+      );
+      peerRef.current = peer;
+      return peer;
+    }
+
+    async function handleMessage(message: ServerMessage): Promise<void> {
+      if (message.type === "authenticated") {
+        currentIceConfig = message.iceConfig;
+        setRelayAvailable(message.iceConfig.relayAvailable);
+        setHostOnline(message.hostOnline);
+        setRoomState(peerRef.current?.isConnected() ? "active" : "waiting");
+        setStatusText(message.hostOnline ? "等待分享画面" : "等待分享者上线");
+        const peer = peerRef.current;
+        peer?.updateIceConfig(message.iceConfig);
+        if (
+          message.connectionId &&
+          !peer?.hasConnectionId(message.connectionId)
+        ) {
+          signal.send({
+            type: "restart-request",
+            connectionId: message.connectionId,
+            rebuild: true,
+          });
+        } else if (peer?.hasConnection() && !peer.isConnected()) {
+          peer.requestRecovery();
+        }
+        return;
+      }
+      if (message.type === "signal") {
+        const peer = ensurePeer();
+        if (!peer) {
+          setStatusText("尚未收到可用的 ICE 配置");
+          return;
+        }
+        await peer.acceptSignal(message.fromPeerId, message.payload);
+        return;
+      }
+      if (message.type === "ice-config") {
+        currentIceConfig = message.iceConfig;
+        setRelayAvailable(message.iceConfig.relayAvailable);
+        peerRef.current?.updateIceConfig(message.iceConfig);
+        return;
+      }
+      if (message.type === "host-status") {
+        setHostOnline(message.online);
+        if (!message.online && !peerRef.current?.isConnected()) {
+          setStatusText("等待分享者上线");
+        }
+        return;
+      }
+      if (message.type === "room-closed") {
+        peerRef.current?.dispose();
+        peerRef.current = null;
+        setRemoteStream(null);
+        setPeerSnapshot(null);
+        setRoomState("closed");
+        setStatusText(message.reason === "expired" ? "房间已过期" : "分享已结束");
+        signal.stop();
+        return;
+      }
+      if (message.type === "error") {
+        if (
+          [
+            "AUTH_REQUIRED",
+            "INVALID_TOKEN",
+            "ROOM_CLOSED",
+            "ROOM_EXPIRED",
+            "ROOM_FULL",
+          ].includes(message.code)
+        ) {
+          peerRef.current?.dispose();
+          peerRef.current = null;
+          setRemoteStream(null);
+          setPeerSnapshot(null);
+        }
+        setRoomState("error");
+        setStatusText(message.message);
+      }
+    }
+
+    signalRef.current = signal;
+    signal.start();
+    return () => {
+      active = false;
+      signal.stop();
+      signalRef.current = null;
+      peerRef.current?.dispose();
+      peerRef.current = null;
+    };
+  }, [forceRelay, roomId, token]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    video.srcObject = remoteStream;
+    if (remoteStream) {
+      void video.play().then(
+        () => setPlaybackBlocked(false),
+        () => setPlaybackBlocked(true),
+      );
+    }
+  }, [remoteStream]);
+
+  async function playVideo(): Promise<void> {
+    if (!videoRef.current) {
+      return;
+    }
+    try {
+      await videoRef.current.play();
+      setPlaybackBlocked(false);
+    } catch {
+      setPlaybackBlocked(true);
+    }
+  }
+
+  function toggleMuted(): void {
+    const nextMuted = !muted;
+    setMuted(nextMuted);
+    if (videoRef.current) {
+      videoRef.current.muted = nextMuted;
+      if (!nextMuted) {
+        void playVideo();
+      }
+    }
+  }
+
+  async function enterFullscreen(): Promise<void> {
+    const video = videoRef.current as
+      | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+      | null;
+    if (!video) {
+      return;
+    }
+    try {
+      if (video.requestFullscreen) {
+        await video.requestFullscreen();
+      } else {
+        video.webkitEnterFullscreen?.();
+      }
+    } catch {
+      setStatusText("当前浏览器无法进入全屏");
+    }
+  }
+
+  function retryConnection(): void {
+    if (!peerRef.current?.requestRecovery()) {
+      setStatusText(hostOnline ? "等待分享画面" : "等待分享者上线");
+    } else {
+      setStatusText("正在恢复媒体连接");
+    }
+  }
+
+  return (
+    <div className="app-shell viewer-shell">
+      <AppHeader status={<SignalStatusBadge state={signalStatus} />} />
+
+      <main className="viewer-workspace">
+        <div className="viewer-title-row">
+          <div>
+            <h1>好友屏幕</h1>
+            <p className="section-meta">房间 {roomId.slice(0, 8)}</p>
+          </div>
+          <div className="viewer-badges">
+            {forceRelay && <span className="diagnostic-badge">强制中继</span>}
+            <PeerStatusBadge state={peerSnapshot?.connectionState ?? "waiting"} />
+            <PathBadge path={peerSnapshot?.metrics.path ?? "unknown"} />
+          </div>
+        </div>
+
+        <section className="video-stage remote-stage" aria-label="共享画面">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={muted}
+            onPlaying={() => setPlaybackBlocked(false)}
+          />
+          {!remoteStream && (
+            <div className="stage-placeholder">
+              <VideoOff size={36} strokeWidth={1.5} aria-hidden="true" />
+              <span>{statusText}</span>
+            </div>
+          )}
+          {playbackBlocked && remoteStream && (
+            <button
+              type="button"
+              className="play-overlay"
+              onClick={() => void playVideo()}
+            >
+              <Play size={22} fill="currentColor" aria-hidden="true" />
+              播放
+            </button>
+          )}
+        </section>
+
+        <div className="viewer-toolbar">
+          <div className="toolbar-status" role="status" aria-live="polite">
+            {statusText}
+          </div>
+          <div className="toolbar-actions">
+            <button
+              type="button"
+              className="icon-button"
+              title={muted ? "打开声音" : "静音"}
+              aria-label={muted ? "打开声音" : "静音"}
+              onClick={toggleMuted}
+            >
+              {muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="恢复连接"
+              aria-label="恢复连接"
+              disabled={!peerSnapshot || roomState === "closed"}
+              onClick={retryConnection}
+            >
+              <RefreshCw size={19} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="全屏"
+              aria-label="全屏"
+              disabled={!remoteStream}
+              onClick={() => void enterFullscreen()}
+            >
+              <Maximize2 size={19} />
+            </button>
+          </div>
+        </div>
+
+        {!relayAvailable && signalStatus === "connected" && (
+          <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
+        )}
+        {peerSnapshot?.error && (
+          <div className="notice notice-error" role="status">
+            {peerSnapshot.error}
+          </div>
+        )}
+        {peerSnapshot && (
+          <section className="viewer-stats" aria-labelledby="stats-heading">
+            <h2 id="stats-heading">连接数据</h2>
+            <StatsGrid metrics={peerSnapshot.metrics} direction="receive" />
+          </section>
+        )}
+      </main>
+    </div>
+  );
+}

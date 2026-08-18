@@ -4,6 +4,11 @@ CONTRIBUTING.md
 README.md
 .gitattributes
 .gitignore
+.env.example
+.node-version
+package.json
+package-lock.json
+tsconfig.json
 .codex/config.toml
 .codex/README.md
 .githooks/pre-commit
@@ -14,6 +19,8 @@ docs/project-memory.md
 docs/status.md
 docs/maintenance.md
 docs/需求理解.md
+docs/方案设计.md
+docs/deployment.md
 docs/adr/0001-p2p-first-media-topology.md
 docs/research/agent-context-governance.md
 docs/research/webrtc-p2p-screen-sharing.md
@@ -22,3 +29,4 @@ scripts/check-project-state.sh
 scripts/check-project-state.ps1
 scripts/install-hooks.sh
 scripts/install-hooks.ps1
+deploy/coturn/turnserver.conf.example
