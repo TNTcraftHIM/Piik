@@ -39,7 +39,9 @@ Last updated: 2026-08-19
 - A Chromium 151 one-to-eight synthetic functional smoke formed two depth-four chains: two connected host outbound peers, one inbound plus one outbound at viewers 1 through 6, inbound-only viewers 7 and 8, and decoded frames everywhere. This proves topology only, not profile quality, resource cost, latency, or endurance.
 - Closing the first-level relay reattached its branch and resumed decoding in about 5.3 seconds while host active connected outbound edges peaked at two. A silent partition instead waits for the 30-second heartbeat, so detection can take 30 to 60 seconds before the default 5-second viewer grace; that path is unverified.
 - The peer-assisted authenticated snapshot and host-only update synchronize one bounded, non-persistent room profile. Online viewers receive changes; `ViewerRelay` uses the latest desired profile for current and future children, while `HostPeer` serializes sender setup, stream replacement, and last-wins profile updates. The ordinary P2P wire is unchanged. Real 1/3/5/8 quality, resource, and latency measurements remain pending.
-- The recorded peer-assisted full check passes type checking, 12 Vitest files with 141 tests, and both client and server production builds. Production release `5b2fb005f6f7` separately passed 108 Vitest tests, both builds, loopback and public HTTPS/access-gate checks, and a clean activation without disturbing nginx, coturn, or the blog.
+- Chromium 151 kept the same relay peer, sender, and signaling generations while changing its sender ceilings from 8 Mbps/60 fps to 5 Mbps/30 fps and 3 Mbps/30 fps; the leaf continued decoding. The synthetic 640x360/30 source proves profile propagation and connection preservation only, not full-resolution quality or load.
+- Per-frame encode/decode diagnostics use adjacent non-overlapping `getStats()` deltas rather than connection-lifetime averages; first, empty, changed-stream, and reset intervals remain unknown and rebase.
+- The recorded peer-assisted full check passes type checking, 12 Vitest files with 144 tests, and both client and server production builds. Production release `5b2fb005f6f7` separately passed 108 Vitest tests, both builds, loopback and public HTTPS/access-gate checks, and a clean activation without disturbing nginx, coturn, or the blog.
 - Draft SFU PR #12 and ADR-0003 remain unmerged, undeployed, and independently reversible. There is no infrastructure blocker for the deployed Web baseline or bounded peer-assisted experiment.
 
 ## Provisional Quality Targets
@@ -64,6 +66,6 @@ These are measurement gates, not performance claims.
 
 - Documentation index and current phase: `docs/README.md` and `docs/status.md`
 - Requirements and design: `docs/需求理解.md` and `docs/方案设计.md`
-- Media research: `docs/research/webrtc-p2p-screen-sharing.md`, `docs/research/realtime-quality-adaptation.md`, `docs/research/peer-assisted-media.md`, and `docs/research/low-server-media-routes.md`
+- Media research: `docs/research/webrtc-p2p-screen-sharing.md`, `docs/research/realtime-quality-adaptation.md`, `docs/research/peer-assisted-media.md`, `docs/research/low-server-media-routes.md`, and `docs/research/native-shared-encode-sender.md`
 - Architecture: ADR-0001, ADR-0002, proposed experiment ADR-0004, and Draft PR #12's unaccepted ADR-0003
 - Deployment and maintenance: `docs/deployment.md`, `docs/maintenance.md`, `AGENTS.md`, and `.codex/`

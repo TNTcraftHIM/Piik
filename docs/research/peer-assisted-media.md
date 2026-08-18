@@ -129,21 +129,21 @@ sending the result directly to viewers. This removes repeated encoding and
 memory cost, but it does not remove one network copy per viewer. It therefore
 does not satisfy a hard host fanout of two by itself.
 
-A planned native Screener sender can preserve standard browser receivers without
-writing a new transport. libwebrtc accepts an application-supplied
-`VideoEncoderFactory`; a factory can return per-send-stream proxy encoders
-backed by one shared hardware encoder and fan the resulting `EncodedImage` into
-each stream's `EncodedImageCallback`. libwebrtc can then retain independent RTP
+A candidate native Screener sender could preserve standard browser receivers
+without writing a new transport. libwebrtc accepts an application-supplied
+`VideoEncoderFactory`, which creates a possible boundary for per-stream proxy
+encoders backed by one shared hardware encoder. If the bounded spike proves the
+callback and adaptation contract, libwebrtc could retain independent RTP
 sequence numbers, packetization, SRTP, RTCP, NACK/RTX, ICE, and congestion state
 for the two host edges.
 
 This is an engineering inference from the native interfaces, not a ready-made
 libwebrtc feature. The coordinator must deduplicate input frames, reconcile
 independent rate requests, combine keyframe requests, preserve timestamps, and
-require one common codec/profile/resolution/layer. It is high-complexity native
-work, but it is the viable long-term way to **guarantee** one host encode while
-keeping normal browser first-hop receivers. Browser JavaScript cannot provide
-that guarantee.
+require one common codec/profile/resolution/layer. The separate bounded risk
+spike must prove whether this route can guarantee one host encode while keeping
+normal browser first-hop receivers; requiring a libwebrtc internal fork rejects
+the route. Browser JavaScript cannot provide that guarantee.
 
 Sources:
 
@@ -207,6 +207,15 @@ This only removes the previous fixed-1080p60 relay envelope. Browser constraints
 and RTP sender parameters remain targets, so achieved bitrate, frame rate,
 resolution, encode work, and cross-hop quality still require the measurement
 matrix below. It does not add or imply shared encoding.
+
+A controlled Chromium 151 loopback smoke used one host, three viewers, and a
+synthetic 640x360/30 source. The downstream relay kept the same peer, sender,
+and signaling generations while its configured ceilings changed from
+8 Mbps/60 fps to 5 Mbps/30 fps and then 3 Mbps/30 fps. Each real
+`setParameters()` call and both host `applyConstraints()` calls succeeded, and
+the leaf kept decoding. This verifies wire ordering, relay propagation, and
+connection preservation only. It does not verify 1080p output, visual quality,
+CPU/GPU cost, TURN, public networks, or endurance.
 
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
@@ -272,6 +281,14 @@ below 1%. Record topology generation and depth, selected candidate type, host
 and relay upload, packets lost, jitter, frames encoded/decoded/dropped, total
 encode/decode time, decoded FPS, `qualityLimitationReason`, first picture,
 reparent time, CPU, GPU, and glass-to-glass latency.
+
+The in-app per-frame encode/decode fields use adjacent `getStats()` counter
+deltas and skip a tick while the same connection already has a sample in
+flight. A first sample, zero-frame interval, changed stats object, or counter
+reset reports unknown and rebases; a connection-lifetime average is not
+accepted as relay-load evidence. Long-run percentiles and event timing still
+come from a tracked run manifest plus browser WebRTC diagnostics, not a new
+telemetry service.
 
 All hard gates must pass:
 

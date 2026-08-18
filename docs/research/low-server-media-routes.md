@@ -16,7 +16,9 @@ The smallest current plan is:
    eight viewers, and decodes and re-encodes at every relay.
 3. Plan a separate native shared-encode sender regardless of the browser relay
    result. It reduces duplicate host encoding while retaining at most two
-   standard WebRTC edges, so it does not remove their upload cost.
+   standard WebRTC edges, so it does not remove their upload cost. The bounded
+   risk spike is specified in
+   [Native Shared-Encode Sender](./native-shared-encode-sender.md).
 4. Only if browser relay re-encoding is the isolated failure should another
    experiment add opt-in native volunteer encoded-RTP relays.
 5. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
@@ -58,7 +60,7 @@ lost.
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per viewer | Host upload and sender pipelines grow with viewers | Keep for one or two viewers |
 | Fixed two-chain browser relay | Host emits at most two copies; each relay emits at most one | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current default-off, maximum-eight-viewer spike |
-| Native shared-encode host | Host encodes once for at most two standard WebRTC edges | Native sender packaging and custom libwebrtc encoder fanout | Planned separate sender phase; still pays per-edge upload |
+| Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
 | User-operated mini-SFU | User's SFU emits viewer copies | Separate deployment and its egress bill; running it on the host does not reduce that host's uplink | Explicit fallback |
 | Central single-node SFU | Service SFU emits viewer copies | Lowest endpoint relay burden; service pays approximately `N * B` egress | Explicit fallback; Draft PR #12 only |

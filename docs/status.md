@@ -4,10 +4,9 @@ Last updated: 2026-08-19
 
 ## Phase
 
-The WebRTC proof of concept is deployed at `https://share.bonfire.icu`. Commit
-`5b2fb005f6f7` adds live 1080p60/1080p30/720p30 quality changes, video-only
-pause, clearer connection states, protected SQLite persistence, sequential room
-IDs, reusable links, and a waiting state after sharing stops. Production room ID
+The WebRTC proof of concept is deployed at `https://share.bonfire.icu` on commit
+`5b2fb005f6f7`. It supports live quality/source changes, video-only pause,
+protected SQLite persistence, sequential room IDs, and reusable links; room ID
 `1` survived the deployment restart.
 
 Production still uses one host `RTCPeerConnection` per viewer. Draft PR #13 adds
@@ -21,8 +20,6 @@ Draft SFU PR #12 is also unmerged and undeployed.
 
 ## Current Snapshot
 
-- Product scope is private game sharing for one broadcaster and a small trusted friend group; public broadcasting remains out of scope.
-- Runtime is Node.js 24, React, TypeScript, Vite, native browser WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment.
 - Capture precedes room creation. Live source and quality changes preserve healthy peers; picture pause keeps audio and connections active. `contentHint = "motion"` and explicit `balanced` degradation do not guarantee resolution-first behavior.
 - Whole-site `ACCESS_PASSWORD` is optional. Protected sessions use a stateless 12-hour HMAC HttpOnly `SameSite=Strict` cookie; host authentication remains internal and signaling is role-bound.
 - Without `ROOM_DATABASE_PATH`, rooms are random and temporary. With both the database path and site password, room IDs start at `1`, links persist, and stopping a share leaves viewers waiting. SQLite stores only room ID and host-token digest.
@@ -32,18 +29,19 @@ Draft SFU PR #12 is also unmerged and undeployed.
 
 ## Verified Evidence
 
-- Production release `5b2fb005f6f7` passed type checking, 108 Vitest tests, both production builds, loopback smoke, public HTTPS/access-gate checks, and clean activation under `/opt/screener/current`. The new 1080p30 asset loaded, Screener had zero automatic restarts, and nginx, coturn, and the existing blog remained healthy.
+- Production release `5b2fb005f6f7` passed type checking, 108 tests, both builds, loopback/public HTTPS and access-gate checks, and clean activation without disturbing nginx, coturn, or the blog.
 - The protected production database and permissions survived restart, and room ID `1` remained present. Stop-and-republish and link reuse still require a browser cycle.
-- The recorded peer-assisted full check passes type checking, 12 Vitest files with 141 tests, and both client and server production builds.
+- The recorded peer-assisted full check passes type checking, 12 Vitest files with 144 tests, and both production builds.
 - Chromium 151 one-to-three evidence held exactly two connected host outbound peers. Viewer 1 held one inbound plus one outbound peer and forwarded to viewer 3; viewer 2 stayed direct; all three decoded frames.
+- A Chromium 151 one-to-three loopback smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings; calls succeeded and the leaf kept decoding. Its synthetic 640x360/30 source proves propagation and connection preservation, not 1080p quality or load.
 - A Chromium 151 one-to-eight synthetic functional smoke formed two depth-four chains. The host held two outbound peers; viewers 1 through 6 each held one inbound plus one outbound; viewers 7 and 8 were leaves; all decoded frames. This proves topology only, not quality, resource cost, latency, or endurance.
 - Closing the first-level relay caused its branch to reattach and decode again after about 5.3 seconds while host active connected outbound edges peaked at two.
+- Local WebRTC diagnostics derive per-frame encode/decode cost from adjacent non-overlapping `getStats()` samples. First, empty, changed-stream, and reset intervals stay unknown and rebase instead of publishing a misleading lifetime average.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
-- Headless Chromium 151 synthetic checks cover direct UDP media, offer/answer/create-offer recovery, generation isolation, live video/audio replacement, quality parameter updates, and video-only pause. Layout checks used actual inner widths 500, 781, and 820 px; a true 390 px viewport remains unverified.
 
 ## Unverified Boundaries
 
-- Room profile propagation is implemented, replacing the fixed relay `1080p60` envelope. Actual cross-hop resolution, bitrate, frame rate, encode cost, and generational quality under each profile remain unverified.
+- Room profile propagation and live sender-ceiling changes are verified on the synthetic loopback path. Actual full-resolution cross-hop output, sustained bitrate and frame rate, encode cost, visual quality, and heterogeneous-network behavior under each profile remain unverified.
 - Peer assistance has not completed 1/3/5/8-viewer 30-minute runs, relay CPU/GPU and generational-quality measurements, controlled loss/RTT tests, or depth-four latency gates.
 - Android Chrome and iOS Safari remain required leaves but are not verified for this topology. There is no runtime relay-capability bit; controlled join order is the only mobile-leaf enforcement, so arbitrary-user deployment is excluded.
 - The observed recovery starts from a page close immediately seen by the server. A silent partition can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; it remains unverified.
@@ -55,7 +53,7 @@ Draft SFU PR #12 is also unmerged and undeployed.
 Complete only the bounded ADR-0004 experiment, with distribution work ahead of
 UI polish:
 
-- validate authentication, live switching, stream replacement, and child rebuild against the latest room profile in real browsers;
+- repeat live switching with full-resolution high-motion capture, then validate stream replacement, stop/restart, child rebuild, reparenting, and signaling interruption against the latest room profile in real browsers;
 - preserve host fanout at two and viewer fanout at one across joins, reconnects, grace expiry, and reparenting;
 - run reproducible 1/3/5/8-viewer measurements using the deployed profiles, recording topology depth, selected ICE path, host/relay upload, encode/decode work, first picture, decoded FPS, quality limitation, and glass-to-glass latency;
 - repeat first-level relay loss with a server-observed close and separately measure silent heartbeat-detected partition recovery; and
