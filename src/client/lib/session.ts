@@ -63,7 +63,11 @@ export function getStableClientId(role: "host" | "viewer", roomId: string): stri
     return existing;
   }
 
-  const clientId = crypto.randomUUID();
+  // randomUUID is unavailable to LAN viewers on HTTP; getRandomValues is not.
+  const randomBytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const clientId = Array.from(randomBytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
   writeSessionValue(storageKey, clientId);
   return clientId;
 }

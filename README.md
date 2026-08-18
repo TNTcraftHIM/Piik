@@ -15,12 +15,18 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:8787`. The default development configuration uses a localhost origin and has no STUN or TURN server, so it is suitable only for same-machine checks. Multi-device or cross-network use requires HTTPS and the production-shaped ICE configuration documented separately.
+Open `http://localhost:8787`. The server listens on `0.0.0.0` by default so a
+phone on the same LAN can load `http://<computer-lan-ip>:8787`. To generate an
+invite that the phone can open while the host keeps using secure-context
+`localhost` capture, set `PUBLIC_BASE_URL` to that LAN URL and include both
+origins in `ALLOWED_ORIGINS`. LAN viewers can join over HTTP; the sharing page
+must remain on `localhost` or HTTPS because screen capture requires a secure
+context. The default has no STUN or TURN, so cross-network use still requires
+HTTPS and the production ICE configuration documented separately.
 
-The server binds `127.0.0.1` by default. Set `LISTEN_HOST=0.0.0.0` explicitly
-only when a container or trusted LAN deployment requires it. Production startup
-also requires separate TURN/UDP, TURN/TCP, and TURN/TLS-on-TCP-443 URLs; this is
-a configuration preflight, not evidence that the external relay path works.
+Production startup requires separate TURN/UDP, TURN/TCP, and
+TURN/TLS-on-TCP-443 URLs; this is a configuration preflight, not evidence that
+the external relay path works.
 
 Run the complete automated validation with:
 

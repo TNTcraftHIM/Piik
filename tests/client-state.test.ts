@@ -1,7 +1,35 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { getStableClientId } from "../src/client/lib/session.ts";
 import { shouldReconnectSignaling } from "../src/client/lib/signaling.ts";
 import { createStatsAccumulator, collectConnectionMetrics } from "../src/client/webrtc/stats.ts";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("client session identity", () => {
+  it("works without secure-context-only crypto.randomUUID", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+    });
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.fill(0xab);
+        return bytes;
+      },
+    });
+
+    const first = getStableClientId("viewer", "room-id-1234");
+
+    expect(first).toBe("ab".repeat(16));
+    expect(getStableClientId("viewer", "room-id-1234")).toBe(first);
+  });
+});
 
 describe("client signaling recovery policy", () => {
   it("does not reconnect a session that another tab replaced", () => {

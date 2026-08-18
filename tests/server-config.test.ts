@@ -9,16 +9,16 @@ describe("server configuration", () => {
   it("allows development without TURN and defaults the origin", () => {
     const config = loadConfig({ NODE_ENV: "development", PORT: "9123" });
 
-    expect(config.listenHost).toBe("127.0.0.1");
+    expect(config.listenHost).toBe("0.0.0.0");
     expect(config.publicBaseUrl.href).toBe("http://localhost:9123/");
     expect(config.allowedOrigins).toEqual(new Set(["http://localhost:9123"]));
     expect(config.turnUrls).toEqual([]);
   });
 
-  it("allows an explicit listen host", () => {
-    const config = loadConfig({ LISTEN_HOST: " 0.0.0.0 " });
+  it("allows an explicit loopback listen host", () => {
+    const config = loadConfig({ LISTEN_HOST: " 127.0.0.1 " });
 
-    expect(config.listenHost).toBe("0.0.0.0");
+    expect(config.listenHost).toBe("127.0.0.1");
   });
 
   it("requires room creation authorization and TURN in production", () => {

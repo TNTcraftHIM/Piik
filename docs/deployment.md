@@ -42,10 +42,11 @@ Run `npm start` under a service supervisor that injects the environment, restart
 on failure, and applies bounded logs. For a simple untracked environment file,
 the equivalent direct launch is
 `node --env-file=.env.production dist/server/server/index.js`. Do not expose port
-8787 to the Internet. The application binds `127.0.0.1` by default. Set
-`LISTEN_HOST=0.0.0.0` explicitly only when a container runtime or trusted LAN
-path requires an externally reachable listener, then enforce the intended
-network boundary with container publishing rules or a host firewall.
+8787 to the Internet. The application default is `0.0.0.0` for LAN development
+and container compatibility, while the bare-metal production baseline below
+explicitly sets `LISTEN_HOST=127.0.0.1` because only the same-host reverse proxy
+should connect. A container can instead use `0.0.0.0` and enforce the intended
+boundary with port publishing rules or a host firewall.
 
 ## Production application environment
 
