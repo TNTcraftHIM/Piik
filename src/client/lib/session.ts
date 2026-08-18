@@ -3,6 +3,7 @@ import {
   roomCodeSchema,
   type CreateRoomResponse,
 } from "../../shared/protocol";
+import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
@@ -98,11 +99,7 @@ export function getStableClientId(role: "host" | "viewer", roomId: string): stri
     return existing;
   }
 
-  // randomUUID is unavailable to LAN viewers on HTTP; getRandomValues is not.
-  const randomBytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  const clientId = Array.from(randomBytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const clientId = createOpaqueId();
   writeSessionValue(storageKey, clientId);
   return clientId;
 }

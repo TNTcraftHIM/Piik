@@ -16,8 +16,12 @@ type SignalCandidate = Extract<
 >["candidate"];
 
 interface ViewerPeerEvents {
-  sendSignal: (payload: SignalPayload) => boolean;
-  sendRestartRequest: (connectionId: string, rebuild: boolean) => boolean;
+  sendSignal: (peerId: string, payload: SignalPayload) => boolean;
+  sendRestartRequest: (
+    peerId: string,
+    connectionId: string,
+    rebuild: boolean,
+  ) => boolean;
   onStream: (stream: MediaStream) => void;
   onUpdate: (snapshot: PeerSnapshot) => void;
 }
@@ -25,7 +29,7 @@ interface ViewerPeerEvents {
 export class ViewerPeer {
   private connection: RTCPeerConnection | null = null;
   private connectionId: string | null = null;
-  private hostPeerId: string | null = null;
+  private parentPeerId: string | null = null;
   private remoteStream = new MediaStream();
   private pendingByConnection = new Map<
     string,
@@ -35,6 +39,7 @@ export class ViewerPeer {
   private statsTimer: number | null = null;
   private disconnectTimer: number | null = null;
   private restartRequested = false;
+  private offerRecoveryAttempts = 0;
   private disposed = false;
   private currentIceConfig: IceConfig;
   private snapshot: PeerSnapshot | null = null;
@@ -48,13 +53,12 @@ export class ViewerPeer {
   }
 
   async acceptSignal(
-    hostPeerId: string,
+    parentPeerId: string,
     payload: SignalPayload,
   ): Promise<void> {
     if (this.disposed) {
       return;
     }
-    this.hostPeerId = hostPeerId;
     let operationConnection: RTCPeerConnection | null = null;
     let operationConnectionId: string | null = null;
 
@@ -63,8 +67,12 @@ export class ViewerPeer {
         if (payload.description.type !== "offer") {
           return;
         }
-        if (!this.connection || this.connectionId !== payload.connectionId) {
-          this.replaceConnection(hostPeerId, payload.connectionId);
+        if (
+          !this.connection ||
+          this.connectionId !== payload.connectionId ||
+          this.parentPeerId !== parentPeerId
+        ) {
+          this.replaceConnection(parentPeerId, payload.connectionId);
         }
         const connection = this.connection;
         if (!connection) {
@@ -92,7 +100,7 @@ export class ViewerPeer {
         if (!connection.localDescription) {
           throw new Error("Local description was not created");
         }
-        this.events.sendSignal({
+        this.events.sendSignal(parentPeerId, {
           kind: "description",
           connectionId,
           description: {
@@ -101,8 +109,10 @@ export class ViewerPeer {
           },
         });
         this.restartRequested = false;
+        this.offerRecoveryAttempts = 0;
       } else if (
         this.connection &&
+        this.parentPeerId === parentPeerId &&
         this.connectionId === payload.connectionId &&
         this.connection.remoteDescription
       ) {
@@ -126,6 +136,18 @@ export class ViewerPeer {
         return;
       }
       this.setError(error, "处理分享端信令失败");
+      if (
+        payload.kind === "description" &&
+        this.offerRecoveryAttempts < 1 &&
+        this.events.sendRestartRequest(
+          parentPeerId,
+          operationConnectionId,
+          true,
+        )
+      ) {
+        this.offerRecoveryAttempts += 1;
+        this.restartRequested = true;
+      }
     }
   }
 
@@ -145,10 +167,14 @@ export class ViewerPeer {
   }
 
   requestRecovery(): boolean {
-    if (!this.connectionId) {
+    if (!this.connectionId || !this.parentPeerId) {
       return false;
     }
-    const sent = this.events.sendRestartRequest(this.connectionId, false);
+    const sent = this.events.sendRestartRequest(
+      this.parentPeerId,
+      this.connectionId,
+      false,
+    );
     if (sent) {
       this.restartRequested = true;
     }
@@ -176,9 +202,14 @@ export class ViewerPeer {
     this.pendingByConnection.clear();
   }
 
-  private replaceConnection(hostPeerId: string, connectionId: string): void {
+  private replaceConnection(parentPeerId: string, connectionId: string): void {
+    const parentChanged =
+      this.parentPeerId !== null && this.parentPeerId !== parentPeerId;
     this.disposeConnection();
-    this.hostPeerId = hostPeerId;
+    if (parentChanged) {
+      this.offerRecoveryAttempts = 0;
+    }
+    this.parentPeerId = parentPeerId;
     this.connectionId = connectionId;
     this.remoteStream = new MediaStream();
     this.statsAccumulator = createStatsAccumulator();
@@ -190,7 +221,7 @@ export class ViewerPeer {
     });
     this.connection = connection;
     this.snapshot = {
-      peerId: hostPeerId,
+      peerId: parentPeerId,
       connectionId,
       connectionState: connection.connectionState,
       iceConnectionState: connection.iceConnectionState,
@@ -199,10 +230,10 @@ export class ViewerPeer {
     };
 
     connection.addEventListener("icecandidate", (event) => {
-      if (!this.hostPeerId || this.connection !== connection) {
+      if (!this.parentPeerId || this.connection !== connection) {
         return;
       }
-      this.events.sendSignal({
+      this.events.sendSignal(parentPeerId, {
         kind: "candidate",
         connectionId,
         candidate: event.candidate
@@ -385,6 +416,7 @@ export class ViewerPeer {
     this.connection?.close();
     this.connection = null;
     this.connectionId = null;
+    this.parentPeerId = null;
     this.snapshot = null;
   }
 }

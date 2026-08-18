@@ -1,4 +1,5 @@
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import { createOpaqueId } from "../lib/opaque-id";
 import type { QualityProfile } from "../media/quality";
 import { configureVideoSender } from "../media/quality";
 import {
@@ -22,7 +23,7 @@ interface HostPeerEvents {
 }
 
 export class HostPeer {
-  readonly connectionId = crypto.randomUUID();
+  readonly connectionId = createOpaqueId();
 
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];

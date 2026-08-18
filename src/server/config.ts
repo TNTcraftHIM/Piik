@@ -5,6 +5,7 @@ export type RuntimeEnvironment = "development" | "test" | "production";
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 3_600;
 const MAX_ACCESS_PASSWORD_BYTES = 128;
 const MIN_TURN_SECRET_BYTES = 32;
+const MAX_PEER_ASSISTED_VIEWERS = 8;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
 
@@ -19,10 +20,28 @@ export interface ServerConfig {
   roomTtlMs: number;
   maxRooms: number;
   maxViewersPerRoom: number;
+  peerAssistedMedia: boolean;
   stunUrls: readonly string[];
   turnUrls: readonly string[];
   turnSharedSecret?: string;
   turnCredentialTtlSeconds: number;
+}
+
+function parseBoolean(
+  value: string | undefined,
+  fallback: boolean,
+  name: string,
+): boolean {
+  if (value === undefined || value === "") {
+    return fallback;
+  }
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new Error(`${name} must be true or false`);
 }
 
 interface IceEndpoint {
@@ -256,6 +275,18 @@ export function loadConfig(
     "TURN_URLS",
     new Set(["turn:", "turns:"]),
   );
+  const maxViewersPerRoom = parseBoundedInteger(
+    environment.MAX_VIEWERS_PER_ROOM,
+    DEFAULT_MAX_VIEWERS_PER_ROOM,
+    "MAX_VIEWERS_PER_ROOM",
+    1,
+    MAX_VIEWERS_PER_ROOM_LIMIT,
+  );
+  const peerAssistedMedia = parseBoolean(
+    environment.PEER_ASSISTED_MEDIA,
+    false,
+    "PEER_ASSISTED_MEDIA",
+  );
 
   if ((turnUrls.length > 0) !== Boolean(turnSharedSecret)) {
     throw new Error(
@@ -293,6 +324,11 @@ export function loadConfig(
   if (nodeEnv === "production") {
     requireProductionTurnCoverage(turnUrls);
   }
+  if (peerAssistedMedia && maxViewersPerRoom > MAX_PEER_ASSISTED_VIEWERS) {
+    throw new Error(
+      "PEER_ASSISTED_MEDIA currently supports at most 8 viewers per room",
+    );
+  }
 
   return {
     nodeEnv,
@@ -309,13 +345,8 @@ export function loadConfig(
       parsePositiveInteger(environment.ROOM_TTL_SECONDS, 14_400, "ROOM_TTL_SECONDS") *
       1_000,
     maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
-    maxViewersPerRoom: parseBoundedInteger(
-      environment.MAX_VIEWERS_PER_ROOM,
-      DEFAULT_MAX_VIEWERS_PER_ROOM,
-      "MAX_VIEWERS_PER_ROOM",
-      1,
-      MAX_VIEWERS_PER_ROOM_LIMIT,
-    ),
+    maxViewersPerRoom,
+    peerAssistedMedia,
     stunUrls,
     turnUrls,
     turnSharedSecret,

@@ -79,6 +79,14 @@ export const signalPayloadSchema = z.discriminatedUnion("kind", [
 ]);
 export type SignalPayload = z.infer<typeof signalPayloadSchema>;
 
+export const mediaAssignmentSchema = z
+  .object({
+    parentPeerId: opaqueIdSchema.nullable(),
+    childPeerIds: z.array(opaqueIdSchema).max(2),
+  })
+  .strict();
+export type MediaAssignment = z.infer<typeof mediaAssignmentSchema>;
+
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
@@ -111,6 +119,7 @@ export const clientMessageSchema = z.union([
   z
     .object({
       type: z.literal("restart-request"),
+      targetPeerId: opaqueIdSchema.optional(),
       connectionId: opaqueIdSchema,
       rebuild: z.boolean(),
     })
@@ -135,20 +144,31 @@ const errorCodeSchema = z.enum([
   "SERVER_ERROR",
 ]);
 
-export const serverMessageSchema = z.discriminatedUnion("type", [
+const authenticatedMessageShape = {
+  type: z.literal("authenticated"),
+  role: roleSchema,
+  peerId: opaqueIdSchema,
+  roomExpiresAt: z.string().datetime().nullable(),
+  maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+  hostOnline: z.boolean(),
+  connectionId: opaqueIdSchema.nullable(),
+  viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+  iceConfig: iceConfigSchema,
+};
+
+const authenticatedMessageSchema = z.union([
+  z.object(authenticatedMessageShape).strict(),
   z
     .object({
-      type: z.literal("authenticated"),
-      role: roleSchema,
-      peerId: opaqueIdSchema,
-      roomExpiresAt: z.string().datetime().nullable(),
-      maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
-      hostOnline: z.boolean(),
-      connectionId: opaqueIdSchema.nullable(),
-      viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
-      iceConfig: iceConfigSchema,
+      ...authenticatedMessageShape,
+      mediaMode: z.literal("peer-assisted"),
+      mediaAssignment: mediaAssignmentSchema,
     })
     .strict(),
+]);
+
+export const serverMessageSchema = z.union([
+  authenticatedMessageSchema,
   z
     .object({
       type: z.literal("peer-joined"),
@@ -174,6 +194,12 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
       fromPeerId: opaqueIdSchema,
       connectionId: opaqueIdSchema,
       rebuild: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("media-assignment"),
+      mediaAssignment: mediaAssignmentSchema,
     })
     .strict(),
   z

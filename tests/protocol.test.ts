@@ -109,6 +109,12 @@ describe("client signaling protocol", () => {
     expect(clientMessageSchema.safeParse(restartRequest).success).toBe(true);
     expect(
       clientMessageSchema.safeParse({
+        ...restartRequest,
+        targetPeerId: "parent_12345678",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
         type: restartRequest.type,
         connectionId: restartRequest.connectionId,
       }).success,
@@ -171,6 +177,44 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({ type: "sharing-stopped" }).success,
     ).toBe(true);
+  });
+
+  it("requires a complete bounded peer-assisted assignment", () => {
+    const peerAssisted = {
+      ...authenticatedMessage(8),
+      mediaMode: "peer-assisted",
+      mediaAssignment: {
+        parentPeerId: null,
+        childPeerIds: ["viewer_12345678", "viewer_87654321"],
+      },
+    };
+
+    expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "media-assignment",
+        mediaAssignment: peerAssisted.mediaAssignment,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        mediaMode: "peer-assisted",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...peerAssisted,
+        mediaAssignment: {
+          parentPeerId: null,
+          childPeerIds: [
+            "viewer_12345678",
+            "viewer_87654321",
+            "viewer_overflow",
+          ],
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it.each([0, 1.5, MAX_VIEWERS_PER_ROOM_LIMIT + 1])(
