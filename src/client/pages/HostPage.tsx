@@ -3,6 +3,8 @@ import {
   Copy,
   Hash,
   MonitorUp,
+  Pause,
+  Play,
   RefreshCw,
   Square,
   Users,
@@ -31,8 +33,10 @@ import {
 } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import {
+  applyCaptureProfile,
   captureDisplay,
   QUALITY_PROFILES,
+  setVideoPaused,
   type QualityProfileId,
 } from "../media/quality";
 import type {
@@ -116,6 +120,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [switchingSource, setSwitchingSource] = useState(false);
+  const [changingQuality, setChangingQuality] = useState(false);
+  const [picturePaused, setPicturePaused] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -125,6 +131,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
   const sourceSwitchRef = useRef<object | null>(null);
+  const qualityChangeRef = useRef<object | null>(null);
+  const qualityIdRef = useRef<QualityProfileId>("1080p60");
+  const picturePausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
 
   const viewers = useMemo(
@@ -143,6 +152,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       activeGenerationRef.current = null;
       generationRef.current += 1;
       sourceSwitchRef.current = null;
+      qualityChangeRef.current = null;
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
@@ -163,6 +173,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   function disposeResources(notifyServer: boolean): void {
     sourceSwitchRef.current = null;
+    qualityChangeRef.current = null;
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
@@ -187,6 +198,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setPeerSnapshots(new Map());
     setSignalStatus("offline");
     setSwitchingSource(false);
+    setChangingQuality(false);
+    picturePausedRef.current = false;
+    setPicturePaused(false);
   }
 
   function forgetRoom(): void {
@@ -226,7 +240,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           isCurrentGeneration(generation) &&
           streamRef.current === captured
         ) {
-          endSharing("屏幕分享已结束");
+          endSharing("已停止分享");
         }
       },
       { once: true },
@@ -239,6 +253,91 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     sourceSwitchRef.current = null;
     setSwitchingSource(false);
+  }
+
+  function commitQuality(id: QualityProfileId): void {
+    qualityIdRef.current = id;
+    setQualityId(id);
+  }
+
+  async function changeQuality(nextId: QualityProfileId): Promise<void> {
+    if (phase !== "live") {
+      commitQuality(nextId);
+      return;
+    }
+
+    const generation = activeGenerationRef.current;
+    const activeStream = streamRef.current;
+    if (
+      generation === null ||
+      !activeStream ||
+      !isCurrentGeneration(generation) ||
+      sourceSwitchRef.current ||
+      qualityChangeRef.current
+    ) {
+      return;
+    }
+
+    const token = {};
+    qualityChangeRef.current = token;
+    setChangingQuality(true);
+    setNotice(null);
+    const profile = QUALITY_PROFILES[nextId];
+
+    try {
+      await applyCaptureProfile(activeStream, profile);
+      if (
+        !isCurrentGeneration(generation) ||
+        qualityChangeRef.current !== token ||
+        streamRef.current !== activeStream
+      ) {
+        return;
+      }
+
+      commitQuality(nextId);
+      setDetails(captureDetails(activeStream));
+      const results = await Promise.all(
+        [...peersRef.current.values()].map((peer) => peer.updateProfile(profile)),
+      );
+      if (
+        isCurrentGeneration(generation) &&
+        qualityChangeRef.current === token
+      ) {
+        const failed = results.filter((updated) => !updated).length;
+        setNotice(
+          failed > 0
+            ? `画质已切换，${failed} 位观众未能应用新的发送参数`
+            : `画质已切换为 ${profile.label}`,
+        );
+      }
+    } catch (error) {
+      if (
+        isCurrentGeneration(generation) &&
+        qualityChangeRef.current === token
+      ) {
+        setNotice(readableError(error));
+      }
+    } finally {
+      if (qualityChangeRef.current === token) {
+        qualityChangeRef.current = null;
+        setChangingQuality(false);
+      }
+    }
+  }
+
+  function togglePicturePause(): void {
+    const activeStream = streamRef.current;
+    if (phase !== "live" || !activeStream) {
+      return;
+    }
+    const nextPaused = !picturePausedRef.current;
+    if (!setVideoPaused(activeStream, nextPaused)) {
+      setNotice("当前分享没有可暂停的视频轨道");
+      return;
+    }
+    picturePausedRef.current = nextPaused;
+    setPicturePaused(nextPaused);
+    setNotice(nextPaused ? "画面已暂停，音频不受影响" : "画面已恢复");
   }
 
   function removePeer(peerId: string): void {
@@ -280,7 +379,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       peerId,
       iceConfig,
       activeStream,
-      QUALITY_PROFILES[qualityId],
+      QUALITY_PROFILES[qualityIdRef.current],
       {
         sendSignal: (targetPeerId, payload) =>
           isCurrentGeneration(generation) && signalRef.current === signal
@@ -462,7 +561,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let captured: MediaStream;
     try {
       // This must remain the first awaited operation in the button gesture.
-      captured = await captureDisplay(QUALITY_PROFILES[qualityId]);
+      captured = await captureDisplay(QUALITY_PROFILES[qualityIdRef.current]);
     } catch (error) {
       if (!isCurrentGeneration(generation)) {
         return;
@@ -601,7 +700,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       phase !== "live" ||
       generation === null ||
       !isCurrentGeneration(generation) ||
-      sourceSwitchRef.current
+      sourceSwitchRef.current ||
+      qualityChangeRef.current
     ) {
       return;
     }
@@ -614,7 +714,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let captured: MediaStream;
     try {
       // Like initial capture, changing source must begin in this button gesture.
-      captured = await captureDisplay(QUALITY_PROFILES[qualityId]);
+      captured = await captureDisplay(QUALITY_PROFILES[qualityIdRef.current]);
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
@@ -643,6 +743,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
 
     retiringStreamRef.current = previousStream;
+    setVideoPaused(captured, picturePausedRef.current);
     streamRef.current = captured;
     setStream(captured);
     setDetails(captureDetails(captured));
@@ -657,7 +758,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               peer,
               replaced: await peer.replaceStream(
                 captured,
-                QUALITY_PROFILES[qualityId],
+                QUALITY_PROFILES[qualityIdRef.current],
               ),
             };
           } catch {
@@ -779,7 +880,22 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   <button
                     className="button button-secondary"
                     type="button"
-                    disabled={switchingSource}
+                    disabled={switchingSource || changingQuality}
+                    onClick={togglePicturePause}
+                  >
+                    {picturePaused ? (
+                      <Play size={16} fill="currentColor" aria-hidden="true" />
+                    ) : (
+                      <Pause size={16} fill="currentColor" aria-hidden="true" />
+                    )}
+                    {picturePaused ? "恢复画面" : "暂停画面"}
+                  </button>
+                )}
+                {phase === "live" && (
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={switchingSource || changingQuality}
                     onClick={() => void switchSource()}
                   >
                     <RefreshCw size={16} aria-hidden="true" />
@@ -791,7 +907,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   type="button"
                   onClick={() =>
                     endSharing(
-                      phase === "starting" ? "启动已取消" : "屏幕分享已结束",
+                      phase === "starting"
+                        ? "启动已取消"
+                        : "已停止分享",
                     )
                   }
                 >
@@ -808,12 +926,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             ) : (
               <div className="stage-placeholder">
                 <MonitorUp size={36} strokeWidth={1.5} aria-hidden="true" />
-                <span>{phase === "ended" ? "分享已结束" : "未分享画面"}</span>
+                <span>{phase === "ended" ? "等待开始分享" : "未分享画面"}</span>
               </div>
             )}
-            {(phase === "starting" || switchingSource) && (
+            {(phase === "starting" || switchingSource || picturePaused) && (
               <div className="stage-overlay" role="status">
-                {switchingSource ? "正在切换来源" : "正在连接"}
+                {switchingSource
+                  ? "正在切换来源"
+                  : picturePaused
+                    ? "画面已暂停"
+                    : "正在连接"}
               </div>
             )}
           </div>
@@ -829,7 +951,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           {!details?.hasAudio && stream && (
             <WarningBanner>当前来源没有可共享音频</WarningBanner>
           )}
-          {room && !relayAvailable && (
+          {room && signalStatus === "connected" && !relayAvailable && (
             <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
           )}
           {notice && (
@@ -838,28 +960,32 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             </div>
           )}
 
-          {phase !== "live" && (
-            <div className="setup-controls">
-              <fieldset className="control-group">
-                <legend>画质</legend>
-                <div className="segmented-control">
-                  {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
-                    (id) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className={qualityId === id ? "is-selected" : undefined}
-                        aria-pressed={qualityId === id}
-                        disabled={phase === "starting"}
-                        onClick={() => setQualityId(id)}
-                      >
-                        {QUALITY_PROFILES[id].label}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </fieldset>
+          <div className="setup-controls">
+            <fieldset className="control-group">
+              <legend>画质</legend>
+              <div className="segmented-control">
+                {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
+                  (id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={qualityId === id ? "is-selected" : undefined}
+                      aria-pressed={qualityId === id}
+                      disabled={
+                        phase === "starting" ||
+                        switchingSource ||
+                        changingQuality
+                      }
+                      onClick={() => void changeQuality(id)}
+                    >
+                      {QUALITY_PROFILES[id].label}
+                    </button>
+                  ),
+                )}
+              </div>
+            </fieldset>
 
+            {phase !== "live" && (
               <button
                 className="button button-primary start-button"
                 type="button"
@@ -869,12 +995,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <MonitorUp size={18} aria-hidden="true" />
                 {phase === "starting" ? "正在启动" : "开始分享"}
               </button>
+            )}
+            {phase !== "live" && (
               <a className="join-room-link" href="/join">
                 <Hash size={15} aria-hidden="true" />
                 输入房间码观看
               </a>
-            </div>
-          )}
+            )}
+          </div>
           {room && (
             <div className="invite-bar">
               <div className="invite-copy">

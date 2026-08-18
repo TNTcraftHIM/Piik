@@ -6,11 +6,11 @@ export const QUALITY_PROFILES = {
     frameRate: 60,
     maxBitrate: 8_000_000,
   },
-  "720p60": {
-    label: "720p 60",
-    width: 1280,
-    height: 720,
-    frameRate: 60,
+  "1080p30": {
+    label: "1080p 30",
+    width: 1920,
+    height: 1080,
+    frameRate: 30,
     maxBitrate: 5_000_000,
   },
   "720p30": {
@@ -25,6 +25,14 @@ export const QUALITY_PROFILES = {
 export type QualityProfileId = keyof typeof QUALITY_PROFILES;
 export type QualityProfile = (typeof QUALITY_PROFILES)[QualityProfileId];
 
+function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
+  return {
+    width: { ideal: profile.width, max: profile.width },
+    height: { ideal: profile.height, max: profile.height },
+    frameRate: { ideal: profile.frameRate, max: profile.frameRate },
+  };
+}
+
 export async function captureDisplay(
   profile: QualityProfile,
 ): Promise<MediaStream> {
@@ -33,11 +41,7 @@ export async function captureDisplay(
   }
 
   const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: {
-      width: { ideal: profile.width },
-      height: { ideal: profile.height },
-      frameRate: { ideal: profile.frameRate, max: profile.frameRate },
-    },
+    video: captureConstraints(profile),
     audio: true,
   });
 
@@ -50,6 +54,26 @@ export async function captureDisplay(
   return stream;
 }
 
+export async function applyCaptureProfile(
+  stream: MediaStream,
+  profile: QualityProfile,
+): Promise<void> {
+  const videoTrack = stream.getVideoTracks()[0];
+  if (!videoTrack) {
+    throw new Error("共享流缺少视频轨道");
+  }
+  await videoTrack.applyConstraints(captureConstraints(profile));
+}
+
+export function setVideoPaused(stream: MediaStream, paused: boolean): boolean {
+  const videoTrack = stream.getVideoTracks()[0];
+  if (!videoTrack) {
+    return false;
+  }
+  videoTrack.enabled = !paused;
+  return true;
+}
+
 export async function configureVideoSender(
   sender: RTCRtpSender,
   profile: QualityProfile,
@@ -60,6 +84,6 @@ export async function configureVideoSender(
   }
   parameters.encodings[0].maxBitrate = profile.maxBitrate;
   parameters.encodings[0].maxFramerate = profile.frameRate;
-  parameters.degradationPreference = "maintain-framerate";
+  parameters.degradationPreference = "balanced";
   await sender.setParameters(parameters);
 }

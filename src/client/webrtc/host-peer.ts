@@ -135,6 +135,28 @@ export class HostPeer {
     return true;
   }
 
+  async updateProfile(profile: QualityProfile): Promise<boolean> {
+    if (this.disposed || !this.videoSender) {
+      return false;
+    }
+    try {
+      await configureVideoSender(this.videoSender, profile);
+    } catch (error) {
+      this.setError(error, "调整画质失败");
+      return false;
+    }
+    if (this.disposed) {
+      return false;
+    }
+    this.profile = profile;
+    this.statsAccumulator.bytes = null;
+    this.statsAccumulator.frames = null;
+    this.statsAccumulator.timestamp = null;
+    this.snapshot = { ...this.snapshot, error: null };
+    this.emit();
+    return true;
+  }
+
   async acceptSignal(payload: SignalPayload): Promise<void> {
     if (this.disposed || payload.connectionId !== this.connectionId) {
       return;

@@ -724,6 +724,15 @@ h3 {
     grid-template-columns: minmax(0, 1fr) 330px;
   }
 
+  .section-heading {
+    flex-wrap: wrap;
+  }
+
+  .broadcast-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .setup-controls {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -777,18 +786,13 @@ h3 {
 }
 
 @media (max-width: 520px) {
-  .section-heading,
   .viewer-title-row {
     flex-wrap: wrap;
   }
 
-  .broadcast-actions {
-    width: 100%;
-  }
-
   .broadcast-actions .button {
     min-width: 0;
-    flex: 1;
+    flex: 1 1 calc(50% - 4px);
   }
 
   .viewer-badges {

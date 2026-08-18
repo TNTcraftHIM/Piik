@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Confirmed Intent
 
@@ -9,7 +9,7 @@ Last updated: 2026-08-18
 - The normal use case is a small, trusted friend group. Public or large-scale streaming is explicitly out of scope and can be handled by OBS/Twitch-class services.
 - Viewers should be able to open an invite link in a desktop or mobile browser without installing a dedicated client.
 - The system should resemble a Photon-style developer experience: a central room/rendezvous service establishes sessions while realtime traffic is carried by clients whenever possible.
-- Server bandwidth cost is a primary constraint. The default media path remains P2P-first, with servers used for signaling, STUN, TURN fallback, and observability. A deployment-level SFU mode is acceptable when measured multi-viewer P2P behavior is unusable; it must remain explicit and independently reversible.
+- Server bandwidth cost is a primary constraint. The default media path remains P2P-first, with servers responsible for rooms, signaling, STUN, TURN fallback, and observability. Any topology change requires separate measurements and an ADR.
 - Avoiding TeamSpeak-like partial reachability is a primary requirement: every broadcaster-viewer pair must independently have TURN/UDP and TURN/TCP candidates available when direct ICE cannot connect. TURN/TLS is an optional compatibility enhancement, not a production prerequisite.
 - A web experience is preferred for convenience, but using a desktop sender is acceptable when it materially improves game capture, audio capture, or hardware encoding.
 - All project documentation, memory, code, `AGENTS.md`, and `.codex/` configuration must live in this Git repository and remain tracked for cross-device development.
@@ -24,22 +24,22 @@ Last updated: 2026-08-18
 - Rooms default to one broadcaster and at most eight viewers, with a deployment range of 1 through 16. Treat eight as an admission default rather than a validated performance claim; measure publisher upload, encoder load, latency, and stability before describing a supported 1:8 envelope.
 - Use HTTPS/WSS signaling, trickle ICE, STUN, and authenticated coturn candidates. Prefer direct UDP, then relay UDP, with TURN/TCP as the required non-UDP fallback. Optional TURN/TLS uses standard TCP 5349 by default; TCP 443 is reserved for deployments with a dedicated public IP or validated L4/SNI routing.
 - Allow mixed connectivity in one room: direct viewers stay direct while only incompatible network pairs consume TURN bandwidth.
-- Treat 1080p60 as a best-effort quality profile, not a universal guarantee. Provide 720p60 and 720p30 fallbacks.
+- Treat 1080p60 at 8 Mbps as a best-effort ceiling, not a universal guarantee. Keep three simple manual profiles: 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps. Live profile changes do not reopen the source picker. Keep `contentHint = "motion"` and explicit `balanced` degradation, but do not claim resolution-first behavior; actual frame-rate and resolution tradeoffs require browser, hardware, codec, and network measurements.
 - Do not add custom scene detection or dynamic-FPS control until WebRTC statistics and host resource measurements show that browser capture, encoding, and congestion behavior leave a material problem.
 - Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
 - Add an Electron or native Windows sender only after browser measurements identify capture, application-audio, or encode bottlenecks.
-- Keep P2P as the default and add only an explicit deployment-level `p2p|sfu` choice. Multi-viewer use has already shown severe user-observed P2P degradation, consistent with one sender and encoder per viewer. The first SFU experiment should use a single node, one published layer, and no automatic switching, hybrid path, Redis, or peer forwarding tree.
+- Keep one independent publisher-to-viewer connection in the Web PoC until a separately measured and reversible topology decision is accepted.
 - Keep room policy deployment-driven and small. Public and password-only deployments use random temporary rooms. A deployment that configures both the whole-site password and a SQLite path gets sequential, non-expiring protected rooms; stopping a share leaves viewers waiting and does not destroy the room.
 
 ## Current Implementation
 
 - The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The server defaults to an all-interface listener for LAN development and containers; the bare-metal reverse-proxy baseline explicitly binds loopback. It provides a process-only `/healthz` endpoint and requires STUN plus explicit TURN/UDP and TURN/TCP URLs before production startup. TURN/TLS is accepted but optional; configuration checks do not establish public-network reachability.
-- The Web PoC implements capture-before-room creation, live source replacement without renegotiating healthy peers, one independent peer connection per viewer, stable signaling reconnect identities that also work for LAN viewers on HTTP, explicit ICE restart or peer rebuild, host session generation isolation, viewer connection-generation guards for asynchronous signaling and stats, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
+- The Web PoC implements capture-before-room creation, live source and profile changes without renegotiating healthy peers, three manual quality profiles with an explicit `balanced` sender preference, temporary picture pause with audio unaffected, one independent peer connection per viewer, stable signaling reconnect identities that also work for LAN viewers on HTTP, explicit ICE restart or peer rebuild, host session generation isolation, viewer connection-generation guards for asynchronous signaling and stats, short-lived TURN credentials, clearer waiting/TURN states, and local WebRTC statistics.
 - Access is deliberately small: `ACCESS_PASSWORD` is optional, site-wide, and accepts 1 through 128 visible ASCII characters when non-empty. When configured, host and viewer routes first establish a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie; room creation and WebSocket upgrade accept that cookie and no direct room-creation Bearer bypass. There are no accounts, JWTs, server-side access-session maps, or logout flow.
 - ADR-0002 accepts an optional `ROOM_DATABASE_PATH` only alongside `ACCESS_PASSWORD`. In that mode, built-in `node:sqlite` stores only an auto-incremented room ID and host-token digest; links do not expire and stopping sharing leaves the room waiting. Without the path, rooms remain random and temporary. Public mode can never use sequential persistent rooms. Commit `2f66770f8e90` is deployed with `/var/lib/screener/rooms.sqlite`; the state directory and database permissions are verified, and the empty database preserves ID `1` for the first real browser room.
 - `/r/{code}` carries no viewer token or fragment, `/join` accepts only the numeric code, and the 256-bit host token stays internal to host authentication. In public mode the random code is the sole viewing capability and is not a strong privacy guarantee, so private Internet deployments should configure `ACCESS_PASSWORD`.
 - The Web control plane is deployed at `https://share.bonfire.icu` behind nginx with Node.js 24.19.0, and `turn.bonfire.icu` runs authenticated coturn 4.17.2 on standard UDP/TCP 3478. HTTPS, WSS, room authentication, certificate renewal, public STUN, authenticated TURN/UDP and TURN/TCP allocations, and relay-only bidirectional data paths are verified. TURN/TLS is intentionally not enabled.
-- Automated checks pass on current `main` with 102 Vitest tests and both production builds. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remains from the earlier baseline. Production storage startup and permissions are verified; a real persistent-room stop/reuse/restart cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
+- Automated checks pass 108 Vitest tests and both production builds; production remains at the earlier deployed revision. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remains from that baseline. A real live quality/pause cycle, persistent-room stop/reuse/restart cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
 - No infrastructure blocker remains for the current staging deployment. The immediate control-plane milestone and the separate real-device/media matrix are bounded in `docs/status.md`; neither justifies a native sender yet.
 
 ## Provisional Quality Targets
@@ -65,6 +65,7 @@ Last updated: 2026-08-18
 - First PoC technical design: `docs/方案设计.md`
 - Minimal production-shaped deployment: `docs/deployment.md`
 - Research and feasibility: `docs/research/webrtc-p2p-screen-sharing.md`
+- Realtime quality policy: `docs/research/realtime-quality-adaptation.md`
 - Topology decision: `docs/adr/0001-p2p-first-media-topology.md`
 - Persistent protected-room decision: `docs/adr/0002-persistent-protected-rooms.md`
 - Current phase and next step: `docs/status.md`
