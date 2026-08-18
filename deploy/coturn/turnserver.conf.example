@@ -1,0 +1,63 @@
+# Screener minimal production coturn configuration.
+# Target: coturn 4.17.2 or newer patched release.
+# Copy this file outside the repository, replace every <...> placeholder, and
+# restrict the resulting file to the coturn service account.
+
+# Client-facing TURN/STUN listeners.
+listening-port=3478
+tls-listening-port=443
+
+# Keep the automatic address selection on a single-homed public host. For a
+# multi-homed host or a host behind 1:1 NAT, uncomment and replace these values.
+# The NAT must preserve every relay port (external port equals internal port).
+#listening-ip=<LOCAL_LISTEN_IP>
+#relay-ip=<LOCAL_RELAY_IP>
+#external-ip=<PUBLIC_IP>/<LOCAL_RELAY_IP>
+
+# A deliberately small relay range for the friend-group PoC. Open the entire
+# range bidirectionally for UDP and monitor allocation failures before changing it.
+min-port=49152
+max-port=49251
+
+fingerprint
+realm=<TURN_FQDN>
+server-name=<TURN_FQDN>
+
+# TURN REST API credentials. This value must exactly match TURN_SHARED_SECRET
+# in the application environment. Never use a static user/password or no-auth.
+use-auth-secret
+static-auth-secret=<REPLACE_WITH_RANDOM_UNTRACKED_SECRET>
+stale-nonce=600
+max-allocate-lifetime=3600
+
+# Initial abuse controls. max-bps and bps-capacity use bytes per second, not bits.
+# 2,000,000 bytes/s permits roughly 16 Mbit/s in each direction per allocation.
+user-quota=8
+total-quota=100
+max-bps=2000000
+
+# Do not enable allow-loopback-peers: coturn 4.17.2 denies loopback by default.
+# Prevent a TURN allocation from reaching common private or link-local targets.
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+no-multicast-peers
+
+# A certificate for TURN_FQDN is required by turns: URLs. Use absolute paths in
+# the deployed copy and reload/restart coturn after certificate renewal.
+cert=<ABSOLUTE_PATH_TO_FULLCHAIN_PEM>
+pkey=<ABSOLUTE_PATH_TO_PRIVATE_KEY_PEM>
+
+# Let the service supervisor apply bounded retention. Do not enable verbose or
+# log-binding in normal production operation; coturn logs can contain client IPs.
+log-file=stdout
+log-min-level=info
+new-log-timestamp
+no-cli

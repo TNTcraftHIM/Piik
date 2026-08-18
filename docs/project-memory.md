@@ -21,13 +21,20 @@ Last updated: 2026-08-18
 ## Current Recommendation
 
 - Start with a Windows Chrome/Edge sharing MVP and a responsive Web viewer using one `RTCPeerConnection` per viewer. Validate current Android Chrome and iOS Safari as viewing endpoints.
-- Initial operating envelope: one broadcaster and one to three viewers; allow a fourth only after publisher upload and encoder load pass a preflight check.
+- The current PoC hard limit is one broadcaster and three viewers. Do not add a fourth viewer until publisher upload and encoder measurements justify changing the tested envelope.
 - Use HTTPS/WSS signaling, trickle ICE, STUN, and authenticated coturn candidates. Prefer direct UDP, then relay UDP, while keeping TURN/TCP and TURN/TLS on port 443 available for restrictive networks.
 - Allow mixed connectivity in one room: direct viewers stay direct while only incompatible network pairs consume TURN bandwidth.
 - Treat 1080p60 as a best-effort quality profile, not a universal guarantee. Provide 720p60 and 720p30 fallbacks.
-- Prefer a runtime-confirmed hardware codec, normally H.264 first with VP8 fallback. Set game capture to `contentHint = "motion"` and preserve framerate before resolution under congestion.
+- Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
 - Add an Electron or native Windows sender only after browser measurements identify capture, application-audio, or encode bottlenecks.
 - Do not plan an SFU for the normal small-room product path. Reconsider it only if the product scope or real telemetry later invalidates the P2P envelope; never implement peer forwarding trees in the MVP.
+
+## Current Implementation
+
+- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment.
+- The Web PoC implements capture-before-room creation, expiring role tokens, one independent peer connection per viewer, stable signaling reconnect identities, explicit ICE restart or peer rebuild, host generation isolation, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
+- Automated checks and same-machine synthetic-media Chromium recovery tests pass, including lost offer/answer, one transient offer failure, signaling-only viewer reconnect, viewer-tab replacement with old-peer cleanup, and cancelled-room cleanup. Real screen/game audio, public TURN/NAT behavior, mobile lifecycle handling, and latency or quality targets remain unverified.
+- The next milestone is a staging coturn deployment and the manual matrix in `docs/status.md`, not additional product surface or a native sender.
 
 ## Provisional Quality Targets
 
@@ -39,7 +46,7 @@ Last updated: 2026-08-18
 
 ## Open Decisions
 
-- Exact MVP viewer cap and minimum supported publisher upload speed.
+- Minimum supported publisher upload speed and whether a later release should remain capped at three viewers.
 - Exact mobile browser support matrix and the required behavior around autoplay, backgrounding, orientation changes, and network handoff.
 - Whether the first release is open source, source-available, or proprietary; this affects whether GPL/AGPL projects can be reused rather than only studied.
 - Account model versus expiring room links, and whether friends require an allowlist.
@@ -50,6 +57,8 @@ Last updated: 2026-08-18
 ## Source Of Truth
 
 - Requirements: `docs/需求理解.md`
+- First PoC technical design: `docs/方案设计.md`
+- Minimal production-shaped deployment: `docs/deployment.md`
 - Research and feasibility: `docs/research/webrtc-p2p-screen-sharing.md`
 - Topology decision: `docs/adr/0001-p2p-first-media-topology.md`
 - Current phase and next step: `docs/status.md`
