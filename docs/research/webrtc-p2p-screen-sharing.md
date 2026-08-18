@@ -154,11 +154,11 @@ const parameters = sender.getParameters();
 parameters.encodings ??= [{}];
 parameters.encodings[0].maxFramerate = 60;
 parameters.encodings[0].maxBitrate = selectedProfileBitrate;
-parameters.degradationPreference = "maintain-framerate";
+parameters.degradationPreference = "balanced";
 await sender.setParameters(parameters);
 ```
 
-这些参数是偏好或上限，不能绕过浏览器拥塞控制，也不能保证目标码率。Screen Capture 和 WebRTC 规范允许浏览器决定实际输出帧率、编码与拥塞行为；`contentHint = "motion"` 也只是内容提示。静态画面通常能降低编码数据量，但规范不保证所有浏览器主动降低捕获频率或 GPU 开销。
+这些参数是偏好或上限，不能绕过浏览器拥塞控制，也不能保证目标码率。`balanced` 允许浏览器在分辨率和帧率之间权衡，但不规定具体算法；本项目的 `contentHint = "motion"` 还会影响 Chromium/libwebrtc 对来源的内部分类，因此不能套用其仅限 screen encoder 的 `maintain-resolution` 重解释。当前源码链与测量要求见 [Realtime quality adaptation](./realtime-quality-adaptation.md)。静态画面通常能降低编码数据量，但规范不保证所有浏览器主动降低捕获频率或 GPU 开销。
 
 因此首版不实现画面差分检测、周期性 `applyConstraints()` 或自定义动态 FPS 状态机。先对静态桌面和高动态游戏分别记录 `framesEncoded`、发送码率、`totalEncodeTime / framesEncoded`、`qualityLimitationReason` 及主机 CPU/GPU 占用；只有测量显示浏览器行为留下显著问题时，再设计最小的控制策略。这避免用额外竞态、计时器和画质跳变解决一个可能已由捕获器、编码器和 WebRTC 拥塞控制处理的问题。
 

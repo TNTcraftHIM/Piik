@@ -534,7 +534,9 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           </div>
         </div>
 
-        {!relayAvailable && signalStatus === "connected" && (
+        {!relayAvailable &&
+          signalStatus === "connected" &&
+          (hostOnline || peerSnapshot) && (
           <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
         )}
         {peerSnapshot?.error && (
