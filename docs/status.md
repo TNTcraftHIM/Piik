@@ -5,16 +5,15 @@ Last updated: 2026-08-19
 ## Phase
 
 The WebRTC proof of concept is deployed at `https://share.bonfire.icu`. Commit
-`2f66770f8e90` adds protected SQLite persistence, sequential room IDs, reusable
-links, and a waiting state after sharing stops. The production database is
-initialized and empty, so the first real persistent room can receive ID `1`.
+`5b2fb005f6f7` adds live quality changes, picture pause, clearer connection
+states, protected SQLite persistence, sequential room IDs, reusable links, and
+a waiting state after sharing stops. The production database contains room ID
+`1`; the deployment restart preserved that row.
 
-The Web PoC now includes live quality changes, an explicit `balanced` sender
-degradation preference,
+The Web PoC includes an explicit `balanced` sender degradation preference,
 temporary picture pause with audio unaffected, and clearer stopped/waiting and
-TURN-warning states. These controls are not deployed yet. Real capture, game
-audio, mobile lifecycle, sustained multi-viewer behavior, and performance
-targets remain unverified.
+TURN-warning states. Real capture, game audio, mobile lifecycle, sustained
+multi-viewer behavior, and performance targets remain unverified.
 
 ## Established Baseline
 
@@ -30,6 +29,13 @@ targets remain unverified.
 ## Verification
 
 - `npm run check` passes type checking, 108 Vitest tests, and both production builds.
+- Release `5b2fb005f6f7` passed a separate production-process smoke on loopback,
+  then was atomically activated under `/opt/screener/current`. External HTTPS
+  health, the protected access gate, authenticated Secure/HttpOnly cookie, and
+  the new 1080p30 client asset passed after restart. Screener reported zero
+  automatic restarts and no warning-level journal entries; nginx and coturn
+  remained active, while `bonfire.icu` and `www.bonfire.icu` continued returning
+  HTTP 200.
 - Headless Chromium 151 established real local peer connections from animated canvas streams, delivered a live video track over direct UDP, and recovered from dropped offer/answer and initial `createOffer` failures.
 - Host and viewer generation guards discard delayed signaling, candidate, and stats work after replacement. Synthetic source changes added and removed audio without another offer, preserved healthy peer objects, and stopped retired tracks.
 - Unit coverage verifies live capture constraints, balanced sender parameters, video-only pause, sender-update failure and retry, source replacement rollback, and audio `null -> track -> null` changes.
@@ -39,9 +45,9 @@ targets remain unverified.
 
 ## Next Milestone
 
-Merge and deploy the live controls, then verify a real quality/pause cycle, room
-ID `1`, stop-and-republish behavior, reusable links, and recovery after a service
-restart.
+Verify a real quality/pause cycle in room ID `1`, stop-and-republish behavior,
+link reuse in the browser, and host recovery after a service restart. The
+database row itself has already survived the live-controls deployment restart.
 
 Execute and record the manual browser/network matrix:
 
@@ -54,7 +60,8 @@ Execute and record the manual browser/network matrix:
 
 ## Current Blocker
 
-- No infrastructure blocker remains. The live-control browser cycle, first real persistent-room lifecycle, and real-device media matrix remain unverified.
+- No infrastructure blocker remains. The live-control browser cycle, room `1`
+  browser lifecycle, and real-device media matrix remain unverified.
 
 ## Blocking Decisions
 
