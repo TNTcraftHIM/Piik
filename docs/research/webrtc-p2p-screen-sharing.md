@@ -52,7 +52,7 @@
 - STUN 让客户端发现公网映射并产生 server-reflexive candidate。它不承载媒体，也不能保证穿过所有 NAT。
 - ICE 测试 host、server-reflexive、peer-reflexive 和 relay candidates，并选择可工作的候选对。Trickle ICE 可以减少建连等待。
 - TURN 在无法直连时转发完整媒体流，是 NAT 组件中真正产生高带宽成本的部分。
-- 候选优先级应表达：direct UDP -> TURN/UDP -> TURN/TCP -> TURN/TLS 443。ICE 可能交错或并发进行候选检查，应用不应手写严格串行计时器；TCP/TLS 能穿过更严格的网络，但丢包时可能产生队头阻塞。
+- 生产最小候选集合是 STUN、TURN/UDP 和 TURN/TCP；可选再加入 TURN/TLS。整体偏好应表达 direct UDP -> TURN/UDP -> TURN/TCP -> optional TURN/TLS，但 ICE 可能交错或并发进行候选检查，应用不应手写严格串行计时器。TCP 在丢包时可能产生队头阻塞。
 
 不存在适用于所有用户的权威“P2P 直连率”。CGNAT、endpoint-dependent mapping、校园/企业防火墙、移动网络、IPv6 和地区运营商都会改变结果。首版必须通过 `getStats()` 统计自己的 `host/srflx/prflx/relay` 比例，而不是引用未经验证的行业百分比。
 
@@ -63,12 +63,14 @@ ICE 是按分享者与每一名观看者的网络组合独立选路，而不是�
 解决方式不是强迫所有人走服务器，也不是继续增加 STUN 地址，而是同时提供有效的 TURN 凭据和多种传输：
 
 1. 将 direct UDP 设为最高优先级，成功者保持零媒体服务器路径。
-2. 同时提供有效的 TURN/UDP、TURN/TCP 与 `turns` TLS 443 candidates，由 ICE 连通性检查和优先级选择路径。
+2. 同时提供有效的 TURN/UDP 与 TURN/TCP candidates，由 ICE 连通性检查和优先级选择路径；需要额外兼容性时再加入 `turns`，默认使用标准 TCP 5349。
 3. 通过统计确认最终选中的 candidate pair，而不是从应用计时顺序推断路径。
 4. 网络切换或候选对失效时执行 ICE restart，超时后重建该 peer connection。
 5. 在 UI 和诊断中区分“直连”“服务器中继”“正在恢复”和明确失败原因。
 
-这种混合房间里，一名观看者走 TURN 不会迫使其他观看者也中继。TURN/TLS 443 能显著覆盖严格网络，但仍无法穿过所有认证代理、深度检测或管理员策略，因此产品还需要连接自检和可操作的失败信息，不能承诺 100% 网络可达。
+这种混合房间里，一名观看者走 TURN 不会迫使其他观看者也中继。`turn:` over TCP 不提供客户端至 TURN 的 TLS 封装，但被中继的 WebRTC 媒体仍由端点间 DTLS-SRTP 加密。可选 TURN/TLS 使用 RFC 7065 标准 TCP 5349；改用 443 能覆盖更多只放行常见端口的网络，但需要独立公网 IP 或经过验证的 L4/SNI 路由，且仍无法穿过所有认证代理、深度检测或管理员策略。
+
+普通 Cloudflare 橙云代理只代理其 HTTP/HTTPS 管线，不能因为目标端口是 443 就转发 TURN。Cloudflare 官方将任意 TCP/UDP 应用放在 Spectrum 产品边界内；不使用这类 L4 服务时，TURN DNS 记录必须直连源站。网站仍可独立使用 Cloudflare HTTP 代理。
 
 来源：
 
@@ -265,7 +267,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - `ws.close()` 默认会等待关闭握手，不能用“升级成功后发送 close frame”实现公网连接硬上限。总连接和未鉴权连接容量应在 `handleUpgrade()` 前检查，超限直接返回 HTTP 503 并销毁底层 socket。
 - Node 的 `IncomingMessage.url` 是未经应用路由解析的 request-target，而 WHATWG `URL` 构造器会拒绝部分输入。upgrade handler 必须捕获解析失败并关闭 socket，不能让未鉴权输入抛到 EventEmitter 顶层。
 - coturn 使用 `use-auth-secret` 支持的 TURN REST 短期凭据：`base64(HMAC-SHA1(secret, expiry + ":" + subject))`。coturn 不提供 HTTP 凭据接口，必须由已鉴权的应用服务生成。
-- RFC 7065/5928 将 `turn` + UDP、`turn` + TCP 和 `turns` + TCP 分别映射到客户端至 TURN 的 UDP、TCP 和 TLS 传输。WebRTC 会逐条验证 ICE URL，任一坏项都可能使整个 PeerConnection 配置失败，因此启动预检先按原始 URI 语法 fail closed，再要求三类目标 URL 显式声明小写 `transport`，且 TLS URL 显式使用 TCP 443；这只能验证配置形状，不能替代公网 relay allocation 测试。
+- RFC 7065/5928 将 `turn` + UDP、`turn` + TCP 和 `turns` + TCP 分别映射到客户端至 TURN 的 UDP、TCP 和 TLS 传输，并规定 TURN/TLS 默认端口为 5349。WebRTC 会逐条验证 ICE URL，任一坏项都可能使整个 PeerConnection 配置失败，因此启动预检先按原始 URI 语法 fail closed，再要求生产基线的 TURN/UDP 和 TURN/TCP URL 显式声明小写 `transport`；`turns` 是可选项，可显式使用 5349 或部署者实际提供的端口。这只能验证配置形状，不能替代公网 relay allocation 测试。
 - Node `server.listen()` 省略 host 时可能监听未指定 IPv6 地址或 `0.0.0.0`。单机反向代理基线应显式绑定 loopback，容器或可信 LAN 才通过配置选择宽绑定；进程级 HTTP 健康检查不应同步探测 TURN 或其他外部网络。
 - 截至本次复核，coturn 应使用 4.17.2 或更新补丁版本；4.17.2 修复了此前补丁版本的 UDP TTL 回归。
 - MiroTalk BRO 当前 P2P 模式仍是 broadcaster 对每位 viewer 建独立连接；Screego 也采用独立 session 和 HMAC TURN 凭据。这验证了拓扑，但两者的静态/长时凭据与轻量恢复策略不直接照搬。
@@ -282,6 +284,8 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - [coturn example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
 - [TURN URI scheme RFC 7065](https://www.rfc-editor.org/rfc/rfc7065.html)
 - [TURN TCP/TLS allocations RFC 5928](https://www.rfc-editor.org/rfc/rfc5928.html)
+- [Cloudflare proxied network ports](https://developers.cloudflare.com/fundamentals/reference/network-ports/)
+- [Cloudflare Spectrum configuration](https://developers.cloudflare.com/spectrum/reference/configuration-options/)
 - [Node.js 24 `server.listen`](https://nodejs.org/docs/latest-v24.x/api/net.html#serverlistenport-host-backlog-callback)
 
 ## 实施难度与预估
@@ -301,7 +305,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 1. 首版坚持 P2P-first，但明确只服务小房间，硬上限为三名观看者；测量完成前不开放第四名。
 2. Web 先行，目标 Windows Chrome/Edge；把 1080p60 写成 best effort，同时提供降档。
-3. 从第一天部署 coturn，并验证 direct、TURN/UDP、TURN/TCP、TURN/TLS 443 以及移动网络切换；这是避免“部分好友永远看不了”的必要条件。
+3. 从第一天部署 coturn，并验证 direct、TURN/UDP、TURN/TCP 以及移动网络切换；这是避免“部分好友永远看不了”的必要条件。TURN/TLS 按部署需要选配，默认 5349，443 只作为受限网络增强。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。
 5. 产品代码优先直接使用浏览器 WebRTC API；借鉴 MiroTalk BRO 和 Screego，不在许可证未定前直接 fork GPL/AGPL 代码。
 6. 正常人数超过产品上限时引导使用现有直播服务，不为了假设规模提前搭 SFU；若范围以后改变，首选 Broadcast Box 或 LiveKit，不从零写 SFU。

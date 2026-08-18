@@ -1,0 +1,38 @@
+[Unit]
+Description=Screener WebRTC signaling and web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=screener
+Group=screener
+WorkingDirectory=/opt/screener/current
+EnvironmentFile=/etc/screener/screener.env
+ExecStart=/usr/local/bin/node dist/server/server/index.js
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=20s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

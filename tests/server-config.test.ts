@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { loadConfig } from "../src/server/config.ts";
 
-const completeProductionTurnUrls =
-  "turn:turn.test:3478?transport=udp,turn:turn.test:3478?transport=tcp,turns:turn.test:443?transport=tcp";
+const requiredProductionTurnUrls =
+  "turn:turn.test:3478?transport=udp,turn:turn.test:3478?transport=tcp";
 
 describe("server configuration", () => {
   it("allows development without TURN and defaults the origin", () => {
@@ -51,13 +51,31 @@ describe("server configuration", () => {
       PUBLIC_BASE_URL: "https://share.test",
       ROOM_CREATION_TOKEN: "c".repeat(32),
       STUN_URLS: "stun:turn.test:3478,stuns:turn.test:5349",
-      TURN_URLS: completeProductionTurnUrls,
+      TURN_URLS: requiredProductionTurnUrls,
       TURN_SHARED_SECRET: "t".repeat(32),
     });
 
-    expect(config.turnUrls).toHaveLength(3);
+    expect(config.turnUrls).toHaveLength(2);
     expect(config.turnSharedSecret).toBe("t".repeat(32));
   });
+
+  it.each([5349, 443])(
+    "accepts optional TURN/TLS over TCP on production port %i",
+    (tlsPort) => {
+      const config = loadConfig({
+        NODE_ENV: "production",
+        PUBLIC_BASE_URL: "https://share.test",
+        ROOM_CREATION_TOKEN: "c".repeat(32),
+        STUN_URLS: "stun:turn.test:3478",
+        TURN_URLS: `${requiredProductionTurnUrls},turns:turn.test:${tlsPort}?transport=tcp`,
+        TURN_SHARED_SECRET: "t".repeat(32),
+      });
+
+      expect(config.turnUrls.at(-1)).toBe(
+        `turns:turn.test:${tlsPort}?transport=tcp`,
+      );
+    },
+  );
 
   it("does not require transport coverage outside production", () => {
     const config = loadConfig({
@@ -99,7 +117,7 @@ describe("server configuration", () => {
           PUBLIC_BASE_URL: "https://share.test",
           ROOM_CREATION_TOKEN: "c".repeat(32),
           STUN_URLS: "stun:turn.test:3478",
-          TURN_URLS: `${completeProductionTurnUrls},${invalidUrl}`,
+          TURN_URLS: `${requiredProductionTurnUrls},${invalidUrl}`,
           TURN_SHARED_SECRET: "t".repeat(32),
         }),
       ).toThrow("TURN_URLS contains an invalid ICE URL");
@@ -125,17 +143,7 @@ describe("server configuration", () => {
     {
       missing: "TURN/TCP",
       urls:
-        "turn:turn.test:3478?transport=udp,turns:turn.test:443?transport=tcp",
-    },
-    {
-      missing: "TURN/TLS on TCP port 443",
-      urls:
-        "turn:turn.test:3478?transport=udp,turn:turn.test:3478?transport=tcp,turns:turn.test:5349?transport=tcp",
-    },
-    {
-      missing: "explicit TURN/TLS transport",
-      urls:
-        "turn:turn.test:3478?transport=udp,turn:turn.test:3478?transport=tcp,turns:turn.test:443",
+        "turn:turn.test:3478?transport=udp,turn:turn.test:3478",
     },
   ])("rejects production TURN URLs missing $missing", ({ urls }) => {
     expect(() =>
@@ -148,7 +156,7 @@ describe("server configuration", () => {
         TURN_SHARED_SECRET: "t".repeat(32),
       }),
     ).toThrow(
-      "TURN_URLS must include explicit TURN/UDP, TURN/TCP, and TURN/TLS on TCP port 443 endpoints in production",
+      "TURN_URLS must include explicit TURN/UDP and TURN/TCP endpoints in production",
     );
   });
 
