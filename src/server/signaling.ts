@@ -24,7 +24,7 @@ interface AuthenticatedSession {
   roomId: string;
   role: Role;
   peerId: string;
-  roomExpiresAtMs: number;
+  roomExpiresAtMs: number | null;
 }
 
 interface SocketState {
@@ -220,7 +220,10 @@ export class SignalingServer {
       return;
     }
 
-    if (this.now() >= state.authenticated.roomExpiresAtMs) {
+    if (
+      state.authenticated.roomExpiresAtMs !== null &&
+      this.now() >= state.authenticated.roomExpiresAtMs
+    ) {
       this.expireRooms();
       return;
     }
@@ -274,7 +277,10 @@ export class SignalingServer {
       roomId: participant.roomId,
       role: participant.role,
       peerId: participant.peerId,
-      roomExpiresAtMs: Date.parse(participant.expiresAt),
+      roomExpiresAtMs:
+        participant.expiresAt === null
+          ? null
+          : Date.parse(participant.expiresAt),
     };
     this.clearViewerGrace(participant.roomId, participant.peerId);
     const connectionId =
@@ -300,7 +306,9 @@ export class SignalingServer {
       iceConfig: this.iceConfig(
         participant.roomId,
         participant.peerId,
-        Date.parse(participant.expiresAt),
+        participant.expiresAt === null
+          ? null
+          : Date.parse(participant.expiresAt),
       ),
     });
 
@@ -363,12 +371,34 @@ export class SignalingServer {
           ),
         });
         return;
+      case "stop-sharing":
       case "close-room":
         if (authenticated.role !== "host") {
-          this.sendError(socket, "FORBIDDEN", "Only the host may close the room");
+          this.sendError(socket, "FORBIDDEN", "Only the host may stop sharing");
           return;
         }
-        this.closeRoom(authenticated.roomId);
+        const state = this.socketStates.get(socket);
+        if (state?.authenticated === authenticated) {
+          this.options.roomStore.disconnectParticipant(
+            authenticated.roomId,
+            authenticated.peerId,
+            state.sessionId,
+          );
+        }
+        this.stopSharing(authenticated.roomId);
+        socket.close(1000, "Sharing stopped");
+        return;
+      case "abandon-room":
+        if (authenticated.role !== "host") {
+          this.sendError(socket, "FORBIDDEN", "Only the host may abandon the room");
+          return;
+        }
+        try {
+          this.abandonRoom(authenticated.roomId);
+        } catch (error) {
+          console.error("Room abandonment failed", error);
+          this.sendError(socket, "SERVER_ERROR", "Room could not be abandoned");
+        }
         return;
     }
   }
@@ -492,20 +522,28 @@ export class SignalingServer {
     this.viewerGraceTimers.set(key, timer);
   }
 
-  private closeRoom(roomId: string): void {
-    const closed = this.options.roomStore.closeRoom(roomId);
-    if (!closed) {
+  private stopSharing(roomId: string): void {
+    this.clearRoomConnectionIds(roomId);
+    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+      this.sendToSession(viewer.sessionId, { type: "sharing-stopped" });
+      this.sendToSession(viewer.sessionId, { type: "host-status", online: false });
+    }
+  }
+
+  private abandonRoom(roomId: string): void {
+    const abandoned = this.options.roomStore.abandonRoom(roomId);
+    if (!abandoned) {
       return;
     }
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
-    for (const sessionId of closed.sessionIds) {
+    for (const sessionId of abandoned.sessionIds) {
       const socket = this.socketsBySessionId.get(sessionId);
       if (!socket) {
         continue;
       }
       this.send(socket, { type: "room-closed", reason: "host-ended" });
-      socket.close(1000, "Room closed");
+      socket.close(1000, "Room abandoned");
     }
   }
 
@@ -570,12 +608,16 @@ export class SignalingServer {
     );
   }
 
-  private iceConfig(roomId: string, peerId: string, roomExpiresAtMs: number) {
+  private iceConfig(
+    roomId: string,
+    peerId: string,
+    roomExpiresAtMs: number | null,
+  ) {
     return createIceConfig(
       this.options.ice,
       `${roomId}:${peerId}`,
       this.now(),
-      roomExpiresAtMs,
+      roomExpiresAtMs ?? undefined,
     );
   }
 

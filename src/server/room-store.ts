@@ -5,6 +5,7 @@ import {
   ROOM_CODE_LENGTH,
   type Role,
 } from "../shared/protocol.js";
+import { RoomDatabase } from "./room-database.js";
 
 export type RoomStoreErrorCode =
   | "INVALID_TOKEN"
@@ -29,7 +30,7 @@ interface Participant {
 interface Room {
   roomId: string;
   hostTokenDigest: Buffer;
-  expiresAtMs: number;
+  expiresAtMs: number | null;
   host?: Participant;
   viewers: Map<string, Participant>;
 }
@@ -37,7 +38,7 @@ interface Room {
 export interface CreatedRoom {
   roomId: string;
   hostToken: string;
-  expiresAt: string;
+  expiresAt: string | null;
 }
 
 export type ConnectParticipantInput =
@@ -59,7 +60,7 @@ export interface ConnectedParticipant {
   roomId: string;
   role: Role;
   peerId: string;
-  expiresAt: string;
+  expiresAt: string | null;
   hostOnline: boolean;
   replacedSessionId?: string;
   viewerPeerIds: readonly string[];
@@ -85,6 +86,7 @@ export interface RoomStoreOptions {
   ttlMs: number;
   maxRooms: number;
   maxViewersPerRoom: number;
+  database?: RoomDatabase;
   now?: () => number;
   random?: (size: number) => Buffer;
 }
@@ -114,6 +116,23 @@ export class RoomStore {
     this.now = options.now ?? Date.now;
     this.random = options.random ?? randomBytes;
     this.maxViewersPerRoom = options.maxViewersPerRoom;
+
+    try {
+      for (const storedRoom of options.database?.loadRooms() ?? []) {
+        if (!isRoomCode(storedRoom.roomId) || this.rooms.has(storedRoom.roomId)) {
+          throw new Error("Room database contains an invalid or duplicate room id");
+        }
+        this.rooms.set(storedRoom.roomId, {
+          roomId: storedRoom.roomId,
+          hostTokenDigest: Buffer.from(storedRoom.hostTokenDigest),
+          expiresAtMs: null,
+          viewers: new Map(),
+        });
+      }
+    } catch (error) {
+      options.database?.close();
+      throw error;
+    }
   }
 
   createRoom(): CreatedRoom {
@@ -121,13 +140,16 @@ export class RoomStore {
       throw new RoomStoreError("ROOM_LIMIT");
     }
 
-    const roomId = this.uniqueRoomCode();
     const hostToken = this.random(32).toString("base64url");
-    const expiresAtMs = this.now() + this.options.ttlMs;
+    const hostTokenDigest = digest(hostToken);
+    const createdAtMs = this.now();
+    const storedRoom = this.options.database?.createRoom(hostTokenDigest);
+    const roomId = storedRoom?.roomId ?? this.uniqueRoomCode();
+    const expiresAtMs = storedRoom ? null : createdAtMs + this.options.ttlMs;
 
     this.rooms.set(roomId, {
       roomId,
-      hostTokenDigest: digest(hostToken),
+      hostTokenDigest,
       expiresAtMs,
       viewers: new Map(),
     });
@@ -135,7 +157,7 @@ export class RoomStore {
     return {
       roomId,
       hostToken,
-      expiresAt: new Date(expiresAtMs).toISOString(),
+      expiresAt: formatExpiresAt(expiresAtMs),
     };
   }
 
@@ -214,10 +236,13 @@ export class RoomStore {
     );
   }
 
-  closeRoom(roomId: string): ClosedRoom | undefined {
+  abandonRoom(roomId: string): ClosedRoom | undefined {
     const room = this.rooms.get(roomId);
     if (!room) {
       return undefined;
+    }
+    if (this.options.database && !this.options.database.deleteRoom(roomId)) {
+      throw new Error("Persistent room is missing from the room database");
     }
     const sessionIds = connectedSessionIds(room);
     this.rooms.delete(roomId);
@@ -227,7 +252,7 @@ export class RoomStore {
   expireRooms(nowMs = this.now()): ClosedRoom[] {
     const expired: ClosedRoom[] = [];
     for (const [roomId, room] of this.rooms) {
-      if (room.expiresAtMs > nowMs) {
+      if (room.expiresAtMs === null || room.expiresAtMs > nowMs) {
         continue;
       }
       expired.push({ roomId, sessionIds: connectedSessionIds(room) });
@@ -238,6 +263,10 @@ export class RoomStore {
 
   get size(): number {
     return this.rooms.size;
+  }
+
+  close(): void {
+    this.options.database?.close();
   }
 
   private connectHost(
@@ -267,7 +296,7 @@ export class RoomStore {
       roomId: room.roomId,
       role: "host",
       peerId: participant.peerId,
-      expiresAt: new Date(room.expiresAtMs).toISOString(),
+      expiresAt: formatExpiresAt(room.expiresAtMs),
       hostOnline: true,
       replacedSessionId:
         replacedSessionId === input.sessionId ? undefined : replacedSessionId,
@@ -299,7 +328,7 @@ export class RoomStore {
       roomId: room.roomId,
       role: "viewer",
       peerId: participant.peerId,
-      expiresAt: new Date(room.expiresAtMs).toISOString(),
+      expiresAt: formatExpiresAt(room.expiresAtMs),
       hostOnline: Boolean(room.host?.sessionId),
       replacedSessionId:
         replacedSessionId === input.sessionId ? undefined : replacedSessionId,
@@ -313,7 +342,7 @@ export class RoomStore {
       // A single response avoids turning room IDs into an enumeration oracle.
       throw new RoomStoreError("INVALID_TOKEN");
     }
-    if (room.expiresAtMs <= this.now()) {
+    if (room.expiresAtMs !== null && room.expiresAtMs <= this.now()) {
       throw new RoomStoreError("ROOM_EXPIRED");
     }
     return room;
@@ -329,15 +358,17 @@ export class RoomStore {
   }
 
   private uniqueRoomCode(): string {
-    const range = 10n ** BigInt(ROOM_CODE_LENGTH);
+    const minimum = 10n ** BigInt(ROOM_CODE_LENGTH - 1);
+    const range = 9n * minimum;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const bytes = this.random(8);
       if (bytes.length !== 8) {
         throw new Error("Room code random source must return 8 bytes");
       }
-      const candidate = (bytes.readBigUInt64BE() % range)
-        .toString()
-        .padStart(ROOM_CODE_LENGTH, "0");
+      const candidate = (
+        minimum +
+        (bytes.readBigUInt64BE() % range)
+      ).toString();
       if (!this.rooms.has(candidate)) {
         return candidate;
       }
@@ -354,6 +385,17 @@ export class RoomStore {
     }
     throw new Error("Unable to allocate a unique identifier");
   }
+}
+
+function isRoomCode(value: string): boolean {
+  return (
+    value.length <= ROOM_CODE_LENGTH &&
+    /^[1-9]\d*$/.test(value)
+  );
+}
+
+function formatExpiresAt(expiresAtMs: number | null): string | null {
+  return expiresAtMs === null ? null : new Date(expiresAtMs).toISOString();
 }
 
 function findViewerByPeerId(room: Room, peerId: string): Participant | undefined {

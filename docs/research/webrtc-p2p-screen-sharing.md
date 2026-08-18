@@ -203,9 +203,9 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 ### 最小访问模型
 
-当前需求只有一个部署级密码，不需要账号、数据库、JWT、服务端 session Map、逐人邀请或 logout。`ACCESS_PASSWORD` 为空时网站公开；生产模式下接受 12 至 128 位可见 ASCII 字符，避免把 Fetch 无法可靠编码的 Unicode 原文放进 Authorization header。配置时，host 和 viewer 都先通过同一登录 gate。成功登录得到 12 小时的无状态 HMAC-SHA256 cookie，使用 `HttpOnly`、`SameSite=Strict`、`Path=/`、有限 `Max-Age`，HTTPS 生产环境使用 `Secure` 和 `__Host-` 前缀。建房 HTTP 和 WebSocket upgrade 都只认 cookie，不允许直接给建房 API 传 Bearer 绕过 gate。异常 WebSocket 关闭会检查一次 access session；确认 cookie 失效时回到 gate，检查本身失败时继续正常网络重连。HMAC 与定长密码摘要比较使用 Node.js `crypto.createHmac()` 和 `crypto.timingSafeEqual()`；cookie 属性遵循 RFC6265bis 的语义。
+当前需求只有一个部署级密码，不需要账号数据库、JWT、服务端 session Map、逐人邀请或 logout。`ACCESS_PASSWORD` 为空时网站公开；非空值接受 1 至 128 个可见 ASCII 字符，避免把 Fetch 无法可靠编码的 Unicode 原文放进 Authorization header。配置时，host 和 viewer 都先通过同一登录 gate。成功登录得到 12 小时的无状态 HMAC-SHA256 cookie，使用 `HttpOnly`、`SameSite=Strict`、`Path=/`、有限 `Max-Age`，HTTPS 生产环境使用 `Secure` 和 `__Host-` 前缀。建房 HTTP 和 WebSocket upgrade 都只认 cookie，不允许直接给建房 API 传 Bearer 绕过 gate。异常 WebSocket 关闭会检查一次 access session；确认 cookie 失效时回到 gate，检查本身失败时继续正常网络重连。HMAC 与定长密码摘要比较使用 Node.js `crypto.createHmac()` 和 `crypto.timingSafeEqual()`；cookie 属性遵循 RFC6265bis 的语义。
 
-房间使用 12 位随机纯数字 code。观看链接是 `/r/{code}`，也可在 `/join` 只输入 code；两者都没有 viewer token 或 fragment。256-bit host token 只留在 host 页面内存并用于房间级 host 信令鉴权。在密码模式中，code 不能绕过全站 gate；在公开模式中，code 是唯一观看 capability，约 40 bit 的命名空间不构成强隐私保证，面向互联网的私密实例应配置全站密码。
+房间始终使用纯数字 code。默认临时模式生成随机 code 并设置 TTL；只有同时配置 `ACCESS_PASSWORD` 与 `ROOM_DATABASE_PATH` 时，内置 `node:sqlite` 才从 `1` 开始分配不设过期时间的持久 code。数据库只保存作为 rowid 的房间 ID 与 host token 摘要，路径在无全站密码时会被启动校验拒绝。观看链接是 `/r/{code}`，也可在 `/join` 只输入 code；两者都没有 viewer token 或 fragment。256-bit host token 只用于房间级 host 信令鉴权，服务端仅持有其 SHA-256 摘要。在密码模式中，code 不能绕过全站 gate；在公开模式中，随机 code 是唯一观看 capability，仍不构成强隐私保证，面向互联网的私密实例应配置全站密码。
 
 来源（访问于 2026-08-18）：[Cookies: HTTP State Management Mechanism draft (RFC6265bis)](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/)、[Node.js Crypto](https://nodejs.org/api/crypto.html#cryptocreatehmacalgorithm-key-options) 与 [`crypto.timingSafeEqual()`](https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b)。
 
@@ -249,7 +249,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - WebRTC 使用 DTLS-SRTP。TURN 只能看到加密后的媒体包，但仍能看到地址、房间时序和流量元数据。
 - P2P 会让房间内双方得知网络地址。熟人首版可以接受，陌生人房间不能默认接受。
 - TURN 必须使用短期凭据、速率限制、每用户/房间配额和出口告警，不能提供匿名公共 relay。
-- 面向互联网的私密部署应启用全站密码。公开模式的 12 位房间码只是轻量 capability，不应宣传为强私密邀请；host token 始终只用于发布权限。
+- 面向互联网的私密部署应启用全站密码。公开模式的随机房间码只是轻量 capability，不应宣传为强私密邀请；可枚举的持久房间只允许与全站密码搭配，host token 始终只用于发布权限。
 - 如果未来使用 SFU 且要求服务器看不到内容，再评估 SFrame/WebRTC Encoded Transform 和群组密钥管理。
 
 ## 参考代码优先级

@@ -3,7 +3,6 @@ import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../shared/protocol.js";
 export type RuntimeEnvironment = "development" | "test" | "production";
 
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 3_600;
-const MIN_ACCESS_PASSWORD_BYTES = 12;
 const MAX_ACCESS_PASSWORD_BYTES = 128;
 const MIN_TURN_SECRET_BYTES = 32;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
@@ -16,6 +15,7 @@ export interface ServerConfig {
   publicBaseUrl: URL;
   allowedOrigins: ReadonlySet<string>;
   accessPassword?: string;
+  roomDatabasePath?: string;
   roomTtlMs: number;
   maxRooms: number;
   maxViewersPerRoom: number;
@@ -243,6 +243,8 @@ export function loadConfig(
   }
 
   const accessPassword = environment.ACCESS_PASSWORD?.trim() || undefined;
+  const roomDatabasePath =
+    environment.ROOM_DATABASE_PATH?.trim() || undefined;
   const turnSharedSecret = environment.TURN_SHARED_SECRET?.trim() || undefined;
   const stunUrls = parseIceUrlList(
     environment.STUN_URLS,
@@ -269,12 +271,11 @@ export function loadConfig(
       "ACCESS_PASSWORD must contain at most 128 visible ASCII characters",
     );
   }
-  if (
-    nodeEnv === "production" &&
-    accessPassword &&
-    Buffer.byteLength(accessPassword) < MIN_ACCESS_PASSWORD_BYTES
-  ) {
-    throw new Error("ACCESS_PASSWORD must contain at least 12 bytes in production");
+  if (roomDatabasePath && !accessPassword) {
+    throw new Error("ROOM_DATABASE_PATH requires ACCESS_PASSWORD");
+  }
+  if (nodeEnv === "production" && roomDatabasePath === ":memory:") {
+    throw new Error("ROOM_DATABASE_PATH must be file-backed in production");
   }
   if (nodeEnv === "production" && turnUrls.length === 0) {
     throw new Error("TURN is required in production");
@@ -303,6 +304,7 @@ export function loadConfig(
       publicBaseUrl.origin,
     ),
     accessPassword,
+    roomDatabasePath,
     roomTtlMs:
       parsePositiveInteger(environment.ROOM_TTL_SECONDS, 14_400, "ROOM_TTL_SECONDS") *
       1_000,

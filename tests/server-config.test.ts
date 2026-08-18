@@ -67,6 +67,7 @@ describe("server configuration", () => {
     });
 
     expect(config.accessPassword).toBeUndefined();
+    expect(config.roomDatabasePath).toBeUndefined();
     expect(config.turnUrls).toHaveLength(2);
     expect(config.turnSharedSecret).toBe("t".repeat(32));
   });
@@ -192,28 +193,53 @@ describe("server configuration", () => {
     );
   });
 
-  it("rejects weak production secrets", () => {
-    expect(() =>
-      loadConfig({
-        NODE_ENV: "production",
-        PUBLIC_BASE_URL: "https://share.test",
-        ACCESS_PASSWORD: "too-short",
-        STUN_URLS: "stun:turn.test:3478",
-        TURN_URLS: "turn:turn.test:3478",
-        TURN_SHARED_SECRET: "t".repeat(32),
-      }),
-    ).toThrow("ACCESS_PASSWORD must contain at least 12 bytes");
+  it("accepts a short production access password", () => {
+    const config = loadConfig({
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://share.test",
+      ACCESS_PASSWORD: "short-pass1",
+      STUN_URLS: "stun:turn.test:3478",
+      TURN_URLS: requiredProductionTurnUrls,
+      TURN_SHARED_SECRET: "t".repeat(32),
+    });
 
+    expect(config.accessPassword).toBe("short-pass1");
+  });
+
+  it("rejects a weak production TURN secret", () => {
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        ACCESS_PASSWORD: "c".repeat(12),
+        ACCESS_PASSWORD: "x",
         STUN_URLS: "stun:turn.test:3478",
-        TURN_URLS: "turn:turn.test:3478",
+        TURN_URLS: requiredProductionTurnUrls,
         TURN_SHARED_SECRET: "too-short",
       }),
     ).toThrow("TURN_SHARED_SECRET must contain at least 32 bytes");
+  });
+
+  it("requires access protection for a persistent room database", () => {
+    expect(() =>
+      loadConfig({ ROOM_DATABASE_PATH: "rooms.sqlite" }),
+    ).toThrow("ROOM_DATABASE_PATH requires ACCESS_PASSWORD");
+
+    const config = loadConfig({
+      ACCESS_PASSWORD: "x",
+      ROOM_DATABASE_PATH: "rooms.sqlite",
+    });
+    expect(config.roomDatabasePath).toBe("rooms.sqlite");
+  });
+
+  it("rejects an in-memory room database in production", () => {
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "production",
+        PUBLIC_BASE_URL: "https://share.test",
+        ACCESS_PASSWORD: "x",
+        ROOM_DATABASE_PATH: ":memory:",
+      }),
+    ).toThrow("ROOM_DATABASE_PATH must be file-backed in production");
   });
 
   it.each(["密码密码密码密码", "contains spaces", "x".repeat(129)])(

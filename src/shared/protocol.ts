@@ -18,8 +18,9 @@ const tokenSchema = z
 
 export const roomCodeSchema = z
   .string()
-  .length(ROOM_CODE_LENGTH)
-  .regex(/^\d+$/);
+  .min(1)
+  .max(ROOM_CODE_LENGTH)
+  .regex(/^[1-9]\d*$/);
 
 export const roleSchema = z.enum(["host", "viewer"]);
 export type Role = z.infer<typeof roleSchema>;
@@ -115,7 +116,10 @@ export const clientMessageSchema = z.union([
     })
     .strict(),
   z.object({ type: z.literal("refresh-ice") }).strict(),
+  z.object({ type: z.literal("stop-sharing") }).strict(),
+  // Kept as a compatibility alias while previously deployed clients age out.
   z.object({ type: z.literal("close-room") }).strict(),
+  z.object({ type: z.literal("abandon-room") }).strict(),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -137,7 +141,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
       type: z.literal("authenticated"),
       role: roleSchema,
       peerId: opaqueIdSchema,
-      roomExpiresAt: z.string().datetime(),
+      roomExpiresAt: z.string().datetime().nullable(),
       maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
       hostOnline: z.boolean(),
       connectionId: opaqueIdSchema.nullable(),
@@ -184,6 +188,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
       online: z.boolean(),
     })
     .strict(),
+  z.object({ type: z.literal("sharing-stopped") }).strict(),
   z
     .object({
       type: z.literal("room-closed"),
@@ -205,7 +210,7 @@ export const createRoomResponseSchema = z
     roomId: roomCodeSchema,
     hostToken: tokenSchema,
     inviteUrl: z.string().url().max(2048),
-    expiresAt: z.string().datetime(),
+    expiresAt: z.string().datetime().nullable(),
   })
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;

@@ -1,6 +1,11 @@
-import { roomCodeSchema } from "../../shared/protocol";
+import {
+  createRoomResponseSchema,
+  roomCodeSchema,
+  type CreateRoomResponse,
+} from "../../shared/protocol";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
 
 export interface ViewerRoute {
   roomId: string;
@@ -8,6 +13,57 @@ export interface ViewerRoute {
 
 export function isValidRoomId(value: string): boolean {
   return roomCodeSchema.safeParse(value).success;
+}
+
+export function isHostRoomExpired(
+  room: CreateRoomResponse,
+  now = Date.now(),
+): boolean {
+  if (room.expiresAt === null) {
+    return false;
+  }
+  const expiresAt = Date.parse(room.expiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt <= now;
+}
+
+export function clearHostRoom(): void {
+  try {
+    window.localStorage.removeItem(HOST_ROOM_STORAGE_KEY);
+  } catch {
+    // Storage can be disabled; the current page still keeps its in-memory room.
+  }
+}
+
+export function readHostRoom(now = Date.now()): CreateRoomResponse | null {
+  let stored: string | null;
+  try {
+    stored = window.localStorage.getItem(HOST_ROOM_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  if (!stored) {
+    return null;
+  }
+
+  try {
+    const parsed = createRoomResponseSchema.safeParse(JSON.parse(stored));
+    if (!parsed.success || isHostRoomExpired(parsed.data, now)) {
+      clearHostRoom();
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    clearHostRoom();
+    return null;
+  }
+}
+
+export function writeHostRoom(room: CreateRoomResponse): void {
+  try {
+    window.localStorage.setItem(HOST_ROOM_STORAGE_KEY, JSON.stringify(room));
+  } catch {
+    // A storage failure must not prevent the current sharing session.
+  }
 }
 
 function readSessionValue(key: string): string | null {

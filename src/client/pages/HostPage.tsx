@@ -22,7 +22,13 @@ import {
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
 import { ApiError, createRoom } from "../lib/api";
-import { getStableClientId } from "../lib/session";
+import {
+  clearHostRoom,
+  getStableClientId,
+  isHostRoomExpired,
+  readHostRoom,
+  writeHostRoom,
+} from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import {
   captureDisplay,
@@ -80,9 +86,9 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
       },
     );
     signal.start();
-    signal.sendThenStop({ type: "close-room" });
+    signal.sendThenStop({ type: "abandon-room" });
   } catch {
-    // The room will still expire naturally if the bounded cleanup cannot start.
+    // Best effort only: cancellation must not revive the obsolete generation.
   }
 }
 
@@ -101,7 +107,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
-  const [room, setRoom] = useState<CreateRoomResponse | null>(null);
+  const [room, setRoom] = useState<CreateRoomResponse | null>(readHostRoom);
   const [relayAvailable, setRelayAvailable] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
@@ -160,10 +166,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
-        signal.sendThenStop({ type: "close-room" });
-      } else {
-        signal.stop();
+        signal.send({ type: "stop-sharing" });
       }
+      // Never carry a terminal message into a later authentication: the next
+      // sharing generation may already be reusing this room.
+      signal.stop();
     }
     signalRef.current = null;
     peersRef.current.forEach((peer) => peer.dispose());
@@ -174,11 +181,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     retiringStreamRef.current = null;
     iceConfigRef.current = null;
     setStream(null);
-    setRoom(null);
+    setDetails(null);
+    setRelayAvailable(false);
     setMaxViewers(null);
     setPeerSnapshots(new Map());
     setSignalStatus("offline");
     setSwitchingSource(false);
+  }
+
+  function forgetRoom(): void {
+    clearHostRoom();
+    setRoom(null);
+    setCopied(false);
   }
 
   function endSharing(message: string, notifyServer = true): void {
@@ -404,6 +418,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "room-closed") {
+      forgetRoom();
       endSharing(
         message.reason === "expired" ? "房间已过期" : "房间已关闭",
         false,
@@ -411,11 +426,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "error") {
+      if (["INVALID_TOKEN", "ROOM_EXPIRED"].includes(message.code)) {
+        forgetRoom();
+        endSharing("房间已失效，再次点击将创建新房", false);
+        return;
+      }
       if (
         [
           "AUTH_REQUIRED",
-          "INVALID_TOKEN",
-          "ROOM_EXPIRED",
           "HOST_ALREADY_CONNECTED",
         ].includes(message.code)
       ) {
@@ -466,19 +484,35 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     watchCaptureEnd(captured, generation);
 
     let createdRoom: CreateRoomResponse | null = null;
+    let claimedRoom = false;
     try {
-      createdRoom = await createRoom();
-      if (!isCurrentGeneration(generation)) {
-        captured.getTracks().forEach((track) => track.stop());
-        closeAbandonedRoom(createdRoom);
-        return;
+      let reusableRoom = room;
+      if (reusableRoom && isHostRoomExpired(reusableRoom)) {
+        forgetRoom();
+        reusableRoom = null;
       }
+      createdRoom = reusableRoom ?? readHostRoom();
+      if (!createdRoom) {
+        createdRoom = await createRoom();
+        if (!isCurrentGeneration(generation)) {
+          captured.getTracks().forEach((track) => track.stop());
+          closeAbandonedRoom(createdRoom);
+          return;
+        }
+        writeHostRoom(createdRoom);
+        setRoom(createdRoom);
+        claimedRoom = true;
+      } else {
+        setRoom(createdRoom);
+        claimedRoom = true;
+      }
+      const activeRoom = createdRoom;
       const signal = new SignalingClient(
         {
-          roomId: createdRoom.roomId,
+          roomId: activeRoom.roomId,
           role: "host",
-          token: createdRoom.hostToken,
-          clientId: getStableClientId("host", createdRoom.roomId),
+          token: activeRoom.hostToken,
+          clientId: getStableClientId("host", activeRoom.roomId),
         },
         {
           onStatus: (status) => {
@@ -521,10 +555,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             ) {
               return;
             }
-            if (message.type === "authenticated") {
+            if (message.type === "authenticated" && message.role === "host") {
+              const authenticatedRoom = {
+                ...activeRoom,
+                expiresAt: message.roomExpiresAt,
+              };
               iceConfigRef.current = message.iceConfig;
               setRelayAvailable(message.iceConfig.relayAvailable);
-              setRoom(createdRoom);
+              writeHostRoom(authenticatedRoom);
+              setRoom(authenticatedRoom);
               setPhase("live");
             }
             handleSignalMessage(message, generation);
@@ -534,21 +573,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signalRef.current = signal;
       signal.start();
     } catch (error) {
-      captured.getTracks().forEach((track) => track.stop());
       if (!isCurrentGeneration(generation)) {
-        if (createdRoom) {
+        captured.getTracks().forEach((track) => track.stop());
+        if (createdRoom && !claimedRoom) {
           closeAbandonedRoom(createdRoom);
         }
         return;
       }
       activeGenerationRef.current = null;
-      if (createdRoom) {
-        closeAbandonedRoom(createdRoom);
-      }
-      if (streamRef.current === captured) {
-        streamRef.current = null;
-        setStream(null);
-      }
+      disposeResources(false);
       if (
         error instanceof ApiError &&
         error.status === 401 &&
@@ -696,36 +729,28 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   async function copyInvite(): Promise<void> {
-    if (!room) {
-      return;
-    }
-    const generation = activeGenerationRef.current;
-    if (generation === null) {
+    const inviteUrl = room?.inviteUrl;
+    if (!inviteUrl) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(room.inviteUrl);
-      if (!isCurrentGeneration(generation)) {
-        return;
-      }
+      await navigator.clipboard.writeText(inviteUrl);
       setCopied(true);
       window.setTimeout(() => {
-        if (isCurrentGeneration(generation)) {
-          setCopied(false);
-        }
+        setCopied(false);
       }, 1_500);
     } catch {
-      if (isCurrentGeneration(generation)) {
-        setNotice("无法写入剪贴板，请手动复制邀请链接");
-      }
+      setNotice("无法写入剪贴板，请手动复制邀请链接");
     }
   }
 
-  const expiresAt = room
-    ? new Intl.DateTimeFormat("zh-CN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(new Date(room.expiresAt))
+  const expirationText = room
+    ? room.expiresAt
+      ? `${new Intl.DateTimeFormat("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(new Date(room.expiresAt))} 过期`
+      : "长期有效"
     : null;
 
   return (
@@ -742,7 +767,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   ? `${viewers.length}/${maxViewers ?? "-"} 人正在观看`
                   : phase === "starting"
                     ? "正在建立房间"
-                    : "尚未开始"}
+                    : room
+                      ? "房间已就绪"
+                      : "尚未开始"}
               </p>
             </div>
             {forceRelay && <span className="diagnostic-badge">强制中继</span>}
@@ -811,7 +838,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             </div>
           )}
 
-          {phase !== "live" ? (
+          {phase !== "live" && (
             <div className="setup-controls">
               <fieldset className="control-group">
                 <legend>画质</legend>
@@ -847,28 +874,27 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 输入房间码观看
               </a>
             </div>
-          ) : (
-            room && (
-              <div className="invite-bar">
-                <div className="invite-copy">
-                  <span className="field-label">
-                    房间 {room.roomId} · {expiresAt} 过期
-                  </span>
-                  <span className="invite-url" title={room.inviteUrl}>
-                    {room.inviteUrl}
-                  </span>
-                </div>
-                <button
-                  className="icon-button"
-                  type="button"
-                  title="复制邀请链接"
-                  aria-label="复制邀请链接"
-                  onClick={() => void copyInvite()}
-                >
-                  {copied ? <Check size={18} /> : <Copy size={18} />}
-                </button>
+          )}
+          {room && (
+            <div className="invite-bar">
+              <div className="invite-copy">
+                <span className="field-label">
+                  房间 {room.roomId} · {expirationText}
+                </span>
+                <span className="invite-url" title={room.inviteUrl}>
+                  {room.inviteUrl}
+                </span>
               </div>
-            )
+              <button
+                className="icon-button"
+                type="button"
+                title="复制邀请链接"
+                aria-label="复制邀请链接"
+                onClick={() => void copyInvite()}
+              >
+                {copied ? <Check size={18} /> : <Copy size={18} />}
+              </button>
+            </div>
           )}
         </section>
 

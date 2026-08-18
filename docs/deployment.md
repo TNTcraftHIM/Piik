@@ -30,8 +30,9 @@ The minimum runtime is Node.js 24 LTS and coturn 4.17.2 or a newer patched
 release. Provision a valid TLS certificate for the Web name and, only when
 enabling TURN/TLS, for the TURN name. Enable operating system time
 synchronization and keep the Node application port reachable only from its
-reverse proxy. A single Node process is intentional: rooms are held in memory,
-so restarting it ends signaling and invalidates room state.
+reverse proxy. A single Node process is intentional. Active participants and
+signaling remain in memory; an optional protected SQLite file can restore room
+identity after a restart, but it does not restore live WebRTC connections.
 
 Build and validate the exact revision before starting it:
 
@@ -70,7 +71,8 @@ LISTEN_HOST=127.0.0.1
 PORT=8787
 PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
-ACCESS_PASSWORD=<OPTIONAL_WHOLE_SITE_PASSWORD>
+ACCESS_PASSWORD=<WHOLE_SITE_PASSWORD>
+ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
 MAX_VIEWERS_PER_ROOM=8
@@ -82,11 +84,16 @@ TURN_CREDENTIAL_TTL_SECONDS=3600
 ```
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
-`ACCESS_PASSWORD` is optional: omit it or leave it empty for a public site. For
-an Internet deployment intended to stay private, set a strong independent value;
-production accepts 12 through 128 visible ASCII characters so the password can
-be carried safely in the login header. `TURN_SHARED_SECRET` must
+`ACCESS_PASSWORD` is optional: omit it or leave it empty for a public site. A
+non-empty value must contain 1 through 128 visible ASCII characters (`0x21`
+through `0x7e`). For an Internet deployment intended to stay private, use an
+independent value that is not reused elsewhere. `TURN_SHARED_SECRET` must
 contain at least 32 bytes and must not reuse the access password.
+`ROOM_DATABASE_PATH` is optional but requires `ACCESS_PASSWORD`; startup fails
+if a database path is supplied without the whole-site gate. The baseline above
+enables persistent protected rooms. Omit `ROOM_DATABASE_PATH` to keep random
+temporary rooms, and omit both values for public mode. `ROOM_TTL_SECONDS` applies
+only to temporary rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
 limit, not evidence that the publisher can sustain that many streams.
 `TURN_SHARED_SECRET` stays only in the Node environment and coturn configuration;
@@ -100,17 +107,50 @@ same login gate. Only `POST /api/session` accepts the password in an
 cookie with `HttpOnly`, `SameSite=Strict`, `Path=/`, a
 bounded `Max-Age`, and, under production HTTPS, `Secure` plus an `__Host-` name.
 The cookie contains no account or server-side session identifier. There is no
-database, JWT, session map, or logout endpoint; expiry or clearing site cookies
-ends access.
+account database, JWT, session map, or logout endpoint; expiry or clearing site
+cookies ends access. The optional room database is unrelated to access sessions.
 
 `POST /api/rooms` and the `/signal` WebSocket upgrade use that cookie when the
 gate is enabled. The room API does not accept a direct Bearer credential as an
-alternate creation path. A created room has a random 12-digit numeric code;
-viewers open `/r/{code}` or enter only the code at `/join`. There is no viewer
-token or URL fragment, while the host token remains internal to the host page.
-With no `ACCESS_PASSWORD`, the room code is the sole viewing capability and does
-not provide strong privacy, so that mode is suitable only when public access is
-acceptable or another trusted access layer exists.
+alternate creation path. Viewers open `/r/{code}` or enter only the numeric code
+at `/join`; there is no viewer token or URL fragment, while the host token remains
+internal to the host page.
+
+Room allocation has two deliberately small policies:
+
+- With `ROOM_DATABASE_PATH`, SQLite allocates positive decimal IDs starting at
+  `1`. These protected rooms and links do not expire. An explicit stop or capture
+  track ending stops the current publication and leaves viewers waiting; it does
+  not delete the room. A brief signaling disconnect does not stop otherwise
+  healthy P2P media.
+- Without `ROOM_DATABASE_PATH`, rooms use random numeric IDs and expire according
+  to `ROOM_TTL_SECONDS`. Stopping sharing does not immediately delete them. Public
+  mode always uses this policy, so anonymous clients cannot simply walk a
+  sequential namespace.
+
+The built-in `node:sqlite` database stores only each room ID (the table rowid)
+and SHA-256 host-token digest. It must not contain plaintext tokens, passwords,
+access cookies, SDP, ICE candidates, IP addresses, viewer state, TURN
+credentials, or media. Protect and back up the file as service state. The tracked
+systemd unit creates `/var/lib/screener` with `StateDirectory=screener` and mode
+`0700`; the production path above is writable despite `ProtectSystem=strict`.
+The database is designed for one application process, not shared storage across
+multiple instances.
+
+For a simple consistent backup, stop `screener.service` before copying the
+SQLite file, then start it again. Restore while the service is stopped, restore
+ownership to the service account and mode `0600`, run SQLite
+`PRAGMA integrity_check`, and only then start the service. An online backup must
+use SQLite's [backup API](https://www.sqlite.org/backup.html) or `VACUUM INTO`;
+do not copy only the live main file while it may have an active journal.
+
+Enabling persistence does not migrate rooms that existed only in memory. The
+deployment restart invalidates those temporary links; the first subsequently
+created persistent room receives ID `1`.
+
+With no `ACCESS_PASSWORD`, the random room code is the sole viewing capability
+and does not provide strong privacy, so public mode is suitable only when public
+access is acceptable or another trusted access layer exists.
 
 Production startup validates the configured ICE transport mix before the
 server listens. The baseline must contain STUN and separate `TURN_URLS` entries

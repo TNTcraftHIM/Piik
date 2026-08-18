@@ -12,7 +12,7 @@ The product targets one game broadcaster and a small group of trusted friends. L
 Use separate control and media planes:
 
 - A small HTTPS/WSS service owns identity, rooms, invitations, presence, and WebRTC signaling.
-- A viewer can join through a 12-digit room code on desktop or mobile without installing the sharing client. The viewer link has no separate token or fragment; the host publication token remains internal. A deployment may place one site-wide password gate in front of both hosting and viewing; access policy remains control-plane state and does not change the media topology.
+- A viewer can join through a numeric room code on desktop or mobile without installing the sharing client. The viewer link has no separate token or fragment; the host publication token remains internal. A deployment may place one site-wide password gate in front of both hosting and viewing; access policy remains control-plane state and does not change the media topology. ADR-0002 owns the current room-ID and lifetime policy.
 - ICE attempts a direct UDP path for every broadcaster-viewer pair, using STUN to discover candidates.
 - Only pairs that cannot connect directly use authenticated TURN. Production requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement, using its standard TCP port 5349 by default. Port 443 is optional and requires a dedicated public IP or a validated layer-4/SNI route when HTTPS already owns that address and port.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
