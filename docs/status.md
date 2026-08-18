@@ -18,9 +18,10 @@ The first measurable WebRTC Web proof of concept is implemented at `https://shar
 
 ## Verified In This Revision
 
-- `npm run check` passes type checking, 87 Vitest tests, the client production build, and the server production build.
+- `npm run check` passes type checking, 90 Vitest tests, the client production build, and the server production build.
 - Headless Chromium 151 created real local peer connections from animated canvas streams. The viewer reached `connected`, received a live video track, and reported a direct UDP path.
 - Browser fault injection recovered after dropping the first offer, dropping the first answer, and failing the first `createOffer`. A viewer-only signaling reconnect preserved the existing healthy media peer; replacing that viewer tab rebuilt media, released the old peer, and did not enter a reconnect loop.
+- Delayed ViewerPeer answer, candidate flush, ICE event, and stats results are discarded after a connection generation is replaced, so an old peer cannot signal through or overwrite the new peer snapshot.
 - Cancelling a delayed room A and immediately starting room B left B live, stopped only A's capture, and invalidated A's invitation after bounded cleanup.
 - Injecting a live picker-cancellation result preserved the old stream. Replacing synthetic video, adding synthetic audio, and removing it all kept the same connected host/viewer peer objects and did not create another offer; retired capture tracks stopped after each successful change.
 - Chrome 151 at 390 px completed the protected-site gate, login, host, and manual room-code join flow without horizontal overflow. The unauthenticated gate shows no application header or sharing controls.
