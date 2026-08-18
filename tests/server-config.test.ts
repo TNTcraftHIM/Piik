@@ -4,6 +4,7 @@ import { loadConfig } from "../src/server/config.ts";
 
 const requiredProductionTurnUrls =
   "turn:turn.test:3478?transport=udp,turn:turn.test:3478?transport=tcp";
+const livekitApiSecret = "s".repeat(32);
 
 describe("server configuration", () => {
   it("allows development without TURN and defaults the origin", () => {
@@ -14,6 +15,8 @@ describe("server configuration", () => {
     expect(config.allowedOrigins).toEqual(new Set(["http://localhost:9123"]));
     expect(config.turnUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
+    expect(config.mediaMode).toBe("p2p");
+    expect(config.livekitUrl).toBeUndefined();
   });
 
   it("allows an explicit loopback listen host", () => {
@@ -70,6 +73,111 @@ describe("server configuration", () => {
     expect(config.roomDatabasePath).toBeUndefined();
     expect(config.turnUrls).toHaveLength(2);
     expect(config.turnSharedSecret).toBe("t".repeat(32));
+  });
+
+  it("requires a complete LiveKit tuple and rejects unknown media modes", () => {
+    for (const partial of [
+      { LIVEKIT_URL: "ws://livekit.test" },
+      { LIVEKIT_API_KEY: "api-key" },
+      { LIVEKIT_API_SECRET: "api-secret" },
+      {
+        LIVEKIT_URL: "ws://livekit.test",
+        LIVEKIT_API_KEY: "api-key",
+      },
+    ]) {
+      expect(() => loadConfig(partial)).toThrow(
+        "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET",
+      );
+    }
+    expect(() => loadConfig({ MEDIA_MODE: "hybrid" })).toThrow(
+      "MEDIA_MODE must be p2p or sfu",
+    );
+    expect(() => loadConfig({ MEDIA_MODE: "sfu" })).toThrow(
+      "LiveKit configuration is required",
+    );
+  });
+
+  it("accepts SFU mode without Screener ICE outside and inside production", () => {
+    const development = loadConfig({
+      MEDIA_MODE: "sfu",
+      LIVEKIT_URL: "ws://livekit.test:7880",
+      LIVEKIT_API_KEY: "api-key",
+      LIVEKIT_API_SECRET: livekitApiSecret,
+    });
+    expect(development).toMatchObject({
+      mediaMode: "sfu",
+      livekitUrl: "ws://livekit.test:7880",
+      stunUrls: [],
+      turnUrls: [],
+    });
+
+    const production = loadConfig({
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://share.test",
+      MEDIA_MODE: "sfu",
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "api-key",
+      LIVEKIT_API_SECRET: livekitApiSecret,
+    });
+    expect(production.mediaMode).toBe("sfu");
+    expect(production.turnUrls).toEqual([]);
+  });
+
+  it("requires WSS and validates any configured ICE bundle in production SFU mode", () => {
+    const livekit = {
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://share.test",
+      MEDIA_MODE: "sfu",
+      LIVEKIT_API_KEY: "api-key",
+      LIVEKIT_API_SECRET: livekitApiSecret,
+    };
+    expect(() =>
+      loadConfig({ ...livekit, LIVEKIT_URL: "ws://livekit.test" }),
+    ).toThrow("LIVEKIT_URL must use wss in production SFU mode");
+    expect(() =>
+      loadConfig({
+        ...livekit,
+        LIVEKIT_URL: "wss://livekit.test",
+        STUN_URLS: "stun:turn.test:3478",
+      }),
+    ).toThrow("TURN is required in production");
+
+    const configuredIce = loadConfig({
+      ...livekit,
+      LIVEKIT_URL: "wss://livekit.test",
+      STUN_URLS: "stun:turn.test:3478",
+      TURN_URLS: requiredProductionTurnUrls,
+      TURN_SHARED_SECRET: "t".repeat(32),
+    });
+    expect(configuredIce.turnUrls).toHaveLength(2);
+  });
+
+  it("allows a complete dormant LiveKit tuple in P2P mode", () => {
+    const config = loadConfig({
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "api-key",
+      LIVEKIT_API_SECRET: livekitApiSecret,
+    });
+    expect(config.mediaMode).toBe("p2p");
+    expect(config.livekitUrl).toBe("wss://livekit.test");
+  });
+
+  it("requires a strong LiveKit API secret whenever the tuple is configured", () => {
+    expect(() =>
+      loadConfig({
+        LIVEKIT_URL: "ws://livekit.test:7880",
+        LIVEKIT_API_KEY: "api-key",
+        LIVEKIT_API_SECRET: "s".repeat(31),
+      }),
+    ).toThrow("LIVEKIT_API_SECRET must contain at least 32 bytes");
+
+    expect(
+      loadConfig({
+        LIVEKIT_URL: "ws://livekit.test:7880",
+        LIVEKIT_API_KEY: "api-key",
+        LIVEKIT_API_SECRET: livekitApiSecret,
+      }).livekitApiSecret,
+    ).toBe(livekitApiSecret);
   });
 
   it.each([1, 16])(

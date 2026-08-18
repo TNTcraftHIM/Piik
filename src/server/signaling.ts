@@ -11,6 +11,7 @@ import {
   type Role,
   type ServerMessage,
 } from "../shared/protocol.js";
+import type { SfuTokenIssuer } from "./livekit-token.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { createIceConfig, type IceConfigOptions } from "./turn.js";
 
@@ -34,10 +35,14 @@ interface SocketState {
   authenticated?: AuthenticatedSession;
 }
 
+type SignalingMediaOptions =
+  | { mode: "p2p"; ice: IceConfigOptions }
+  | { mode: "sfu"; url: string; tokenIssuer: SfuTokenIssuer };
+
 export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
-  ice: IceConfigOptions;
+  media: SignalingMediaOptions;
   allowedOrigins: ReadonlySet<string>;
   authorizeUpgrade: (request: IncomingMessage) => boolean;
   now?: () => number;
@@ -294,8 +299,8 @@ export class SignalingServer {
         ? this.options.roomStore.getConnectedViewers(participant.roomId)
         : [];
 
-    this.send(socket, {
-      type: "authenticated",
+    const authenticatedMessage = {
+      type: "authenticated" as const,
       role: participant.role,
       peerId: participant.peerId,
       roomExpiresAt: participant.expiresAt,
@@ -303,20 +308,34 @@ export class SignalingServer {
       hostOnline: participant.hostOnline,
       connectionId,
       viewerPeerIds: [...participant.viewerPeerIds],
-      iceConfig: this.iceConfig(
-        participant.roomId,
-        participant.peerId,
-        participant.expiresAt === null
-          ? null
-          : Date.parse(participant.expiresAt),
-      ),
-    });
+    };
+    if (this.options.media.mode === "p2p") {
+      this.send(socket, {
+        ...authenticatedMessage,
+        iceConfig: this.iceConfig(
+          participant.roomId,
+          participant.peerId,
+          participant.expiresAt === null
+            ? null
+            : Date.parse(participant.expiresAt),
+        ),
+      });
+    } else {
+      this.send(socket, {
+        ...authenticatedMessage,
+        mediaMode: "sfu",
+      });
+    }
 
     if (participant.replacedSessionId) {
       const replaced = this.socketsBySessionId.get(participant.replacedSessionId);
       if (replaced && replaced !== socket) {
         replaced.close(4001, "Session replaced");
       }
+    }
+
+    if (this.options.media.mode === "sfu") {
+      void this.sendSfuConfig(socket, state);
     }
 
     if (participant.role === "host") {
@@ -326,7 +345,6 @@ export class SignalingServer {
       }
       return;
     }
-
     const host = this.options.roomStore.getConnectedHost(participant.roomId);
     if (!host) {
       return;
@@ -345,6 +363,24 @@ export class SignalingServer {
     authenticated: AuthenticatedSession,
     message: Exclude<ClientMessage, { type: "authenticate" }>,
   ): void {
+    if (
+      this.options.media.mode === "sfu" &&
+      (message.type === "signal" ||
+        message.type === "restart-request" ||
+        message.type === "refresh-ice")
+    ) {
+      this.sendError(
+        socket,
+        "FORBIDDEN",
+        "P2P signaling is unavailable in SFU mode",
+      );
+      return;
+    }
+    if (this.options.media.mode === "p2p" && message.type === "refresh-sfu") {
+      this.sendError(socket, "FORBIDDEN", "SFU media is unavailable in P2P mode");
+      return;
+    }
+
     switch (message.type) {
       case "signal":
         this.routeSignal(socket, authenticated, message);
@@ -371,6 +407,13 @@ export class SignalingServer {
           ),
         });
         return;
+      case "refresh-sfu": {
+        const state = this.socketStates.get(socket);
+        if (state?.authenticated === authenticated) {
+          void this.sendSfuConfig(socket, state);
+        }
+        return;
+      }
       case "stop-sharing":
       case "close-room":
         if (authenticated.role !== "host") {
@@ -588,6 +631,56 @@ export class SignalingServer {
     return current?.sessionId === state.sessionId;
   }
 
+  private async sendSfuConfig(
+    socket: WebSocket,
+    state: SocketState,
+  ): Promise<void> {
+    if (
+      this.options.media.mode !== "sfu" ||
+      !this.isCurrentSocketSession(socket, state)
+    ) {
+      return;
+    }
+    const authenticated = state.authenticated!;
+
+    let token: string;
+    try {
+      token = await this.options.media.tokenIssuer.issueToken({
+        roomId: authenticated.roomId,
+        role: authenticated.role,
+        peerId: authenticated.peerId,
+      });
+    } catch {
+      if (this.isCurrentSocketSession(socket, state)) {
+        console.error("LiveKit token issuance failed");
+        this.sendError(socket, "SERVER_ERROR", "SFU configuration failed");
+        socket.close(1011, "SFU configuration failed");
+      }
+      return;
+    }
+
+    if (!this.isCurrentSocketSession(socket, state)) {
+      return;
+    }
+    this.send(socket, {
+      type: "sfu-config",
+      url: this.options.media.url,
+      token,
+    });
+  }
+
+  private isCurrentSocketSession(
+    socket: WebSocket,
+    state: SocketState,
+  ): boolean {
+    return (
+      socket.readyState === WebSocket.OPEN &&
+      this.socketStates.get(socket) === state &&
+      this.socketsBySessionId.get(state.sessionId) === socket &&
+      this.isCurrentSession(state)
+    );
+  }
+
   private isAllowedOrigin(origin: string | undefined): boolean {
     if (!origin) {
       return false;
@@ -613,8 +706,11 @@ export class SignalingServer {
     peerId: string,
     roomExpiresAtMs: number | null,
   ) {
+    if (this.options.media.mode !== "p2p") {
+      throw new Error("ICE configuration is unavailable in SFU mode");
+    }
     return createIceConfig(
-      this.options.ice,
+      this.options.media.ice,
       `${roomId}:${peerId}`,
       this.now(),
       roomExpiresAtMs ?? undefined,

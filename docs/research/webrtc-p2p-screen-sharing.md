@@ -2,7 +2,7 @@
 
 - 调研日期：2026-08-18
 - 目标场景：一名玩家向少量熟人私密分享，观看者可用手机/桌面浏览器加入，低延迟，尽量不消耗媒体服务器带宽
-- 结论状态：可用于原型立项；人数、音频范围和部署地区仍需实测确认
+- 结论状态：P2P 原型基线已采用；多人退化触发了显式 SFU 对照实验，详见 `livekit-sfu-media-mode.md` 与 ADR-0003
 
 ## 结论
 
@@ -16,7 +16,7 @@
    |
    +---- 仅直连失败的观看者 ---- TURN relay -------+
 
-若未来产品范围超出小房间边界，再单独评估区域 SFU；大规模公开分享直接使用现有直播服务。
+部署者可显式选择单节点 SFU 做同条件测量，但默认仍是 P2P，且不自动切换、hybrid 或双发；大规模公开分享直接使用现有直播服务。
 ```
 
 “让画面跑起来”难度不高；“像 Discord/TeamSpeak 一样在不同 GPU、浏览器、NAT、运营商和弱网中都保持清晰、60 fps、低延迟”难度高。建议把产品分层：
@@ -118,7 +118,7 @@ MVP（也是预期的正常产品形态）：
 - 若一开始就有多条 `relay`，应提示服务器带宽正在增加。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
-本项目不以 SFU 作为正常扩容路径；超过小房间上限时直接建议使用外部直播服务。只有以后改变产品范围时，才根据遥测重新评估房间级 SFU，观察项包括：
+本项目不以 SFU 作为自动扩容路径；超过小房间上限时仍建议使用外部直播服务。用户已观察到观看人数增加时 P2P 严重退化，因此 ADR-0003 接受一个进程级、可逆的 LiveKit SFU 实验，但是否推荐仍取决于以下对照数据：
 
 - 正常工作负载持续超过实测可承载的 P2P 人数。
 - 第一名或多名观看者已使用 TURN，继续 P2P 会重复占用服务器上行。
@@ -203,7 +203,7 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 ### 最小访问模型
 
-当前需求只有一个部署级密码，不需要账号数据库、JWT、服务端 session Map、逐人邀请或 logout。`ACCESS_PASSWORD` 为空时网站公开；非空值接受 1 至 128 个可见 ASCII 字符，避免把 Fetch 无法可靠编码的 Unicode 原文放进 Authorization header。配置时，host 和 viewer 都先通过同一登录 gate。成功登录得到 12 小时的无状态 HMAC-SHA256 cookie，使用 `HttpOnly`、`SameSite=Strict`、`Path=/`、有限 `Max-Age`，HTTPS 生产环境使用 `Secure` 和 `__Host-` 前缀。建房 HTTP 和 WebSocket upgrade 都只认 cookie，不允许直接给建房 API 传 Bearer 绕过 gate。异常 WebSocket 关闭会检查一次 access session；确认 cookie 失效时回到 gate，检查本身失败时继续正常网络重连。HMAC 与定长密码摘要比较使用 Node.js `crypto.createHmac()` 和 `crypto.timingSafeEqual()`；cookie 属性遵循 RFC6265bis 的语义。
+当前需求只有一个部署级密码，不需要账号数据库、访问会话 JWT、服务端 session Map、逐人邀请或 logout。`ACCESS_PASSWORD` 为空时网站公开；非空值接受 1 至 128 个可见 ASCII 字符，避免把 Fetch 无法可靠编码的 Unicode 原文放进 Authorization header。配置时，host 和 viewer 都先通过同一登录 gate。成功登录得到 12 小时的无状态 HMAC-SHA256 cookie，使用 `HttpOnly`、`SameSite=Strict`、`Path=/`、有限 `Max-Age`，HTTPS 生产环境使用 `Secure` 和 `__Host-` 前缀。建房 HTTP 和 WebSocket upgrade 都只认 cookie，不允许直接给建房 API 传 Bearer 绕过 gate。异常 WebSocket 关闭会检查一次 access session；确认 cookie 失效时回到 gate，检查本身失败时继续正常网络重连。HMAC 与定长密码摘要比较使用 Node.js `crypto.createHmac()` 和 `crypto.timingSafeEqual()`；cookie 属性遵循 RFC6265bis 的语义。
 
 房间始终使用纯数字 code。默认临时模式生成随机 code 并设置 TTL；只有同时配置 `ACCESS_PASSWORD` 与 `ROOM_DATABASE_PATH` 时，内置 `node:sqlite` 才从 `1` 开始分配不设过期时间的持久 code。数据库只保存作为 rowid 的房间 ID 与 host token 摘要，路径在无全站密码时会被启动校验拒绝。观看链接是 `/r/{code}`，也可在 `/join` 只输入 code；两者都没有 viewer token 或 fragment。256-bit host token 只用于房间级 host 信令鉴权，服务端仅持有其 SHA-256 摘要。在密码模式中，code 不能绕过全站 gate；在公开模式中，随机 code 是唯一观看 capability，仍不构成强隐私保证，面向互联网的私密实例应配置全站密码。
 
@@ -250,7 +250,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - P2P 会让房间内双方得知网络地址。熟人首版可以接受，陌生人房间不能默认接受。
 - TURN 必须使用短期凭据、速率限制、每用户/房间配额和出口告警，不能提供匿名公共 relay。
 - 面向互联网的私密部署应启用全站密码。公开模式的随机房间码只是轻量 capability，不应宣传为强私密邀请；可枚举的持久房间只允许与全站密码搭配，host token 始终只用于发布权限。
-- 如果未来使用 SFU 且要求服务器看不到内容，再评估 SFrame/WebRTC Encoded Transform 和群组密钥管理。
+- 普通 SFU 终止浏览器 WebRTC 传输并可访问媒体，不能称为排除服务器的 E2EE。若要求服务器看不到内容，需另行设计 LiveKit E2EE/Encoded Transform 的群组密钥生成、分发和轮换。
 
 ## 参考代码优先级
 
@@ -264,7 +264,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 | [coturn](https://github.com/coturn/coturn) | 生产 STUN/TURN fallback | BSD-3-Clause。P2P-first 必需基础设施 | [turnserver 文档](https://github.com/coturn/coturn/blob/master/README.turnserver)、[Docker](https://github.com/coturn/coturn/blob/master/docker/coturn/README.md) |
 | [Peer Calls](https://github.com/peer-calls/peer-calls) | 同一应用中的 mesh/SFU 双模式 | Apache-2.0；维护速度较慢，适合参考而非首选底座 | [mesh.go](https://github.com/peer-calls/peer-calls/blob/master/server/mesh.go)、[sfu.go](https://github.com/peer-calls/peer-calls/blob/master/server/sfu.go)、[iceauth.go](https://github.com/peer-calls/peer-calls/blob/master/server/iceauth.go) |
 | [Broadcast Box](https://github.com/Glimesh/broadcast-box) | 未来专用一对多 SFU，WHIP 推流/WHEP 播放 | MIT。比会议型 SFU 更贴近单路广播 | [Broadcast.tsx](https://github.com/Glimesh/broadcast-box/blob/main/web/src/components/broadcast/Broadcast.tsx)、[simple watcher](https://github.com/Glimesh/broadcast-box/blob/main/examples/simple-watcher.html) |
-| [LiveKit](https://github.com/livekit/livekit) | 生产级区域 SFU、SDK、内置 TURN、鉴权 | Apache-2.0。未来需要稳定 SFU 时的首选完整底座 | [屏幕共享](https://docs.livekit.io/transport/media/screenshare/)、[turn.go](https://github.com/livekit/livekit/blob/master/pkg/service/turn.go) |
+| [LiveKit](https://github.com/livekit/livekit) | 生产级区域 SFU、SDK、内置 TURN、鉴权 | Apache-2.0。已选为显式单节点 SFU 实验底座；性能与严格网络覆盖仍待测 | [屏幕共享](https://docs.livekit.io/transport/media/screenshare/)、[turn.go](https://github.com/livekit/livekit/blob/master/pkg/service/turn.go) |
 | [mediasoup](https://github.com/versatica/mediasoup) | 强定制低层 SFU | ISC。自由度高，但房间、信令、鉴权、TURN 和 UI 都需自建 | [mediasoup demo](https://github.com/versatica/mediasoup-demo) |
 | [Valve GameNetworkingSockets](https://github.com/ValveSoftware/GameNetworkingSockets) | Photon/Steam 式控制面与 P2P NAT 模型参考，不是媒体引擎 | BSD-3-Clause。其 P2P 文档同样要求信令、ICE/STUN 和 relay fallback | [README_P2P](https://github.com/ValveSoftware/GameNetworkingSockets/blob/master/README_P2P.md)、[test_p2p.cpp](https://github.com/ValveSoftware/GameNetworkingSockets/blob/master/tests/test_p2p.cpp) |
 
@@ -321,5 +321,5 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 3. 从第一天部署 coturn，并验证 direct、TURN/UDP、TURN/TCP 以及移动网络切换；这是避免“部分好友永远看不了”的必要条件。TURN/TLS 按部署需要选配，默认 5349，443 只作为受限网络增强。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。
 5. 产品代码优先直接使用浏览器 WebRTC API；借鉴 MiroTalk BRO 和 Screego，不在许可证未定前直接 fork GPL/AGPL 代码。
-6. 正常人数超过产品上限时引导使用现有直播服务，不为了假设规模提前搭 SFU；若范围以后改变，首选 Broadcast Box 或 LiveKit，不从零写 SFU。
+6. 正常人数超过产品上限时引导使用现有直播服务；小房间的 LiveKit 模式只作为显式对照实验，完成 1/3/5/8 人同条件测量前不成为默认或性能承诺。
 7. 不做客户端转发树和自定义视频协议；它们会把项目从中等难度推到接近自研 Parsec 的高难度。

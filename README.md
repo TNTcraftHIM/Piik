@@ -1,10 +1,10 @@
 # Screener
 
-Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its media path is WebRTC P2P-first, with authenticated TURN fallback for network pairs that cannot connect directly. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
+Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its default media path is WebRTC P2P-first, with authenticated TURN fallback for network pairs that cannot connect directly. An explicit, deployment-wide LiveKit SFU mode is available for controlled comparison when publisher fan-out is the bottleneck; there is no automatic switch, hybrid room, or simultaneous P2P/SFU publication. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
 
-The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code; friends can open `/r/{code}` directly or enter the code at `/join`, with no separate viewer token. Rooms are random and temporary by default. A password-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. Each viewer currently receives an independent WebRTC connection, so direct and TURN-relayed paths can coexist in one room. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
+The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code; friends can open `/r/{code}` directly or enter the code at `/join`, with no separate viewer token. Rooms are random and temporary by default. A password-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. In the default P2P mode, each viewer receives an independent WebRTC connection, so direct and TURN-relayed paths can coexist in one room. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
 
-This is not yet a production release. Public TURN/UDP and TURN/TCP relay paths are verified, but real cross-network Screener media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
+This is not yet a production release. Public TURN/UDP and TURN/TCP relay paths are verified for the P2P deployment, but real cross-network Screener media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix. The SFU mode has not been deployed or benchmarked and is not a performance claim; conventional SFU media is transport-encrypted but is not E2EE against the LiveKit server.
 
 ## Run locally
 
@@ -26,11 +26,16 @@ must remain on `localhost` or HTTPS because screen capture requires a secure
 context. The default has no STUN or TURN, so cross-network use still requires
 HTTPS and the production ICE configuration documented separately.
 
-Production startup requires STUN plus separate TURN/UDP and TURN/TCP URLs.
+Production startup in the default P2P mode requires STUN plus separate TURN/UDP and TURN/TCP URLs.
 TURN/TLS is an optional restrictive-network enhancement: use its standard TCP
 port 5349 by default, or port 443 only when the deployment has a dedicated
 public IP or a validated layer-4/SNI route. This configuration preflight is not
 evidence that any external relay path works.
+
+Set `MEDIA_MODE=sfu` only for an intentional LiveKit experiment. It requires a
+trusted WSS endpoint and matching untracked API credentials. The minimal
+same-host deployment uses the existing Screener origin and routes only
+`/rtc/*` to LiveKit. See the deployment guide and ADR-0003 before enabling it.
 
 Run the complete automated validation with:
 
@@ -44,8 +49,10 @@ Start here:
 - [WebRTC PoC design](./docs/方案设计.md)
 - [Deployment and TURN setup](./docs/deployment.md)
 - [Feasibility research](./docs/research/webrtc-p2p-screen-sharing.md)
+- [LiveKit SFU research](./docs/research/livekit-sfu-media-mode.md)
 - [Current project memory](./docs/project-memory.md)
 - [Current status](./docs/status.md)
 - [Architecture decision](./docs/adr/0001-p2p-first-media-topology.md)
+- [Optional SFU decision](./docs/adr/0003-explicit-sfu-media-mode.md)
 - [Contributing and Git workflow](./CONTRIBUTING.md)
 - [Documentation index](./docs/README.md)

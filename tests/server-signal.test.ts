@@ -1,6 +1,6 @@
 import { connect } from "node:net";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import {
@@ -14,6 +14,7 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
+import type { SfuTokenIssuer } from "../src/server/livekit-token.ts";
 import { RoomDatabase } from "../src/server/room-database.ts";
 import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
 
@@ -106,6 +107,7 @@ function testConfig(): ServerConfig {
     listenHost: "127.0.0.1",
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
+    mediaMode: "p2p",
     roomTtlMs: 14_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,
@@ -124,10 +126,18 @@ async function startHarness(
     maxUnauthenticatedSignalConnections?: number;
     accessPassword?: string;
     persistent?: boolean;
+    mediaMode?: "p2p" | "sfu";
+    sfuTokenIssuer?: SfuTokenIssuer;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
   config.accessPassword = overrides.accessPassword;
+  config.mediaMode = overrides.mediaMode ?? "p2p";
+  if (config.mediaMode === "sfu") {
+    config.livekitUrl = "wss://livekit.example.test";
+    config.livekitApiKey = "test-api-key";
+    config.livekitApiSecret = "s".repeat(32);
+  }
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
   const roomStore = new RoomStore({
@@ -148,6 +158,7 @@ async function startHarness(
     maxSignalConnections: overrides.maxSignalConnections,
     maxUnauthenticatedSignalConnections:
       overrides.maxUnauthenticatedSignalConnections,
+    sfuTokenIssuer: overrides.sfuTokenIssuer,
   });
   const port = await runningServer.listen(0, "127.0.0.1");
   return {
@@ -313,6 +324,162 @@ describe("WebSocket signaling", () => {
     );
     expect(authenticated.roomExpiresAt).toBeNull();
     expect(authenticated.hostOnline).toBe(false);
+  });
+
+  it("authenticates SFU participants, sends tokens, and rejects P2P signaling", async () => {
+    const issueToken = vi.fn<SfuTokenIssuer["issueToken"]>(
+      async ({ role, peerId }) => `${role}-token-for-${peerId}`,
+    );
+    const harness = await startHarness({
+      mediaMode: "sfu",
+      sfuTokenIssuer: { issueToken },
+    });
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "viewer-client-sfu",
+    );
+    expect(viewerAuth).toMatchObject({
+      mediaMode: "sfu",
+      hostOnline: false,
+    });
+    expect("iceConfig" in viewerAuth).toBe(false);
+    expect(await viewer.inbox.next("sfu-config")).toEqual({
+      type: "sfu-config",
+      url: "wss://livekit.example.test",
+      token: `viewer-token-for-${viewerAuth.peerId}`,
+    });
+
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "host-client-sfu",
+    );
+    expect(hostAuth.mediaMode).toBe("sfu");
+    expect(await host.inbox.next("sfu-config")).toEqual({
+      type: "sfu-config",
+      url: "wss://livekit.example.test",
+      token: `host-token-for-${hostAuth.peerId}`,
+    });
+    expect((await host.inbox.next("peer-joined")).peerId).toBe(viewerAuth.peerId);
+    expect(await viewer.inbox.next("host-status")).toEqual({
+      type: "host-status",
+      online: true,
+    });
+
+    viewer.socket.send(JSON.stringify({ type: "refresh-sfu" }));
+    expect(await viewer.inbox.next("sfu-config")).toEqual({
+      type: "sfu-config",
+      url: "wss://livekit.example.test",
+      token: `viewer-token-for-${viewerAuth.peerId}`,
+    });
+
+    for (const message of [
+      { type: "refresh-ice" },
+      {
+        type: "restart-request",
+        connectionId: "connection_sfu_12345678",
+        rebuild: true,
+      },
+      {
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "candidate",
+          connectionId: "connection_sfu_12345678",
+          candidate: null,
+        },
+      },
+    ]) {
+      host.socket.send(JSON.stringify(message));
+      expect(await host.inbox.next("error")).toMatchObject({
+        code: "FORBIDDEN",
+        message: "P2P signaling is unavailable in SFU mode",
+      });
+    }
+
+    host.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    expect(await viewer.inbox.next("sharing-stopped")).toEqual({
+      type: "sharing-stopped",
+    });
+    expect(await viewer.inbox.next("host-status")).toEqual({
+      type: "host-status",
+      online: false,
+    });
+    expect(issueToken).toHaveBeenCalledWith({
+      roomId: harness.room.roomId,
+      role: "viewer",
+      peerId: viewerAuth.peerId,
+    });
+  });
+
+  it("drops an SFU token issued for a replaced signaling session", async () => {
+    const pending: Array<(token: string) => void> = [];
+    const issueToken = vi.fn<SfuTokenIssuer["issueToken"]>(
+      () =>
+        new Promise<string>((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    const harness = await startHarness({
+      mediaMode: "sfu",
+      sfuTokenIssuer: { issueToken },
+    });
+    const first = await openClient(harness.webSocketUrl);
+    await authenticate(first, harness.room, "viewer", "viewer-client-replaced-sfu");
+    const firstClosed = new Promise<number>((resolve) =>
+      first.socket.once("close", (code) => resolve(code)),
+    );
+
+    const replacement = await openClient(harness.webSocketUrl);
+    await authenticate(
+      replacement,
+      harness.room,
+      "viewer",
+      "viewer-client-replaced-sfu",
+    );
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    pending[0]!("stale-token");
+    pending[1]!("current-token");
+
+    expect(await firstClosed).toBe(4001);
+    expect(await replacement.inbox.next("sfu-config")).toMatchObject({
+      token: "current-token",
+    });
+    await first.inbox.expectNone(30);
+  });
+
+  it("closes an SFU session with a generic error when token issuance fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const harness = await startHarness({
+      mediaMode: "sfu",
+      sfuTokenIssuer: {
+        issueToken: async () => {
+          throw new Error("api-secret-must-not-leak");
+        },
+      },
+    });
+    const viewer = await openClient(harness.webSocketUrl);
+    const closed = new Promise<number>((resolve) =>
+      viewer.socket.once("close", (code) => resolve(code)),
+    );
+    await authenticate(viewer, harness.room, "viewer", "viewer-client-sfu-error");
+
+    expect(await viewer.inbox.next("error")).toEqual({
+      type: "error",
+      code: "SERVER_ERROR",
+      message: "SFU configuration failed",
+    });
+    expect(await closed).toBe(1011);
+    expect(consoleError).toHaveBeenCalledWith("LiveKit token issuance failed");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      "api-secret-must-not-leak",
+    );
+    consoleError.mockRestore();
   });
 
   it("routes offer and answer only between the host and the targeted viewer", async () => {

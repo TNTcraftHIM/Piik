@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Confirmed Intent
 
@@ -29,17 +29,19 @@ Last updated: 2026-08-18
 - Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
 - Add an Electron or native Windows sender only after browser measurements identify capture, application-audio, or encode bottlenecks.
 - Keep P2P as the default and add only an explicit deployment-level `p2p|sfu` choice. Multi-viewer use has already shown severe user-observed P2P degradation, consistent with one sender and encoder per viewer. The first SFU experiment should use a single node, one published layer, and no automatic switching, hybrid path, Redis, or peer forwarding tree.
+- Use LiveKit for that optional SFU experiment. Keep Screener authoritative for access, rooms, host ownership, capacity, and stop/wait state; issue only short-lived room/role tokens after Screener authentication. Ordinary SFU transport encryption does not prevent the LiveKit server from accessing media, so do not claim E2EE without a separate key-distribution design.
 - Keep room policy deployment-driven and small. Public and password-only deployments use random temporary rooms. A deployment that configures both the whole-site password and a SQLite path gets sequential, non-expiring protected rooms; stopping a share leaves viewers waiting and does not destroy the room.
 
 ## Current Implementation
 
-- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The server defaults to an all-interface listener for LAN development and containers; the bare-metal reverse-proxy baseline explicitly binds loopback. It provides a process-only `/healthz` endpoint and requires STUN plus explicit TURN/UDP and TURN/TCP URLs before production startup. TURN/TLS is accepted but optional; configuration checks do not establish public-network reachability.
-- The Web PoC implements capture-before-room creation, live source replacement without renegotiating healthy peers, one independent peer connection per viewer, stable signaling reconnect identities that also work for LAN viewers on HTTP, explicit ICE restart or peer rebuild, host session generation isolation, viewer connection-generation guards for asynchronous signaling and stats, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
-- Access is deliberately small: `ACCESS_PASSWORD` is optional, site-wide, and accepts 1 through 128 visible ASCII characters when non-empty. When configured, host and viewer routes first establish a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie; room creation and WebSocket upgrade accept that cookie and no direct room-creation Bearer bypass. There are no accounts, JWTs, server-side access-session maps, or logout flow.
+- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The optional SFU path uses Apache-2.0 `livekit-client` and `livekit-server-sdk` with a separately deployed LiveKit Server. The app defaults to an all-interface listener for LAN development and containers; the bare-metal reverse-proxy baseline explicitly binds loopback. It provides a process-only `/healthz` endpoint. Production P2P requires STUN plus explicit TURN/UDP and TURN/TCP; production SFU instead requires a complete trusted-WSS LiveKit credential tuple. Configuration checks do not establish public-network reachability.
+- The Web PoC implements capture-before-room creation, live source replacement, stable signaling reconnect identities that also work for LAN viewers on HTTP, host session generation isolation, three manual quality profiles, and local WebRTC statistics. P2P uses one independent peer connection per viewer with ICE restart/rebuild, connection-generation guards, and short-lived TURN credentials. The optional SFU mode is fixed at process startup, dynamically loads thin LiveKit publisher/subscriber clients, publishes one video layer, and receives short-lived least-privilege join tokens from the authenticated Screener WebSocket.
+- Access is deliberately small: `ACCESS_PASSWORD` is optional, site-wide, and accepts 1 through 128 visible ASCII characters when non-empty. When configured, host and viewer routes first establish a 12-hour stateless HMAC HttpOnly `SameSite=Strict` cookie; room creation and WebSocket upgrade accept that cookie and no direct room-creation Bearer bypass. There are no accounts, access-session JWTs, server-side access-session maps, or logout flow; SFU mode separately uses short-lived room-bound LiveKit join JWTs.
 - ADR-0002 accepts an optional `ROOM_DATABASE_PATH` only alongside `ACCESS_PASSWORD`. In that mode, built-in `node:sqlite` stores only an auto-incremented room ID and host-token digest; links do not expire and stopping sharing leaves the room waiting. Without the path, rooms remain random and temporary. Public mode can never use sequential persistent rooms. Commit `2f66770f8e90` is deployed with `/var/lib/screener/rooms.sqlite`; the state directory and database permissions are verified, and the empty database preserves ID `1` for the first real browser room.
 - `/r/{code}` carries no viewer token or fragment, `/join` accepts only the numeric code, and the 256-bit host token stays internal to host authentication. In public mode the random code is the sole viewing capability and is not a strong privacy guarantee, so private Internet deployments should configure `ACCESS_PASSWORD`.
 - The Web control plane is deployed at `https://share.bonfire.icu` behind nginx with Node.js 24.19.0, and `turn.bonfire.icu` runs authenticated coturn 4.17.2 on standard UDP/TCP 3478. HTTPS, WSS, room authentication, certificate renewal, public STUN, authenticated TURN/UDP and TURN/TCP allocations, and relay-only bidirectional data paths are verified. TURN/TLS is intentionally not enabled.
-- Automated checks pass on current `main` with 102 Vitest tests and both production builds. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remains from the earlier baseline. Production storage startup and permissions are verified; a real persistent-room stop/reuse/restart cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
+- That public instance remains P2P. No LiveKit service, `/rtc/` reverse-proxy route, 7881/TCP or 7882/UDP public listener, SFU credential, strict-network fallback, or SFU media result is deployed or verified.
+- Automated checks pass with 120 Vitest tests and both production builds. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remains from the earlier baseline. Production storage startup and permissions are verified; a real persistent-room stop/reuse/restart cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
 - No infrastructure blocker remains for the current staging deployment. The immediate control-plane milestone and the separate real-device/media matrix are bounded in `docs/status.md`; neither justifies a native sender yet.
 
 ## Provisional Quality Targets
@@ -65,8 +67,10 @@ Last updated: 2026-08-18
 - First PoC technical design: `docs/方案设计.md`
 - Minimal production-shaped deployment: `docs/deployment.md`
 - Research and feasibility: `docs/research/webrtc-p2p-screen-sharing.md`
+- Optional SFU research: `docs/research/livekit-sfu-media-mode.md`
 - Topology decision: `docs/adr/0001-p2p-first-media-topology.md`
 - Persistent protected-room decision: `docs/adr/0002-persistent-protected-rooms.md`
+- Explicit optional-SFU decision: `docs/adr/0003-explicit-sfu-media-mode.md`
 - Current phase and next step: `docs/status.md`
 - Maintenance and context lifecycle: `docs/maintenance.md`
 - Agent workflow: `AGENTS.md` and `.codex/`

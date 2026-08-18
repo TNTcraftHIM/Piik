@@ -1,0 +1,29 @@
+# Minimal single-node LiveKit configuration for Screener's optional SFU mode.
+# Copy to an untracked service-owned path such as /etc/livekit/livekit.yaml.
+# Generate an API key pair with `livekit-server generate-keys`, then put only
+# the YAML mapping `<api-key>: <api-secret>` in /etc/livekit/keys.yaml. Keep that
+# file owned by the livekit service account with mode 0600.
+
+port: 7880
+key_file: /etc/livekit/keys.yaml
+
+rtc:
+  # These media listeners must be reachable directly from clients. They do not
+  # pass through the HTTP reverse proxy. Do not expose port 7880 publicly; use
+  # the host and provider firewalls to allow only nginx to reach that listener.
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+
+room:
+  auto_create: true
+  # Screener accepts at most 16 viewers plus one host. Its control plane still
+  # enforces the configured per-room limit before issuing a LiveKit token.
+  max_participants: 17
+
+logging:
+  level: info
+
+# Redis, embedded TURN, recording, ingress, egress, and webhooks are omitted on
+# purpose. The initial single-node SFU and strict-network fallback remain to be
+# verified before this mode is recommended for normal use.

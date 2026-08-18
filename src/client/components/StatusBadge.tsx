@@ -67,6 +67,14 @@ export function PathBadge({ path }: { path: MediaPath }) {
       </span>
     );
   }
+  if (path === "sfu") {
+    return (
+      <span className="path-badge path-relay" title="媒体由 SFU 转发">
+        <Radio size={14} aria-hidden="true" />
+        SFU 转发
+      </span>
+    );
+  }
   return (
     <span className="path-badge path-unknown" title="尚未选出可用的 ICE 路径">
       <WifiOff size={14} aria-hidden="true" />

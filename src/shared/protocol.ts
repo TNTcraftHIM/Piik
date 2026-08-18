@@ -25,6 +25,9 @@ export const roomCodeSchema = z
 export const roleSchema = z.enum(["host", "viewer"]);
 export type Role = z.infer<typeof roleSchema>;
 
+export const mediaModeSchema = z.enum(["p2p", "sfu"]);
+export type MediaMode = z.infer<typeof mediaModeSchema>;
+
 const iceServerSchema = z
   .object({
     urls: z.union([
@@ -116,6 +119,7 @@ export const clientMessageSchema = z.union([
     })
     .strict(),
   z.object({ type: z.literal("refresh-ice") }).strict(),
+  z.object({ type: z.literal("refresh-sfu") }).strict(),
   z.object({ type: z.literal("stop-sharing") }).strict(),
   // Kept as a compatibility alias while previously deployed clients age out.
   z.object({ type: z.literal("close-room") }).strict(),
@@ -135,20 +139,36 @@ const errorCodeSchema = z.enum([
   "SERVER_ERROR",
 ]);
 
-export const serverMessageSchema = z.discriminatedUnion("type", [
+const authenticatedMessageFields = {
+  type: z.literal("authenticated"),
+  role: roleSchema,
+  peerId: opaqueIdSchema,
+  roomExpiresAt: z.string().datetime().nullable(),
+  maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+  hostOnline: z.boolean(),
+  connectionId: opaqueIdSchema.nullable(),
+  viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+};
+
+const authenticatedMessageSchema = z.union([
   z
     .object({
-      type: z.literal("authenticated"),
-      role: roleSchema,
-      peerId: opaqueIdSchema,
-      roomExpiresAt: z.string().datetime().nullable(),
-      maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
-      hostOnline: z.boolean(),
-      connectionId: opaqueIdSchema.nullable(),
-      viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+      ...authenticatedMessageFields,
+      // Optional on P2P so a rolling server update remains compatible with
+      // already-loaded clients that use the previous strict wire schema.
+      mediaMode: z.literal("p2p").optional(),
       iceConfig: iceConfigSchema,
     })
     .strict(),
+  z
+    .object({
+      ...authenticatedMessageFields,
+      mediaMode: z.literal("sfu"),
+    })
+    .strict(),
+]);
+
+const nonAuthenticationServerMessageSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("peer-joined"),
@@ -184,6 +204,13 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("sfu-config"),
+      url: z.string().url().max(2048),
+      token: z.string().min(1).max(8192),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("host-status"),
       online: z.boolean(),
     })
@@ -202,6 +229,10 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
       message: z.string().min(1).max(256),
     })
     .strict(),
+]);
+export const serverMessageSchema = z.union([
+  authenticatedMessageSchema,
+  nonAuthenticationServerMessageSchema,
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 

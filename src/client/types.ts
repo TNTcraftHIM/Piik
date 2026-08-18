@@ -4,7 +4,7 @@ export type SignalConnectionState =
   | "reconnecting"
   | "offline";
 
-export type MediaPath = "direct" | "relay" | "unknown";
+export type MediaPath = "direct" | "relay" | "sfu" | "unknown";
 
 export interface ConnectionMetrics {
   path: MediaPath;

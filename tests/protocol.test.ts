@@ -125,6 +125,9 @@ describe("client signaling protocol", () => {
     expect(clientMessageSchema.safeParse({ type: "abandon-room" }).success).toBe(
       true,
     );
+    expect(clientMessageSchema.safeParse({ type: "refresh-sfu" }).success).toBe(
+      true,
+    );
   });
 });
 
@@ -139,6 +142,7 @@ describe("server signaling protocol", () => {
       hostOnline: true,
       connectionId: null,
       viewerPeerIds,
+      mediaMode: "p2p",
       iceConfig: {
         iceServers: [],
         expiresAt: null,
@@ -171,6 +175,40 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({ type: "sharing-stopped" }).success,
     ).toBe(true);
+  });
+
+  it("uses distinct P2P and SFU authentication payloads", () => {
+    const p2p = authenticatedMessage(8);
+    expect(serverMessageSchema.safeParse(p2p).success).toBe(true);
+    const { mediaMode: _mediaMode, ...legacyP2p } = p2p;
+    expect(serverMessageSchema.safeParse(legacyP2p).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({ ...p2p, iceConfig: undefined }).success,
+    ).toBe(false);
+
+    const { iceConfig: _iceConfig, ...common } = p2p;
+    const sfu = { ...common, mediaMode: "sfu" };
+    expect(serverMessageSchema.safeParse(sfu).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({ ...sfu, iceConfig: p2p.iceConfig }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a bounded SFU connection configuration", () => {
+    expect(
+      serverMessageSchema.safeParse({
+        type: "sfu-config",
+        url: "wss://livekit.example.test",
+        token: "header.payload.signature",
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "sfu-config",
+        url: "not-a-url",
+        token: "header.payload.signature",
+      }).success,
+    ).toBe(false);
   });
 
   it.each([0, 1.5, MAX_VIEWERS_PER_ROOM_LIMIT + 1])(

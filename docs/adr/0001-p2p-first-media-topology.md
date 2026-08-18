@@ -3,6 +3,10 @@
 - Status: Accepted for the MVP
 - Date: 2026-08-18
 
+ADR-0003 supersedes only this document's previous deferral of every SFU
+implementation. P2P remains the default topology; an explicit deployment-wide
+single-node SFU experiment is now accepted without automatic or hybrid routing.
+
 ## Context
 
 The product targets one game broadcaster and a small group of trusted friends. Low glass-to-glass latency, private access, no-install browser viewing, and low server bandwidth cost matter more than large-room scalability. Public broadcasting is deliberately delegated to existing OBS/Twitch-class services. NATs, CGNAT, restrictive firewalls, variable publisher upload, and browser capture limitations prevent a direct-only design from being reliable for every user; partial room reachability is not acceptable behavior.
@@ -17,7 +21,7 @@ Use separate control and media planes:
 - Only pairs that cannot connect directly use authenticated TURN. Production requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement, using its standard TCP port 5349 by default. Port 443 is optional and requires a dedicated public IP or a validated layer-4/SNI route when HTTPS already owns that address and port.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
 - The broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise; the sustainable envelope is decided from publisher upload, encoder, latency, and stability measurements.
-- No SFU is planned for the normal product envelope. It is only a future reconsideration point if the small-room scope changes or measured relay/upload/encoder pressure makes the chosen envelope unworkable.
+- No SFU is the automatic or default path for the normal product envelope. ADR-0003 permits only an explicit deployment-wide option after severe user-observed multi-viewer degradation triggered measurement work.
 
 ## Consequences
 

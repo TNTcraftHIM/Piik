@@ -1,10 +1,14 @@
-import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../shared/protocol.js";
+import {
+  MAX_VIEWERS_PER_ROOM_LIMIT,
+  type MediaMode,
+} from "../shared/protocol.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 3_600;
 const MAX_ACCESS_PASSWORD_BYTES = 128;
 const MIN_TURN_SECRET_BYTES = 32;
+const MIN_LIVEKIT_API_SECRET_BYTES = 32;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
 
@@ -16,6 +20,10 @@ export interface ServerConfig {
   allowedOrigins: ReadonlySet<string>;
   accessPassword?: string;
   roomDatabasePath?: string;
+  mediaMode: MediaMode;
+  livekitUrl?: string;
+  livekitApiKey?: string;
+  livekitApiSecret?: string;
   roomTtlMs: number;
   maxRooms: number;
   maxViewersPerRoom: number;
@@ -67,6 +75,29 @@ function parseEnvironment(value: string | undefined): RuntimeEnvironment {
     throw new Error("NODE_ENV must be development, test, or production");
   }
   return environment;
+}
+
+function parseMediaMode(value: string | undefined): MediaMode {
+  const mediaMode = value?.trim() || "p2p";
+  if (mediaMode !== "p2p" && mediaMode !== "sfu") {
+    throw new Error("MEDIA_MODE must be p2p or sfu");
+  }
+  return mediaMode;
+}
+
+function validateLiveKitUrl(value: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("LIVEKIT_URL must be a valid ws or wss URL");
+  }
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+    throw new Error("LIVEKIT_URL must use ws or wss");
+  }
+  if (url.username || url.password || url.hash) {
+    throw new Error("LIVEKIT_URL must not contain credentials or a fragment");
+  }
 }
 
 function parseUrlList(value: string | undefined, name: string): string[] {
@@ -245,6 +276,10 @@ export function loadConfig(
   const accessPassword = environment.ACCESS_PASSWORD?.trim() || undefined;
   const roomDatabasePath =
     environment.ROOM_DATABASE_PATH?.trim() || undefined;
+  const mediaMode = parseMediaMode(environment.MEDIA_MODE);
+  const livekitUrl = environment.LIVEKIT_URL?.trim() || undefined;
+  const livekitApiKey = environment.LIVEKIT_API_KEY?.trim() || undefined;
+  const livekitApiSecret = environment.LIVEKIT_API_SECRET?.trim() || undefined;
   const turnSharedSecret = environment.TURN_SHARED_SECRET?.trim() || undefined;
   const stunUrls = parseIceUrlList(
     environment.STUN_URLS,
@@ -262,6 +297,33 @@ export function loadConfig(
       "TURN_URLS and TURN_SHARED_SECRET must either both be configured or both be absent",
     );
   }
+  const livekitSettingCount = [
+    livekitUrl,
+    livekitApiKey,
+    livekitApiSecret,
+  ].filter(Boolean).length;
+  if (livekitSettingCount !== 0 && livekitSettingCount !== 3) {
+    throw new Error(
+      "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+    );
+  }
+  if (
+    livekitApiSecret &&
+    Buffer.byteLength(livekitApiSecret) < MIN_LIVEKIT_API_SECRET_BYTES
+  ) {
+    throw new Error("LIVEKIT_API_SECRET must contain at least 32 bytes");
+  }
+  if (mediaMode === "sfu" && livekitSettingCount !== 3) {
+    throw new Error("LiveKit configuration is required when MEDIA_MODE=sfu");
+  }
+  if (livekitUrl) {
+    validateLiveKitUrl(livekitUrl);
+    if (nodeEnv === "production" && mediaMode === "sfu") {
+      if (new URL(livekitUrl).protocol !== "wss:") {
+        throw new Error("LIVEKIT_URL must use wss in production SFU mode");
+      }
+    }
+  }
   if (
     accessPassword &&
     (!VISIBLE_ASCII_PATTERN.test(accessPassword) ||
@@ -277,20 +339,25 @@ export function loadConfig(
   if (nodeEnv === "production" && roomDatabasePath === ":memory:") {
     throw new Error("ROOM_DATABASE_PATH must be file-backed in production");
   }
-  if (nodeEnv === "production" && turnUrls.length === 0) {
+  const hasIceConfiguration =
+    stunUrls.length > 0 || turnUrls.length > 0 || Boolean(turnSharedSecret);
+  const requireProductionIce =
+    nodeEnv === "production" &&
+    (mediaMode === "p2p" || hasIceConfiguration);
+  if (requireProductionIce && turnUrls.length === 0) {
     throw new Error("TURN is required in production");
   }
-  if (nodeEnv === "production" && stunUrls.length === 0) {
+  if (requireProductionIce && stunUrls.length === 0) {
     throw new Error("STUN is required in production");
   }
   if (
-    nodeEnv === "production" &&
+    requireProductionIce &&
     turnSharedSecret &&
     Buffer.byteLength(turnSharedSecret) < MIN_TURN_SECRET_BYTES
   ) {
     throw new Error("TURN_SHARED_SECRET must contain at least 32 bytes in production");
   }
-  if (nodeEnv === "production") {
+  if (requireProductionIce) {
     requireProductionTurnCoverage(turnUrls);
   }
 
@@ -305,6 +372,10 @@ export function loadConfig(
     ),
     accessPassword,
     roomDatabasePath,
+    mediaMode,
+    livekitUrl,
+    livekitApiKey,
+    livekitApiSecret,
     roomTtlMs:
       parsePositiveInteger(environment.ROOM_TTL_SECONDS, 14_400, "ROOM_TTL_SECONDS") *
       1_000,

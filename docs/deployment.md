@@ -4,9 +4,10 @@ Last verified against upstream documentation: 2026-08-18.
 
 This is the first production-shaped deployment for the WebRTC PoC: one Node.js
 process provides the built Web client, room API, and WebSocket signaling behind
-Caddy or nginx; coturn is the separate STUN/TURN service. Normal media remains
-browser-to-browser. Only an ICE pair that cannot connect directly consumes TURN
-bandwidth.
+Caddy or nginx. The default `MEDIA_MODE=p2p` keeps media browser-to-browser and
+uses the separate coturn service only for ICE pairs that cannot connect
+directly. An explicit `MEDIA_MODE=sfu` can add one same-host LiveKit process for
+measurement; it is not the default and has not been deployed or benchmarked.
 
 The public staging infrastructure has already passed the relay checks recorded
 in `docs/status.md`, but every new deployment must run the direct, relay, and
@@ -15,7 +16,7 @@ that its DNS, firewall, NAT, or relay path works.
 
 ## Topology and prerequisites
 
-Use two DNS names, for example `share.example.com` and `turn.example.com`. They
+The P2P baseline uses two DNS names, for example `share.example.com` and `turn.example.com`. They
 may resolve to the same public IP in the minimal deployment: the Web ingress
 owns TCP 443 while coturn owns UDP and TCP 3478. TURN/TLS is optional and uses
 its standard TCP port 5349 by default, which can also share that public IP.
@@ -26,8 +27,15 @@ browser <------------ DTLS-SRTP P2P ------------> browser
 browser -- TURN only for failed ICE pairs --> coturn
 ```
 
-The minimum runtime is Node.js 24 LTS and coturn 4.17.2 or a newer patched
-release. Provision a valid TLS certificate for the Web name and, only when
+The single-node SFU option needs no additional DNS name or certificate in the
+minimal same-host layout. `LIVEKIT_URL=wss://share.example.com`; nginx routes
+only LiveKit's fixed `/rtc/*` paths to port 7880 and leaves `/signal`, `/api`, and
+the application routes on Node. LiveKit media reaches the host directly on
+7881/TCP or 7882/UDP and never passes through the HTTP reverse proxy.
+
+The minimum P2P runtime is Node.js 24 LTS and coturn 4.17.2 or a newer patched
+release. SFU mode additionally uses the separately installed LiveKit Server
+version recorded in the SFU research document. Provision a valid TLS certificate for the Web name and, only when
 enabling TURN/TLS, for the TURN name. Enable operating system time
 synchronization and keep the Node application port reachable only from its
 reverse proxy. A single Node process is intentional. Active participants and
@@ -77,6 +85,11 @@ ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
 MAX_VIEWERS_PER_ROOM=8
 
+MEDIA_MODE=p2p
+LIVEKIT_URL=
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+
 STUN_URLS=stun:turn.example.com:3478
 TURN_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp
 TURN_SHARED_SECRET=<SAME_VALUE_AS_COTURN_STATIC_AUTH_SECRET>
@@ -96,6 +109,9 @@ temporary rooms, and omit both values for public mode. `ROOM_TTL_SECONDS` applie
 only to temporary rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
 limit, not evidence that the publisher can sustain that many streams.
+`MEDIA_MODE` defaults to `p2p` and is fixed for the process lifetime. The three
+`LIVEKIT_*` values must either all be absent or all be present; a complete tuple
+may remain dormant in P2P mode for a reversible restart-based switch.
 `TURN_SHARED_SECRET` stays only in the Node environment and coturn configuration;
 browsers receive HMAC-SHA1-derived, time-limited credentials after room
 authentication. Keep host clocks synchronized because the credential username
@@ -107,8 +123,9 @@ same login gate. Only `POST /api/session` accepts the password in an
 cookie with `HttpOnly`, `SameSite=Strict`, `Path=/`, a
 bounded `Max-Age`, and, under production HTTPS, `Secure` plus an `__Host-` name.
 The cookie contains no account or server-side session identifier. There is no
-account database, JWT, session map, or logout endpoint; expiry or clearing site
-cookies ends access. The optional room database is unrelated to access sessions.
+account database, access-session JWT, session map, or logout endpoint; expiry or
+clearing site cookies ends access. The optional room database is unrelated to
+access sessions.
 
 `POST /api/rooms` and the `/signal` WebSocket upgrade use that cookie when the
 gate is enabled. The room API does not accept a direct Bearer credential as an
@@ -152,8 +169,8 @@ With no `ACCESS_PASSWORD`, the random room code is the sole viewing capability
 and does not provide strong privacy, so public mode is suitable only when public
 access is acceptable or another trusted access layer exists.
 
-Production startup validates the configured ICE transport mix before the
-server listens. The baseline must contain STUN and separate `TURN_URLS` entries
+Production P2P startup validates the configured ICE transport mix before the
+server listens. The P2P baseline must contain STUN and separate `TURN_URLS` entries
 for `turn:` with explicit `transport=udp` and `turn:` with explicit
 `transport=tcp`. TURN/TLS is optional; when enabled, append
 `turns:turn.example.com:5349?transport=tcp`. This startup check only validates
@@ -163,12 +180,18 @@ and TURN entry is also syntax-checked; use the exact lowercase TURN query forms
 shown above because one malformed ICE URL can make a browser reject the whole
 peer-connection configuration.
 
+SFU mode instead requires `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and
+`LIVEKIT_API_SECRET`; the API secret must contain at least 32 bytes, and production
+requires a `wss:` URL. Screener does not use its
+P2P `STUN_URLS`, `TURN_URLS`, or `TURN_SHARED_SECRET` to configure LiveKit.
+LiveKit's ICE and any later TURN fallback are separate deployment concerns.
+
 ## HTTPS and WSS ingress
 
-Terminate public TLS at Caddy or nginx and proxy every application path to the
-single Node process. `/signal` must preserve the WebSocket upgrade, `Host`, and
-`Origin`, and its idle/read timeout must be longer than a normal sharing session.
-Do not cache `/api/*` responses. Caddy's minimal same-host form is:
+Terminate public TLS at Caddy or nginx. In P2P mode every application path goes
+to the single Node process. `/signal` must preserve the WebSocket upgrade,
+`Host`, and `Origin`, and its idle/read timeout must be longer than a normal
+sharing session. Do not cache `/api/*` responses. Caddy's minimal P2P form is:
 
 ```caddyfile
 share.example.com {
@@ -176,9 +199,23 @@ share.example.com {
 }
 ```
 
-An equivalent nginx location is:
+An equivalent nginx layout, including the optional same-origin LiveKit route,
+is:
 
 ```nginx
+location ^~ /rtc/ {
+    access_log off;
+    error_log /dev/null crit;
+    proxy_pass http://127.0.0.1:7880;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 5h;
+    proxy_buffering off;
+}
+
 location / {
     proxy_pass http://127.0.0.1:8787;
     proxy_http_version 1.1;
@@ -212,6 +249,99 @@ methods return 405 with `Allow: GET`. The endpoint does not inspect room state,
 TURN reachability, or any external dependency, so use it only to decide whether
 the Node process can accept HTTP requests. It is not a deployment-readiness or
 end-to-end media check.
+
+## Optional single-node LiveKit SFU
+
+Enable this section only for the ADR-0003 measurement experiment. It does not
+replace the P2P/coturn baseline or establish that SFU performs better on the
+target machines and networks.
+
+The tracked files are:
+
+- [`deploy/livekit/livekit.yaml.example`](../deploy/livekit/livekit.yaml.example)
+- [`deploy/systemd/livekit.service.example`](../deploy/systemd/livekit.service.example)
+- the `/rtc/` location in
+  [`deploy/nginx/share.bonfire.icu.conf.example`](../deploy/nginx/share.bonfire.icu.conf.example)
+
+Install the pinned LiveKit Server release selected by the current research from
+its official release assets, verify the downloaded artifact, and place the
+binary at `/usr/local/bin/livekit-server`. Do not use `--dev` or the documented
+development key pair in an Internet deployment. Create a dedicated `livekit`
+service account and copy the YAML example to `/etc/livekit/livekit.yaml`.
+
+Generate a unique API key pair with:
+
+```sh
+livekit-server generate-keys
+```
+
+Using a secret-aware editor, create `/etc/livekit/keys.yaml` as a single YAML
+mapping from the generated API key to its secret:
+
+```yaml
+<GENERATED_API_KEY>: <GENERATED_API_SECRET>
+```
+
+Set ownership to the LiveKit service account and mode `0600`. Current LiveKit
+rejects a key file whose mode grants access to `others`; the stricter example
+also avoids accidental group disclosure. Put the same pair in Screener's
+untracked environment; do not reuse `ACCESS_PASSWORD`, `TURN_SHARED_SECRET`, or
+any example value:
+
+```dotenv
+MEDIA_MODE=sfu
+LIVEKIT_URL=wss://share.example.com
+LIVEKIT_API_KEY=<GENERATED_API_KEY>
+LIVEKIT_API_SECRET=<GENERATED_API_SECRET>
+```
+
+`LIVEKIT_URL` is the base WebSocket origin and contains no `/rtc` suffix. The
+2.22 client appends `/rtc/v1` and its validation route. nginx's exact
+`location ^~ /rtc/` sends those requests to LiveKit without rewriting the URI;
+the broader `/` location continues to send Screener pages, `/api/*`, and
+`/signal` to Node. A separate `sfu.example.com` hostname and certificate can be
+used when operational isolation is preferred, but it is not required on one
+host.
+
+The LiveKit client sends its short-lived join JWT in an `access_token` query
+parameter during the WebSocket handshake. Keep access and request-line error
+logging disabled specifically for `/rtc/`, as shown above, so nginx does not
+persist that credential. Use the LiveKit service journal for SFU diagnostics.
+
+The example deliberately omits Redis. It uses one UDP mux port instead of the
+default large range and sets `rtc.use_external_ip: true`. LiveKit therefore
+needs network-interface and external-address discovery; the systemd unit allows
+`AF_NETLINK`. If discovery advertises the wrong address, diagnose the actual NAT
+mapping before changing the official `node_ip`/`use_external_ip` settings.
+
+The HTTP/API listener on 7880 must not be reachable from the Internet. LiveKit
+also needs these direct public media listeners:
+
+| Destination | Protocol | Purpose |
+| --- | --- | --- |
+| host `7880` | TCP, private | nginx to LiveKit HTTP/WebSocket only |
+| public `7881` | TCP | WebRTC ICE/TCP fallback |
+| public `7882` | UDP | WebRTC ICE/UDP mux |
+
+Check and configure both the operating-system firewall and any provider
+firewall/security group. Do not infer that one layer is open because the other
+is open, and do not expose 7880 as a shortcut. If the server is behind NAT,
+forward 7881/TCP and 7882/UDP without changing their ports and verify the public
+candidate from an external client.
+
+The initial template does not enable LiveKit embedded TURN and does not wire the
+existing coturn into `rtc.turn_servers`. ICE/TCP 7881 is the first non-UDP
+fallback, but it cannot cross every authenticated proxy or restrictive policy.
+Reusing coturn is a plausible next deployment change only after its shared-secret
+credential flow and forced-relay behavior are verified with LiveKit clients.
+Embedded TURN on the same public IP would also compete with the existing 3478
+and HTTPS/TURN-TLS listeners. Treat strict-network coverage in SFU mode as
+unverified until one option passes the external matrix.
+
+Install the tracked unit, reload systemd, and start LiveKit only after the
+configuration, key permissions, reverse-proxy route, host firewall, and provider
+firewall have been reviewed. Starting the process or obtaining a WSS connection
+does not verify media reachability.
 
 ## coturn
 
@@ -262,6 +392,12 @@ Open only these public listeners:
 | `turn.example.com:49152-49251` | UDP, bidirectional | Relayed media endpoints |
 | `turn.example.com:5349` | TCP, optional | Standard TURN/TLS |
 | `turn.example.com:443` | TCP, optional | TURN/TLS on a dedicated IP or validated L4/SNI route |
+| host public address `:7881` | TCP, SFU mode | LiveKit ICE/TCP; never HTTP proxy traffic |
+| host public address `:7882` | UDP, SFU mode | LiveKit ICE/UDP mux |
+
+Keep LiveKit TCP 7880 absent from every public allowlist. The two SFU media rows
+are required only when `MEDIA_MODE=sfu`; they do not change the default P2P
+exposure.
 
 The 100-port relay range is an initial small-room limit, not a universal sizing
 rule. Monitor 508/allocation failures and concurrent allocations before widening
@@ -313,10 +449,36 @@ Run these checks from real external networks before calling the deployment usabl
    TURN. A real 1:8 session is currently unverified and must not be inferred from
    the configured admission limit.
 
+For an SFU deployment, run a separate matrix rather than treating the P2P relay
+results as transferable:
+
+1. Confirm `https://share.example.com/` still serves Screener, `/signal` still
+   upgrades to Screener, and a LiveKit client reaches the same origin through
+   `/rtc/v1`; port 7880 must remain unreachable from an external host.
+2. From an external network, confirm a publisher and viewer select LiveKit's
+   7882/UDP candidate and receive screen video plus available screen audio.
+3. Block UDP and verify a newly established session can use 7881/TCP. Record a
+   clear failure if the test network also blocks that port; do not claim TURN
+   fallback unless a separately configured TURN path is forced and observed.
+4. Stop sharing and publish again in the same Screener room. Viewers must wait
+   without losing the invitation, then receive the new publication. Repeat a
+   source replacement and a short Screener `/signal` interruption.
+5. Compare 1, 3, 5, and 8 viewers against P2P using the same source and quality
+   profile. Record broadcaster upload/encode load, LiveKit ingress/egress/CPU,
+   selected transport, viewer bitrate/frame rate/loss, first picture, and
+   glass-to-glass latency on desktop and mobile.
+
+The SFU remains experimental until this evidence is recorded. Conventional
+LiveKit transport encryption does not exclude the server from media access and
+must not be reported as E2EE.
+
 References: [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2),
 [turnserver documentation](https://github.com/coturn/coturn/blob/master/README.turnserver),
 the [official example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf),
 [TURN URI scheme RFC 7065](https://www.rfc-editor.org/rfc/rfc7065.html),
 [Cloudflare network-port guidance](https://developers.cloudflare.com/fundamentals/reference/network-ports/),
-[RFC6265bis](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/), and
-[Node.js Crypto](https://nodejs.org/api/crypto.html#cryptocreatehmacalgorithm-key-options).
+[RFC6265bis](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/),
+[Node.js Crypto](https://nodejs.org/api/crypto.html#cryptocreatehmacalgorithm-key-options),
+[LiveKit self-hosted deployment](https://docs.livekit.io/transport/self-hosting/deployment/),
+[LiveKit ports and firewall](https://docs.livekit.io/transport/self-hosting/ports-firewall/),
+and the [LiveKit configuration sample](https://github.com/livekit/livekit/blob/master/config-sample.yaml).

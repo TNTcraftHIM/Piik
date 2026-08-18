@@ -7,6 +7,7 @@ import type { ViteDevServer } from "vite";
 import type { CreateRoomResponse } from "../shared/protocol.js";
 import { AccessSession } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
+import type { SfuTokenIssuer } from "./livekit-token.js";
 import { RoomDatabase } from "./room-database.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer } from "./signaling.js";
@@ -24,6 +25,7 @@ export interface CreateServerOptions {
   maxSignalConnections?: number;
   maxUnauthenticatedSignalConnections?: number;
   accessSessionTtlSeconds?: number;
+  sfuTokenIssuer?: SfuTokenIssuer;
 }
 
 export interface ScreenerServer {
@@ -59,12 +61,31 @@ export async function createScreenerServer(
     now,
     ttlSeconds: options.accessSessionTtlSeconds,
   });
-  const iceOptions = {
-    stunUrls: config.stunUrls,
-    turnUrls: config.turnUrls,
-    turnSharedSecret: config.turnSharedSecret,
-    credentialTtlSeconds: config.turnCredentialTtlSeconds,
-  };
+  let sfuTokenIssuer = options.sfuTokenIssuer;
+  if (config.mediaMode === "sfu" && !sfuTokenIssuer) {
+    const { LiveKitTokenIssuer } = await import("./livekit-token.js");
+    sfuTokenIssuer = new LiveKitTokenIssuer({
+      apiKey: config.livekitApiKey!,
+      apiSecret: config.livekitApiSecret!,
+      maxViewersPerRoom: config.maxViewersPerRoom,
+    });
+  }
+  const signalingMedia =
+    config.mediaMode === "p2p"
+      ? {
+          mode: "p2p" as const,
+          ice: {
+            stunUrls: config.stunUrls,
+            turnUrls: config.turnUrls,
+            turnSharedSecret: config.turnSharedSecret,
+            credentialTtlSeconds: config.turnCredentialTtlSeconds,
+          },
+        }
+      : {
+          mode: "sfu" as const,
+          url: config.livekitUrl!,
+          tokenIssuer: sfuTokenIssuer!,
+        };
 
   let frontendHandler: FrontendHandler | undefined;
   let vite: ViteDevServer | undefined;
@@ -93,7 +114,7 @@ export async function createScreenerServer(
   const signaling = new SignalingServer({
     server: httpServer,
     roomStore,
-    ice: iceOptions,
+    media: signalingMedia,
     allowedOrigins: config.allowedOrigins,
     authorizeUpgrade: (request) =>
       accessSession.isAuthenticated(request.headers.cookie),

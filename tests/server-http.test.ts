@@ -39,6 +39,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
     accessPassword,
+    mediaMode: "p2p",
     roomTtlMs: 14_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,

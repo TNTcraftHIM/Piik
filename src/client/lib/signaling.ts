@@ -161,7 +161,9 @@ export class SignalingClient {
             return;
           }
         }
-        this.scheduleIceRefresh(message.iceConfig.expiresAt);
+        if (message.mediaMode !== "sfu") {
+          this.scheduleIceRefresh(message.iceConfig.expiresAt);
+        }
         this.events.onStatus("connected");
       } else if (message.type === "ice-config") {
         this.scheduleIceRefresh(message.iceConfig.expiresAt);

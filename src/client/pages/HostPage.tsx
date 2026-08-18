@@ -35,6 +35,7 @@ import {
   QUALITY_PROFILES,
   type QualityProfileId,
 } from "../media/quality";
+import { SfuPublisher } from "../sfu/publisher";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -42,6 +43,7 @@ import type {
 import { HostPeer } from "../webrtc/host-peer";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
+type ActiveMediaMode = "p2p" | "sfu";
 
 interface CaptureDetails {
   resolution: string;
@@ -109,6 +111,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [details, setDetails] = useState<CaptureDetails | null>(null);
   const [room, setRoom] = useState<CreateRoomResponse | null>(readHostRoom);
   const [relayAvailable, setRelayAvailable] = useState(false);
+  const [mediaMode, setMediaMode] = useState<ActiveMediaMode | null>(null);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
@@ -116,12 +119,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [switchingSource, setSwitchingSource] = useState(false);
+  const [sfuViewerIds, setSfuViewerIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
+  const sfuPublisherRef = useRef<SfuPublisher | null>(null);
+  const mediaModeRef = useRef<ActiveMediaMode | null>(null);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
   const sourceSwitchRef = useRef<object | null>(null);
@@ -131,6 +139,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     () => Array.from(peerSnapshots.values()),
     [peerSnapshots],
   );
+  const sfuViewers = useMemo(() => [...sfuViewerIds], [sfuViewerIds]);
+  const viewerCount = mediaMode === "sfu" ? sfuViewers.length : viewers.length;
 
   useEffect(() => {
     if (videoRef.current) {
@@ -144,6 +154,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       generationRef.current += 1;
       sourceSwitchRef.current = null;
       signalRef.current?.stop();
+      sfuPublisherRef.current?.disconnect();
+      sfuPublisherRef.current = null;
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
       streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -173,6 +185,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signal.stop();
     }
     signalRef.current = null;
+    sfuPublisherRef.current?.disconnect();
+    sfuPublisherRef.current = null;
+    mediaModeRef.current = null;
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -183,7 +198,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setStream(null);
     setDetails(null);
     setRelayAvailable(false);
+    setMediaMode(null);
     setMaxViewers(null);
+    setSfuViewerIds(new Set());
     setPeerSnapshots(new Map());
     setSignalStatus("offline");
     setSwitchingSource(false);
@@ -256,7 +273,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     generation: number,
     attempt = 0,
   ): Promise<void> {
-    if (!isCurrentGeneration(generation)) {
+    if (
+      !isCurrentGeneration(generation) ||
+      mediaModeRef.current !== "p2p"
+    ) {
       return;
     }
     // Preserve healthy media across control reconnects, but replace a stalled
@@ -337,6 +357,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     rebuild: boolean,
     generation: number,
   ): Promise<void> {
+    if (mediaModeRef.current !== "p2p") {
+      return;
+    }
     const peer = peersRef.current.get(peerId);
     if (rebuild) {
       if (peer && peer.connectionId !== connectionId) {
@@ -373,8 +396,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      const nextMediaMode = message.mediaMode ?? "p2p";
+      mediaModeRef.current = nextMediaMode;
+      setMediaMode(nextMediaMode);
       setMaxViewers(message.maxViewers);
       const currentViewerIds = new Set(message.viewerPeerIds);
+      if (nextMediaMode === "sfu") {
+        peersRef.current.forEach((peer) => peer.dispose());
+        peersRef.current.clear();
+        setPeerSnapshots(new Map());
+        setSfuViewerIds(currentViewerIds);
+        return;
+      }
+      setSfuViewerIds(new Set());
       for (const peerId of peersRef.current.keys()) {
         if (!currentViewerIds.has(peerId)) {
           removePeer(peerId);
@@ -383,6 +417,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "peer-joined") {
+      if (mediaModeRef.current === "sfu") {
+        setSfuViewerIds((current) => {
+          const next = new Set(current);
+          next.add(message.peerId);
+          return next;
+        });
+        return;
+      }
       void startPeer(message.peerId, generation).catch((error: unknown) => {
         if (isCurrentGeneration(generation)) {
           setNotice(readableError(error));
@@ -391,14 +433,28 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "peer-left") {
+      if (mediaModeRef.current === "sfu") {
+        setSfuViewerIds((current) => {
+          const next = new Set(current);
+          next.delete(message.peerId);
+          return next;
+        });
+        return;
+      }
       removePeer(message.peerId);
       return;
     }
     if (message.type === "signal") {
+      if (mediaModeRef.current !== "p2p") {
+        return;
+      }
       void peersRef.current.get(message.fromPeerId)?.acceptSignal(message.payload);
       return;
     }
     if (message.type === "restart-request") {
+      if (mediaModeRef.current !== "p2p") {
+        return;
+      }
       void recoverPeer(
         message.fromPeerId,
         message.connectionId,
@@ -412,9 +468,56 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "ice-config") {
+      if (mediaModeRef.current !== "p2p") {
+        return;
+      }
       iceConfigRef.current = message.iceConfig;
       setRelayAvailable(message.iceConfig.relayAvailable);
       peersRef.current.forEach((peer) => peer.updateIceConfig(message.iceConfig));
+      return;
+    }
+    if (message.type === "sfu-config") {
+      if (
+        mediaModeRef.current !== "sfu" ||
+        sfuPublisherRef.current ||
+        !streamRef.current
+      ) {
+        return;
+      }
+      const activeStream = streamRef.current;
+      const publisher = new SfuPublisher({
+        onDisconnected: () => {
+          if (
+            isCurrentGeneration(generation) &&
+            sfuPublisherRef.current === publisher
+          ) {
+            endSharing("SFU 媒体连接已断开");
+          }
+        },
+      });
+      sfuPublisherRef.current = publisher;
+      void publisher
+        .connect(
+          { url: message.url, token: message.token },
+          activeStream,
+          QUALITY_PROFILES[qualityId],
+        )
+        .then(() => {
+          if (
+            isCurrentGeneration(generation) &&
+            sfuPublisherRef.current === publisher
+          ) {
+            setPhase("live");
+          }
+        })
+        .catch((error: unknown) => {
+          if (
+            isCurrentGeneration(generation) &&
+            sfuPublisherRef.current === publisher
+          ) {
+            endSharing(readableError(error));
+          }
+        });
       return;
     }
     if (message.type === "room-closed") {
@@ -560,11 +663,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 ...activeRoom,
                 expiresAt: message.roomExpiresAt,
               };
-              iceConfigRef.current = message.iceConfig;
-              setRelayAvailable(message.iceConfig.relayAvailable);
+              if (message.mediaMode !== "sfu") {
+                iceConfigRef.current = message.iceConfig;
+                setRelayAvailable(message.iceConfig.relayAvailable);
+                setPhase("live");
+              } else {
+                iceConfigRef.current = null;
+                setRelayAvailable(false);
+              }
               writeHostRoom(authenticatedRoom);
               setRoom(authenticatedRoom);
-              setPhase("live");
             }
             handleSignalMessage(message, generation);
           },
@@ -639,6 +747,53 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       captured.getTracks().forEach((track) => track.stop());
       setNotice("当前分享已经结束");
       finishSourceSwitch(token);
+      return;
+    }
+
+    if (mediaModeRef.current === "sfu") {
+      const publisher = sfuPublisherRef.current;
+      if (!publisher) {
+        captured.getTracks().forEach((track) => track.stop());
+        setNotice("SFU 媒体连接尚未就绪");
+        finishSourceSwitch(token);
+        return;
+      }
+      try {
+        const replaced = await publisher.replaceStream(captured);
+        if (
+          !isCurrentGeneration(generation) ||
+          sourceSwitchRef.current !== token ||
+          sfuPublisherRef.current !== publisher
+        ) {
+          captured.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        if (!replaced) {
+          captured.getTracks().forEach((track) => track.stop());
+          setNotice("切换失败，继续分享原画面");
+          finishSourceSwitch(token);
+          return;
+        }
+
+        retiringStreamRef.current = previousStream;
+        streamRef.current = captured;
+        setStream(captured);
+        setDetails(captureDetails(captured));
+        watchCaptureEnd(captured, generation);
+        previousStream.getTracks().forEach((track) => track.stop());
+        retiringStreamRef.current = null;
+        setNotice("分享来源已切换");
+        finishSourceSwitch(token);
+      } catch (error) {
+        captured.getTracks().forEach((track) => track.stop());
+        if (
+          isCurrentGeneration(generation) &&
+          sourceSwitchRef.current === token
+        ) {
+          finishSourceSwitch(token);
+          endSharing(readableError(error));
+        }
+      }
       return;
     }
 
@@ -764,7 +919,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               <h1 id="broadcast-heading">屏幕分享</h1>
               <p className="section-meta">
                 {phase === "live"
-                  ? `${viewers.length}/${maxViewers ?? "-"} 人正在观看`
+                  ? `${viewerCount}/${maxViewers ?? "-"} 人正在观看`
                   : phase === "starting"
                     ? "正在建立房间"
                     : room
@@ -772,7 +927,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       : "尚未开始"}
               </p>
             </div>
-            {forceRelay && <span className="diagnostic-badge">强制中继</span>}
+            {forceRelay && mediaMode !== "sfu" && (
+              <span className="diagnostic-badge">强制中继</span>
+            )}
             {(phase === "live" || phase === "starting") && (
               <div className="broadcast-actions">
                 {phase === "live" && (
@@ -829,7 +986,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           {!details?.hasAudio && stream && (
             <WarningBanner>当前来源没有可共享音频</WarningBanner>
           )}
-          {room && !relayAvailable && (
+          {room && mediaMode === "p2p" && !relayAvailable && (
             <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
           )}
           {notice && (
@@ -902,13 +1059,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <div className="viewer-panel-heading">
             <div>
               <h2 id="viewer-heading">观看者</h2>
-              <span>{viewers.length}/{maxViewers ?? "-"}</span>
+              <span>{viewerCount}/{maxViewers ?? "-"}</span>
             </div>
             <Users size={18} aria-hidden="true" />
           </div>
 
           <div className="viewer-list">
-            {viewers.map((viewer, index) => (
+            {mediaMode !== "sfu" && viewers.map((viewer, index) => (
               <article className="viewer-item" key={viewer.peerId}>
                 <div className="viewer-item-heading">
                   <div>
@@ -921,7 +1078,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 {viewer.error && <p className="inline-error">{viewer.error}</p>}
               </article>
             ))}
-            {viewers.length === 0 && (
+            {mediaMode === "sfu" && sfuViewers.map((peerId, index) => (
+              <article className="viewer-item" key={peerId}>
+                <div className="viewer-item-heading">
+                  <h3>朋友 {index + 1}</h3>
+                  <PathBadge path="sfu" />
+                </div>
+              </article>
+            ))}
+            {viewerCount === 0 && (
               <div className="empty-viewers">
                 <Users size={24} strokeWidth={1.5} aria-hidden="true" />
                 <span>{phase === "live" ? "等待朋友加入" : "暂无观看者"}</span>
