@@ -1,29 +1,27 @@
 import {
   decodeServerMessage,
   type ClientMessage,
-  type Role,
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
+import { getSession } from "./api";
 
-interface SignalingIdentity {
-  roomId: string;
-  role: Role;
-  token: string;
-  clientId: string;
-}
+type WithoutType<T> = T extends { type: string } ? Omit<T, "type"> : never;
+type SignalingIdentity = WithoutType<
+  Extract<ClientMessage, { type: "authenticate" }>
+>;
 
 interface SignalingEvents {
   onMessage: (message: ServerMessage) => void;
   onStatus: (status: SignalConnectionState) => void;
   onProtocolError: (message: string) => void;
   onTerminated: (message: string) => void;
+  onAccessRequired: () => void;
 }
 
 const FATAL_SIGNAL_ERRORS = new Set([
   "AUTH_REQUIRED",
   "INVALID_TOKEN",
-  "ROOM_CLOSED",
   "ROOM_EXPIRED",
   "ROOM_FULL",
   "HOST_ALREADY_CONNECTED",
@@ -51,6 +49,7 @@ export class SignalingClient {
   private iceRefreshTimer: number | null = null;
   private terminalTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
+  private accessCheck: Promise<void> | null = null;
 
   constructor(
     private readonly identity: SignalingIdentity,
@@ -179,6 +178,9 @@ export class SignalingClient {
       this.clearAuthenticationTimer();
       if (!this.stopped && shouldReconnectSignaling(event.code)) {
         this.scheduleReconnect();
+        if (event.code === 1006) {
+          this.checkAccess();
+        }
       } else if (!this.stopped) {
         this.stopped = true;
         this.clearTimers();
@@ -205,6 +207,30 @@ export class SignalingClient {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private checkAccess(): void {
+    if (this.accessCheck) {
+      return;
+    }
+    this.accessCheck = getSession()
+      .then((status) => {
+        if (
+          !this.stopped &&
+          !this.authenticated &&
+          status.required &&
+          !status.authenticated
+        ) {
+          this.stop();
+          this.events.onAccessRequired();
+        }
+      })
+      .catch(() => {
+        // Network errors keep the ordinary WebSocket reconnect loop active.
+      })
+      .finally(() => {
+        this.accessCheck = null;
+      });
   }
 
   private scheduleIceRefresh(expiresAt: string | null): void {

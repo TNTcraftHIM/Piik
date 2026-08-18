@@ -2,9 +2,9 @@
 
 Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its media path is WebRTC P2P-first, with authenticated TURN fallback for network pairs that cannot connect directly. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
 
-The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and creates an expiring invitation for up to three viewers. The host can change the shared source without replacing healthy peer connections. Each viewer receives an independent WebRTC connection, so direct and TURN-relayed paths can coexist in one room. The Node.js service carries only room, authentication, ICE credential, and signaling traffic.
+The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and creates an expiring room with a 12-digit numeric code. Friends can open `/r/{code}` directly or enter the code at `/join`; viewer links contain no separate token. Each viewer receives an independent WebRTC connection, so direct and TURN-relayed paths can coexist in one room. The default room capacity is eight viewers and deployments may configure 1 through 16, but a real 1:8 media session has not yet been validated and this setting is not a performance promise. The Node.js service carries only room, access, ICE credential, and signaling traffic.
 
-This is not yet a production release. Real cross-network TURN behavior, game audio, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
+This is not yet a production release. Public TURN/UDP and TURN/TCP relay paths are verified, but real cross-network Screener media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
 
 ## Run locally
 
@@ -14,6 +14,8 @@ Node.js 24 and npm 11 are required.
 npm ci
 npm run dev
 ```
+
+`ACCESS_PASSWORD` is optional. Leaving it empty makes the site public; setting it gates both hosting and viewing behind one site-wide password. Internet deployments intended to stay private should set it, because in public mode the numeric room code is the only viewing capability and does not provide strong privacy by itself.
 
 Open `http://localhost:8787`. The server listens on `0.0.0.0` by default so a
 phone on the same LAN can load `http://<computer-lan-ip>:8787`. To generate an

@@ -8,9 +8,10 @@ Caddy or nginx; coturn is the separate STUN/TURN service. Normal media remains
 browser-to-browser. Only an ICE pair that cannot connect directly consumes TURN
 bandwidth.
 
-This workstation does not have coturn installed, so the coturn configuration and
-public-network procedures below have not been run locally. Treat deployment as
-unverified until the direct, relay, and mixed-network checks at the end pass.
+The public staging infrastructure has already passed the relay checks recorded
+in `docs/status.md`, but every new deployment must run the direct, relay, and
+mixed-network procedures below. Configuration validation alone is not evidence
+that its DNS, firewall, NAT, or relay path works.
 
 ## Topology and prerequisites
 
@@ -69,9 +70,10 @@ LISTEN_HOST=127.0.0.1
 PORT=8787
 PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
-ROOM_CREATION_TOKEN=<INDEPENDENT_RANDOM_SECRET>
+ACCESS_PASSWORD=<OPTIONAL_WHOLE_SITE_PASSWORD>
 ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
+MAX_VIEWERS_PER_ROOM=8
 
 STUN_URLS=stun:turn.example.com:3478
 TURN_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp
@@ -80,12 +82,35 @@ TURN_CREDENTIAL_TTL_SECONDS=3600
 ```
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
-`ROOM_CREATION_TOKEN` and `TURN_SHARED_SECRET` must each contain at least 32
-bytes. They must be independently generated rather than reused.
+`ACCESS_PASSWORD` is optional: omit it or leave it empty for a public site. For
+an Internet deployment intended to stay private, set a strong independent value;
+production accepts 12 through 128 visible ASCII characters so the password can
+be carried safely in the login header. `TURN_SHARED_SECRET` must
+contain at least 32 bytes and must not reuse the access password.
+`MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
+limit, not evidence that the publisher can sustain that many streams.
 `TURN_SHARED_SECRET` stays only in the Node environment and coturn configuration;
 browsers receive HMAC-SHA1-derived, time-limited credentials after room
 authentication. Keep host clocks synchronized because the credential username
 contains its Unix expiry time.
+
+When `ACCESS_PASSWORD` is configured, both host and viewer routes first show the
+same login gate. Only `POST /api/session` accepts the password in an
+`Authorization: Bearer` header, then returns a 12-hour stateless HMAC-SHA256
+cookie with `HttpOnly`, `SameSite=Strict`, `Path=/`, a
+bounded `Max-Age`, and, under production HTTPS, `Secure` plus an `__Host-` name.
+The cookie contains no account or server-side session identifier. There is no
+database, JWT, session map, or logout endpoint; expiry or clearing site cookies
+ends access.
+
+`POST /api/rooms` and the `/signal` WebSocket upgrade use that cookie when the
+gate is enabled. The room API does not accept a direct Bearer credential as an
+alternate creation path. A created room has a random 12-digit numeric code;
+viewers open `/r/{code}` or enter only the code at `/join`. There is no viewer
+token or URL fragment, while the host token remains internal to the host page.
+With no `ACCESS_PASSWORD`, the room code is the sole viewing capability and does
+not provide strong privacy, so that mode is suitable only when public access is
+acceptable or another trusted access layer exists.
 
 Production startup validates the configured ICE transport mix before the
 server listens. The baseline must contain STUN and separate `TURN_URLS` entries
@@ -136,9 +161,10 @@ the first certificate is installed. This hook only reloads the Web ingress;
 if optional TURN/TLS later uses a renewed certificate, configure and verify a
 separate coturn reload or restart action.
 
-Keep the proxy's access-log retention bounded and access controlled. Viewer
-tokens are URL fragments and therefore are not sent in HTTP requests, but logs
-still contain network metadata and must not be treated as public artifacts.
+Keep the proxy's access-log retention bounded and access controlled. Requests to
+`/r/{code}` put the room code in the path, so access logs can contain room codes
+as well as network metadata. They must not be treated as public artifacts; in
+public mode a current code is itself the only viewing capability.
 
 For a process-level liveness probe, send `GET /healthz`. A running process
 returns HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`; other
@@ -199,9 +225,12 @@ Open only these public listeners:
 
 The 100-port relay range is an initial small-room limit, not a universal sizing
 rule. Monitor 508/allocation failures and concurrent allocations before widening
-it. The example also sets `user-quota=8`, `total-quota=100`, and a per-allocation
+it. The example also sets `user-quota=32`, `total-quota=100`, and a per-allocation
 `max-bps` of 2,000,000 bytes/s. Tune these from measured 1080p60 traffic and the
-purchased egress capacity; never remove all quotas as a shortcut.
+purchased egress capacity; never remove all quotas as a shortcut. The per-user
+value leaves allocation headroom for the host's independent connections and ICE
+restarts in an eight-viewer room; it is not a claim that the application or
+relay can sustain 1:8 media.
 
 coturn 4.17.2 denies loopback peers unless `allow-loopback-peers` is enabled; the
 example deliberately does not enable it and additionally denies common private,
@@ -237,13 +266,17 @@ Run these checks from real external networks before calling the deployment usabl
 5. If TURN/TLS is enabled, test its `turns:` URL separately on 5349 or the
    explicitly configured 443 route. Failure of an optional endpoint must be
    diagnosed, but an intentionally omitted endpoint is not a deployment failure.
-6. Repeat with three viewers and a mixed direct/restrictive-network cohort. Record
-   the selected path, RTT, bitrate, frame rate, packet loss, and coturn egress for
-   each viewer. Verify a direct viewer does not start consuming relay bandwidth
-   merely because another viewer needs TURN.
+6. Repeat at 1, 3, 5, and 8 viewers with a mixed direct/restrictive-network cohort.
+   Record the selected path, RTT, bitrate, frame rate, packet loss, publisher
+   upload/encode load, and coturn egress for each viewer. Verify a direct viewer
+   does not start consuming relay bandwidth merely because another viewer needs
+   TURN. A real 1:8 session is currently unverified and must not be inferred from
+   the configured admission limit.
 
 References: [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2),
 [turnserver documentation](https://github.com/coturn/coturn/blob/master/README.turnserver),
 the [official example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf),
-[TURN URI scheme RFC 7065](https://www.rfc-editor.org/rfc/rfc7065.html), and
-[Cloudflare network-port guidance](https://developers.cloudflare.com/fundamentals/reference/network-ports/).
+[TURN URI scheme RFC 7065](https://www.rfc-editor.org/rfc/rfc7065.html),
+[Cloudflare network-port guidance](https://developers.cloudflare.com/fundamentals/reference/network-ports/),
+[RFC6265bis](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/), and
+[Node.js Crypto](https://nodejs.org/api/crypto.html#cryptocreatehmacalgorithm-key-options).

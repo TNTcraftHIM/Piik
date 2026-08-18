@@ -1,7 +1,7 @@
 import {
   Check,
   Copy,
-  KeyRound,
+  Hash,
   MonitorUp,
   RefreshCw,
   Square,
@@ -21,7 +21,7 @@ import {
   WarningBanner,
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
-import { createRoom } from "../lib/api";
+import { ApiError, createRoom } from "../lib/api";
 import { getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import {
@@ -76,6 +76,7 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
         onStatus: () => undefined,
         onProtocolError: () => undefined,
         onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
       },
     );
     signal.start();
@@ -85,13 +86,16 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
   }
 }
 
-export function HostPage() {
+interface HostPageProps {
+  onAuthorizationRequired?: () => void;
+}
+
+export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const forceRelay = useMemo(
     () => new URLSearchParams(window.location.search).get("relay") === "1",
     [],
   );
   const [qualityId, setQualityId] = useState<QualityProfileId>("1080p60");
-  const [creationToken, setCreationToken] = useState("");
   const [phase, setPhase] = useState<HostPhase>("idle");
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
@@ -99,6 +103,7 @@ export function HostPage() {
   const [details, setDetails] = useState<CaptureDetails | null>(null);
   const [room, setRoom] = useState<CreateRoomResponse | null>(null);
   const [relayAvailable, setRelayAvailable] = useState(false);
+  const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
   );
@@ -170,6 +175,7 @@ export function HostPage() {
     iceConfigRef.current = null;
     setStream(null);
     setRoom(null);
+    setMaxViewers(null);
     setPeerSnapshots(new Map());
     setSignalStatus("offline");
     setSwitchingSource(false);
@@ -353,6 +359,7 @@ export function HostPage() {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      setMaxViewers(message.maxViewers);
       const currentViewerIds = new Set(message.viewerPeerIds);
       for (const peerId of peersRef.current.keys()) {
         if (!currentViewerIds.has(peerId)) {
@@ -408,7 +415,6 @@ export function HostPage() {
         [
           "AUTH_REQUIRED",
           "INVALID_TOKEN",
-          "ROOM_CLOSED",
           "ROOM_EXPIRED",
           "HOST_ALREADY_CONNECTED",
         ].includes(message.code)
@@ -461,15 +467,12 @@ export function HostPage() {
 
     let createdRoom: CreateRoomResponse | null = null;
     try {
-      createdRoom = await createRoom(creationToken);
+      createdRoom = await createRoom();
       if (!isCurrentGeneration(generation)) {
         captured.getTracks().forEach((track) => track.stop());
         closeAbandonedRoom(createdRoom);
         return;
       }
-      iceConfigRef.current = createdRoom.iceConfig;
-      setRelayAvailable(createdRoom.iceConfig.relayAvailable);
-
       const signal = new SignalingClient(
         {
           roomId: createdRoom.roomId,
@@ -502,6 +505,15 @@ export function HostPage() {
               endSharing(message, false);
             }
           },
+          onAccessRequired: () => {
+            if (
+              isCurrentGeneration(generation) &&
+              signalRef.current === signal
+            ) {
+              endSharing("验证已失效，请重新登录", false);
+              onAuthorizationRequired?.();
+            }
+          },
           onMessage: (message) => {
             if (
               !isCurrentGeneration(generation) ||
@@ -512,7 +524,6 @@ export function HostPage() {
             if (message.type === "authenticated") {
               iceConfigRef.current = message.iceConfig;
               setRelayAvailable(message.iceConfig.relayAvailable);
-              setCreationToken("");
               setRoom(createdRoom);
               setPhase("live");
             }
@@ -537,6 +548,14 @@ export function HostPage() {
       if (streamRef.current === captured) {
         streamRef.current = null;
         setStream(null);
+      }
+      if (
+        error instanceof ApiError &&
+        error.status === 401 &&
+        onAuthorizationRequired
+      ) {
+        onAuthorizationRequired();
+        return;
       }
       setNotice(readableError(error));
       setPhase("error");
@@ -720,7 +739,7 @@ export function HostPage() {
               <h1 id="broadcast-heading">屏幕分享</h1>
               <p className="section-meta">
                 {phase === "live"
-                  ? `${viewers.length}/3 人正在观看`
+                  ? `${viewers.length}/${maxViewers ?? "-"} 人正在观看`
                   : phase === "starting"
                     ? "正在建立房间"
                     : "尚未开始"}
@@ -814,20 +833,6 @@ export function HostPage() {
                 </div>
               </fieldset>
 
-              <label className="token-field">
-                <span>建房密钥（可选）</span>
-                <span className="input-with-icon">
-                  <KeyRound size={16} aria-hidden="true" />
-                  <input
-                    type="password"
-                    value={creationToken}
-                    disabled={phase === "starting"}
-                    autoComplete="off"
-                    onChange={(event) => setCreationToken(event.target.value)}
-                  />
-                </span>
-              </label>
-
               <button
                 className="button button-primary start-button"
                 type="button"
@@ -837,12 +842,18 @@ export function HostPage() {
                 <MonitorUp size={18} aria-hidden="true" />
                 {phase === "starting" ? "正在启动" : "开始分享"}
               </button>
+              <a className="join-room-link" href="/join">
+                <Hash size={15} aria-hidden="true" />
+                输入房间码观看
+              </a>
             </div>
           ) : (
             room && (
               <div className="invite-bar">
                 <div className="invite-copy">
-                  <span className="field-label">邀请链接 · {expiresAt} 过期</span>
+                  <span className="field-label">
+                    房间 {room.roomId} · {expiresAt} 过期
+                  </span>
                   <span className="invite-url" title={room.inviteUrl}>
                     {room.inviteUrl}
                   </span>
@@ -865,7 +876,7 @@ export function HostPage() {
           <div className="viewer-panel-heading">
             <div>
               <h2 id="viewer-heading">观看者</h2>
-              <span>{viewers.length}/3</span>
+              <span>{viewers.length}/{maxViewers ?? "-"}</span>
             </div>
             <Users size={18} aria-hidden="true" />
           </div>

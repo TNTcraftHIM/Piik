@@ -21,7 +21,7 @@
 
 “让画面跑起来”难度不高；“像 Discord/TeamSpeak 一样在不同 GPU、浏览器、NAT、运营商和弱网中都保持清晰、60 fps、低延迟”难度高。建议把产品分层：
 
-- 原型：Web、P2P、STUN、TURN，验证一至三名观看者。
+- 原型：Web、P2P、STUN、TURN，验证小范围多观看者；当前默认接入上限为八、可配置 1 至 16，但真实 1:8 仍待验证。
 - 可用 MVP：房间鉴权、短期 TURN 凭据、质量降档、ICE restart、统计与 30 分钟稳定性测试。
 - 产品化：Electron 分享端、Web/移动观看端、Windows 应用音频、硬件编码诊断和区域化 TURN。
 - Discord 级：原生捕获/编码引擎、多个捕获后端、GPU 零复制、进程树音频、广泛兼容与持续遥测，属于长期工程。
@@ -100,6 +100,7 @@ ICE 是按分享者与每一名观看者的网络组合独立选路，而不是�
 | 3 | 24 Mbps | 10.8 GB |
 | 4 | 32 Mbps | 14.4 GB |
 | 5 | 40 Mbps | 18.0 GB |
+| 8 | 64 Mbps | 28.8 GB |
 
 实际高动态 1080p60 可以把首版目标区间设为约 6 至 10 Mbps，因此四名观看者需要约 24 至 40 Mbps 持续上行，再加协议和重传余量。对光纤用户这并非不可行，但不能假设所有用户都具备该条件。
 
@@ -111,15 +112,15 @@ IETF 对 mesh/SFU 的拓扑说明见 [RFC 7667](https://www.rfc-editor.org/rfc/r
 
 MVP（也是预期的正常产品形态）：
 
-- 一至三名观看者默认 P2P。
-- 当前 PoC 明确拒绝第四名观看者；收集可用上行、实际发送码率、`qualityLimitationReason`、编码耗时和发送队列后，再决定后续版本是否放宽。
+- 小范围观看者默认 P2P，每人一条独立连接。
+- 当前 PoC 默认允许八名观看者，部署者可配置 1 至 16，超额连接会被明确拒绝。该数值只控制接入，不代表 1:8 已通过性能验收；必须收集可用上行、实际发送码率、`qualityLimitationReason`、编码耗时和发送队列来确定真实可持续人数。
 - 每条链路独立使用 ICE；只有失败的链路走 TURN。
 - 若一开始就有多条 `relay`，应提示服务器带宽正在增加。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
 本项目不以 SFU 作为正常扩容路径；超过小房间上限时直接建议使用外部直播服务。只有以后改变产品范围时，才根据遥测重新评估房间级 SFU，观察项包括：
 
-- 正常工作负载需要多于三名观看者。
+- 正常工作负载持续超过实测可承载的 P2P 人数。
 - 第一名或多名观看者已使用 TURN，继续 P2P 会重复占用服务器上行。
 - 分享者上行安全余量不足。
 - 分享者因 CPU/encoder 限制降质。
@@ -155,11 +156,15 @@ parameters.degradationPreference = "maintain-framerate";
 await sender.setParameters(parameters);
 ```
 
-这些参数是偏好或上限，不能绕过浏览器拥塞控制，也不能保证目标码率。
+这些参数是偏好或上限，不能绕过浏览器拥塞控制，也不能保证目标码率。Screen Capture 和 WebRTC 规范允许浏览器决定实际输出帧率、编码与拥塞行为；`contentHint = "motion"` 也只是内容提示。静态画面通常能降低编码数据量，但规范不保证所有浏览器主动降低捕获频率或 GPU 开销。
+
+因此首版不实现画面差分检测、周期性 `applyConstraints()` 或自定义动态 FPS 状态机。先对静态桌面和高动态游戏分别记录 `framesEncoded`、发送码率、`totalEncodeTime / framesEncoded`、`qualityLimitationReason` 及主机 CPU/GPU 占用；只有测量显示浏览器行为留下显著问题时，再设计最小的控制策略。这避免用额外竞态、计时器和画质跳变解决一个可能已由捕获器、编码器和 WebRTC 拥塞控制处理的问题。
 
 来源：
 
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
+- [W3C WebRTC](https://www.w3.org/TR/webrtc/)
+- [W3C WebRTC Stats](https://www.w3.org/TR/webrtc-stats/)
 - [W3C RTCRtpSender.replaceTrack](https://www.w3.org/TR/webrtc/#dom-rtcrtpsender-replacetrack)
 - [MDN getDisplayMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [MediaStreamTrack content hints](https://www.w3.org/TR/mst-content-hint/)
@@ -196,7 +201,15 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 - 手机解码温度与耗电；观看端只接收单路，不启用不必要的视频处理。
 - H.264/VP8 能力协商和降档，不能假设桌面分享者选中的高级 codec 在每部手机上都有高效解码。
 
-“私密”首先来自房间鉴权、高熵且过期的邀请、发布/观看权限分离和不录制。WebRTC 媒体本身使用 DTLS-SRTP 加密；但 direct P2P 仍会让这组可信好友看到彼此网络地址，若需要隐藏 IP，必须允许强制 TURN，这会增加服务器带宽。
+### 最小访问模型
+
+当前需求只有一个部署级密码，不需要账号、数据库、JWT、服务端 session Map、逐人邀请或 logout。`ACCESS_PASSWORD` 为空时网站公开；生产模式下接受 12 至 128 位可见 ASCII 字符，避免把 Fetch 无法可靠编码的 Unicode 原文放进 Authorization header。配置时，host 和 viewer 都先通过同一登录 gate。成功登录得到 12 小时的无状态 HMAC-SHA256 cookie，使用 `HttpOnly`、`SameSite=Strict`、`Path=/`、有限 `Max-Age`，HTTPS 生产环境使用 `Secure` 和 `__Host-` 前缀。建房 HTTP 和 WebSocket upgrade 都只认 cookie，不允许直接给建房 API 传 Bearer 绕过 gate。异常 WebSocket 关闭会检查一次 access session；确认 cookie 失效时回到 gate，检查本身失败时继续正常网络重连。HMAC 与定长密码摘要比较使用 Node.js `crypto.createHmac()` 和 `crypto.timingSafeEqual()`；cookie 属性遵循 RFC6265bis 的语义。
+
+房间使用 12 位随机纯数字 code。观看链接是 `/r/{code}`，也可在 `/join` 只输入 code；两者都没有 viewer token 或 fragment。256-bit host token 只留在 host 页面内存并用于房间级 host 信令鉴权。在密码模式中，code 不能绕过全站 gate；在公开模式中，code 是唯一观看 capability，约 40 bit 的命名空间不构成强隐私保证，面向互联网的私密实例应配置全站密码。
+
+来源（访问于 2026-08-18）：[Cookies: HTTP State Management Mechanism draft (RFC6265bis)](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/)、[Node.js Crypto](https://nodejs.org/api/crypto.html#cryptocreatehmacalgorithm-key-options) 与 [`crypto.timingSafeEqual()`](https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b)。
+
+WebRTC 媒体本身使用 DTLS-SRTP 加密；但 direct P2P 仍会让这组可信好友看到彼此网络地址，若需要隐藏 IP，必须允许强制 TURN，这会增加服务器带宽。
 
 ## 编解码策略
 
@@ -236,7 +249,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - WebRTC 使用 DTLS-SRTP。TURN 只能看到加密后的媒体包，但仍能看到地址、房间时序和流量元数据。
 - P2P 会让房间内双方得知网络地址。熟人首版可以接受，陌生人房间不能默认接受。
 - TURN 必须使用短期凭据、速率限制、每用户/房间配额和出口告警，不能提供匿名公共 relay。
-- 房间链接应高熵、可过期；发布和观看权限分离。
+- 面向互联网的私密部署应启用全站密码。公开模式的 12 位房间码只是轻量 capability，不应宣传为强私密邀请；host token 始终只用于发布权限。
 - 如果未来使用 SFU 且要求服务器看不到内容，再评估 SFrame/WebRTC Encoded Transform 和群组密钥管理。
 
 ## 参考代码优先级
@@ -294,7 +307,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 | 阶段 | 难度 | 预估 | 交付物 |
 | --- | --- | --- | --- |
-| 技术原型 | 低到中 | 3 至 7 个工作日 | Web 选源、1:3 P2P、基础信令、STUN/TURN、统计面板 |
+| 技术原型 | 低到中 | 3 至 7 个工作日 | Web 选源、逐观看者 P2P、基础信令、STUN/TURN、统计面板 |
 | 可给朋友使用的 MVP | 中 | 4 至 8 周 | 私密房间、短期 TURN 凭据、质量档位、断线恢复、音频提示、测试矩阵和部署 |
 | 稳定产品化 | 高 | 2 至 4 个月以上 | Electron 分享端、应用音频、硬编诊断、多地区 TURN、遥测、升级/安全/兼容处理 |
 | Discord 级跨平台体验 | 很高 | 多人持续工程 | 原生 media engine、多捕获后端、GPU 零复制、广泛硬件与网络优化、SFU/E2EE |
@@ -303,7 +316,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 ## 最终建议
 
-1. 首版坚持 P2P-first，但明确只服务小房间，硬上限为三名观看者；测量完成前不开放第四名。
+1. 首版坚持 P2P-first，但明确只服务小房间；默认接入上限为八名、可配置 1 至 16，真实 1:8 测量完成前不把它写成性能承诺。
 2. Web 先行，目标 Windows Chrome/Edge；把 1080p60 写成 best effort，同时提供降档。
 3. 从第一天部署 coturn，并验证 direct、TURN/UDP、TURN/TCP 以及移动网络切换；这是避免“部分好友永远看不了”的必要条件。TURN/TLS 按部署需要选配，默认 5349，443 只作为受限网络增强。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。

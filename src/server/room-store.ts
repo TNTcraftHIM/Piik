@@ -1,10 +1,13 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { MAX_VIEWERS, type Role } from "../shared/protocol.js";
+import {
+  MAX_VIEWERS_PER_ROOM_LIMIT,
+  ROOM_CODE_LENGTH,
+  type Role,
+} from "../shared/protocol.js";
 
 export type RoomStoreErrorCode =
   | "INVALID_TOKEN"
-  | "ROOM_CLOSED"
   | "ROOM_EXPIRED"
   | "ROOM_FULL"
   | "HOST_ALREADY_CONNECTED"
@@ -26,7 +29,6 @@ interface Participant {
 interface Room {
   roomId: string;
   hostTokenDigest: Buffer;
-  viewerTokenDigest: Buffer;
   expiresAtMs: number;
   host?: Participant;
   viewers: Map<string, Participant>;
@@ -35,17 +37,23 @@ interface Room {
 export interface CreatedRoom {
   roomId: string;
   hostToken: string;
-  viewerToken: string;
   expiresAt: string;
 }
 
-export interface ConnectParticipantInput {
-  roomId: string;
-  role: Role;
-  token: string;
-  clientId: string;
-  sessionId: string;
-}
+export type ConnectParticipantInput =
+  | {
+      roomId: string;
+      role: "host";
+      token: string;
+      clientId: string;
+      sessionId: string;
+    }
+  | {
+      roomId: string;
+      role: "viewer";
+      clientId: string;
+      sessionId: string;
+    };
 
 export interface ConnectedParticipant {
   roomId: string;
@@ -53,7 +61,6 @@ export interface ConnectedParticipant {
   peerId: string;
   expiresAt: string;
   hostOnline: boolean;
-  isNewParticipant: boolean;
   replacedSessionId?: string;
   viewerPeerIds: readonly string[];
 }
@@ -77,6 +84,7 @@ export interface ClosedRoom {
 export interface RoomStoreOptions {
   ttlMs: number;
   maxRooms: number;
+  maxViewersPerRoom: number;
   now?: () => number;
   random?: (size: number) => Buffer;
 }
@@ -85,6 +93,7 @@ export class RoomStore {
   private readonly rooms = new Map<string, Room>();
   private readonly now: () => number;
   private readonly random: (size: number) => Buffer;
+  readonly maxViewersPerRoom: number;
 
   constructor(private readonly options: RoomStoreOptions) {
     if (!Number.isSafeInteger(options.ttlMs) || options.ttlMs <= 0) {
@@ -93,8 +102,18 @@ export class RoomStore {
     if (!Number.isSafeInteger(options.maxRooms) || options.maxRooms <= 0) {
       throw new Error("Room limit must be a positive integer");
     }
+    if (
+      !Number.isSafeInteger(options.maxViewersPerRoom) ||
+      options.maxViewersPerRoom <= 0 ||
+      options.maxViewersPerRoom > MAX_VIEWERS_PER_ROOM_LIMIT
+    ) {
+      throw new Error(
+        `Room viewer limit must be an integer between 1 and ${MAX_VIEWERS_PER_ROOM_LIMIT}`,
+      );
+    }
     this.now = options.now ?? Date.now;
     this.random = options.random ?? randomBytes;
+    this.maxViewersPerRoom = options.maxViewersPerRoom;
   }
 
   createRoom(): CreatedRoom {
@@ -102,15 +121,13 @@ export class RoomStore {
       throw new RoomStoreError("ROOM_LIMIT");
     }
 
-    const roomId = this.uniqueId(16, (candidate) => this.rooms.has(candidate));
+    const roomId = this.uniqueRoomCode();
     const hostToken = this.random(32).toString("base64url");
-    const viewerToken = this.random(32).toString("base64url");
     const expiresAtMs = this.now() + this.options.ttlMs;
 
     this.rooms.set(roomId, {
       roomId,
       hostTokenDigest: digest(hostToken),
-      viewerTokenDigest: digest(viewerToken),
       expiresAtMs,
       viewers: new Map(),
     });
@@ -118,16 +135,13 @@ export class RoomStore {
     return {
       roomId,
       hostToken,
-      viewerToken,
       expiresAt: new Date(expiresAtMs).toISOString(),
     };
   }
 
   connectParticipant(input: ConnectParticipantInput): ConnectedParticipant {
     const room = this.getAvailableRoom(input.roomId);
-    const expectedDigest =
-      input.role === "host" ? room.hostTokenDigest : room.viewerTokenDigest;
-    if (!verifyDigest(input.token, expectedDigest)) {
+    if (input.role === "host" && !verifyDigest(input.token, room.hostTokenDigest)) {
       throw new RoomStoreError("INVALID_TOKEN");
     }
 
@@ -255,7 +269,6 @@ export class RoomStore {
       peerId: participant.peerId,
       expiresAt: new Date(room.expiresAtMs).toISOString(),
       hostOnline: true,
-      isNewParticipant,
       replacedSessionId:
         replacedSessionId === input.sessionId ? undefined : replacedSessionId,
       // Disconnected viewers remain room members until their grace period ends.
@@ -268,7 +281,7 @@ export class RoomStore {
     input: ConnectParticipantInput,
   ): ConnectedParticipant {
     const current = room.viewers.get(input.clientId);
-    if (!current && room.viewers.size >= MAX_VIEWERS) {
+    if (!current && room.viewers.size >= this.maxViewersPerRoom) {
       throw new RoomStoreError("ROOM_FULL");
     }
 
@@ -288,7 +301,6 @@ export class RoomStore {
       peerId: participant.peerId,
       expiresAt: new Date(room.expiresAtMs).toISOString(),
       hostOnline: Boolean(room.host?.sessionId),
-      isNewParticipant: current === undefined,
       replacedSessionId:
         replacedSessionId === input.sessionId ? undefined : replacedSessionId,
       viewerPeerIds: [],
@@ -314,6 +326,23 @@ export class RoomStore {
         room.host?.peerId === candidate ||
         [...room.viewers.values()].some((viewer) => viewer.peerId === candidate),
     );
+  }
+
+  private uniqueRoomCode(): string {
+    const range = 10n ** BigInt(ROOM_CODE_LENGTH);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const bytes = this.random(8);
+      if (bytes.length !== 8) {
+        throw new Error("Room code random source must return 8 bytes");
+      }
+      const candidate = (bytes.readBigUInt64BE() % range)
+        .toString()
+        .padStart(ROOM_CODE_LENGTH, "0");
+      if (!this.rooms.has(candidate)) {
+        return candidate;
+      }
+    }
+    throw new Error("Unable to allocate a unique room code");
   }
 
   private uniqueId(size: number, exists: (candidate: string) => boolean): string {

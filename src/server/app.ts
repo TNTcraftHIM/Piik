@@ -5,10 +5,10 @@ import sirv from "sirv";
 import type { ViteDevServer } from "vite";
 
 import type { CreateRoomResponse } from "../shared/protocol.js";
-import { loadConfig, secretsEqual, type ServerConfig } from "./config.js";
+import { AccessSession } from "./access-session.js";
+import { loadConfig, type ServerConfig } from "./config.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer } from "./signaling.js";
-import { createIceConfig } from "./turn.js";
 
 export interface CreateServerOptions {
   config?: ServerConfig;
@@ -22,6 +22,7 @@ export interface CreateServerOptions {
   cleanupIntervalMs?: number;
   maxSignalConnections?: number;
   maxUnauthenticatedSignalConnections?: number;
+  accessSessionTtlSeconds?: number;
 }
 
 export interface ScreenerServer {
@@ -43,8 +44,17 @@ export async function createScreenerServer(
     new RoomStore({
       ttlMs: config.roomTtlMs,
       maxRooms: config.maxRooms,
+      maxViewersPerRoom: config.maxViewersPerRoom,
       now,
     });
+  const accessSession = new AccessSession({
+    password: config.accessPassword,
+    secure:
+      config.nodeEnv === "production" &&
+      config.publicBaseUrl.protocol === "https:",
+    now,
+    ttlSeconds: options.accessSessionTtlSeconds,
+  });
   const iceOptions = {
     stunUrls: config.stunUrls,
     turnUrls: config.turnUrls,
@@ -60,10 +70,14 @@ export async function createScreenerServer(
       response,
       config,
       roomStore,
-      iceOptions,
-      now,
+      accessSession,
       () => frontendHandler,
-    ).catch(() => {
+    ).catch((error: unknown) => {
+      console.error("HTTP request failed", {
+        method: request.method,
+        path: safePathname(request.url),
+        error,
+      });
       if (!response.headersSent) {
         sendJson(response, 500, { error: "Internal server error" });
       } else {
@@ -77,6 +91,8 @@ export async function createScreenerServer(
     roomStore,
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
+    authorizeUpgrade: (request) =>
+      accessSession.isAuthenticated(request.headers.cookie),
     now,
     authenticationTimeoutMs: options.authenticationTimeoutMs,
     viewerDisconnectGraceMs: options.viewerDisconnectGraceMs,
@@ -167,8 +183,7 @@ async function handleRequest(
   response: ServerResponse,
   config: ServerConfig,
   roomStore: RoomStore,
-  iceOptions: Parameters<typeof createIceConfig>[0],
-  now: () => number,
+  accessSession: AccessSession,
   getFrontendHandler: () => FrontendHandler | undefined,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", config.publicBaseUrl);
@@ -180,6 +195,11 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, { status: "ok" });
+    return;
+  }
+
+  if (url.pathname === "/api/session") {
+    handleSessionRequest(request, response, config, accessSession);
     return;
   }
 
@@ -199,8 +219,16 @@ async function handleRequest(
       sendJson(response, 400, { error: "Request body is not accepted" });
       return;
     }
-    if (!isRoomCreationAuthorized(request, config.roomCreationToken)) {
-      response.setHeader("WWW-Authenticate", "Bearer");
+    if (
+      !isRoomCreationAuthorized(
+        request,
+        accessSession,
+        isStrictlyAllowedRequestOrigin(
+          request.headers.origin,
+          config.allowedOrigins,
+        ),
+      )
+    ) {
       sendJson(response, 401, { error: "Unauthorized" });
       return;
     }
@@ -208,18 +236,11 @@ async function handleRequest(
     try {
       const room = roomStore.createRoom();
       const inviteUrl = new URL(`/r/${room.roomId}`, config.publicBaseUrl);
-      inviteUrl.hash = new URLSearchParams({ token: room.viewerToken }).toString();
       const responseBody: CreateRoomResponse = {
         roomId: room.roomId,
         hostToken: room.hostToken,
         inviteUrl: inviteUrl.toString(),
         expiresAt: room.expiresAt,
-        iceConfig: createIceConfig(
-          iceOptions,
-          `${room.roomId}:host-bootstrap`,
-          now(),
-          Date.parse(room.expiresAt),
-        ),
       };
       sendJson(response, 201, responseBody);
     } catch (error) {
@@ -246,6 +267,64 @@ async function handleRequest(
   sendJson(response, 404, { error: "Not found" });
 }
 
+function handleSessionRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: ServerConfig,
+  accessSession: AccessSession,
+): void {
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("X-Content-Type-Options", "nosniff");
+
+  if (request.method === "GET") {
+    sendJson(response, 200, sessionStatus(request, accessSession));
+    return;
+  }
+
+  if (request.method !== "POST") {
+    response.setHeader("Allow", "GET, POST");
+    sendJson(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  if (
+    !isStrictlyAllowedRequestOrigin(
+      request.headers.origin,
+      config.allowedOrigins,
+    )
+  ) {
+    sendJson(response, 403, { error: "Forbidden" });
+    return;
+  }
+  if (hasRequestBody(request)) {
+    sendJson(response, 400, { error: "Request body is not accepted" });
+    return;
+  }
+
+  if (!accessSession.required) {
+    sendJson(response, 200, { required: false, authenticated: true });
+    return;
+  }
+  if (!isBearerAuthorized(request, accessSession)) {
+    response.setHeader("WWW-Authenticate", "Bearer");
+    sendJson(response, 401, { error: "Unauthorized" });
+    return;
+  }
+
+  response.setHeader("Set-Cookie", accessSession.createCookie()!);
+  sendJson(response, 200, { required: true, authenticated: true });
+}
+
+function sessionStatus(
+  request: IncomingMessage,
+  accessSession: AccessSession,
+): { required: boolean; authenticated: boolean } {
+  return {
+    required: accessSession.required,
+    authenticated: accessSession.isAuthenticated(request.headers.cookie),
+  };
+}
+
 function hasRequestBody(request: IncomingMessage): boolean {
   const contentLength = request.headers["content-length"];
   const parsedLength = contentLength === undefined ? 0 : Number(contentLength);
@@ -270,19 +349,42 @@ function isAllowedRequestOrigin(
   }
 }
 
+function isStrictlyAllowedRequestOrigin(
+  origin: string | undefined,
+  allowedOrigins: ReadonlySet<string>,
+): boolean {
+  if (!origin) {
+    return false;
+  }
+  try {
+    const parsed = new URL(origin);
+    return parsed.origin === origin && allowedOrigins.has(origin);
+  } catch {
+    return false;
+  }
+}
+
 function isRoomCreationAuthorized(
   request: IncomingMessage,
-  expectedToken: string | undefined,
+  accessSession: AccessSession,
+  hasAllowedOrigin: boolean,
 ): boolean {
-  if (!expectedToken) {
+  if (!accessSession.required) {
     return true;
   }
+  return hasAllowedOrigin && accessSession.isAuthenticated(request.headers.cookie);
+}
+
+function isBearerAuthorized(
+  request: IncomingMessage,
+  accessSession: AccessSession,
+): boolean {
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith("Bearer ")) {
     return false;
   }
   const provided = authorization.slice("Bearer ".length);
-  return provided.length > 0 && secretsEqual(provided, expectedToken);
+  return provided.length > 0 && accessSession.passwordMatches(provided);
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
@@ -291,4 +393,12 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.setHeader("Content-Length", Buffer.byteLength(encoded));
   response.end(encoded);
+}
+
+function safePathname(requestUrl: string | undefined): string {
+  try {
+    return new URL(requestUrl ?? "/", "http://localhost").pathname;
+  } catch {
+    return "<invalid>";
+  }
 }

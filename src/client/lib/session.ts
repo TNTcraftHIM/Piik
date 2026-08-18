@@ -1,9 +1,13 @@
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
-const ROOM_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+import { roomCodeSchema } from "../../shared/protocol";
+
+const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
 export interface ViewerRoute {
   roomId: string;
-  token: string | null;
+}
+
+export function isValidRoomId(value: string): boolean {
+  return roomCodeSchema.safeParse(value).success;
 }
 
 function readSessionValue(key: string): string | null {
@@ -23,43 +27,18 @@ function writeSessionValue(key: string, value: string): void {
 }
 
 export function readViewerRoute(): ViewerRoute | null {
-  const match = window.location.pathname.match(/^\/r\/([A-Za-z0-9_-]+)\/?$/);
-  if (!match || !ROOM_PATTERN.test(match[1])) {
+  const match = window.location.pathname.match(/^\/r\/(\d+)\/?$/);
+  if (!match || !isValidRoomId(match[1])) {
     return null;
   }
 
-  const roomId = match[1];
-  const storageKey = `screener:viewer-token:${roomId}`;
-  const fragmentToken = new URLSearchParams(window.location.hash.slice(1)).get(
-    "token",
-  );
-  const token =
-    fragmentToken && TOKEN_PATTERN.test(fragmentToken)
-      ? fragmentToken
-      : readSessionValue(storageKey);
-
-  if (fragmentToken && TOKEN_PATTERN.test(fragmentToken)) {
-    writeSessionValue(storageKey, fragmentToken);
-  }
-
-  if (window.location.hash) {
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${window.location.search}`,
-    );
-  }
-
-  return {
-    roomId,
-    token: token && TOKEN_PATTERN.test(token) ? token : null,
-  };
+  return { roomId: match[1] };
 }
 
 export function getStableClientId(role: "host" | "viewer", roomId: string): string {
   const storageKey = `screener:client-id:${role}:${roomId}`;
   const existing = readSessionValue(storageKey);
-  if (existing && ROOM_PATTERN.test(existing)) {
+  if (existing && CLIENT_ID_PATTERN.test(existing)) {
     return existing;
   }
 

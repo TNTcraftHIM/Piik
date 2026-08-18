@@ -13,6 +13,7 @@ describe("server configuration", () => {
     expect(config.publicBaseUrl.href).toBe("http://localhost:9123/");
     expect(config.allowedOrigins).toEqual(new Set(["http://localhost:9123"]));
     expect(config.turnUrls).toEqual([]);
+    expect(config.maxViewersPerRoom).toBe(8);
   });
 
   it("allows an explicit loopback listen host", () => {
@@ -21,16 +22,27 @@ describe("server configuration", () => {
     expect(config.listenHost).toBe("127.0.0.1");
   });
 
-  it("requires room creation authorization and TURN in production", () => {
+  it.each([
+    "https://user:pass@share.test",
+    "https://share.test/path",
+    "https://share.test?query=1",
+    "https://share.test#fragment",
+  ])("rejects a PUBLIC_BASE_URL that is not a plain origin: %s", (url) => {
+    expect(() => loadConfig({ PUBLIC_BASE_URL: url })).toThrow(
+      "PUBLIC_BASE_URL must be an origin",
+    );
+  });
+
+  it("allows an optional access password but requires TURN in production", () => {
     expect(() =>
       loadConfig({ NODE_ENV: "production", PUBLIC_BASE_URL: "https://share.test" }),
-    ).toThrow("ROOM_CREATION_TOKEN");
+    ).toThrow("TURN is required");
 
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        ROOM_CREATION_TOKEN: "c".repeat(32),
+        ACCESS_PASSWORD: "c".repeat(12),
       }),
     ).toThrow("TURN is required");
 
@@ -38,7 +50,7 @@ describe("server configuration", () => {
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        ROOM_CREATION_TOKEN: "c".repeat(32),
+        ACCESS_PASSWORD: "c".repeat(12),
         TURN_URLS: "turn:turn.test:3478",
         TURN_SHARED_SECRET: "t".repeat(32),
       }),
@@ -49,15 +61,35 @@ describe("server configuration", () => {
     const config = loadConfig({
       NODE_ENV: "production",
       PUBLIC_BASE_URL: "https://share.test",
-      ROOM_CREATION_TOKEN: "c".repeat(32),
       STUN_URLS: "stun:turn.test:3478,stuns:turn.test:5349",
       TURN_URLS: requiredProductionTurnUrls,
       TURN_SHARED_SECRET: "t".repeat(32),
     });
 
+    expect(config.accessPassword).toBeUndefined();
     expect(config.turnUrls).toHaveLength(2);
     expect(config.turnSharedSecret).toBe("t".repeat(32));
   });
+
+  it.each([1, 16])(
+    "accepts a per-room viewer limit at boundary %i",
+    (maxViewersPerRoom) => {
+      const config = loadConfig({
+        MAX_VIEWERS_PER_ROOM: String(maxViewersPerRoom),
+      });
+
+      expect(config.maxViewersPerRoom).toBe(maxViewersPerRoom);
+    },
+  );
+
+  it.each(["0", "17", "1.5"])(
+    "rejects invalid per-room viewer limit %s",
+    (maxViewersPerRoom) => {
+      expect(() =>
+        loadConfig({ MAX_VIEWERS_PER_ROOM: maxViewersPerRoom }),
+      ).toThrow("MAX_VIEWERS_PER_ROOM");
+    },
+  );
 
   it.each([5349, 443])(
     "accepts optional TURN/TLS over TCP on production port %i",
@@ -65,7 +97,7 @@ describe("server configuration", () => {
       const config = loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        ROOM_CREATION_TOKEN: "c".repeat(32),
+        ACCESS_PASSWORD: "c".repeat(12),
         STUN_URLS: "stun:turn.test:3478",
         TURN_URLS: `${requiredProductionTurnUrls},turns:turn.test:${tlsPort}?transport=tcp`,
         TURN_SHARED_SECRET: "t".repeat(32),
@@ -115,7 +147,7 @@ describe("server configuration", () => {
         loadConfig({
           NODE_ENV: "production",
           PUBLIC_BASE_URL: "https://share.test",
-          ROOM_CREATION_TOKEN: "c".repeat(32),
+          ACCESS_PASSWORD: "c".repeat(12),
           STUN_URLS: "stun:turn.test:3478",
           TURN_URLS: `${requiredProductionTurnUrls},${invalidUrl}`,
           TURN_SHARED_SECRET: "t".repeat(32),
@@ -150,7 +182,7 @@ describe("server configuration", () => {
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        ROOM_CREATION_TOKEN: "c".repeat(32),
+        ACCESS_PASSWORD: "c".repeat(12),
         STUN_URLS: "stun:turn.test:3478",
         TURN_URLS: urls,
         TURN_SHARED_SECRET: "t".repeat(32),
@@ -165,24 +197,33 @@ describe("server configuration", () => {
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        ROOM_CREATION_TOKEN: "too-short",
+        ACCESS_PASSWORD: "too-short",
         STUN_URLS: "stun:turn.test:3478",
         TURN_URLS: "turn:turn.test:3478",
         TURN_SHARED_SECRET: "t".repeat(32),
       }),
-    ).toThrow("ROOM_CREATION_TOKEN must contain at least 32 bytes");
+    ).toThrow("ACCESS_PASSWORD must contain at least 12 bytes");
 
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        ROOM_CREATION_TOKEN: "c".repeat(32),
+        ACCESS_PASSWORD: "c".repeat(12),
         STUN_URLS: "stun:turn.test:3478",
         TURN_URLS: "turn:turn.test:3478",
         TURN_SHARED_SECRET: "too-short",
       }),
     ).toThrow("TURN_SHARED_SECRET must contain at least 32 bytes");
   });
+
+  it.each(["密码密码密码密码", "contains spaces", "x".repeat(129)])(
+    "rejects an access password that cannot be carried safely in a header",
+    (accessPassword) => {
+      expect(() => loadConfig({ ACCESS_PASSWORD: accessPassword })).toThrow(
+        "ACCESS_PASSWORD must contain at most 128 visible ASCII characters",
+      );
+    },
+  );
 
   it("rejects partial TURN settings and mismatched ICE schemes", () => {
     expect(() => loadConfig({ TURN_URLS: "turn:turn.test:3478" })).toThrow(

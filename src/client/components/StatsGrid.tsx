@@ -26,11 +26,9 @@ function Metric({ label, value, title }: { label: string; value: string; title?:
 export function StatsGrid({
   metrics,
   direction,
-  compact = false,
 }: {
   metrics: ConnectionMetrics;
   direction: "send" | "receive";
-  compact?: boolean;
 }) {
   const encoder = metrics.encoderImplementation
     ? `${metrics.encoderImplementation}${
@@ -43,7 +41,7 @@ export function StatsGrid({
     : "未知";
 
   return (
-    <dl className={`stats-grid${compact ? " stats-compact" : ""}`}>
+    <dl className="stats-grid">
       <Metric
         label={direction === "send" ? "发送码率" : "接收码率"}
         value={`${readableNumber(metrics.bitrateKbps)} kbps`}
@@ -60,42 +58,38 @@ export function StatsGrid({
             : `${readableNumber(metrics.jitterMs, 1)} ms`
         }
       />
-      {!compact && (
+      <Metric
+        label="ICE 传输"
+        value={metrics.iceProtocol?.toUpperCase() ?? "未知"}
+      />
+      {metrics.localCandidateType === "relay" && (
+        <Metric
+          label="本地 TURN"
+          value={metrics.localRelayProtocol?.toUpperCase() ?? "未知"}
+        />
+      )}
+      <Metric
+        label="候选"
+        value={`${metrics.localCandidateType ?? "?"} / ${metrics.remoteCandidateType ?? "?"}`}
+        title="本地 / 远端候选类型"
+      />
+      <Metric label="Codec" value={metrics.codec ?? "未知"} />
+      {direction === "send" ? (
         <>
+          <Metric label="编码器" value={encoder} />
           <Metric
-            label="ICE 传输"
-            value={metrics.iceProtocol?.toUpperCase() ?? "未知"}
+            label="平均编码"
+            value={`${readableNumber(metrics.averageEncodeMs, 1)} ms`}
           />
-          {metrics.localCandidateType === "relay" && (
-            <Metric
-              label="本地 TURN"
-              value={metrics.localRelayProtocol?.toUpperCase() ?? "未知"}
-            />
-          )}
+          <Metric label="质量状态" value={qualityReason(metrics.qualityLimitationReason)} />
+        </>
+      ) : (
+        <>
+          <Metric label="丢帧" value={readableNumber(metrics.framesDropped)} />
           <Metric
-            label="候选"
-            value={`${metrics.localCandidateType ?? "?"} / ${metrics.remoteCandidateType ?? "?"}`}
-            title="本地 / 远端候选类型"
+            label="平均解码"
+            value={`${readableNumber(metrics.averageDecodeMs, 1)} ms`}
           />
-          <Metric label="Codec" value={metrics.codec ?? "未知"} />
-          {direction === "send" ? (
-            <>
-              <Metric label="编码器" value={encoder} />
-              <Metric
-                label="平均编码"
-                value={`${readableNumber(metrics.averageEncodeMs, 1)} ms`}
-              />
-              <Metric label="质量状态" value={qualityReason(metrics.qualityLimitationReason)} />
-            </>
-          ) : (
-            <>
-              <Metric label="丢帧" value={readableNumber(metrics.framesDropped)} />
-              <Metric
-                label="平均解码"
-                value={`${readableNumber(metrics.averageDecodeMs, 1)} ms`}
-              />
-            </>
-          )}
         </>
       )}
     </dl>

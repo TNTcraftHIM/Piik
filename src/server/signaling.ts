@@ -1,12 +1,11 @@
 import { randomBytes } from "node:crypto";
-import type { Server as HttpServer } from "node:http";
+import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
 
 import WebSocket, { WebSocketServer } from "ws";
 
 import {
   MAX_SIGNAL_BYTES,
-  MAX_VIEWERS,
   decodeClientMessage,
   type ClientMessage,
   type Role,
@@ -40,6 +39,7 @@ export interface SignalingOptions {
   roomStore: RoomStore;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
+  authorizeUpgrade: (request: IncomingMessage) => boolean;
   now?: () => number;
   authenticationTimeoutMs?: number;
   viewerDisconnectGraceMs?: number;
@@ -105,6 +105,10 @@ export class SignalingServer {
       }
       if (!this.isAllowedOrigin(request.headers.origin)) {
         rejectUpgrade(socket, 403, "Forbidden");
+        return;
+      }
+      if (!options.authorizeUpgrade(request)) {
+        rejectUpgrade(socket, 401, "Unauthorized");
         return;
       }
       if (!this.hasConnectionCapacity()) {
@@ -235,14 +239,26 @@ export class SignalingServer {
   ): void {
     let participant;
     try {
-      participant = this.options.roomStore.connectParticipant({
-        roomId: message.roomId,
-        role: message.role,
-        token: message.token,
-        clientId: message.clientId,
-        sessionId: state.sessionId,
-      });
+      participant = this.options.roomStore.connectParticipant(
+        message.role === "host"
+          ? {
+              roomId: message.roomId,
+              role: "host",
+              token: message.token,
+              clientId: message.clientId,
+              sessionId: state.sessionId,
+            }
+          : {
+              roomId: message.roomId,
+              role: "viewer",
+              clientId: message.clientId,
+              sessionId: state.sessionId,
+            },
+      );
     } catch (error) {
+      if (!(error instanceof RoomStoreError)) {
+        console.error("Signaling authentication failed unexpectedly", error);
+      }
       const code =
         error instanceof RoomStoreError && error.code !== "ROOM_LIMIT"
           ? error.code
@@ -277,7 +293,7 @@ export class SignalingServer {
       role: participant.role,
       peerId: participant.peerId,
       roomExpiresAt: participant.expiresAt,
-      maxViewers: MAX_VIEWERS,
+      maxViewers: this.options.roomStore.maxViewersPerRoom,
       hostOnline: participant.hostOnline,
       connectionId,
       viewerPeerIds: [...participant.viewerPeerIds],
@@ -539,7 +555,8 @@ export class SignalingServer {
       return false;
     }
     try {
-      return this.options.allowedOrigins.has(new URL(origin).origin);
+      const parsed = new URL(origin);
+      return parsed.origin === origin && this.options.allowedOrigins.has(origin);
     } catch {
       return false;
     }
@@ -628,8 +645,6 @@ function viewerConnectionKey(roomId: string, peerId: string): string {
 
 function authenticationErrorMessage(code: ErrorCode): string {
   switch (code) {
-    case "ROOM_CLOSED":
-      return "Room is closed";
     case "ROOM_EXPIRED":
       return "Room has expired";
     case "ROOM_FULL":
@@ -637,7 +652,7 @@ function authenticationErrorMessage(code: ErrorCode): string {
     case "HOST_ALREADY_CONNECTED":
       return "A host is already connected";
     case "INVALID_TOKEN":
-      return "Room or token is invalid";
+      return "Room is invalid or expired";
     default:
       return "Authentication failed";
   }
