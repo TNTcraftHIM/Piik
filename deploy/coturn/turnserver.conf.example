@@ -69,5 +69,4 @@ no-multicast-peers
 log-file=stdout
 log-min-level=info
 new-log-timestamp
-no-cli
 pidfile=/run/coturn/turnserver.pid

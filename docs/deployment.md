@@ -129,6 +129,13 @@ The tracked
 follows this simple model and listens directly on public TCP 443. It does not
 depend on the optional SNI router.
 
+When Certbot manages the Web certificate, install the tracked
+[`reload-nginx.sh`](../deploy/certbot/reload-nginx.sh) as an executable under
+`/etc/letsencrypt/renewal-hooks/deploy/`. Run `certbot renew --dry-run` after
+the first certificate is installed. This hook only reloads the Web ingress;
+if optional TURN/TLS later uses a renewed certificate, configure and verify a
+separate coturn reload or restart action.
+
 Keep the proxy's access-log retention bounded and access controlled. Viewer
 tokens are URL fragments and therefore are not sent in HTTP requests, but logs
 still contain network metadata and must not be treated as public artifacts.
@@ -147,6 +154,15 @@ to an untracked service-owned location. Replace the FQDN and secret. The
 `static-auth-secret` value must exactly match the application's
 `TURN_SHARED_SECRET`; do not configure `no-auth` or permanent browser users.
 Certificate paths are needed only if the optional TURN/TLS block is enabled.
+
+When the application and coturn configs share a parent directory, both service
+accounts must be able to traverse that directory. One minimal layout is a
+`root:root` directory with mode `0751`, an application environment file owned
+by `root:screener` with mode `0640`, and a coturn config owned by
+`root:turnserver` with mode `0640`. Verify readability as the actual service
+user before starting coturn. The tracked systemd unit deliberately fails its
+pre-start check when the coturn config is missing or unreadable; coturn itself
+may otherwise warn and continue with unsafe defaults.
 
 On a host with a public address directly on its interface, coturn can select the
 single listen/relay address automatically. On a multi-homed host, set

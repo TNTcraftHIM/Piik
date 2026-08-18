@@ -9,6 +9,7 @@ User=turnserver
 Group=turnserver
 RuntimeDirectory=coturn
 RuntimeDirectoryMode=0750
+ExecStartPre=/usr/bin/test -r /etc/screener/turnserver.conf
 ExecStart=/usr/local/bin/turnserver -c /etc/screener/turnserver.conf
 Restart=on-failure
 RestartSec=3s
