@@ -5,7 +5,15 @@ import { HostPeer } from "../src/client/webrtc/host-peer.ts";
 
 class FakeSender {
   failNextReplace = false;
-  readonly setParameters = vi.fn(async () => undefined);
+  failNextSetParameters = false;
+  readonly setParameters = vi.fn(
+    async (_parameters: RTCRtpSendParameters) => {
+      if (this.failNextSetParameters) {
+        this.failNextSetParameters = false;
+        throw new Error("setParameters failed");
+      }
+    },
+  );
   readonly replaceTrack = vi.fn(async (track: MediaStreamTrack | null) => {
     if (this.failNextReplace) {
       this.failNextReplace = false;
@@ -152,7 +160,7 @@ describe("HostPeer source replacement", () => {
     await expect(
       peer.replaceStream(
         createStream(createTrack("video", "next-video"), nextAudio),
-        QUALITY_PROFILES["720p60"],
+        QUALITY_PROFILES["1080p30"],
       ),
     ).resolves.toBe(true);
     expect(connection.senders[1]?.track).toBe(nextAudio);
@@ -176,6 +184,54 @@ describe("HostPeer source replacement", () => {
     ).resolves.toBe(true);
 
     expect(connection.senders[1]?.track).toBeNull();
+  });
+
+  it("updates quality parameters without replacing media tracks", async () => {
+    const video = createTrack("video", "video");
+    const audio = createTrack("audio", "audio");
+    const peer = createPeer(createStream(video, audio));
+
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    await expect(
+      peer.updateProfile(QUALITY_PROFILES["1080p60"]),
+    ).resolves.toBe(true);
+
+    expect(connection.senders[0]?.replaceTrack).not.toHaveBeenCalled();
+    expect(connection.senders[1]?.replaceTrack).not.toHaveBeenCalled();
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(
+      connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      degradationPreference: "balanced",
+      encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
+    });
+  });
+
+  it("can retry the selected quality after a sender update fails", async () => {
+    const peer = createPeer(
+      createStream(
+        createTrack("video", "video"),
+        createTrack("audio", "audio"),
+      ),
+    );
+
+    await expect(peer.start()).resolves.toBe(true);
+    const videoSender = FakePeerConnection.latest!.senders[0]!;
+    videoSender.failNextSetParameters = true;
+
+    await expect(
+      peer.updateProfile(QUALITY_PROFILES["1080p60"]),
+    ).resolves.toBe(false);
+    await expect(
+      peer.updateProfile(QUALITY_PROFILES["1080p60"]),
+    ).resolves.toBe(true);
+
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
+    expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
+      degradationPreference: "balanced",
+      encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
+    });
   });
 
   it("rolls the first sender back when the second replacement fails", async () => {
