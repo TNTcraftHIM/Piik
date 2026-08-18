@@ -31,7 +31,7 @@ Last updated: 2026-08-18
 
 ## Current Implementation
 
-- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment.
+- The repository contains a single npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and a separate coturn deployment. The server binds to loopback by default, provides a process-only `/healthz` liveness endpoint, and requires the full TURN/UDP, TURN/TCP, and TURN/TLS-on-TCP-443 URL mix before production startup; these checks do not establish public-network reachability.
 - The Web PoC implements capture-before-room creation, live source replacement without renegotiating healthy peers, expiring role tokens, one independent peer connection per viewer, stable signaling reconnect identities, explicit ICE restart or peer rebuild, host generation isolation, short-lived TURN credentials, three manual quality profiles, and local WebRTC statistics.
 - Automated checks and same-machine synthetic-media Chromium recovery tests pass, including lost offer/answer, one transient offer failure, signaling-only viewer reconnect, viewer-tab replacement with old-peer cleanup, cancelled-room cleanup, and video/audio source changes on an existing connection. Real screen/game audio, public TURN/NAT behavior, mobile lifecycle handling, and latency or quality targets remain unverified.
 - The next milestone is a staging coturn deployment and the manual matrix in `docs/status.md`, not additional product surface or a native sender.

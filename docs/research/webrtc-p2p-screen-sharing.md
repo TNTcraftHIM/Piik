@@ -264,6 +264,8 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - `ws.close()` 默认会等待关闭握手，不能用“升级成功后发送 close frame”实现公网连接硬上限。总连接和未鉴权连接容量应在 `handleUpgrade()` 前检查，超限直接返回 HTTP 503 并销毁底层 socket。
 - Node 的 `IncomingMessage.url` 是未经应用路由解析的 request-target，而 WHATWG `URL` 构造器会拒绝部分输入。upgrade handler 必须捕获解析失败并关闭 socket，不能让未鉴权输入抛到 EventEmitter 顶层。
 - coturn 使用 `use-auth-secret` 支持的 TURN REST 短期凭据：`base64(HMAC-SHA1(secret, expiry + ":" + subject))`。coturn 不提供 HTTP 凭据接口，必须由已鉴权的应用服务生成。
+- RFC 7065/5928 将 `turn` + UDP、`turn` + TCP 和 `turns` + TCP 分别映射到客户端至 TURN 的 UDP、TCP 和 TLS 传输。WebRTC 会逐条验证 ICE URL，任一坏项都可能使整个 PeerConnection 配置失败，因此启动预检先按原始 URI 语法 fail closed，再要求三类目标 URL 显式声明小写 `transport`，且 TLS URL 显式使用 TCP 443；这只能验证配置形状，不能替代公网 relay allocation 测试。
+- Node `server.listen()` 省略 host 时可能监听未指定 IPv6 地址或 `0.0.0.0`。单机反向代理基线应显式绑定 loopback，容器或可信 LAN 才通过配置选择宽绑定；进程级 HTTP 健康检查不应同步探测 TURN 或其他外部网络。
 - 截至本次复核，coturn 应使用 4.17.2 或更新补丁版本；4.17.2 修复了此前补丁版本的 UDP TTL 回归。
 - MiroTalk BRO 当前 P2P 模式仍是 broadcaster 对每位 viewer 建独立连接；Screego 也采用独立 session 和 HMAC TURN 凭据。这验证了拓扑，但两者的静态/长时凭据与轻量恢复策略不直接照搬。
 - Screego 的分享生命周期保持简单，当前客户端在分享停止时关闭 peers，未提供 `replaceTrack()` 换源路径，且为 GPL-3.0；本项目只借鉴其边界清晰的生命周期，不复制实现。Tailchat Meeting 使用 Apache-2.0，但其媒体生产者生命周期绑定 mediasoup/SFU；只参考捕获状态，不引入与 ADR-0001 冲突的拓扑。
@@ -277,6 +279,9 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2)
 - [coturn turnserver documentation](https://github.com/coturn/coturn/blob/master/README.turnserver)
 - [coturn example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
+- [TURN URI scheme RFC 7065](https://www.rfc-editor.org/rfc/rfc7065.html)
+- [TURN TCP/TLS allocations RFC 5928](https://www.rfc-editor.org/rfc/rfc5928.html)
+- [Node.js 24 `server.listen`](https://nodejs.org/docs/latest-v24.x/api/net.html#serverlistenport-host-backlog-callback)
 
 ## 实施难度与预估
 

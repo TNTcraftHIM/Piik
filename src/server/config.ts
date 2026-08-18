@@ -8,6 +8,7 @@ const MIN_PRODUCTION_SECRET_BYTES = 32;
 export interface ServerConfig {
   nodeEnv: RuntimeEnvironment;
   port: number;
+  listenHost: string;
   publicBaseUrl: URL;
   allowedOrigins: ReadonlySet<string>;
   roomCreationToken?: string;
@@ -17,6 +18,12 @@ export interface ServerConfig {
   turnUrls: readonly string[];
   turnSharedSecret?: string;
   turnCredentialTtlSeconds: number;
+}
+
+interface IceEndpoint {
+  scheme: "stun" | "stuns" | "turn" | "turns";
+  port?: number;
+  transport?: "udp" | "tcp";
 }
 
 function parsePositiveInteger(
@@ -86,6 +93,9 @@ function parseIceUrlList(
     if (!allowedProtocols.has(protocol)) {
       throw new Error(`${name} contains an unsupported URL scheme`);
     }
+    if (!parseIceEndpoint(value)) {
+      throw new Error(`${name} contains an invalid ICE URL`);
+    }
     return value;
   });
 }
@@ -93,6 +103,101 @@ function parseIceUrlList(
 function parseOrigins(value: string | undefined, fallback: string): Set<string> {
   const origins = parseUrlList(value, "ALLOWED_ORIGINS");
   return new Set((origins.length > 0 ? origins : [fallback]).map(toOrigin));
+}
+
+function parseIceEndpoint(value: string): IceEndpoint | undefined {
+  const schemeSeparator = value.indexOf(":");
+  if (schemeSeparator <= 0) {
+    return undefined;
+  }
+
+  const scheme = value.slice(0, schemeSeparator).toLowerCase();
+  if (
+    scheme !== "stun" &&
+    scheme !== "stuns" &&
+    scheme !== "turn" &&
+    scheme !== "turns"
+  ) {
+    return undefined;
+  }
+
+  const remainder = value.slice(schemeSeparator + 1);
+  if (!remainder || remainder.includes("#")) {
+    return undefined;
+  }
+
+  const querySeparator = remainder.indexOf("?");
+  const authorityText =
+    querySeparator === -1 ? remainder : remainder.slice(0, querySeparator);
+  const query =
+    querySeparator === -1 ? undefined : remainder.slice(querySeparator + 1);
+  let transport: IceEndpoint["transport"];
+  if (scheme === "stun" || scheme === "stuns") {
+    if (query !== undefined) {
+      return undefined;
+    }
+  } else if (query !== undefined) {
+    if (query === "transport=udp" || query === "transport=tcp") {
+      transport = query.slice("transport=".length) as "udp" | "tcp";
+    } else {
+      return undefined;
+    }
+  }
+  if (
+    !authorityText ||
+    /[\\/\s]/.test(authorityText) ||
+    authorityText.endsWith(":")
+  ) {
+    return undefined;
+  }
+
+  let authority: URL;
+  try {
+    authority = new URL(`http://${authorityText}`);
+  } catch {
+    return undefined;
+  }
+  if (
+    !authority.hostname ||
+    authority.username ||
+    authority.password ||
+    authority.pathname !== "/" ||
+    authority.search ||
+    authority.hash
+  ) {
+    return undefined;
+  }
+
+  const port = authority.port ? Number(authority.port) : undefined;
+  if (port === 0) {
+    return undefined;
+  }
+
+  return {
+    scheme,
+    port,
+    transport,
+  };
+}
+
+function requireProductionTurnCoverage(turnUrls: readonly string[]): void {
+  const endpoints = turnUrls.map((value) => parseIceEndpoint(value)!);
+  const hasTurnUdp = endpoints.some(
+    ({ scheme, transport }) => scheme === "turn" && transport === "udp",
+  );
+  const hasTurnTcp = endpoints.some(
+    ({ scheme, transport }) => scheme === "turn" && transport === "tcp",
+  );
+  const hasTurnsTcp443 = endpoints.some(
+    ({ scheme, port, transport }) =>
+      scheme === "turns" && port === 443 && transport === "tcp",
+  );
+
+  if (!hasTurnUdp || !hasTurnTcp || !hasTurnsTcp443) {
+    throw new Error(
+      "TURN_URLS must include explicit TURN/UDP, TURN/TCP, and TURN/TLS on TCP port 443 endpoints in production",
+    );
+  }
 }
 
 function toOrigin(value: string): string {
@@ -111,6 +216,7 @@ export function loadConfig(
   if (port > 65_535) {
     throw new Error("PORT must be at most 65535");
   }
+  const listenHost = environment.LISTEN_HOST?.trim() || "127.0.0.1";
 
   const publicBaseUrl = new URL(
     environment.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
@@ -166,10 +272,14 @@ export function loadConfig(
   ) {
     throw new Error("TURN_SHARED_SECRET must contain at least 32 bytes in production");
   }
+  if (nodeEnv === "production") {
+    requireProductionTurnCoverage(turnUrls);
+  }
 
   return {
     nodeEnv,
     port,
+    listenHost,
     publicBaseUrl,
     allowedOrigins: parseOrigins(
       environment.ALLOWED_ORIGINS,

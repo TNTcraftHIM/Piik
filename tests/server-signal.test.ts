@@ -101,6 +101,7 @@ function testConfig(): ServerConfig {
   return {
     nodeEnv: "test",
     port: 0,
+    listenHost: "127.0.0.1",
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
     roomTtlMs: 14_400_000,

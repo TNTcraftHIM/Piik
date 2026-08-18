@@ -19,6 +19,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
     nodeEnv: "test",
     port: 0,
+    listenHost: "127.0.0.1",
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
     roomCreationToken: "create-secret",
@@ -109,5 +110,43 @@ describe("room HTTP API", () => {
     const full = await create();
     expect(full.status).toBe(503);
     expect(await full.json()).toEqual({ error: "Room capacity reached" });
+  });
+});
+
+describe("server HTTP listener", () => {
+  it("uses the configured listen host by default", async () => {
+    runningServer = await createScreenerServer({
+      config: testConfig(),
+      serveFrontend: false,
+    });
+    await runningServer.listen(0);
+    const address = runningServer.httpServer.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected a TCP server address");
+    }
+
+    expect(address.address).toBe("127.0.0.1");
+  });
+});
+
+describe("health HTTP endpoint", () => {
+  it("reports process liveness without caching or origin checks", async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/healthz`, {
+      headers: { Origin: "https://foreign.example.test" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ status: "ok" });
+  });
+
+  it("only accepts GET requests", async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/healthz`, { method: "POST" });
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("GET");
+    expect(await response.json()).toEqual({ error: "Method not allowed" });
   });
 });
