@@ -55,6 +55,8 @@ export class ViewerPeer {
       return;
     }
     this.hostPeerId = hostPeerId;
+    let operationConnection: RTCPeerConnection | null = null;
+    let operationConnectionId: string | null = null;
 
     try {
       if (payload.kind === "description") {
@@ -68,16 +70,31 @@ export class ViewerPeer {
         if (!connection) {
           return;
         }
+        const connectionId = payload.connectionId;
+        operationConnection = connection;
+        operationConnectionId = connectionId;
         await connection.setRemoteDescription(payload.description);
-        await this.flushCandidates(payload.connectionId);
+        if (!this.isCurrentConnection(connection, connectionId)) {
+          return;
+        }
+        await this.flushCandidates(connection, connectionId);
+        if (!this.isCurrentConnection(connection, connectionId)) {
+          return;
+        }
         const answer = await connection.createAnswer();
+        if (!this.isCurrentConnection(connection, connectionId)) {
+          return;
+        }
         await connection.setLocalDescription(answer);
+        if (!this.isCurrentConnection(connection, connectionId)) {
+          return;
+        }
         if (!connection.localDescription) {
           throw new Error("Local description was not created");
         }
         this.events.sendSignal({
           kind: "description",
-          connectionId: payload.connectionId,
+          connectionId,
           description: {
             type: "answer",
             sdp: connection.localDescription.sdp,
@@ -89,11 +106,25 @@ export class ViewerPeer {
         this.connectionId === payload.connectionId &&
         this.connection.remoteDescription
       ) {
-        await this.connection.addIceCandidate(payload.candidate);
+        const connection = this.connection;
+        const connectionId = payload.connectionId;
+        operationConnection = connection;
+        operationConnectionId = connectionId;
+        await connection.addIceCandidate(payload.candidate);
+        if (!this.isCurrentConnection(connection, connectionId)) {
+          return;
+        }
       } else {
         this.queueCandidate(payload.connectionId, payload.candidate);
       }
     } catch (error) {
+      if (
+        !operationConnection ||
+        operationConnectionId === null ||
+        !this.isCurrentConnection(operationConnection, operationConnectionId)
+      ) {
+        return;
+      }
       this.setError(error, "处理分享端信令失败");
     }
   }
@@ -203,10 +234,14 @@ export class ViewerPeer {
       this.handleConnectionState(connection.connectionState);
       this.emit();
     });
-    connection.addEventListener("iceconnectionstatechange", () => this.emit());
+    connection.addEventListener("iceconnectionstatechange", () => {
+      if (this.connection === connection) {
+        this.emit();
+      }
+    });
 
     this.statsTimer = window.setInterval(() => {
-      void this.updateStats(connection);
+      void this.updateStats(connection, connectionId);
     }, 2_000);
     this.emit();
   }
@@ -256,27 +291,40 @@ export class ViewerPeer {
     }
   }
 
-  private async flushCandidates(connectionId: string): Promise<void> {
-    if (!this.connection || this.connectionId !== connectionId) {
+  private async flushCandidates(
+    connection: RTCPeerConnection,
+    connectionId: string,
+  ): Promise<void> {
+    if (!this.isCurrentConnection(connection, connectionId)) {
       return;
     }
     const candidates = this.pendingByConnection.get(connectionId) ?? [];
     this.pendingByConnection.delete(connectionId);
     for (const candidate of candidates) {
-      await this.connection.addIceCandidate(candidate);
+      await connection.addIceCandidate(candidate);
+      if (!this.isCurrentConnection(connection, connectionId)) {
+        return;
+      }
     }
   }
 
-  private async updateStats(connection: RTCPeerConnection): Promise<void> {
-    if (this.disposed || this.connection !== connection) {
+  private async updateStats(
+    connection: RTCPeerConnection,
+    connectionId: string,
+  ): Promise<void> {
+    if (!this.isCurrentConnection(connection, connectionId)) {
       return;
     }
+    const statsAccumulator = this.statsAccumulator;
     try {
       const metrics = await collectConnectionMetrics(
         connection,
         "receive",
-        this.statsAccumulator,
+        statsAccumulator,
       );
+      if (!this.isCurrentConnection(connection, connectionId)) {
+        return;
+      }
       if (this.snapshot) {
         this.snapshot = { ...this.snapshot, metrics };
         this.emit();
@@ -284,6 +332,17 @@ export class ViewerPeer {
     } catch {
       // Stats are observational and must never disrupt a healthy media path.
     }
+  }
+
+  private isCurrentConnection(
+    connection: RTCPeerConnection,
+    connectionId: string,
+  ): boolean {
+    return (
+      !this.disposed &&
+      this.connection === connection &&
+      this.connectionId === connectionId
+    );
   }
 
   private setError(error: unknown, fallback: string): void {
