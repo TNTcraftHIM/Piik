@@ -27,6 +27,8 @@ export class HostPeer {
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
   private readonly statsAccumulator = createStatsAccumulator();
+  private videoSender: RTCRtpSender | null = null;
+  private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
   private disposed = false;
   private negotiating = false;
@@ -35,8 +37,8 @@ export class HostPeer {
   constructor(
     readonly peerId: string,
     iceConfig: IceConfig,
-    private readonly stream: MediaStream,
-    private readonly profile: QualityProfile,
+    private stream: MediaStream,
+    private profile: QualityProfile,
     private readonly events: HostPeerEvents,
     private readonly forceRelay = false,
   ) {
@@ -56,15 +58,24 @@ export class HostPeer {
   }
 
   async start(): Promise<boolean> {
-    for (const track of this.stream.getTracks()) {
-      const sender = this.connection.addTrack(track, this.stream);
-      if (track.kind === "video") {
-        try {
-          await configureVideoSender(sender, this.profile);
-        } catch (error) {
-          console.warn("Browser rejected preferred sender parameters", error);
-        }
-      }
+    const videoTrack = this.stream.getVideoTracks()[0];
+    if (!videoTrack) {
+      this.setError(new Error("共享流缺少视频轨道"), "创建连接失败");
+      return false;
+    }
+    const audioTrack = this.stream.getAudioTracks()[0] ?? null;
+    this.videoSender = this.connection.addTransceiver(videoTrack, {
+      direction: "sendonly",
+      streams: [this.stream],
+    }).sender;
+    this.audioSender = this.connection.addTransceiver(audioTrack ?? "audio", {
+      direction: "sendonly",
+      streams: [this.stream],
+    }).sender;
+    try {
+      await configureVideoSender(this.videoSender, this.profile);
+    } catch (error) {
+      console.warn("Browser rejected preferred sender parameters", error);
     }
     if (!(await this.createOffer(false)) || this.disposed) {
       return false;
@@ -72,6 +83,54 @@ export class HostPeer {
     this.statsTimer = window.setInterval(() => {
       void this.updateStats();
     }, 2_000);
+    this.emit();
+    return true;
+  }
+
+  async replaceStream(
+    nextStream: MediaStream,
+    profile: QualityProfile,
+  ): Promise<boolean> {
+    const nextVideoTrack = nextStream.getVideoTracks()[0];
+    if (
+      this.disposed ||
+      !this.videoSender ||
+      !this.audioSender ||
+      !nextVideoTrack
+    ) {
+      return false;
+    }
+
+    const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
+    const previousVideoTrack = this.videoSender.track;
+    const previousAudioTrack = this.audioSender.track;
+
+    try {
+      await this.videoSender.replaceTrack(nextVideoTrack);
+      await this.audioSender.replaceTrack(nextAudioTrack);
+    } catch (error) {
+      await Promise.allSettled([
+        this.videoSender.replaceTrack(previousVideoTrack),
+        this.audioSender.replaceTrack(previousAudioTrack),
+      ]);
+      this.setError(error, "切换共享源失败");
+      return false;
+    }
+
+    if (this.disposed) {
+      return false;
+    }
+    this.stream = nextStream;
+    this.profile = profile;
+    this.statsAccumulator.bytes = null;
+    this.statsAccumulator.frames = null;
+    this.statsAccumulator.timestamp = null;
+    try {
+      await configureVideoSender(this.videoSender, this.profile);
+    } catch (error) {
+      console.warn("Browser rejected preferred sender parameters", error);
+    }
+    this.snapshot = { ...this.snapshot, error: null };
     this.emit();
     return true;
   }

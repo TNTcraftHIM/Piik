@@ -3,6 +3,7 @@ import {
   Copy,
   KeyRound,
   MonitorUp,
+  RefreshCw,
   Square,
   Users,
 } from "lucide-react";
@@ -71,10 +72,10 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
         clientId: getStableClientId("host", room.roomId),
       },
       {
-      onMessage: () => undefined,
-      onStatus: () => undefined,
-      onProtocolError: () => undefined,
-      onTerminated: () => undefined,
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onProtocolError: () => undefined,
+        onTerminated: () => undefined,
       },
     );
     signal.start();
@@ -103,6 +104,7 @@ export function HostPage() {
   );
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [switchingSource, setSwitchingSource] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -111,6 +113,8 @@ export function HostPage() {
   const peersRef = useRef(new Map<string, HostPeer>());
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
+  const sourceSwitchRef = useRef<object | null>(null);
+  const retiringStreamRef = useRef<MediaStream | null>(null);
 
   const viewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -127,11 +131,14 @@ export function HostPage() {
     () => () => {
       activeGenerationRef.current = null;
       generationRef.current += 1;
+      sourceSwitchRef.current = null;
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+      retiringStreamRef.current = null;
     },
     [],
   );
@@ -144,6 +151,7 @@ export function HostPage() {
   }
 
   function disposeResources(notifyServer: boolean): void {
+    sourceSwitchRef.current = null;
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
@@ -156,12 +164,15 @@ export function HostPage() {
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
     streamRef.current?.getTracks().forEach((track) => track.stop());
+    retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    retiringStreamRef.current = null;
     iceConfigRef.current = null;
     setStream(null);
     setRoom(null);
     setPeerSnapshots(new Map());
     setSignalStatus("offline");
+    setSwitchingSource(false);
   }
 
   function endSharing(message: string, notifyServer = true): void {
@@ -182,6 +193,32 @@ export function HostPage() {
       next.set(snapshot.peerId, snapshot);
       return next;
     });
+  }
+
+  function watchCaptureEnd(
+    captured: MediaStream,
+    generation: number,
+  ): void {
+    captured.getVideoTracks()[0]?.addEventListener(
+      "ended",
+      () => {
+        if (
+          isCurrentGeneration(generation) &&
+          streamRef.current === captured
+        ) {
+          endSharing("屏幕分享已结束");
+        }
+      },
+      { once: true },
+    );
+  }
+
+  function finishSourceSwitch(token: object): void {
+    if (sourceSwitchRef.current !== token) {
+      return;
+    }
+    sourceSwitchRef.current = null;
+    setSwitchingSource(false);
   }
 
   function removePeer(peerId: string): void {
@@ -420,15 +457,7 @@ export function HostPage() {
     streamRef.current = captured;
     setStream(captured);
     setDetails(captureDetails(captured));
-    captured.getVideoTracks()[0]?.addEventListener(
-      "ended",
-      () => {
-        if (isCurrentGeneration(generation)) {
-          endSharing("屏幕分享已结束");
-        }
-      },
-      { once: true },
-    );
+    watchCaptureEnd(captured, generation);
 
     let createdRoom: CreateRoomResponse | null = null;
     try {
@@ -514,6 +543,139 @@ export function HostPage() {
     }
   }
 
+  async function switchSource(): Promise<void> {
+    const generation = activeGenerationRef.current;
+    if (
+      phase !== "live" ||
+      generation === null ||
+      !isCurrentGeneration(generation) ||
+      sourceSwitchRef.current
+    ) {
+      return;
+    }
+
+    const token = {};
+    sourceSwitchRef.current = token;
+    setSwitchingSource(true);
+    setNotice(null);
+
+    let captured: MediaStream;
+    try {
+      // Like initial capture, changing source must begin in this button gesture.
+      captured = await captureDisplay(QUALITY_PROFILES[qualityId]);
+    } catch (error) {
+      if (
+        isCurrentGeneration(generation) &&
+        sourceSwitchRef.current === token
+      ) {
+        setNotice(readableError(error));
+      }
+      finishSourceSwitch(token);
+      return;
+    }
+
+    if (
+      !isCurrentGeneration(generation) ||
+      sourceSwitchRef.current !== token
+    ) {
+      captured.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    const previousStream = streamRef.current;
+    if (!previousStream) {
+      captured.getTracks().forEach((track) => track.stop());
+      setNotice("当前分享已经结束");
+      finishSourceSwitch(token);
+      return;
+    }
+
+    retiringStreamRef.current = previousStream;
+    streamRef.current = captured;
+    setStream(captured);
+    setDetails(captureDetails(captured));
+    watchCaptureEnd(captured, generation);
+
+    try {
+      const replacements = await Promise.all(
+        [...peersRef.current.entries()].map(async ([peerId, peer]) => {
+          try {
+            return {
+              peerId,
+              peer,
+              replaced: await peer.replaceStream(
+                captured,
+                QUALITY_PROFILES[qualityId],
+              ),
+            };
+          } catch {
+            return { peerId, peer, replaced: false };
+          }
+        }),
+      );
+
+      if (
+        !isCurrentGeneration(generation) ||
+        sourceSwitchRef.current !== token
+      ) {
+        captured.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      const failedPeerIds: string[] = [];
+      for (const { peerId, peer, replaced } of replacements) {
+        if (!replaced && peersRef.current.get(peerId) === peer) {
+          removePeer(peerId);
+          failedPeerIds.push(peerId);
+        }
+      }
+
+      previousStream.getTracks().forEach((track) => track.stop());
+      if (retiringStreamRef.current === previousStream) {
+        retiringStreamRef.current = null;
+      }
+
+      await Promise.all(
+        failedPeerIds.map(async (peerId) => {
+          if (
+            !isCurrentGeneration(generation) ||
+            sourceSwitchRef.current !== token ||
+            peersRef.current.has(peerId)
+          ) {
+            return;
+          }
+          try {
+            await startPeer(peerId, generation);
+          } catch (error) {
+            if (
+              isCurrentGeneration(generation) &&
+              sourceSwitchRef.current === token
+            ) {
+              setNotice(readableError(error));
+            }
+          }
+        }),
+      );
+
+      if (
+        isCurrentGeneration(generation) &&
+        sourceSwitchRef.current === token
+      ) {
+        setNotice(
+          failedPeerIds.length > 0
+            ? "分享来源已切换，部分观看者正在重新连接"
+            : "分享来源已切换",
+        );
+      }
+    } finally {
+      previousStream.getTracks().forEach((track) => track.stop());
+      if (retiringStreamRef.current === previousStream) {
+        retiringStreamRef.current = null;
+      }
+      finishSourceSwitch(token);
+    }
+  }
+
   async function copyInvite(): Promise<void> {
     if (!room) {
       return;
@@ -566,18 +728,31 @@ export function HostPage() {
             </div>
             {forceRelay && <span className="diagnostic-badge">强制中继</span>}
             {(phase === "live" || phase === "starting") && (
-              <button
-                className="button button-danger"
-                type="button"
-                onClick={() =>
-                  endSharing(
-                    phase === "starting" ? "启动已取消" : "屏幕分享已结束",
-                  )
-                }
-              >
-                <Square size={16} fill="currentColor" aria-hidden="true" />
-                {phase === "starting" ? "取消" : "停止分享"}
-              </button>
+              <div className="broadcast-actions">
+                {phase === "live" && (
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={switchingSource}
+                    onClick={() => void switchSource()}
+                  >
+                    <RefreshCw size={16} aria-hidden="true" />
+                    {switchingSource ? "正在选择" : "切换来源"}
+                  </button>
+                )}
+                <button
+                  className="button button-danger"
+                  type="button"
+                  onClick={() =>
+                    endSharing(
+                      phase === "starting" ? "启动已取消" : "屏幕分享已结束",
+                    )
+                  }
+                >
+                  <Square size={16} fill="currentColor" aria-hidden="true" />
+                  {phase === "starting" ? "取消" : "停止分享"}
+                </button>
+              </div>
             )}
           </div>
 
@@ -590,9 +765,9 @@ export function HostPage() {
                 <span>{phase === "ended" ? "分享已结束" : "未分享画面"}</span>
               </div>
             )}
-            {phase === "starting" && (
+            {(phase === "starting" || switchingSource) && (
               <div className="stage-overlay" role="status">
-                正在连接
+                {switchingSource ? "正在切换来源" : "正在连接"}
               </div>
             )}
           </div>
