@@ -13,7 +13,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Capture precedes room creation; live source/quality changes preserve peers and picture pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
 - Current runtime still uses optional `ACCESS_PASSWORD` and one stateless 12-hour HMAC HttpOnly Strict cookie for both roles; Host auth stays internal and signaling role-bound.
 - Current SQLite still stores only room ID and Host-token digest. Amended ADR-0002 accepts a later atomic `HOST_ADMISSION_PASSWORD`/`screener-v2` migration with default room-scoped private Viewer grants, explicit public-watch, rotate/revoke, and one nullable digest column; no runtime is implemented.
-- PR #44 merged the default-off exact-room STUN-only/SFU-UDP router: host/SFU roots stay at two, browser relays at one, and exhaustion fails boundedly. Production/coturn is rollback; HTTPS/WSS stays TLS/TCP.
+- PR #44 merged default-off exact-room STUN-only/SFU-UDP router: host/SFU roots <=2, browser relay <=1, bounded failure. Production/coturn is rollback; HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and dormant without configuration. Mobile/iPad viewers are leaves and healthy edges stay sticky.
 - PR #49/#50 accepted and implemented the default-off built-in-first `q/f` candidate: exactly `HIGH+LOW`, Dynacast/backup codec off, and a subscriber `HIGH` ceiling; it has no browser evidence.
 - A+B/P2P C remains read-only. Autonomous BWE is only `suspect`; confirmed fallback evacuates children and loses parent capacity. Root impact remains a default-on gate.
