@@ -8,6 +8,7 @@ import {
   parseViewerCounts,
   summarizeSamples,
 } from "../scripts/peer-assisted-benchmark";
+import type { MediaRouteUpstream } from "../src/shared/protocol";
 
 const lowQualitySettings = {
   resolution: "720p",
@@ -37,6 +38,18 @@ function page(
     assignment: {
       parentPeerId: role === "viewer" ? "parent-peer" : null,
       childPeerIds: Array.from({ length: sendEdges }, (_, index) => `child-${index}`),
+    },
+    routeRevision: 1 as number | null,
+    routeAssignment: {
+      upstream:
+        role === "viewer"
+          ? ({ kind: "peer", peerId: "parent-peer" } as MediaRouteUpstream)
+          : ({ kind: "none" } as MediaRouteUpstream),
+      childPeerIds: Array.from(
+        { length: sendEdges },
+        (_, index) => `child-peer-${index}`,
+      ),
+      sfuPublicationGeneration: null as string | null,
     },
     firstDecodedAtEpochMs: role === "viewer" ? 1_500 : null,
     firstRenderedAtEpochMs: role === "viewer" ? 1_550 : null,
@@ -194,6 +207,88 @@ describe("peer-assisted benchmark observations", () => {
     ).toBe(false);
   });
 
+  it("accepts an authoritative SFU root and records its route generation", () => {
+    const initial = [
+      page("host", "host", 1, 0),
+      page("viewer", "viewer-1", 0, 1),
+    ];
+    initial[0]!.routeRevision = 7;
+    initial[0]!.routeAssignment.sfuPublicationGeneration =
+      "publication_generation_12345678";
+    initial[1]!.assignment.parentPeerId = null;
+    initial[1]!.routeRevision = 7;
+    initial[1]!.routeAssignment.upstream = { kind: "sfu" };
+
+    const final = structuredClone(initial);
+    final[1]!.connections[0]!.receiveTotals!.framesTotal = 20;
+    const summary = summarizeSamples(
+      [
+        { atEpochMs: 2_000, elapsedMs: 0, pages: initial },
+        { atEpochMs: 4_000, elapsedMs: 2_000, pages: final },
+      ],
+      1,
+    );
+
+    expect(summary.everyViewerDecoded).toBe(true);
+    expect(summary.viewerContinuity[0]).toMatchObject({
+      assigned: true,
+      routeRevision: 7,
+      upstreamKind: "sfu",
+    });
+    expect(summary.finalTopology).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "host",
+          routeRevision: 7,
+          routeUpstream: { kind: "none" },
+          sfuPublicationGeneration: "publication_generation_12345678",
+        }),
+        expect.objectContaining({
+          role: "viewer",
+          parentPeerId: null,
+          routeRevision: 7,
+          routeUpstream: { kind: "sfu" },
+        }),
+      ]),
+    );
+  });
+
+  it("fails closed when decoded media has no authoritative upstream", () => {
+    const initial = [
+      page("host", "host", 1, 0),
+      page("viewer", "viewer-1", 0, 1),
+    ];
+    initial[1]!.assignment.parentPeerId = null;
+    initial[1]!.routeAssignment.upstream = { kind: "none" };
+    const final = structuredClone(initial);
+    final[1]!.connections[0]!.receiveTotals!.framesTotal = 20;
+
+    expect(
+      summarizeSamples(
+        [
+          { atEpochMs: 2_000, elapsedMs: 0, pages: initial },
+          { atEpochMs: 4_000, elapsedMs: 2_000, pages: final },
+        ],
+        1,
+      ).everyViewerDecoded,
+    ).toBe(false);
+
+    final[1]!.routeAssignment.upstream = {
+      kind: "peer",
+      peerId: "parent-peer",
+    };
+    final[1]!.routeRevision = null;
+    expect(
+      summarizeSamples(
+        [
+          { atEpochMs: 2_000, elapsedMs: 0, pages: initial },
+          { atEpochMs: 4_000, elapsedMs: 2_000, pages: final },
+        ],
+        1,
+      ).everyViewerDecoded,
+    ).toBe(false);
+  });
+
   it("requires every viewer to decode and render after a quality change", () => {
     const before = [
       page("host", "host", 2, 0),
@@ -230,6 +325,8 @@ describe("peer-assisted benchmark observations", () => {
     expect(source).toContain("getDisplayMedia");
     expect(source).toContain("collectConnectionMetrics");
     expect(source).toContain("set-quality-settings");
+    expect(source).toContain('message.type === "route-update"');
+    expect(source).toContain('message.phase === "active"');
     expect(source).toContain("renderedFrames");
   });
 });

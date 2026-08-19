@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import WebSocket from "ws";
+import type { ParticipantRouteAssignment } from "../src/shared/protocol";
 import {
   createScreenerServer,
   type ScreenerServer,
@@ -96,6 +97,8 @@ interface PageObservation {
   signalingConnected: boolean;
   qualitySettings: QualitySettings | null;
   assignment: MediaAssignmentObservation;
+  routeRevision: number | null;
+  routeAssignment: ParticipantRouteAssignment | null;
   maxActiveOutboundMediaEdges: number;
   maxAssignedChildren: number;
   firstDecodedAtEpochMs: number | null;
@@ -464,6 +467,14 @@ export function activeVideoEdgeCount(
   }).length;
 }
 
+function hasAuthoritativeMediaUpstream(page: PageObservation): boolean {
+  return (
+    page.routeRevision !== null &&
+    (page.routeAssignment?.upstream.kind === "peer" ||
+      page.routeAssignment?.upstream.kind === "sfu")
+  );
+}
+
 export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
   let maxHostActiveMediaEdges = 0;
   let maxHostAssignedChildren = 0;
@@ -529,7 +540,9 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       });
       return {
         label: page.label,
-        assigned: page.assignment.parentPeerId !== null,
+        assigned: hasAuthoritativeMediaUpstream(page),
+        routeRevision: page.routeRevision,
+        upstreamKind: page.routeAssignment?.upstream.kind ?? null,
         activeUpstream: activeReceive !== undefined,
         statsClean,
         framesIncreased:
@@ -588,6 +601,10 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       qualitySettings: page.qualitySettings,
       parentPeerId: page.assignment.parentPeerId,
       childPeerIds: page.assignment.childPeerIds,
+      routeRevision: page.routeRevision,
+      routeUpstream: page.routeAssignment?.upstream ?? null,
+      sfuPublicationGeneration:
+        page.routeAssignment?.sfuPublicationGeneration ?? null,
     })),
     finalEdges: finalPages.flatMap((page) =>
       page.connections
@@ -694,6 +711,8 @@ export function buildBenchmarkInitScript(options: {
       signalingConnected: false,
       qualitySettings: null,
       assignment: { parentPeerId: null, childPeerIds: [] },
+      routeRevision: null,
+      routeAssignment: null,
       maxActiveOutboundMediaEdges: 0,
       maxAssignedChildren: 0,
       firstDecodedAtEpochMs: null,
@@ -721,6 +740,60 @@ export function buildBenchmarkInitScript(options: {
         state.maxAssignedChildren,
         state.assignment.childPeerIds.length,
       );
+    }
+
+    function isOpaqueId(value) {
+      return typeof value === "string" &&
+        value.length >= 8 &&
+        value.length <= 128 &&
+        /^[A-Za-z0-9_-]+$/.test(value);
+    }
+
+    function cloneRouteAssignment(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      const upstream = value.upstream;
+      if (!upstream || typeof upstream !== "object" || Array.isArray(upstream)) return null;
+      let clonedUpstream;
+      if (upstream.kind === "peer" && isOpaqueId(upstream.peerId)) {
+        clonedUpstream = { kind: "peer", peerId: upstream.peerId };
+      } else if (upstream.kind === "none" || upstream.kind === "sfu") {
+        clonedUpstream = { kind: upstream.kind };
+      } else {
+        return null;
+      }
+      if (
+        !Array.isArray(value.childPeerIds) ||
+        value.childPeerIds.length > 2 ||
+        !value.childPeerIds.every(isOpaqueId) ||
+        new Set(value.childPeerIds).size !== value.childPeerIds.length ||
+        (value.sfuPublicationGeneration !== null &&
+          !isOpaqueId(value.sfuPublicationGeneration))
+      ) {
+        return null;
+      }
+      return {
+        upstream: clonedUpstream,
+        childPeerIds: [...value.childPeerIds],
+        sfuPublicationGeneration: value.sfuPublicationGeneration,
+      };
+    }
+
+    function setActiveRoute(revision, value) {
+      const assignment = cloneRouteAssignment(value);
+      if (!Number.isSafeInteger(revision) || revision < 0 || !assignment) {
+        state.routeRevision = null;
+        state.routeAssignment = null;
+        return;
+      }
+      state.routeRevision = revision;
+      state.routeAssignment = assignment;
+      setAssignment({
+        parentPeerId:
+          assignment.upstream.kind === "peer"
+            ? assignment.upstream.peerId
+            : null,
+        childPeerIds: assignment.childPeerIds,
+      });
     }
 
     function sdpKey(sdp) {
@@ -759,10 +832,17 @@ export function buildBenchmarkInitScript(options: {
         state.signalingConnected = true;
         if (message.mediaMode === "peer-assisted") {
           setAssignment(message.mediaAssignment);
+          setActiveRoute(message.routeRevision, message.routeAssignment);
           state.qualitySettings = message.qualitySettings;
         }
       } else if (direction === "in" && message.type === "media-assignment") {
         setAssignment(message.mediaAssignment);
+      } else if (
+        direction === "in" &&
+        message.type === "route-update" &&
+        message.phase === "active"
+      ) {
+        setActiveRoute(message.revision, message.assignment);
       } else if (direction === "in" && message.type === "quality-settings") {
         state.qualitySettings = message.qualitySettings;
       }
@@ -974,6 +1054,7 @@ export function buildBenchmarkInitScript(options: {
       return {
         ...state,
         assignment: cloneAssignment(state.assignment),
+        routeAssignment: cloneRouteAssignment(state.routeAssignment),
       };
     }
 
@@ -1313,7 +1394,7 @@ async function waitForViewerMedia(
     const snapshot = await progressSample(cdp, page);
     if (
       snapshot.peerId &&
-      snapshot.assignment.parentPeerId &&
+      hasAuthoritativeMediaUpstream(snapshot) &&
       snapshot.connections.some(
         (connection) =>
           connection.connectionState === "connected" &&
