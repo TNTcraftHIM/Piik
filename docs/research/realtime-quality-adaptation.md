@@ -164,19 +164,27 @@ This is a diagnostic classification, not a weighted health score. Missing or
 reset evidence remains unknown and rebases the interval.
 
 The smallest implementation sequence is local A+B correlation in one host
-sampling tick, including the interval, media/stat identity, and valid deltas.
-Only after that is trustworthy should a minimal authenticated C report carry
-the receive/decode and derived negotiation signals needed by the two-state
+sampling tick, followed by a minimal authenticated C report carrying the
+receive/decode and derived negotiation signals needed by the two-state
 predicate. It never carries raw SDP, raw stats, candidate addresses, or raw
-device/network identifiers. Opaque server-issued path and connection-generation
-IDs provide authorization and correlation; a general remote stats stream or
+device/network identifiers. Server-authoritative path and connection generations
+provide authorization and correlation; a general remote stats stream or
 telemetry pipeline is unnecessary.
 
-The repository now implements the local host A+B foundation: same-tick capture
+The repository implements the local host A+B foundation: same-tick capture
 settings plus one uniquely matched outbound RTP sample, explicit sample/media
 identity and adjacent deltas, `remoteId` linkage, and the selected path reached
 through that RTP stream's transport. Source replacement blocks sampling and
 invalidates in-flight generations.
+
+Authenticated Viewer C is also implemented for each current ordinary or
+peer-assisted P2P hop. A viewer sends one nullable, sanitized aggregate window
+on the existing two-second stats cadence, bounded to 2 KiB; the server derives
+the current viewer, parent, connection, and route revision, while the parent
+accepts only the matching local generation and expires it. The report contains
+no raw SDP, stats, candidates, addresses, device identifiers, or room identity,
+is neither stored nor used for media or routing action, and fails closed for an
+SFU-fed root until a real SFU last-hop B/generation exists.
 
 Codec evidence follows only that outbound RTP object's `codecId`, and the
 referenced `RTCCodecStats` must use the same transport. The local diagnostics
@@ -195,9 +203,10 @@ The same unique outbound object supplies nullable current configured
 `scalabilityMode`. Sender parameter readback exposes an applied mode only for
 one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
-a mismatch; multiple encodings remain unknown. This still does not implement
-an authenticated C report, two-state controller, or on-demand `LOW` runtime,
-and browser support remains subject to the controlled matrix.
+a mismatch; multiple encodings remain unknown. Inbound stats provide no current
+standard `scalabilityMode` source, so C does not carry a null-only placeholder.
+The two-state controller and on-demand `LOW` runtime remain unimplemented, and
+browser support remains subject to the controlled matrix.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)

@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
+  VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   type CreateRoomResponse,
   type IceConfig,
   type ServerMessage,
@@ -52,6 +53,7 @@ import {
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
+import { metricsFromQualityEvidence } from "../media/viewer-quality-evidence";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -64,6 +66,11 @@ import {
 import { sourceSwitchNotice } from "./host-page-notices";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
+
+type ViewerQualityEvidence = Extract<
+  ServerMessage,
+  { type: "viewer-quality-evidence" }
+>;
 
 interface CaptureDetails {
   resolution: string;
@@ -142,6 +149,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
   );
+  const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
+    Map<string, ViewerQualityEvidence>
+  >(() => new Map());
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [switchingSource, setSwitchingSource] = useState(false);
@@ -154,7 +164,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const signalRef = useRef<SignalingClient | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
+  const viewerQualityEvidenceRef = useRef(
+    new Map<string, ViewerQualityEvidence>(),
+  );
+  const viewerQualityEvidenceTimersRef = useRef(
+    new Map<string, number>(),
+  );
   const peerAssistedRef = useRef(false);
+  const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
   const sourceSwitchRef = useRef<object | null>(null);
@@ -193,6 +210,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
+      viewerQualityEvidenceTimersRef.current.forEach((timer) =>
+        window.clearTimeout(timer),
+      );
+      viewerQualityEvidenceTimersRef.current.clear();
+      viewerQualityEvidenceRef.current.clear();
+      activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
       sfuStandbyPrewarmerRef.current?.dispose();
@@ -301,6 +324,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setRelayAvailable(false);
     setMaxViewers(null);
     setPeerSnapshots(new Map());
+    viewerQualityEvidenceTimersRef.current.forEach((timer) =>
+      window.clearTimeout(timer),
+    );
+    viewerQualityEvidenceTimersRef.current.clear();
+    viewerQualityEvidenceRef.current = new Map();
+    setViewerQualityEvidence(new Map());
+    activeRouteRevisionRef.current = 0;
     setSignalStatus("offline");
     setSwitchingSource(false);
     setChangingQuality(false);
@@ -327,11 +357,71 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function updatePeerSnapshot(snapshot: PeerSnapshot): void {
+    const evidence = viewerQualityEvidenceRef.current.get(snapshot.peerId);
+    if (
+      evidence &&
+      evidence.guard.connectionId !== snapshot.connectionId
+    ) {
+      clearViewerQualityEvidence(snapshot.peerId);
+    }
     setPeerSnapshots((current) => {
       const next = new Map(current);
       next.set(snapshot.peerId, snapshot);
       return next;
     });
+  }
+
+  function clearViewerQualityEvidence(peerId: string): void {
+    const timer = viewerQualityEvidenceTimersRef.current.get(peerId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      viewerQualityEvidenceTimersRef.current.delete(peerId);
+    }
+    if (!viewerQualityEvidenceRef.current.has(peerId)) {
+      return;
+    }
+    const next = new Map(viewerQualityEvidenceRef.current);
+    next.delete(peerId);
+    viewerQualityEvidenceRef.current = next;
+    setViewerQualityEvidence(next);
+  }
+
+  function clearAllViewerQualityEvidence(): void {
+    viewerQualityEvidenceTimersRef.current.forEach((timer) =>
+      window.clearTimeout(timer),
+    );
+    viewerQualityEvidenceTimersRef.current.clear();
+    viewerQualityEvidenceRef.current = new Map();
+    setViewerQualityEvidence(new Map());
+  }
+
+  function acceptViewerQualityEvidence(evidence: ViewerQualityEvidence): void {
+    const peer = peersRef.current.get(evidence.viewerPeerId);
+    if (
+      !peer ||
+      peer.connectionId !== evidence.guard.connectionId ||
+      evidence.guard.routeRevision !== activeRouteRevisionRef.current
+    ) {
+      return;
+    }
+    const next = new Map(viewerQualityEvidenceRef.current);
+    next.set(evidence.viewerPeerId, evidence);
+    viewerQualityEvidenceRef.current = next;
+    setViewerQualityEvidence(next);
+    const previousTimer = viewerQualityEvidenceTimersRef.current.get(
+      evidence.viewerPeerId,
+    );
+    if (previousTimer !== undefined) {
+      window.clearTimeout(previousTimer);
+    }
+    const timer = window.setTimeout(() => {
+      if (
+        viewerQualityEvidenceRef.current.get(evidence.viewerPeerId) === evidence
+      ) {
+        clearViewerQualityEvidence(evidence.viewerPeerId);
+      }
+    }, VIEWER_QUALITY_EVIDENCE_EXPIRY_MS);
+    viewerQualityEvidenceTimersRef.current.set(evidence.viewerPeerId, timer);
   }
 
   function watchCaptureEnd(
@@ -471,6 +561,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function removePeer(peerId: string): void {
+    clearViewerQualityEvidence(peerId);
     peersRef.current.get(peerId)?.dispose();
     peersRef.current.delete(peerId);
     setPeerSnapshots((current) => {
@@ -625,6 +716,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
         "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
       );
@@ -633,6 +725,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         "mediaMode" in message &&
         message.mediaMode === "peer-assisted"
       ) {
+        activeRouteRevisionRef.current = message.routeRevision;
         peerAssistedRef.current = true;
         signalRef.current?.send({
           type: "set-quality-settings",
@@ -648,6 +741,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           .then(() => showHostSfuQualityWarning(route, generation));
         return;
       }
+      activeRouteRevisionRef.current = 0;
       peerAssistedRef.current = false;
       clearHostSfuRoute();
       const currentViewerIds = new Set(message.viewerPeerIds);
@@ -660,11 +754,22 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "route-update") {
       if (peerAssistedRef.current) {
+        if (
+          message.phase === "active" &&
+          message.revision !== activeRouteRevisionRef.current
+        ) {
+          activeRouteRevisionRef.current = message.revision;
+          clearAllViewerQualityEvidence();
+        }
         const route = ensureHostSfuRoute(generation);
         void route
           .acceptAndWait(message)
           .then(() => showHostSfuQualityWarning(route, generation));
       }
+      return;
+    }
+    if (message.type === "viewer-quality-evidence") {
+      acceptViewerQualityEvidence(message);
       return;
     }
     if (message.type === "sfu-config") {
@@ -1432,11 +1537,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   )}
                 </div>
                 {showConnectionDetails && (
-                  <StatsGrid
-                    metrics={viewer.metrics}
-                    direction="send"
-                    senderParameters={viewer.senderParameters}
-                  />
+                  <>
+                    <StatsGrid
+                      metrics={viewer.metrics}
+                      direction="send"
+                      senderParameters={viewer.senderParameters}
+                    />
+                    {viewerQualityEvidence.get(viewer.peerId) && (
+                      <>
+                        <p className="section-meta">观看端接收</p>
+                        <StatsGrid
+                          metrics={metricsFromQualityEvidence(
+                            viewerQualityEvidence.get(viewer.peerId)!,
+                          )}
+                          direction="receive"
+                        />
+                      </>
+                    )}
+                  </>
                 )}
                 {viewer.error && <p className="inline-error">{viewer.error}</p>}
               </article>

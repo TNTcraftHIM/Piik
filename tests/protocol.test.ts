@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_MEDIA_ROUTE_REVISION,
   MAX_SFU_TOKEN_LENGTH,
+  MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   clientMessageSchema,
   decodeClientMessage,
@@ -17,6 +18,34 @@ const qualitySettings = {
   maxFramerate: 60,
   maxBitrate: 8_000_000,
   degradationPreference: "maintain-resolution",
+} as const;
+
+const qualityEvidence = {
+  type: "viewer-quality-evidence",
+  guard: {
+    connectionId: "connection_12345678",
+    routeRevision: 0,
+  },
+  sequence: 0,
+  windowMs: 2_000,
+  metrics: {
+    width: 1_920,
+    height: 1_080,
+    framesPerSecond: 59.8,
+    bitrateKbps: 7_500,
+    packetsReceivedDelta: 1_500,
+    packetsLostDelta: 2,
+    jitterMs: 3.5,
+    framesDecodedDelta: 120,
+    framesDroppedDelta: 1,
+    decodeMsPerFrame: 2.4,
+    freezeCountDelta: 0,
+    freezeDurationMsDelta: 0,
+    codec: "video/H264",
+    codecProfile: "profile-level-id=42e01f",
+    codecParameters:
+      "packetization-mode=1; level-asymmetry-allowed=1",
+  },
 } as const;
 
 describe("client signaling protocol", () => {
@@ -219,6 +248,87 @@ describe("client signaling protocol", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts only strict, bounded viewer quality evidence", () => {
+    expect(clientMessageSchema.safeParse(qualityEvidence).success).toBe(true);
+    expect(
+      Buffer.byteLength(JSON.stringify(qualityEvidence), "utf8"),
+    ).toBeLessThanOrEqual(MAX_VIEWER_QUALITY_EVIDENCE_BYTES);
+
+    for (const invalid of [
+      { ...qualityEvidence, roomId },
+      {
+        ...qualityEvidence,
+        guard: { ...qualityEvidence.guard, peerId: "viewer_12345678" },
+      },
+      { ...qualityEvidence, windowMs: 999 },
+      { ...qualityEvidence, sequence: -1 },
+      {
+        ...qualityEvidence,
+        metrics: { ...qualityEvidence.metrics, width: null },
+      },
+      {
+        ...qualityEvidence,
+        metrics: { ...qualityEvidence.metrics, bitrateKbps: Number.POSITIVE_INFINITY },
+      },
+      {
+        ...qualityEvidence,
+        metrics: { ...qualityEvidence.metrics, freezeDurationMsDelta: 2_001 },
+      },
+      {
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          codecParameters: "sprop-parameter-sets=deadbeef",
+        },
+      },
+      {
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          codecProfile: "device-id=deadbeef",
+        },
+      },
+      {
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          scalabilityMode: "DEVICE_ABC123",
+        },
+      },
+      {
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          decoderImplementation: "device-specific-decoder",
+        },
+      },
+    ]) {
+      expect(clientMessageSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it.each([
+    ["video/VP8", null, "max-fr=60; max-fs=8160"],
+    ["video/VP9", "profile-id=2", "max-fs=8160"],
+    ["video/AV1", "profile=1", "level-idx=31; tier=0"],
+    ["video/unknown", null, null],
+  ])(
+    "accepts canonical viewer codec evidence for %s",
+    (codec, codecProfile, codecParameters) => {
+      expect(
+        clientMessageSchema.safeParse({
+          ...qualityEvidence,
+          metrics: {
+            ...qualityEvidence.metrics,
+            codec,
+            codecProfile,
+            codecParameters,
+          },
+        }).success,
+      ).toBe(true);
+    },
+  );
 
   it("accepts bounded route acknowledgements, failures, and SFU refreshes", () => {
     expect(
@@ -498,6 +608,27 @@ describe("server signaling protocol", () => {
         }).success,
       ).toBe(true);
     }
+  });
+
+  it("accepts only canonical server-derived viewer evidence envelopes", () => {
+    const forwarded = {
+      ...qualityEvidence,
+      viewerPeerId: "viewer_12345678",
+      parentPeerId: "host_12345678",
+    };
+    expect(serverMessageSchema.safeParse(forwarded).success).toBe(true);
+    expect(
+      Buffer.byteLength(JSON.stringify(forwarded), "utf8"),
+    ).toBeLessThanOrEqual(MAX_VIEWER_QUALITY_EVIDENCE_BYTES);
+    expect(
+      serverMessageSchema.safeParse({ ...forwarded, roomId }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...qualityEvidence,
+        viewerPeerId: "viewer_12345678",
+      }).success,
+    ).toBe(false);
   });
 
   it.each([0, 1.5, MAX_VIEWERS_PER_ROOM_LIMIT + 1])(

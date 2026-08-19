@@ -207,17 +207,35 @@ export class HybridMediaRouter {
     parentPeerId: string,
     childPeerId: string,
   ): boolean {
+    return (
+      this.resolveActivePeerEdge(roomId, childPeerId)?.parentPeerId ===
+      parentPeerId
+    );
+  }
+
+  resolveActivePeerEdge(
+    roomId: string,
+    childPeerId: string,
+  ): { revision: number; parentPeerId: string } | undefined {
     const controller = this.mediaRouteControllers.get(roomId);
     if (!controller) {
-      return false;
+      return undefined;
     }
-    const assignments = controller.getActiveRoute().assignments;
+    const active = controller.getActiveRoute();
+    const assignments = active.assignments;
     const child = assignments.get(childPeerId);
-    return (
-      child?.upstream.kind === "peer" &&
-      child.upstream.peerId === parentPeerId &&
-      assignments.get(parentPeerId)?.childPeerIds.includes(childPeerId) === true
-    );
+    if (
+      child?.upstream.kind !== "peer" ||
+      assignments
+        .get(child.upstream.peerId)
+        ?.childPeerIds.includes(childPeerId) !== true
+    ) {
+      return undefined;
+    }
+    return {
+      revision: active.revision,
+      parentPeerId: child.upstream.peerId,
+    };
   }
 
   setViewerRelayCapacity(
