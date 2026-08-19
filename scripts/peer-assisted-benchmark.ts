@@ -2169,7 +2169,6 @@ export async function main(): Promise<number> {
       LISTEN_HOST: "127.0.0.1",
       PUBLIC_BASE_URL: baseUrl,
       ALLOWED_ORIGINS: baseUrl,
-      ACCESS_PASSWORD: "",
       ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "true",
       PEER_ASSISTED_ROOM_IDS: "1",

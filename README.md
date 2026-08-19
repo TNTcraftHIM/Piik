@@ -2,9 +2,9 @@
 
 Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its accepted media target is WebRTC P2P-first, with an SFU virtual parent feeding only the necessary roots and optional authenticated TURN for explicitly supported restrictive networks. Roots continue distributing to bounded peer descendants; this is not an always-SFU conferencing design. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
 
-The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code; friends can open `/r/{code}` directly or enter the code at `/join`, with no separate viewer token. During a share, the host can change between three ceiling profiles without reopening the source picker: 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps. The host can also temporarily pause the picture or switch sources. Rooms are random and temporary by default. A password-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. Default routing gives each viewer an independent direct WebRTC connection; the exact-room controller can instead use bounded peer descendants and LiveKit SFU roots. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
+The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code. Rooms default to a private fragment invitation whose capability authorizes only one room; a Host may explicitly choose public watching by room code. During a share, the host can change between three ceiling profiles without reopening the source picker: 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps. The host can also temporarily pause the picture or switch sources. Rooms are random and temporary by default. A Host-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. Default routing gives each viewer an independent direct WebRTC connection; the exact-room controller can instead use bounded peer descendants and LiveKit SFU roots. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
 
-This is not yet a production release. The currently deployed old release verified public TURN/UDP and TURN/TCP relay paths, but the repository candidate now uses self-hosted STUN-only ordinary ICE plus a separate LiveKit SFU/UDP domain. Real cross-network Screener media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
+This is not yet a production release. Production runs the bounded SFU failure-stage diagnostic from `9610032`; the repository uses self-hosted STUN-only ordinary ICE plus a separate LiveKit SFU/UDP domain. Real cross-network media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
 
 ## Run locally
 
@@ -15,7 +15,7 @@ npm ci
 npm run dev
 ```
 
-`ACCESS_PASSWORD` is optional. Leaving it empty makes the site public; setting it gates both hosting and viewing behind one site-wide password. Internet deployments intended to stay private should set it, because in public mode the numeric room code is the only viewing capability and does not provide strong privacy by itself.
+Production requires an independent 16-128 byte visible-ASCII `HOST_ADMISSION_PASSWORD`. It authorizes room creation and Host role only; invited Viewers never need it. Local development and tests may leave it empty. Private rooms use an expiring room-scoped fragment grant, while explicit public-watch rooms accept only the numeric room code.
 
 Open `http://localhost:8787`. The server listens on `0.0.0.0` by default so a
 phone on the same LAN can load `http://<computer-lan-ip>:8787`. To generate an
@@ -26,15 +26,15 @@ must remain on `localhost` or HTTPS because screen capture requires a secure
 context. The local default has no STUN, so cross-network use still requires
 HTTPS and the production ICE configuration documented separately.
 
-The current production release still requires STUN plus separate TURN/UDP and
-TURN/TCP URLs; keep that old release and configuration intact for rollback. The
-repository candidate deliberately replaces that contract: ordinary authenticated
-ICE contains only self-hosted STUN, LiveKit separately serves normally one or two
-SFU/UDP roots, and exhausted paths fail clearly after bounded recovery. Run it on
-an isolated instance for exact-room acceptance rather than retaining a same-process
-old-release compatibility branch. Optional generation-bound TURN for a selected exceptional
-edge is not implemented and requires a separate evidence-backed change. HTTPS/WSS
-continues to use TLS/TCP independently.
+Before deploying this access migration, take the stopped v1 SQLite backup and
+rehearse its restore as documented in [Deployment](./docs/deployment.md). After
+deployment, `HOST_ADMISSION_PASSWORD` authorizes only creation and Host role;
+private Viewers use an expiring room-scoped fragment grant, while explicit
+public-watch accepts a room code. The release has no v1 parser, old cookie, or
+dual-schema runtime. Ordinary ICE contains only self-hosted STUN, LiveKit serves
+normally one or two SFU/UDP roots, and exhausted paths fail clearly after bounded
+recovery. Optional generation-bound TURN for a selected exceptional edge is not
+implemented; HTTPS/WSS remains TLS/TCP independently.
 
 Run the complete automated validation with:
 

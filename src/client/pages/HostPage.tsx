@@ -1,7 +1,9 @@
 import {
   Check,
   Copy,
+  Globe2,
   Hash,
+  LockKeyhole,
   MonitorUp,
   Pause,
   Play,
@@ -16,6 +18,7 @@ import {
   type CreateRoomResponse,
   type IceConfig,
   type ServerMessage,
+  type ViewerAccessPolicy,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
@@ -32,9 +35,14 @@ import { ApiError, createRoom } from "../lib/api";
 import { createOpaqueId } from "../lib/opaque-id";
 import {
   clearHostRoom,
+  clearViewerGrant,
   getStableClientId,
+  type HostRoomIdentity,
+  type HostRoomState,
   isHostRoomExpired,
+  mergeAuthenticatedHostRoom,
   readHostRoom,
+  replaceViewerInvite,
   writeHostRoom,
 } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
@@ -98,7 +106,7 @@ function readableError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "启动分享失败";
 }
 
-function closeAbandonedRoom(room: CreateRoomResponse): void {
+function closeAbandonedRoom(room: HostRoomIdentity): void {
   try {
     const signal = new SignalingClient(
       {
@@ -122,6 +130,31 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
   }
 }
 
+function hostRoomFromStored(room: HostRoomIdentity | null): HostRoomState | null {
+  return room
+    ? {
+        ...room,
+        viewerPolicy: null,
+        inviteUrl: null,
+      }
+    : null;
+}
+
+function hostRoomFromCreated(room: CreateRoomResponse): HostRoomState {
+  replaceViewerInvite(room.roomId, room.inviteUrl);
+  const canonicalUrl = new URL(room.inviteUrl);
+  canonicalUrl.hash = "";
+  canonicalUrl.search = "";
+  return {
+    roomId: room.roomId,
+    hostToken: room.hostToken,
+    expiresAt: room.expiresAt,
+    canonicalUrl: canonicalUrl.toString(),
+    viewerPolicy: room.viewerPolicy,
+    inviteUrl: room.inviteUrl,
+  };
+}
+
 interface HostPageProps {
   onAuthorizationRequired?: () => void;
 }
@@ -139,7 +172,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
-  const [room, setRoom] = useState<CreateRoomResponse | null>(readHostRoom);
+  const [room, setRoom] = useState<HostRoomState | null>(() =>
+    hostRoomFromStored(readHostRoom()),
+  );
+  const [newRoomViewerPolicy, setNewRoomViewerPolicy] =
+    useState<ViewerAccessPolicy>("private-link");
+  const [viewerAccessUpdating, setViewerAccessUpdating] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
@@ -704,16 +742,32 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
   }
 
-  function handleSignalMessage(message: ServerMessage, generation: number): void {
+  function handleSignalMessage(
+    message: ServerMessage,
+    generation: number,
+    activeRoomId: string,
+  ): void {
     if (!isCurrentGeneration(generation)) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      setViewerAccessUpdating(false);
       clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
         "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
       );
       setMaxViewers(message.maxViewers);
+      if (message.viewerPolicy === "public-watch") {
+        clearViewerGrant(activeRoomId);
+      }
+      setRoom((current) =>
+        mergeAuthenticatedHostRoom(
+          current,
+          activeRoomId,
+          message.roomExpiresAt,
+          message.viewerPolicy,
+        ),
+      );
       if (
         "mediaMode" in message &&
         message.mediaMode === "peer-assisted"
@@ -743,6 +797,27 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           removePeer(peerId);
         }
       }
+      return;
+    }
+    if (message.type === "viewer-access-updated") {
+      setViewerAccessUpdating(false);
+      replaceViewerInvite(activeRoomId, message.inviteUrl);
+      setRoom((current) =>
+        current
+          ? {
+              ...current,
+              viewerPolicy: message.viewerPolicy,
+              inviteUrl: message.inviteUrl,
+            }
+          : current,
+      );
+      setNotice(
+        message.viewerPolicy === "public-watch"
+          ? "已允许仅凭房间号观看"
+          : message.inviteUrl
+            ? "已生成新的私密邀请，旧邀请已失效"
+            : "已撤销当前私密邀请",
+      );
       return;
     }
     if (message.type === "route-update") {
@@ -827,6 +902,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "error") {
+      setViewerAccessUpdating(false);
       if (["INVALID_TOKEN", "ROOM_EXPIRED"].includes(message.code)) {
         forgetRoom();
         endSharing("房间已失效，再次点击将创建新房", false);
@@ -887,7 +963,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDetails(captureDetails(captured));
     watchCaptureEnd(captured, generation);
 
-    let createdRoom: CreateRoomResponse | null = null;
+    let createdRoom: HostRoomState | null = null;
     let claimedRoom = false;
     try {
       let reusableRoom = room;
@@ -895,9 +971,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         forgetRoom();
         reusableRoom = null;
       }
-      createdRoom = reusableRoom ?? readHostRoom();
+      createdRoom = reusableRoom ?? hostRoomFromStored(readHostRoom());
       if (!createdRoom) {
-        createdRoom = await createRoom();
+        const response = await createRoom(newRoomViewerPolicy);
+        createdRoom = hostRoomFromCreated(response);
         if (!isCurrentGeneration(generation)) {
           captured.getTracks().forEach((track) => track.stop());
           closeAbandonedRoom(createdRoom);
@@ -953,19 +1030,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               return;
             }
             if (message.type === "authenticated" && message.role === "host") {
-              const authenticatedRoom = {
-                ...activeRoom,
-                expiresAt: message.roomExpiresAt,
-              };
               iceConfigRef.current = message.iceConfig;
               peersRef.current.forEach((peer) =>
                 peer.updateIceConfig(message.iceConfig),
               );
-              writeHostRoom(authenticatedRoom);
-              setRoom(authenticatedRoom);
+              writeHostRoom({
+                ...activeRoom,
+                expiresAt: message.roomExpiresAt,
+              });
               setPhase("live");
             }
-            handleSignalMessage(message, generation);
+            handleSignalMessage(message, generation, activeRoom.roomId);
           },
         },
       );
@@ -1159,6 +1234,21 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
   }
 
+  function changeViewerAccess(
+    action: "public-watch" | "rotate" | "revoke",
+  ): void {
+    if (
+      viewerAccessUpdating ||
+      phase !== "live" ||
+      !signalRef.current?.send({ type: "set-viewer-access", action })
+    ) {
+      setNotice("开始分享并连接后才能修改观看权限");
+      return;
+    }
+    setViewerAccessUpdating(true);
+    setNotice(null);
+  }
+
   const expirationText = room
     ? room.expiresAt
       ? `${new Intl.DateTimeFormat("zh-CN", {
@@ -1324,6 +1414,23 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
           <div className="setup-controls">
             <div className="quality-controls">
+              {!room && (
+                <label className="viewer-policy-toggle">
+                  <input
+                    type="checkbox"
+                    checked={newRoomViewerPolicy === "public-watch"}
+                    disabled={phase === "starting"}
+                    onChange={(event) =>
+                      setNewRoomViewerPolicy(
+                        event.target.checked
+                          ? "public-watch"
+                          : "private-link",
+                      )
+                    }
+                  />
+                  <span>允许仅凭房间号观看</span>
+                </label>
+              )}
               <fieldset className="control-group">
                 <legend>推荐画质</legend>
                 <div className="segmented-control">
@@ -1471,21 +1578,72 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             <div className="invite-bar">
               <div className="invite-copy">
                 <span className="field-label">
-                  房间 {room.roomId} · {expirationText}
+                  房间 {room.roomId} · {expirationText} ·{" "}
+                  {room.viewerPolicy === "public-watch"
+                    ? "公开观看"
+                    : "私密链接"}
                 </span>
-                <span className="invite-url" title={room.inviteUrl}>
-                  {room.inviteUrl}
+                <span className="invite-url" title={room.inviteUrl ?? undefined}>
+                  {room.inviteUrl ?? "当前没有有效邀请，请轮换生成新链接"}
                 </span>
               </div>
-              <button
-                className="icon-button"
-                type="button"
-                title="复制邀请链接"
-                aria-label="复制邀请链接"
-                onClick={() => void copyInvite()}
-              >
-                {copied ? <Check size={18} /> : <Copy size={18} />}
-              </button>
+              <div className="invite-actions">
+                <button
+                  className="icon-button"
+                  type="button"
+                  title="复制邀请链接"
+                  aria-label="复制邀请链接"
+                  disabled={!room.inviteUrl}
+                  onClick={() => void copyInvite()}
+                >
+                  {copied ? <Check size={18} /> : <Copy size={18} />}
+                </button>
+                {room.viewerPolicy === "public-watch" ? (
+                  <button
+                    className="icon-button"
+                    type="button"
+                    title="设为私密并生成新邀请"
+                    aria-label="设为私密并生成新邀请"
+                    disabled={viewerAccessUpdating || phase !== "live"}
+                    onClick={() => changeViewerAccess("rotate")}
+                  >
+                    <LockKeyhole size={18} />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title="轮换私密邀请"
+                      aria-label="轮换私密邀请"
+                      disabled={viewerAccessUpdating || phase !== "live"}
+                      onClick={() => changeViewerAccess("rotate")}
+                    >
+                      <RefreshCw size={18} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title="撤销当前邀请"
+                      aria-label="撤销当前邀请"
+                      disabled={viewerAccessUpdating || phase !== "live"}
+                      onClick={() => changeViewerAccess("revoke")}
+                    >
+                      <LockKeyhole size={18} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title="允许仅凭房间号观看"
+                      aria-label="允许仅凭房间号观看"
+                      disabled={viewerAccessUpdating || phase !== "live"}
+                      onClick={() => changeViewerAccess("public-watch")}
+                    >
+                      <Globe2 size={18} />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </section>

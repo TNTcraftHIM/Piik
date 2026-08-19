@@ -45,6 +45,8 @@ interface SocketState {
   sessionId: string;
   alive: boolean;
   authenticationTimer: NodeJS.Timeout;
+  hostAdmissionAuthenticated: boolean;
+  revoked?: boolean;
   authenticated?: AuthenticatedSession;
 }
 
@@ -66,7 +68,8 @@ export interface SignalingOptions {
   sfuFallback?: SfuFallbackOptions;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
-  authorizeUpgrade: (request: IncomingMessage) => boolean;
+  hostAdmissionAtUpgrade: (request: IncomingMessage) => boolean;
+  publicBaseUrl: URL;
   now?: () => number;
   authenticationTimeoutMs?: number;
   viewerDisconnectGraceMs?: number;
@@ -167,10 +170,6 @@ export class SignalingServer {
         rejectUpgrade(socket, 403, "Forbidden");
         return;
       }
-      if (!options.authorizeUpgrade(request)) {
-        rejectUpgrade(socket, 401, "Unauthorized");
-        return;
-      }
       if (!this.hasConnectionCapacity()) {
         rejectUpgrade(socket, 503, "Service Unavailable");
         return;
@@ -183,7 +182,9 @@ export class SignalingServer {
       });
     };
     options.server.on("upgrade", this.upgradeHandler);
-    this.webSocketServer.on("connection", (socket) => this.accept(socket));
+    this.webSocketServer.on("connection", (socket, request) =>
+      this.accept(socket, options.hostAdmissionAtUpgrade(request)),
+    );
 
     this.heartbeatTimer = setInterval(
       () => this.heartbeat(),
@@ -218,7 +219,7 @@ export class SignalingServer {
     });
   }
 
-  private accept(socket: WebSocket): void {
+  private accept(socket: WebSocket, hostAdmissionAuthenticated: boolean): void {
     if (!this.hasConnectionCapacity()) {
       socket.terminate();
       return;
@@ -235,6 +236,7 @@ export class SignalingServer {
       sessionId,
       alive: true,
       authenticationTimer,
+      hostAdmissionAuthenticated,
     };
     this.socketStates.set(socket, state);
     this.socketsBySessionId.set(sessionId, socket);
@@ -259,6 +261,9 @@ export class SignalingServer {
   private handleMessage(socket: WebSocket, encoded: string): void {
     const state = this.socketStates.get(socket);
     if (!state) {
+      return;
+    }
+    if (state.revoked) {
       return;
     }
 
@@ -320,6 +325,12 @@ export class SignalingServer {
     state: SocketState,
     message: Extract<ClientMessage, { type: "authenticate" }>,
   ): void {
+    if (message.role === "host" && !state.hostAdmissionAuthenticated) {
+      this.sendError(socket, "AUTH_REQUIRED", "Host admission is required");
+      socket.close(4003, "Authentication failed");
+      return;
+    }
+
     let participant;
     try {
       participant = this.options.roomStore.connectParticipant(
@@ -334,6 +345,9 @@ export class SignalingServer {
           : {
               roomId: message.roomId,
               role: "viewer",
+              ...(message.viewerGrant
+                ? { viewerGrant: message.viewerGrant }
+                : {}),
               clientId: message.clientId,
               sessionId: state.sessionId,
             },
@@ -423,6 +437,9 @@ export class SignalingServer {
       connectionId,
       viewerPeerIds: [...participant.viewerPeerIds],
       iceConfig: this.iceConfig(),
+      viewerPolicy: participant.viewerPolicy,
+      viewerAuthorizationGeneration:
+        participant.viewerAuthorizationGeneration,
     } satisfies Extract<ServerMessage, { type: "authenticated" }>;
     if (hybridState) {
       this.send(socket, {
@@ -602,6 +619,17 @@ export class SignalingServer {
       case "viewer-quality-evidence":
         this.handleViewerQualityEvidence(socket, authenticated, message);
         return;
+      case "set-viewer-access":
+        if (authenticated.role !== "host") {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "Only the host may change Viewer access",
+          );
+          return;
+        }
+        this.updateViewerAccess(socket, authenticated, message.action);
+        return;
       case "stop-sharing":
         if (authenticated.role !== "host") {
           this.sendError(socket, "FORBIDDEN", "Only the host may stop sharing");
@@ -641,6 +669,78 @@ export class SignalingServer {
         }
         return;
     }
+  }
+
+  private updateViewerAccess(
+    hostSocket: WebSocket,
+    authenticated: AuthenticatedSession,
+    action: "public-watch" | "rotate" | "revoke",
+  ): void {
+    let update;
+    try {
+      update = this.options.roomStore.setViewerAccess(
+        authenticated.roomId,
+        action,
+      );
+    } catch (error) {
+      console.error("Viewer access update failed", error);
+      this.sendError(hostSocket, "SERVER_ERROR", "Viewer access could not be updated");
+      return;
+    }
+
+    if (update.revokedViewers.length > 0) {
+      this.clearRoomGraceTimers(authenticated.roomId);
+      this.clearRoomConnectionIds(authenticated.roomId);
+
+      for (const viewer of update.revokedViewers) {
+        if (!viewer.sessionId) {
+          continue;
+        }
+        this.sendToSession(viewer.sessionId, {
+          type: "viewer-access-revoked",
+          viewerAuthorizationGeneration:
+            update.previousViewerAuthorizationGeneration,
+        });
+      }
+
+      if (this.isPeerAssistedRoom(authenticated.roomId)) {
+        for (const viewer of update.revokedViewers) {
+          this.hybridMediaRouter!.removeViewer(
+            authenticated.roomId,
+            viewer.peerId,
+          );
+        }
+      } else {
+        const host = this.options.roomStore.getConnectedHost(authenticated.roomId);
+        if (host) {
+          for (const viewer of update.revokedViewers) {
+            this.sendToSession(host.sessionId, {
+              type: "peer-left",
+              peerId: viewer.peerId,
+            });
+          }
+        }
+      }
+
+      for (const viewer of update.revokedViewers) {
+        if (!viewer.sessionId) {
+          continue;
+        }
+        this.closeRevokedViewerSession(viewer.sessionId);
+      }
+    }
+
+    const inviteUrl =
+      action === "revoke"
+        ? null
+        : this.viewerInviteUrl(authenticated.roomId, update.viewerGrant);
+    this.send(hostSocket, {
+      type: "viewer-access-updated",
+      viewerPolicy: update.viewerPolicy,
+      viewerAuthorizationGeneration: update.viewerAuthorizationGeneration,
+      inviteUrl,
+      viewerGrantExpiresAt: update.viewerGrantExpiresAt,
+    });
   }
 
   private handleViewerQualityEvidence(
@@ -906,6 +1006,9 @@ export class SignalingServer {
     if (this.socketsBySessionId.get(state.sessionId) === socket) {
       this.socketsBySessionId.delete(state.sessionId);
     }
+    if (state.revoked) {
+      return;
+    }
     if (!state.authenticated) {
       this.unauthenticatedConnections -= 1;
       return;
@@ -1077,6 +1180,14 @@ export class SignalingServer {
     return createIceConfig(this.options.ice);
   }
 
+  private viewerInviteUrl(roomId: string, viewerGrant: string | null): string {
+    const inviteUrl = new URL(`/r/${roomId}`, this.options.publicBaseUrl);
+    if (viewerGrant) {
+      inviteUrl.hash = `v=${viewerGrant}`;
+    }
+    return inviteUrl.toString();
+  }
+
   private connectedPeer(roomId: string, peerId: string) {
     const host = this.options.roomStore.getConnectedHost(roomId);
     if (host?.peerId === peerId) {
@@ -1090,6 +1201,24 @@ export class SignalingServer {
     if (socket) {
       this.send(socket, message);
     }
+  }
+
+  private closeRevokedViewerSession(sessionId: string): void {
+    const socket = this.socketsBySessionId.get(sessionId);
+    if (!socket) {
+      return;
+    }
+    const state = this.socketStates.get(socket);
+    if (state?.sessionId === sessionId) {
+      clearTimeout(state.authenticationTimer);
+      state.revoked = true;
+    }
+    if (this.socketsBySessionId.get(sessionId) === socket) {
+      this.socketsBySessionId.delete(sessionId);
+    }
+    // Deauthorize before close so queued callbacks from the old generation
+    // cannot route signaling after the persistent authorization commit.
+    socket.close(4004, "Viewer access revoked");
   }
 
   private sendEncodedToSession(sessionId: string, encoded: string): boolean {

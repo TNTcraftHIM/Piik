@@ -5,7 +5,6 @@ import {
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
-import { getSession } from "./api";
 
 type WithoutProtocolEnvelope<T> = T extends {
   type: string;
@@ -33,12 +32,15 @@ const FATAL_SIGNAL_ERRORS = new Set([
 ]);
 const SESSION_REPLACED_CLOSE_CODE = 4001;
 const INVALID_MESSAGE_CLOSE_CODE = 1008;
+const VIEWER_ACCESS_REVOKED_CLOSE_CODE = 4004;
 const PROTOCOL_REFRESH_MESSAGE = "页面版本已更新，请刷新后重试";
 const TERMINAL_SEND_TIMEOUT_MS = 15_000;
 
 export function shouldReconnectSignaling(code: number): boolean {
   return (
-    code !== SESSION_REPLACED_CLOSE_CODE && code !== INVALID_MESSAGE_CLOSE_CODE
+    code !== SESSION_REPLACED_CLOSE_CODE &&
+    code !== INVALID_MESSAGE_CLOSE_CODE &&
+    code !== VIEWER_ACCESS_REVOKED_CLOSE_CODE
   );
 }
 
@@ -57,7 +59,6 @@ export class SignalingClient {
   private authenticationTimer: number | null = null;
   private terminalTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
-  private accessCheck: Promise<void> | null = null;
 
   constructor(
     private readonly identity: SignalingIdentity,
@@ -164,6 +165,9 @@ export class SignalingClient {
       if (message.type === "error" && FATAL_SIGNAL_ERRORS.has(message.code)) {
         this.stop();
         this.events.onMessage(message);
+        if (message.code === "AUTH_REQUIRED" && this.identity.role === "host") {
+          this.events.onAccessRequired();
+        }
         return;
       }
 
@@ -193,9 +197,6 @@ export class SignalingClient {
       this.clearAuthenticationTimer();
       if (!this.stopped && shouldReconnectSignaling(event.code)) {
         this.scheduleReconnect();
-        if (event.code === 1006) {
-          this.checkAccess();
-        }
       } else if (!this.stopped) {
         this.stopped = true;
         this.clearTimers();
@@ -229,30 +230,6 @@ export class SignalingClient {
   private terminateForProtocolMismatch(): void {
     this.stop();
     this.events.onTerminated(PROTOCOL_REFRESH_MESSAGE);
-  }
-
-  private checkAccess(): void {
-    if (this.accessCheck) {
-      return;
-    }
-    this.accessCheck = getSession()
-      .then((status) => {
-        if (
-          !this.stopped &&
-          !this.authenticated &&
-          status.required &&
-          !status.authenticated
-        ) {
-          this.stop();
-          this.events.onAccessRequired();
-        }
-      })
-      .catch(() => {
-        // Network errors keep the ordinary WebSocket reconnect loop active.
-      })
-      .finally(() => {
-        this.accessCheck = null;
-      });
   }
 
   private clearAuthenticationTimer(): void {

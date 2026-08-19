@@ -29,4 +29,13 @@ describe("ViewerMessageAuthority", () => {
     authority.invalidate();
     expect(authority.owns(second)).toBe(false);
   });
+
+  it("invalidates an awaited continuation when Viewer access is revoked", () => {
+    const authority = new ViewerMessageAuthority();
+    const authenticated = authority.tokenFor(message("authenticated"));
+
+    authority.tokenFor(message("viewer-access-revoked"));
+
+    expect(authority.owns(authenticated)).toBe(false);
+  });
 });

@@ -1,6 +1,6 @@
 # Minimal Deployment
 
-Last verified against upstream documentation: 2026-08-19.
+Last verified against upstream documentation: 2026-08-20.
 
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
@@ -113,7 +113,7 @@ LISTEN_HOST=127.0.0.1
 PORT=8787
 PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
-ACCESS_PASSWORD=<WHOLE_SITE_PASSWORD>
+HOST_ADMISSION_PASSWORD=<INDEPENDENT_16_TO_128_BYTE_SECRET>
 ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
@@ -147,15 +147,14 @@ than enabling every room. There is no browser control, percentage rollout, or
 all-room fail-open.
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
-`ACCESS_PASSWORD` is optional: omit it or leave it empty for a public site. A
-non-empty value must contain 1 through 128 visible ASCII characters (`0x21`
-through `0x7e`). For an Internet deployment intended to stay private, use an
-independent value that is not reused elsewhere.
-`ROOM_DATABASE_PATH` is optional but requires `ACCESS_PASSWORD`; startup fails
-if a database path is supplied without the whole-site gate. The baseline above
-enables persistent protected rooms. Omit `ROOM_DATABASE_PATH` to keep random
-temporary rooms, and omit both values for public mode. `ROOM_TTL_SECONDS` applies
-only to temporary rooms.
+`HOST_ADMISSION_PASSWORD` is required in production and must contain 16 through
+128 visible ASCII bytes (`0x21` through `0x7e`). It must not be reused for
+LiveKit, TLS, TURN, or another service. It authorizes room creation and Host
+role only; it is not a Viewer password. Local development and tests may omit it.
+Supplying the removed `ACCESS_PASSWORD` key, even blank, fails startup.
+`ROOM_DATABASE_PATH` is optional but requires `HOST_ADMISSION_PASSWORD`.
+Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
+applies only to those rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
 limit, not evidence that the publisher can sustain that many streams.
 
@@ -164,7 +163,7 @@ complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the
 optional SDK and server path dormant. `LIVEKIT_URL` must be a plain `ws:` or
 `wss:` origin with no `/rtc` suffix; production requires `wss:`.
 `LIVEKIT_API_SECRET` must contain at least 32 bytes and must not reuse
-`ACCESS_PASSWORD`. `MAX_SFU_ROOTS_PER_ROOM` defaults to
+`HOST_ADMISSION_PASSWORD`. `MAX_SFU_ROOTS_PER_ROOM` defaults to
 2 and accepts only 1 or 2; it is ignored when LiveKit is not configured. These
 credentials authorize short-lived LiveKit room tokens and do not provide E2EE:
 the LiveKit operator can access ordinary SFU media.
@@ -182,37 +181,48 @@ does not restore the removed TURN wire. After acceptance, retire or replace the
 temporary exact-room gate in a separate coherent change; never clear the value
 to trigger an implicit all-room rollout.
 
-When `ACCESS_PASSWORD` is configured, both host and viewer routes first show the
-same login gate. Only `POST /api/session` accepts the password in an
-`Authorization: Bearer` header, then returns a 12-hour stateless HMAC-SHA256
-cookie with `HttpOnly`, `SameSite=Strict`, `Path=/`, a
-bounded `Max-Age`, and, under production HTTPS, `Secure` plus an `__Host-` name.
-The cookie contains no account or server-side session identifier. There is no
-account database, JWT, session map, or logout endpoint; expiry or clearing site
-cookies ends access. The optional room database is unrelated to access sessions.
+Only `POST /api/host-admission` accepts the Host admission secret in an
+`Authorization: Bearer` header from an exact allowed Origin. Success returns a
+12-hour stateless HMAC-SHA256 cookie with `HttpOnly`, `SameSite=Strict`,
+`Path=/`, bounded `Max-Age`, and, under production HTTPS, `Secure` plus an
+`__Host-` name. The cookie contains no account or server-side session ID. There
+is no account database, JWT, session map, or logout endpoint.
 
-`POST /api/rooms` and the `/signal` WebSocket upgrade use that cookie when the
-gate is enabled. The room API does not accept a direct Bearer credential as an
-alternate creation path. Viewers open `/r/{code}` or enter only the numeric code
-at `/join`; there is no viewer token or URL fragment, while the host token remains
-internal to the host page.
+nginx limits this exact endpoint per source at `5r/m` with `burst=5 nodelay` and
+returns 429 when exhausted. The limiter uses nginx shared memory; do not add the
+secret, Authorization header, request body, or a new source-address field to
+logs. `POST /api/rooms` accepts only the Host-admission cookie and strict JSON
+with an explicit Viewer policy; a Bearer header is not an alternate creation
+path. `/signal` still admits a cookie-free browser after Origin and capacity
+checks, records the cookie state at upgrade, and requires it only when the first
+v2 message requests Host role. Viewer role never uses this deployment secret.
+
+Private rooms are the default. Their invitation is
+`/r/{code}#v={room-scoped-grant}`; the fragment does not enter HTTP or WebSocket
+request targets. The page validates it, writes it only to that room's
+`sessionStorage`, and immediately replaces the visible URL with `/r/{code}`.
+An independent tab without the fragment fails closed. `public-watch` must be an
+explicit Host choice and accepts the numeric room code alone. Neither policy
+lets a Viewer create a room or authenticate as Host.
 
 Room allocation has two deliberately small policies:
 
 - With `ROOM_DATABASE_PATH`, SQLite allocates positive decimal IDs starting at
-  `1`. These protected rooms and links do not expire. An explicit stop or capture
+  `1`. These rooms do not expire, while each private Viewer invitation expires
+  after seven days unless rotated earlier. An explicit stop or capture
   track ending stops the current publication and leaves viewers waiting; it does
   not delete the room. A brief signaling disconnect does not stop otherwise
   healthy P2P media.
 - Without `ROOM_DATABASE_PATH`, rooms use random numeric IDs and expire according
-  to `ROOM_TTL_SECONDS`. Stopping sharing does not immediately delete them. Public
-  mode always uses this policy, so anonymous clients cannot simply walk a
-  sequential namespace.
+  to `ROOM_TTL_SECONDS`; a private grant cannot outlive its room. Stopping sharing
+  does not immediately delete it. Public-watch remains available but explicit.
 
-The built-in `node:sqlite` database stores only each room ID (the table rowid)
-and SHA-256 host-token digest. It must not contain plaintext tokens, passwords,
-access cookies, SDP, ICE candidates, IP addresses, viewer state, TURN
-credentials, or media. Protect and back up the file as service state. The tracked
+The built-in `node:sqlite` schema v2 stores only each room ID, a SHA-256 Host
+token digest, and one nullable SHA-256 Viewer-grant digest in the same `STRICT`
+row. `NULL` means public-watch; a checked 32-byte BLOB means private-link. It
+must not contain plaintext tokens or grants, passwords, cookies, names,
+participants, SDP, ICE candidates, IP addresses, TURN credentials, or media.
+Protect and back up the file as service state. The tracked
 systemd unit creates `/var/lib/screener` with `StateDirectory=screener` and mode
 `0700`; the production path above is writable despite `ProtectSystem=strict`.
 The database is designed for one application process, not shared storage across
@@ -225,13 +235,26 @@ ownership to the service account and mode `0600`, run SQLite
 use SQLite's [backup API](https://www.sqlite.org/backup.html) or `VACUUM INTO`;
 do not copy only the live main file while it may have an active journal.
 
+The access release changes schema v1 to v2 and has no dual-schema runtime. For
+an existing deployment, stop the service and take a named, immutable v1 copy
+before installing or starting the new binary. Confirm the stopped source reports
+`PRAGMA user_version = 1`, retain the backup outside the release directory, and
+record its checksum. On first v2 startup, one `BEGIN IMMEDIATE` transaction adds
+the checked nullable Viewer digest, writes a different fresh locked-private
+digest to every old room, and advances `user_version` to `2`. Old code-only
+Viewer links intentionally stop working; each existing Host must use rotate once
+to produce a private invitation.
+
+After startup, verify `PRAGMA integrity_check`, `user_version = 2`, service
+health, Host reclaim, rotation, and a new Viewer join before removing the
+maintenance boundary. If rollback is required, stop the v2 service, preserve the
+v2 database separately for diagnosis, restore the exact v1 backup with service
+ownership and mode `0600`, verify integrity and `user_version = 1`, and only then
+start the old binary. Never point the old binary at the migrated v2 file.
+
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
 created persistent room receives ID `1`.
-
-With no `ACCESS_PASSWORD`, the random room code is the sole viewing capability
-and does not provide strong privacy, so public mode is suitable only when public
-access is acceptable or another trusted access layer exists.
 
 Production startup requires one to eight syntactically valid `stun:` URLs
 before the server listens. This validates shape only; it does not prove DNS,
@@ -282,8 +305,9 @@ the first certificate is installed. This hook reloads only the Web ingress.
 
 Keep the proxy's access-log retention bounded and access controlled. Requests to
 `/r/{code}` put the room code in the path, so access logs can contain room codes
-as well as network metadata. They must not be treated as public artifacts; in
-public mode a current code is itself the only viewing capability.
+as well as network metadata. They must not be treated as public artifacts. For
+a private room, the grant remains in the fragment and is not part of that
+request target; for public-watch, the current code is intentionally sufficient.
 
 For a process-level liveness probe, send `GET /healthz`. A running process
 returns HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`; other

@@ -2,15 +2,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
-  authenticate,
+  authenticateHost,
   createRoom,
-  getSession,
+  getHostAdmission,
 } from "../src/client/lib/api.ts";
 import {
   clearHostRoom,
   getStableClientId,
-  readHostRoom,
   isValidRoomId,
+  mergeAuthenticatedHostRoom,
+  readHostRoom,
+  readViewerGrant,
+  readViewerRoute,
+  replaceViewerInvite,
   writeHostRoom,
 } from "../src/client/lib/session.ts";
 import {
@@ -58,15 +62,59 @@ describe("client session identity", () => {
     const room = {
       roomId: "7",
       hostToken: "a".repeat(32),
-      inviteUrl: "https://share.test/r/7",
+      inviteUrl: `https://share.test/r/7#v=g1.7.1893456000.${"b".repeat(43)}`,
+      viewerPolicy: "private-link" as const,
+      viewerGrantExpiresAt: "2026-08-25T00:00:00.000Z",
       expiresAt: null,
     };
 
     writeHostRoom(room);
 
-    expect(readHostRoom()).toEqual(room);
+    expect(readHostRoom()).toEqual({
+      roomId: "7",
+      hostToken: "a".repeat(32),
+      canonicalUrl: "https://share.test/r/7",
+      expiresAt: null,
+    });
+    expect(values.get("screener:host-room:v1")).toBe(
+      JSON.stringify({
+        roomId: "7",
+        hostToken: "a".repeat(32),
+        expiresAt: null,
+        inviteUrl: "https://share.test/r/7",
+      }),
+    );
+    expect([...values.values()].join(" ")).not.toContain("g1.7.");
     clearHostRoom();
     expect(readHostRoom()).toBeNull();
+  });
+
+  it("reclaims a deployed Host ownership record through the stable shape", () => {
+    const values = new Map<string, string>([
+      [
+        "screener:host-room:v1",
+        JSON.stringify({
+          roomId: "9",
+          hostToken: "h".repeat(32),
+          inviteUrl: "https://share.test/r/9",
+          expiresAt: null,
+        }),
+      ],
+    ]);
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(readHostRoom()).toEqual({
+      roomId: "9",
+      hostToken: "h".repeat(32),
+      canonicalUrl: "https://share.test/r/9",
+      expiresAt: null,
+    });
   });
 
   it("discards expired or malformed host room records", () => {
@@ -82,7 +130,7 @@ describe("client session identity", () => {
     const expired = {
       roomId: "12",
       hostToken: "b".repeat(32),
-      inviteUrl: "https://share.test/r/12",
+      canonicalUrl: "https://share.test/r/12",
       expiresAt: "2026-08-18T00:00:00.000Z",
     };
 
@@ -94,10 +142,136 @@ describe("client session identity", () => {
     expect(readHostRoom()).toBeNull();
     expect(removeItem).toHaveBeenCalledTimes(2);
   });
+
+  it("consumes a Viewer grant fragment once into room-scoped session storage", () => {
+    const values = new Map<string, string>();
+    const replaceState = vi.fn();
+    const grant = `g1.7.1893456000.${"c".repeat(43)}`;
+    vi.stubGlobal("window", {
+      location: new URL(`https://share.test/r/7#v=${grant}`),
+      history: { state: { navigation: 1 }, replaceState },
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(readViewerRoute()).toEqual({ roomId: "7", viewerGrant: grant });
+    expect(values.get("screener:viewer-grant:7")).toBe(grant);
+    expect(replaceState).toHaveBeenCalledWith(
+      { navigation: 1 },
+      "",
+      "/r/7",
+    );
+    expect(readViewerGrant("8")).toBeNull();
+  });
+
+  it("fails malformed Viewer fragments closed without leaking across rooms", () => {
+    const values = new Map<string, string>();
+    const oldGrant = `g1.7.1893456000.${"d".repeat(43)}`;
+    values.set("screener:viewer-grant:7", oldGrant);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/7#v=malformed"),
+      history: { state: null, replaceState: vi.fn() },
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(readViewerRoute()).toEqual({ roomId: "7" });
+    expect(readViewerGrant("7")).toBeNull();
+    replaceViewerInvite(
+      "8",
+      `https://share.test/r/8#v=g1.7.1893456000.${"e".repeat(43)}`,
+    );
+    expect(readViewerGrant("7")).toBeNull();
+    expect(readViewerGrant("8")).toBeNull();
+  });
+
+  it("persists a rotated Viewer invitation across reload and clears it on revoke", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+    const firstGrant = `g1.7.1893456000.${"g".repeat(43)}`;
+    const rotatedGrant = `g1.7.1893456000.${"h".repeat(43)}`;
+
+    replaceViewerInvite("7", `https://share.test/r/7#v=${firstGrant}`);
+    replaceViewerInvite("7", `https://share.test/r/7#v=${rotatedGrant}`);
+
+    expect(readViewerGrant("7")).toBe(rotatedGrant);
+    expect(readViewerGrant("7")).toBe(rotatedGrant);
+
+    replaceViewerInvite("7", null);
+    expect(readViewerGrant("7")).toBeNull();
+  });
+
+  it("keeps the latest rotated or revoked invite through Host re-authentication", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+    const oldInvite = `https://share.test/r/7#v=g1.7.1893456000.${"i".repeat(43)}`;
+    const rotatedInvite = `https://share.test/r/7#v=g1.7.1893456000.${"j".repeat(43)}`;
+    replaceViewerInvite("7", oldInvite);
+    const activeRoom = {
+      roomId: "7",
+      hostToken: "h".repeat(32),
+      canonicalUrl: "https://share.test/r/7",
+      expiresAt: null,
+      viewerPolicy: "private-link" as const,
+      inviteUrl: oldInvite,
+    };
+
+    expect(
+      mergeAuthenticatedHostRoom(
+        { ...activeRoom, inviteUrl: rotatedInvite },
+        activeRoom.roomId,
+        null,
+        "private-link",
+      )?.inviteUrl,
+    ).toBe(rotatedInvite);
+    expect(
+      mergeAuthenticatedHostRoom(
+        { ...activeRoom, inviteUrl: null },
+        activeRoom.roomId,
+        null,
+        "private-link",
+      )?.inviteUrl,
+    ).toBeNull();
+  });
+
+  it("removes an expired Viewer grant from room-scoped session storage", () => {
+    const values = new Map<string, string>([
+      ["screener:viewer-grant:7", `g1.7.1.${"f".repeat(43)}`],
+    ]);
+    const removeItem = vi.fn((key: string) => values.delete(key));
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem,
+      },
+    });
+
+    expect(readViewerGrant("7")).toBeNull();
+    expect(removeItem).toHaveBeenCalledWith("screener:viewer-grant:7");
+  });
 });
 
-describe("site access API", () => {
-  it("checks and authenticates a browser session without a request body", async () => {
+describe("Host admission API", () => {
+  it("checks and authenticates Host admission without a request body", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -114,17 +288,17 @@ describe("site access API", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getSession()).resolves.toEqual({
+    await expect(getHostAdmission()).resolves.toEqual({
       required: true,
       authenticated: false,
     });
-    await expect(authenticate("  instance-password  ")).resolves.toEqual({
+    await expect(authenticateHost("  instance-password  ")).resolves.toEqual({
       required: true,
       authenticated: true,
     });
 
     expect(fetchMock.mock.calls[0]).toEqual([
-      "/api/session",
+      "/api/host-admission",
       { headers: { Accept: "application/json" } },
     ]);
     const post = fetchMock.mock.calls[1][1];
@@ -146,7 +320,7 @@ describe("site access API", () => {
       ),
     );
 
-    await expect(authenticate("wrong-password")).rejects.toMatchObject({
+    await expect(authenticateHost("wrong-password")).rejects.toMatchObject({
       status: 401,
       message: "访问密码不正确，请重试",
     });
@@ -161,17 +335,22 @@ describe("site access API", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(createRoom()).rejects.toBeInstanceOf(ApiError);
+    await expect(createRoom("private-link")).rejects.toBeInstanceOf(ApiError);
 
     const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
     expect(headers.has("Authorization")).toBe(false);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ viewerPolicy: "private-link" }),
+    );
   });
 
   it("accepts a persistent room without an expiry", async () => {
     const room = {
       roomId: "42",
       hostToken: "c".repeat(32),
-      inviteUrl: "https://share.test/r/42",
+      inviteUrl: `https://share.test/r/42#v=g1.42.1893456000.${"f".repeat(43)}`,
+      viewerPolicy: "private-link",
+      viewerGrantExpiresAt: "2026-08-25T00:00:00.000Z",
       expiresAt: null,
     };
     vi.stubGlobal(
@@ -184,7 +363,7 @@ describe("site access API", () => {
       ),
     );
 
-    await expect(createRoom()).resolves.toEqual(room);
+    await expect(createRoom("private-link")).resolves.toEqual(room);
   });
 });
 
@@ -203,6 +382,7 @@ describe("room codes", () => {
 describe("client signaling recovery policy", () => {
   it("does not reconnect a session that another tab replaced", () => {
     expect(shouldReconnectSignaling(4001)).toBe(false);
+    expect(shouldReconnectSignaling(4004)).toBe(false);
     expect(shouldReconnectSignaling(1008)).toBe(false);
     expect(shouldReconnectSignaling(1006)).toBe(true);
   });
@@ -225,7 +405,7 @@ describe("client signaling recovery policy", () => {
       iceConfig: { iceServers: [] },
     }),
   ])(
-    "terminates once when an old server uses an incompatible protocol",
+    "terminates once when a server payload is incompatible with v2",
     (payload) => {
       const sockets: FakeWebSocket[] = [];
       class FakeWebSocket extends EventTarget {
@@ -266,7 +446,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v1",
+        protocol: "screener-v2",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });
@@ -287,11 +467,11 @@ describe("client signaling recovery policy", () => {
     },
   );
 
-  it("returns to the access gate after an unauthorized upgrade", async () => {
+  it("returns only a Host to the admission gate after AUTH_REQUIRED", () => {
     const sockets: FakeWebSocket[] = [];
     class FakeWebSocket extends EventTarget {
       static readonly CLOSING = 2;
-      readyState = 0;
+      readyState = 1;
       readonly send = vi.fn();
       readonly close = vi.fn();
 
@@ -300,13 +480,6 @@ describe("client signaling recovery policy", () => {
         sockets.push(this);
       }
     }
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ required: true, authenticated: false }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("window", {
       location: new URL("https://share.test/r/123456789012"),
@@ -315,14 +488,16 @@ describe("client signaling recovery policy", () => {
     });
     const onAccessRequired = vi.fn();
     const statuses: string[] = [];
+    const onMessage = vi.fn();
     const signal = new SignalingClient(
       {
         roomId: "123456789012",
-        role: "viewer",
-        clientId: "viewer-client",
+        role: "host",
+        token: "h".repeat(43),
+        clientId: "host-client",
       },
       {
-        onMessage: () => undefined,
+        onMessage,
         onStatus: (status) => statuses.push(status),
         onTerminated: () => undefined,
         onAccessRequired,
@@ -330,16 +505,24 @@ describe("client signaling recovery policy", () => {
     );
 
     signal.start();
-    const closeEvent = new Event("close");
-    Object.defineProperties(closeEvent, {
-      code: { value: 1006 },
-      reason: { value: "" },
+    sockets[0]!.dispatchEvent(new Event("open"));
+    const message = new Event("message");
+    Object.defineProperties(message, {
+      data: {
+        value: JSON.stringify({
+          type: "error",
+          code: "AUTH_REQUIRED",
+          message: "Host admission is required",
+        }),
+      },
     });
-    sockets[0]!.dispatchEvent(closeEvent);
+    sockets[0]!.dispatchEvent(message);
 
-    await vi.waitFor(() => expect(onAccessRequired).toHaveBeenCalledOnce());
-    expect(fetchMock).toHaveBeenCalledWith("/api/session", {
-      headers: { Accept: "application/json" },
+    expect(onAccessRequired).toHaveBeenCalledOnce();
+    expect(onMessage).toHaveBeenCalledWith({
+      type: "error",
+      code: "AUTH_REQUIRED",
+      message: "Host admission is required",
     });
     expect(statuses.at(-1)).toBe("offline");
     expect(sockets).toHaveLength(1);

@@ -2,9 +2,9 @@ import { KeyRound, LoaderCircle } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ApiError,
-  authenticate,
-  getSession,
-  type SessionStatus,
+  authenticateHost,
+  getHostAdmission,
+  type HostAdmissionStatus,
 } from "./lib/api";
 import { readViewerRoute } from "./lib/session";
 import { HostPage } from "./pages/HostPage";
@@ -21,7 +21,7 @@ type AccessState =
   | { kind: "required"; error: string | null }
   | { kind: "unavailable"; message: string };
 
-function stateFromStatus(status: SessionStatus): AccessState {
+function stateFromStatus(status: HostAdmissionStatus): AccessState {
   return !status.required || status.authenticated
     ? { kind: "ready" }
     : { kind: "required", error: null };
@@ -34,13 +34,23 @@ function readableError(error: unknown): string {
 }
 
 export function App() {
+  if (viewerRoute) {
+    return <ViewerPage {...viewerRoute} />;
+  }
+  if (isJoinRoute || !isHostRoute) {
+    return <JoinPage />;
+  }
+  return <HostAdmissionGate />;
+}
+
+function HostAdmissionGate() {
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void getSession().then(
+    void getHostAdmission().then(
       (status) => active && setAccess(stateFromStatus(status)),
       (error: unknown) =>
         active &&
@@ -54,7 +64,7 @@ export function App() {
   async function retry(): Promise<void> {
     setAccess({ kind: "checking" });
     try {
-      setAccess(stateFromStatus(await getSession()));
+      setAccess(stateFromStatus(await getHostAdmission()));
     } catch (error) {
       setAccess({ kind: "unavailable", message: readableError(error) });
     }
@@ -71,7 +81,7 @@ export function App() {
 
     setSubmitting(true);
     try {
-      setAccess(stateFromStatus(await authenticate(submittedPassword)));
+      setAccess(stateFromStatus(await authenticateHost(submittedPassword)));
     } catch (error) {
       setAccess({
         kind: "required",
@@ -86,19 +96,6 @@ export function App() {
   }
 
   if (access.kind === "ready") {
-    if (viewerRoute) {
-      return (
-        <ViewerPage
-          {...viewerRoute}
-          onAuthorizationRequired={() =>
-            setAccess({ kind: "required", error: "验证已失效，请重新登录" })
-          }
-        />
-      );
-    }
-    if (isJoinRoute || !isHostRoute) {
-      return <JoinPage />;
-    }
     return (
       <HostPage
         onAuthorizationRequired={() =>
@@ -133,11 +130,11 @@ export function App() {
         ) : (
           <form className="access-panel" onSubmit={(event) => void submit(event)}>
             <div>
-              <h1>访问验证</h1>
-              <p className="section-meta">请输入此站点的访问密码</p>
+              <h1>分享权限</h1>
+              <p className="section-meta">请输入分享准入密码</p>
             </div>
             <label className="token-field">
-              <span>访问密码</span>
+              <span>分享准入密码</span>
               <span className="input-with-icon">
                 <KeyRound size={16} aria-hidden="true" />
                 <input
