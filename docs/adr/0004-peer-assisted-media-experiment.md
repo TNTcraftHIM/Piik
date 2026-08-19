@@ -34,8 +34,8 @@ Preserve the product priority in this order:
 1. direct P2P for one or two viewers;
 2. peer-assisted forwarding for later viewers when this experiment is active
    and every required capability is present; and
-3. an enabled optional SFU as the final automatic fallback in a later route
-   controller.
+3. the ADR-0005 SFU virtual parent as the flagship central fallback while
+   retaining bounded peer descendants.
 
 This bounded experiment implements only the first two levels. That scope must
 not be read as requiring users to select a topology or rejecting automatic

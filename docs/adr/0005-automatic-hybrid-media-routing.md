@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Proposed - Default-Off Implementation, Experiment Only
+- Status: Accepted Direction - Default-Off Migration Unverified
 - Date: 2026-08-19
 
 ## Context
@@ -8,25 +8,33 @@
 The product has always required route selection and recovery to be automatic
 and invisible to the broadcaster and viewers. Earlier repository wording that
 prohibited silent migration was an incorrect interpretation and is superseded
-by this proposal. Simplicity constrains the controller and user experience; it
+by this decision. Simplicity constrains the controller and user experience; it
 does not require users to choose a media topology.
 
 The ordered preference remains:
 
 1. direct P2P edges;
 2. peer-assisted forwarding;
-3. an SFU supplied by the deployment; and
+3. an SFU virtual parent supplied by the flagship deployment; and
 4. bounded waiting or failure when no route can satisfy the budgets.
 
-Every P2P edge independently tries direct ICE and authenticated TURN fallback.
-TURN is not a separate room topology. The host and every future native/encoded
-relay have a downstream budget of at most two active media edges. The current
-browser relay remains stricter at one child.
+STUN is required. The accepted target keeps ordinary direct and peer edges on
+ICE/UDP, then assigns one or two SFU roots when no peer path can satisfy the
+route and fanout budgets. Authenticated TURN is optional and, when configured,
+is a final transport compatibility layer for a selected exceptional edge; it
+is not advertised to every ordinary peer edge by default. HTTPS/WSS remains TLS/TCP and
+is outside this media policy. Every non-server endpoint has at most two active
+downstream media edges; its upstream receive edge does not consume that upload
+budget. The current browser relay remains stricter at one child until its
+re-encode and resource gates pass.
 
-TURN and SFU occupy different layers. TURN replaces transport for only the ICE
-edge that selected a relay pair. An SFU is a virtual topology parent and may
-feed only one or two necessary roots; after media reaches a reliable root, the
-existing bounded peer subtree remains the preferred distribution path. A
+TURN and SFU occupy different layers. A selected TURN candidate continuously
+relays media for that ICE edge; it is not a handshake helper or a topology
+decision. LiveKit TURN cannot rescue an unavailable SFU. Independent coturn may
+transport a separately selected ordinary peer edge around that outage, but only
+after the controller authorizes that peer topology. An SFU is a virtual topology parent and may feed only one
+or two necessary roots; after media reaches a reliable root, the existing
+bounded peer subtree remains the preferred distribution path. A
 zero-descendant SFU root is allowed only when no relay root satisfies
 capability, depth, path, and recovery gates; it still counts against the same
 one-or-two-root room budget.
@@ -36,7 +44,7 @@ Closed PR #12 proposed a mutually exclusive process-wide `p2p|sfu` mode; this
 ADR and merged PR #17 supersede that model because it cannot satisfy the route
 priority or minimize server egress.
 
-## Proposed Experiment
+## Accepted Target And Bounded Migration
 
 Treat the SFU as a virtual parent for selected fallback roots, not as an
 all-room replacement. Keep the existing peer-assisted topology as the active
@@ -56,10 +64,11 @@ exists, a necessary viewer may be an SFU root with no descendants under that
 same total; this is the last central-fanout boundary, not a default whole-room
 topology. The cost model is owned by the linked low-server research.
 
-Deployment decides whether SFU capacity exists by configuring the complete
-LiveKit endpoint/key/secret tuple. There is no user-facing topology selector and
-no process-wide `MEDIA_MODE` union. Without the tuple, the same controller ends
-at peer assistance and bounded waiting/failure.
+The flagship deployment target supplies SFU capacity with a complete LiveKit
+endpoint/key/secret tuple. There is no user-facing topology selector and no
+process-wide `MEDIA_MODE` union. A deployment without that tuple ends at peer
+assistance and bounded waiting/failure and is not the final flagship route
+configuration. Optional TURN is a separate selected-edge transport choice.
 
 ## Implementation Status
 
@@ -68,6 +77,15 @@ adds only the bounded standby prewarm described below. Their code ships in
 production release `769de201f7cc`, but the deployment has neither
 `PEER_ASSISTED_MEDIA` nor a LiveKit tuple, so its active path remains ordinary
 one-host-peer-per-viewer P2P/TURN.
+
+That implementation is not yet the accepted transport target. It advertises
+coturn per P2P edge, production configuration requires TURN/UDP plus TURN/TCP,
+and the SFU activates only after a peer edge exhausts recovery. The scheduled
+change must make the complete TURN tuple optional, omit it from ordinary peer
+ICE, make SFU/UDP the primary central fallback, and issue short-lived TURN only
+for a controller-selected exceptional edge. Until its tests and exact-room
+canary pass, the current config contract and production deployment remain
+unchanged.
 
 The repository also supports an optional strict `PEER_ASSISTED_ROOM_IDS`
 deployment allowlist. When non-empty, only exact listed room IDs enter the
@@ -83,10 +101,14 @@ and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
 issues short-lived room-, role-, peer-, and publication-generation-bound grants,
 and only allowlisted branch roots may subscribe. A necessary viewer with no
 descendants is still a root under the same authorization and total cap. The
-server first retries a failed edge through the deterministic peer topology;
-only an exhausted peer route can request an SFU branch root. A
-healthy route does not migrate merely because one or both selected edge
-transports use TURN.
+server currently retries a failed edge through the deterministic peer topology;
+only an exhausted peer route can request an SFU branch root. The target keeps
+healthy UDP routes sticky but may select SFU directly when admission has no
+eligible peer path. Optional TURN has two distinct future boundaries: an
+exceptional ordinary host-to-root or root-to-viewer edge needs a new
+generation-bound coturn grant, while a LiveKit publisher/subscriber may receive
+the pinned participant-wide LiveKit TURN config. Neither is implemented as a
+controller-selected TURN edge today; other routes remain unchanged.
 
 Every viewer starts with zero relay capacity for each authenticated session. A
 peer-assisted Web client explicitly advertises either zero or one downstream
@@ -102,8 +124,9 @@ standby warming. The corrected cold Chrome 151/LiveKit 1.13.5 localhost run took
 1.481 seconds from failure report to active and 2.257 seconds to a new rendered
 frame. With authenticated standby warming, the same physical-leaf/two-root
 scenario took 200 ms to active and 319.7 ms to render while the host edge peak
-remained two. Public transport/audio/load/browser checks remain pending, so this
-ADR stays Proposed.
+remained two. Public transport/audio/load/browser checks remain pending. The
+direction is accepted, while implementation migration and deployment
+acceptance remain unverified.
 
 ## State And Wire
 
@@ -148,6 +171,12 @@ Minimal protocol additions:
 - `route-failed { revision, phase, connectionId }`; and
 - `refresh-sfu { revision }`.
 
+The optional selected-edge TURN target is not present in this protocol. A
+future migration PR must add strict, session/assignment/generation-bound coturn
+grant and refresh messages for ordinary peer edges. Pinned LiveKit embedded
+TURN remains participant-wide ICE configuration for a LiveKit publisher or
+subscriber and is not a Screener per-edge grant.
+
 Authentication carries the current participant assignment and room revision,
 plus the non-secret standby URL when fallback is configured. It never carries a
 standby JWT. An authenticated snapshot is the sole authority allowed to replace
@@ -163,9 +192,14 @@ complete LiveKit tuple.
 
 ## Transition
 
-1. Keep two ordinary peer roots while those routes work.
-2. A failed edge first exhausts its current ICE restart/rebuild and per-edge
-   direct/TURN options.
+1. Keep direct/peer UDP roots while those routes work.
+2. A failed edge first exhausts its bounded ICE/UDP restart/rebuild and peer
+   reparent options. When admission has no eligible peer path, or recovery is
+   exhausted, select the SFU root plan without first advertising TURN to every
+   peer edge. If ordinary coturn is configured, its grant is issued only to a
+   selected exceptional peer edge after UDP is exhausted. Stock LiveKit
+   participant-wide TURN remains a canary candidate and does not satisfy this
+   selected-edge issuance target unless the integration isolates or extends it.
 3. The server computes revision `R+1` without mutating the active topology. It
    sends a prepare plan only to the host and required fallback roots.
 4. When fallback is configured, host and viewer clients have already made one
@@ -197,13 +231,13 @@ complete LiveKit tuple.
    baseline revision and disables SFU for the rest of the current share. Stop or
    a new sharing generation clears that one-shot circuit breaker.
 
-SFU fallback is sticky until the current share stops. A new sharing generation
-starts from the cheapest available route. The first experiment does not
-continuously fail back during a live share, avoiding oscillation without adding
-a score or hysteresis framework.
+An activated SFU-root route is sticky until a discrete route event requires a
+change or the current share stops. A new sharing generation starts from the
+cheapest available UDP route. The first target does not continuously rebalance
+healthy media, avoiding oscillation without adding a score or optimizer.
 
 The authenticated standby is not a transport: it has no grant and never joins a
-room. During route prepare the Draft warms only an unpublishing/unsubscribed
+room. During route prepare the current implementation warms only an unpublishing/unsubscribed
 transport. Its media transition remains break-before-make: the host releases the
 replaced peer or SFU media edge before activating the new one, and a viewer
 retires its SFU subscriber before returning to peer media.
@@ -255,36 +289,55 @@ Measurements may add a new explicit trigger only through a reviewed change.
 ADR-0007's `HIGH`/`FALLBACK` quality state is separate and does not become a
 topology trigger or a room-wide health score.
 
-`MAX_SFU_ROOTS_PER_ROOM` bounds server egress. Exhausting that budget waits or
-fails explicitly; it never creates a third host edge or silently fans the SFU
-out to the whole room.
+`MAX_SFU_ROOTS_PER_ROOM` currently bounds server egress at one or two roots.
+The target retains two as the normal distributed limit. If several exceptional
+viewers cannot attach behind any healthy root, a later reviewed config may
+admit additional direct server-fed edges under a separate explicit egress cap;
+it never creates a third endpoint edge or unbounded whole-room fanout.
 
 Sub-second failure recovery is a target after failure detection. The current
 30-second control heartbeat cannot meet it for silent partitions, so the media
 plane needs a small 100-200 ms liveness/queue signal or an equivalent native
 transport event. This signal must be measured before its interval is fixed.
 
-## Shadow-Only Dual-TURN Candidate
+## SFU-First UDP Transport Migration
 
-Four cases define the decision boundary: retain direct/direct and direct/TURN
-peer roots; treat stable TURN/TURN roots only as a shadow SFU-root candidate;
-and use the current failure-only SFU path only after no reliable relay root
-remains. A necessary zero-descendant viewer still consumes one of the same one
-or two SFU-root slots. No stability threshold or new trigger is accepted.
+The accepted product direction supersedes the earlier dual-TURN shadow
+candidate as the preferred central comparison. Healthy direct/peer UDP stays distributed. When no such path
+can satisfy admission or recovery, one SFU publication feeds one or two roots,
+which keep their bounded peer descendants. Optional TURN is not room-wide: the
+server may grant independent coturn only to a selected exceptional ordinary
+host-to-root or root-to-viewer edge. A LiveKit publisher/subscriber connection
+may instead receive LiveKit's participant-wide embedded/external TURN config;
+that path is not assignment-level issuance. Absence of TURN is normal;
+exhausted configured paths fail clearly.
 
-The bounded cost model, privacy-safe ICE fields, four-case measurement matrix,
-and exact-room shadow/A/B sequence live in
-[Low-Server-Cost Media Routes](../research/low-server-media-routes.md). One
-important accounting invariant is retained here: host-to-SFU publisher,
-SFU-to-root subscriber, and peer-descendant edges are independent ICE
-connections and each may use TURN. Every host NIC, TURN ingress/egress, SFU
-ingress/egress, and root NIC hop is real traffic and remains in service and
-billing totals, even when the same logical payload traverses consecutive hops.
+The bounded cost model, privacy-safe ICE fields, and exact-room A/B sequence
+live in [Low-Server-Cost Media Routes](../research/low-server-media-routes.md).
+For the normal-root baseline with no exceptional server-fed viewer, one equal
+representation of bitrate `B` and `R` roots gives TURN seed host upload `R*B`
+and central ingress plus egress `2R*B`; one SFU publisher gives host upload `B`
+and central ingress plus egress `(R+1)*B`. Mixed representations use measured
+`B_pub` and `sum(B_i)`. If `E` separately admitted exceptional viewers receive
+bitrate `B_exc,j`, SFU egress adds `sum(B_exc,j)`; every TURN leg additionally
+adds its own ingress and egress. Every host NIC, TURN ingress/egress, SFU
+ingress/egress, root NIC, and exception NIC hop remains real traffic.
 
-Only measured benefit plus an amended ADR-0005 may authorize an automatic
-exact-room canary. Until then, shadow observation changes no route, wire,
-controller, or production trigger, and the implementation remains
-failure-only.
+Migration is gated, not optional design debate: first retain the current path
+as a baseline, then use one exact room to verify direct/peer UDP, SFU/UDP,
+one selected-edge compatibility transport when configured, and bounded failure with all UDP
+blocked. The matrix covers CGNAT, double NAT, mobile hotspot, ordinary home
+networks, root departure, reconnect, SFU unavailable, and rollback. It records
+CPU seconds/GiB, NIC bytes/pps, RSS, host upload, p95/p99 forwarding latency,
+loss/recovery, final quality, host edges at most two, SFU roots at most two, and
+unchanged healthy subtrees. Only after that gate may config parsing stop
+requiring coturn and may production enable the new ladder.
+
+A peer root re-publishing its received stream to the SFU while also feeding
+peer descendants remains a separate bounded candidate. The current browser
+path would decode and re-encode, and it adds publication ownership and load;
+it is not silently added to this migration. No composite score, continuous
+optimizer, or geographic/UA inference is introduced.
 
 ## Security And Privacy
 
@@ -295,7 +348,7 @@ the current fallback-root identities, including any zero-descendant roots.
 Ordinary SFU WebRTC transport encryption terminates at the SFU, so its operator
 can access media. LiveKit supports application E2EE in which its server cannot
 access media content, but signaling/API data remains visible and Screener has
-not implemented the required key distribution. The shadow comparison must
+not implemented the required key distribution. The exact-room comparison must
 record which boundary is actually configured and the UI must not claim E2EE.
 
 ## Implementation Order
@@ -308,31 +361,34 @@ record which boundary is actually configured and the UI must not claim E2EE.
 3. Add versioned route state and pure invariant/property tests.
 4. Implement server prepare/commit/abort and strict authorization.
 5. Integrate host/viewer first-frame switching while retaining relay children.
-6. Extend the tracked `1/3/5/8` benchmark with automatic fallback, direct/TURN,
-   source/profile/pause/stop, and server-egress measurements.
+6. Extend the tracked `1/3/5/8` benchmark with automatic fallback, peer/SFU UDP,
+   optional selected-edge TURN, source/profile/pause/stop, and server-egress measurements.
 
 ## Acceptance Gates
 
-- Host active media edges never exceed two across every prepare, commit,
-  rollback, reconnect, and stale-message sequence.
-- Current browser relays never exceed one child; future capacity two is exposed
-  only by a proven native/encoded capability.
-- Only necessary fallback roots receive SFU media and the configured root/egress
-  budget is never exceeded.
-- A reliable SFU root continues to serve bounded peer descendants; only when no
-  reliable relay root exists may a necessary viewer be a zero-descendant root,
-  still within the same one-or-two-root cap.
+- Every non-server endpoint stays at or below two active downstream media edges
+  across prepare, commit, rollback, reconnect, and stale-message sequences;
+  current browser relays stay at one child until separately accepted.
+- Only necessary roots or explicitly admitted exceptional viewers receive SFU
+  media and the configured central egress budget is never exceeded.
+- A reliable SFU root continues to serve bounded peer descendants. Normal
+  central fanout stays at one or two roots; only multiple exceptional viewers
+  that cannot attach to a healthy root may consume separately capped direct
+  server edges.
 - Prepare failure leaves the old active route unchanged.
 - First new decodable picture arrives within one second after a route failure is
   detected in the reference regional network.
 - Existing descendants, source selection, quality profile, pause, audio, and
   persistent-room stop/restart semantics survive the transition.
-- No LiveKit configuration preserves the existing P2P/peer behavior and wire.
+- No LiveKit configuration preserves the existing P2P/peer behavior and wire,
+  but is not the final flagship deployment target.
 - In one process, non-allowlisted rooms preserve the legacy P2P wire, directed
   signaling, quality rejection, stop/reconnect/delete semantics, and remain
   isolated from allowlisted peer/SFU state.
-- LiveKit UDP, TCP, and TURN fallback are independently verified before the SFU
-  can be called a reliable final route.
+- LiveKit/SFU UDP must pass CGNAT, double-NAT, hotspot, home-network, loss,
+  rollback, and SFU-unavailable gates. With optional TURN absent, blocked UDP
+  fails clearly within a bounded window. Any configured selected-edge TURN or
+  media TCP mode is verified separately and never becomes a quality claim.
 
 ## Consequences
 
@@ -340,16 +396,17 @@ Positive:
 
 - Users do not select or understand a topology.
 - Host fanout remains bounded while server media egress is paid only for
-  fallback roots.
-- The ordinary peer path and its direct/TURN behavior remain reusable.
+  fallback roots and separately admitted exceptional viewers.
+- The ordinary peer path stays direct/UDP by default; optional TURN is paid only
+  for a selected exceptional edge.
 - Revisioned prepare/commit isolates stale asynchronous results without a
   continuous optimizer.
 
 Negative:
 
 - Strict two-edge migration can include a bounded interruption.
-- LiveKit adds an optional operational dependency and can inspect ordinary SFU
-  media.
+- LiveKit becomes an operational dependency for the flagship target and can
+  inspect ordinary SFU media.
 - A configured peer-assisted client downloads/parses the current build's roughly
   137.5 kB gzip (531 kB minified) LiveKit chunk and sends one `HEAD` even if it
   never needs SFU, shifting that small one-time client/static-egress cost earlier.
@@ -359,10 +416,10 @@ Negative:
 
 ## Relationship To Existing ADRs
 
-- This proposal corrects the automatic-migration interpretation in ADR-0001
+- This decision corrects the automatic-migration interpretation in ADR-0001
   without changing the currently deployed MVP.
 - ADR-0004 remains the bounded full-stream browser-relay experiment.
-- This experiment and merged PR #17 supersede ADR-0003/closed PR #12's
+- This decision and merged PR #17 supersede ADR-0003/closed PR #12's
   process-wide explicit media mode with default-off automatic hybrid fallback.
   ADR-0003 remains historical rejected/superseded context.
 - Native shared encoding and two-tree striped distribution remain orthogonal
@@ -378,5 +435,8 @@ Negative:
 - [LiveKit JavaScript client usage](https://github.com/livekit/client-sdk-js#usage)
 - [LiveKit end-to-end encryption](https://docs.livekit.io/transport/encryption/)
 - [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html)
+- [WebRTC transports, RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html)
+- [LiveKit ports and firewall](https://docs.livekit.io/transport/self-hosting/ports-firewall/)
+- [LiveKit 1.13.5 configuration](https://github.com/livekit/livekit/blob/v1.13.5/config-sample.yaml)
 - [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/)
 - [WebRTC](https://w3c.github.io/webrtc-pc/)

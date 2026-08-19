@@ -31,14 +31,14 @@ Use demand-driven dual representations:
    representation. Every verified weak path moves to that same representation.
    Healthy paths remain on `HIGH`.
 4. A fallback path returns to `HIGH` only after a longer, independently defined
-   stable-recovery window. When no path needs `LOW`, stop its encoder and free
-   its resources.
+   stable-recovery window. When no path needs `LOW`, deactivate the
+   representation and verify its bytes, frames, and resource cost stop.
 5. The representation count is a hard `HIGH + at most one on-demand LOW <= 2`;
    it never grows with viewer count.
 
-Starting `LOW` is conditional on a qualified hardware/power-efficient encoder
+Starting `LOW` is conditional on a qualified hardware/power-efficient media
 path and measured spare game-performance budget. If that path is absent or the
-second encoder causes unacceptable CPU/GPU/game load, fail closed for that
+additional representation causes unacceptable CPU/GPU/game load, fail closed for that
 attempt: preserve `HIGH` and show the weak path an explicit degraded/unavailable
 state. This is exceptional damage containment, not permission to ignore a weak
 path indefinitely. A supported sender cohort that cannot reliably start `LOW`
@@ -106,8 +106,10 @@ but runtime encode/decode behavior is authoritative.
 
 ## Deferred Capability Spikes
 
-These spikes start only after the A+B/C evidence contract and the native
-fixed-`HIGH` path pass. They do not change the accepted two-state controller:
+These spikes start only after the A+B/C evidence contract is trustworthy. They
+may proceed independently of ADR-0006 native-sender revalidation and must run
+before any custom dual-representation media implementation. They do not change
+the accepted two-state controller:
 
 1. Negotiate exactly two `HIGH`/`LOW` simulcast encodings on one sender in its
    initial envelope, with `LOW` inactive. Verify requested/applied parameters,
@@ -115,7 +117,7 @@ fixed-`HIGH` path pass. They do not change the accepted two-state controller:
    `LOW` is inactive. W3C `active=false` stops that encoding from being sent;
    it does not guarantee that a physical encoder or GPU resource is released.
    Separate direct PeerConnections have no portable shared-encode contract.
-2. On the optional SFU path, publish at most two LiveKit simulcast
+2. On the SFU path, publish at most two LiveKit simulcast
    representations and let each one or two roots select independently. Treat
    Dynacast as a bounded rejection/verification spike, not an assumed fit. The
    pinned server 1.13.5 aggregates the maximum quality requested across all
@@ -126,17 +128,19 @@ fixed-`HIGH` path pass. They do not change the accepted two-state controller:
    actual per-RID bytes/frames plus host CPU/GPU/encoder evidence prove that
    `LOW` stops while `HIGH` continues; otherwise reject it for the exact
    on-demand-`LOW` requirement.
-3. Only for the strict-one-output requirement, request SVC and compare the
-   applied codec/`scalabilityMode` with Media Capabilities `powerEfficient` and
-   the game-performance matrix. Reject silent software fallback.
+3. Run a bounded SVC viability spike and compare the applied
+   codec/`scalabilityMode` with Media Capabilities `powerEfficient` and the
+   game-performance matrix. This avoids prematurely building a custom second
+   representation; product adoption still requires a future strict-one-output
+   requirement. Reject silent software fallback.
 
 None may reuse PR #28's minimum-of-two target, bypass a per-edge stock WebRTC
 congestion controller, or expand the representation limit beyond two.
 
 ## SVC Boundary
 
-Consider SVC only when a later accepted requirement demands one encoded output
-at all times. A path may then receive only the base layer or the base plus
+The bounded spike may measure SVC now, but adopt it only when a later accepted
+requirement demands one encoded output at all times. A path may then receive only the base layer or the base plus
 enhancement layers. Enable it only when the exact negotiated codec and
 `scalabilityMode` are read back, a power-efficient/hardware path is positively
 established on the supported sender cohort, and game-performance and latency
@@ -155,15 +159,16 @@ particular physical hardware encoder.
 Positive:
 
 - Healthy viewers are not reduced to the worst path.
-- Normal operation pays for one encoder; a second is paid only while at least
-  one verified weak path needs it.
+- Normal operation sends one active representation; one additional
+  representation is paid only while a verified weak path needs it. Physical
+  encoder instances and resource release remain measured outcomes.
 - Encode cost is bounded independently of viewer count.
 - The state machine and its evidence remain inspectable.
 
 Negative:
 
-- A weak-path interval can temporarily require two encoder instances and the
-  bandwidth for both representations on the affected distribution edges.
+- A weak-path interval adds representation bandwidth and may require another
+  physical encoder; the exact instance/resource cost is implementation-specific.
 - Starting/stopping `LOW` and switching paths need a keyframe-safe transition.
 - Browser capability reporting cannot by itself prove hardware or sustained
   decode performance, so the real-device matrix remains mandatory.
@@ -186,7 +191,8 @@ Negative:
 - One sustained weak path starts exactly one `LOW`; healthy viewers remain on
   `HIGH`, and additional weak viewers reuse `LOW`.
 - After all weak paths sustain the longer recovery window, every path returns
-  to `HIGH` and the `LOW` encoder stops.
+  to `HIGH`; `LOW` bytes/frames stop and its physical resource behavior is
+  recorded rather than assumed.
 - Representation count never exceeds two and host media edges never exceed two.
 - An unavailable/over-budget `LOW` fails visibly for weak paths while healthy
   paths and `HIGH` remain unchanged.

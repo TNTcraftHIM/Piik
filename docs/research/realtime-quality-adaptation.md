@@ -192,8 +192,8 @@ starts one shared `LOW`; all weak paths reuse it while healthy paths remain on
 path recovers, stop `LOW`. The hard representation limit is two, never one per
 viewer.
 
-`LOW` itself is conditional: if no qualified hardware/power-efficient encoder
-path exists or the second encoder exceeds the measured CPU/GPU/game budget, the
+`LOW` itself is conditional: if no qualified hardware/power-efficient media
+path exists or the additional representation exceeds the measured CPU/GPU/game budget, the
 controller preserves `HIGH` and fails visibly for the weak path. It never buys
 weak-path recovery by degrading healthy paths.
 
@@ -211,9 +211,10 @@ capacity.
 
 An ordinary non-scalable stream cannot yield a second independent quality by
 packet forwarding alone. The alternatives are a second representation,
-scalable layers, or relay/SFU transcoding. Screener chooses the temporary second
-representation first. SVC is conditional on a future strict-one-output need,
-an exact negotiated mode, a positively established hardware or power-efficient
+scalable layers, or relay/SFU transcoding. Screener tests standard capabilities
+before custom media. The bounded SVC spike is scheduled now, but product
+adoption remains conditional on a future strict-one-output need, an exact
+negotiated mode, a positively established hardware or power-efficient
 path, and measured game performance. WebRTC-SVC permits the browser to return a
 different configured `scalabilityMode`; Media Capabilities reports support and
 expected smoothness/power efficiency for a specified configuration; WebCodecs
@@ -221,8 +222,9 @@ defines `hardwareAcceleration` only as a hint the user agent may ignore.
 Therefore none is, by itself, proof of a particular hardware encoder, and a
 software SVC fallback must not be silent.
 
-After trustworthy A+B/C and the native fixed-`HIGH` path, run three bounded
-capability spikes. First, negotiate `HIGH`/`LOW` simulcast in one sender's
+After trustworthy A+B/C, run three bounded capability spikes before custom
+dual-representation media work; they do not wait for ADR-0006 native-sender
+product acceptance. First, negotiate `HIGH`/`LOW` simulcast in one sender's
 initial envelope with `LOW` inactive and prove applied parameters, per-RID
 bytes/frames, and CPU/GPU/encoder release; separate PeerConnections have no
 portable shared-encode contract. Second, test at most two independently
@@ -288,7 +290,7 @@ resolution, frame rate, or bitrate.
   then reads requested/applied bitrate, frame rate, scale, and preference.
   Rejection or browser rewriting is visible rather than console-only.
 - One strict room setting is last-wins for current/future peer relays and the
-  optional SFU publisher. Ordinary P2P keeps that state local and does not add
+  configured SFU publisher. Ordinary P2P keeps that state local and does not add
   it to the authenticated wire.
 - Pausing the picture disables the existing video track, producing black video
   without closing the room or media connection. Audio remains enabled.

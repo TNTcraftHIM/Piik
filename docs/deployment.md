@@ -1,15 +1,15 @@
 # Minimal Deployment
 
-Last verified against upstream documentation: 2026-08-18.
+Last verified against upstream documentation: 2026-08-19.
 
-This is the first production-shaped deployment for the WebRTC PoC: one Node.js
+This section documents the currently deployable release contract: one Node.js
 process provides the built Web client, room API, and WebSocket signaling behind
 Caddy or nginx; coturn is the separate STUN/TURN service. Normal media remains
 browser-to-browser. Only an ICE pair that cannot connect directly consumes TURN
 bandwidth.
 
 A deployment may additionally provide one single-node LiveKit process as the
-automatic final media fallback. This capacity is dormant unless the complete
+current controller's automatic final media fallback. This capacity is dormant unless the complete
 `LIVEKIT_URL`/key/secret tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or the required application STUN/TURN settings.
 
@@ -62,6 +62,43 @@ The optional same-host LiveKit layout needs no additional public hostname:
 endpoint and paths below `/rtc/` to LiveKit. Its HTTP/WebSocket listener on TCP
 7880 is private to nginx, while WebRTC media reaches LiveKit directly on TCP
 7881 or UDP 7882.
+
+## Accepted flagship target after transport migration
+
+The accepted target for `share.bonfire.icu` remains distributed and automatic:
+direct/peer UDP first, then an SFU virtual parent feeding normally one or two
+roots, whose peer descendants continue carrying media. TURN becomes an optional
+extreme-network transport for a controller-selected edge rather than a room-wide
+ICE default. Multiple exceptional viewers that cannot attach behind a healthy
+root may consume additional server egress only under a separate explicit cap.
+
+This is not deployable from the current configuration contract. Release
+`769de201f7cc` still refuses production startup without STUN, coturn credentials,
+and explicit TURN/UDP plus TURN/TCP URLs; it sends that ICE config to ordinary
+P2P peers. The tracked LiveKit example enables ICE/TCP 7881 and ICE/UDP mux 7882,
+omits embedded TURN, and pinned LiveKit 1.13.5 permits TCP fallback when the
+corresponding transport is configured. Keep the current environment, firewall,
+and services until a code PR changes validation/wire behavior and an exact-room
+canary passes.
+
+The migration must make an entirely absent ordinary-peer coturn tuple a normal
+no-warning state, reject partial configuration, and add short-lived
+assignment/connection-generation grants only for an authorized exceptional
+ordinary edge. LiveKit participant transport is separate: the pinned
+integration issues/advertises embedded or external TURN only to LiveKit
+publishers/subscribers and does so participant-wide, not through Screener's
+per-edge grant. It remains a canary candidate and must be isolated/extended to
+the accepted exceptional-edge scope or rejected. The target default media path is UDP. Which optional TURN or
+media-TCP compatibility transport and port, if any, remains enabled is decided
+by the canary; HTTPS/WSS always remains TLS/TCP.
+
+Do not collapse the public listener plan to `443/tcp` plus one UDP port yet.
+LiveKit documents a single ICE/UDP mux port but its pinned sample recommends a
+multi-port mux range at least as wide as the CPU count for performance. Embedded
+TURN/UDP defaults to 3478 and recommends 443 only when HTTP/3/QUIC does not use
+that UDP port. The current nginx template has no HTTP/3 listener, but port choice,
+privileged binding, firewall, and one-port performance still require the bounded
+network/load gate in the low-server route research.
 
 ## Production application environment
 

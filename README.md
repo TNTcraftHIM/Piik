@@ -1,6 +1,6 @@
 # Screener
 
-Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its media path is WebRTC P2P-first, with authenticated TURN fallback for network pairs that cannot connect directly. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
+Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its accepted media target is WebRTC P2P-first, with an SFU virtual parent feeding only the necessary roots and optional authenticated TURN for explicitly supported restrictive networks. Roots continue distributing to bounded peer descendants; this is not an always-SFU conferencing design. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
 
 The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code; friends can open `/r/{code}` directly or enter the code at `/join`, with no separate viewer token. During a share, the host can change between three ceiling profiles without reopening the source picker: 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps. The host can also temporarily pause the picture or switch sources. Rooms are random and temporary by default. A password-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. Each viewer currently receives an independent WebRTC connection, so direct and TURN-relayed paths can coexist in one room. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
 
@@ -26,11 +26,13 @@ must remain on `localhost` or HTTPS because screen capture requires a secure
 context. The default has no STUN or TURN, so cross-network use still requires
 HTTPS and the production ICE configuration documented separately.
 
-Production startup requires STUN plus separate TURN/UDP and TURN/TCP URLs.
-TURN/TLS is an optional restrictive-network enhancement: use its standard TCP
-port 5349 by default, or port 443 only when the deployment has a dedicated
-public IP or a validated layer-4/SNI route. This configuration preflight is not
-evidence that any external relay path works.
+The current production release still requires STUN plus separate TURN/UDP and
+TURN/TCP URLs. Do not remove them from an existing deployment yet. The accepted
+but unimplemented flagship target is direct/peer UDP, then one SFU publication
+feeding normally one or two roots, then optional generation-bound TURN only for
+a selected exceptional edge, followed by a clear bounded failure. The exact
+optional media-TCP/TLS transport and port remain subject to the documented
+exact-room canary; HTTPS/WSS continues to use TLS/TCP independently.
 
 Run the complete automated validation with:
 
@@ -42,7 +44,7 @@ Start here:
 
 - [Requirements](./docs/需求理解.md)
 - [WebRTC PoC design](./docs/方案设计.md)
-- [Deployment and TURN setup](./docs/deployment.md)
+- [Deployment and media transport](./docs/deployment.md)
 - [Feasibility research](./docs/research/webrtc-p2p-screen-sharing.md)
 - [Current project memory](./docs/project-memory.md)
 - [Current status](./docs/status.md)

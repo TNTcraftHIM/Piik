@@ -67,7 +67,7 @@
 这些总量、分类口径和“产品源码可能净减少 7%-14%”都只是当日待重测的审查假设，不是删除指标、承诺区间或 LOC KPI。文件长度也不单独证明职责错误。正式审查必须先重新读取 `AGENTS.md`、当前 memory/status、需求、相关研究及 [ADR-0004](adr/0004-peer-assisted-media-experiment.md)/[ADR-0005](adr/0005-automatic-hybrid-media-routing.md)，重新统计届时 `main`，明确计数口径，并按消费者和测试把代码分为：
 
 1. 当前生产路径必需；
-2. 自动 `direct P2P -> peer-assisted -> optional SFU` 目标必需；
+2. 自动 `direct/peer UDP -> SFU roots -> optional exceptional-edge TURN` 目标必需；
 3. 有明确下一阶段消费者和退出条件的实验能力；
 4. 已被替代、重复、无消费者或仅服务一次性定位的代码。
 
@@ -85,8 +85,8 @@
 
 任何候选改动都必须保持以下行为不变：
 
-- 用户无感的自动 `direct P2P -> peer-assisted -> optional SFU` 梯级；
-- 每条 P2P 边独立执行 ICE，并可使用短期凭据回退到鉴权 TURN；
+- 用户无感的自动 `direct/peer UDP -> SFU roots -> optional exceptional-edge TURN` 梯级；
+- 每条媒体边独立执行 ICE，普通 peer 默认不收到 TURN；启用兼容层时只有授权的异常 edge 可使用短期凭据；
 - host 下游活跃媒体边不超过两个；
 - 普通桌面或移动浏览器 Viewer 无需安装应用；
 - break-before-make、安全授权、重连、回滚和陈旧消息隔离语义；

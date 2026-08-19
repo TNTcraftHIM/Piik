@@ -187,8 +187,8 @@ paths on `HIGH`; and stop `LOW` after every weak path sustains the longer
 recovery window. The representation limit is two, never one per viewer. The
 independent host budget remains at most two downstream media edges.
 
-If a qualified hardware/power-efficient second encoder is unavailable or its
-measured game load is unacceptable, `LOW` fails closed for weak paths while
+If a qualified hardware/power-efficient `LOW` path is unavailable or its
+measured encoder/CPU/GPU game load is unacceptable, `LOW` fails closed for weak paths while
 healthy paths keep `HIGH`.
 
 Each path has only `HIGH` and `FALLBACK` state with asymmetric consecutive
