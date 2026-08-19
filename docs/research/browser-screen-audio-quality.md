@@ -192,6 +192,35 @@ connectivity smoke. Correlate capture settings, negotiated codec/derived fmtp,
 actual outbound/inbound bitrate, loss, jitter, concealment, jitter buffer, and
 A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 
+## Deferred Android Application-Audio Candidate
+
+This is a P2 input for the later Android 14/API 34+ native sender, not a current
+Web or Windows requirement. Android's `AudioPlaybackCapture` API can constrain
+captured playback with `addMatchingUid()` when the target UID is already known,
+or with `addMatchingUsage()` for eligible usages. The source player still must
+use `USAGE_MEDIA`, `USAGE_GAME`, or `USAGE_UNKNOWN`, run in the same user
+profile, and permit capture under its manifest/runtime/player policy. The capture
+app also needs `RECORD_AUDIO` permission and an approved `MediaProjection`
+session. The most restrictive source policy wins, so silence or refusal is a
+valid result and must not trigger a whole-system fallback.
+
+Android 14 QPR2's system `MediaProjection` picker can limit video to one selected
+app window. However, the public API 34 result contract passes the consent result into
+`getMediaProjection()` and documents only a projection grant; it does not
+promise the capturing app the selected package or UID. It is therefore an
+inference, not an API guarantee, that the video selection can be associated with
+the UID required by `addMatchingUid()`. Screener must separately prove the
+selected-app-video plus selected-app-audio pairing on target devices with an
+independently established UID, or keep that mode unsupported. Usage-only
+filtering is broader and cannot be relabeled as per-app isolation.
+
+The bounded audio gate covers a known target UID, an unknown picker target,
+`USAGE_GAME`/`USAGE_MEDIA`, source opt-out, no active render stream, process
+restart, voice/notification leakage, secure/protected video, rotation, lock-stop,
+thermal load, one/two Web viewers, and A/V sync. Missing audio remains a visible
+silent/unsupported state. PID/UID/package, source labels, raw audio, and device
+identity stay local and are not retained or uploaded.
+
 ## Revisit Gates
 
 Add a user-facing audio setting only when all of these are true:
@@ -225,3 +254,8 @@ Add a user-facing audio setting only when all of these are true:
 - [Windows process-loopback parameters](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
 - [Windows 10 release information](https://learn.microsoft.com/en-us/windows/release-health/release-information)
 - [Microsoft WASAPI loopback recording](https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording)
+- [Android capture video and audio playback](https://developer.android.com/media/platform/av-capture)
+- [Android `AudioPlaybackCaptureConfiguration.Builder`](https://developer.android.com/reference/android/media/AudioPlaybackCaptureConfiguration.Builder)
+- [Android `MediaProjectionManager`](https://developer.android.com/reference/android/media/projection/MediaProjectionManager)
+- [Android media projection](https://developer.android.com/media/grow/media-projection)
+- [Android secure-window capture boundary](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_SECURE)

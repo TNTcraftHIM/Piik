@@ -1,6 +1,7 @@
 # P2P 优先游戏屏幕共享调研与可行性评估
 
 - 调研日期：2026-08-18
+- 移动端采集能力复核：2026-08-19
 - 目标场景：一名玩家向少量熟人私密分享，观看者可用手机/桌面浏览器加入，低延迟，尽量不消耗媒体服务器带宽
 - 结论状态：本文记录已部署 PoC 的 P2P/coturn 基线。ADR-0005 与[低服务器成本媒体路由](./low-server-media-routes.md)已取代本文早期“每条 peer edge 必带 TURN”的旗舰建议；生产代码尚未迁移
 
@@ -172,6 +173,28 @@ await sender.setParameters(parameters);
 - [MediaStreamTrack content hints](https://www.w3.org/TR/mst-content-hint/)
 - [RTCRtpSender 参数](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
 - [Chromium capture 架构](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/media/capture/)
+
+### 移动浏览器分享端边界
+
+截至 2026-08-19，普通手机浏览器不能作为可靠的 Screener Host。当前
+MDN Browser Compatibility Data 把 `getDisplayMedia()` 标为 Chrome Android、
+Firefox Android 和 Safari iOS 均不支持；Chrome Android 72--88 与 Firefox
+Android 66--79 曾暴露方法，但调用恒定以 `NotAllowedError` 失败。屏幕音频在
+Chrome Android 也标为不支持。桌面模式、UA 或设备性能不能改变这个平台 API
+边界。
+
+Web UI 后续只做最小诚实处理：运行时检查
+`navigator.mediaDevices?.getDisplayMedia`，缺失时在建房/发布前明确显示不支持；
+方法存在也只表示可以尝试，真实调用失败仍区分 denied/cancelled/capture-failed，
+不能按 UA 宣称兼容。移动 Viewer 不需要该 API，继续使用同一响应式 Web 播放端并保持
+leaf-only。移动 Host 若要落地，必须走后续原生 sender，而不是在 Web 端模拟
+screen track 或加入私有媒体协议。
+
+来源：
+
+- [MDN Browser Compatibility Data: `MediaDevices.getDisplayMedia`](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
+- [MDN `getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
+- [W3C Screen Capture](https://w3c.github.io/mediacapture-screen-share/)
 
 ### Electron 分享端
 
