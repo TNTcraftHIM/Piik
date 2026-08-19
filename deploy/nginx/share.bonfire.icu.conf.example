@@ -45,8 +45,9 @@ server {
         return 404;
     }
 
-    # LiveKit client v0 validates this retired path before joining. Reject it
-    # explicitly so the broader current-v1 proxy cannot accept an old SDK.
+    # Pinned livekit-client@2.22.0 still tries this v0 endpoint after a
+    # ServiceNotFound response. Reject that fallback with a no-log 404;
+    # /rtc/v1* below is the accepted SDK path.
     location = /rtc/validate {
         access_log off;
         error_log /dev/null crit;
