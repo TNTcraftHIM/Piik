@@ -3,8 +3,9 @@
 - Research date: 2026-08-19
 - Scope: one broadcaster, at most eight trusted viewers, low latency, and host
   media fanout at most two
-- Status: route screening for ADR-0004; only the standard browser relay is in
-  the current spike
+- Status: route screening for ADR-0004/ADR-0005; automatic hybrid routing has a
+  Draft implementation, while every non-browser data-plane candidate remains a
+  separate experiment
 
 ## Current Route Ladder
 
@@ -22,15 +23,16 @@ The smallest current plan is:
 4. Only if browser relay re-encoding is the isolated failure should another
    experiment add opt-in native volunteer encoded-RTP relays.
 5. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
-   optional capacity. When configured, a later route controller uses that
-   capacity automatically only after cheaper endpoint-carried routes fail.
+   optional capacity. The current ADR-0005 Draft controller uses that capacity
+   automatically only after deterministic peer recovery is exhausted.
    They transfer fanout bandwidth to their operator; they do not make it
    disappear.
 
 Any browser-spike failure other than isolated relay re-encoding closes that
 browser-relay route. It does not cancel the separate native sender plan. Draft
-SFU PR #12 remains unmerged and undeployed. The required automatic cross-mode
-fallback is not implemented in the current spike and needs its own bounded ADR.
+SFU PR #12 remains unmerged and undeployed. ADR-0005 now owns a separate Draft
+implementation of the automatic cross-mode controller; it is also undeployed
+and has not passed real LiveKit/browser network validation.
 
 ## Traffic Conservation And The Impossible Triangle
 
@@ -88,6 +90,15 @@ requests, generation changes, security, packaging, and voluntary use. The host
 also needs a separate native shared encoder so its two WebRTC packetizers consume
 one encoded result. Pion's broadcast example demonstrates server-side RTP
 fanout, but it does not supply this end-user topology or product behavior.
+
+Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) has now passed
+the narrower transport oracle: one Pion v4.2.18
+`TrackLocalStaticRTP.WriteRTP` call fans a pre-packetized semantic payload to
+two independent PeerConnections with binding-specific SSRCs. Because that
+oracle contains no encoder, browsers, RTCP arbitration, or bandwidth-control
+loop, it proves neither one physical encode nor a usable native relay. Its next
+gate is browser-to-native-to-two-browser interoperability with bounded
+RTCP/PLI, congestion, queues, throughput, and latency.
 
 The native shared-encode sender is a planned independent phase. Native volunteer
 relays remain conditional on measurements isolating relay re-encoding as the

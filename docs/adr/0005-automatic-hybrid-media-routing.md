@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Proposed - Experiment Only
+- Status: Proposed - Draft Implementation, Experiment Only
 - Date: 2026-08-19
 
 ## Context
@@ -50,6 +50,37 @@ LiveKit endpoint/key/secret tuple. There is no user-facing topology selector and
 no process-wide `MEDIA_MODE` union. Without the tuple, the same controller ends
 at peer assistance and bounded waiting/failure.
 
+## Draft Implementation Status
+
+The current `feat/automatic-hybrid-routing` branch implements this controller
+on top of Draft PR #13. It is not merged or deployed. Production remains on the
+ordinary one-host-peer-per-viewer path.
+
+The Draft keeps the LiveKit dependency dormant unless the complete URL, API key,
+and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
+issues short-lived room-, role-, peer-, and publication-generation-bound grants,
+and only allowlisted branch roots may subscribe. The server first retries a
+failed edge through the deterministic peer topology; only an exhausted peer
+route can request an SFU branch root.
+
+Every viewer starts with zero relay capacity for each authenticated session. A
+peer-assisted Web client explicitly advertises either zero or one downstream
+edge; conservative UA-CH/user-agent detection reports mobile and iPad clients as
+leaves and desktop-class browsers as one-child relays. The controller uses this
+binary capability only for future admission and recovery. Withdrawing capacity
+does not proactively migrate an otherwise healthy existing edge.
+
+Targeted tests cover the revision controller, protocol authorization, relay
+capacity, ordered client transitions, stale asynchronous work, server-restart
+resynchronization, one-shot credential recovery, and peer failback. A corrected
+Chrome 151/LiveKit 1.13.5 localhost run physically failed the same leaf through
+peer recovery/reparent and a two-root SFU route. That leaf resumed frames and
+hook-assisted 25 ms sampling saw a host edge peak of two. Failure report to
+active took 1.481 seconds and to new render 2.257 seconds, so the sub-second gate
+failed. The final repository check passes 253 tests, type checking, and both
+builds; public transport/audio/load/browser checks remain pending, so this ADR
+stays Proposed.
+
 ## State And Wire
 
 The server holds one room revision with a participant assignment for every
@@ -83,6 +114,8 @@ publisher from being counted as one logical edge during commit or rollback.
 
 Minimal protocol additions:
 
+- `relay-capacity { downstreamEdges: 0 | 1 }` from an authenticated
+  peer-assisted viewer;
 - `route-update { revision, phase: "prepare" | "active", assignment }`;
 - `sfu-config { revision, url, token }`;
 - `route-ready { revision, phase: "prepare" | "active" }`;
@@ -90,8 +123,10 @@ Minimal protocol additions:
 - `refresh-sfu { revision }`.
 
 Authentication carries only the current participant assignment and room
-revision. Existing peer signaling keeps its connection generation and
-assigned-edge authorization. The server
+revision. An authenticated snapshot is the sole authority allowed to replace a
+higher client revision after the signaling server restarts; the client first
+retires media owned by the old revision. Existing peer signaling keeps its
+connection generation and assigned-edge authorization. The server
 derives the failed edge from the authenticated session, active revision, and
 connection ID instead of accepting a client-supplied parent or arbitrary reason.
 Late, duplicate, or stale revision messages have no effect.
@@ -124,16 +159,22 @@ Late, duplicate, or stale revision messages have no effect.
    route. A failure after commit creates a new rollback/failure revision; stale
    acknowledgements cannot revive the abandoned plan.
 
+8. An active SFU transport may request one fresh short-lived grant. If that
+   retry fails, or token issuance itself fails, the server creates a newer peer
+   baseline revision and disables SFU for the rest of the current share. Stop or
+   a new sharing generation clears that one-shot circuit breaker.
+
 SFU fallback is sticky until the current share stops. A new sharing generation
 starts from the cheapest available route. The first experiment does not
 continuously fail back during a live share, avoiding oscillation without adding
 a score or hysteresis framework.
 
-Use make-before-break when a downstream slot is free. When both slots are in
-use, strict fanout requires warm break-before-make: participants prepare the new
-transport, then the host releases one media edge before publishing. Zero
-interruption, no standby path, and a hard two-edge maximum cannot all be
-guaranteed at once.
+The Draft warms only an unpublishing/unsubscribed transport during prepare. Its
+media transition is break-before-make: the host releases the replaced peer or
+SFU media edge before activating the new one, and a viewer retires its SFU
+subscriber before returning to peer media. This avoids depending on transient
+overlap and preserves the hard two-edge host invariant, at the cost of a bounded
+interruption that still needs measurement.
 
 ## Triggers And Budgets
 
