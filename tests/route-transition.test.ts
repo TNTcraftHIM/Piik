@@ -245,6 +245,71 @@ describe("HostSfuRoute", () => {
     ]);
   });
 
+  it("surfaces a bounded publisher stage after active fallback fails", async () => {
+    const publisher = {
+      ...createFakePublisher([], "publisher"),
+      getFailureStage: vi.fn(() => "video-publish" as const),
+    };
+    publisher.activate.mockResolvedValue(false);
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: () => true,
+      createPublisher: () => publisher,
+    });
+    const assignment = hostAssignment("generation-a");
+
+    route.accept({ revision: 1, phase: "prepare", assignment });
+    await route.acceptConfig(sfuConfig(1));
+    await route.acceptAndWait({ revision: 1, phase: "active", assignment });
+
+    expect(route.getQualityWarning()).toBe(
+      "SFU 视频发布失败，已启动自动恢复",
+    );
+
+    route.accept({
+      revision: 2,
+      phase: "active",
+      assignment: hostAssignment(null),
+    });
+    expect(route.getQualityWarning()).toBeNull();
+  });
+
+  it("clears a prior failure when authoritative state replaces the revision", async () => {
+    const publisher = {
+      ...createFakePublisher([], "publisher"),
+      getFailureStage: vi.fn(() => "transport" as const),
+    };
+    publisher.activate.mockResolvedValue(false);
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: () => true,
+      createPublisher: () => publisher,
+    });
+    const failedAssignment = hostAssignment("generation-a");
+
+    route.accept({ revision: 1, phase: "prepare", assignment: failedAssignment });
+    await route.acceptConfig(sfuConfig(1));
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: failedAssignment,
+    });
+    expect(route.getQualityWarning()).toBe(
+      "SFU 传输失败，已启动自动恢复",
+    );
+
+    await route.resyncAuthoritative({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment(null),
+    });
+    expect(route.getQualityWarning()).toBeNull();
+  });
+
   it("never overlaps more than two host media edges while changing route kinds", async () => {
     const log: string[] = [];
     const edgeCounts: number[] = [];

@@ -234,6 +234,38 @@ quality, or cannot beat the unchanged route. Start and stop the initial spike
 at admission rescue. Later measured work owns quality-driven moves and
 healthy TURN-to-direct optimization.
 
+## Staged Connection Recovery Evidence
+
+Recovery should spend attempts on different layers, not repeat one opaque action
+three times. The current WebRTC Recommendation advises an ICE restart when
+`iceConnectionState` reaches `failed`; for `disconnected`, it recommends first
+checking whether sent/received bytes progress over the next couple of seconds.
+Pinned LiveKit client 2.22.0 uses reconnect delays of 0, 300, 1,200, 2,700,
+4,800 and then 7,000 ms (with later jitter), a 15-second peer/WebSocket timeout,
+and a four-second state reconciliation that requires three consecutive
+mismatches before a full reconnect. Jitsi Videobridge similarly defaults to a
+15-second first-transfer timeout and an eight-second inactivity limit. These are
+reference boundaries, not thresholds copied into Screener.
+
+The accepted Screener order is therefore: soft visible wait while initial ICE
+is still making progress; one ICE restart on hard failure; one same-parent PC
+rebuild; one different eligible peer parent; then SFU only after peer exhaustion.
+Each success cancels the remaining stages. Every completion is guarded by the
+current session, route revision, assignment/connection generation, and cooldown.
+Connected-but-bad media is a separate correlated-quality trigger and must not be
+treated as a connection retry.
+
+The first room-1 production trace on 2026-08-20 observed two short Host
+participants while two roots remained for roughly 4.6 seconds; all ended with
+client-requested leave, no track publication survived, and neither service
+restarted. This proves LiveKit participant entry. The timing is consistent with
+the current one-shot grant refresh and Peer-failback state machine, but logs do
+not prove those transitions and cannot distinguish
+connect, source, video publish, sender configuration, optional audio publish, or
+transport failure. The next bounded diagnostic exposes only that local enum to
+the Host and deliberately keeps raw errors, URLs, tokens, candidates, and
+addresses out of wire and logs.
+
 ## Automatic Route Controller Boundary
 
 The accepted product order is:
@@ -268,7 +300,7 @@ also requires a media/data heartbeat near 100-200 ms rather than the current
 
 ## Sources And License Boundary
 
-Sources checked on 2026-08-19:
+Sources checked on 2026-08-20:
 
 - [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/),
   [Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/),
@@ -279,6 +311,14 @@ Sources checked on 2026-08-19:
 - [Pion WebRTC](https://github.com/pion/webrtc) and
   [klauspost/reedsolomon](https://github.com/klauspost/reedsolomon) - MIT; no
   source copied.
+- [WebRTC Recommendation](https://www.w3.org/TR/webrtc/) - `failed` ICE restart
+  and `disconnected` bytes/stats guidance.
+- [LiveKit client 2.22 reconnect policy](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/DefaultReconnectPolicy.ts),
+  [room defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts),
+  and [state reconciliation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
+  - pinned implementation behavior, not a universal timeout prescription.
+- [Jitsi Videobridge endpoint status defaults](https://github.com/jitsi/jitsi-videobridge/blob/master/jvb/src/main/resources/reference.conf)
+  - first-transfer and inactivity reference values.
 - [SplitStream](https://www.microsoft.com/en-us/research/publication/splitstream-high-bandwidth-multicast-in-a-cooperative-environment/)
   and [Network Coding for Large Scale Content Distribution](https://www.microsoft.com/en-us/research/publication/network-coding-for-large-scale-content-distribution/)
   - research evidence, not reusable source licenses.

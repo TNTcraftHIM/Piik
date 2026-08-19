@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 ## Confirmed Intent
 
@@ -15,6 +15,7 @@ Last updated: 2026-08-19
 - Separate abuse control from watching: production Host admission protects room creation/Host role, while a default private capability grants Viewer access to one room; public-watch is explicit. Keep raw grants out of localStorage/cookies/query/logs/SQLite; retain no account, ACL, user, or session table.
 - Keep decisions, snapshots, research, code, `AGENTS.md`, and `.codex/` in Git; rewrite memory/status in place. Research current primary sources before material work and reject speculative machinery.
 - Migrate client, server, and deployment atomically. After a canary, delete superseded config/wire/parsers/tests; do not retain compatibility layers, dual writes, or a second architecture without a current consumer. Git history owns the old implementation.
+- Autonomously deploy each coherent low-risk milestone after narrow tests, independent review, one full gate, CI and rollback preflight. Keep protocol/database migrations atomic rather than folding them into routine UI/media updates.
 
 ## Current Recommendation
 
@@ -22,34 +23,34 @@ Last updated: 2026-08-19
 - Use direct host P2P for one or two viewers. Keep ADR-0004 off broadly; use an isolated exact-room candidate until resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile gates pass.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- ADR-0006's fixed-`HIGH` canary reached host setup and one encoder output but retained no downstream checkpoint before the first-viewer timeout. It is no-go-unclassified; no native product code is accepted, and any revisit starts at its staged evidence gate.
-- Mobile Web Host is unsupported: current Android Chrome/Firefox and iOS Safari lack reliable `getDisplayMedia`; feature-detect and fail clearly, never by UA. Mobile Viewer stays leaf-only. After P1 Windows native/deploy, P2 may gate Android 14+ fixed-`HIGH`; iOS waits for stable iOS 27 ScreenCaptureKit without ReplayKit.
+- ADR-0006 fixed-`HIGH` is no-go-unclassified after timing out before Viewer evidence; any revisit starts at its staged gate.
+- Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
 - ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP. The candidate has no TURN consumer or credential wire; any future exceptional-edge grant is a complete separate change. PR #12 is superseded.
-- Keep the failure-only controller default-off until the isolated STUN/SFU exact-room gates pass. Preserve break-before-make, sticky healthy subtrees, mobile leaves, and PR #20 prewarm; public transport/load remains open.
+- Keep the controller exact-room only: room `1` is the STUN/SFU smoke. Preserve sticky progressing P2P, mobile leaves and break-before-make. Recovery spends one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries; active SFU gets one fresh grant before Peer failback.
 - Local reparenting is a later candidate: start with unassigned relay admission rescue; do not block current work.
-- Flagship media is UDP; HTTPS/WSS stays TLS/TCP. Old production retains coturn TURN for rollback. The candidate uses self-hosted STUN-only ordinary ICE and separate LiveKit SFU/UDP, with no TURN/media-TCP wire.
-- Treat settings as ceilings and deployed degradation as unclassified. Compare `769de201f7cc` with current `main` using Host A+B/Viewer C, game/load, preview, codec/encoder, and one-variable rebuilds. The SVC gate is closed; never use UA or a composite score.
+- Flagship media is UDP; HTTPS/WSS stays TLS/TCP. Production `d6c8aa0` uses STUN-only ordinary ICE and separate LiveKit SFU/UDP; old coturn TURN and `769de201f7cc` remain rollback-only.
+- Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
 - Candidate UI has local Viewer volume/mute, copyable room codes, and a favicon. Names/roster, endpoint details, and RTP loss remain pending; no wire, media, or routing effects.
-- Do not add scene detection, dynamic-FPS control, or forced AV1 until stats and target hardware prove the need. Codec acceptance requires actual negotiation, power-efficient candidate evidence, interval encode cost, game FPS, CPU/GPU and sender count; Discord's native capture/hardware tuning is comparison evidence, not proof of server re-encoding or a reusable preset.
+- Do not add scene detection, dynamic FPS or forced AV1 without stats/hardware evidence. Codec gates require actual negotiation, encode cost, game FPS, CPU/GPU and sender count.
 - After the current media acceptance boundary, migrate access atomically under amended ADR-0002: `HOST_ADMISSION_PASSWORD`, `screener-v2`, default private fragment grants, optional public-watch, rotate/revoke, and one nullable SQLite digest column. Do not mix username/roster runtime into that PR.
 - Deferred architecture audit: `docs/maintenance.md`.
 
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production `769de201f7cc` at `https://share.bonfire.icu` has equal entry actions, default-closed details, bounded clarity-first quality, live source/quality changes, pause, and sender warnings.
-- Production still uses one host `RTCPeerConnection` per viewer because peer assistance and LiveKit are unconfigured; above two viewers it still exceeds the target host-edge budget. Its real game-capture quality/pause cycle remains unverified.
+- Production `d6c8aa0` at `https://share.bonfire.icu` keeps the current Web UI and enables peer/SFU routing only for persistent room `1`; unlisted rooms remain ordinary P2P.
+- Ordinary ICE is process-wide STUN-only. Room `1` may use one LiveKit publication feeding at most two roots while retaining peer descendants; real 1/2-root media and game quality remain unverified.
 - Current production/repository runtime still uses optional `ACCESS_PASSWORD`, a 12-hour stateless HMAC HttpOnly Strict cookie for both roles, internal Host token, role-bound signaling, Origin/payload checks, and no accounts/JWT/session map.
 - Current SQLite still stores only room ID and Host-token digest; room `1` survived deployment. The accepted Viewer-grant digest/schema v2 design is documentation-only and not deployed.
-- Production uses nginx, Node.js 24.19.0, and authenticated coturn 4.17.2 at `turn.bonfire.icu:3478`; public STUN, TURN/UDP, TURN/TCP, and relay-only traffic pass. TURN/TLS is off.
-- Candidate migration is process-wide: ordinary ICE is STUN-only; coturn uses `stun-only`/`no-tcp`/`no-tls` without deprecated `no-dtls`; LiveKit 1.13.5 explicitly disables TCP fallback, uses deployment STUN and separate UDP participant ICE. Old TURN parser/signer/refresh/UI/SNI artifacts are gone; old production is isolated rollback.
-- The default-off ADR-0005 controller has no production peer/SFU configuration. Enabling it requires non-empty exact `PEER_ASSISTED_ROOM_IDS`; missing/blank fails startup and unlisted rooms use current ordinary P2P. `screener-v1` is the single signaling literal; mismatch terminates once with a refresh prompt.
-- When enabled, peer recovery precedes allowlisted SFU; session revisions prepare/commit/abort and active SFU gets one token refresh before failback. Browser relays re-encode; native sharing is outside product code.
+- Production uses nginx, Node.js 24.19.0, coturn 4.17.2 for STUN/rollback, and pinned LiveKit 1.13.5 on UDP 7882 with TCP fallback disabled. Public TCP 7880/7881 is blocked; LiveKit has a 192/256 MiB cgroup boundary and no automatic restart.
+- Old TURN parser/signer/refresh/UI/SNI artifacts are absent from `d6c8aa0`; the unchanged coturn relay and old release are operational rollback, not advertised candidate media.
+- ADR-0005 is configured with exact `PEER_ASSISTED_ROOM_IDS=1`; unlisted rooms use ordinary P2P. `screener-v1` remains the deployed signaling literal until the separately reviewed access migration.
+- Production logs show two root participants and two short Host participants with no service restart or retained track. Their timing is consistent with, but does not directly prove, the code's one fresh-grant retry and Peer failback. The current candidate exposes only the Host-local current-revision failure stage (`connect|source|video-publish|sender-config|audio-publish|transport`) and uploads no raw error or endpoint data. Browser relays still re-encode; native sharing remains outside product code.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
-- Native drafts #16/#18/#22/#23/#25/#28 remain experiments: one WebCodecs object is not hardware proof; stock GCC+RTX is no-go, and no-RTX remains outside product code.
+- Native drafts remain experiments: one WebCodecs object is not hardware proof; stock GCC+RTX is no-go.
 - Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
-- The default-off exact-room SFU candidate now publishes exactly `HIGH+LOW` with Dynacast off and a per-subscriber `HIGH` ceiling. It is unverified and not enabled by default; next measure built-in BWE on zero-descendant leaves, then root suspect/evacuation. The topology classifier and explicit fallback remain absent, and root-with-children behavior is a default-on gate.
+- Room 1 publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings. It is unverified; test zero-child leaves, then root evacuation before broad rollout.
 - Local Host A+B aligns one capture/outbound/transport generation; authenticated Viewer C adds a sanitized, read-only P2P window and fails closed for stale, ambiguous, or SFU-fed evidence. It retains no raw fmtp/SDP/stats and performs no media action. Topology classification remains absent.
 
 ## Provisional Quality Targets

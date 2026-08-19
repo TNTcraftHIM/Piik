@@ -72,21 +72,20 @@ configuration. Optional TURN is a separate selected-edge transport choice.
 
 ## Implementation Status
 
-Merged PR #17 implements this controller on top of merged PR #13. Merged PR #20
-adds only the bounded standby prewarm described below. Their code ships in
-production release `769de201f7cc`, but the deployment has neither
-`PEER_ASSISTED_MEDIA` nor a LiveKit tuple, so its active path remains ordinary
-one-host-peer-per-viewer P2P/TURN.
+Merged PR #17 implements this controller on top of merged PR #13, and PR #20
+adds the bounded standby prewarm below. Production `d6c8aa0` now enables them
+only for persistent room `1`; other rooms stay ordinary P2P, while ordinary ICE
+is process-wide STUN-only.
 
-The repository candidate now removes the old all-room coturn contract. Production
+The current runtime removes the old all-room coturn contract. Production
 requires STUN, ordinary authenticated ICE snapshots contain only STUN servers,
 and the protocol has no TURN credential expiry or refresh messages. The tracked
 LiveKit sample explicitly sets `tcp_port: 0`, disables TCP fallback, supplies
 the deployment-owned STUN server, and configures no TURN service. The SFU controller still
-activates only after a peer edge exhausts recovery, so public transport and route
-admission remain unverified. Production `769de201f7cc` keeps its old coturn relay
-until an isolated candidate canary passes; rollback is release/instance based,
-not a permanent old-release compatibility branch in the new code.
+activates only after a peer edge exhausts recovery. Public participant entry has
+been observed, but retained media and route admission remain unverified. The old
+`769de201f7cc` release and coturn relay are isolated rollback resources, not a
+permanent compatibility branch or advertised current transport.
 
 The repository also requires a strict, non-empty `PEER_ASSISTED_ROOM_IDS`
 deployment allowlist whenever `PEER_ASSISTED_MEDIA=true`. Only exact listed room
@@ -200,8 +199,14 @@ complete LiveKit tuple.
 ## Transition
 
 1. Keep direct/peer UDP roots while those routes work.
-2. A failed edge first exhausts its bounded ICE/UDP restart/rebuild and peer
-   reparent options. When admission has no eligible peer path, or recovery is
+2. A failed edge performs one ICE restart, one same-parent connection rebuild,
+   and then one alternate eligible peer-parent attempt; it does not repeat an
+   identical action three times. A short `disconnected` state first uses
+   generation-bound bytes/stats evidence. The target gives initial `connecting`
+   a visible soft wait followed by a separately measured hard window; that
+   initial deadline is not implemented yet and must not reuse the existing
+   three-second recovery constant without mobile-network evidence. When
+   admission has no eligible peer path, or recovery is
    exhausted, select the SFU root plan without first advertising TURN to every
    peer edge. A future ordinary coturn transport, if a separate complete change
    accepts it, may issue a grant only to the selected exceptional peer edge after
@@ -238,6 +243,16 @@ complete LiveKit tuple.
    retry fails, or token issuance itself fails, the server creates a newer peer
    baseline revision and disables SFU for the rest of the current share. Stop or
    a new sharing generation clears that one-shot circuit breaker.
+
+Production logs on 2026-08-20 observed two root participants for about 4.6
+seconds and two short Host participants (about 0.46 and 0.27 seconds), all ending
+with client-requested leave. Services did not restart and no track publication
+was retained. That timing is consistent with the bounded fresh-grant retry and
+Peer failback state machine, but the logs do not prove those transitions or the
+publisher stage. The client now retains only a local enum
+(`connect`, `source`, `video-publish`, `sender-config`, `audio-publish`, or
+`transport`) for the current route revision and reports the failure as an event;
+it never uploads the raw error, endpoint, token, candidate, or address.
 
 An activated SFU-root route is sticky until a discrete route event requires a
 change or the current share stops. A new sharing generation starts from the
@@ -317,7 +332,7 @@ publication feeds one or two roots, which keep their bounded peer descendants.
 The current executable ladder ends in bounded failure and has no TURN config or
 wire. Optional selected-edge TURN remains a future conditional PR, not an unused
 runtime tuple. LiveKit participant-wide embedded/external TURN is likewise not
-configured by the current UDP-only candidate and would not be assignment-level
+configured by current production and would not be assignment-level
 issuance.
 
 The bounded cost model, privacy-safe ICE fields, and exact-room A/B sequence
@@ -331,16 +346,16 @@ bitrate `B_exc,j`, SFU egress adds `sum(B_exc,j)`; every TURN leg additionally
 adds its own ingress and egress. Every host NIC, TURN ingress/egress, SFU
 ingress/egress, root NIC, and exception NIC hop remains real traffic.
 
-Migration is gated, not optional design debate: retain the deployed old release
-as a separate baseline/rollback instance, then use exact test rooms on an
-isolated candidate to verify direct/peer UDP, SFU/UDP, and bounded failure with
-all UDP blocked. The candidate cannot share a process with rooms that require
-the old all-room TURN wire. The matrix covers CGNAT, double NAT, mobile hotspot,
+Migration is gated, not optional design debate. Production has entered a
+shared-IP exact-room smoke while the old release remains a separate rollback
+instance. Room `1` must still verify direct/peer UDP, SFU/UDP, and bounded failure
+with all UDP blocked; the current process cannot host rooms that require the old
+all-room TURN wire. The matrix covers CGNAT, double NAT, mobile hotspot,
 ordinary home networks, root departure, reconnect, SFU unavailable, and rollback. It records
 CPU seconds/GiB, NIC bytes/pps, RSS, host upload, p95/p99 forwarding latency,
 loss/recovery, final quality, host edges at most two, SFU roots at most two, and
 unchanged healthy subtrees. Config parsing and wire are already STUN-only; only
-after that gate may production activate the candidate and retire relay listeners.
+after that gate may the controller broaden beyond room `1` or retire rollback relay listeners.
 
 A peer root re-publishing its received stream to the SFU while also feeding
 peer descendants remains a separate bounded candidate. The current browser
@@ -409,7 +424,7 @@ Positive:
 - Users do not select or understand a topology.
 - Host fanout remains bounded while server media egress is paid only for
   fallback roots and separately admitted exceptional viewers.
-- The ordinary peer path is direct/UDP with STUN discovery; the current candidate
+- The ordinary peer path is direct/UDP with STUN discovery; current production
   has no TURN media cost or fallback.
 - Revisioned prepare/commit isolates stale asynchronous results without a
   continuous optimizer.
@@ -428,8 +443,8 @@ Negative:
 
 ## Relationship To Existing ADRs
 
-- This decision corrects the automatic-migration interpretation in ADR-0001
-  without changing the currently deployed MVP.
+- This decision corrects the automatic-migration interpretation in ADR-0001;
+  production now runs its exact-room smoke while broad rollout remains gated.
 - ADR-0004 remains the bounded full-stream browser-relay experiment.
 - This decision and merged PR #17 supersede ADR-0003/closed PR #12's
   process-wide explicit media mode with default-off automatic hybrid fallback.

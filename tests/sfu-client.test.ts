@@ -314,6 +314,16 @@ describe("SfuPublisher", () => {
     expect(room.disconnect).toHaveBeenCalledWith(false);
   });
 
+  it("retains the bounded stage after connection setup fails", async () => {
+    livekit.state.connectGate = Promise.reject(new Error("connect failed"));
+    const publisher = new SfuPublisher();
+
+    await expect(publisher.connect(connection)).rejects.toThrow("connect failed");
+
+    expect(publisher.getFailureStage()).toBe("connect");
+    expect(livekit.state.rooms[0]?.disconnect).toHaveBeenCalledWith(false);
+  });
+
   it("publishes one screen video and optional audio only while active", async () => {
     const publisher = new SfuPublisher();
     const video = track("video", "video-1");
@@ -401,6 +411,19 @@ describe("SfuPublisher", () => {
     expect(livekit.state.rooms[0].disconnect).toHaveBeenCalledWith(false);
     expect(disconnected).toHaveBeenCalledOnce();
     expect(publisher.getSenderParameters()).toBeNull();
+    expect(publisher.getFailureStage()).toBe("sender-config");
+  });
+
+  it("records an unexpected active transport disconnect", async () => {
+    const disconnected = vi.fn();
+    const publisher = new SfuPublisher({ onDisconnected: disconnected });
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+
+    livekit.state.rooms[0].emit(RoomEvent.Disconnected);
+
+    expect(publisher.getFailureStage()).toBe("transport");
+    expect(disconnected).toHaveBeenCalledOnce();
   });
 
   it("updates the active sender profile without republishing", async () => {
