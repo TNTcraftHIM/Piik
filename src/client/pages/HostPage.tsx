@@ -371,12 +371,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
       commitQuality(nextProfile);
       setDetails(captureDetails(activeStream));
-      if (peerAssistedRef.current) {
+      const roomSettingsSent =
+        !peerAssistedRef.current ||
         signalRef.current?.send({
           type: "set-quality-settings",
           qualitySettings: nextProfile,
-        });
-      }
+        }) === true;
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
         Promise.all(
@@ -396,11 +396,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           hostSfuRouteRef.current === activeSfuRoute
             ? (activeSfuRoute?.getQualityWarning() ?? null)
             : null;
+        const connectionWarning =
+          failed > 0 || !sfuUpdated
+            ? "画质已切换，但部分观看连接未能应用新参数"
+            : null;
+        const syncWarning = roomSettingsSent
+          ? null
+          : "房间画质同步将在信令重连后继续";
+        const warning = [sfuWarning ?? connectionWarning, syncWarning]
+          .filter((message): message is string => message !== null)
+          .join("；");
         setNotice(
-          sfuWarning ??
-            (failed > 0 || !sfuUpdated
-              ? "画质已切换，但部分观看连接未能应用新参数"
-              : `画质已切换为 ${qualitySettingsLabel(nextProfile)}`),
+          warning || `画质已切换为 ${qualitySettingsLabel(nextProfile)}`,
         );
       }
     } catch (error) {

@@ -42,6 +42,7 @@ export class SfuPublisher {
   private video: PublishedTrack | null = null;
   private audio: PublishedTrack | null = null;
   private profile: QualityProfile | null = null;
+  private senderParameters: VideoSenderParameterReadback | null = null;
   private qualityWarning: string | null = null;
   private state: PublisherState = "idle";
   private generation = 0;
@@ -122,6 +123,10 @@ export class SfuPublisher {
         if (!this.owns(room, generation)) {
           return false;
         }
+        const senderParameters = await configurePublishedVideo(video, profile);
+        if (!this.owns(room, generation)) {
+          return false;
+        }
 
         let audio: PublishedTrack | null = null;
         if (audioTrack) {
@@ -139,7 +144,7 @@ export class SfuPublisher {
         this.video = video;
         this.audio = audio;
         this.profile = profile;
-        this.qualityWarning = null;
+        this.retainSenderParameters(senderParameters);
         this.state = "active";
         return true;
       } catch (error) {
@@ -187,6 +192,7 @@ export class SfuPublisher {
       this.video = null;
       this.audio = null;
       this.profile = null;
+      this.senderParameters = null;
       this.qualityWarning = null;
       this.state = "prepared";
       return true;
@@ -202,7 +208,8 @@ export class SfuPublisher {
       }
       const sdk = this.sdk;
       const previousVideo = this.video;
-      if (!sdk || !previousVideo) {
+      const profile = this.profile;
+      if (!sdk || !previousVideo || !profile) {
         throw new Error("SFU publisher has no active video publication");
       }
 
@@ -244,10 +251,18 @@ export class SfuPublisher {
           this.audio = nextAudio;
         }
 
+        const senderParameters = await configurePublishedVideo(
+          previousVideo,
+          profile,
+        );
+        if (!this.owns(room, generation)) {
+          return false;
+        }
         previousVideo.rawTrack = nextVideoTrack;
         if (previousAudio && nextAudioTrack) {
           previousAudio.rawTrack = nextAudioTrack;
         }
+        this.retainSenderParameters(senderParameters);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
@@ -276,6 +291,14 @@ export class SfuPublisher {
             if (!this.owns(room, generation)) {
               return false;
             }
+            const senderParameters = await configurePublishedVideo(
+              previousVideo,
+              profile,
+            );
+            if (!this.owns(room, generation)) {
+              return false;
+            }
+            this.retainSenderParameters(senderParameters);
           }
           return false;
         } catch (rollbackError) {
@@ -307,7 +330,7 @@ export class SfuPublisher {
           return false;
         }
         this.profile = profile;
-        this.qualityWarning = senderParameterWarning(readback);
+        this.retainSenderParameters(readback);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
@@ -318,10 +341,11 @@ export class SfuPublisher {
             ? `应用 SFU 发送参数失败：${error.message}`
             : "应用 SFU 发送参数失败";
         try {
-          await configurePublishedVideo(video, previousProfile);
+          const readback = await configurePublishedVideo(video, previousProfile);
           if (!this.owns(room, generation)) {
             return false;
           }
+          this.senderParameters = readback;
           this.qualityWarning = failureWarning;
           return false;
         } catch (rollbackError) {
@@ -336,6 +360,10 @@ export class SfuPublisher {
 
   getQualityWarning(): string | null {
     return this.qualityWarning;
+  }
+
+  getSenderParameters(): VideoSenderParameterReadback | null {
+    return this.senderParameters;
   }
 
   async disconnect(): Promise<void> {
@@ -393,6 +421,7 @@ export class SfuPublisher {
     this.video = null;
     this.audio = null;
     this.profile = null;
+    this.senderParameters = null;
     this.qualityWarning = null;
     return room;
   }
@@ -412,6 +441,13 @@ export class SfuPublisher {
     }
     this.terminalNotified = true;
     this.events.onDisconnected?.();
+  }
+
+  private retainSenderParameters(
+    readback: VideoSenderParameterReadback,
+  ): void {
+    this.senderParameters = readback;
+    this.qualityWarning = senderParameterWarning(readback);
   }
 }
 
