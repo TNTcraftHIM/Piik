@@ -40,9 +40,9 @@ bitrate, and frame rate across all three profiles. This is a user observation,
 not yet an instrumented result. The highest-confidence explanation is the
 combination of one independent peer connection, sender, encoder pipeline, and
 upload copy per viewer with `balanced` adaptation: host CPU or uplink pressure
-can grow per edge, and the browser may then reduce both dimensions. The current
-peer-assisted and SFU drafts are not deployed, so relay re-encoding and LiveKit
-cannot explain that production observation.
+can grow per edge, and the browser may then reduce both dimensions. Peer/SFU
+code now ships in `769de201f7cc`, but its production configuration is absent;
+relay re-encoding and LiveKit therefore cannot explain that earlier observation.
 
 One controlled capture should classify the problem before changing constants:
 
