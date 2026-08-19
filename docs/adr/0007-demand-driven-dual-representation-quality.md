@@ -61,8 +61,8 @@ stream generation across three stages:
 | Stage | Required evidence |
 | --- | --- |
 | A. Capture | `MediaStreamTrack.getSettings()` width, height, and frame rate |
-| B. Host outbound | actual width/FPS/bitrate, target or available bitrate when present, interval encode time, `qualityLimitationReason`, RTT, loss/retransmission, and selected direct/TURN route |
-| C. Viewer inbound | actual width/FPS/bitrate, loss, jitter, interval decode/drop counts, and freeze evidence |
+| B. Host outbound | actual width/FPS/bitrate, target or available bitrate when present, interval encode time, `qualityLimitationReason`, RTT, loss/retransmission, selected direct/TURN route, and derived negotiated video codec/profile/parameters plus `scalabilityMode` when applicable |
+| C. Viewer inbound | actual width/FPS/bitrate, loss, jitter, interval decode/drop/freeze evidence, the corresponding derived codec/profile/parameters and applicable `scalabilityMode`, and actual decode behavior |
 
 Interpretation is deliberately ordered:
 
@@ -72,7 +72,7 @@ Interpretation is deliberately ordered:
 | Capture high, outbound low, reason `cpu` | sender encode/resource pressure |
 | Capture high, outbound low, reason `bandwidth` | congestion, uplink, GCC, or TURN/path pressure |
 | Outbound healthy, inbound degraded | transport or receiver-path problem |
-| Inbound metrics healthy, image still blurry | insufficient bitrate/quantization, codec, or display scaling problem |
+| Inbound metrics healthy, image still blurry | insufficient bitrate/quantization, negotiated codec/profile/layer, or display scaling problem |
 
 WebRTC stats are sampled dictionaries and many useful counters are cumulative.
 The controller must use adjacent, non-overlapping deltas and rebase on a missing
@@ -82,14 +82,17 @@ they are not zeros.
 Implementation is staged. First correlate A and B locally in one sampling tick,
 with an explicit interval, media/stat identity, and valid deltas. Only after
 that probe is trustworthy may the product add a minimal authenticated C report
-for the few receive/decode signals required by the two-state predicate. Do not
-build a general telemetry schema or upload raw stats.
+for the few receive/decode signals required by the two-state predicate. The B/C
+correlation uses normalized fields derived from negotiated parameters/stats and
+actual decode behavior; it must never upload raw SDP, raw stats, candidate
+addresses, or other identifiers. Do not build a general telemetry schema.
 
 A viewer may request `LOW`, but the request is advisory. It must be carried on
 an authenticated, current room/path session and be rate-limited and deduplicated.
-The sender/controller accepts it only when viewer receive/decode behavior agrees
-with sender transport/GCC and encode evidence. A request alone cannot lower
-quality or start a representation.
+The sender/controller accepts it only when viewer receive/decode behavior and
+derived negotiated codec/profile/parameters (including applicable
+`scalabilityMode`) agree with sender transport/GCC and encode evidence. A
+request alone cannot lower quality or start a representation.
 
 UA, platform, and device-model detection does not participate in quality
 selection. The existing mobile/iPad heuristic remains limited to conservative

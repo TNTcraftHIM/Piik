@@ -86,8 +86,8 @@ Correlate one time interval and media generation across:
 | Evidence | Fields |
 | --- | --- |
 | A. Host capture | actual width, height, FPS from `getSettings()` |
-| B. Host outbound | width/FPS/bitrate, target/available bitrate, interval encode time, limitation reason, path, RTT, loss, retransmission |
-| C. Viewer inbound | width/FPS/bitrate, loss, jitter, interval decode/drop, freeze |
+| B. Host outbound | width/FPS/bitrate, target/available bitrate, interval encode time, limitation reason, path, RTT, loss/retransmission, and derived negotiated codec/profile/parameters plus applicable `scalabilityMode` |
+| C. Viewer inbound | width/FPS/bitrate, loss, jitter, interval decode/drop/freeze, corresponding derived codec/profile/parameters/layer, and actual decode behavior |
 
 Product inference from those facts: use the following ordered classification:
 
@@ -105,8 +105,9 @@ reset evidence remains unknown and rebases the interval.
 The smallest implementation sequence is local A+B correlation in one host
 sampling tick, including the interval, media/stat identity, and valid deltas.
 Only after that is trustworthy should a minimal authenticated C report carry
-the receive/decode signals needed by the two-state predicate. A general remote
-stats stream or telemetry pipeline is unnecessary.
+the receive/decode and derived negotiation signals needed by the two-state
+predicate. It never carries raw SDP, raw stats, candidate addresses, or other
+identifiers; a general remote stats stream or telemetry pipeline is unnecessary.
 
 ## Accepted Adaptation Direction
 
