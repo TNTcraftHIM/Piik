@@ -170,10 +170,20 @@ re-encode them. An ordinary non-scalable representation cannot be forwarded
 into a second quality; the bounded choices are a temporary second encode, SVC,
 or transcoding. The default is the temporary second representation. SVC is
 considered only for a later strict-one-output requirement and only after the
-exact codec/mode and a hardware or power-efficient implementation pass the game
-performance matrix; software fallback is rejected rather than hidden. Future
+exact applied codec/mode, available encoder-implementation/native evidence, and
+the real game/power matrix establish the path. Media Capabilities or RTCStats
+power-efficiency signals are admission evidence, not hardware proof; an
+unestablished path stays disabled rather than silently using software. Future
 dual-tree/striped distribution may reduce two-copy host upload toward one copy
 plus redundancy, but does not block dual-representation work.
+
+Simulcast does not change this native proof boundary: one sender may negotiate
+`HIGH`/`LOW`, but separate direct PeerConnections have no portable shared-encode
+contract and inactive API state is not physical resource proof. ADR-0007 and
+[Realtime Quality Adaptation](./realtime-quality-adaptation.md) own the
+post-A+B/C simulcast, pinned LiveKit
+Dynacast, and SVC gates. This path still requires measured per-representation
+traffic/resources and cannot bypass #28's stock-GCC/RTX stop line.
 
 ## Product Stop Line
 
@@ -216,6 +226,7 @@ evidence does not retain its policy.
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
+- [W3C WebRTC simulcast](https://www.w3.org/TR/webrtc/#simulcast-functionality)
 - [Pion WebRTC v4.2.18](https://github.com/pion/webrtc/tree/v4.2.18)
 - [Pion Interceptor v0.1.47](https://github.com/pion/interceptor/tree/v0.1.47)
 - [RFC 4585 RTP/AVPF feedback](https://www.rfc-editor.org/rfc/rfc4585.html)

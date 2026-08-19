@@ -30,16 +30,18 @@ experience automatic, and meets the latency and queue limits below.
 Let `B` be one complete stream bitrate, `N` the viewer count, and `r` repair
 overhead. Protocol headers, retransmission, and TURN overhead are additional.
 
-| Route | Host upload | Central egress | Encode work |
+| Route | Host upload | Central media traffic | Encode work |
 | --- | ---: | ---: | --- |
 | Current full-stream browser chains | at most `2B` | zero except TURN edges | host up to two encoders; every relay encodes again |
 | Native full-stream RTP relay | at most `2B` | zero except TURN edges | relay zero encode; native host can share one encode |
 | Two encoded-object stripe trees | about `(1+r)B` | zero except TURN edges | host one encode; relay zero encode |
-| Central SFU or MoQ relay | about `B` | about `N*B` | host one encode; server forwards without transcoding |
+| SFU virtual parent to bounded roots | about `B` | root-only; see low-server model | host one publication; roots keep peer descendants |
+| Full central SFU/MoQ fanout | about `B` | ingress `B`, egress `N*B` | comparison class, not the accepted fallback shape |
 
 Useful last-hop traffic remains approximately `N*B`; these routes only decide
-which nodes emit the copies. Every P2P edge still runs its own ICE process and
-may independently select direct connectivity or TURN.
+which nodes emit the copies. Exact `B_pub`/`B_i`, root, TURN-hop, and billing
+accounting is owned by [Low-Server-Cost Media Routes](./low-server-media-routes.md).
+TURN is edge transport; it is not a peer/SFU topology.
 
 ## Candidate 1: Native RTP Relay
 
@@ -233,9 +235,21 @@ healthy TURN-to-direct optimization.
 
 ## Automatic Route Controller Boundary
 
-The product order is:
+The accepted product order is:
 
-`direct -> peer full/native -> peer striped-object -> enabled SFU root -> enabled central fanout -> wait/fail`
+`direct host P2P -> accepted peer-assisted capability -> enabled SFU roots -> wait/fail`
+
+Native full-stream relay and striped-object routes remain the bounded candidates
+above; passing their own gates may change capability, but does not insert them
+into the current product ladder.
+
+The enabled SFU is a virtual parent for at most `R=2` roots. Roots retain
+bounded peer descendants; only if no reliable relay root exists may a necessary
+viewer consume one of the same root slots with zero descendants. There is no
+second whole-room central-fanout budget. The detailed direct/direct,
+direct/TURN, TURN/TURN shadow, and no-root matrix lives in
+[Low-Server-Cost Media Routes](./low-server-media-routes.md); it does not alter
+the sticky local-reparenting candidate above or ADR-0005's failure-only trigger.
 
 The controller must be automatic and invisible. It uses explicit capability
 bits, route revisions, media generations, edge budgets, and discrete failures;
@@ -278,6 +292,8 @@ Sources checked on 2026-08-19:
   [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html), and
   [LiveKit SFU](https://docs.livekit.io/reference/internals/livekit-sfu/) -
   observable path boundaries and the centralized low-latency alternative.
+- [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html) - per-edge relay
+  transport rather than a room topology.
 - [MOQT draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) and
   [moq-dev/moq](https://github.com/moq-dev/moq) - core MIT/Apache-2.0; its OBS
   plugin is separately GPL-2.0-or-later and remains study-only.

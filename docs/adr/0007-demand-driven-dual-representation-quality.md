@@ -104,6 +104,35 @@ selection. The existing mobile/iPad heuristic remains limited to conservative
 relay-capacity admission. Browser capability queries can guide a bounded probe,
 but runtime encode/decode behavior is authoritative.
 
+## Deferred Capability Spikes
+
+These spikes start only after the A+B/C evidence contract and the native
+fixed-`HIGH` path pass. They do not change the accepted two-state controller:
+
+1. Negotiate exactly two `HIGH`/`LOW` simulcast encodings on one sender in its
+   initial envelope, with `LOW` inactive. Verify requested/applied parameters,
+   per-RID traffic, restart behavior, and actual encoder/CPU/GPU release when
+   `LOW` is inactive. W3C `active=false` stops that encoding from being sent;
+   it does not guarantee that a physical encoder or GPU resource is released.
+   Separate direct PeerConnections have no portable shared-encode contract.
+2. On the optional SFU path, publish at most two LiveKit simulcast
+   representations and let each one or two roots select independently. Treat
+   Dynacast as a bounded rejection/verification spike, not an assumed fit. The
+   pinned server 1.13.5 aggregates the maximum quality requested across all
+   subscribers/nodes and marks every quality `q <= maxQuality` enabled; client
+   2.22.0 applies those flags to simulcast encoding `active`. Thus any `HIGH`
+   root is expected to keep `LOW` enabled. Firefox disabling is only a roughly
+   10 bps, 2 fps, 4x-scale compatibility reduction. Accept this path only if
+   actual per-RID bytes/frames plus host CPU/GPU/encoder evidence prove that
+   `LOW` stops while `HIGH` continues; otherwise reject it for the exact
+   on-demand-`LOW` requirement.
+3. Only for the strict-one-output requirement, request SVC and compare the
+   applied codec/`scalabilityMode` with Media Capabilities `powerEfficient` and
+   the game-performance matrix. Reject silent software fallback.
+
+None may reuse PR #28's minimum-of-two target, bypass a per-edge stock WebRTC
+congestion controller, or expand the representation limit beyond two.
+
 ## SVC Boundary
 
 Consider SVC only when a later accepted requirement demands one encoded output
@@ -142,6 +171,8 @@ Negative:
 ## Product Stop Lines
 
 - Do not productize PR #28's minimum-of-two bitrate or frame-rate aggregation.
+- Do not use simulcast, Dynacast, SVC, or an SFU as a semantic bypass around
+  PR #28's stock-GCC/RTX stop line or per-edge congestion control.
 - Do not lower `HIGH` because one viewer reports trouble.
 - Do not create one representation or encoder per viewer.
 - Do not use UA/device identity as a quality signal.
@@ -175,3 +206,8 @@ Primary sources checked 2026-08-19:
 - [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
 - [W3C WebCodecs](https://www.w3.org/TR/webcodecs/)
+- [W3C WebRTC simulcast](https://www.w3.org/TR/webrtc/#simulcast-functionality)
+- [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
+- [LiveKit client 2.22.0 Dynacast layer control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
+- [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
+- [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
