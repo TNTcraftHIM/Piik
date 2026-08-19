@@ -19,7 +19,7 @@ Last updated: 2026-08-19
 - Use direct host P2P for one or two viewers. Keep ADR-0004 off for broad production traffic: two mobile leaves can consume both host roots. Use the exact-room allowlist only on an isolated canary until its resource, quality, recovery, TURN, and browser/mobile gates pass.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep browser experiments bounded; spike native RTP relay, encoded-object striping, SVC, and FEC separately.
-- Plan a separate native-sender ADR regardless of browser relay results. One encode may feed at most two WebRTC packetizers, reducing encode work but not per-edge upload; it cannot rescue a failed browser gate.
+- ADR-0006 retains a fixed-`HIGH` native canary boundary, but its sole product-wiring run reached only host setup and one encoder output before the first-viewer decoded/rendered gate timed out. Downstream checkpoints were not retained, so the result is no-go-unclassified, not a diagnosed product bug. No native product code is accepted; revisit only through the staged evidence gate.
 - Optional single-node SFU capacity is failure-only final fallback; it never defaults to whole-room fanout. Stable dual-TURN host roots are only a future exact-room shadow comparison against the same SFU roots, with real hop/egress and E2EE/operator accounting, until evidence amends ADR-0005. PR #12's whole-room SFU mode is superseded.
 - Keep ADR-0005 routing default-off: discrete failures drive peer/SFU recovery, full host fanout uses break-before-make, and mobile/iPad clients stay leaves. PR #20 prewarm passes locally; public transport/load gates remain.
 - Local reparenting is a later candidate: start with unassigned relay admission rescue; do not block current work.
@@ -74,5 +74,5 @@ These are measurement gates, not performance claims.
 - Documentation index and current phase: `docs/README.md` and `docs/status.md`
 - Requirements and design: `docs/需求理解.md` and `docs/方案设计.md`
 - Media research: `docs/research/`, indexed by `docs/README.md`
-- Architecture: ADR-0001/0002, proposed ADR-0004/0005, accepted ADR-0007, and rejected/superseded ADR-0003
+- Architecture: ADR-0001/0002, proposed ADR-0004/0005, no-go proposed ADR-0006, accepted ADR-0007, and rejected/superseded ADR-0003
 - Deployment and maintenance: `docs/deployment.md`, `docs/maintenance.md`, `AGENTS.md`, and `.codex/`

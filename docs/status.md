@@ -28,7 +28,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Atomic activation passed health/access, exact bundle, SQLite preservation, services, and logs; the old release is rollback-ready. Responsive 320/375/390 px checks passed without live media.
 - Host A+B aligns capture with one unique outbound RTP, interval/identity/deltas, `remoteId`, and path. Its same-transport codec exposes nullable MIME/self-describing profile token/allowlisted fmtp/`scalabilityMode`; tokens imply no quality or capability conclusion, and no raw fmtp/SDP/stats are added. Stale, ambiguous, reset, or cross-transport evidence stays unknown. Independent review found no P1/P2 issues; the final local check passed 22 files/299 tests and both builds.
 - HTTPS/WSS, access and room/WebSocket auth, renewal, public STUN, and authenticated TURN/UDP/TCP relay-only paths pass; TURN/TLS is off.
-- Draft native ladder #16/#18/#22/#23/#25/#28 passed one bounded 720p30 two-leg loop with an experiment-only minimum GCC target and one recovered loss; it is not product behavior.
+- Draft #16/#18/#22/#23/#25/#28 passed isolated experiments only. ADR-0006 reached host setup/one encoder output, then timed out before viewer 1 decoded/rendered.
 
 ## Unverified Boundaries
 
@@ -38,7 +38,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Real audio, heterogeneous clients, mobile lifecycle, quality/pause, room `1` republish, and sustained profiles are unverified. Poor movie/video audio is user-reported but unclassified; after video A+B, diagnose capture settings, codec/fmtp, actual bitrate, loss, jitter, concealment, jitter buffer, and A/V sync.
 - Production `769de201f7cc` reportedly sustains native `qualityLimitationReason=bandwidth` and severe blur with one capable LAN/direct viewer; only Host refresh restores quality. Within the five-second grace, stable-clientId Viewer refresh retains its `peerId`/`HostPeer`, while Host refresh rebuilds peers/capture; churn persistence is also reported. This prioritizes but does not prove sender/PC/GCC/capture generation over network or lifecycle causes.
 - ADR-0007 remains incomplete. Host A+B codec fields exist, but browser support and the reported case are unverified; authenticated C, the controller, and `LOW` are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
-- Browser relays re-encode. The native ladder proves one WebCodecs object, not hardware encode. GCC+RTX is no-go; no-RTX weakens stats. Broader audio/loss/routes/reconnect/browser/product/striping gates remain.
+- Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints were not retained; two-edge/FIFO/TURN/product gates remain unrun. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
 - The endpoint budget remains host/relay at most two downstream edges; the browser path is host two/viewer one.
 - ADR-0005 permits SFU only after peer failure. Stable dual-TURN roots are shadow-only; exact-room TURN-root/SFU-root cost, recovery, and trust evidence is absent.
 - Pinned LiveKit 1.13.5 Dynacast enables all qualities at or below the room's maximum request, so a `HIGH` root is expected to keep `LOW` enabled. It remains a bounded rejection/verification spike, not evidence that on-demand `LOW` can stop.
@@ -69,8 +69,9 @@ picture; silent partitions add detection delay.
 ADR-0004 fails closed. Native shared encode and packet/layer striping remain
 separate experiments, not ways to relabel a failed browser route.
 
-The native ladder stops at #28; its minimum-of-two policy is not a product
-candidate. Do not bypass stock GCC/RTX; no-RTX remains research-only.
+The ladder stops at #28; minimum-of-two/custom GCC stays out. ADR-0006 remains
+no-go until an authorized staged gate retains host/RTP, signaling/PC,
+decode/render, 2/3-viewer, and TURN evidence.
 
 ## Blockers And Decisions
 

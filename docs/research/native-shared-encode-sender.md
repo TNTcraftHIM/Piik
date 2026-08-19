@@ -4,8 +4,8 @@
 - Scope: one Windows game-capture sender, one encoded video stream, and at most
   two independent standard WebRTC media edges
 - Status: stacked Draft PRs #16/#18/#22/#23/#25/#28 pass one bounded live
-  two-leg WebCodecs/Pion candidate; product and physical shared encoding remain
-  unproven
+  two-leg WebCodecs/Pion candidate. The first product-wiring gate is
+  no-go-unclassified; product and physical shared encoding remain unproven.
 
 ## Decision Input
 
@@ -107,6 +107,38 @@ aggregation of both edge targets, encoder bitrate control, PLI handling, and
 bounded RTP/RTX queues. The already bounded #23/#28 ladder uses the same
 minimum-edge safety rule and must not invent a custom SRTP, ICE, or congestion
 protocol. A product route must follow ADR-0007 instead.
+
+## Fixed-HIGH Product-Wiring Attempt
+
+ADR-0006 retains one narrow candidate: fixed VP8 1280x720@30 with a 3 Mbps
+ceiling, one WebCodecs encoder object, at most two independent Pion legs, the
+strict ordinary signaling wire, unmodified viewers, read-only feedback, and no
+audio or automatic `LOW`. This is a proposed test boundary, not current product
+behavior or hardware-encoder evidence.
+
+The sole authorized 2026-08-19 local product gate is
+`no-go-unclassified`:
+
+| Checkpoint | Retained evidence |
+| --- | --- |
+| Ordinary Node server | The local listener started with peer assistance and TURN disabled. No raw signaling frames were retained. |
+| Native room/host | `/api/start` returned an invite, which in the attempted branch followed room creation and host signaling authentication. |
+| Local encoder | Config acknowledgement preceded construction; the probe observed one `VideoEncoder` object and encoded output. Helper ingress, frame decode, and source RTP were not proven. |
+| Viewer page | The page and probe loaded, but the 30-second combined decoded-and-rendered condition timed out. |
+| Downstream lifecycle | Viewer auth, `peer-joined`, SDP/candidates, PC states, source RTP/edge packets, inbound RTP, video readiness, and console state were not retained. |
+
+The first missing evidence checkpoint is viewer authentication, not a proven
+authentication failure. The harness discarded each false sample; its reused
+`progress()` path can omit a connection after a swallowed `getStats()` error;
+and render evidence had no readiness/current-time/video-dimension fallback.
+The timeout therefore cannot locate the runtime break or rule out a probe-only
+false negative. The static code review found no obvious protocol disconnect,
+which is not runtime evidence.
+
+No second viewer, two-edge proof, third-viewer waiting/FIFO promotion, or
+direct/TURN pair ran. Do not treat the attempted branch as usable or mergeable
+product code. ADR-0006 owns the separately authorized staged revalidation and
+exact stop line; this research does not redefine it.
 
 ## Stacked Validation Ladder
 
