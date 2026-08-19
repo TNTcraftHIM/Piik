@@ -11,7 +11,7 @@
 - [Low-server-cost media routes](./research/low-server-media-routes.md): SFU-root/peer distribution, optional selected-edge TURN, hop-level accounting, privacy-safe ICE evidence, and the bounded transport canary.
 - [Advanced peer distribution](./research/advanced-peer-distribution.md): multi-tree/SVC, encoded-object relay, native RTP forwarding, FEC/network-coding, MoQ, and measurable go/no-go gates.
 - [Native shared-encode sender](./research/native-shared-encode-sender.md): consolidated Draft #16/#18/#22/#23/#25/#28 ladder, unclassified product-gate failure, staged revalidation, and stop line.
-- [Realtime quality adaptation](./research/realtime-quality-adaptation.md): correlated capture/send/receive diagnosis, production generation-rebuild gate, demand-driven dual representations, and bounded simulcast/Dynacast/SVC checks.
+- [Realtime quality adaptation](./research/realtime-quality-adaptation.md): correlated capture/send/receive diagnosis, production generation-rebuild gate, path-isolated dual representations, and bounded simulcast/Dynacast/SVC checks.
 - [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, standard readback limits, Opus negotiation boundaries, and the retained no-control decision.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): accepted P2P-first media topology and its consequences.
@@ -19,6 +19,6 @@
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): proposed, experiment-only standard-WebRTC peer-assisted spike with hard fanout and failure gates.
 - [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted direct/peer UDP -> SFU-root -> optional exceptional-edge TURN direction, with the current default-off controller and migration gates.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
-- [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted demand-driven `HIGH + at most one on-demand LOW` quality policy, path-level hysteresis, evidence contract, and SVC boundary.
+- [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted path-isolated `HIGH + at most one LOW` policy, optional idle-layer stop, evidence contract, and SVC boundary.
 
 Documentation and project memory are part of the product source of truth. Update them in the same change that alters the corresponding requirement or architecture.
