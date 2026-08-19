@@ -124,6 +124,9 @@ Safari join last as leaf checks. ADR-0005 now adds a per-session binary relay
 capacity: detected mobile/iPad clients report zero and desktop-class browsers
 report one. That heuristic, background lifecycle, and voluntary relay policy
 remain unverified, so the spike is still unsafe for arbitrary-user deployment.
+This one-child, depth-four gate remains an eight-viewer experiment; it cannot
+authorize the accepted 20-viewer default. That later release requires a separate
+20-viewer matrix and proven capacity-two relay or bounded central exceptions.
 
 The proposal advances only if every condition holds:
 

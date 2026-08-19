@@ -62,7 +62,7 @@ These are measurement gates, not performance claims.
 
 ## Open Decisions
 
-- Sustainable viewer count by broadcaster and relay hardware, quality profile, network class, and media route; use instrumented 1/3/5/8 comparisons rather than a 1:8 claim.
+- Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
 - Which optional TURN/media-TCP transport and port, if any, survives ADR-0005's public UDP-first canary; current LiveKit ICE/TCP/coturn stays until migration passes.
 - Exact mobile lifecycle behavior and whether Windows per-application audio is required for the first release.
