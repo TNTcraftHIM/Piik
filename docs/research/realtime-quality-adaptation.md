@@ -37,12 +37,17 @@ described as automatically detecting game motion and forcing a 720p cap.
 
 On 2026-08-19 the deployed build was reported to deliver very low resolution,
 bitrate, and frame rate across all three profiles. This is a user observation,
-not yet an instrumented result. The highest-confidence explanation is the
-combination of one independent peer connection, sender, encoder pipeline, and
-upload copy per viewer with `balanced` adaptation: host CPU or uplink pressure
-can grow per edge, and the browser may then reduce both dimensions. Peer/SFU
-code now ships in `769de201f7cc`, but its production configuration is absent;
-relay re-encoding and LiveKit therefore cannot explain that earlier observation.
+not yet an instrumented result. Draft PR #28's minimum-of-two feedback loop was
+never deployed and cannot have caused it. The production `getStats()` probes are
+read-only and do not trigger a downgrade. Peer/SFU code ships in `769de201f7cc`,
+but its production configuration is absent, so relay re-encoding and LiveKit
+cannot explain the earlier observation either.
+
+Plausible causes remain: capture settings below the request; one independent
+encoder pipeline per peer exhausting CPU/GPU; GCC reacting to host uplink or a
+TURN path; treating `maxBitrate` as a target when it is only a ceiling; browser
+rewriting or scaling sender parameters; or receive loss, jitter, decode, and
+display scaling. None is selected as the root cause before correlated evidence.
 
 One controlled capture should classify the problem before changing constants:
 
@@ -62,6 +67,81 @@ because its effective default is 1.0. Likewise, the current 3/5/8 Mbps values
 are ceilings rather than targets. Raising them cannot repair CPU or bandwidth
 limitation and should only follow evidence that the encoder is already pinned
 to the ceiling while spare transport capacity remains.
+
+## Evidence Before Adaptation
+
+Verified specification facts: the W3C stats model supports the needed
+separation but does not produce the product decision itself.
+`MediaStreamTrack.getSettings()` supplies the actual
+capture dimensions/frame rate. Outbound RTP exposes emitted dimensions/FPS,
+byte and retransmission counters, encode time, target bitrate when available,
+and the current `qualityLimitationReason`; the selected candidate pair can
+expose RTT and available outgoing bitrate. Inbound RTP exposes received
+dimensions/FPS, byte/loss/jitter counters, decoded/dropped frames, and freeze
+counters when implemented. Stats members may be absent, and cumulative values
+must be compared across two samples rather than treated as interval values.
+
+Correlate one time interval and media generation across:
+
+| Evidence | Fields |
+| --- | --- |
+| A. Host capture | actual width, height, FPS from `getSettings()` |
+| B. Host outbound | width/FPS/bitrate, target/available bitrate, interval encode time, limitation reason, path, RTT, loss/retransmission, and derived negotiated codec/profile/parameters plus applicable `scalabilityMode` |
+| C. Viewer inbound | width/FPS/bitrate, loss, jitter, interval decode/drop/freeze, corresponding derived codec/profile/parameters/layer, and actual decode behavior |
+
+Product inference from those facts: use the following ordered classification:
+
+| Correlated observation | Likely boundary |
+| --- | --- |
+| Capture low | capture or constraints |
+| Capture high; outbound low; `cpu` | encoder/resource pressure |
+| Capture high; outbound low; `bandwidth` | GCC, uplink, or TURN/path pressure |
+| Outbound healthy; inbound low | transport or receiver path |
+| Inbound healthy; image visibly blurry | bitrate/quantization, codec, or display scaling |
+
+This is a diagnostic classification, not a weighted health score. Missing or
+reset evidence remains unknown and rebases the interval.
+
+The smallest implementation sequence is local A+B correlation in one host
+sampling tick, including the interval, media/stat identity, and valid deltas.
+Only after that is trustworthy should a minimal authenticated C report carry
+the receive/decode and derived negotiation signals needed by the two-state
+predicate. It never carries raw SDP, raw stats, candidate addresses, or other
+identifiers; a general remote stats stream or telemetry pipeline is unnecessary.
+
+## Accepted Adaptation Direction
+
+ADR-0007 rejects room-wide worst-link adaptation. Healthy operation has one
+shared `HIGH` representation. A viewing path enters `FALLBACK` only after
+multiple consecutive windows show insufficient bandwidth, freezes, or decode
+pressure in correlated sender/viewer evidence. The first verified weak path
+starts one shared `LOW`; all weak paths reuse it while healthy paths remain on
+`HIGH`. Recovery requires a longer stable window than entry. When the last weak
+path recovers, stop `LOW`. The hard representation limit is two, never one per
+viewer.
+
+`LOW` itself is conditional: if no qualified hardware/power-efficient encoder
+path exists or the second encoder exceeds the measured CPU/GPU/game budget, the
+controller preserves `HIGH` and fails visibly for the weak path. It never buys
+weak-path recovery by degrading healthy paths.
+
+A viewer's `LOW` request is advisory and must be authenticated, session-bound,
+rate-limited, deduplicated, and corroborated by sender transport/encode and
+viewer receive/decode stats. UA or device-model detection is not quality
+evidence; the current mobile/iPad heuristic remains restricted to relay
+capacity.
+
+An ordinary non-scalable stream cannot yield a second independent quality by
+packet forwarding alone. The alternatives are a second representation,
+scalable layers, or relay/SFU transcoding. Screener chooses the temporary second
+representation first. SVC is conditional on a future strict-one-output need,
+an exact negotiated mode, a positively established hardware or power-efficient
+path, and measured game performance. WebRTC-SVC permits the browser to return a
+different configured `scalabilityMode`; Media Capabilities reports support and
+expected smoothness/power efficiency for a specified configuration; WebCodecs
+defines `hardwareAcceleration` only as a hint the user agent may ignore.
+Therefore none is, by itself, proof of a particular hardware encoder, and a
+software SVC fallback must not be silent.
 
 ## Why Offline Encoding Presets Do Not Transfer
 
@@ -122,9 +202,9 @@ resolution, frame rate, or bitrate.
 - Pausing the picture disables the existing video track, producing black video
   without closing the room or media connection. Audio remains enabled.
 
-The implementation deliberately stops at manual bounded controls. It adds no
-composite score, periodic adjustment, codec forcing, SDP bitrate manipulation,
-or scene detector. Three consecutive samples of one non-`none` native
+The deployed implementation deliberately stops at manual bounded controls. It
+adds no composite score, periodic adjustment, codec forcing, SDP bitrate
+manipulation, or scene detector. Three consecutive samples of one non-`none` native
 `qualityLimitationReason` produce one explanatory warning; a reason change or
 recovery resets it and never triggers a media action.
 
@@ -150,15 +230,18 @@ CPU/GPU cost, public networks, or sustained behavior.
   preference identically.
 - No automatic composite quality score or periodic profile controller before
   the controlled production capture identifies a reproducible bottleneck.
+- No room-wide minimum-of-viewers target, per-viewer encoder, UA/device quality
+  ranking, or silent software SVC fallback.
 
 ## Verification Gate
 
 Use the same static UI scene and deterministic high-motion game scene at
-720p30, 1080p30, and 1080p60. Record actual capture and outbound dimensions/fps,
-bitrate, `qualityLimitationReason`, codec, encoder implementation, encode time,
-dropped frames, RTT, packet loss, and host CPU/GPU utilization. A live profile
-change must preserve peer connection IDs, avoid a second source prompt, and
-visibly converge to the requested bounds.
+720p30, 1080p30, and 1080p60. Correlate A capture, B outbound, and C inbound at
+the same interval. Record actual dimensions/FPS/bitrate, limitation reason,
+codec, encoder implementation, interval encode/decode cost, drops/freezes,
+jitter, RTT, loss/retransmission, selected direct/TURN path, and host CPU/GPU.
+A live profile change must preserve peer connection IDs, avoid a second source
+prompt, and visibly converge to the requested bounds.
 
 Compute per-frame encode and decode cost from adjacent samples of cumulative
 `totalEncodeTime`/`totalDecodeTime` and frame counters. The first sample, a
@@ -172,7 +255,9 @@ pipeline.
 Compare image readability and motion continuity instead of declaring success
 from FPS alone. If reproducible evidence later shows that `balanced` still
 oscillates or makes the wrong tradeoff on supported machines, revise the fixed
-profiles before adding an application-level adaptation controller.
+profiles before enabling ADR-0007. Its acceptance matrix must prove one healthy
+viewer remains `HIGH` while another enters/recover from `FALLBACK`, that all weak
+viewers share at most one `LOW`, and that `LOW` stops after sustained recovery.
 
 ## Primary Sources
 
@@ -180,6 +265,9 @@ profiles before adding an application-level adaptation controller.
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
+- [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
+- [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
+- [W3C WebCodecs](https://www.w3.org/TR/webcodecs/)
 - [MDN `RTCRtpSender.setParameters()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
 - [Chromium `motion` to libwebrtc `kFluid` bridge](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc)
 - [libwebrtc `motion`/`kFluid` sender classification](https://webrtc.googlesource.com/src/+/3b1eab8a69cb5078befb021c5492d3f204a7d6a2/pc/rtp_sender.cc)

@@ -49,12 +49,12 @@ synthetic source -> shared encoder coordinator -> encoder proxy A -> PC A -> bro
   the same reference-counted encoded buffer to both callbacks.
 - Reject the second edge when codec, profile, dimensions, or layer configuration
   differ. Never hide incompatibility by creating a second physical encoder.
-- In this fixed single-layer spike, aggregate the two `SetRates()` requests by
-  taking the minimum total target bitrate and minimum requested frame rate,
-  bounded by the selected profile. Do not attempt to merge per-edge loss, RTT,
-  bandwidth-allocation, or multilayer state. A weak edge can therefore lower
-  quality for the strong edge; independent quality requires another encode or
-  a separately accepted layered design.
+- For this fixed single-layer spike only, aggregate the two `SetRates()`
+  requests by taking the minimum total target bitrate and frame rate, bounded by
+  the selected profile. This is an experiment safety policy, not a product
+  design: one weak edge can lower a healthy edge, so productization is
+  forbidden. Independent quality requires another representation, an accepted
+  scalable design, or transcoding.
 - Coalesce PLI/keyframe requests so one physical keyframe is delivered to both
   packetizers. RTP sequence numbers, SSRC, TWCC, pacing, retransmission caches,
   RTCP, DTLS-SRTP, and ICE remain independent per edge.
@@ -104,8 +104,9 @@ This certainty moves more responsibility into the application. Pion's default
 interceptors provide NACK, RTCP reports, statistics, and transport-wide feedback,
 but an external encoder still needs explicit send-side bandwidth estimation,
 aggregation of both edge targets, encoder bitrate control, PLI handling, and
-bounded RTP/RTX queues. A Pion route must use the same minimum-edge rate rule and
-must not invent a custom SRTP, ICE, or congestion protocol.
+bounded RTP/RTX queues. The already bounded #23/#28 ladder uses the same
+minimum-edge safety rule and must not invent a custom SRTP, ICE, or congestion
+protocol. A product route must follow ADR-0007 instead.
 
 ## Stacked Validation Ladder
 
@@ -140,6 +141,40 @@ sequence; leg 2 recorded no drop, NACK, or replay. Both viewers decoded another
 359 frames after the shared recovery marker. This is a go result only for the
 bounded live target plus primary-SSRC recovery candidate.
 
+## Product Quality Direction
+
+PR #28 establishes only that one live `VideoEncoder` object accepted one
+conservative feedback-derived reconfiguration while feeding two transports. It
+does not establish heterogeneous feedback behavior and must not evolve into a
+room-wide minimum controller.
+
+ADR-0007 defines the product boundary: normally run one shared `HIGH` encoded
+representation; start one shared `LOW` only while correlated sender/viewer
+evidence proves that paths persistently cannot sustain `HIGH`; keep healthy
+paths on `HIGH`; and stop `LOW` after every weak path sustains the longer
+recovery window. The representation limit is two, never one per viewer. The
+independent host budget remains at most two downstream media edges.
+
+If a qualified hardware/power-efficient second encoder is unavailable or its
+measured game load is unacceptable, `LOW` fails closed for weak paths while
+healthy paths keep `HIGH`.
+
+Each path has only `HIGH` and `FALLBACK` state with asymmetric consecutive
+entry/recovery windows, not a composite score. Viewer requests are
+authenticated, rate-limited, deduplicated advice and need sender transport and
+encode evidence plus viewer receive/decode corroboration. UA and device
+identity do not participate in quality control.
+
+A native relay forwards the selected encoded packets and must not decode or
+re-encode them. An ordinary non-scalable representation cannot be forwarded
+into a second quality; the bounded choices are a temporary second encode, SVC,
+or transcoding. The default is the temporary second representation. SVC is
+considered only for a later strict-one-output requirement and only after the
+exact codec/mode and a hardware or power-efficient implementation pass the game
+performance matrix; software fallback is rejected rather than hidden. Future
+dual-tree/striped distribution may reduce two-copy host upload toward one copy
+plus redundancy, but does not block dual-representation work.
+
 ## Product Stop Line
 
 The stock Pion GCC plus negotiated RFC 4588 RTX composition is
@@ -155,7 +190,9 @@ PLI/FIR-to-encoder control, heterogeneous downstream estimates, bounded burst
 and sustained loss, audio/A-V synchronization, mixed direct/TURN edges,
 reconnect isolation, browser diversity, lifecycle, and sustained CPU/GPU,
 memory, latency, quality, and upload measurements. A third host edge, custom
-RTP/SRTP, or a custom congestion-control framework remains out of scope.
+RTP/SRTP, or a custom congestion-control framework remains out of scope. The
+#28 minimum-of-two policy is also out of scope for product code; retaining its
+evidence does not retain its policy.
 
 ## Primary Sources And License Boundary
 
@@ -176,6 +213,9 @@ RTP/SRTP, or a custom congestion-control framework remains out of scope.
 - [Pion send-side bandwidth estimator](https://github.com/pion/interceptor/blob/main/pkg/gcc/send_side_bwe.go)
 - [Pion WebRTC license](https://github.com/pion/webrtc/blob/main/LICENSE)
 - [WebCodecs](https://www.w3.org/TR/webcodecs/)
+- [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
+- [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
+- [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
 - [Pion WebRTC v4.2.18](https://github.com/pion/webrtc/tree/v4.2.18)
 - [Pion Interceptor v0.1.47](https://github.com/pion/interceptor/tree/v0.1.47)
 - [RFC 4585 RTP/AVPF feedback](https://www.rfc-editor.org/rfc/rfc4585.html)

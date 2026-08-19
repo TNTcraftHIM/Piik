@@ -18,19 +18,19 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. `PEER_ASSISTED_ROOM_IDS` canaries exact rooms; others stay legacy P2P. Empty or missing means all, production is disabled, and the 22-file/284-test full suite covers both paths.
 - Complete fallback configuration adds a non-secret standby URL to peer-assisted authentication. Host and viewers import the SDK and make one token-free DNS/TLS warmup; no configuration means no field, import, request, participant, or media edge.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
-- Production uses one strict, memory-only video quality setting with bounded manual ceilings and sender readback. It also carries equal idle-stage share/join actions and default-closed technical details. Browser audio remains request/presence-only.
+- Production uses one strict, memory-only video quality setting with bounded manual ceilings and sender readback. ADR-0007's per-path `HIGH`/`FALLBACK` and demand-driven shared `LOW` are accepted design, not deployed behavior. Browser audio remains request/presence-only.
 
 ## Verified Evidence
 
 - Release `769de201f7cc` passed main CI, repository hygiene, type checking, 22 Vitest files/274 tests, both builds, and zero production dependency vulnerabilities.
 - A short Chrome 151 synthetic `1/3/5/8` benchmark passed every topology check: host active edges peaked at two, relay edges at one, every viewer kept increasing decoded frames through the measurement window, and the slowest first decoded frame was about 1.05 seconds. Closing a first-level relay in the three-viewer run recovered in about 5.32 seconds without exceeding host fanout two.
-- A localhost/headless Chrome 151 run with one host, three viewers, and synthetic 720p30 propagated balanced and clarity settings to every participant. Every active sender matched preference readback, peer fingerprints stayed stable, all viewers decoded/rendered new frames, and fanout stayed host two/relay one. This proves control continuity, not visual quality or performance.
-- Corrected Chrome 151/LiveKit 1.13.5 localhost/headless/video-only same-leaf A/B measured the cold path at 1.481 seconds to active and 2.257 seconds to render. Standby prepare arrived in 5 ms, active in 200 ms, and the same leaf rendered in 319.7 ms with 31 new decoded/frame-callback frames; 25 ms sampling kept host edge peak two. The roughly 86% result combines early SDK download/parse with token-free DNS/TLS/HTTP prewarm, creates no participant/media edge, and does not predict public-network performance.
+- Chrome 151 synthetic 720p30 propagated balanced/clarity to one host and three viewers without changing peer identities; all kept decoding and fanout stayed host two/relay one. This proves control continuity only.
+- Chrome 151/LiveKit localhost A/B measured cold active/render at 1.481/2.257 seconds and standby at 0.200/0.320 seconds while host edges stayed at two. This video-only local result includes SDK startup plus prewarm and does not predict public networks.
 - Atomic production activation passed public/local health, exact served-bundle hash, unauthenticated 401, room `1` page, SQLite preservation, active Screener/nginx/coturn, and a clean warning log. The old release remains available for rollback.
-- Chrome 151 CDP checks at 320/375/390 CSS px keep the two idle-stage actions equal, on one row, 44 px high, and free of horizontal overflow. The Viewer waiting page also has no overflow; its details checkbox starts false, changes locally, and resets after navigation. These checks cover idle/waiting states, not live media.
+- Chrome 151 checks at 320/375/390 CSS px passed equal 44 px entry actions, waiting-page overflow, and default-closed/resetting details. Live media was not covered.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
-- Draft native ladder #16/#18/#22/#23/#25/#28 passed a bounded 720p30 two-leg loop: one WebCodecs object accepted the lower stock-GCC target, one isolated loss recovered, and leg 2 stayed clean. Research-only.
+- Draft native ladder #16/#18/#22/#23/#25/#28 passed a bounded 720p30 two-leg loop: one WebCodecs object accepted a conservative minimum stock-GCC target, one isolated loss recovered, and leg 2 stayed clean. That minimum rule is experiment-only and prohibited from productization.
 
 ## Unverified Boundaries
 
@@ -39,13 +39,15 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real screen/game audio, heterogeneous machines/networks, mobile lifecycle, the new production quality/pause cycle, room `1` stop/re-publish, and sustained profiles remain unverified.
 - Earlier production showed severe degradation across all profiles. The new controls permit clarity/balanced comparison, but a controlled 1/2/3-viewer and TURN sample must still isolate capture, CPU, path, and receiver limits before any quality claim or automatic controller.
+- ADR-0007 is unimplemented. First correlate same-tick capture plus outbound window/identity/deltas; only then add a minimal authenticated viewer receive/decode report. Runtime evidence, not UA/device identity, must drive `HIGH`/`FALLBACK`; representations stay at `HIGH + optional LOW <= 2`.
 - Browser relays re-encode. The native ladder proves one WebCodecs object, not one physical/hardware encode. Stock GCC plus RTX is no-go; no-RTX passed one controlled loss but weakens statistics. Audio, heterogeneous estimates, broader loss, direct/TURN, reconnect, browser diversity, product wiring, striping, and multi-parent assembly remain unverified.
 - The endpoint budget remains host/relay at most two downstream edges; the browser path is host two/viewer one.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
 ## Next Milestone
 
-First validate the deployed quality controls on real game capture. Before any
+First validate the deployed quality controls on real game capture and implement
+the bounded A+B probe described above. Before any
 broad route enablement, use one exact-room canary and validate standby gains
 across public transports, rollback, reconnect, edge counts, egress, and load.
 
@@ -59,8 +61,9 @@ picture, about 8 seconds total. Silent partitions include their detection delay.
 ADR-0004 fails closed. Native shared encode and packet/layer striping remain
 separate experiments, not ways to relabel a failed browser route.
 
-The native ladder stops at #28. Do not bypass stock GCC/RTX with custom
-transport/control; no-RTX remains research-only.
+The native ladder stops at #28. Its minimum-of-two feedback policy is not a
+product candidate. Do not bypass stock GCC/RTX with custom transport/control;
+no-RTX remains research-only.
 
 ## Blockers And Decisions
 

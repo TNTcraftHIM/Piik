@@ -239,6 +239,8 @@ The first controller reacts only to discrete events:
 
 It does not combine RTT, CPU, bitrate, geography, or a synthetic health score.
 Measurements may add a new explicit trigger only through a reviewed change.
+ADR-0007's `HIGH`/`FALLBACK` quality state is separate and does not become a
+topology trigger or a room-wide health score.
 
 `MAX_SFU_ROOTS_PER_ROOM` bounds server egress. Exhausting that budget waits or
 fails explicitly; it never creates a third host edge or silently fans the SFU
@@ -323,6 +325,8 @@ Negative:
   ADR-0003 remains historical rejected/superseded context.
 - Native shared encoding and two-tree striped distribution remain orthogonal
   data-plane experiments under separate decisions.
+- ADR-0007 owns per-path quality fallback and its two-representation budget;
+  this route controller does not aggregate viewer quality into a shared target.
 
 ## References
 
