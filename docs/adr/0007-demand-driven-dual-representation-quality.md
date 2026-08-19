@@ -146,7 +146,7 @@ evidence windows remain limited to topology eligibility and diagnostics:
    required product semantic is absent. In particular, the normative rule that
    `active=false` stops sending an encoding is not evidence that its physical
    encoder, CPU work, or GPU allocation is released.
-2. **Pinned LiveKit two-layer simulcast: next bounded runtime candidate.**
+2. **Pinned LiveKit two-layer simulcast: implemented default-off runtime candidate.**
    Client 2.22.0 can publish a screen-share original plus one lower simulcast
    encoding. `RemoteTrackPublication.setVideoQuality(HIGH)` sets a per-subscriber
    spatial-quality ceiling. Server 1.13.5 maps quality, dimensions, and FPS to
@@ -157,7 +157,7 @@ evidence windows remain limited to topology eligibility and diagnostics:
    dynamic `LOW` stop while `HIGH` is subscribed, but dynamic stop is now an
    optimization rather than a hard requirement.
 
-   The next gate therefore publishes exactly `HIGH+LOW` with standard
+   The candidate therefore publishes exactly `HIGH+LOW` with standard
    simulcast/send encodings, leaves each LiveKit root's ceiling at `HIGH`, and
    first tests built-in per-subscriber SFU bandwidth adaptation on
    zero-descendant leaf viewers. Start with deterministic two-layer publication
@@ -173,10 +173,11 @@ evidence windows remain limited to topology eligibility and diagnostics:
    before sender activation/deactivation. The gate must prove that a healthy
    P2P/`HIGH` path is unchanged, no third layer appears, the expected layer is
    actually received, and hardware encoder, game FPS/p1 low, CPU/GPU, interval
-   encode cost, host upload, and `HIGH+LOW` bytes fit budget. Screener currently
-   sets `simulcast: false`, leaves Dynacast at its default `false`, and does not
-   call `setVideoQuality()`, so no runtime claim follows and no browser is run
-   in this static SVC review. If the always-on cost fails, test manual standard
+   encode cost, host upload, and `HIGH+LOW` bytes fit budget. The default-off
+   exact-room candidate now configures exactly two encodings, leaves Dynacast at
+   its default `false`, and sets each subscriber's ceiling to `HIGH`. It has not
+   been browser-tested or enabled by default, so no runtime performance claim
+   follows. If the always-on cost fails, test manual standard
    sender activation/deactivation next; custom/native dual encoding follows
    only if built-in and manual standard primitives fail.
 3. **Current Web/LiveKit SVC: rejected

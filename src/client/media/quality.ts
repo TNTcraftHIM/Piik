@@ -66,6 +66,17 @@ export interface VideoSenderParameterReadback {
   mismatches: Array<keyof VideoSenderParameterValues>;
 }
 
+export interface TwoLayerVideoSenderParameterReadback {
+  low: VideoSenderParameterReadback;
+  high: VideoSenderParameterReadback;
+}
+
+export const SCREEN_SHARE_LOW_SCALE = 2;
+
+export function screenShareLowBitrate(profile: QualityProfile): number {
+  return Math.max(150_000, Math.floor(profile.maxBitrate / 4));
+}
+
 export function qualitySettingsEqual(
   left: QualitySettings,
   right: QualitySettings,
@@ -172,8 +183,9 @@ function requestedScaleResolutionDownBy(
 function readVideoSenderParameters(
   parameters: RTCRtpSendParameters,
   includeAppliedScalabilityMode: boolean,
+  encodingIndex = 0,
 ): VideoSenderParameterValues {
-  const encoding = parameters.encodings[0];
+  const encoding = parameters.encodings[encodingIndex];
   const scalabilityMode = (
     encoding as
       | (RTCRtpEncodingParameters & { scalabilityMode?: unknown })
@@ -192,6 +204,31 @@ function readVideoSenderParameters(
         ? scalabilityMode
         : null,
   };
+}
+
+function senderParameterReadback(
+  requested: VideoSenderParameterValues,
+  applied: VideoSenderParameterValues,
+): VideoSenderParameterReadback {
+  const mismatches = (
+    Object.keys(requested) as Array<keyof VideoSenderParameterValues>
+  ).filter((key) => !sameParameter(key, requested[key], applied[key]));
+  return { requested, applied, mismatches };
+}
+
+function requiredTwoLayerEncodingIndexes(
+  parameters: RTCRtpSendParameters,
+): { low: number; high: number } {
+  if (parameters.encodings.length !== 2) {
+    throw new Error("SFU simulcast requires exactly two video encodings");
+  }
+  if (
+    parameters.encodings[0]?.rid !== "q" ||
+    parameters.encodings[1]?.rid !== "f"
+  ) {
+    throw new Error("SFU simulcast requires ordered q and f video encodings");
+  }
+  return { low: 0, high: 1 };
 }
 
 function sameParameter(
@@ -227,11 +264,48 @@ export async function configureVideoSender(
   const requested = readVideoSenderParameters(parameters, false);
   await sender.setParameters(parameters);
   const applied = readVideoSenderParameters(sender.getParameters(), true);
-  const mismatches = (
-    Object.keys(requested) as Array<keyof VideoSenderParameterValues>
-  ).filter((key) => !sameParameter(key, requested[key], applied[key]));
+  return senderParameterReadback(requested, applied);
+}
 
-  return { requested, applied, mismatches };
+export async function configureTwoLayerVideoSender(
+  sender: RTCRtpSender,
+  profile: QualityProfile,
+): Promise<TwoLayerVideoSenderParameterReadback> {
+  const parameters = sender.getParameters();
+  const indexes = requiredTwoLayerEncodingIndexes(parameters);
+  const highScale = requestedScaleResolutionDownBy(sender, profile);
+  const lowEncoding = parameters.encodings[indexes.low]!;
+  const highEncoding = parameters.encodings[indexes.high]!;
+
+  lowEncoding.maxBitrate = screenShareLowBitrate(profile);
+  lowEncoding.maxFramerate = profile.maxFramerate;
+  lowEncoding.scaleResolutionDownBy = highScale * SCREEN_SHARE_LOW_SCALE;
+  highEncoding.maxBitrate = profile.maxBitrate;
+  highEncoding.maxFramerate = profile.maxFramerate;
+  highEncoding.scaleResolutionDownBy = highScale;
+  parameters.degradationPreference = profile.degradationPreference;
+
+  const requestedLow = readVideoSenderParameters(parameters, false, indexes.low);
+  const requestedHigh = readVideoSenderParameters(parameters, false, indexes.high);
+  await sender.setParameters(parameters);
+
+  const appliedParameters = sender.getParameters();
+  const appliedIndexes = requiredTwoLayerEncodingIndexes(appliedParameters);
+  const appliedLow = readVideoSenderParameters(
+    appliedParameters,
+    false,
+    appliedIndexes.low,
+  );
+  const appliedHigh = readVideoSenderParameters(
+    appliedParameters,
+    false,
+    appliedIndexes.high,
+  );
+
+  return {
+    low: senderParameterReadback(requestedLow, appliedLow),
+    high: senderParameterReadback(requestedHigh, appliedHigh),
+  };
 }
 
 const PARAMETER_LABELS = {

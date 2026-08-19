@@ -6,7 +6,10 @@ import type {
 } from "livekit-client";
 
 import {
-  configureVideoSender,
+  configureTwoLayerVideoSender,
+  QUALITY_RESOLUTIONS,
+  SCREEN_SHARE_LOW_SCALE,
+  screenShareLowBitrate,
   senderParameterWarning,
   type QualityProfile,
   type VideoSenderParameterReadback,
@@ -24,6 +27,11 @@ interface PublisherEvents {
 interface PublishedTrack {
   publication: LocalTrackPublication;
   rawTrack: MediaStreamTrack;
+}
+
+interface PublishedVideoConfiguration {
+  readback: VideoSenderParameterReadback;
+  warning: string | null;
 }
 
 type LiveKit = typeof import("livekit-client");
@@ -118,12 +126,16 @@ export class SfuPublisher {
           room,
           videoTrack,
           sdk.Track.Source.ScreenShare,
-          videoPublishOptions(profile),
+          videoPublishOptions(sdk, profile),
         );
         if (!this.owns(room, generation)) {
           return false;
         }
-        const senderParameters = await configurePublishedVideo(video, profile);
+        const videoConfiguration = await configurePublishedVideo(
+          video,
+          profile,
+          sdk,
+        );
         if (!this.owns(room, generation)) {
           return false;
         }
@@ -144,7 +156,7 @@ export class SfuPublisher {
         this.video = video;
         this.audio = audio;
         this.profile = profile;
-        this.retainSenderParameters(senderParameters);
+        this.retainSenderParameters(videoConfiguration);
         this.state = "active";
         return true;
       } catch (error) {
@@ -251,9 +263,10 @@ export class SfuPublisher {
           this.audio = nextAudio;
         }
 
-        const senderParameters = await configurePublishedVideo(
+        const videoConfiguration = await configurePublishedVideo(
           previousVideo,
           profile,
+          sdk,
         );
         if (!this.owns(room, generation)) {
           return false;
@@ -262,7 +275,7 @@ export class SfuPublisher {
         if (previousAudio && nextAudioTrack) {
           previousAudio.rawTrack = nextAudioTrack;
         }
-        this.retainSenderParameters(senderParameters);
+        this.retainSenderParameters(videoConfiguration);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
@@ -295,15 +308,19 @@ export class SfuPublisher {
             if (!this.owns(room, generation)) {
               return false;
             }
-            const senderParameters = await configurePublishedVideo(
+            const videoConfiguration = await configurePublishedVideo(
               previousVideo,
               profile,
+              sdk,
             );
             if (!this.owns(room, generation)) {
               return false;
             }
-            this.senderParameters = senderParameters;
-            this.qualityWarning = failureWarning;
+            this.senderParameters = videoConfiguration.readback;
+            this.qualityWarning = mergeQualityWarnings(
+              failureWarning,
+              videoConfiguration.warning,
+            );
           }
           return false;
         } catch (rollbackError) {
@@ -325,17 +342,22 @@ export class SfuPublisher {
       }
       const video = this.video;
       const previousProfile = this.profile;
-      if (!video || !previousProfile) {
+      const sdk = this.sdk;
+      if (!video || !previousProfile || !sdk) {
         throw new Error("SFU publisher has no active video publication");
       }
 
       try {
-        const readback = await configurePublishedVideo(video, profile);
+        const videoConfiguration = await configurePublishedVideo(
+          video,
+          profile,
+          sdk,
+        );
         if (!this.owns(room, generation)) {
           return false;
         }
         this.profile = profile;
-        this.retainSenderParameters(readback);
+        this.retainSenderParameters(videoConfiguration);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
@@ -346,12 +368,19 @@ export class SfuPublisher {
             ? `应用 SFU 发送参数失败：${error.message}`
             : "应用 SFU 发送参数失败";
         try {
-          const readback = await configurePublishedVideo(video, previousProfile);
+          const videoConfiguration = await configurePublishedVideo(
+            video,
+            previousProfile,
+            sdk,
+          );
           if (!this.owns(room, generation)) {
             return false;
           }
-          this.senderParameters = readback;
-          this.qualityWarning = failureWarning;
+          this.senderParameters = videoConfiguration.readback;
+          this.qualityWarning = mergeQualityWarnings(
+            failureWarning,
+            videoConfiguration.warning,
+          );
           return false;
         } catch (rollbackError) {
           if (this.owns(room, generation)) {
@@ -449,10 +478,10 @@ export class SfuPublisher {
   }
 
   private retainSenderParameters(
-    readback: VideoSenderParameterReadback,
+    configuration: PublishedVideoConfiguration,
   ): void {
-    this.senderParameters = readback;
-    this.qualityWarning = senderParameterWarning(readback);
+    this.senderParameters = configuration.readback;
+    this.qualityWarning = configuration.warning;
   }
 }
 
@@ -494,27 +523,56 @@ async function unpublishTrack(room: Room, published: PublishedTrack): Promise<vo
 async function configurePublishedVideo(
   published: PublishedTrack,
   profile: QualityProfile,
-): Promise<VideoSenderParameterReadback> {
+  sdk: LiveKit,
+): Promise<PublishedVideoConfiguration> {
   const videoTrack = published.publication.videoTrack;
   const sender = videoTrack?.sender;
   if (!sender) {
     throw new Error("SFU video publication has no RTP sender");
   }
-  const readback = await configureVideoSender(sender, profile);
+  const readbacks = await configureTwoLayerVideoSender(sender, profile);
   videoTrack.publishOptions = {
     ...videoTrack.publishOptions,
-    ...videoPublishOptions(profile),
+    ...videoPublishOptions(sdk, profile),
   };
-  return readback;
+  const highWarning = senderParameterWarning(readbacks.high);
+  const lowWarning = senderParameterWarning(readbacks.low);
+  return {
+    readback: readbacks.high,
+    warning: mergeQualityWarnings(
+      highWarning,
+      lowWarning ? `低档表示：${lowWarning}` : null,
+    ),
+  };
 }
 
-function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
+function mergeQualityWarnings(...warnings: Array<string | null>): string | null {
+  const present = warnings.filter(
+    (warning): warning is string => warning !== null,
+  );
+  return present.length > 0 ? present.join("；") : null;
+}
+
+function videoPublishOptions(
+  sdk: LiveKit,
+  profile: QualityProfile,
+): TrackPublishOptions {
+  const highResolution = QUALITY_RESOLUTIONS[profile.resolution];
   return {
-    simulcast: false,
+    backupCodec: false,
+    simulcast: true,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,
       maxFramerate: profile.maxFramerate,
     },
+    screenShareSimulcastLayers: [
+      new sdk.VideoPreset(
+        Math.floor(highResolution.width / SCREEN_SHARE_LOW_SCALE),
+        Math.floor(highResolution.height / SCREEN_SHARE_LOW_SCALE),
+        screenShareLowBitrate(profile),
+        profile.maxFramerate,
+      ),
+    ],
     degradationPreference: profile.degradationPreference,
   };
 }

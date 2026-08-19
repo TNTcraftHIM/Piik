@@ -95,7 +95,7 @@ export class SfuSubscriber {
       const host = room.remoteParticipants.get(HOST_IDENTITY);
       if (host) {
         for (const publication of host.trackPublications.values()) {
-          this.subscribeIfAllowed(publication, host, this.sdk.Track);
+          this.subscribeIfAllowed(publication, host, this.sdk);
         }
       }
       return true;
@@ -155,7 +155,7 @@ export class SfuSubscriber {
           return;
         }
         try {
-          this.subscribeIfAllowed(publication, participant, sdk.Track);
+          this.subscribeIfAllowed(publication, participant, sdk);
         } catch {
           void this.failClosed(room, generation);
         }
@@ -228,16 +228,21 @@ export class SfuSubscriber {
   private subscribeIfAllowed(
     publication: RemoteTrackPublication,
     participant: RemoteParticipant,
-    trackType: typeof Track,
+    sdk: LiveKit,
   ): void {
     if (
       participant.identity !== HOST_IDENTITY ||
-      !isScreenSource(publication.source, trackType)
+      !isScreenSource(publication.source, sdk.Track)
     ) {
       return;
     }
     this.desiredTrackSids.add(publication.trackSid);
     publication.setSubscribed(true);
+    if (publication.source === sdk.Track.Source.ScreenShare) {
+      // HIGH is a ceiling. LiveKit's per-subscriber BWE may still forward LOW
+      // while this path is constrained and return to HIGH after recovery.
+      publication.setVideoQuality(sdk.VideoQuality.HIGH);
+    }
   }
 
   private rollbackSubscriptions(room: Room): void {

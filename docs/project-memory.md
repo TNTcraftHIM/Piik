@@ -48,8 +48,8 @@ Last updated: 2026-08-19
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
 - Native drafts #16/#18/#22/#23/#25/#28 remain experiments: one WebCodecs object is not hardware proof; stock GCC+RTX is no-go, and no-RTX remains outside product code.
 - Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
-- ADR-0007's dual publication/topology classifier is absent. Next measure LiveKit `HIGH+LOW` BWE on SFU leaves, then root suspect/evacuation; app evidence never duplicates normal layer selection. Current publishing is non-simulcast/Dynacast-off.
-- Local Host A+B aligns one capture/outbound/transport generation; authenticated Viewer C adds a sanitized, read-only P2P window and fails closed for stale, ambiguous, or SFU-fed evidence. It retains no raw fmtp/SDP/stats and performs no media action. Dual publication and topology classification remain absent.
+- The default-off exact-room SFU candidate now publishes exactly `HIGH+LOW` with Dynacast off and a per-subscriber `HIGH` ceiling. It is unverified and not enabled by default; next measure built-in BWE on zero-descendant leaves, then root suspect/evacuation. The topology classifier and explicit fallback remain absent, and root-with-children behavior is a default-on gate.
+- Local Host A+B aligns one capture/outbound/transport generation; authenticated Viewer C adds a sanitized, read-only P2P window and fails closed for stale, ambiguous, or SFU-fed evidence. It retains no raw fmtp/SDP/stats and performs no media action. Topology classification remains absent.
 
 ## Provisional Quality Targets
 

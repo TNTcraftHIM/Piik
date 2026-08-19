@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyCaptureProfile,
   captureDisplay,
+  configureTwoLayerVideoSender,
   configureVideoSender,
   QUALITY_PROFILES,
+  screenShareLowBitrate,
   senderParameterWarning,
   setVideoPaused,
 } from "../src/client/media/quality.ts";
@@ -211,6 +213,93 @@ describe("realtime quality controls", () => {
 
     expect(readback.applied.scalabilityMode).toBeNull();
     expect(readback.mismatches).not.toContain("scalabilityMode");
+  });
+
+  it("configures ordered LOW and HIGH simulcast encodings without flattening LOW", async () => {
+    let applied = {
+      encodings: [{ rid: "q" }, { rid: "f" }],
+    } as RTCRtpSendParameters;
+    const sender = {
+      track: {
+        getSettings: () => ({ width: 2560, height: 1440 }),
+      },
+      getParameters: () => applied,
+      setParameters: vi.fn(async (parameters: RTCRtpSendParameters) => {
+        applied = parameters;
+      }),
+    } as unknown as RTCRtpSender;
+
+    const readbacks = await configureTwoLayerVideoSender(
+      sender,
+      QUALITY_PROFILES["1080p60"],
+    );
+
+    expect(applied).toMatchObject({
+      degradationPreference: "maintain-resolution",
+      encodings: [
+        {
+          rid: "q",
+          maxBitrate: 2_000_000,
+          maxFramerate: 60,
+          scaleResolutionDownBy: 8 / 3,
+        },
+        {
+          rid: "f",
+          maxBitrate: 8_000_000,
+          maxFramerate: 60,
+          scaleResolutionDownBy: 4 / 3,
+        },
+      ],
+    });
+    expect(readbacks.low.requested.maxBitrate).toBe(2_000_000);
+    expect(readbacks.high.requested.maxBitrate).toBe(8_000_000);
+    expect(readbacks.low.mismatches).toEqual([]);
+    expect(readbacks.high.mismatches).toEqual([]);
+  });
+
+  it("keeps the standard LOW bitrate floor for small custom HIGH ceilings", () => {
+    expect(
+      screenShareLowBitrate({
+        resolution: "720p",
+        maxFramerate: 30,
+        maxBitrate: 400_000,
+        degradationPreference: "balanced",
+      }),
+    ).toBe(150_000);
+  });
+
+  it.each([
+    {
+      label: "drops HIGH",
+      after: { encodings: [{ rid: "q" }] },
+      message: "exactly two video encodings",
+    },
+    {
+      label: "reorders the RIDs",
+      after: { encodings: [{ rid: "f" }, { rid: "q" }] },
+      message: "ordered q and f video encodings",
+    },
+    {
+      label: "adds a third RID",
+      after: { encodings: [{ rid: "q" }, { rid: "h" }, { rid: "f" }] },
+      message: "exactly two video encodings",
+    },
+  ])("fails closed when sender readback $label", async ({ after, message }) => {
+    const before = {
+      encodings: [{ rid: "q" }, { rid: "f" }],
+    } as RTCRtpSendParameters;
+    const sender = {
+      track: { getSettings: () => ({ width: 1920, height: 1080 }) },
+      getParameters: vi
+        .fn<() => RTCRtpSendParameters>()
+        .mockReturnValueOnce(before)
+        .mockReturnValue(after as RTCRtpSendParameters),
+      setParameters: vi.fn(async () => undefined),
+    } as unknown as RTCRtpSender;
+
+    await expect(
+      configureTwoLayerVideoSender(sender, QUALITY_PROFILES["1080p60"]),
+    ).rejects.toThrow(message);
   });
 
   it("pauses only the video track and can resume it", () => {
