@@ -12,6 +12,7 @@
 - [Native pre-encoded browser fanout](./research/native-shared-encode-sender.md): bounded offline and continuous Chrome-WebCodecs-to-Pion fanout evidence, queue/security limits, and product hard stops.
 - [Native shared-encode feedback control](./research/native-shared-feedback-control.md): deterministic PLI/FIR and two-leg target policies, independent bounded NACK/RTX evidence, and the stock Pion GCC+RTX no-go.
 - [Native primary-SSRC retransmission](./research/native-primary-ssrc-retransmission.md): bounded no-RTX NACK replay through stock GCC, one asymmetric Chrome loss-recovery measurement, and its statistics/compatibility hard stops.
+- [Native live shared-encoder feedback loop](./research/native-live-feedback-loop.md): bounded two-leg stock-GCC target delivery to one WebCodecs encoder, deterministic post-target loss, and the isolated 720p Chrome gate.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): accepted P2P-first media topology and its consequences.
 - [ADR-0002](./adr/0002-persistent-protected-rooms.md): optional SQLite persistence, protected sequential room IDs, and room lifecycle.

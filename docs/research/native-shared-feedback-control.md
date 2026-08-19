@@ -119,8 +119,10 @@ and passed one bounded primary-SSRC retransmission gate; it does not repair or
 supersede this negotiated-RTX no-go. See
 [`native-primary-ssrc-retransmission.md`](./native-primary-ssrc-retransmission.md).
 
-Even after that, live PLI/FIR-to-WebCodecs control, live two-leg target changes,
-pacing, asymmetric sustained loss, TURN coexistence, reconnect isolation,
+The separate [live feedback-loop gate](./native-live-feedback-loop.md) later
+applied one min-of-two stock target to the same WebCodecs encoder and recovered
+one post-target primary-SSRC loss. Live PLI/FIR-to-WebCodecs control, continuous
+adaptation, pacing, sustained loss, TURN coexistence, reconnect isolation,
 audio, and load remain hard gates before product use.
 
 ## Sources And License

@@ -137,6 +137,37 @@ The candidate remains disconnected from the product. Full measurements and
 protocol sources are in
 [`docs/research/native-primary-ssrc-retransmission.md`](../../docs/research/native-primary-ssrc-retransmission.md).
 
+## Live Shared-Encoder Feedback Loop
+
+The next strictly bounded gate combines the retained pieces without changing
+their transport boundaries. Each independent no-RTX sender leg keeps stock
+`SendSideBWE`, `gcc.NewNoOpPacer`, TWCC, and its own 512-packet NACK cache.
+After both legs return real Transport-CC, Go selects the clamped minimum of the
+two stock estimates and exposes only that target over authenticated loopback
+control.
+
+One Chrome host produces 390 synthetic 1280x720@30 VP8 frames with one
+`VideoEncoder`. A target update pauses the single frame producer, flushes prior
+outputs, calls `configure()` on that same encoder, and forces the next input to
+be a key frame. The first post-config key output acknowledges the target. Only
+then is leg 1 armed to discard the 30th subsequent primary RTP attempt; leg 2
+must remain free of NACK/replay. Target delivery permits one update in flight,
+coalesces to the latest target, waits at least two seconds between applications,
+and stops after six publications.
+
+```sh
+go run ./cmd/live-feedback-loop
+```
+
+Set `SCREENER_RUN_LIVE_FEEDBACK_LOOP=1` to opt into the same browser gate from
+Go tests. The one Chrome 151 run passed with one encoder, 390 inputs/outputs
+over 12.972 seconds, one 600 kbps target application, 158/159 feedback-window
+Transport-CC packets, one leg-1 NACK/replay, a clean leg 2, and 359 decoded
+frames per viewer after the shared recovery marker. It was not rerun. This is
+not product wiring or a general congestion controller. See
+[`docs/research/native-live-feedback-loop.md`](../../docs/research/native-live-feedback-loop.md)
+for the exact acceptance contract, official API sources, and stop line.
+
 ## RTP Oracle Scope Boundaries
 
 This layered spike covers the Pion API, standard Chrome decode/render, and a
@@ -157,7 +188,8 @@ encoding. The deterministic follow-up retains candidate PLI/FIR and bitrate
 merge policies and proves independent bounded NACK/RTX in isolation, but the
 stock Pion GCC+RTX composition is a no-go. The no-RTX follow-up proves only one
 same-SSRC retransmission under one controlled Chrome loss. General loss,
-live feedback, audio, and TURN/reconnect behavior remain hard stops.
+continuous feedback under varied loss, PLI/FIR wiring, audio, and TURN/reconnect
+behavior remain hard stops.
 
 ## Decision Gate
 
@@ -170,6 +202,9 @@ live feedback, audio, and TURN/reconnect behavior remain hard stops.
   passed one deterministic and one controlled Chrome loss run. It is a retained
   candidate with explicit statistics and compatibility costs, not a product
   integration decision or a general congestion-control result.
+- **Bounded live target gate passed:** the one authorized 720p30 Chrome run
+  applied the min-of-two stock target to one encoder and recovered one isolated
+  post-target loss. Product use and general adaptation remain blocked.
 - **No-go:** the behavior requires internal APIs, a Pion fork, duplicate
   application writes, or payload re-encoding. Stop the native relay path.
 

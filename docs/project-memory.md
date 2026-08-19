@@ -43,6 +43,7 @@ Last updated: 2026-08-19
 - Automated checks pass 108 Vitest tests and both production builds. Release `5b2fb005f6f7` passed loopback and public HTTPS/access-gate deployment checks with zero automatic service restarts; nginx, coturn, and the existing blog remained healthy. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remain from the earlier baseline. A real live quality/pause cycle, persistent-room stop/reuse browser cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
 - No infrastructure blocker remains for the current deployment. The live-control browser cycle and real-device media matrix are bounded in `docs/status.md`; neither justifies a native sender yet.
 - The native live bridge passed one encoder, bounded queues, and two independent browser paths. Negotiated RTX reproduced stock GCC's `unknown ssrc: 2001`. A separate no-RTX single-loss oracle observed one exact NACK, primary-SSRC replay, fresh TWCC, sustained decode/presentation, and a clean second leg; this remains bounded evidence only.
+- The bounded 720p30 native loop applied the lower of two stock GCC estimates (600 kbps) to one WebCodecs encoder, recovered one leg-1 loss, kept leg 2 clean with bounded queues, and stays outside product code.
 
 ## Provisional Quality Targets
 
@@ -72,6 +73,7 @@ Last updated: 2026-08-19
 - Native pre-encoded browser fanout: `docs/research/native-shared-encode-sender.md`
 - Native shared-encode feedback control: `docs/research/native-shared-feedback-control.md`
 - Native primary-SSRC retransmission: `docs/research/native-primary-ssrc-retransmission.md`
+- Native live shared-encoder feedback loop: `docs/research/native-live-feedback-loop.md`
 - Topology decision: `docs/adr/0001-p2p-first-media-topology.md`
 - Persistent protected-room decision: `docs/adr/0002-persistent-protected-rooms.md`
 - Current phase and next step: `docs/status.md`

@@ -4,7 +4,7 @@
 - Scope: one Chrome WebCodecs producer, one loopback native Pion helper, and two
   independent unmodified Chromium receivers
 - Status: bounded offline and 12-second live interoperability gates passed;
-  product integration remains stopped on BWE, feedback, loss, TURN, and lifecycle
+  product integration remains stopped on broad feedback/loss, TURN, and lifecycle
 
 ## Decision Question
 
@@ -176,7 +176,10 @@ The follow-up [shared feedback-control oracle](./native-shared-feedback-control.
 retains deterministic PLI/FIR merge and minimum-of-two bitrate policies and
 proves two isolated 512-packet NACK/RTX responders. It stops the combined route
 as a no-go because Interceptor v0.1.47 stock GCC pacers do not register the
-negotiated RTX SSRC. No two-browser loss gate or product integration followed.
+negotiated RTX SSRC. Separate bounded primary-replay and live-target gates later
+passed one Chrome run each; neither changed the negotiated-RTX no-go or allowed
+product integration. See
+[`native-live-feedback-loop.md`](./native-live-feedback-loop.md).
 
 ## Primary Sources And License Boundary
 

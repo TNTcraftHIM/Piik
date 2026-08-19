@@ -41,6 +41,7 @@ type liveBridgeRun struct {
 	stateMu        sync.RWMutex
 	streamComplete bool
 	streamFailure  string
+	feedback       *liveFeedbackController
 }
 
 type liveBridgeSubmission struct {
@@ -55,6 +56,7 @@ type liveBridgeConfigRecord struct {
 	Height                   int    `json:"height"`
 	FPS                      int    `json:"fps"`
 	EncoderInstances         int    `json:"encoderInstances"`
+	InitialBitrate           int    `json:"initialBitrate"`
 	HardwareAccelerationHint string `json:"hardwareAccelerationHint"`
 	SocketBufferedBytesLimit int    `json:"socketBufferedBytesLimit"`
 	EncoderQueueLimit        int    `json:"encoderQueueLimit"`
@@ -75,9 +77,10 @@ type liveBridgeKeyFrameRequest struct {
 }
 
 type liveBridgeState struct {
-	Complete                bool   `json:"complete"`
-	RetransmissionRecovered bool   `json:"retransmissionRecovered"`
-	Error                   string `json:"error,omitempty"`
+	Complete                      bool   `json:"complete"`
+	RetransmissionRecovered       bool   `json:"retransmissionRecovered"`
+	SharedRetransmissionRecovered bool   `json:"sharedRetransmissionRecovered"`
+	Error                         string `json:"error,omitempty"`
 }
 
 func newLiveBridgeRun(ctx context.Context) (*liveBridgeRun, error) {
@@ -86,6 +89,14 @@ func newLiveBridgeRun(ctx context.Context) (*liveBridgeRun, error) {
 
 type liveBridgeRunOptions struct {
 	primaryRetransmission bool
+	feedbackLoop          bool
+}
+
+func (options liveBridgeRunOptions) profile() liveBridgeProfile {
+	if options.feedbackLoop {
+		return liveFeedbackBridgeProfile()
+	}
+	return defaultLiveBridgeProfile()
 }
 
 func newLiveBridgeRunWithOptions(ctx context.Context, options liveBridgeRunOptions) (*liveBridgeRun, error) {
@@ -108,6 +119,13 @@ func newLiveBridgeRunWithOptions(ctx context.Context, options liveBridgeRunOptio
 		hostError:    make(chan error, 1),
 		browserError: make(chan error, 2),
 	}
+	if options.feedbackLoop {
+		run.feedback, err = newLiveFeedbackController(time.Now, liveFeedbackTargetMinInterval, liveFeedbackMaxTargetUpdates)
+		if err != nil {
+			_ = listener.Close()
+			return nil, err
+		}
+	}
 	for index := 0; index < 2; index++ {
 		run.ready[index] = make(chan struct{})
 		run.metrics[index] = make(chan BrowserMetrics, 1)
@@ -117,6 +135,7 @@ func newLiveBridgeRunWithOptions(ctx context.Context, options liveBridgeRunOptio
 	mux.HandleFunc("/host", run.handleHostPage)
 	mux.HandleFunc("/viewer", run.handleViewerPage)
 	mux.HandleFunc("/api/live", run.handleLiveSocket)
+	mux.HandleFunc("/api/encoder-target", run.handleEncoderTarget)
 	mux.HandleFunc("/api/host-error", run.handleHostError)
 	mux.HandleFunc("/api/offer", run.handleOffer)
 	mux.HandleFunc("/api/answer", run.handleAnswer)
@@ -142,6 +161,10 @@ func (run *liveBridgeRun) hostURL() string {
 	return run.baseURL() + "/host?token=" + run.token
 }
 
+func (run *liveBridgeRun) profile() liveBridgeProfile {
+	return run.options.profile()
+}
+
 func (run *liveBridgeRun) viewerURL(index int) string {
 	return fmt.Sprintf("%s/viewer?token=%s&id=%d", run.baseURL(), run.token, index+1)
 }
@@ -150,7 +173,7 @@ func (run *liveBridgeRun) handleHostPage(response http.ResponseWriter, request *
 	if !run.authorizePage(response, request) {
 		return
 	}
-	writeLivePage(response, liveBridgeHostPage(run.token))
+	writeLivePage(response, liveBridgeHostPage(run.token, run.profile()))
 }
 
 func (run *liveBridgeRun) handleViewerPage(response http.ResponseWriter, request *http.Request) {
@@ -162,7 +185,7 @@ func (run *liveBridgeRun) handleViewerPage(response http.ResponseWriter, request
 		http.Error(response, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeLivePage(response, liveBridgeViewerPage(run.token, index))
+	writeLivePage(response, liveBridgeViewerPage(run.token, index, run.profile()))
 }
 
 func writeLivePage(response http.ResponseWriter, page string) {
@@ -245,7 +268,7 @@ func (run *liveBridgeRun) readLiveSocket(connection *websocket.Conn) (liveBridge
 				if err = decodeStrictLiveJSON(payload, &received); err != nil {
 					return liveBridgeSubmission{}, err
 				}
-				if err = validateLiveConfig(received); err != nil {
+				if err = validateLiveConfigForProfile(received, run.profile()); err != nil {
 					return liveBridgeSubmission{}, err
 				}
 				config = &received
@@ -255,6 +278,25 @@ func (run *liveBridgeRun) readLiveSocket(connection *websocket.Conn) (liveBridge
 				ipc.FPS = received.FPS
 				ipc.HardwareAccelerationHint = received.HardwareAccelerationHint
 				started = time.Now()
+			case "target-applied":
+				if config == nil || run.feedback == nil {
+					return liveBridgeSubmission{}, errors.New("unexpected live encoder target acknowledgment")
+				}
+				var applied liveEncoderTargetApplied
+				if err = decodeStrictLiveJSON(payload, &applied); err != nil {
+					return liveBridgeSubmission{}, err
+				}
+				first, acknowledgeErr := run.feedback.Acknowledge(applied)
+				if acknowledgeErr != nil {
+					return liveBridgeSubmission{}, acknowledgeErr
+				}
+				if first {
+					leg := run.leg(0)
+					if leg == nil || leg.loss == nil {
+						return liveBridgeSubmission{}, errors.New("lossy leg is unavailable when the first target is applied")
+					}
+					leg.loss.arm()
+				}
 			case "complete":
 				if config == nil || ipc.ChunksReceived == 0 {
 					return liveBridgeSubmission{}, errors.New("live IPC completed before config and chunks")
@@ -263,8 +305,13 @@ func (run *liveBridgeRun) readLiveSocket(connection *websocket.Conn) (liveBridge
 				if err = decodeStrictLiveJSON(payload, &complete); err != nil {
 					return liveBridgeSubmission{}, err
 				}
+				if run.feedback != nil {
+					if err = run.feedback.Finish(); err != nil {
+						return liveBridgeSubmission{}, err
+					}
+				}
 				ipc.StreamWallDurationMillis = time.Since(started).Milliseconds()
-				if err = validateLiveCompletion(*config, complete.Host, ipc); err != nil {
+				if err = validateLiveCompletion(*config, complete.Host, ipc, run.profile()); err != nil {
 					return liveBridgeSubmission{}, err
 				}
 				return liveBridgeSubmission{Host: complete.Host, IPC: ipc}, nil
@@ -355,14 +402,21 @@ func decodeLiveChunk(payload []byte) (encodedFrame, error) {
 }
 
 func validateLiveConfig(config liveBridgeConfigRecord) error {
+	return validateLiveConfigForProfile(config, defaultLiveBridgeProfile())
+}
+
+func validateLiveConfigForProfile(config liveBridgeConfigRecord, profile liveBridgeProfile) error {
 	if config.Kind != "config" || config.Codec != "vp8" {
 		return errors.New("live IPC requires a VP8 config record")
 	}
-	if config.Width != liveBridgeWidth || config.Height != liveBridgeHeight || config.FPS != liveBridgeFPS {
+	if config.Width != profile.Width || config.Height != profile.Height || config.FPS != profile.FPS {
 		return fmt.Errorf("live IPC format = %dx%d@%d", config.Width, config.Height, config.FPS)
 	}
 	if config.EncoderInstances != 1 {
 		return fmt.Errorf("live IPC encoder instances = %d, want 1", config.EncoderInstances)
+	}
+	if config.InitialBitrate != profile.InitialBitrate {
+		return fmt.Errorf("live IPC initial bitrate = %d, want %d", config.InitialBitrate, profile.InitialBitrate)
 	}
 	if config.HardwareAccelerationHint != liveBridgeHardwareAccelerationHint {
 		return fmt.Errorf("unexpected hardware acceleration hint %q", config.HardwareAccelerationHint)
@@ -373,9 +427,24 @@ func validateLiveConfig(config liveBridgeConfigRecord) error {
 	return nil
 }
 
-func validateLiveCompletion(config liveBridgeConfigRecord, host LiveBridgeHostMetrics, ipc LiveBridgeIPCMetrics) error {
+func validateLiveCompletion(
+	config liveBridgeConfigRecord, host LiveBridgeHostMetrics, ipc LiveBridgeIPCMetrics, profile liveBridgeProfile,
+) error {
 	if host.EncoderInstances != config.EncoderInstances || host.HardwareAccelerationHint != config.HardwareAccelerationHint {
 		return errors.New("live completion does not match the initial encoder config")
+	}
+	if host.InitialBitrate != config.InitialBitrate {
+		return errors.New("live completion initial bitrate differs from the config record")
+	}
+	if host.EncoderConfigureCalls != host.TargetApplications+1 ||
+		len(host.AppliedTargetBitrates) != host.TargetApplications ||
+		len(host.AppliedTargetGenerations) != host.TargetApplications {
+		return errors.New("live completion does not account for encoder reconfiguration")
+	}
+	for index, generation := range host.AppliedTargetGenerations {
+		if generation != uint64(index+1) {
+			return errors.New("live completion target generations are not contiguous")
+		}
 	}
 	if host.SocketBufferedBytesLimit != config.SocketBufferedBytesLimit || host.EncoderQueueLimit != config.EncoderQueueLimit {
 		return errors.New("live completion does not match the initial queue config")
@@ -386,7 +455,7 @@ func validateLiveCompletion(config liveBridgeConfigRecord, host LiveBridgeHostMe
 	if host.EncoderOutputs != host.SentChunks+host.SocketDroppedChunks {
 		return errors.New("live completion does not account for every encoder output")
 	}
-	if host.EncoderInputCalls+host.EncoderInputDrops != liveBridgeFrameCount {
+	if host.EncoderInputCalls+host.EncoderInputDrops != profile.FrameCount {
 		return errors.New("live completion does not account for every scheduled input frame")
 	}
 	if host.MaxEncoderQueueSize > host.EncoderQueueLimit {
@@ -395,7 +464,7 @@ func validateLiveCompletion(config liveBridgeConfigRecord, host LiveBridgeHostMe
 	if host.MaxSocketBufferedBytes > host.SocketBufferedBytesLimit {
 		return errors.New("host WebSocket buffer exceeded its configured limit")
 	}
-	if host.ElapsedMillis < liveBridgeMinDuration.Milliseconds() || host.ElapsedMillis > liveBridgeMaxDuration.Milliseconds() {
+	if host.ElapsedMillis < profile.MinDuration.Milliseconds() || host.ElapsedMillis > liveBridgeMaxDuration.Milliseconds() {
 		return errors.New("host live stream duration is outside the bounded window")
 	}
 	return nil
@@ -413,6 +482,23 @@ func decodeStrictLiveJSON(payload []byte, target any) error {
 		return fmt.Errorf("decode trailing live IPC JSON: %w", err)
 	}
 	return errors.New("multiple live IPC JSON values are not allowed")
+}
+
+func (run *liveBridgeRun) handleEncoderTarget(response http.ResponseWriter, request *http.Request) {
+	if !run.authorizeAPI(response, request, http.MethodPost) {
+		return
+	}
+	if run.feedback == nil {
+		http.Error(response, "live feedback loop is disabled", http.StatusNotFound)
+		return
+	}
+	if request.URL.Query().Get("freeze") == "1" {
+		if err := run.feedback.Freeze(); err != nil {
+			http.Error(response, err.Error(), http.StatusConflict)
+			return
+		}
+	}
+	writeOracleJSON(response, run.feedback.Target())
 }
 
 func (run *liveBridgeRun) handleHostError(response http.ResponseWriter, request *http.Request) {
@@ -512,6 +598,11 @@ func (run *liveBridgeRun) handleState(response http.ResponseWriter, request *htt
 			}
 		}
 	}
+	if run.options.feedbackLoop {
+		if leg := run.leg(0); leg != nil && leg.loss != nil {
+			state.SharedRetransmissionRecovered = leg.loss.isRecovered()
+		}
+	}
 	writeOracleJSON(response, state)
 }
 
@@ -580,15 +671,36 @@ func (run *liveBridgeRun) createLeg(index int) (*browserPeerLeg, error) {
 		return nil, errors.New("offer already created")
 	}
 	peerOptions := browserPeerLegOptions{}
-	if run.options.primaryRetransmission {
+	if run.options.primaryRetransmission || run.options.feedbackLoop {
 		peerOptions.primaryRetransmission = true
 		if index == 0 {
-			peerOptions.dropAttempt = primaryRetransmissionDropAttempt
+			if run.options.feedbackLoop {
+				peerOptions.dropAttempt = liveFeedbackDropAfterArm
+				peerOptions.waitForDropArm = true
+			} else {
+				peerOptions.dropAttempt = primaryRetransmissionDropAttempt
+			}
 		}
 	}
 	leg, err := newBrowserPeerLegWithOptions(index, peerOptions)
 	if err != nil {
 		return nil, err
+	}
+	if run.options.feedbackLoop {
+		if leg.estimator == nil {
+			leg.close()
+			return nil, errors.New("live feedback leg has no stock GCC estimator")
+		}
+		leg.rtcp.setOnTransportCC(func() {
+			if observeErr := run.feedback.ObserveTransportCC(index, leg.estimator.GetTargetBitrate()); observeErr != nil {
+				run.failStream(observeErr)
+			}
+		})
+		leg.estimator.OnTargetBitrateChange(func(bitrate int) {
+			if observeErr := run.feedback.ObserveTargetCallback(index, bitrate); observeErr != nil {
+				run.failStream(observeErr)
+			}
+		})
 	}
 	run.legs[index] = leg
 	return leg, nil
@@ -721,6 +833,10 @@ func (run *liveBridgeRun) result(submission liveBridgeSubmission, fanout liveFan
 		result.Downstream[0].RTP.PayloadBytes == result.Downstream[1].RTP.PayloadBytes
 	if run.options.primaryRetransmission {
 		result.PrimaryRetransmission = run.primaryRetransmissionMetrics()
+	}
+	if run.feedback != nil {
+		metrics := run.feedback.Snapshot()
+		result.FeedbackLoop = &metrics
 	}
 	return result
 }

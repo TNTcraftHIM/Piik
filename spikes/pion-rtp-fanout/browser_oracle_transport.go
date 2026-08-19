@@ -41,6 +41,7 @@ func newBrowserPeerLeg(id int) (*browserPeerLeg, error) {
 type browserPeerLegOptions struct {
 	primaryRetransmission bool
 	dropAttempt           int
+	waitForDropArm        bool
 }
 
 func newBrowserPeerLegWithOptions(id int, options browserPeerLegOptions) (*browserPeerLeg, error) {
@@ -61,6 +62,9 @@ func newBrowserPeerLegWithOptions(id int, options browserPeerLegOptions) (*brows
 		}
 
 		lossBoundary = newPrimaryLossBoundary(options.dropAttempt, rtpMetrics)
+		if options.waitForDropArm {
+			lossBoundary.disarm()
+		}
 		registry.Add(&primaryLossBoundaryFactory{boundary: lossBoundary})
 		congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 			return gcc.NewSendSideBWE(
@@ -263,14 +267,22 @@ func (observer *rtpRecorderInterceptor) BindLocalStream(_ *interceptor.StreamInf
 }
 
 type rtcpRecorder struct {
-	mu      sync.RWMutex
-	metrics RTCPMetrics
-	onNACK  func(uint16)
+	mu            sync.RWMutex
+	metrics       RTCPMetrics
+	onNACK        func(uint16)
+	onTransportCC func()
+}
+
+func (recorder *rtcpRecorder) setOnTransportCC(callback func()) {
+	recorder.mu.Lock()
+	recorder.onTransportCC = callback
+	recorder.mu.Unlock()
 }
 
 func (recorder *rtcpRecorder) record(packets []rtcp.Packet) {
 	recorder.mu.Lock()
-	defer recorder.mu.Unlock()
+	var nacks []uint16
+	transportCC := 0
 	for _, packet := range packets {
 		recorder.metrics.Packets++
 		switch typed := packet.(type) {
@@ -283,12 +295,26 @@ func (recorder *rtcpRecorder) record(packets []rtcp.Packet) {
 			for _, pair := range typed.Nacks {
 				pair.Range(func(sequence uint16) bool {
 					recorder.metrics.NACKRequests++
-					if recorder.onNACK != nil {
-						recorder.onNACK(sequence)
-					}
+					nacks = append(nacks, sequence)
 					return true
 				})
 			}
+		case *rtcp.TransportLayerCC:
+			recorder.metrics.TransportCC++
+			transportCC++
+		}
+	}
+	onNACK := recorder.onNACK
+	onTransportCC := recorder.onTransportCC
+	recorder.mu.Unlock()
+	if onNACK != nil {
+		for _, sequence := range nacks {
+			onNACK(sequence)
+		}
+	}
+	if onTransportCC != nil {
+		for range transportCC {
+			onTransportCC()
 		}
 	}
 }

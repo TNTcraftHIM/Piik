@@ -151,6 +151,17 @@ func inspectControlSDP(raw string) (sdpControlCapabilities, error) {
 }
 
 func validatePrimaryRetransmissionResult(result LiveBridgeResult) error {
+	return validatePrimaryRetransmissionResultWithOptions(result, primaryValidationOptions{
+		expectedDropAttempt: primaryRetransmissionDropAttempt,
+	})
+}
+
+type primaryValidationOptions struct {
+	expectedDropAttempt      int
+	allowCleanRecoveryMarker bool
+}
+
+func validatePrimaryRetransmissionResultWithOptions(result LiveBridgeResult, options primaryValidationOptions) error {
 	gate := result.PrimaryRetransmission
 	if gate == nil {
 		return errors.New("primary retransmission metrics are missing")
@@ -182,7 +193,7 @@ func validatePrimaryRetransmissionResult(result LiveBridgeResult) error {
 	}
 
 	lossy := gate.Legs[0].Loss
-	if lossy.ConfiguredDropAttempt != primaryRetransmissionDropAttempt || lossy.DroppedPackets != 1 {
+	if lossy.ConfiguredDropAttempt != options.expectedDropAttempt || lossy.DroppedPackets != 1 {
 		return fmt.Errorf("lossy leg did not drop exactly one configured packet: %+v", lossy)
 	}
 	if lossy.TargetNACKRequests < 1 || lossy.Retransmissions < 1 || lossy.Retransmissions > 8 {
@@ -205,7 +216,7 @@ func validatePrimaryRetransmissionResult(result LiveBridgeResult) error {
 	if clean.ConfiguredDropAttempt != 0 || clean.DroppedPackets != 0 || clean.Retransmissions != 0 || clean.TargetNACKRequests != 0 {
 		return fmt.Errorf("clean leg was polluted by the lossy leg: %+v", clean)
 	}
-	if result.Downstream[1].RTCP.NACK != 0 || result.Downstream[1].Browser.RecoveryObserved {
+	if result.Downstream[1].RTCP.NACK != 0 || (!options.allowCleanRecoveryMarker && result.Downstream[1].Browser.RecoveryObserved) {
 		return errors.New("clean leg produced loss recovery feedback")
 	}
 	return nil

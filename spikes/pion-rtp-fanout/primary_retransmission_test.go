@@ -127,6 +127,47 @@ func TestPrimaryLossBoundaryMarksOnlySuccessfulReplay(t *testing.T) {
 	}
 }
 
+func TestPrimaryLossBoundaryCountsDeterministicDropAfterArm(t *testing.T) {
+	recorder := &rtpRecorder{}
+	boundary := newPrimaryLossBoundary(2, recorder)
+	boundary.disarm()
+	interceptorInstance, err := (&primaryLossBoundaryFactory{boundary: boundary}).NewInterceptor("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := newTraceRTPWriter()
+	info := interceptor.StreamInfo{SSRC: 7003, PayloadType: 96}
+	writer := interceptorInstance.BindLocalStream(&info, output)
+	write := func(sequence uint16) {
+		t.Helper()
+		header := &rtp.Header{
+			Version:        2,
+			PayloadType:    96,
+			SequenceNumber: sequence,
+			Timestamp:      uint32(sequence) * 3000,
+			SSRC:           info.SSRC,
+		}
+		if _, writeErr := writer.Write(header, []byte{1}, nil); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+
+	write(100)
+	write(101)
+	if metrics := boundary.snapshot(); metrics.DroppedPackets != 0 {
+		t.Fatalf("loss boundary dropped before arm: %+v", metrics)
+	}
+	boundary.arm()
+	write(102)
+	write(103)
+	write(104)
+	metrics := boundary.snapshot()
+	if !metrics.DropArmed || metrics.PrimaryAttemptsAtArm != 2 || metrics.PrimaryAttemptsAfterArm != 3 ||
+		metrics.DroppedPackets != 1 || metrics.DroppedSequence != 103 {
+		t.Fatalf("armed loss boundary = %+v", metrics)
+	}
+}
+
 func TestPrimaryRetransmissionPeerOffersNACKWithoutRTX(t *testing.T) {
 	leg, err := newBrowserPeerLegWithOptions(0, browserPeerLegOptions{
 		primaryRetransmission: true,

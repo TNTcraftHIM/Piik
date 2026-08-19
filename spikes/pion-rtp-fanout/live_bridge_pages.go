@@ -1,17 +1,30 @@
 package fanoutoracle
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 )
 
-func liveBridgeHostPage(token string) string {
-	return strings.ReplaceAll(liveBridgeHostHTML, "__TOKEN__", token)
+func liveBridgeHostPage(token string, profile liveBridgeProfile) string {
+	encodedProfile := encodeLiveBridgeProfile(profile)
+	page := strings.ReplaceAll(liveBridgeHostHTML, "__TOKEN__", token)
+	return strings.ReplaceAll(page, "__PROFILE__", encodedProfile)
 }
 
-func liveBridgeViewerPage(token string, index int) string {
+func liveBridgeViewerPage(token string, index int, profile liveBridgeProfile) string {
+	encodedProfile := encodeLiveBridgeProfile(profile)
 	page := strings.ReplaceAll(liveBridgeViewerHTML, "__TOKEN__", token)
-	return strings.ReplaceAll(page, "__VIEWER_ID__", strconv.Itoa(index+1))
+	page = strings.ReplaceAll(page, "__VIEWER_ID__", strconv.Itoa(index+1))
+	return strings.ReplaceAll(page, "__PROFILE__", encodedProfile)
+}
+
+func encodeLiveBridgeProfile(profile liveBridgeProfile) string {
+	encoded, err := json.Marshal(profile)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
 }
 
 const liveBridgeHostHTML = `<!doctype html>
@@ -19,13 +32,17 @@ const liveBridgeHostHTML = `<!doctype html>
 <meta charset="utf-8">
 <title>Screener live WebCodecs bridge host</title>
 <body>
-<canvas id="source" width="320" height="180"></canvas>
+<canvas id="source"></canvas>
 <script>
 const token = "__TOKEN__";
-const width = 320;
-const height = 180;
-const fps = 30;
-const frameCount = 360;
+const profile = __PROFILE__;
+const width = profile.width;
+const height = profile.height;
+const fps = profile.fps;
+const frameCount = profile.frameCount;
+const initialBitrate = profile.initialBitrate;
+const feedbackLoop = profile.feedbackLoop;
+const feedbackFreezeFrame = Math.min(frameCount - 60, fps * 10);
 const durationMicros = Math.round(1_000_000 / fps);
 const socketBufferedBytesLimit = 512 * 1024;
 const encoderQueueLimit = 4;
@@ -42,6 +59,17 @@ async function postError(error) {
       body: JSON.stringify({error: String(error && (error.stack || error))}),
     });
   } catch {}
+}
+
+async function getEncoderTarget(freeze) {
+  const freezeQuery = freeze ? "&freeze=1" : "";
+  const response = await fetch("/api/encoder-target?token=" + encodeURIComponent(token) + freezeQuery, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error("encoder target endpoint returned " + response.status + ": " + await response.text());
+  }
+  return response.json();
 }
 
 function packChunk(chunk) {
@@ -62,7 +90,7 @@ async function run() {
     codec: "vp8",
     width,
     height,
-    bitrate: 600_000,
+    bitrate: initialBitrate,
     framerate: fps,
     latencyMode: "realtime",
     hardwareAcceleration: "no-preference",
@@ -119,10 +147,21 @@ async function run() {
   let socketDroppedChunks = 0;
   let maxEncoderQueueSize = 0;
   let maxSocketBufferedBytes = 0;
+  let encoderConfigureCalls = 0;
+  let targetApplications = 0;
+  let activeTargetGeneration = 0;
+  let pendingTargetAcknowledgment;
+  let encoderInputsAfterTarget = 0;
+  let encoderOutputsAfterTarget = 0;
+  const appliedTargetBitrates = [];
+  const appliedTargetGenerations = [];
   const encoder = new VideoEncoder({
     output(chunk) {
       encoderOutputs++;
       encoderOutputBytes += chunk.byteLength;
+      if (activeTargetGeneration > 0) {
+        encoderOutputsAfterTarget++;
+      }
       if (chunk.type === "key") {
         keyFrames++;
       }
@@ -145,6 +184,18 @@ async function run() {
       sentChunks++;
       sentChunkBytes += chunk.byteLength;
       maxSocketBufferedBytes = Math.max(maxSocketBufferedBytes, socket.bufferedAmount);
+      if (pendingTargetAcknowledgment) {
+        socket.send(JSON.stringify({
+          kind: "target-applied",
+          generation: pendingTargetAcknowledgment.generation,
+          targetBitrate: pendingTargetAcknowledgment.targetBitrate,
+          encoderInstances,
+          encoderConfigureCalls,
+          firstOutputTimestampMicros: Number(chunk.timestamp),
+          firstOutputKeyFrame: chunk.type === "key",
+        }));
+        pendingTargetAcknowledgment = undefined;
+      }
     },
     error(error) {
       encoderFailure = error;
@@ -158,17 +209,49 @@ async function run() {
     height,
     fps,
     encoderInstances,
+    initialBitrate,
     hardwareAccelerationHint,
     socketBufferedBytesLimit,
     encoderQueueLimit,
   }));
   encoder.configure(support.config);
+  encoderConfigureCalls++;
 
   const canvas = document.querySelector("#source");
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext("2d", {alpha: false});
   const started = performance.now();
   for (let index = 0; index < frameCount; index++) {
     await delay(started + index * (1000 / fps) - performance.now());
+    if (feedbackLoop && (index % 8 === 0 || index === feedbackFreezeFrame)) {
+      const target = await getEncoderTarget(index === feedbackFreezeFrame);
+      if (target.generation > activeTargetGeneration) {
+        if (pendingTargetAcknowledgment) {
+          throw new Error("received a second target before the prior target produced output");
+        }
+        if (target.targetBitrate < 150_000 || target.targetBitrate > 600_000) {
+          throw new Error("received an out-of-bounds encoder target " + target.targetBitrate);
+        }
+        if (target.generation !== activeTargetGeneration + 1) {
+          throw new Error("received a non-contiguous encoder target generation");
+        }
+        const requestedTargetConfig = {...support.config, bitrate: target.targetBitrate};
+        const targetSupport = await VideoEncoder.isConfigSupported(requestedTargetConfig);
+        if (!targetSupport.supported || targetSupport.config.bitrate !== target.targetBitrate) {
+          throw new Error("the browser did not accept the bounded target config");
+        }
+        await encoder.flush();
+        encoder.configure(targetSupport.config);
+        encoderConfigureCalls++;
+        targetApplications++;
+        activeTargetGeneration = target.generation;
+        appliedTargetBitrates.push(target.targetBitrate);
+        appliedTargetGenerations.push(target.generation);
+        pendingTargetAcknowledgment = target;
+        forceKeyFrame = true;
+      }
+    }
     context.fillStyle = "hsl(" + ((index * 7) % 360) + " 85% 42%)";
     context.fillRect(0, 0, width, height);
     context.fillStyle = "#ffffff";
@@ -190,10 +273,16 @@ async function run() {
     forceKeyFrame = false;
     encoder.encode(frame, {keyFrame});
     encoderInputCalls++;
+    if (activeTargetGeneration > 0) {
+      encoderInputsAfterTarget++;
+    }
     maxEncoderQueueSize = Math.max(maxEncoderQueueSize, encoder.encodeQueueSize);
     frame.close();
   }
   await encoder.flush();
+  if (pendingTargetAcknowledgment) {
+    throw new Error("the final encoder target produced no output acknowledgment");
+  }
   encoder.close();
   if (encoderFailure) {
     throw encoderFailure;
@@ -218,6 +307,13 @@ async function run() {
       encoderQueueLimit,
       hardwareAccelerationHint,
       elapsedMillis: Math.round(performance.now() - started),
+      initialBitrate,
+      encoderConfigureCalls,
+      targetApplications,
+      appliedTargetBitrates,
+      appliedTargetGenerations,
+      encoderInputsAfterTarget,
+      encoderOutputsAfterTarget,
     },
   }));
 
@@ -241,12 +337,16 @@ const liveBridgeViewerHTML = `<!doctype html>
 <meta charset="utf-8">
 <title>Screener live bridge viewer</title>
 <body>
-<video id="remote" muted autoplay playsinline width="320" height="180"></video>
+<video id="remote" muted autoplay playsinline></video>
 <canvas id="sample" width="16" height="9" hidden></canvas>
 <script>
 const token = "__TOKEN__";
 const viewerID = __VIEWER_ID__;
+const profile = __PROFILE__;
+const feedbackLoop = profile.feedbackLoop;
 const video = document.querySelector("#remote");
+video.width = profile.width;
+video.height = profile.height;
 const sampleCanvas = document.querySelector("#sample");
 const sampleContext = sampleCanvas.getContext("2d", {alpha: false, willReadFrequently: true});
 const pc = new RTCPeerConnection();
@@ -386,7 +486,10 @@ async function run() {
     if (state.error) {
       throw new Error(state.error);
     }
-    if (state.retransmissionRecovered && !recoveryObserved) {
+    const recovered = feedbackLoop
+      ? state.sharedRetransmissionRecovered
+      : state.retransmissionRecovered;
+    if (recovered && !recoveryObserved) {
       const recoveryMetrics = await collectMetrics();
       recoveryObserved = true;
       framesDecodedAtRecovery = recoveryMetrics.framesDecoded;

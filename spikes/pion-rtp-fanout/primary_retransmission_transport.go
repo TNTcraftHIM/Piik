@@ -14,6 +14,9 @@ const primaryRetransmissionDropAttempt = 90
 // SRTP. It has one configured outstanding packet and owns no packet queue.
 type PrimaryLossMetrics struct {
 	ConfiguredDropAttempt       int    `json:"configuredDropAttempt"`
+	DropArmed                   bool   `json:"dropArmed"`
+	PrimaryAttemptsAtArm        int    `json:"primaryAttemptsAtArm"`
+	PrimaryAttemptsAfterArm     int    `json:"primaryAttemptsAfterArm"`
 	PrimaryAttempts             int    `json:"primaryAttempts"`
 	DeliveredPackets            uint64 `json:"deliveredPackets"`
 	DroppedPackets              int    `json:"droppedPackets"`
@@ -46,6 +49,7 @@ type primaryLossBoundary struct {
 	target        primaryPacketIdentity
 	targetSet     bool
 	recovered     bool
+	armed         bool
 	transportCCID uint8
 	metrics       PrimaryLossMetrics
 }
@@ -56,8 +60,28 @@ func newPrimaryLossBoundary(targetAttempt int, recorder *rtpRecorder) *primaryLo
 		targetAttempt: targetAttempt,
 		metrics: PrimaryLossMetrics{
 			ConfiguredDropAttempt: targetAttempt,
+			DropArmed:             true,
 		},
+		armed: true,
 	}
+}
+
+func (boundary *primaryLossBoundary) disarm() {
+	boundary.mu.Lock()
+	boundary.armed = false
+	boundary.metrics.DropArmed = false
+	boundary.mu.Unlock()
+}
+
+func (boundary *primaryLossBoundary) arm() {
+	boundary.mu.Lock()
+	defer boundary.mu.Unlock()
+	if boundary.armed {
+		return
+	}
+	boundary.armed = true
+	boundary.metrics.DropArmed = true
+	boundary.metrics.PrimaryAttemptsAtArm = boundary.metrics.PrimaryAttempts
 }
 
 func (boundary *primaryLossBoundary) snapshot() PrimaryLossMetrics {
@@ -143,10 +167,13 @@ func (observer *primaryLossBoundaryInterceptor) BindLocalStream(
 		}
 
 		boundary.metrics.PrimaryAttempts++
+		if boundary.armed {
+			boundary.metrics.PrimaryAttemptsAfterArm++
+		}
 		if boundary.recovered {
 			boundary.metrics.PacketsAfterRecovery++
 		}
-		if boundary.targetAttempt > 0 && boundary.metrics.PrimaryAttempts == boundary.targetAttempt {
+		if boundary.targetAttempt > 0 && boundary.armed && boundary.metrics.PrimaryAttemptsAfterArm == boundary.targetAttempt {
 			identity.payload = append([]byte(nil), payload...)
 			boundary.target = identity
 			boundary.targetSet = true

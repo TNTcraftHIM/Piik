@@ -54,6 +54,7 @@ other leg clean; it is neither a product decision nor a broad-loss claim.
 - Native Chrome 151 oracles passed offline and 12-second live VP8 fanout from one WebCodecs encoder to two independent Pion/browser paths. Each live viewer decoded/presented 331 frames; the capacity-eight queue peaked at one. Hardware encode is not proven.
 - The feedback oracle retained merged PLI/FIR, min-of-two bitrate, and independent 512-packet NACK/RTX candidates, but negotiated RTX remains no-go because stock `NewNoOpPacer` rejects its SSRC.
 - The separate no-RTX gate ran once: one lossy leg produced one NACK and one primary-SSRC replay with fresh TWCC, followed by 278 decoded frames/callbacks; the other leg stayed clean. Queue and outstanding-loss bounds held. Detailed measurements are in the native research notes.
+- A 12.972s 720p30 Chrome loop applied a 600 kbps min-of-two stock-GCC target to one encoder, kept queues bounded, recovered one post-target leg-1 loss, left leg 2 clean, and each viewer decoded 359 frames after recovery. It remains research only.
 
 ## Next Milestone
 
@@ -73,7 +74,8 @@ Execute and record the manual browser/network matrix:
 Keep native fanout out of the product controller. The negotiated RTX route
 still requires a released upstream fix. Before considering the no-RTX
 candidate further, decide whether its RTCP-statistics loss is acceptable, then
-separately prove live two-edge BWE and PLI/FIR control, broader bounded loss,
+retain the bounded live two-edge BWE result only as research, then separately
+prove PLI/FIR control, broader bounded loss,
 audio, mixed direct/TURN, browser diversity, and reconnect isolation without a
 custom congestion-control framework.
 
@@ -84,8 +86,9 @@ custom congestion-control framework.
 - Native product integration remains deliberately blocked. Stock Pion GCC+RTX
   still fails, while the no-RTX alternative has only one Chrome loopback
   single-loss result and sacrifices retransmission-specific/accurate RTCP
-  statistics. Live key-frame and bitrate policies, broader loss, audio, TURN,
-  browser diversity, and lifecycle remain unverified.
+  statistics. The live bitrate gate has only one Chrome loopback run; live
+  key-frame policy, broader loss, audio, TURN, browser diversity, and lifecycle
+  remain unverified.
 
 ## Blocking Decisions
 

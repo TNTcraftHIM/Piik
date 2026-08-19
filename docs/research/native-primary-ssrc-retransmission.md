@@ -147,8 +147,8 @@ policy. The following remain hard gates:
   retransmission counters are acceptable for diagnosis and adaptation;
 - test burst, sustained, late, and reordered loss without creating replay
   storms, but do not invent a general congestion-control framework;
-- connect live two-leg target selection and PLI/FIR aggregation to one encoder
-  under measured feedback;
+- retain the separate one-run live two-leg target result only as bounded
+  evidence, and still connect/test PLI/FIR aggregation under measured feedback;
 - prove audio/A-V synchronization, mixed direct/TURN paths, reconnect, browser
   diversity, memory/load, and lifecycle isolation;
 - preserve the P2P-first product topology unless a measured ADR changes it.

@@ -84,6 +84,7 @@ type RTCPMetrics struct {
 	PictureLoss     uint64 `json:"pictureLoss"`
 	NACK            uint64 `json:"nack"`
 	NACKRequests    uint64 `json:"nackRequests"`
+	TransportCC     uint64 `json:"transportCc"`
 }
 
 // BrowserMetrics comes from the receiver's standard WebRTC stats and actual
