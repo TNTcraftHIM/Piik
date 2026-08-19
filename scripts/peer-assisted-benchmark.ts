@@ -1416,6 +1416,20 @@ async function runQualityControlSmoke(
       .map((page) => page.label),
   );
   const sendingPages = pages.filter((page) => sendingLabels.has(page.label));
+  await Promise.all(
+    sendingPages.map((page) =>
+      evaluate(
+        cdp,
+        page,
+        `(() => {
+          const toggle = document.querySelector('.connection-details-toggle input');
+          if (!(toggle instanceof HTMLInputElement)) return false;
+          if (!toggle.checked) toggle.click();
+          return true;
+        })()`,
+      ),
+    ),
+  );
   const waitForReadback = async (label: "平衡" | "清晰"): Promise<void> => {
     const expected = JSON.stringify(`${label} / ${label}`);
     await Promise.all(
