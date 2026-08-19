@@ -1,6 +1,6 @@
 # ADR-0007: Demand-Driven Dual-Representation Quality
 
-- Status: Accepted - Implementation Pending
+- Status: Accepted - Staged Implementation
 - Date: 2026-08-19
 
 ## Context
@@ -27,20 +27,23 @@ Use demand-driven dual representations:
 2. Every viewing path starts in `HIGH`. It moves to `FALLBACK` only after
    multiple consecutive sampling windows show that the path cannot sustain
    `HIGH`, using correlated sender and viewer evidence.
-3. The first verified fallback path starts one shared `LOW` representation.
-   Every verified weak path uses that same representation. Healthy paths remain
-   on `HIGH`.
+3. The first verified fallback path must start exactly one shared `LOW`
+   representation. Every verified weak path moves to that same representation.
+   Healthy paths remain on `HIGH`.
 4. A fallback path returns to `HIGH` only after a longer, independently defined
    stable-recovery window. When no path needs `LOW`, stop its encoder and free
    its resources.
-5. The representation count is a hard `HIGH + optional LOW <= 2`. It never
-   grows with viewer count.
+5. The representation count is a hard `HIGH + at most one on-demand LOW <= 2`;
+   it never grows with viewer count.
 
 Starting `LOW` is conditional on a qualified hardware/power-efficient encoder
 path and measured spare game-performance budget. If that path is absent or the
-second encoder causes unacceptable CPU/GPU/game load, fail closed: preserve
-`HIGH` for healthy paths and show the weak path an explicit degraded/unavailable
-state. Never protect a weak path by reducing healthy paths.
+second encoder causes unacceptable CPU/GPU/game load, fail closed for that
+attempt: preserve `HIGH` and show the weak path an explicit degraded/unavailable
+state. This is exceptional damage containment, not permission to ignore a weak
+path indefinitely. A supported sender cohort that cannot reliably start `LOW`
+on demand fails automatic-quality-control acceptance; optimize its encode path
+or mark that cohort unsupported. Never protect a weak path by reducing `HIGH`.
 
 The two path states use explicit predicates and asymmetric entry/exit windows.
 There is no weighted score, device ranking, machine-learning controller, or
@@ -85,7 +88,9 @@ that probe is trustworthy may the product add a minimal authenticated C report
 for the few receive/decode signals required by the two-state predicate. The B/C
 correlation uses normalized fields derived from negotiated parameters/stats and
 actual decode behavior; it must never upload raw SDP, raw stats, candidate
-addresses, or other identifiers. Do not build a general telemetry schema.
+addresses, or raw device/network identifiers. Opaque server-issued path and
+connection-generation IDs remain required for authorization and correlation.
+Do not build a general telemetry schema.
 
 A viewer may request `LOW`, but the request is advisory. It must be carried on
 an authenticated, current room/path session and be rate-limited and deduplicated.
@@ -154,6 +159,8 @@ Negative:
 - Representation count never exceeds two and host media edges never exceed two.
 - An unavailable/over-budget `LOW` fails visibly for weak paths while healthy
   paths and `HIGH` remain unchanged.
+- Every supported sender cohort can reliably start the one shared `LOW` on
+  demand; otherwise automatic quality control does not pass acceptance.
 - Native relays show packet forwarding without an added decode/encode stage.
 - Spoofed, stale, duplicated, or rate-excessive viewer requests have no effect.
 - Controlled capture/CPU/bandwidth/TURN/receiver/display cases produce the

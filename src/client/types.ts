@@ -7,6 +7,16 @@ export type SignalConnectionState =
 export type MediaPath = "direct" | "relay" | "unknown";
 
 export interface ConnectionMetrics {
+  sampleTimestampMs: number | null;
+  sampleWindowMs: number | null;
+  rtpStatsId: string | null;
+  rtpSsrc: number | null;
+  rtpMid: string | null;
+  trackIdentifier: string | null;
+  selectedCandidatePairId: string | null;
+  captureWidth: number | null;
+  captureHeight: number | null;
+  captureFramesPerSecond: number | null;
   path: MediaPath;
   iceProtocol: string | null;
   localRelayProtocol: string | null;
@@ -20,6 +30,11 @@ export interface ConnectionMetrics {
   packetsLost: number | null;
   jitterMs: number | null;
   framesDropped: number | null;
+  intervalFramesDropped: number | null;
+  intervalFreezeCount: number | null;
+  intervalFreezeDurationMs: number | null;
+  intervalRetransmittedPackets: number | null;
+  intervalRetransmittedBytes: number | null;
   codec: string | null;
   encoderImplementation: string | null;
   powerEfficientEncoder: boolean | null;
@@ -40,6 +55,16 @@ export interface PeerSnapshot {
 }
 
 export const EMPTY_METRICS: ConnectionMetrics = {
+  sampleTimestampMs: null,
+  sampleWindowMs: null,
+  rtpStatsId: null,
+  rtpSsrc: null,
+  rtpMid: null,
+  trackIdentifier: null,
+  selectedCandidatePairId: null,
+  captureWidth: null,
+  captureHeight: null,
+  captureFramesPerSecond: null,
   path: "unknown",
   iceProtocol: null,
   localRelayProtocol: null,
@@ -53,6 +78,11 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   packetsLost: null,
   jitterMs: null,
   framesDropped: null,
+  intervalFramesDropped: null,
+  intervalFreezeCount: null,
+  intervalFreezeDurationMs: null,
+  intervalRetransmittedPackets: null,
+  intervalRetransmittedBytes: null,
   codec: null,
   encoderImplementation: null,
   powerEfficientEncoder: null,

@@ -9,10 +9,13 @@ const statsCallbacks: Array<() => void> = [];
 
 class FakeSender {
   failNextReplace = false;
+  deferReplaceCall: number | null = null;
   failNextSetParameters = false;
   deferNextSetParameters = false;
   readonly appliedMaxBitrates: Array<number | undefined> = [];
   private parameters = { encodings: [{}] } as RTCRtpSendParameters;
+  private replaceCallCount = 0;
+  private releaseReplaceTrack: (() => void) | null = null;
   private releaseSetParameters: (() => void) | null = null;
   readonly setParameters = vi.fn(
     async (parameters: RTCRtpSendParameters) => {
@@ -31,9 +34,16 @@ class FakeSender {
     },
   );
   readonly replaceTrack = vi.fn(async (track: MediaStreamTrack | null) => {
+    this.replaceCallCount += 1;
     if (this.failNextReplace) {
       this.failNextReplace = false;
       throw new Error("replaceTrack failed");
+    }
+    if (this.deferReplaceCall === this.replaceCallCount) {
+      this.deferReplaceCall = null;
+      await new Promise<void>((resolve) => {
+        this.releaseReplaceTrack = resolve;
+      });
     }
     this.track = track;
   });
@@ -47,6 +57,11 @@ class FakeSender {
   releaseDeferredSetParameters(): void {
     this.releaseSetParameters?.();
     this.releaseSetParameters = null;
+  }
+
+  releaseDeferredReplaceTrack(): void {
+    this.releaseReplaceTrack?.();
+    this.releaseReplaceTrack = null;
   }
 }
 
@@ -117,12 +132,14 @@ function sendStatsReport({
   timestamp,
   totalEncodeTime,
   qualityLimitationReason,
+  trackIdentifier = "video",
 }: {
   bytesSent: number;
   framesEncoded: number;
   timestamp: number;
   totalEncodeTime?: number;
   qualityLimitationReason: string;
+  trackIdentifier?: string;
 }): RTCStatsReport {
   return new Map<string, Record<string, unknown>>([
     [
@@ -140,6 +157,7 @@ function sendStatsReport({
         id: "pair",
         type: "candidate-pair",
         timestamp,
+        transportId: "transport",
         state: "succeeded",
         nominated: true,
         localCandidateId: "local",
@@ -175,6 +193,8 @@ function sendStatsReport({
         type: "outbound-rtp",
         timestamp,
         kind: "video",
+        transportId: "transport",
+        mediaSourceId: "video-source",
         bytesSent,
         framesEncoded,
         framesPerSecond: 30,
@@ -184,6 +204,16 @@ function sendStatsReport({
         qualityLimitationReason,
         encoderImplementation: "test-encoder",
         codecId: "codec",
+      },
+    ],
+    [
+      "video-source",
+      {
+        id: "video-source",
+        type: "media-source",
+        timestamp,
+        kind: "video",
+        trackIdentifier,
       },
     ],
     [
@@ -200,6 +230,19 @@ function sendStatsReport({
 
 function createTrack(kind: "video" | "audio", id: string): MediaStreamTrack {
   return { id, kind } as MediaStreamTrack;
+}
+
+function createConfiguredVideoTrack(
+  id: string,
+  width: number,
+  height: number,
+  frameRate: number,
+): MediaStreamTrack {
+  return {
+    id,
+    kind: "video",
+    getSettings: () => ({ width, height, frameRate }),
+  } as unknown as MediaStreamTrack;
 }
 
 function createStream(
@@ -488,6 +531,173 @@ describe("HostPeer source replacement", () => {
     ).toBe(false);
   });
 
+  it("publishes capture settings with outbound evidence from the same stats tick", async () => {
+    const getSettings = vi.fn(() => ({
+      width: 1920,
+      height: 1080,
+      frameRate: 59.94,
+    }));
+    const videoTrack = {
+      id: "capture-video",
+      kind: "video",
+      getSettings,
+    } as unknown as MediaStreamTrack;
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(videoTrack, null),
+      (snapshot) => updates.push(snapshot),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    getSettings.mockClear();
+    const connection = FakePeerConnection.latest!;
+    connection.statsReports.push(
+      sendStatsReport({
+        bytesSent: 1_000_000,
+        framesEncoded: 30,
+        timestamp: 1_234,
+        qualityLimitationReason: "none",
+        trackIdentifier: "capture-video",
+      }),
+    );
+
+    expect(getSettings).not.toHaveBeenCalled();
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.sampleTimestampMs).toBe(1_234),
+    );
+
+    expect(connection.getStats).toHaveBeenCalledOnce();
+    expect(getSettings).toHaveBeenCalledOnce();
+    expect(updates.at(-1)?.metrics).toMatchObject({
+      sampleTimestampMs: 1_234,
+      rtpStatsId: "outbound-video",
+      resolution: "1280x720",
+      captureWidth: 1920,
+      captureHeight: 1080,
+      captureFramesPerSecond: 59.94,
+    });
+  });
+
+  it.each([
+    {
+      outcome: "succeeds",
+      rollback: false,
+      deferredCall: 1,
+      result: true,
+      committed: "next" as const,
+    },
+    {
+      outcome: "rolls back",
+      rollback: true,
+      deferredCall: 2,
+      result: false,
+      committed: "old" as const,
+    },
+  ])("blocks stale stats while replacement $outcome", async ({
+    rollback,
+    deferredCall,
+    result,
+    committed,
+  }) => {
+    const scenario = rollback ? "rollback" : "success";
+    let resolveOldStats!: (report: RTCStatsReport) => void;
+    const oldStats = new Promise<RTCStatsReport>((resolve) => {
+      resolveOldStats = resolve;
+    });
+    const oldVideo = createConfiguredVideoTrack(
+      `${scenario}-old-capture`,
+      1280,
+      720,
+      30,
+    );
+    const nextVideo = createConfiguredVideoTrack(
+      `${scenario}-next-capture`,
+      1920,
+      1080,
+      60,
+    );
+    const oldAudio = rollback ? createTrack("audio", "old-audio") : null;
+    const nextAudio = rollback ? createTrack("audio", "next-audio") : null;
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(oldVideo, oldAudio),
+      (snapshot) => updates.push(snapshot),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    const videoSender = connection.senders[0]!;
+    const audioSender = connection.senders[1]!;
+    connection.statsReports.push(
+      sendStatsReport({
+        bytesSent: 500_000,
+        framesEncoded: 15,
+        timestamp: 500,
+        qualityLimitationReason: "none",
+        trackIdentifier: oldVideo.id,
+      }),
+    );
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.sampleTimestampMs).toBe(500),
+    );
+    connection.statsReports.push(oldStats);
+    statsCallbacks[0]!();
+    await vi.waitFor(() => expect(connection.getStats).toHaveBeenCalledTimes(2));
+
+    videoSender.deferReplaceCall = deferredCall;
+    audioSender.failNextReplace = rollback;
+    const replacing = peer.replaceStream(
+      createStream(nextVideo, nextAudio),
+    );
+    await vi.waitFor(() =>
+      expect(videoSender.replaceTrack).toHaveBeenCalledTimes(deferredCall),
+    );
+
+    resolveOldStats(
+      sendStatsReport({
+        bytesSent: 1_000_000,
+        framesEncoded: 30,
+        timestamp: 1_000,
+        qualityLimitationReason: "none",
+        trackIdentifier: oldVideo.id,
+      }),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(
+      updates.some(({ metrics }) => metrics.sampleTimestampMs === 1_000),
+    ).toBe(false);
+    statsCallbacks[0]!();
+    expect(connection.getStats).toHaveBeenCalledTimes(2);
+
+    videoSender.releaseDeferredReplaceTrack();
+    await expect(replacing).resolves.toBe(result);
+    const committedVideo = committed === "old" ? oldVideo : nextVideo;
+    expect(videoSender.track).toBe(committedVideo);
+    expect(updates.at(-1)?.metrics.sampleTimestampMs).toBe(
+      committed === "old" ? 500 : null,
+    );
+
+    connection.statsReports.push(
+      sendStatsReport({
+        bytesSent: 2_000_000,
+        framesEncoded: 60,
+        timestamp: 2_000,
+        qualityLimitationReason: "none",
+        trackIdentifier: committedVideo.id,
+      }),
+    );
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.sampleTimestampMs).toBe(2_000),
+    );
+    expect(updates.at(-1)?.metrics).toMatchObject({
+      trackIdentifier: committedVideo.id,
+      captureWidth: committed === "old" ? 1280 : 1920,
+      captureHeight: committed === "old" ? 720 : 1080,
+      captureFramesPerSecond: committed === "old" ? 30 : 60,
+    });
+  });
+
   it("explains a sustained browser quality limitation without changing settings", async () => {
     const updates: PeerSnapshot[] = [];
     const peer = createPeer(
@@ -589,6 +799,7 @@ describe("ViewerRelay downstream ownership", () => {
         timestamp: 1_000,
         totalEncodeTime: 0.15,
         qualityLimitationReason: "cpu",
+        trackIdentifier: "metrics-video",
       }),
       sendStatsReport({
         bytesSent: 1_500_000,
@@ -596,6 +807,7 @@ describe("ViewerRelay downstream ownership", () => {
         timestamp: 2_000,
         totalEncodeTime: 0.75,
         qualityLimitationReason: "bandwidth",
+        trackIdentifier: "metrics-video",
       }),
     );
 

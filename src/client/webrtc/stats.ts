@@ -11,22 +11,56 @@ type StatsRecord = Record<string, unknown> & {
 
 export interface StatsAccumulator {
   mediaId: string | null;
+  ssrc: number | null;
+  trackIdentifier: string | null;
   bytes: number | null;
   frames: number | null;
   timestamp: number | null;
   previousTotalEncodeTime: number | null;
   previousTotalDecodeTime: number | null;
+  previousFramesDropped: number | null;
+  previousFreezeCount: number | null;
+  previousTotalFreezesDuration: number | null;
+  previousRetransmittedPackets: number | null;
+  previousRetransmittedBytes: number | null;
+}
+
+export interface StatsMediaSelector {
+  trackIdentifier: string | null;
 }
 
 export function createStatsAccumulator(): StatsAccumulator {
   return {
     mediaId: null,
+    ssrc: null,
+    trackIdentifier: null,
     bytes: null,
     frames: null,
     timestamp: null,
     previousTotalEncodeTime: null,
     previousTotalDecodeTime: null,
+    previousFramesDropped: null,
+    previousFreezeCount: null,
+    previousTotalFreezesDuration: null,
+    previousRetransmittedPackets: null,
+    previousRetransmittedBytes: null,
   };
+}
+
+function intervalDelta(
+  current: number | null,
+  previous: number | null,
+  hasInterval: boolean,
+): number | null {
+  if (
+    !hasInterval ||
+    current === null ||
+    previous === null ||
+    current < previous
+  ) {
+    return null;
+  }
+  return current - previous;
 }
 
 function intervalAverageMs(
@@ -73,76 +107,125 @@ function getRecord(report: RTCStatsReport, id: string | null): StatsRecord | nul
   return (report.get(id) as StatsRecord | undefined) ?? null;
 }
 
-function selectedCandidatePair(report: RTCStatsReport): StatsRecord | null {
-  let transport: StatsRecord | null = null;
+function mediaTrackIdentifier(
+  report: RTCStatsReport,
+  media: StatsRecord,
+  direction: "send" | "receive",
+): string | null {
+  if (direction === "receive") {
+    return stringValue(media, "trackIdentifier");
+  }
+  const source = getRecord(report, stringValue(media, "mediaSourceId"));
+  return source?.type === "media-source"
+    ? stringValue(source, "trackIdentifier")
+    : null;
+}
+
+function mediaRecord(
+  report: RTCStatsReport,
+  direction: "send" | "receive",
+  selector: StatsMediaSelector | null,
+): StatsRecord | null {
+  const expectedType = direction === "send" ? "outbound-rtp" : "inbound-rtp";
+  const isExpectedMedia = (record: StatsRecord): boolean =>
+    record.type === expectedType &&
+    record.kind === "video" &&
+    record.isRemote !== true;
+
+  const candidates: StatsRecord[] = [];
+  report.forEach((raw) => {
+    const record = raw as StatsRecord;
+    if (isExpectedMedia(record)) {
+      candidates.push(record);
+    }
+  });
+  const selectedTrackIdentifier = selector?.trackIdentifier ?? null;
+  const narrowed = selectedTrackIdentifier !== null
+    ? candidates.filter(
+        (candidate) =>
+          mediaTrackIdentifier(report, candidate, direction) ===
+          selectedTrackIdentifier,
+      )
+    : candidates;
+  return narrowed.length === 1 ? narrowed[0]! : null;
+}
+
+function transportRecord(
+  report: RTCStatsReport,
+  media: StatsRecord | null,
+): StatsRecord | null {
+  const referenced = getRecord(report, stringValue(media, "transportId"));
+  return referenced?.type === "transport" ? referenced : null;
+}
+
+function selectedCandidatePair(
+  report: RTCStatsReport,
+  transport: StatsRecord | null,
+): StatsRecord | null {
+  if (!transport) {
+    return null;
+  }
   const candidatePairs: StatsRecord[] = [];
   report.forEach((raw) => {
     const record = raw as StatsRecord;
-    if (record.type === "transport") {
-      transport = record;
-    } else if (record.type === "candidate-pair") {
+    if (record.type === "candidate-pair") {
       candidatePairs.push(record);
     }
   });
 
   const pairId = stringValue(transport, "selectedCandidatePairId");
   if (pairId) {
-    return getRecord(report, pairId);
+    const referenced = getRecord(report, pairId);
+    return referenced?.type === "candidate-pair" &&
+      stringValue(referenced, "transportId") === transport.id
+      ? referenced
+      : null;
   }
-  return (
-    candidatePairs.find(
-      (pair) =>
-        pair.state === "succeeded" &&
-        (pair.nominated === true || pair.selected === true),
-    ) ?? null
+  const selected = candidatePairs.filter(
+    (pair) =>
+      stringValue(pair, "transportId") === transport.id &&
+      pair.state === "succeeded" &&
+      (pair.nominated === true || pair.selected === true),
   );
+  return selected.length === 1 ? selected[0]! : null;
 }
 
-function mediaRecord(
+function linkedRemoteInbound(
   report: RTCStatsReport,
-  direction: "send" | "receive",
+  outbound: StatsRecord | null,
 ): StatsRecord | null {
-  let result: StatsRecord | null = null;
-  report.forEach((raw) => {
-    const record = raw as StatsRecord;
-    const expectedType = direction === "send" ? "outbound-rtp" : "inbound-rtp";
-    if (
-      record.type === expectedType &&
-      record.kind === "video" &&
-      record.isRemote !== true
-    ) {
-      result = record;
-    }
-  });
-  return result;
-}
-
-function remoteInboundVideo(report: RTCStatsReport): StatsRecord | null {
-  let result: StatsRecord | null = null;
-  report.forEach((raw) => {
-    const record = raw as StatsRecord;
-    if (record.type === "remote-inbound-rtp" && record.kind === "video") {
-      result = record;
-    }
-  });
-  return result;
+  const remote = getRecord(report, stringValue(outbound, "remoteId"));
+  return remote?.type === "remote-inbound-rtp" && remote.kind === "video"
+    ? remote
+    : null;
 }
 
 export async function collectConnectionMetrics(
   connection: RTCPeerConnection,
   direction: "send" | "receive",
   previous: StatsAccumulator,
+  selector: StatsMediaSelector | null = null,
 ): Promise<ConnectionMetrics> {
   const report = await connection.getStats();
-  const pair = selectedCandidatePair(report);
-  const localCandidate = getRecord(
+  const media = mediaRecord(report, direction, selector);
+  const transport = transportRecord(report, media);
+  let pair = selectedCandidatePair(report, transport);
+  let localCandidate = getRecord(
     report,
     stringValue(pair, "localCandidateId"),
   );
-  const remoteCandidate = getRecord(
+  let remoteCandidate = getRecord(
     report,
     stringValue(pair, "remoteCandidateId"),
   );
+  if (
+    localCandidate?.type !== "local-candidate" ||
+    remoteCandidate?.type !== "remote-candidate"
+  ) {
+    pair = null;
+    localCandidate = null;
+    remoteCandidate = null;
+  }
   const localType = stringValue(localCandidate, "candidateType");
   const remoteType = stringValue(remoteCandidate, "candidateType");
   const path =
@@ -152,29 +235,54 @@ export async function collectConnectionMetrics(
         ? "direct"
         : "unknown";
 
-  const media = mediaRecord(report, direction);
   const mediaId = media?.id ?? null;
-  const sameMedia = mediaId !== null && mediaId === previous.mediaId;
-  const remoteInbound = direction === "send" ? remoteInboundVideo(report) : null;
+  const ssrc = numberValue(media, "ssrc");
+  const trackIdentifier = media
+    ? mediaTrackIdentifier(report, media, direction)
+    : null;
+  const sameMedia =
+    mediaId !== null &&
+    mediaId === previous.mediaId &&
+    ssrc === previous.ssrc &&
+    trackIdentifier === previous.trackIdentifier;
+  const remoteInbound =
+    direction === "send" ? linkedRemoteInbound(report, media) : null;
   const bytesKey = direction === "send" ? "bytesSent" : "bytesReceived";
   const bytes = numberValue(media, bytesKey);
   const framesKey = direction === "send" ? "framesEncoded" : "framesDecoded";
   const frames = numberValue(media, framesKey);
-  const timestamp = media?.timestamp ?? null;
+  const timestamp = numberValue(media, "timestamp");
   const framesEncoded = numberValue(media, "framesEncoded");
   const framesDecoded = numberValue(media, "framesDecoded");
   const totalEncodeTime = numberValue(media, "totalEncodeTime");
   const totalDecodeTime = numberValue(media, "totalDecodeTime");
+  const framesDropped = numberValue(media, "framesDropped");
+  const freezeCount = numberValue(media, "freezeCount");
+  const totalFreezesDuration = numberValue(media, "totalFreezesDuration");
+  const retransmittedPackets = numberValue(
+    media,
+    direction === "send"
+      ? "retransmittedPacketsSent"
+      : "retransmittedPacketsReceived",
+  );
+  const retransmittedBytes = numberValue(
+    media,
+    direction === "send"
+      ? "retransmittedBytesSent"
+      : "retransmittedBytesReceived",
+  );
   let bitrateKbps: number | null = null;
   let derivedFps: number | null = null;
-
-  if (
+  const sampleWindowMs =
     sameMedia &&
     timestamp !== null &&
     previous.timestamp !== null &&
     timestamp > previous.timestamp
-  ) {
-    const elapsedSeconds = (timestamp - previous.timestamp) / 1_000;
+      ? timestamp - previous.timestamp
+      : null;
+
+  if (sampleWindowMs !== null) {
+    const elapsedSeconds = sampleWindowMs / 1_000;
     if (bytes !== null && previous.bytes !== null && bytes >= previous.bytes) {
       bitrateKbps = ((bytes - previous.bytes) * 8) / elapsedSeconds / 1_000;
     }
@@ -190,26 +298,58 @@ export async function collectConnectionMetrics(
     direction === "send"
       ? intervalAverageMs(
           totalEncodeTime,
-          sameMedia ? previous.previousTotalEncodeTime : null,
+          sampleWindowMs !== null ? previous.previousTotalEncodeTime : null,
           framesEncoded,
-          sameMedia ? previous.frames : null,
+          sampleWindowMs !== null ? previous.frames : null,
         )
       : null;
   const intervalDecodeMs =
     direction === "receive"
       ? intervalAverageMs(
           totalDecodeTime,
-          sameMedia ? previous.previousTotalDecodeTime : null,
+          sampleWindowMs !== null ? previous.previousTotalDecodeTime : null,
           framesDecoded,
-          sameMedia ? previous.frames : null,
+          sampleWindowMs !== null ? previous.frames : null,
         )
       : null;
+  const intervalFramesDropped = intervalDelta(
+    framesDropped,
+    previous.previousFramesDropped,
+    sampleWindowMs !== null,
+  );
+  const intervalFreezeCount = intervalDelta(
+    freezeCount,
+    previous.previousFreezeCount,
+    sampleWindowMs !== null,
+  );
+  const freezeDurationDelta = intervalDelta(
+    totalFreezesDuration,
+    previous.previousTotalFreezesDuration,
+    sampleWindowMs !== null,
+  );
+  const intervalRetransmittedPackets = intervalDelta(
+    retransmittedPackets,
+    previous.previousRetransmittedPackets,
+    sampleWindowMs !== null,
+  );
+  const intervalRetransmittedBytes = intervalDelta(
+    retransmittedBytes,
+    previous.previousRetransmittedBytes,
+    sampleWindowMs !== null,
+  );
   previous.mediaId = mediaId;
+  previous.ssrc = ssrc;
+  previous.trackIdentifier = trackIdentifier;
   previous.bytes = bytes;
   previous.frames = frames;
   previous.timestamp = timestamp;
   previous.previousTotalEncodeTime = totalEncodeTime;
   previous.previousTotalDecodeTime = totalDecodeTime;
+  previous.previousFramesDropped = framesDropped;
+  previous.previousFreezeCount = freezeCount;
+  previous.previousTotalFreezesDuration = totalFreezesDuration;
+  previous.previousRetransmittedPackets = retransmittedPackets;
+  previous.previousRetransmittedBytes = retransmittedBytes;
 
   const codec = getRecord(report, stringValue(media, "codecId"));
   const width = numberValue(media, "frameWidth");
@@ -222,6 +362,13 @@ export async function collectConnectionMetrics(
 
   return {
     ...EMPTY_METRICS,
+    sampleTimestampMs: timestamp,
+    sampleWindowMs,
+    rtpStatsId: mediaId,
+    rtpSsrc: ssrc,
+    rtpMid: stringValue(media, "mid"),
+    trackIdentifier,
+    selectedCandidatePairId: pair?.id ?? null,
     path,
     iceProtocol,
     localRelayProtocol,
@@ -247,7 +394,13 @@ export async function collectConnectionMetrics(
         ? numberValue(direction === "send" ? remoteInbound : media, "jitter")! *
           1_000
         : null,
-    framesDropped: numberValue(media, "framesDropped"),
+    framesDropped,
+    intervalFramesDropped,
+    intervalFreezeCount,
+    intervalFreezeDurationMs:
+      freezeDurationDelta === null ? null : freezeDurationDelta * 1_000,
+    intervalRetransmittedPackets,
+    intervalRetransmittedBytes,
     codec: stringValue(codec, "mimeType"),
     encoderImplementation: stringValue(media, "encoderImplementation"),
     powerEfficientEncoder: booleanValue(media, "powerEfficientEncoder"),
