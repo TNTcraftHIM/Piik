@@ -29,7 +29,7 @@ Last updated: 2026-08-19
 - Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
 - Add an Electron or native Windows sender only after browser measurements identify capture, application-audio, or encode bottlenecks.
 - Keep one independent publisher-to-viewer connection in the Web PoC until a separately measured and reversible topology decision is accepted.
-- Keep native shared-encode work isolated from the product controller. A Pion public-API spike now proves one pre-encoded VP8 sample sequence can reach two independent Chrome WebRTC sessions that both decode and present changing frames; it does not prove physical hardware encoding, BWE, keyframe coordination, loss recovery, TURN, or reconnect behavior.
+- Keep native shared-encode work isolated from the product controller. A bounded spike now proves one Chrome WebCodecs encoder can feed 12 seconds of VP8 over authenticated loopback IPC into Pion and two independent Chrome sessions with bounded application queues. `hardwareAcceleration` remains only a hint; physical encoding, BWE, viewer feedback, loss recovery, TURN, audio, and reconnect behavior remain unproven.
 - Keep room policy deployment-driven and small. Public and password-only deployments use random temporary rooms. A deployment that configures both the whole-site password and a SQLite path gets sequential, non-expiring protected rooms; stopping a share leaves viewers waiting and does not destroy the room.
 
 ## Current Implementation
@@ -42,7 +42,7 @@ Last updated: 2026-08-19
 - The Web control plane is deployed at `https://share.bonfire.icu` behind nginx with Node.js 24.19.0, and `turn.bonfire.icu` runs authenticated coturn 4.17.2 on standard UDP/TCP 3478. HTTPS, WSS, room authentication, certificate renewal, public STUN, authenticated TURN/UDP and TURN/TCP allocations, and relay-only bidirectional data paths are verified. TURN/TLS is intentionally not enabled.
 - Automated checks pass 108 Vitest tests and both production builds. Release `5b2fb005f6f7` passed loopback and public HTTPS/access-gate deployment checks with zero automatic service restarts; nginx, coturn, and the existing blog remained healthy. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remain from the earlier baseline. A real live quality/pause cycle, persistent-room stop/reuse browser cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
 - No infrastructure blocker remains for the current deployment. The live-control browser cycle and real-device media matrix are bounded in `docs/status.md`; neither justifies a native sender yet.
-- The separate native browser-fanout spike passed with two independent RTP sequence spaces, SSRCs, RTCP readers, ICE credentials, and DTLS-SRTP associations. It remains research-only behind explicit BWE, PLI/FIR, NACK/RTX, pacing, TURN, and lifecycle gates.
+- The separate native live-bridge spike passed with one encoder instance, 360 inputs/outputs, a capacity-eight helper queue, and two independent RTP/RTCP/ICE/DTLS browser paths. It remains research-only behind explicit BWE, viewer PLI/FIR, NACK/RTX, pacing, audio, TURN, and lifecycle gates.
 
 ## Provisional Quality Targets
 
@@ -59,7 +59,7 @@ Last updated: 2026-08-19
 - Whether the first release is open source, source-available, or proprietary; this affects whether GPL/AGPL projects can be reused rather than only studied.
 - Initial deployment regions and expected mainland China/Hong Kong/overseas network mix.
 - Whether Windows per-application audio is P0 or whether whole-system loopback is acceptable initially.
-- Whether the native shared-encode route remains worthwhile after bounded two-edge BWE, keyframe, asymmetric-loss, TURN, and reconnect experiments; browser decode/render alone is insufficient.
+- Whether the native shared-encode route remains worthwhile after bounded two-edge BWE, viewer-keyframe feedback, asymmetric-loss, audio, TURN, and reconnect experiments; the live loopback fanout result alone is insufficient.
 - Whether voice chat is ever in scope or the product remains complementary to an existing voice application.
 
 ## Source Of Truth

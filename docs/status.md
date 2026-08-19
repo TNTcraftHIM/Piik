@@ -15,9 +15,10 @@ temporary picture pause with audio unaffected, and clearer stopped/waiting and
 TURN-warning states. Real capture, game audio, mobile lifecycle, sustained
 multi-viewer behavior, and performance targets remain unverified.
 
-A separate Draft spike now proves a native Pion sender can fan one pre-encoded
-VP8 sample sequence to two independent Chrome WebRTC sessions that both decode
-and present changing frames. It is not connected to the Web product.
+A separate Draft spike now proves one Chrome WebCodecs encoder can stream VP8
+for 12 seconds over authenticated loopback IPC into a native Pion helper and two
+independent Chrome WebRTC sessions with bounded application queues. It is not
+connected to the Web product.
 
 ## Established Baseline
 
@@ -47,6 +48,7 @@ and present changing frames. It is not connected to the Web product.
 - Production configuration fails closed without HTTPS, STUN, TURN credentials, explicit TURN/UDP, or explicit TURN/TCP. Public STUN and authenticated relay-only DataChannel tests passed over TURN/UDP and TURN/TCP.
 - Staging runs Debian 12, nginx, Node.js 24.19.0, and coturn 4.17.2. Screener binds loopback behind nginx; the protected SQLite directory and database permissions survive a clean service restart. TURN/TLS is intentionally disabled.
 - Native browser oracle on Windows/Chrome 151: one WebCodecs fixture instance produced 120 VP8 chunks; the native coordinator read 120 source samples and made 240 track writes. Each browser decoded and presented 30 changing 320x180 frames. Native legs used different SSRCs and first sequences (`1000`, `30000`), each received RTCP receiver reports, and their ICE ufrags and DTLS fingerprints differed. This does not prove a physical hardware encode.
+- Native live bridge on Windows/Chrome 151: one encoder instance accepted and output 360 frames over 11.970 seconds; the loopback helper received all 360 VP8 chunks and 368314 source bytes, then made 720 independent track writes. Each viewer decoded 331 frames and fired 331 presentation callbacks with 27 changing hashes. The capacity-eight queue peaked at one with no drop; forced-overload unit tests verify drop-to-keyframe recovery. `hardwareAcceleration: "no-preference"` is only a hint and proves no physical hardware encode.
 
 ## Next Milestone
 
@@ -64,15 +66,18 @@ Execute and record the manual browser/network matrix:
 - codec implementation, encode load, bitrate, frame rate, first picture, and glass-to-glass latency.
 
 Keep native fanout out of the product controller until separate bounded tests
-prove two-edge send-side BWE aggregation, PLI/FIR coordination, asymmetric-loss
-NACK/RTX and pacing bounds, mixed direct/TURN operation, and reconnect isolation.
+prove two-edge send-side BWE aggregation, viewer PLI/FIR coordination,
+asymmetric-loss NACK/RTX and pacing bounds, audio, mixed direct/TURN operation,
+and reconnect isolation. The live bridge closes only the continuous IPC,
+application-queue, and standard-browser decode/render gate.
 
 ## Current Blocker
 
 - No infrastructure blocker remains. The live-control browser cycle, room `1`
   browser lifecycle, and real-device media matrix remain unverified.
 - Native product integration is deliberately blocked by unimplemented BWE and
-  keyframe policy plus unverified loss recovery, TURN, pacing, and lifecycle.
+  viewer-keyframe policy plus unverified loss recovery, audio, TURN, pacing,
+  and lifecycle.
 
 ## Blocking Decisions
 

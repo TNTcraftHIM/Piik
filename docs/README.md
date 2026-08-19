@@ -9,7 +9,7 @@
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Realtime quality adaptation](./research/realtime-quality-adaptation.md): browser degradation policy, live profile changes, offline-encoding boundaries, and measurement gates.
 - [Native RTP fanout oracle](./research/native-rtp-fanout-oracle.md): isolated Pion public-API proof for one RTP write across two independent transports, with explicit follow-up gates.
-- [Native pre-encoded browser fanout](./research/native-shared-encode-sender.md): bounded Pion-to-browser decode/render gate for one pre-encoded sample sequence and two independent transports.
+- [Native pre-encoded browser fanout](./research/native-shared-encode-sender.md): bounded offline and continuous Chrome-WebCodecs-to-Pion fanout evidence, queue/security limits, and product hard stops.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): accepted P2P-first media topology and its consequences.
 - [ADR-0002](./adr/0002-persistent-protected-rooms.md): optional SQLite persistence, protected sequential room IDs, and room lifecycle.

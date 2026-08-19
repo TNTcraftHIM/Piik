@@ -55,32 +55,59 @@ and received independent RTCP receiver reports. See
 [`docs/research/native-shared-encode-sender.md`](../../docs/research/native-shared-encode-sender.md)
 for the full measurements and stop lines.
 
+## Continuous Browser-To-Native Bridge
+
+The next bounded command launches one Chrome host page and two independent
+Chrome viewers. The host creates one WebCodecs `VideoEncoder`, produces 360
+animated VP8 frames over about 12 seconds, and streams config, timing, and chunk
+bytes to Pion over a random-token WebSocket that listens only on `127.0.0.1` and
+requires the exact loopback Origin.
+
+The browser encoder queue is limited to four inputs, the browser WebSocket
+buffer to 512 KiB, each IPC chunk to 1 MiB, the session to 750 chunks/32 MiB/25
+seconds, and the helper sample queue to eight frames. On helper overload, queued
+and subsequent dependent frames are dropped, the host is asked for a key frame,
+and admission resumes at that key frame.
+
+```sh
+go run ./cmd/native-live-bridge
+```
+
+Set `SCREENER_RUN_LIVE_BRIDGE=1` to include the same real-browser gate in
+`go test ./...`. The passing Chrome 151 run recorded one encoder instance,
+360 inputs and outputs, 360 helper source samples, 720 transport writes, and
+331 decoded frames plus 331 presentation callbacks at each viewer. Full
+measurements are in the research note linked above.
+
+`hardwareAcceleration: "no-preference"` is recorded only as a WebCodecs hint.
+This experiment does not claim a physical or hardware encode, and remains
+disconnected from the product controller.
+
 ## RTP Oracle Scope Boundaries
 
-This is an API and in-process transport oracle. It proves that Pion's public
-API can bind one static RTP track to two separate `PeerConnection` transports
-and preserve one pre-encoded semantic payload while assigning transport-local
-RTP headers.
+This layered spike covers the Pion API, standard Chrome decode/render, and a
+continuous browser-to-native loopback bridge. It proves that Pion can preserve
+one pre-encoded semantic sample stream while assigning transport-local RTP
+identity to two separate `PeerConnection` transports.
 
 It does **not** include or prove:
 
-- screen capture, physical video encoding, decoder compatibility, or A/V sync;
-- browser-to-browser or browser-to-native end-to-end operation;
+- screen capture, physical video encoding, or A/V sync;
 - congestion-control fairness, RTCP feedback arbitration, retransmission,
   pacing, loss recovery, latency, or sustained throughput;
-- zero-copy transport, constant memory use, or production readiness; or
+- zero-copy transport, whole-process constant memory, or production readiness;
 - that this should replace the current P2P-first browser path.
 
-The browser oracle additionally does **not** prove physical or hardware shared
-encoding. Its one WebCodecs instance only generates the reproducible fixture.
-Send-side bandwidth estimation, PLI/FIR aggregation, loss/RTX behavior, bounded
-pacing, and TURN/reconnect behavior remain hard stops before product use.
+The browser oracles additionally do **not** prove physical or hardware shared
+encoding. Send-side bandwidth estimation, viewer PLI/FIR aggregation, loss/RTX
+behavior, network pacing, audio, and TURN/reconnect behavior remain hard stops
+before product use.
 
 ## Decision Gate
 
-- **Go:** the public, released Pion API fans one `WriteRTP` call out to both
-  bindings while preserving payload semantics and using independent SSRCs.
-  Proceed only to a browser interop and RTCP/congestion-control spike.
+- **Go:** the released Pion API and authenticated loopback bridge sustain one
+  Chrome VP8 encoder across two independent browser-decodable transports.
+  Proceed only to another isolated transport-control experiment.
 - **No-go:** the behavior requires internal APIs, a Pion fork, duplicate
   application writes, or payload re-encoding. Stop the native relay path.
 
@@ -94,6 +121,8 @@ Forking Pion is explicitly out of scope.
   and rewrites SSRC and payload type per binding during one `WriteRTP` call.
 - Pion is MIT-licensed. This spike is also MIT-licensed and contains no copied
   Pion implementation code or binary media assets.
+- Coder WebSocket v1.8.15 is ISC-licensed and used only for the isolated
+  loopback bridge.
 
 Primary sources accessed 2026-08-19:
 
@@ -101,3 +130,4 @@ Primary sources accessed 2026-08-19:
 - <https://github.com/pion/webrtc/blob/v4.2.18/go.mod>
 - <https://github.com/pion/webrtc/blob/v4.2.18/track_local_static.go>
 - <https://github.com/pion/webrtc/blob/v4.2.18/LICENSE>
+- <https://github.com/coder/websocket/tree/v1.8.15>
