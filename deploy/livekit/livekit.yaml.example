@@ -1,0 +1,27 @@
+# Minimal single-node LiveKit capacity for Screener's optional automatic SFU
+# fallback. Copy this file to an untracked service-owned location such as
+# /etc/livekit/livekit.yaml. Store only the generated key mapping in
+# /etc/livekit/keys.yaml, owned by the livekit service user with mode 0600.
+
+port: 7880
+key_file: /etc/livekit/keys.yaml
+
+rtc:
+  # These media ports must be reached directly by clients. Port 7880 is only
+  # for the same-host reverse proxy and must be denied by every public firewall.
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+
+room:
+  auto_create: true
+  # Screener enforces its configured admission limit before issuing a token.
+  # This server-side ceiling covers the repository's maximum 16 viewers + host.
+  max_participants: 17
+
+logging:
+  level: info
+  pion_level: error
+
+# Redis, embedded TURN, recording, ingress, egress, and webhooks are omitted on
+# purpose. This first fallback deployment is one process on one node.
