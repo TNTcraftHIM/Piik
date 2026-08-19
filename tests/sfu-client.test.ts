@@ -6,6 +6,30 @@ import { SfuSubscriber } from "../src/client/sfu/subscriber.ts";
 type EventHandler = (...args: unknown[]) => void;
 
 const livekit = vi.hoisted(() => {
+  class FakeVideoPreset {
+    readonly encoding: {
+      maxBitrate: number;
+      maxFramerate?: number;
+    };
+
+    constructor(
+      readonly width: number,
+      readonly height: number,
+      maxBitrate: number,
+      maxFramerate?: number,
+    ) {
+      this.encoding = { maxBitrate, maxFramerate };
+    }
+
+    get resolution(): { width: number; height: number; frameRate?: number } {
+      return {
+        width: this.width,
+        height: this.height,
+        frameRate: this.encoding.maxFramerate,
+      };
+    }
+  }
+
   class FakeSender {
     parameters: RTCRtpSendParameters = {
       codecs: [],
@@ -57,6 +81,36 @@ const livekit = vi.hoisted(() => {
         options: Record<string, unknown>,
       ) => {
         const localTrack = new FakeLocalTrack(rawTrack);
+        const simulcastLayers = options.screenShareSimulcastLayers;
+        const highEncoding = options.screenShareEncoding;
+        if (
+          rawTrack.kind === "video" &&
+          options.simulcast === true &&
+          Array.isArray(simulcastLayers) &&
+          simulcastLayers.length === 1 &&
+          simulcastLayers[0] instanceof FakeVideoPreset &&
+          typeof highEncoding === "object" &&
+          highEncoding !== null
+        ) {
+          const high = highEncoding as {
+            maxBitrate?: number;
+            maxFramerate?: number;
+          };
+          localTrack.sender.parameters.encodings = [
+            {
+              rid: "q",
+              maxBitrate: simulcastLayers[0].encoding.maxBitrate,
+              maxFramerate: simulcastLayers[0].encoding.maxFramerate,
+              scaleResolutionDownBy: 2,
+            },
+            {
+              rid: "f",
+              maxBitrate: high.maxBitrate,
+              maxFramerate: high.maxFramerate,
+              scaleResolutionDownBy: 1,
+            },
+          ];
+        }
         const publication = {
           track: localTrack,
           videoTrack: rawTrack.kind === "video" ? localTrack : undefined,
@@ -74,7 +128,16 @@ const livekit = vi.hoisted(() => {
   }
 
   class FakeRemotePublication {
-    readonly setSubscribed = vi.fn((_subscribed: boolean) => undefined);
+    subscribed = false;
+    requestedVideoQuality: string | null = null;
+    readonly setSubscribed = vi.fn((subscribed: boolean) => {
+      this.subscribed = subscribed;
+    });
+    readonly setVideoQuality = vi.fn((quality: string) => {
+      if (this.subscribed) {
+        this.requestedVideoQuality = quality;
+      }
+    });
 
     constructor(
       readonly trackSid: string,
@@ -108,7 +171,7 @@ const livekit = vi.hoisted(() => {
     );
     readonly disconnect = vi.fn(async (_stopTracks?: boolean) => undefined);
 
-    constructor() {
+    constructor(readonly options: Record<string, unknown> = {}) {
       state.rooms.push(this);
     }
 
@@ -140,6 +203,7 @@ const livekit = vi.hoisted(() => {
     FakeRemoteParticipant,
     FakeRemotePublication,
     FakeRoom,
+    FakeVideoPreset,
     state,
   };
 });
@@ -161,10 +225,16 @@ const Track = {
   },
 } as const;
 
+const VideoQuality = {
+  HIGH: "high",
+} as const;
+
 vi.mock("livekit-client", () => ({
   Room: livekit.FakeRoom,
   RoomEvent,
   Track,
+  VideoPreset: livekit.FakeVideoPreset,
+  VideoQuality,
 }));
 
 class FakeMediaStream {
@@ -232,6 +302,7 @@ describe("SfuPublisher", () => {
     await expect(publisher.connect(connection)).resolves.toBe(true);
 
     const room = livekit.state.rooms[0];
+    expect(room.options).toEqual({});
     expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
       autoSubscribe: false,
     });
@@ -257,11 +328,22 @@ describe("SfuPublisher", () => {
     const sender = room.localParticipant.publications[0].track.sender;
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(1, video, {
       source: Track.Source.ScreenShare,
-      simulcast: false,
+      backupCodec: false,
+      simulcast: true,
       screenShareEncoding: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
       },
+      screenShareSimulcastLayers: [
+        expect.objectContaining({
+          width: 960,
+          height: 540,
+          encoding: {
+            maxBitrate: 2_000_000,
+            maxFramerate: 60,
+          },
+        }),
+      ],
       degradationPreference: "maintain-resolution",
     });
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
@@ -269,6 +351,20 @@ describe("SfuPublisher", () => {
       dtx: false,
     });
     expect(sender.setParameters).toHaveBeenCalledOnce();
+    expect(sender.parameters.encodings).toEqual([
+      expect.objectContaining({
+        rid: "q",
+        maxBitrate: 2_000_000,
+        maxFramerate: 60,
+        scaleResolutionDownBy: 2,
+      }),
+      expect.objectContaining({
+        rid: "f",
+        maxBitrate: 8_000_000,
+        maxFramerate: 60,
+        scaleResolutionDownBy: 1,
+      }),
+    ]);
     expect(publisher.getSenderParameters()).toEqual({
       requested: {
         maxBitrate: 8_000_000,
@@ -328,8 +424,16 @@ describe("SfuPublisher", () => {
         degradationPreference: "balanced",
         encodings: [
           expect.objectContaining({
+            rid: "q",
+            maxBitrate: 750_000,
+            maxFramerate: 30,
+            scaleResolutionDownBy: 2,
+          }),
+          expect.objectContaining({
+            rid: "f",
             maxBitrate: 3_000_000,
             maxFramerate: 30,
+            scaleResolutionDownBy: 1,
           }),
         ],
       }),
@@ -366,6 +470,41 @@ describe("SfuPublisher", () => {
     expect(publisher.getQualityWarning()).toContain("码率上限");
   });
 
+  it("reports a LOW rewrite while retaining HIGH sender readback", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
+      .sender;
+    sender.setParameters.mockImplementationOnce(async (parameters) => {
+      sender.parameters = {
+        ...parameters,
+        encodings: parameters.encodings.map((encoding, index) =>
+          index === 0
+            ? { ...encoding, maxBitrate: 200_000 }
+            : { ...encoding },
+        ),
+      };
+    });
+
+    await expect(
+      publisher.updateProfile({
+        resolution: "1080p",
+        maxFramerate: 30,
+        maxBitrate: 5_000_000,
+        degradationPreference: "balanced",
+      }),
+    ).resolves.toBe(true);
+
+    expect(publisher.getSenderParameters()).toMatchObject({
+      requested: { maxBitrate: 5_000_000 },
+      applied: { maxBitrate: 5_000_000 },
+      mismatches: [],
+    });
+    expect(publisher.getQualityWarning()).toContain("低档表示");
+    expect(publisher.getQualityWarning()).toContain("码率上限");
+  });
+
   it("retains a visible warning when SFU sender parameters are rejected", async () => {
     const publisher = new SfuPublisher();
     await publisher.connect(connection);
@@ -386,6 +525,46 @@ describe("SfuPublisher", () => {
     expect(publisher.getQualityWarning()).toBe(
       "应用 SFU 发送参数失败：unsupported",
     );
+  });
+
+  it("retains a LOW rewrite warning after rolling back sender parameters", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
+      .sender;
+    sender.setParameters
+      .mockRejectedValueOnce(new Error("unsupported"))
+      .mockImplementationOnce(async (parameters) => {
+        sender.parameters = {
+          ...parameters,
+          encodings: parameters.encodings.map((encoding, index) =>
+            index === 0
+              ? { ...encoding, maxBitrate: 1_500_000 }
+              : { ...encoding },
+          ),
+        };
+      });
+
+    await expect(
+      publisher.updateProfile({
+        resolution: "720p",
+        maxFramerate: 30,
+        maxBitrate: 3_000_000,
+        degradationPreference: "balanced",
+      }),
+    ).resolves.toBe(false);
+
+    expect(publisher.getSenderParameters()).toMatchObject({
+      requested: { maxBitrate: 8_000_000 },
+      applied: { maxBitrate: 8_000_000 },
+      mismatches: [],
+    });
+    expect(publisher.getQualityWarning()).toContain(
+      "应用 SFU 发送参数失败：unsupported",
+    );
+    expect(publisher.getQualityWarning()).toContain("低档表示");
+    expect(publisher.getQualityWarning()).toContain("码率上限");
   });
 
   it("restores the previous video after a partially applied replacement fails", async () => {
@@ -526,9 +705,19 @@ describe("SfuSubscriber", () => {
     expect(hostVideo.setSubscribed).not.toHaveBeenCalled();
     expect(streams).toEqual([]);
 
+    hostVideo.setVideoQuality(VideoQuality.HIGH);
+    expect(hostVideo.requestedVideoQuality).toBeNull();
+    hostVideo.setVideoQuality.mockClear();
+
     expect(subscriber.activate()).toBe(true);
     expect(hostVideo.setSubscribed).toHaveBeenCalledWith(true);
     expect(hostAudio.setSubscribed).toHaveBeenCalledWith(true);
+    expect(hostVideo.setVideoQuality).toHaveBeenCalledWith(VideoQuality.HIGH);
+    expect(hostVideo.requestedVideoQuality).toBe(VideoQuality.HIGH);
+    expect(hostVideo.setSubscribed.mock.invocationCallOrder[0]).toBeLessThan(
+      hostVideo.setVideoQuality.mock.invocationCallOrder[0]!,
+    );
+    expect(hostAudio.setVideoQuality).not.toHaveBeenCalled();
     expect(hostCamera.setSubscribed).not.toHaveBeenCalled();
     expect(viewerScreen.setSubscribed).not.toHaveBeenCalled();
 

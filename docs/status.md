@@ -15,7 +15,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Current SQLite still stores only room ID and Host-token digest. Amended ADR-0002 accepts a later atomic `HOST_ADMISSION_PASSWORD`/`screener-v2` migration with default room-scoped private Viewer grants, explicit public-watch, rotate/revoke, and one nullable digest column; no runtime is implemented.
 - PR #44 merged the default-off exact-room candidate code: ordinary ICE is process-wide STUN-only, LiveKit SFU/UDP feeds at most two roots, browser relays stay at one child, the host stays at two, and exhaustion fails boundedly. Old production/coturn remains rollback; HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and dormant without configuration. Mobile/iPad viewers are leaves and healthy edges stay sticky.
-- Manual readback and read-only A+B/C exist; dual publication/topology classification do not. Always-on `LOW` needs exactly-two, hardware, game, and upload gates. Browser audio is request/presence-only.
+- Manual readback and read-only A+B/C exist. The default-off exact-room SFU candidate now configures exactly `HIGH+LOW`, keeps Dynacast off, and sets a per-subscriber `HIGH` ceiling; topology classification remains absent. Browser audio is request/presence-only.
 - A later explicit fallback evacuates first. Autonomous BWE enters `suspect`; confirmation evacuates children, and no confirmed `FALLBACK` parent remains. Root impact is a default-on gate; self-report alone cannot trigger it.
 
 ## Verified Evidence
@@ -37,7 +37,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Production `769de201f7cc` reportedly sustains bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not, and persistence across churn was also reported. This prioritizes, but does not prove, host sender/PC/GCC/capture generation.
 - Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
-- ADR-0007/SFU C are incomplete. Next is LiveKit exactly-two BWE on SFU leaves, then root suspect/evacuation. Web P2P/current SVC shortcuts are no-go; publishing is non-simulcast/Dynacast-off.
+- ADR-0007/SFU C remain unverified: the exactly-two candidate has no browser evidence or default enablement. Next is built-in BWE on zero-descendant SFU leaves, then root suspect/evacuation; root-with-children behavior is a default-on gate. Web P2P/current SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 - Scoped Viewer access is designed but unimplemented. Tests owe role bounds, fragment clearing/no-leak, expiry/cross-room/rotate/revoke, v1 tab termination, and SQLite locked migration/restore. Human passwords/accounts stay out.
 
