@@ -200,6 +200,9 @@ Negative:
   whole-room SFU history. ADR-0005 and merged PR #17 own the default-off
   automatic optional-SFU fallback; this ADR does not accept that route for
   production.
+- ADR-0007 owns demand-driven per-path quality representations. Its accepted
+  product target does not add SVC, multiple representations, or adaptive
+  switching to this bounded browser-relay experiment.
 - If a later ADR accepts peer-assisted media, it must state exactly which parts
   of ADR-0001 and ADR-0005 it supersedes.
 
