@@ -180,43 +180,50 @@ conservative feedback-derived reconfiguration while feeding two transports. It
 does not establish heterogeneous feedback behavior and must not evolve into a
 room-wide minimum controller.
 
-ADR-0007 defines the product boundary: normally run one shared `HIGH` encoded
-representation; start one shared `LOW` only while correlated sender/viewer
-evidence proves that paths persistently cannot sustain `HIGH`; keep healthy
-paths on `HIGH`; and stop `LOW` after every weak path sustains the longer
-recovery window. The representation limit is two, never one per viewer. The
-independent host budget remains at most two downstream media edges.
+ADR-0007 keeps stock WebRTC GCC per direct/peer path. Each SFU path starts with
+a `HIGH` ceiling and built-in BWE selects from one shared `HIGH+LOW` pair. App
+evidence affects topology eligibility and diagnostics, not ordinary layer
+selection. `LOW` may already be active, and idle stop depends on the resource
+gate. The active representation/layer limit is two, never one per viewer; the
+host still has at most two downstream media edges.
 
 If a qualified hardware/power-efficient `LOW` path is unavailable or its
-measured encoder/CPU/GPU game load is unacceptable, `LOW` fails closed for weak paths while
-healthy paths keep `HIGH`.
+measured encoder/CPU/GPU game or upload load is unacceptable, `LOW` fails closed
+for weak paths while healthy paths keep `HIGH`. `LOW` may remain active when
+that measured budget passes; stopping it while idle is an optimization.
 
-Each path has only `HIGH` and `FALLBACK` state with asymmetric consecutive
-entry/recovery windows, not a composite score. Viewer requests are
-authenticated, rate-limited, deduplicated advice and need sender transport and
-encode evidence plus viewer receive/decode corroboration. UA and device
-identity do not participate in quality control.
+The app's `HIGH`/`FALLBACK` states and asymmetric windows only classify topology
+eligibility, not media layers, and do not form a composite score. Viewer
+requests are authenticated, rate-limited, deduplicated advice and need sender
+transport/encode plus viewer receive/decode corroboration. UA and device
+identity do not participate.
 
 A native relay forwards the selected encoded packets and must not decode or
 re-encode them. An ordinary non-scalable representation cannot be forwarded
-into a second quality; the bounded choices are a temporary second encode, SVC,
-or transcoding. Test standard simulcast, LiveKit/Dynacast, then SVC and stop at
-the first path that meets on-demand selection and resource gates. SVC still
-requires the exact applied codec/mode, encoder/native evidence, and the real
-game/power matrix; a future strict-one-output requirement strengthens but does
-not create that case. Media Capabilities or RTCStats
-power-efficiency signals are admission evidence, not hardware proof; an
-unestablished path stays disabled rather than silently using software. Future
-dual-tree/striped distribution may reduce two-copy host upload toward one copy
-plus redundancy, but does not block dual-representation work.
+into a second quality; the bounded choices are a second encode, SVC, or
+transcoding. ADR-0007 statically closes current Web P2P simulcast and
+Web/LiveKit SVC as cross-path shortcuts, but keeps pinned LiveKit exactly-two
+simulcast with built-in SFU bandwidth adaptation on zero-descendant leaves as
+the priority runtime candidate. A root-with-children downshift/evacuation gate
+must pass before default enablement. Explicit subscriber quality is next if
+built-in selection fails; manual sender activation follows if always-on cost
+fails; custom/native dual encode is last. A future native SVC decision may
+reopen only with an explicit hardware encoder contract, at most two decodable
+layers, one encoded
+output reused across direct/peer/SFU, independent path selection, and the real
+game/power matrix. Media Capabilities or RTCStats power-efficiency signals are
+diagnostics, not hardware proof; an unestablished path stays disabled rather
+than silently using software. Future dual-tree/striped distribution may reduce
+two-copy host upload toward one copy plus redundancy, but does not block
+dual-representation work.
 
 Simulcast does not change this native proof boundary: one sender may negotiate
 `HIGH`/`LOW`, but separate direct PeerConnections have no portable shared-encode
 contract and inactive API state is not physical resource proof. ADR-0007 and
 [Realtime Quality Adaptation](./realtime-quality-adaptation.md) own the
-post-A+B/C simulcast, pinned LiveKit
-Dynacast, and SVC gates. This path still requires measured per-representation
-traffic/resources and cannot bypass #28's stock-GCC/RTX stop line.
+static standard-path results and any future native reopen gate. This path still
+requires measured per-representation traffic/resources and cannot bypass #28's
+stock-GCC/RTX stop line.
 
 ## Product Stop Line
 
@@ -226,7 +233,7 @@ congestion controller, interceptor fork, or private transport. The no-RTX
 primary-SSRC path stays research-only because it sacrifices retransmission-
 specific receiver statistics and can distort RTP/RTCP loss accounting.
 
-No stacked PR is connected to Screener's product controller, capture path, or
+No stacked PR is connected to Screener's product path, capture path, or
 audio path. Before product consideration, a target native sender must still
 prove one physical encoder invocation on representative hardware, live
 PLI/FIR-to-encoder control, heterogeneous downstream estimates, bounded burst

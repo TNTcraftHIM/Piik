@@ -58,8 +58,8 @@ hypothesis, not a conclusion. A further report that quality may remain low
 after the old viewer leaves and a new viewer joins must likewise be tested
 against lifecycle evidence rather than assumed.
 
-Use this as the first A+B/C reproduction before the viewer controller or
-`LOW` runtime:
+Use this as the first A+B/C reproduction before quality-aware topology
+classification or dual-layer publication:
 
 1. Reproduce one wired LAN/direct viewer first, then Wi-Fi, two/three viewers,
    and forced TURN, using the same high-motion scene for 60 to 90 seconds.
@@ -80,7 +80,7 @@ viewers neither migrate nor interrupt, and the host-edge cap holds. Only proven
 generation-specific failure can justify a later automatic one-edge recovery
 with sustained-bandwidth and healthy-counterpart evidence, cooldown, and a
 generation guard. Do not add periodic reconnect, blindly raise a ceiling, or
-change the current controller before this gate.
+change the current routing behavior before this gate.
 
 Missing `scaleResolutionDownBy` is not itself a root cause for a single encoding
 because its effective default is 1.0. Likewise, the current 3/5/8 Mbps values
@@ -176,7 +176,7 @@ reset evidence remains unknown and rebases the interval.
 
 The smallest implementation sequence is local A+B correlation in one host
 sampling tick, followed by a minimal authenticated C report carrying the
-receive/decode and derived negotiation signals needed by the two-state
+receive/decode and derived negotiation signals needed by the topology
 predicate. It never carries raw SDP, raw stats, candidate addresses, or raw
 device/network identifiers. Server-authoritative path and connection generations
 provide authorization and correlation; a general remote stats stream or
@@ -216,8 +216,9 @@ one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
-The two-state controller and on-demand `LOW` runtime remain unimplemented, and
-browser support remains subject to the controlled matrix.
+The topology classifier and shared `HIGH+LOW` publication remain unimplemented,
+and browser support remains subject to the controlled matrix. Physically
+stopping an unused `LOW` is a resource optimization rather than a prerequisite.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -244,23 +245,29 @@ member, which remains null rather than a capability conclusion.
 
 ## Accepted Adaptation Direction
 
-ADR-0007 rejects room-wide worst-link adaptation. Healthy operation has one
-shared `HIGH` representation. A viewing path enters `FALLBACK` only after
-multiple consecutive windows show insufficient bandwidth, freezes, or decode
-pressure in correlated sender/viewer evidence. The first verified weak path
-starts one shared `LOW`; all weak paths reuse it while healthy paths remain on
-`HIGH`. Recovery requires a longer stable window than entry. When the last weak
-path recovers, stop `LOW`. The hard representation limit is two, never one per
-viewer.
+ADR-0007 rejects room-wide worst-link adaptation. Direct/peer paths retain their
+independent stock WebRTC congestion control. Each SFU path starts with a `HIGH`
+ceiling; the preferred candidate publishes one shared `HIGH+LOW` pair and lets
+LiveKit BWE independently select and recover its forwarded layer. If that gate
+passes, Screener does not add a media-layer selector. The hard active
+representation/layer limit is two, never one per viewer, and stopping idle
+`LOW` remains optional.
+
+Correlated sender/viewer evidence and asymmetric entry/recovery windows classify
+topology eligibility and diagnostics only. An observed BWE downshift is
+`suspect`; sustained evidence confirms `FALLBACK`, removes parent capacity, and
+longer recovery plus cooldown can restore that capacity. These application
+states do not command ordinary built-in layer changes.
 
 `LOW` itself is conditional: if no qualified hardware/power-efficient media
-path exists or the additional representation exceeds the measured CPU/GPU/game budget, the
-controller preserves `HIGH` and fails visibly for the weak path. It never buys
-weak-path recovery by degrading healthy paths.
+path exists or the additional representation exceeds the measured
+CPU/GPU/game/upload budget, the system preserves `HIGH` and fails visibly for
+the weak path. It never intentionally buys weak-path recovery by degrading
+healthy paths.
 
 That fail-closed result is exceptional damage containment, not a supported
-steady state. A supported sender cohort that cannot reliably start the one
-shared `LOW` on demand fails automatic-quality-control acceptance; its encoding
+steady state. A supported sender cohort that cannot reliably provide the one
+shared `LOW`, either always-on or on demand, fails the quality gate; its encoding
 path must be improved or the cohort explicitly marked unsupported. `HIGH`
 remains protected in either case.
 
@@ -268,23 +275,26 @@ A viewer's `LOW` request is advisory and must be authenticated, session-bound,
 rate-limited, deduplicated, and corroborated by sender transport/encode and
 viewer receive/decode stats. UA or device-model detection is not quality
 evidence; the current mobile/iPad heuristic remains restricted to relay
-capacity.
+capacity. A valid report may affect confirmed topology eligibility; it does not
+command built-in WebRTC/LiveKit media adaptation.
+
+The application must not stably retain a confirmed `FALLBACK` parent. For a
+later planned or explicit quality fallback it evacuates children under the current generation
+before setting `LOW`, preserving the prior state on failure. Built-in SFU BWE
+can downshift before application evidence exists; record that as `suspect`, then
+evacuate and set capacity zero only after bounded correlated confirmation. The
+system cannot promise packet-level preemption of that congestion response, so a
+root-with-children gate must measure and bound temporary descendant impact
+before default enablement.
 
 An ordinary non-scalable stream cannot yield a second independent quality by
 packet forwarding alone. The alternatives are a second representation,
-scalable layers, or relay/SFU transcoding. Screener tests standard capabilities
-before custom media. SVC is the third short-circuit candidate when simulcast
-and LiveKit/Dynacast fail; adoption requires an exact negotiated mode, a
-positively established hardware or power-efficient path, and measured game
-performance. WebRTC-SVC permits the browser to return a
-different configured `scalabilityMode`; Media Capabilities reports support and
-expected smoothness/power efficiency for a specified configuration; WebCodecs
-defines `hardwareAcceleration` only as a hint the user agent may ignore.
-Therefore none is, by itself, proof of a particular hardware encoder, and a
-software SVC fallback must not be silent.
+scalable layers, or relay/SFU transcoding. Static review closes current Web P2P
+simulcast and Web/LiveKit SVC as cross-path shortcuts, while pinned LiveKit
+two-layer simulcast remains the priority bounded runtime candidate. This SVC
+gate does not run a browser or select a custom implementation.
 
-The first two standard capability candidates close on static semantics, without
-a Chrome run. WebRTC provides sender-side encoding control but no
+WebRTC provides sender-side encoding control but no
 `RTCRtpReceiver.setParameters()` or other standard per-RID subscription method.
 Consequently, direct P2P receivers cannot explicitly choose `HIGH` versus `LOW`
 from one shared simulcast sender, while separate viewer PeerConnections have no
@@ -293,35 +303,95 @@ portable shared-encoder contract. This is
 claim about per-RID traffic or whether `active=false` releases a physical
 encoder, CPU work, or GPU allocation.
 
-Pinned LiveKit is also a static no-go for this exact policy. Server 1.13.5 takes
-the maximum requested quality across subscribers and subscriber nodes and
-enables every quality at or below that maximum. Client 2.22.0 applies those
-flags to simulcast encoding `active`. Thus any `HIGH` root also keeps `LOW`
-enabled, which cannot produce healthy-room `HIGH` only, a shared `LOW` only
-while weak roots need it, and `LOW` off after recovery. Because its Firefox
-path does not rely on `active=false` being honored, it also applies 4x scale and
-10 bps; its `maxFrameRate` field is not the standard `maxFramerate`, so neither
-a 2 fps cap nor a stopped layer can be treated as applied. This is
-`no-go-livekit-1.13.5-dynacast-cumulative-layers`; a browser resource run
-could not change the pinned control contract and was not performed. Screener's
-current publisher remains `simulcast: false` with default-disabled Dynacast, so
-this is not a claim about current runtime behavior.
+Pinned LiveKit 2.22.0 can publish screen-share original plus one lower
+simulcast encoding. `RemoteTrackPublication.setVideoQuality(HIGH)` sets a
+per-subscriber spatial-quality ceiling. Server 1.13.5 maps quality, dimensions,
+and FPS to maximum spatial/temporal layers and can adapt each SFU downtrack to
+its own bandwidth and recover it independently. Server Dynacast
+takes the maximum quality requested across subscribers and subscriber nodes,
+then enables every quality at or below that maximum; a `HIGH` root therefore
+keeps `LOW` active. That prevents dynamic `LOW` stop while `HIGH` is subscribed,
+but idle-layer stop is only an optimization, so this cumulative behavior is not
+a product no-go. The Firefox branch's 4x scale, 10 bps, and non-standard
+`maxFrameRate` fallback likewise cautions against assuming a clean stopped
+layer; it does not invalidate the always-on two-layer candidate.
 
-The next standard candidate is a bounded SVC spike. Its static codec/layer
-semantics may be checked before A+B/C; browser media and resource gates wait for
-trustworthy A+B/C. Compare requested/applied mode and Media Capabilities
-`powerEfficient`, with no silent software fallback. Stop before custom media if
-it meets the on-demand selection and resource gates. None of these paths may
-bypass PR #28's stock-GCC/RTX stop line.
+The next runtime gate must publish exactly `HIGH+LOW` with standard
+simulcast/send encodings, leave each zero-descendant SFU leaf's ceiling at
+`HIGH`, and first test built-in per-subscriber SFU bandwidth adaptation and
+recovery. Start with Dynacast off for a deterministic always-on measurement;
+pinned cumulative
+Dynacast-on is another always-on form, not a third representation. Prove the
+received layer, the two-layer ceiling, unchanged healthy P2P/`HIGH`, and
+hardware encoder, game FPS/p1 low, CPU/GPU, interval encode cost, upload, and
+per-layer byte budgets. Before default enablement, a separate root-with-children
+gate must inject an autonomous downshift, observe `suspect`, evacuate after
+bounded confirmation, and limit temporary descendant impact; no confirmed
+`FALLBACK` root may retain children. Screener's current publisher remains `simulcast: false`,
+leaves Dynacast at default `false`, and does not call `setVideoQuality()`.
+Its subscriber also does not attach a `RemoteTrack`, so SDK `adaptiveStream` is
+not directly usable without changing that ownership; built-in SFU bandwidth
+adaptation does not depend on enabling that feature. If built-in selection fails
+the product gates, test explicit standard subscriber quality selection before
+manual sender activation/deactivation. This is a candidate rather than a
+current runtime claim, and no browser run belongs in this static SVC review.
 
-If SVC does not pass and custom dual representation remains necessary, retain a
-favorable, testable hypothesis: one low-rate, low-resolution hardware `LOW` may
-have no material game impact. Before accepting that custom path, compare `HIGH`
-against `HIGH+LOW` under one scene using game FPS/p1 low, CPU, GPU
-video-encode/copy activity, interval encode cost, actual encoder identity, and
-`LOW` bytes/frames. Passing permits the custom on-demand path; failure preserves
-`HIGH` and fails the weak path visibly. It cannot reopen an earlier static no-go
-or bypass the two-state policy and resource budget.
+SVC is the third static no-go,
+`no-go-web-svc-cross-path-hardware-contract`. WebRTC-SVC configures an outgoing
+`RTCRtpSender`; `RTCRtpReceiver` has no matching `setParameters()` experiment or
+standard base/enhancement selector. That lets an SFM/SFU selectively forward
+layers, but it does not let separate direct/peer PeerConnections consume one
+portable shared encoding and independently select layers. Post-negotiation
+`getParameters()` can read the currently configured mode when one was
+requested, including a browser-selected replacement, but a successful request
+does not reveal whether the encoder is hardware or software.
+
+The remaining capability signals cannot enforce the product's no-silent-
+software-fallback rule. Media Capabilities defines `powerEfficient` as an
+optimal-power judgment left to the user agent and explicitly notes that
+software can qualify. RTCStats exposes `encoderImplementation` and
+`powerEfficientEncoder` only when hardware exposure is allowed; the latter
+should reflect acceleration but may use other information. These fields are
+valuable diagnostics, not an affirmative portable hardware contract.
+
+Official implementation surfaces checked 2026-08-19 are deliberately treated
+as boundaries, not UA quality rankings:
+
+| Implementation | Static SVC surface |
+| --- | --- |
+| Chromium/Chrome | Chrome 111 shipped outgoing-track SVC selection; current Blink WebIDL exposes `scalabilityMode` behind its runtime feature. Exact codec/mode and hardware use remain runtime outcomes. |
+| Firefox | Current Firefox WebIDL omits `scalabilityMode`; Mozilla's implementation issue remains assigned and behind a preference. |
+| Safari/WebKit | Current WebKit WebIDL omits the standard member. LiveKit 2.22.0 carries a Safari-specific legacy encoding branch, but that is an SDK workaround rather than a portable standard setter/readback contract. |
+
+Pinned LiveKit can select layers per SFU subscriber: client 2.22.0 exposes
+`RemoteTrackPublication.setVideoQuality()`, and server 1.13.5 maps each
+subscriber's quality/dimensions/FPS to maximum spatial/temporal layers on that
+subscriber's downtrack. That useful SFU contract still does not extend to
+direct/peer receivers. Screener's current SFU subscriber calls only
+`setSubscribed(true)`, so it does not own a layer choice today.
+
+For this screen-share product the pin has an additional hard mismatch. Client
+2.22.0 overwrites SVC screen-share publication to `L1T3`, even when another
+mode was supplied: one spatial resolution and three temporal layers. It
+therefore supplies no low-resolution base and exceeds the two-active-layer
+ceiling. LiveKit also documents that Dynacast can pause only an entire SVC
+stream, not individual SVC layers. Changing those contracts would require a
+different dependency/native design decision, not a runtime proof of the pinned
+path. No SVC harness was written and no Chrome run was performed. None of the
+rejected standard paths may bypass PR #28's stock-GCC/RTX stop line.
+
+If built-in LiveKit selection fails the product gates, test explicit standard
+subscriber quality selection. If the always-on representation cost itself
+exceeds budget, test manual activation/deactivation through standard sender
+primitives. Only if these standard forms fail may custom/native dual
+representation remain a candidate. Retain the
+favorable, testable hypothesis that one low-rate, low-resolution hardware `LOW`
+may have no material game impact, but compare `HIGH` against `HIGH+LOW` under
+one scene using game FPS/p1 low, CPU, GPU video-encode/copy activity, interval
+encode cost, actual encoder identity, upload, and per-layer bytes before
+accepting any custom path. Failure preserves `HIGH` and fails the weak path
+visibly. It cannot reopen an earlier static no-go or bypass the topology policy
+and resource budget.
 
 ## Why Offline Encoding Presets Do Not Transfer
 
@@ -435,10 +505,13 @@ pipeline.
 Compare image readability and motion continuity instead of declaring success
 from FPS alone. If reproducible evidence later shows that `balanced` still
 oscillates or makes the wrong tradeoff on supported machines, revise the fixed
-profiles before enabling ADR-0007. Its acceptance matrix must prove one healthy
-viewer remains `HIGH` while another enters/recover from `FALLBACK`, that all weak
-viewers move to exactly one shared `LOW`, that `LOW` stops after sustained
-recovery, and that each supported sender cohort can start it reliably.
+profiles before enabling ADR-0007. Its acceptance matrix must prove that built-in
+LiveKit BWE independently moves one shaped SFU leaf to the shared `LOW` and back
+while a healthy leaf remains `HIGH`, without an application media selector. The
+application's asymmetric evidence windows must affect only confirmed topology
+eligibility and diagnostics. Each supported sender cohort must provide `LOW`
+within measured hardware, game, and upload budgets; idle-layer resource release
+is a separate optimization.
 
 ## Primary Sources
 
@@ -450,6 +523,11 @@ recovery, and that each supported sender cohort can start it reliably.
 - [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
 - [W3C WebCodecs](https://www.w3.org/TR/webcodecs/)
+- [Chrome 111 WebRTC SVC extension](https://developer.chrome.com/blog/chrome-111-beta)
+- [Chromium `RTCRtpEncodingParameters` WebIDL](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/peerconnection/rtc_rtp_encoding_parameters.idl)
+- [Firefox `RTCRtpEncodingParameters` WebIDL](https://searchfox.org/firefox-main/source/dom/webidl/RTCRtpParameters.webidl)
+- [Firefox WebRTC-SVC implementation status](https://bugzilla.mozilla.org/show_bug.cgi?id=1571470)
+- [WebKit `RTCRtpEncodingParameters` WebIDL](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/Modules/mediastream/RTCRtpEncodingParameters.idl)
 - [RFC 6184 H.264 RTP payload format](https://www.rfc-editor.org/rfc/rfc6184.html)
 - [RFC 7741 VP8 RTP payload format](https://www.rfc-editor.org/rfc/rfc7741.html)
 - [RFC 9628 VP9 RTP payload format](https://www.rfc-editor.org/rfc/rfc9628.html)
@@ -467,6 +545,12 @@ recovery, and that each supported sender cohort can start it reliably.
 - [libwebrtc removal of the automatic animation-detection experiment, 2024-05-22](https://webrtc.googlesource.com/src/+/1d7d0e6e2c5002815853be251ce43fe88779ac85)
 - [LiveKit screen-share presets](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
 - [LiveKit degradation defaults](https://github.com/livekit/client-sdk-js/blob/main/src/room/participant/publishUtils.ts)
+- [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
+- [LiveKit client 2.22.0 SVC defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
+- [LiveKit client 2.22.0 screen-share SVC override](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
+- [LiveKit client 2.22.0 SVC encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
+- [LiveKit client 2.22.0 subscriber quality control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/RemoteTrackPublication.ts)
+- [LiveKit server 1.13.5 per-subscriber layer application](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscribedtrack.go)
 - [LiveKit client 2.22.0 Dynacast layer control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
 - [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
 - [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)

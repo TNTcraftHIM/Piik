@@ -63,8 +63,8 @@ expand the feature to make the diagnostic gate pass.
 
 ADR-0006 records a bounded candidate and its failed first product gate, not an
 accepted architecture or shipped sender. The deployed Web sender and ordinary
-viewer remain unchanged. ADR-0007 continues to own demand-driven
-`HIGH`/on-demand `LOW`; this canary cannot advance or replace it.
+viewer remain unchanged. ADR-0007 continues to own path-isolated
+`HIGH + at most one LOW`; this canary cannot advance or replace it.
 
 ## References
 
