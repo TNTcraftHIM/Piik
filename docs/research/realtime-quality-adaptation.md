@@ -106,8 +106,10 @@ The smallest implementation sequence is local A+B correlation in one host
 sampling tick, including the interval, media/stat identity, and valid deltas.
 Only after that is trustworthy should a minimal authenticated C report carry
 the receive/decode and derived negotiation signals needed by the two-state
-predicate. It never carries raw SDP, raw stats, candidate addresses, or other
-identifiers; a general remote stats stream or telemetry pipeline is unnecessary.
+predicate. It never carries raw SDP, raw stats, candidate addresses, or raw
+device/network identifiers. Opaque server-issued path and connection-generation
+IDs provide authorization and correlation; a general remote stats stream or
+telemetry pipeline is unnecessary.
 
 ## Accepted Adaptation Direction
 

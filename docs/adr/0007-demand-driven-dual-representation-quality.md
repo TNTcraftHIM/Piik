@@ -85,7 +85,9 @@ that probe is trustworthy may the product add a minimal authenticated C report
 for the few receive/decode signals required by the two-state predicate. The B/C
 correlation uses normalized fields derived from negotiated parameters/stats and
 actual decode behavior; it must never upload raw SDP, raw stats, candidate
-addresses, or other identifiers. Do not build a general telemetry schema.
+addresses, or raw device/network identifiers. Opaque server-issued path and
+connection-generation IDs remain required for authorization and correlation.
+Do not build a general telemetry schema.
 
 A viewer may request `LOW`, but the request is advisory. It must be carried on
 an authenticated, current room/path session and be rate-limited and deduplicated.
