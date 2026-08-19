@@ -54,8 +54,9 @@ at peer assistance and bounded waiting/failure.
 ## Draft Implementation Status
 
 Draft PR #17 (`feat/automatic-hybrid-routing`) implements this controller on top
-of Draft PR #13. It passes CI but is not merged or deployed. Production remains
-on the ordinary one-host-peer-per-viewer path.
+of Draft PR #13. Draft PR #20 (`spike/hybrid-warm-fallback`) adds only the
+bounded standby prewarm described below. Both pass CI but are not merged or
+deployed. Production remains on the ordinary one-host-peer-per-viewer path.
 
 The Draft keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
@@ -73,14 +74,13 @@ does not proactively migrate an otherwise healthy existing edge.
 
 Targeted tests cover the revision controller, protocol authorization, relay
 capacity, ordered client transitions, stale asynchronous work, server-restart
-resynchronization, one-shot credential recovery, and peer failback. A corrected
-Chrome 151/LiveKit 1.13.5 localhost run physically failed the same leaf through
-peer recovery/reparent and a two-root SFU route. That leaf resumed frames and
-hook-assisted 25 ms sampling saw a host edge peak of two. Failure report to
-active took 1.481 seconds and to new render 2.257 seconds, so the sub-second gate
-failed. The final repository check passes 253 tests, type checking, and both
-builds; public transport/audio/load/browser checks remain pending, so this ADR
-stays Proposed.
+resynchronization, one-shot credential recovery, peer failback, and optional
+standby warming. The corrected cold Chrome 151/LiveKit 1.13.5 localhost run took
+1.481 seconds from failure report to active and 2.257 seconds to a new rendered
+frame. With authenticated standby warming, the same physical-leaf/two-root
+scenario took 200 ms to active and 319.7 ms to render while the host edge peak
+remained two. Public transport/audio/load/browser checks remain pending, so this
+ADR stays Proposed.
 
 ## State And Wire
 
@@ -115,6 +115,8 @@ publisher from being counted as one logical edge during commit or rollback.
 
 Minimal protocol additions:
 
+- optional `sfuStandbyUrl` in a peer-assisted authenticated snapshot, only when
+  the server has complete LiveKit fallback configuration;
 - `relay-capacity { downstreamEdges: 0 | 1 }` from an authenticated
   peer-assisted viewer;
 - `route-update { revision, phase: "prepare" | "active", assignment }`;
@@ -123,9 +125,10 @@ Minimal protocol additions:
 - `route-failed { revision, phase, connectionId }`; and
 - `refresh-sfu { revision }`.
 
-Authentication carries only the current participant assignment and room
-revision. An authenticated snapshot is the sole authority allowed to replace a
-higher client revision after the signaling server restarts; the client first
+Authentication carries the current participant assignment and room revision,
+plus the non-secret standby URL when fallback is configured. It never carries a
+standby JWT. An authenticated snapshot is the sole authority allowed to replace
+a higher client revision after the signaling server restarts; the client first
 retires media owned by the old revision. Existing peer signaling keeps its
 connection generation and assigned-edge authorization. The server
 derives the failed edge from the authenticated session, active revision, and
@@ -139,10 +142,13 @@ Late, duplicate, or stale revision messages have no effect.
    direct/TURN options.
 3. The server computes revision `R+1` without mutating the active topology. It
    sends a prepare plan only to the host and required fallback roots.
-4. Those participants establish actual LiveKit connections with
+4. When fallback is configured, host and viewer clients have already made one
+   best-effort, token-free `prepareConnection(url)` call after their authoritative
+   authenticated snapshot. This only warms the SDK/DNS/TLS path and is not a
+   participant, media edge, or ready signal. Required participants then establish
+   actual LiveKit connections with
    `autoSubscribe:false`, but the host does not publish and roots do not
-   subscribe yet. `prepareConnection()` may warm DNS/TLS earlier but is not a
-   ready signal.
+   subscribe yet.
 5. After every required participant acknowledges prepare, the server commits
    the active revision. The host synchronously closes the selected direct root
    before publishing to the SFU. Thus:
@@ -170,12 +176,43 @@ starts from the cheapest available route. The first experiment does not
 continuously fail back during a live share, avoiding oscillation without adding
 a score or hysteresis framework.
 
-The Draft warms only an unpublishing/unsubscribed transport during prepare. Its
-media transition is break-before-make: the host releases the replaced peer or
-SFU media edge before activating the new one, and a viewer retires its SFU
-subscriber before returning to peer media. This avoids depending on transient
-overlap and preserves the hard two-edge host invariant, at the cost of a bounded
-interruption that still needs measurement.
+The authenticated standby is not a transport: it has no grant and never joins a
+room. During route prepare the Draft warms only an unpublishing/unsubscribed
+transport. Its media transition remains break-before-make: the host releases the
+replaced peer or SFU media edge before activating the new one, and a viewer
+retires its SFU subscriber before returning to peer media.
+
+## Standby Prewarm Result
+
+Pinned `livekit-client` 2.22.0 implements token-free self-hosted
+`Room.prepareConnection(url)` as a best-effort HTTP `HEAD` to the corresponding
+HTTP(S) origin. The SDK catches failure internally. It performs no `connect`, so
+it neither creates a LiveKit participant nor publishes/subscribes media. The
+client dynamically imports the SDK once, attempts each advertised URL once, and
+drops work made stale before import by a newer authenticated snapshot. Failure
+silently preserves the existing cold path; there is no timer or retry loop.
+
+One bounded cold/standby A/B comparison used Chrome 151, LiveKit 1.13.5,
+headless synthetic 1280x720/30 video, three viewers, and localhost. The harness
+physically closed the same leaf's inbound peer edge, observed it resume under a
+second peer, then physically closed that new edge and reported its real
+connection ID and active revision. The resulting plan had two allowlisted SFU
+roots.
+
+| Failure report to | Cold Draft PR #17 | Authenticated standby |
+| --- | ---: | ---: |
+| SFU prepare | not retained | 5 ms |
+| SFU active | 1,481 ms | 200 ms |
+| Same-leaf rendered frame | 2,257 ms | 319.7 ms |
+
+The standby path had already downloaded and parsed the dynamically imported SDK
+and had called its token-free `HEAD`, so this A/B does not isolate SDK startup
+from DNS/TLS/HTTP preparation. It created no participant or media edge. The same
+leaf decoded 31 SFU frames and produced 31 new frame callbacks before the
+after-run completed. Both roots and the host SFU transport were connected; 25 ms
+sampling observed a host media-edge peak of two. This is a local go for retaining
+the optimization; the roughly 86% improvement must not be extrapolated to a
+public network.
 
 ## Triggers And Budgets
 
@@ -201,7 +238,8 @@ transport event. This signal must be measured before its interval is fixed.
 
 ## Security And Privacy
 
-LiveKit credentials remain short-lived, room-bound, role-bound, and memory-only.
+The standby URL is an origin, not a credential. LiveKit credentials remain
+short-lived, room-bound, role-bound, and memory-only.
 Only the host may publish screen tracks. Subscription permissions allow only
 the current fallback-root identities. Ordinary SFU media is not end-to-end
 encrypted from the SFU operator; the deployment and UI must not claim otherwise.
@@ -252,6 +290,10 @@ Negative:
 - Strict two-edge migration can include a bounded interruption.
 - LiveKit adds an optional operational dependency and can inspect ordinary SFU
   media.
+- A configured peer-assisted client downloads/parses the current build's roughly
+  137.5 kB gzip (531 kB minified) LiveKit chunk and sends one `HEAD` even if it
+  never needs SFU, shifting that small one-time client/static-egress cost earlier.
+  An unconfigured client pays neither cost.
 - A media liveness signal and versioned cross-client transition expand the
   state space and require real failure-injection tests.
 
@@ -270,5 +312,6 @@ Negative:
 
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/#selective-subscription)
 - [LiveKit track subscription permissions](https://docs.livekit.io/transport/media/publish/#track-permissions)
-- [LiveKit connection preparation](https://docs.livekit.io/reference/client-sdk-js/functions/Room.prepareConnection.html)
+- [LiveKit client 2.22.0 `prepareConnection` source](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
+- [LiveKit JavaScript client usage](https://github.com/livekit/client-sdk-js#usage)
 - [WebRTC](https://w3c.github.io/webrtc-pc/)

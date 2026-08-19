@@ -51,6 +51,7 @@ import {
   type QualitySettings,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
+import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -162,6 +163,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const picturePausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
+  const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
 
   const viewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -193,6 +195,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       peersRef.current.clear();
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
+      sfuStandbyPrewarmerRef.current?.dispose();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -237,7 +240,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function clearHostSfuRoute(): void {
     const route = hostSfuRouteRef.current;
     hostSfuRouteRef.current = null;
+    sfuStandbyPrewarmerRef.current?.setUrl(null);
     void route?.disconnect();
+  }
+
+  function setSfuStandbyUrl(url: string | null | undefined): void {
+    if (!url) {
+      sfuStandbyPrewarmerRef.current?.setUrl(null);
+      return;
+    }
+    sfuStandbyPrewarmerRef.current ??= new SfuStandbyPrewarmer();
+    sfuStandbyPrewarmerRef.current.setUrl(url);
   }
 
   function showHostSfuQualityWarning(
@@ -276,6 +289,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peersRef.current.clear();
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
+    sfuStandbyPrewarmerRef.current?.setUrl(null);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -611,6 +625,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      setSfuStandbyUrl(
+        "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
+      );
       setMaxViewers(message.maxViewers);
       if (
         "mediaMode" in message &&

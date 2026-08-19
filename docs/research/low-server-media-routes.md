@@ -31,8 +31,38 @@ The smallest current plan is:
 Any browser-spike failure other than isolated relay re-encoding closes that
 browser-relay route. It does not cancel the separate native sender plan. Closed
 PR #12's explicit whole-room SFU mode is superseded. ADR-0005 and merged PR #17
-own the default-off automatic cross-mode controller; it remains undeployed and
-has not passed real LiveKit/browser network validation.
+own the default-off automatic cross-mode controller; it remains undeployed.
+Corrected localhost Chrome/LiveKit functional recovery passed, while public
+transport, quality, load, and browser validation remain open.
+
+## Token-Free SFU Standby Prewarm
+
+The pinned Apache-2.0 `livekit-client` 2.22.0 source documents and implements
+`Room.prepareConnection(url)` as DNS/TLS preparation. For a self-hosted URL and
+no token, it converts `ws(s)` to `http(s)`, sends one `HEAD`, and catches errors.
+It does not call `connect`; therefore it does not join a room, acquire a
+participant identity, publish, subscribe, or create a media edge. A token is
+only relevant to LiveKit Cloud region selection, which this self-hosted spike
+does not use.
+
+The smallest integration is to advertise the non-secret LiveKit origin only in
+the authoritative peer-assisted authentication snapshot when the complete
+fallback tuple exists. Each client dynamically imports the already-pinned SDK
+once and attempts the URL once. Newer authentication invalidates a stale task
+before the import completes; a failed HEAD is silent and is not retried. No JWT
+is issued until the existing route controller actually selects SFU fallback.
+With no fallback configuration, the field, import, HEAD, and behavior are all
+absent.
+
+A bounded Chrome 151/LiveKit 1.13.5 localhost/headless/video-only same-leaf A/B
+reduced failure report to SFU active from 1.481 seconds to 200 ms and to a
+rendered frame from 2.257 seconds to 319.7 ms. It retained the fixed direct ->
+peer -> SFU order, two allowlisted roots, and host media-edge peak two. The
+standby had already downloaded/parsed the SDK and made its token-free network
+prewarm, without a participant or media edge, so the A/B does not isolate those
+effects. Its roughly 86% result must not be extrapolated to a public network;
+internet DNS/TLS reuse, RTT/loss, audio, transport fallback, and browser variance
+still require measurement.
 
 ## Traffic Conservation And The Impossible Triangle
 
@@ -167,6 +197,9 @@ Primary sources checked on 2026-08-19:
   - IETF standards under IETF Trust terms.
 - [LiveKit](https://github.com/livekit/livekit) - Apache-2.0; the optional SFU
   reference, with no code copied into this research change.
+- [LiveKit client 2.22.0 `Room.prepareConnection`](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
+  and [official usage](https://github.com/livekit/client-sdk-js#usage) -
+  Apache-2.0; API behavior was inspected, with no source copied.
 
 No GPL/AGPL code was copied. Published papers and specifications support design
 analysis only; their presence here is not an implementation license.

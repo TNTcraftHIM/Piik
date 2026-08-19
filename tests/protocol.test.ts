@@ -331,6 +331,12 @@ describe("server signaling protocol", () => {
     expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);
     expect(
       serverMessageSchema.safeParse({
+        ...peerAssisted,
+        sfuStandbyUrl: "wss://sfu.example.com",
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
         type: "media-assignment",
         mediaAssignment: peerAssisted.mediaAssignment,
       }).success,
@@ -376,6 +382,18 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
         qualitySettings,
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        sfuStandbyUrl: "wss://sfu.example.com",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...peerAssisted,
+        sfuStandbyUrl: "https://sfu.example.com",
       }).success,
     ).toBe(false);
     expect(
