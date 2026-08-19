@@ -10,8 +10,8 @@ rooms, sequential IDs, and reusable links.
 
 Production still creates one host peer connection per viewer. Draft PR #13 adds
 default-off two-chain peer assistance with per-hop re-encoding; ADR-0005 adds
-optional automatic SFU fallback. Corrected recovery passes functionally but
-misses its sub-second gate; neither Draft is merged or deployed.
+optional automatic SFU fallback in Draft PR #17. Corrected recovery passes
+functionally but misses its sub-second gate; neither Draft is merged or deployed.
 
 ## Current Snapshot
 
@@ -30,7 +30,7 @@ misses its sub-second gate; neither Draft is merged or deployed.
 - A short Chrome 151 synthetic `1/3/5/8` benchmark passed every topology check: host active edges peaked at two, relay edges at one, every viewer kept increasing decoded frames through the measurement window, and the slowest first decoded frame was about 1.05 seconds. Closing a first-level relay in the three-viewer run recovered in about 5.32 seconds without exceeding host fanout two.
 - A separate live-profile smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings while its leaf kept decoding.
 - Corrected Chrome 151/LiveKit 1.13.5 synthetic 720p30 smoke physically failed the same leaf through peer recovery/reparent and a two-root SFU route. Its frames resumed; 472 hook-assisted 25 ms samples saw host edge peak two. Failure report to active took 1.481 seconds and to new render 2.257 seconds.
-- The current Draft passes type checking, 19 Vitest files/253 tests, both production builds, dependency audit, and repository hygiene.
+- Draft PR #17 passes CI, type checking, 19 Vitest files/253 tests, both production builds, dependency audit, and repository hygiene.
 - Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes CI for one Pion RTP write fanned to two transports. It has no encoder and proves neither physical encode nor browser E2E.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.

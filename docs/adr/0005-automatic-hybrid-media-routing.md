@@ -52,9 +52,9 @@ at peer assistance and bounded waiting/failure.
 
 ## Draft Implementation Status
 
-The current `feat/automatic-hybrid-routing` branch implements this controller
-on top of Draft PR #13. It is not merged or deployed. Production remains on the
-ordinary one-host-peer-per-viewer path.
+Draft PR #17 (`feat/automatic-hybrid-routing`) implements this controller on top
+of Draft PR #13. It passes CI but is not merged or deployed. Production remains
+on the ordinary one-host-peer-per-viewer path.
 
 The Draft keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
