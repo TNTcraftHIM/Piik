@@ -1146,7 +1146,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           {!details?.hasAudio && stream && (
             <WarningBanner>当前来源没有可共享音频</WarningBanner>
           )}
-          {room && signalStatus === "connected" && !relayAvailable && (
+          {showConnectionDetails &&
+            room &&
+            signalStatus === "connected" &&
+            !relayAvailable && (
             <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
           )}
           {qualityLimitation && (
