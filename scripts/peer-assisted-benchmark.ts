@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import WebSocket from "ws";
+import type { ParticipantRouteAssignment } from "../src/shared/protocol";
 import {
   createScreenerServer,
   type ScreenerServer,
@@ -80,9 +81,10 @@ interface ConnectionObservation {
   error?: string;
 }
 
-interface MediaAssignmentObservation {
-  parentPeerId: string | null;
-  childPeerIds: string[];
+interface ActiveRouteReadyObservation {
+  revision: number;
+  upstreamKind: ParticipantRouteAssignment["upstream"]["kind"];
+  sfuPublicationGeneration: string | null;
 }
 
 interface PageObservation {
@@ -95,7 +97,9 @@ interface PageObservation {
   authenticateSentAtEpochMs: number | null;
   signalingConnected: boolean;
   qualitySettings: QualitySettings | null;
-  assignment: MediaAssignmentObservation;
+  routeRevision: number | null;
+  routeAssignment: ParticipantRouteAssignment | null;
+  activeRouteReady: ActiveRouteReadyObservation[];
   maxActiveOutboundMediaEdges: number;
   maxAssignedChildren: number;
   firstDecodedAtEpochMs: number | null;
@@ -464,6 +468,69 @@ export function activeVideoEdgeCount(
   }).length;
 }
 
+function hasAuthoritativeMediaUpstream(page: PageObservation): boolean {
+  return (
+    page.routeRevision !== null &&
+    (page.routeAssignment?.upstream.kind === "peer" ||
+      page.routeAssignment?.upstream.kind === "sfu")
+  );
+}
+
+function routeParentPeerId(page: PageObservation): string | null {
+  return page.routeAssignment?.upstream.kind === "peer"
+    ? page.routeAssignment.upstream.peerId
+    : null;
+}
+
+function routeChildPeerIds(page: PageObservation): readonly string[] {
+  return page.routeAssignment?.childPeerIds ?? [];
+}
+
+function inspectSfuPublication(pages: readonly PageObservation[]) {
+  const sfuViewers = pages.filter(
+    (page) =>
+      page.role === "viewer" && page.routeAssignment?.upstream.kind === "sfu",
+  );
+  const publicationOwners = pages.filter(
+    (page) =>
+      typeof page.routeAssignment?.sfuPublicationGeneration === "string",
+  );
+  if (sfuViewers.length === 0) {
+    return {
+      observed: false,
+      rootCount: 0,
+      coherent: publicationOwners.length === 0,
+    };
+  }
+
+  if (sfuViewers.length > 2 || publicationOwners.length !== 1) {
+    return { observed: true, rootCount: sfuViewers.length, coherent: false };
+  }
+  const host = publicationOwners[0]!;
+  const hostRevision = host.routeRevision;
+  const hostGeneration = host.routeAssignment?.sfuPublicationGeneration ?? null;
+  const hasMatchingActiveReady = (page: PageObservation): boolean =>
+    page.activeRouteReady.some(
+      (ready) =>
+        ready.revision === page.routeRevision &&
+        ready.upstreamKind === page.routeAssignment?.upstream.kind &&
+        ready.sfuPublicationGeneration ===
+          page.routeAssignment?.sfuPublicationGeneration,
+    );
+  const coherent =
+    host.role === "host" &&
+    hostRevision !== null &&
+    hostGeneration !== null &&
+    pages.every((page) => page.routeRevision === hostRevision) &&
+    hasMatchingActiveReady(host) &&
+    sfuViewers.every(
+      (viewer) =>
+        viewer.routeAssignment?.sfuPublicationGeneration === null &&
+        hasMatchingActiveReady(viewer),
+    );
+  return { observed: true, rootCount: sfuViewers.length, coherent };
+}
+
 export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
   let maxHostActiveMediaEdges = 0;
   let maxHostAssignedChildren = 0;
@@ -479,7 +546,7 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       );
       maxHostAssignedChildren = Math.max(
         maxHostAssignedChildren,
-        host.assignment.childPeerIds.length,
+        routeChildPeerIds(host).length,
         host.maxAssignedChildren,
       );
     }
@@ -494,6 +561,7 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
     }
   }
   const finalPages = samples.at(-1)?.pages ?? [];
+  const sfuPublication = inspectSfuPublication(finalPages);
   const viewerContinuity = finalPages
     .filter((page) => page.role === "viewer")
     .map((page) => {
@@ -529,7 +597,9 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       });
       return {
         label: page.label,
-        assigned: page.assignment.parentPeerId !== null,
+        assigned: hasAuthoritativeMediaUpstream(page),
+        routeRevision: page.routeRevision,
+        upstreamKind: page.routeAssignment?.upstream.kind ?? null,
         activeUpstream: activeReceive !== undefined,
         statsClean,
         framesIncreased:
@@ -539,6 +609,7 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       };
     });
   everyViewerDecoded =
+    sfuPublication.coherent &&
     viewerContinuity.length === viewerCount &&
     viewerContinuity.every(
       (viewer) =>
@@ -576,6 +647,9 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
     maxHostAssignedChildren,
     maxRelayActiveMediaEdges,
     everyViewerDecoded,
+    sfuPublicationObserved: sfuPublication.observed,
+    sfuRootCount: sfuPublication.rootCount,
+    sfuPublicationCoherent: sfuPublication.coherent,
     viewerContinuity,
     firstFrames,
     maxFirstDecodedAfterAuthenticateMs:
@@ -586,8 +660,12 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       viewerIndex: page.viewerIndex,
       peerId: page.peerId,
       qualitySettings: page.qualitySettings,
-      parentPeerId: page.assignment.parentPeerId,
-      childPeerIds: page.assignment.childPeerIds,
+      parentPeerId: routeParentPeerId(page),
+      childPeerIds: routeChildPeerIds(page),
+      routeRevision: page.routeRevision,
+      routeUpstream: page.routeAssignment?.upstream ?? null,
+      sfuPublicationGeneration:
+        page.routeAssignment?.sfuPublicationGeneration ?? null,
     })),
     finalEdges: finalPages.flatMap((page) =>
       page.connections
@@ -612,11 +690,25 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
   };
 }
 
-function buildRunChecks(
+export function buildRunChecks(
   summary: NonNullable<BenchmarkRun["summary"]>,
   viewerCount: number,
   profileId: ProfileId,
 ): RunCheck[] {
+  const sfuConsistencyCheck: RunCheck = summary.sfuPublicationObserved
+    ? {
+        name: "sfu-route-consistency",
+        passed: summary.sfuPublicationCoherent,
+        actual: summary.sfuRootCount,
+        expected:
+          "1-2 active SFU roots, one Host publication, and one active revision across all participants",
+      }
+    : {
+        name: "no-orphan-sfu-publication",
+        passed: summary.sfuPublicationCoherent,
+        actual: summary.sfuPublicationCoherent,
+        expected: "no SFU publication generation when no SFU root is active",
+      };
   return [
     {
       name: "host-active-media-edges",
@@ -642,6 +734,7 @@ function buildRunChecks(
       actual: summary.everyViewerDecoded,
       expected: `${viewerCount} viewers with a live upstream, clean stats, and increasing decoded frames`,
     },
+    sfuConsistencyCheck,
     {
       name: "first-decoded-frame",
       passed:
@@ -693,7 +786,9 @@ export function buildBenchmarkInitScript(options: {
       authenticateSentAtEpochMs: null,
       signalingConnected: false,
       qualitySettings: null,
-      assignment: { parentPeerId: null, childPeerIds: [] },
+      routeRevision: null,
+      routeAssignment: null,
+      activeRouteReady: [],
       maxActiveOutboundMediaEdges: 0,
       maxAssignedChildren: 0,
       firstDecodedAtEpochMs: null,
@@ -704,23 +799,103 @@ export function buildBenchmarkInitScript(options: {
     const descriptions = [];
     const accumulators = new WeakMap();
     const statsModule = import("/src/client/webrtc/stats.ts");
+    let signalingSocket = null;
+    let peerAssisted = false;
+    let transitionRevision = -1;
+    let transitionPhase = null;
+    let plannedRouteAssignment = null;
 
-    function cloneAssignment(value) {
-      if (!value || !Array.isArray(value.childPeerIds)) {
-        return { parentPeerId: null, childPeerIds: [] };
+    function isOpaqueId(value) {
+      return typeof value === "string" &&
+        value.length >= 8 &&
+        value.length <= 128 &&
+        /^[A-Za-z0-9_-]+$/.test(value);
+    }
+
+    function cloneRouteAssignment(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      const upstream = value.upstream;
+      if (!upstream || typeof upstream !== "object" || Array.isArray(upstream)) return null;
+      let clonedUpstream;
+      if (upstream.kind === "peer" && isOpaqueId(upstream.peerId)) {
+        clonedUpstream = { kind: "peer", peerId: upstream.peerId };
+      } else if (upstream.kind === "none" || upstream.kind === "sfu") {
+        clonedUpstream = { kind: upstream.kind };
+      } else {
+        return null;
+      }
+      if (
+        !Array.isArray(value.childPeerIds) ||
+        value.childPeerIds.length > 2 ||
+        !value.childPeerIds.every(isOpaqueId) ||
+        new Set(value.childPeerIds).size !== value.childPeerIds.length ||
+        (value.sfuPublicationGeneration !== null &&
+          !isOpaqueId(value.sfuPublicationGeneration))
+      ) {
+        return null;
       }
       return {
-        parentPeerId: typeof value.parentPeerId === "string" ? value.parentPeerId : null,
-        childPeerIds: value.childPeerIds.filter((item) => typeof item === "string"),
+        upstream: clonedUpstream,
+        childPeerIds: [...value.childPeerIds],
+        sfuPublicationGeneration: value.sfuPublicationGeneration,
       };
     }
 
-    function setAssignment(value) {
-      state.assignment = cloneAssignment(value);
-      state.maxAssignedChildren = Math.max(
-        state.maxAssignedChildren,
-        state.assignment.childPeerIds.length,
-      );
+    function sameRouteAssignment(left, right) {
+      return left.upstream.kind === right.upstream.kind &&
+        (left.upstream.kind !== "peer" ||
+          (right.upstream.kind === "peer" &&
+            left.upstream.peerId === right.upstream.peerId)) &&
+        left.sfuPublicationGeneration === right.sfuPublicationGeneration &&
+        left.childPeerIds.length === right.childPeerIds.length &&
+        left.childPeerIds.every((peerId, index) => peerId === right.childPeerIds[index]);
+    }
+
+    function resetRouteTransition() {
+      transitionRevision = -1;
+      transitionPhase = null;
+      plannedRouteAssignment = null;
+      state.routeRevision = null;
+      state.routeAssignment = null;
+    }
+
+    function acceptRouteUpdate(revision, phase, value) {
+      const assignment = cloneRouteAssignment(value);
+      if (
+        !Number.isSafeInteger(revision) ||
+        revision < 0 ||
+        (phase !== "prepare" && phase !== "active") ||
+        !assignment
+      ) {
+        return false;
+      }
+      if (revision < transitionRevision) {
+        return false;
+      }
+      if (revision === transitionRevision) {
+        if (
+          !plannedRouteAssignment ||
+          !sameRouteAssignment(plannedRouteAssignment, assignment) ||
+          (transitionPhase === "active" && phase === "prepare")
+        ) {
+          return false;
+        }
+        if (transitionPhase === phase) {
+          return true;
+        }
+      }
+      transitionRevision = revision;
+      transitionPhase = phase;
+      plannedRouteAssignment = assignment;
+      if (phase === "active") {
+        state.routeRevision = revision;
+        state.routeAssignment = cloneRouteAssignment(assignment);
+        state.maxAssignedChildren = Math.max(
+          state.maxAssignedChildren,
+          assignment.childPeerIds.length,
+        );
+      }
+      return true;
     }
 
     function sdpKey(sdp) {
@@ -745,24 +920,54 @@ export function buildBenchmarkInitScript(options: {
       try { message = JSON.parse(value); } catch { return; }
       if (!message || typeof message.type !== "string") return;
       if (direction === "out" && message.type === "authenticate") {
-        socket.__screenerBenchmarkSignal = true;
+        signalingSocket = socket;
+        peerAssisted = false;
+        state.activeRouteReady = [];
         state.role = message.role;
         state.roomId = message.roomId;
         state.authenticateSentAtEpochMs = Date.now();
+        state.signalingConnected = false;
+      } else if (socket !== signalingSocket) {
+        return;
       } else if (direction === "out" && message.type === "set-quality-settings") {
         state.qualitySettings = message.qualitySettings;
+      } else if (
+        direction === "out" &&
+        message.type === "route-ready" &&
+        message.phase === "active" &&
+        peerAssisted &&
+        Number.isSafeInteger(message.revision) &&
+        message.revision === state.routeRevision &&
+        state.routeAssignment
+      ) {
+        state.activeRouteReady.push({
+          revision: message.revision,
+          upstreamKind: state.routeAssignment.upstream.kind,
+          sfuPublicationGeneration:
+            state.routeAssignment.sfuPublicationGeneration,
+        });
+        if (state.activeRouteReady.length > 32) state.activeRouteReady.shift();
       }
       if (direction === "in" && message.type === "authenticated") {
-        socket.__screenerBenchmarkSignal = true;
         state.peerId = message.peerId;
         state.authenticatedAtEpochMs = Date.now();
         state.signalingConnected = true;
+        peerAssisted = message.mediaMode === "peer-assisted";
+        resetRouteTransition();
         if (message.mediaMode === "peer-assisted") {
-          setAssignment(message.mediaAssignment);
+          acceptRouteUpdate(
+            message.routeRevision,
+            "active",
+            message.routeAssignment,
+          );
           state.qualitySettings = message.qualitySettings;
         }
-      } else if (direction === "in" && message.type === "media-assignment") {
-        setAssignment(message.mediaAssignment);
+      } else if (
+        direction === "in" &&
+        message.type === "route-update" &&
+        peerAssisted
+      ) {
+        acceptRouteUpdate(message.revision, message.phase, message.assignment);
       } else if (direction === "in" && message.type === "quality-settings") {
         state.qualitySettings = message.qualitySettings;
       }
@@ -775,14 +980,15 @@ export function buildBenchmarkInitScript(options: {
         const socket = Reflect.construct(Target, args, Target);
         const nativeSend = socket.send;
         socket.send = function(data) {
+          const result = nativeSend.call(socket, data);
           handleSignalMessage(data, "out", socket);
-          return nativeSend.call(socket, data);
+          return result;
         };
         socket.addEventListener("message", (event) => {
           handleSignalMessage(event.data, "in", socket);
         });
         socket.addEventListener("close", () => {
-          if (socket.__screenerBenchmarkSignal) state.signalingConnected = false;
+          if (socket === signalingSocket) state.signalingConnected = false;
         });
         return socket;
       },
@@ -973,7 +1179,8 @@ export function buildBenchmarkInitScript(options: {
     function baseSnapshot() {
       return {
         ...state,
-        assignment: cloneAssignment(state.assignment),
+        routeAssignment: cloneRouteAssignment(state.routeAssignment),
+        activeRouteReady: state.activeRouteReady.map((ready) => ({ ...ready })),
       };
     }
 
@@ -1313,7 +1520,7 @@ async function waitForViewerMedia(
     const snapshot = await progressSample(cdp, page);
     if (
       snapshot.peerId &&
-      snapshot.assignment.parentPeerId &&
+      hasAuthoritativeMediaUpstream(snapshot) &&
       snapshot.connections.some(
         (connection) =>
           connection.connectionState === "connected" &&
@@ -1592,7 +1799,7 @@ function descendantsOf(
     for (const page of pages) {
       if (
         page.peerId &&
-        page.assignment.parentPeerId === parent &&
+        routeParentPeerId(page) === parent &&
         !descendants.includes(page.peerId)
       ) {
         descendants.push(page.peerId);
@@ -1617,8 +1824,8 @@ async function runRecovery(
   const relay = finalPages.find(
     (page) =>
       page.role === "viewer" &&
-      page.assignment.parentPeerId === host.peerId &&
-      page.assignment.childPeerIds.length > 0,
+      routeParentPeerId(page) === host.peerId &&
+      routeChildPeerIds(page).length > 0,
   );
   if (!relay?.peerId) {
     return { triggered: true, error: "No first-level relay was available" };
@@ -1653,7 +1860,7 @@ async function runRecovery(
       );
       maxHostAssignedChildren = Math.max(
         maxHostAssignedChildren,
-        currentHost.assignment.childPeerIds.length,
+        routeChildPeerIds(currentHost).length,
       );
     }
     const affected = observations.filter((page) =>
@@ -1661,8 +1868,8 @@ async function runRecovery(
     );
     const branchRoot = affected.find(
       (page) =>
-        page.assignment.parentPeerId !== null &&
-        page.assignment.parentPeerId !== relay.peerId,
+        routeParentPeerId(page) !== null &&
+        routeParentPeerId(page) !== relay.peerId,
     );
     if (!reassignedAtEpochMs && branchRoot) {
       reassignedAtEpochMs = Date.now();
@@ -1933,6 +2140,7 @@ export async function main(): Promise<number> {
       "Synthetic canvas motion exercises real Chromium WebRTC but is not a game-capture quality claim.",
       "Headless runs are topology and transport evidence, not representative GPU or power evidence.",
       "CPU, GPU, NIC totals, glass-to-glass latency, generational visual quality, mobile browsers, and TURN require external or device-specific measurement.",
+      "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
     ],
     runs: [],
