@@ -57,6 +57,8 @@ first fit before custom `LOW`, independently of ADR-0006. Diagnose audio A/B/C,
 sync, and voice-source leakage in parallel when it does not displace that P0;
 `maxBitrate` is not a quality fix. WebRTC/LiveKit owns congestion/layers; the app
 owns two-state policy. An exact room later gates peer/SFU UDP and coturn changes.
+The Viewer-local volume slider is a later bounded UI batch and does not block
+these media gates.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix.
