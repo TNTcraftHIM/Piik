@@ -15,9 +15,9 @@ import {
 } from "../shared/protocol.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import {
-  PeerRelayTopology,
-  type MediaAssignmentChange,
-} from "./peer-relay-topology.js";
+  HybridMediaRouter,
+  type SfuFallbackOptions,
+} from "./hybrid-media-router.js";
 import { createIceConfig, type IceConfigOptions } from "./turn.js";
 
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
@@ -31,6 +31,7 @@ interface AuthenticatedSession {
   role: Role;
   peerId: string;
   roomExpiresAtMs: number | null;
+  shareGeneration: string | null;
 }
 
 interface SocketState {
@@ -44,6 +45,7 @@ export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
   peerAssistedMedia: boolean;
+  sfuFallback?: SfuFallbackOptions;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
   authorizeUpgrade: (request: IncomingMessage) => boolean;
@@ -71,7 +73,8 @@ export class SignalingServer {
     string,
     QualityProfileId
   >();
-  private readonly peerRelayTopology = new PeerRelayTopology();
+  private readonly shareGenerationsByRoom = new Map<string, string>();
+  private readonly hybridMediaRouter?: HybridMediaRouter;
   private readonly now: () => number;
   private readonly authenticationTimeoutMs: number;
   private readonly viewerDisconnectGraceMs: number;
@@ -99,6 +102,25 @@ export class SignalingServer {
       this.maxUnauthenticatedConnections > this.maxConnections
     ) {
       throw new Error("WebSocket connection limits are invalid");
+    }
+    if (options.sfuFallback && !options.peerAssistedMedia) {
+      throw new Error("SFU fallback requires peer-assisted media");
+    }
+    if (options.peerAssistedMedia) {
+      this.hybridMediaRouter = new HybridMediaRouter({
+        roomStore: options.roomStore,
+        sfuFallback: options.sfuFallback,
+        sendToSession: (sessionId, message) =>
+          this.sendToSession(sessionId, message),
+        getConnectionId: (roomId, viewerPeerId) =>
+          this.connectionIdsByViewer.get(
+            viewerConnectionKey(roomId, viewerPeerId),
+          ),
+        deleteConnectionId: (roomId, viewerPeerId) =>
+          this.connectionIdsByViewer.delete(
+            viewerConnectionKey(roomId, viewerPeerId),
+          ),
+      });
     }
 
     this.upgradeHandler = (request, socket, head) => {
@@ -157,6 +179,8 @@ export class SignalingServer {
       clearTimeout(timer);
     }
     this.viewerGraceTimers.clear();
+    this.hybridMediaRouter?.close();
+    this.shareGenerationsByRoom.clear();
     this.options.server.off("upgrade", this.upgradeHandler);
 
     for (const socket of this.webSocketServer.clients) {
@@ -285,6 +309,21 @@ export class SignalingServer {
 
     clearTimeout(state.authenticationTimer);
     this.unauthenticatedConnections -= 1;
+    let shareGeneration: string | null = null;
+    if (participant.role === "host" && message.role === "host") {
+      const currentGeneration = this.shareGenerationsByRoom.get(
+        participant.roomId,
+      );
+      shareGeneration =
+        message.shareGeneration ?? currentGeneration ?? state.sessionId;
+      if (
+        currentGeneration !== undefined &&
+        currentGeneration !== shareGeneration
+      ) {
+        this.stopSharing(participant.roomId);
+      }
+      this.shareGenerationsByRoom.set(participant.roomId, shareGeneration);
+    }
     state.authenticated = {
       roomId: participant.roomId,
       role: participant.role,
@@ -293,29 +332,19 @@ export class SignalingServer {
         participant.expiresAt === null
           ? null
           : Date.parse(participant.expiresAt),
+      shareGeneration,
     };
     this.clearViewerGrace(participant.roomId, participant.peerId);
-    const assignmentChanges = this.options.peerAssistedMedia
-      ? participant.role === "host"
-        ? this.peerRelayTopology.setHost(
-            participant.roomId,
-            participant.peerId,
-            this.connectedPeerIds(participant.roomId),
-          )
-        : this.peerRelayTopology.addViewer(
-            participant.roomId,
-            participant.peerId,
-            this.connectedPeerIds(participant.roomId),
-          )
-      : [];
-    this.clearChangedConnectionIds(participant.roomId, assignmentChanges);
-    const mediaAssignment = this.options.peerAssistedMedia
-      ? this.peerRelayTopology.getAssignment(
-          participant.roomId,
-          participant.peerId,
-        )
-      : undefined;
-    if (this.options.peerAssistedMedia && !mediaAssignment) {
+    const routeParticipant = {
+      roomId: participant.roomId,
+      role: participant.role,
+      peerId: participant.peerId,
+      sessionId: state.sessionId,
+    };
+    let hybridState;
+    try {
+      hybridState = this.hybridMediaRouter?.connectParticipant(routeParticipant);
+    } catch {
       console.error("Peer relay topology did not assign an authenticated participant");
       this.sendError(socket, "SERVER_ERROR", "Media assignment failed");
       socket.close(1011, "Media assignment failed");
@@ -349,11 +378,13 @@ export class SignalingServer {
           : Date.parse(participant.expiresAt),
       ),
     };
-    if (mediaAssignment) {
+    if (hybridState) {
       this.send(socket, {
         ...authenticatedMessage,
         mediaMode: "peer-assisted",
-        mediaAssignment,
+        mediaAssignment: hybridState.mediaAssignment,
+        routeRevision: hybridState.routeRevision,
+        routeAssignment: hybridState.routeAssignment,
         qualityProfileId:
           this.qualityProfileIdsByRoom.get(participant.roomId) ??
           DEFAULT_QUALITY_PROFILE_ID,
@@ -369,24 +400,11 @@ export class SignalingServer {
       }
     }
 
-    if (this.options.peerAssistedMedia) {
-      this.sendMediaAssignmentChanges(
-        participant.roomId,
-        assignmentChanges,
-        participant.peerId,
+    if (hybridState) {
+      this.hybridMediaRouter!.completeAuthentication(
+        routeParticipant,
+        hybridState,
       );
-      if (
-        participant.role === "viewer" &&
-        mediaAssignment?.parentPeerId &&
-        !assignmentChanges.some(
-          ({ peerId }) => peerId === mediaAssignment.parentPeerId,
-        )
-      ) {
-        this.sendCurrentParentAssignment(
-          participant.roomId,
-          participant.peerId,
-        );
-      }
     }
 
     if (participant.role === "host") {
@@ -477,10 +495,80 @@ export class SignalingServer {
           });
         }
         return;
+      case "relay-capacity":
+        if (
+          !this.options.peerAssistedMedia ||
+          authenticated.role !== "viewer"
+        ) {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "Only a peer-assisted viewer may advertise relay capacity",
+          );
+          return;
+        }
+        this.hybridMediaRouter!.setViewerRelayCapacity(
+          {
+            ...authenticated,
+            sessionId: this.socketStates.get(socket)!.sessionId,
+          },
+          message.downstreamEdges,
+        );
+        return;
+      case "route-ready":
+        if (!this.options.peerAssistedMedia) {
+          this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
+          return;
+        }
+        this.hybridMediaRouter!.handleRouteReady(
+          {
+            ...authenticated,
+            sessionId: this.socketStates.get(socket)!.sessionId,
+          },
+          message,
+        );
+        return;
+      case "route-failed":
+        if (!this.options.peerAssistedMedia) {
+          this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
+          return;
+        }
+        this.hybridMediaRouter!.handleRouteFailed(
+          {
+            ...authenticated,
+            sessionId: this.socketStates.get(socket)!.sessionId,
+          },
+          message,
+        );
+        return;
+      case "refresh-sfu":
+        if (!this.options.sfuFallback) {
+          this.sendError(socket, "FORBIDDEN", "SFU fallback is not enabled");
+          return;
+        }
+        this.hybridMediaRouter!.refreshSfu(
+          {
+            ...authenticated,
+            sessionId: this.socketStates.get(socket)!.sessionId,
+          },
+          message.revision,
+        );
+        return;
       case "stop-sharing":
       case "close-room":
         if (authenticated.role !== "host") {
           this.sendError(socket, "FORBIDDEN", "Only the host may stop sharing");
+          return;
+        }
+        if (
+          authenticated.shareGeneration === null ||
+          this.shareGenerationsByRoom.get(authenticated.roomId) !==
+            authenticated.shareGeneration ||
+          (message.type === "stop-sharing" &&
+            message.shareGeneration !== undefined &&
+            message.shareGeneration !== authenticated.shareGeneration)
+        ) {
+          socket.close(4001, "Sharing generation replaced");
           return;
         }
         const state = this.socketStates.get(socket);
@@ -580,12 +668,12 @@ export class SignalingServer {
       return;
     }
 
-    const parentToChild = this.peerRelayTopology.isParentOf(
+    const parentToChild = this.hybridMediaRouter!.isActivePeerParentOf(
       source.roomId,
       source.peerId,
       targetPeerId,
     );
-    const childToParent = this.peerRelayTopology.isParentOf(
+    const childToParent = this.hybridMediaRouter!.isActivePeerParentOf(
       source.roomId,
       targetPeerId,
       source.peerId,
@@ -629,7 +717,7 @@ export class SignalingServer {
     const targetPeerId = message.targetPeerId;
     if (
       !targetPeerId ||
-      !this.peerRelayTopology.isParentOf(
+      !this.hybridMediaRouter!.isActivePeerParentOf(
         source.roomId,
         targetPeerId,
         source.peerId,
@@ -694,6 +782,7 @@ export class SignalingServer {
     if (!disconnected) {
       return;
     }
+    this.hybridMediaRouter?.disconnectParticipant(disconnected.roomId);
     if (disconnected.role === "host") {
       for (const viewer of this.options.roomStore.getConnectedViewers(
         disconnected.roomId,
@@ -715,19 +804,10 @@ export class SignalingServer {
         this.connectionIdsByViewer.delete(
           viewerConnectionKey(disconnected.roomId, disconnected.peerId),
         );
-        if (this.options.peerAssistedMedia) {
-          const assignmentChanges = this.peerRelayTopology.removeViewer(
+        if (this.hybridMediaRouter) {
+          this.hybridMediaRouter.removeViewer(
             disconnected.roomId,
             disconnected.peerId,
-            this.connectedPeerIds(disconnected.roomId),
-          );
-          this.clearChangedConnectionIds(
-            disconnected.roomId,
-            assignmentChanges,
-          );
-          this.sendMediaAssignmentChanges(
-            disconnected.roomId,
-            assignmentChanges,
           );
           return;
         }
@@ -746,6 +826,7 @@ export class SignalingServer {
 
   private stopSharing(roomId: string): void {
     this.clearRoomConnectionIds(roomId);
+    this.hybridMediaRouter?.stopRoom(roomId);
     for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
       this.sendToSession(viewer.sessionId, { type: "sharing-stopped" });
       this.sendToSession(viewer.sessionId, { type: "host-status", online: false });
@@ -759,8 +840,9 @@ export class SignalingServer {
     }
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
-    this.peerRelayTopology.deleteRoom(roomId);
+    this.hybridMediaRouter?.deleteRoom(roomId);
     this.qualityProfileIdsByRoom.delete(roomId);
+    this.shareGenerationsByRoom.delete(roomId);
     for (const sessionId of abandoned.sessionIds) {
       const socket = this.socketsBySessionId.get(sessionId);
       if (!socket) {
@@ -775,8 +857,9 @@ export class SignalingServer {
     for (const expired of this.options.roomStore.expireRooms(this.now())) {
       this.clearRoomGraceTimers(expired.roomId);
       this.clearRoomConnectionIds(expired.roomId);
-      this.peerRelayTopology.deleteRoom(expired.roomId);
+      this.hybridMediaRouter?.deleteRoom(expired.roomId);
       this.qualityProfileIdsByRoom.delete(expired.roomId);
+      this.shareGenerationsByRoom.delete(expired.roomId);
       for (const sessionId of expired.sessionIds) {
         const socket = this.socketsBySessionId.get(sessionId);
         if (!socket) {
@@ -847,85 +930,12 @@ export class SignalingServer {
     );
   }
 
-  private connectedPeerIds(roomId: string): Set<string> {
-    const peerIds = new Set(
-      this.options.roomStore
-        .getConnectedViewers(roomId)
-        .map((viewer) => viewer.peerId),
-    );
-    const host = this.options.roomStore.getConnectedHost(roomId);
-    if (host) {
-      peerIds.add(host.peerId);
-    }
-    return peerIds;
-  }
-
   private connectedPeer(roomId: string, peerId: string) {
     const host = this.options.roomStore.getConnectedHost(roomId);
     if (host?.peerId === peerId) {
       return host;
     }
     return this.options.roomStore.getConnectedViewer(roomId, peerId);
-  }
-
-  private clearChangedConnectionIds(
-    roomId: string,
-    changes: readonly MediaAssignmentChange[],
-  ): void {
-    for (const change of changes) {
-      if (
-        change.previousParentPeerId !== undefined &&
-        change.previousParentPeerId !==
-          change.mediaAssignment.parentPeerId
-      ) {
-        this.connectionIdsByViewer.delete(
-          viewerConnectionKey(roomId, change.peerId),
-        );
-      }
-    }
-  }
-
-  private sendMediaAssignmentChanges(
-    roomId: string,
-    changes: readonly MediaAssignmentChange[],
-    excludedPeerId?: string,
-  ): void {
-    for (const change of changes) {
-      if (change.peerId === excludedPeerId) {
-        continue;
-      }
-      const peer = this.connectedPeer(roomId, change.peerId);
-      if (peer) {
-        this.sendToSession(peer.sessionId, {
-          type: "media-assignment",
-          mediaAssignment: change.mediaAssignment,
-        });
-      }
-    }
-  }
-
-  private sendCurrentParentAssignment(
-    roomId: string,
-    childPeerId: string,
-  ): void {
-    const parentPeerId = this.peerRelayTopology.getAssignment(
-      roomId,
-      childPeerId,
-    )?.parentPeerId;
-    if (!parentPeerId) {
-      return;
-    }
-    const parent = this.connectedPeer(roomId, parentPeerId);
-    const parentAssignment = this.peerRelayTopology.getAssignment(
-      roomId,
-      parentPeerId,
-    );
-    if (parent && parentAssignment) {
-      this.sendToSession(parent.sessionId, {
-        type: "media-assignment",
-        mediaAssignment: parentAssignment,
-      });
-    }
   }
 
   private sendToSession(sessionId: string, message: ServerMessage): void {

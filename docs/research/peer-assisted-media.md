@@ -2,7 +2,9 @@
 
 - Research date: 2026-08-19
 - Scope: one game-screen broadcaster, at most eight trusted viewers, host media fanout at most two
-- Status: evidence for a bounded experiment; not a production topology decision
+- Status: evidence for the bounded ADR-0004 experiment; the stacked ADR-0005
+  Draft adds binary relay capability and automatic optional-SFU routing but is
+  not a production topology decision
 
 ## Conclusion
 
@@ -24,8 +26,8 @@ does not hide it or claim shared encoding.
 The product preference is `direct P2P -> peer-assisted -> optional SFU`. Direct
 P2P remains the simplest path for one or two viewers. The experiment assigns the
 third and later viewers to peers automatically. Deployment decides whether SFU
-capacity exists; when it does, a later small route controller must use it as an
-automatic last fallback without asking host or viewers to select a topology.
+capacity exists; when it does, the current ADR-0005 Draft controller uses it as
+an automatic last fallback without asking host or viewers to select a topology.
 
 ## What Browsers Can Share
 
@@ -260,9 +262,12 @@ slot:
 
 Peer assistance distributes traffic; it does not eliminate it. Relay
 eligibility must therefore be visible and voluntary in any production design.
-This spike has no runtime capability flag: its desktop relay/mobile leaf matrix
-is enforced only by controlled join order, so it must not be enabled for
-arbitrary users.
+The standalone ADR-0004 spike has no runtime capability flag and relies on
+controlled join order. The stacked ADR-0005 Draft starts every viewer as a leaf,
+then accepts an explicit per-session capacity of zero or one; its Web client
+reports detected mobile/iPad clients as leaves and desktop-class browsers as
+one-child relays. That conservative heuristic is still unverified on the real
+mobile matrix and is not a substitute for a future voluntary relay policy.
 
 ## Bounded Spike And Gates
 

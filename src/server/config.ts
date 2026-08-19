@@ -5,9 +5,19 @@ export type RuntimeEnvironment = "development" | "test" | "production";
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 3_600;
 const MAX_ACCESS_PASSWORD_BYTES = 128;
 const MIN_TURN_SECRET_BYTES = 32;
+const MIN_LIVEKIT_API_SECRET_BYTES = 32;
 const MAX_PEER_ASSISTED_VIEWERS = 8;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
+const DEFAULT_MAX_SFU_ROOTS_PER_ROOM = 2;
+const MAX_SFU_ROOTS_PER_ROOM = 2;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
+
+export interface LiveKitFallbackConfig {
+  url: string;
+  apiKey: string;
+  apiSecret: string;
+  maxSfuRootsPerRoom: number;
+}
 
 export interface ServerConfig {
   nodeEnv: RuntimeEnvironment;
@@ -21,6 +31,7 @@ export interface ServerConfig {
   maxRooms: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
+  livekitFallback?: LiveKitFallbackConfig;
   stunUrls: readonly string[];
   turnUrls: readonly string[];
   turnSharedSecret?: string;
@@ -86,6 +97,65 @@ function parseEnvironment(value: string | undefined): RuntimeEnvironment {
     throw new Error("NODE_ENV must be development, test, or production");
   }
   return environment;
+}
+
+function parseLiveKitFallback(
+  environment: NodeJS.ProcessEnv,
+  nodeEnv: RuntimeEnvironment,
+): LiveKitFallbackConfig | undefined {
+  const url = environment.LIVEKIT_URL?.trim() || undefined;
+  const apiKey = environment.LIVEKIT_API_KEY?.trim() || undefined;
+  const apiSecret = environment.LIVEKIT_API_SECRET?.trim() || undefined;
+  const configuredValues = [url, apiKey, apiSecret].filter(Boolean).length;
+
+  if (configuredValues === 0) {
+    return undefined;
+  }
+  if (configuredValues !== 3) {
+    throw new Error(
+      "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+    );
+  }
+  if (Buffer.byteLength(apiSecret!) < MIN_LIVEKIT_API_SECRET_BYTES) {
+    throw new Error("LIVEKIT_API_SECRET must contain at least 32 bytes");
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url!);
+  } catch {
+    throw new Error("LIVEKIT_URL must be a valid ws or wss origin");
+  }
+  if (parsedUrl.protocol !== "ws:" && parsedUrl.protocol !== "wss:") {
+    throw new Error("LIVEKIT_URL must use ws or wss");
+  }
+  if (
+    parsedUrl.username ||
+    parsedUrl.password ||
+    parsedUrl.pathname !== "/" ||
+    parsedUrl.search ||
+    parsedUrl.hash
+  ) {
+    throw new Error(
+      "LIVEKIT_URL must be an origin without credentials, path, query, or fragment",
+    );
+  }
+  if (nodeEnv === "production" && parsedUrl.protocol !== "wss:") {
+    throw new Error("LIVEKIT_URL must use wss in production");
+  }
+
+  return {
+    url: parsedUrl.origin,
+    apiKey: apiKey!,
+    apiSecret: apiSecret!,
+    maxSfuRootsPerRoom: parseBoundedInteger(
+      environment.MAX_SFU_ROOTS_PER_ROOM,
+      DEFAULT_MAX_SFU_ROOTS_PER_ROOM,
+      "MAX_SFU_ROOTS_PER_ROOM",
+      1,
+      MAX_SFU_ROOTS_PER_ROOM,
+    ),
+  };
 }
 
 function parseUrlList(value: string | undefined, name: string): string[] {
@@ -287,10 +357,25 @@ export function loadConfig(
     false,
     "PEER_ASSISTED_MEDIA",
   );
+  const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
 
+  if (livekitFallback && !peerAssistedMedia) {
+    throw new Error("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
+  }
   if ((turnUrls.length > 0) !== Boolean(turnSharedSecret)) {
     throw new Error(
       "TURN_URLS and TURN_SHARED_SECRET must either both be configured or both be absent",
+    );
+  }
+  const configuredSecrets = [
+    accessPassword,
+    turnSharedSecret,
+    livekitFallback?.apiKey,
+    livekitFallback?.apiSecret,
+  ].filter((secret): secret is string => secret !== undefined);
+  if (new Set(configuredSecrets).size !== configuredSecrets.length) {
+    throw new Error(
+      "ACCESS_PASSWORD, TURN_SHARED_SECRET, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
     );
   }
   if (
@@ -347,6 +432,7 @@ export function loadConfig(
     maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
     maxViewersPerRoom,
     peerAssistedMedia,
+    livekitFallback,
     stunUrls,
     turnUrls,
     turnSharedSecret,

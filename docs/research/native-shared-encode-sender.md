@@ -3,7 +3,8 @@
 - Research date: 2026-08-19
 - Scope: one Windows game-capture sender, one encoded video stream, and at most
   two independent standard WebRTC media edges
-- Status: candidate risk spike; not implemented or accepted for production
+- Status: Pion transport-fanout sub-oracle passed in Draft PR #16; physical
+  shared encoding and browser end-to-end behavior remain unproven
 
 ## Decision Input
 
@@ -97,6 +98,25 @@ but an external encoder still needs explicit send-side bandwidth estimation,
 aggregation of both edge targets, encoder bitrate control, PLI handling, and
 bounded RTP/RTX queues. A Pion route must use the same minimum-edge rate rule and
 must not invent a custom SRTP, ICE, or congestion protocol.
+
+### Draft PR #16 Transport Oracle
+
+[Draft PR #16](https://github.com/TNTcraftHIM/Screener/pull/16), branch
+`spike/native-rtp-fanout-oracle` at commit `5b09f0a`, passes CI for one narrower
+public-API question. With Pion WebRTC v4.2.18, one shared
+`TrackLocalStaticRTP.WriteRTP` call reaches two independent PeerConnections.
+Both receivers observe the same semantic payload, RTP sequence number, and
+timestamp, while each binding receives its own transport SSRC and the caller's
+packet is not mutated.
+
+This is an in-process RTP transport-fanout oracle, not the shared-encode
+acceptance gate above. It contains no physical encoder and therefore cannot
+prove one encoder invocation per input frame. It also does not prove browser
+interoperability, capture, decoding, RTCP/PLI aggregation, congestion-control
+fairness, retransmission, pacing, sustained throughput, latency, or production
+readiness. The next independent gate is one browser publisher through the
+native relay to two unmodified browser viewers with bounded RTCP, PLI, queue,
+and bandwidth-estimation behavior.
 
 ## Acceptance And Failure Gates
 

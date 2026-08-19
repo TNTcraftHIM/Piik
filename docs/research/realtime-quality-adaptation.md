@@ -34,6 +34,36 @@ on 2024-05-22; the commit says it had already been disabled for several years
 and was not maintained. Current Chromium behavior must therefore not be
 described as automatically detecting game motion and forcing a 720p cap.
 
+## Production Degradation Report
+
+On 2026-08-19 the deployed build was reported to deliver very low resolution,
+bitrate, and frame rate across all three profiles. This is a user observation,
+not yet an instrumented result. The highest-confidence explanation is the
+combination of one independent peer connection, sender, encoder pipeline, and
+upload copy per viewer with `balanced` adaptation: host CPU or uplink pressure
+can grow per edge, and the browser may then reduce both dimensions. The current
+peer-assisted and SFU drafts are not deployed, so relay re-encoding and LiveKit
+cannot explain that production observation.
+
+One controlled capture should classify the problem before changing constants:
+
+1. Run the same high-motion scene for 60 to 90 seconds with one, two, then three
+   viewers, plus one TURN/UDP case.
+2. Compare capture settings/media-source, outbound and inbound resolution/FPS,
+   actual and target bitrate, codec and encoder implementation, interval encode
+   cost, selected path, and `qualityLimitationReason`.
+3. Treat source-low as capture, outbound-low with `cpu` as encoder pressure,
+   outbound-low with `bandwidth` as uplink/path pressure, and inbound-only loss
+   or dropped/frozen frames as network or receiver pressure.
+4. Export `chrome://webrtc-internals` only as sensitive local evidence; remove
+   SDP, candidate addresses, and other identifiers before sharing or retaining.
+
+Missing `scaleResolutionDownBy` is not itself a root cause for a single encoding
+because its effective default is 1.0. Likewise, the current 3/5/8 Mbps values
+are ceilings rather than targets. Raising them cannot repair CPU or bandwidth
+limitation and should only follow evidence that the encoder is already pinned
+to the ceiling while spare transport capacity remains.
+
 ## Why Offline Encoding Presets Do Not Transfer
 
 [Maruko Toolbox](https://github.com/wzxjohn/marukotoolbox) is an Apache-2.0
@@ -80,6 +110,14 @@ resolution, frame rate, or bitrate.
 - Pausing the picture disables the existing video track, producing black video
   without closing the room or media connection. Audio remains enabled.
 
+The next bounded A/B changes only degradation preference: keep `motion`, compare
+the current `balanced` behavior with `maintain-resolution`, and expose the
+result as a default clarity-first choice plus optional balanced/fluid choices.
+It may trade frame rate for readability and is not a universal fix. The
+advanced panel remains bounded to resolution ceiling, frame-rate ceiling,
+bitrate ceiling, quality priority, and audio mode; it does not expose raw SDP or
+codec internals.
+
 A Chromium 151 loopback smoke with one host, three viewers, and a synthetic
 640x360/30 source kept the same relay peer, sender, and signaling generations
 while applying 8 Mbps/60 fps, 5 Mbps/30 fps, and 3 Mbps/30 fps sender ceilings.
@@ -96,6 +134,8 @@ quality, CPU/GPU cost, public-network behavior, or sustained performance.
   power-efficient encoder.
 - No promise that all browsers honor `applyConstraints` or degradation
   preference identically.
+- No automatic composite quality score or periodic profile controller before
+  the controlled production capture identifies a reproducible bottleneck.
 
 ## Verification Gate
 
@@ -125,10 +165,13 @@ profiles before adding an application-level adaptation controller.
 - [W3C MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
+- [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [Chromium `motion` to libwebrtc `kFluid` bridge](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc)
 - [libwebrtc `motion`/`kFluid` sender classification](https://webrtc.googlesource.com/src/+/3b1eab8a69cb5078befb021c5492d3f204a7d6a2/pc/rtp_sender.cc)
 - [libwebrtc encoder content-type selection](https://webrtc.googlesource.com/src/+/9caef2a8b88f389af10cee841732c42a98d3d45d/media/engine/webrtc_video_engine.cc)
 - [libwebrtc conditional screen-share degradation mapping](https://webrtc.googlesource.com/src/+/refs/heads/main/video/video_stream_encoder.cc)
+- [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
+- [libwebrtc per-send-stream encoder construction](https://webrtc.googlesource.com/src/+/refs/heads/main/video/video_send_stream_impl.cc)
 - [libwebrtc removal of the automatic animation-detection experiment, 2024-05-22](https://webrtc.googlesource.com/src/+/1d7d0e6e2c5002815853be251ce43fe88779ac85)
 - [LiveKit screen-share presets](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
 - [LiveKit degradation defaults](https://github.com/livekit/client-sdk-js/blob/main/src/room/participant/publishUtils.ts)

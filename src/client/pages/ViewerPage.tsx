@@ -27,6 +27,9 @@ import {
   QUALITY_PROFILES,
   type QualityProfileId,
 } from "../media/quality";
+import { relayCapacityMessageForBrowser } from "../media/relay-capability";
+import { ViewerMessageAuthority } from "../media/viewer-message-authority";
+import { ViewerSfuRoute } from "../media/viewer-sfu-route";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -75,6 +78,12 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       childPeerIds: [],
     };
     let viewerRelay: ViewerRelay | null = null;
+    let viewerSfuRoute: ViewerSfuRoute | null = null;
+    let preparedParentPeerId: string | null = null;
+    let preparedParentSignals: Array<
+      Extract<ServerMessage, { type: "signal" }>
+    > = [];
+    const messageAuthority = new ViewerMessageAuthority();
 
     const signal = new SignalingClient(
       {
@@ -90,6 +99,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         },
         onProtocolError: (message) => {
           if (active) {
+            messageAuthority.invalidate();
             setStatusText(message);
           }
         },
@@ -97,11 +107,14 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           if (!active) {
             return;
           }
+          messageAuthority.invalidate();
+          clearViewerSfuRoute();
           clearPeerState();
           setStatusText(message);
         },
         onAccessRequired: () => {
           if (active) {
+            messageAuthority.invalidate();
             onAuthorizationRequired();
           }
         },
@@ -109,7 +122,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           if (!active) {
             return;
           }
-          void handleMessage(message);
+          void handleMessage(message, messageAuthority.tokenFor(message));
         },
       },
     );
@@ -145,6 +158,122 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       );
       viewerRelay.setChild(currentAssignment.childPeerIds[0] ?? null);
       return viewerRelay;
+    }
+
+    function ensureViewerSfuRoute(): ViewerSfuRoute {
+      if (viewerSfuRoute) {
+        return viewerSfuRoute;
+      }
+      let route: ViewerSfuRoute;
+      route = new ViewerSfuRoute({
+        activatePeer: (assignment) => {
+          if (!active || viewerSfuRoute !== route) {
+            return;
+          }
+          applyMediaAssignment({
+            parentPeerId:
+              assignment.upstream.kind === "peer"
+                ? assignment.upstream.peerId
+                : null,
+            childPeerIds: assignment.childPeerIds,
+          });
+          if (assignment.upstream.kind === "peer") {
+            return drainPreparedParentSignals(assignment.upstream.peerId);
+          }
+        },
+        preparePeer: (assignment) => {
+          if (!active || viewerSfuRoute !== route) {
+            return;
+          }
+          prepareParent(
+            assignment?.upstream.kind === "peer"
+              ? assignment.upstream.peerId
+              : null,
+          );
+        },
+        resetMedia: () => {
+          if (!active || viewerSfuRoute !== route) {
+            return;
+          }
+          currentAssignment = { parentPeerId: null, childPeerIds: [] };
+          clearPeerState();
+          viewerRelay?.setChild(null);
+        },
+        reconcileSfuChildren: (childPeerIds) => {
+          if (!active || viewerSfuRoute !== route) {
+            return;
+          }
+          currentAssignment = limitMediaAssignment(
+            {
+              parentPeerId: currentAssignment.parentPeerId,
+              childPeerIds,
+            },
+            MAX_VIEWER_MEDIA_CHILDREN,
+          );
+          ensureViewerRelay()?.setChild(
+            currentAssignment.childPeerIds[0] ?? null,
+          );
+        },
+        onSfuStream: (nextStream, assignment, initialVideoStream) => {
+          if (!active || viewerSfuRoute !== route) {
+            return;
+          }
+          currentAssignment = limitMediaAssignment(
+            { parentPeerId: null, childPeerIds: assignment.childPeerIds },
+            MAX_VIEWER_MEDIA_CHILDREN,
+          );
+          const relay = ensureViewerRelay();
+          relay?.setChild(currentAssignment.childPeerIds[0] ?? null);
+          relay?.setStream(nextStream);
+          setRemoteStream(nextStream);
+          setStatusText("正在播放");
+          if (initialVideoStream) {
+            peerRef.current?.dispose();
+            peerRef.current = null;
+            setPeerSnapshot(null);
+          }
+        },
+        send: (message) =>
+          active && viewerSfuRoute === route ? signal.send(message) : false,
+      });
+      viewerSfuRoute = route;
+      return route;
+    }
+
+    function clearViewerSfuRoute(): void {
+      const route = viewerSfuRoute;
+      viewerSfuRoute = null;
+      prepareParent(null);
+      void route?.disconnect();
+    }
+
+    function prepareParent(parentPeerId: string | null): void {
+      if (preparedParentPeerId === parentPeerId) {
+        return;
+      }
+      preparedParentPeerId = parentPeerId;
+      preparedParentSignals = [];
+    }
+
+    async function drainPreparedParentSignals(
+      parentPeerId: string,
+    ): Promise<void> {
+      while (
+        active &&
+        peerAssisted &&
+        preparedParentPeerId === parentPeerId
+      ) {
+        const message = preparedParentSignals.shift();
+        if (!message) {
+          preparedParentPeerId = null;
+          return;
+        }
+        const peer = ensurePeer();
+        if (!peer) {
+          return;
+        }
+        await peer.acceptSignal(message.fromPeerId, message.payload);
+      }
     }
 
     function clearUpstreamState(): void {
@@ -232,6 +361,8 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
               }
             }
           },
+          onRecoveryExhausted: (parentPeerId, connectionId) =>
+            viewerSfuRoute?.reportPeerFailure(parentPeerId, connectionId) ?? true,
         },
         forceRelay,
       );
@@ -239,17 +370,25 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       return peer;
     }
 
-    async function handleMessage(message: ServerMessage): Promise<void> {
+    async function handleMessage(
+      message: ServerMessage,
+      authorityToken: number,
+    ): Promise<void> {
       if (message.type === "authenticated") {
         const nextPeerAssisted =
           "mediaMode" in message && message.mediaMode === "peer-assisted";
         if (!nextPeerAssisted && peerAssisted) {
+          clearViewerSfuRoute();
           clearPeerState();
           viewerRelay?.dispose();
           viewerRelay = null;
           currentAssignment = { parentPeerId: null, childPeerIds: [] };
         }
         peerAssisted = nextPeerAssisted;
+        const relayCapacity = relayCapacityMessageForBrowser(nextPeerAssisted);
+        if (relayCapacity) {
+          signal.send(relayCapacity);
+        }
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
         setRelayAvailable(message.iceConfig.relayAvailable);
@@ -259,7 +398,16 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           void viewerRelay?.updateProfile(
             QUALITY_PROFILES[currentQualityProfileId],
           );
-          applyMediaAssignment(message.mediaAssignment);
+          await ensureViewerSfuRoute().resyncAuthoritative(
+            {
+              revision: message.routeRevision,
+              phase: "active",
+              assignment: message.routeAssignment,
+            },
+          );
+          if (!active || !messageAuthority.owns(authorityToken)) {
+            return;
+          }
         }
         if (
           !message.hostOnline &&
@@ -298,8 +446,20 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         }
         return;
       }
-      if (message.type === "media-assignment") {
+      if (message.type === "route-update") {
         if (peerAssisted) {
+          ensureViewerSfuRoute().accept(message);
+        }
+        return;
+      }
+      if (message.type === "sfu-config") {
+        if (peerAssisted) {
+          await ensureViewerSfuRoute().acceptConfig(message);
+        }
+        return;
+      }
+      if (message.type === "media-assignment") {
+        if (peerAssisted && !viewerSfuRoute) {
           applyMediaAssignment(message.mediaAssignment);
         }
         return;
@@ -314,6 +474,13 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         return;
       }
       if (message.type === "signal") {
+        if (
+          peerAssisted &&
+          preparedParentPeerId === message.fromPeerId
+        ) {
+          preparedParentSignals.push(message);
+          return;
+        }
         if (
           peerAssisted &&
           currentAssignment.childPeerIds[0] === message.fromPeerId
@@ -367,12 +534,14 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       }
       if (message.type === "sharing-stopped") {
         currentHostOnline = false;
+        clearViewerSfuRoute();
         clearPeerState();
         setHostOnline(false);
         setStatusText("分享已停止，等待分享者再次开始");
         return;
       }
       if (message.type === "room-closed") {
+        clearViewerSfuRoute();
         clearPeerState();
         setStatusText(message.reason === "expired" ? "房间已过期" : "分享已结束");
         signal.stop();
@@ -392,6 +561,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             "ROOM_FULL",
           ].includes(message.code)
         ) {
+          clearViewerSfuRoute();
           clearPeerState();
         }
         setStatusText(message.message);
@@ -402,6 +572,10 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     return () => {
       active = false;
       signal.stop();
+      void viewerSfuRoute?.disconnect();
+      viewerSfuRoute = null;
+      preparedParentPeerId = null;
+      preparedParentSignals = [];
       peerRef.current?.dispose();
       peerRef.current = null;
       viewerRelay?.dispose();

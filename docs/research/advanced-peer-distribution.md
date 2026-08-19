@@ -3,7 +3,9 @@
 - Research date: 2026-08-19
 - Scope: at most eight trusted viewers, sub-second interactive media, endpoint
   downstream fanout at most two, and minimal central-server media egress
-- Status: candidate routes and bounded spike gates; none is implemented
+- Status: candidate routes and bounded spike gates; only the Pion RTP
+  transport-fanout sub-oracle is implemented, with no advanced media route
+  integrated into Screener
 
 ## Terms
 
@@ -47,7 +49,14 @@ independent downstream browser PeerConnections without decoding and encoding
 the video again. Each downstream edge keeps its own SSRC, pacing, RTCP,
 DTLS-SRTP, ICE, and TURN behavior.
 
-The first Go/Pion spike is video-only VP8 at 720p30 with one browser upstream
+Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes an earlier
+in-process transport oracle: one Pion v4.2.18 `TrackLocalStaticRTP.WriteRTP`
+call reaches two independent PeerConnections with preserved semantic payload,
+sequence number, and timestamp plus binding-specific SSRCs. It contains no
+encoder or browsers, so it is not evidence for one physical encode, end-to-end
+compatibility, feedback arbitration, congestion control, or latency.
+
+The next Go/Pion spike is video-only VP8 at 720p30 with one browser upstream
 and two unchanged browser children. It must prove:
 
 - zero relay video-encoder calls and at least 40% lower relay CPU than browser

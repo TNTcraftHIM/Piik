@@ -25,6 +25,7 @@ import {
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
 import { ApiError, createRoom } from "../lib/api";
+import { createOpaqueId } from "../lib/opaque-id";
 import {
   clearHostRoom,
   getStableClientId,
@@ -40,6 +41,7 @@ import {
   setVideoPaused,
   type QualityProfileId,
 } from "../media/quality";
+import { HostSfuRoute } from "../media/host-sfu-route";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -85,6 +87,7 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
         role: "host",
         token: room.hostToken,
         clientId: getStableClientId("host", room.roomId),
+        shareGeneration: createOpaqueId(),
       },
       {
         onMessage: () => undefined,
@@ -113,6 +116,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [qualityId, setQualityId] = useState<QualityProfileId>(
     DEFAULT_QUALITY_PROFILE_ID,
   );
+  const shareGenerationRef = useRef<string | null>(null);
   const [phase, setPhase] = useState<HostPhase>("idle");
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
@@ -143,6 +147,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const qualityIdRef = useRef<QualityProfileId>(DEFAULT_QUALITY_PROFILE_ID);
   const picturePausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
+  const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
 
   const viewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -164,6 +169,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
+      void hostSfuRouteRef.current?.disconnect();
+      hostSfuRouteRef.current = null;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -179,21 +186,59 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     );
   }
 
+  function ensureHostSfuRoute(generation: number): HostSfuRoute {
+    const existing = hostSfuRouteRef.current;
+    if (existing) {
+      return existing;
+    }
+    let route: HostSfuRoute;
+    route = new HostSfuRoute({
+      getStream: () => streamRef.current,
+      getProfile: () => QUALITY_PROFILES[qualityIdRef.current],
+      reconcileChildren: (childPeerIds) => {
+        if (
+          isCurrentGeneration(generation) &&
+          hostSfuRouteRef.current === route
+        ) {
+          reconcilePeerAssistedChildren(childPeerIds, generation);
+        }
+      },
+      send: (message) =>
+        isCurrentGeneration(generation) && hostSfuRouteRef.current === route
+          ? signalRef.current?.send(message) === true
+          : false,
+    });
+    hostSfuRouteRef.current = route;
+    return route;
+  }
+
+  function clearHostSfuRoute(): void {
+    const route = hostSfuRouteRef.current;
+    hostSfuRouteRef.current = null;
+    void route?.disconnect();
+  }
+
   function disposeResources(notifyServer: boolean): void {
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
-        signal.send({ type: "stop-sharing" });
+        const shareGeneration = shareGenerationRef.current;
+        if (shareGeneration) {
+          signal.send({ type: "stop-sharing", shareGeneration });
+        }
       }
       // Never carry a terminal message into a later authentication: the next
       // sharing generation may already be reusing this room.
       signal.stop();
     }
     signalRef.current = null;
+    shareGenerationRef.current = null;
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
+    void hostSfuRouteRef.current?.disconnect();
+    hostSfuRouteRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -311,17 +356,20 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           qualityProfileId: nextId,
         });
       }
-      const results = await Promise.all(
-        [...peersRef.current.values()].map((peer) => peer.updateProfile(profile)),
-      );
+      const [results, sfuUpdated] = await Promise.all([
+        Promise.all(
+          [...peersRef.current.values()].map((peer) => peer.updateProfile(profile)),
+        ),
+        hostSfuRouteRef.current?.updateProfile(profile) ?? Promise.resolve(true),
+      ]);
       if (
         isCurrentGeneration(generation) &&
         qualityChangeRef.current === token
       ) {
         const failed = results.filter((updated) => !updated).length;
         setNotice(
-          failed > 0
-            ? `画质已切换，${failed} 位观众未能应用新的发送参数`
+          failed > 0 || !sfuUpdated
+            ? "画质已切换，但部分观看连接未能应用新参数"
             : `画质已切换为 ${profile.label}`,
         );
       }
@@ -520,13 +568,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           type: "set-quality-profile",
           qualityProfileId: qualityIdRef.current,
         });
-        reconcilePeerAssistedChildren(
-          message.mediaAssignment.childPeerIds,
-          generation,
+        void ensureHostSfuRoute(generation).resyncAuthoritative(
+          {
+            revision: message.routeRevision,
+            phase: "active",
+            assignment: message.routeAssignment,
+          },
         );
         return;
       }
       peerAssistedRef.current = false;
+      clearHostSfuRoute();
       const currentViewerIds = new Set(message.viewerPeerIds);
       for (const peerId of peersRef.current.keys()) {
         if (!currentViewerIds.has(peerId)) {
@@ -535,8 +587,20 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       return;
     }
-    if (message.type === "media-assignment") {
+    if (message.type === "route-update") {
       if (peerAssistedRef.current) {
+        ensureHostSfuRoute(generation).accept(message);
+      }
+      return;
+    }
+    if (message.type === "sfu-config") {
+      if (peerAssistedRef.current) {
+        void ensureHostSfuRoute(generation).acceptConfig(message);
+      }
+      return;
+    }
+    if (message.type === "media-assignment") {
+      if (peerAssistedRef.current && !hostSfuRouteRef.current) {
         reconcilePeerAssistedChildren(
           message.mediaAssignment.childPeerIds,
           generation,
@@ -621,8 +685,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     const generation = generationRef.current + 1;
+    const shareGeneration = createOpaqueId();
     generationRef.current = generation;
     activeGenerationRef.current = generation;
+    shareGenerationRef.current = shareGeneration;
     setNotice(null);
     setCopied(false);
     setPhase("starting");
@@ -636,6 +702,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         return;
       }
       activeGenerationRef.current = null;
+      shareGenerationRef.current = null;
       setNotice(readableError(error));
       setPhase("error");
       return;
@@ -681,6 +748,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           role: "host",
           token: activeRoom.hostToken,
           clientId: getStableClientId("host", activeRoom.roomId),
+          shareGeneration,
         },
         {
           onStatus: (status) => {
@@ -819,19 +887,23 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     watchCaptureEnd(captured, generation);
 
     try {
-      const replacements = await Promise.all(
-        [...peersRef.current.entries()].map(async ([peerId, peer]) => {
-          try {
-            return {
-              peerId,
-              peer,
-              replaced: await peer.replaceStream(captured),
-            };
-          } catch {
-            return { peerId, peer, replaced: false };
-          }
-        }),
-      );
+      const activeSfuRoute = hostSfuRouteRef.current;
+      const [replacements, sfuReplaced] = await Promise.all([
+        Promise.all(
+          [...peersRef.current.entries()].map(async ([peerId, peer]) => {
+            try {
+              return {
+                peerId,
+                peer,
+                replaced: await peer.replaceStream(captured),
+              };
+            } catch {
+              return { peerId, peer, replaced: false };
+            }
+          }),
+        ),
+        activeSfuRoute?.replaceStream(captured) ?? Promise.resolve(true),
+      ]);
 
       if (
         !isCurrentGeneration(generation) ||
@@ -847,6 +919,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           removePeer(peerId);
           failedPeerIds.push(peerId);
         }
+      }
+      if (
+        !sfuReplaced &&
+        activeSfuRoute &&
+        hostSfuRouteRef.current === activeSfuRoute
+      ) {
+        await activeSfuRoute.failActivePublisher();
       }
 
       previousStream.getTracks().forEach((track) => track.stop());

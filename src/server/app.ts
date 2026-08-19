@@ -7,6 +7,7 @@ import type { ViteDevServer } from "vite";
 import type { CreateRoomResponse } from "../shared/protocol.js";
 import { AccessSession } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
+import type { SfuTokenIssuer } from "./livekit-token.js";
 import { RoomDatabase } from "./room-database.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer } from "./signaling.js";
@@ -24,6 +25,7 @@ export interface CreateServerOptions {
   maxSignalConnections?: number;
   maxUnauthenticatedSignalConnections?: number;
   accessSessionTtlSeconds?: number;
+  sfuTokenIssuer?: SfuTokenIssuer;
 }
 
 export interface ScreenerServer {
@@ -40,6 +42,21 @@ export async function createScreenerServer(
 ): Promise<ScreenerServer> {
   const config = options.config ?? loadConfig();
   const now = options.now ?? Date.now;
+  const livekitFallback = config.livekitFallback;
+  const sfuFallback = livekitFallback
+    ? {
+        url: livekitFallback.url,
+        tokenIssuer:
+          options.sfuTokenIssuer ??
+          new (await import("./livekit-token.js")).LiveKitTokenIssuer({
+            apiKey: livekitFallback.apiKey,
+            apiSecret: livekitFallback.apiSecret,
+            maxViewersPerRoom: config.maxViewersPerRoom,
+            maxSfuRootsPerRoom: livekitFallback.maxSfuRootsPerRoom,
+          }),
+        maxRoots: livekitFallback.maxSfuRootsPerRoom,
+      }
+    : undefined;
   const roomStore =
     options.roomStore ??
     new RoomStore({
@@ -94,6 +111,7 @@ export async function createScreenerServer(
     server: httpServer,
     roomStore,
     peerAssistedMedia: config.peerAssistedMedia,
+    ...(sfuFallback ? { sfuFallback } : {}),
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
     authorizeUpgrade: (request) =>

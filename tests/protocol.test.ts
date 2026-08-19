@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_MEDIA_ROUTE_REVISION,
+  MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   clientMessageSchema,
   decodeClientMessage,
+  participantRouteAssignmentSchema,
   serverMessageSchema,
 } from "../src/shared/protocol.js";
 
@@ -125,6 +128,22 @@ describe("client signaling protocol", () => {
     expect(clientMessageSchema.safeParse({ type: "stop-sharing" }).success).toBe(
       true,
     );
+    expect(
+      clientMessageSchema.safeParse({
+        type: "stop-sharing",
+        shareGeneration: "share_generation_12345678",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        roomId,
+        role: "host",
+        token,
+        clientId: "client_12345678",
+        shareGeneration: "share_generation_12345678",
+      }).success,
+    ).toBe(true);
     expect(clientMessageSchema.safeParse({ type: "close-room" }).success).toBe(
       true,
     );
@@ -151,6 +170,79 @@ describe("client signaling protocol", () => {
         type: "set-quality-profile",
         qualityProfileId: "1080p30",
         bitrate: 5_000_000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only a binary browser relay capacity", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "relay-capacity",
+        downstreamEdges: 0,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "relay-capacity",
+        downstreamEdges: 1,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "relay-capacity",
+        downstreamEdges: 2,
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "relay-capacity",
+        downstreamEdges: 1,
+        score: 100,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts bounded route acknowledgements, failures, and SFU refreshes", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-ready",
+        revision: 7,
+        phase: "prepare",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-failed",
+        revision: 7,
+        phase: "active",
+        connectionId: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "refresh-sfu",
+        revision: MAX_MEDIA_ROUTE_REVISION,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-ready",
+        revision: -1,
+        phase: "prepare",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-failed",
+        revision: 7,
+        phase: "active",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "refresh-sfu",
+        revision: 1.5,
       }).success,
     ).toBe(false);
   });
@@ -209,6 +301,12 @@ describe("server signaling protocol", () => {
         parentPeerId: null,
         childPeerIds: ["viewer_12345678", "viewer_87654321"],
       },
+      routeRevision: 0,
+      routeAssignment: {
+        upstream: { kind: "none" },
+        childPeerIds: ["viewer_12345678", "viewer_87654321"],
+        sfuPublicationGeneration: null,
+      },
       qualityProfileId: "1080p60",
     };
 
@@ -223,6 +321,8 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
         mediaMode: "peer-assisted",
+        routeRevision: 0,
+        routeAssignment: peerAssisted.routeAssignment,
         qualityProfileId: "1080p60",
       }).success,
     ).toBe(false);
@@ -231,6 +331,8 @@ describe("server signaling protocol", () => {
         ...authenticatedMessage(8),
         mediaMode: "peer-assisted",
         mediaAssignment: peerAssisted.mediaAssignment,
+        routeRevision: 0,
+        routeAssignment: peerAssisted.routeAssignment,
       }).success,
     ).toBe(false);
     expect(
@@ -270,6 +372,91 @@ describe("server signaling protocol", () => {
         qualityProfileId: "1440p60",
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps hybrid route messages strict and separate from ordinary P2P auth", () => {
+    const assignment = {
+      upstream: { kind: "peer", peerId: "parent_12345678" },
+      childPeerIds: ["child_12345678", "child_87654321"],
+      sfuPublicationGeneration: null,
+    };
+
+    expect(participantRouteAssignmentSchema.safeParse(assignment).success).toBe(
+      true,
+    );
+    expect(
+      serverMessageSchema.safeParse({
+        type: "route-update",
+        revision: 9,
+        phase: "prepare",
+        assignment,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "sfu-config",
+        revision: 9,
+        url: "wss://sfu.example.com",
+        token: "header.payload.signature",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      participantRouteAssignmentSchema.safeParse({
+        ...assignment,
+        childPeerIds: [
+          "child_12345678",
+          "child_87654321",
+          "child_overflow",
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      participantRouteAssignmentSchema.safeParse({
+        ...assignment,
+        childPeerIds: ["child_12345678", "child_12345678"],
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "route-update",
+        revision: 9,
+        phase: "prepare",
+        assignment,
+        roomAssignments: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "sfu-config",
+        revision: 9,
+        url: "wss://sfu.example.com",
+        token: "x".repeat(MAX_SFU_TOKEN_LENGTH + 1),
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        routeRevision: 9,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts every bounded hybrid upstream shape", () => {
+    for (const upstream of [
+      { kind: "none" },
+      { kind: "peer", peerId: "parent_12345678" },
+      { kind: "sfu" },
+    ]) {
+      expect(
+        participantRouteAssignmentSchema.safeParse({
+          upstream,
+          childPeerIds: [],
+          sfuPublicationGeneration:
+            upstream.kind === "none" ? "generation_12345678" : null,
+        }).success,
+      ).toBe(true);
+    }
   });
 
   it.each([0, 1.5, MAX_VIEWERS_PER_ROOM_LIMIT + 1])(

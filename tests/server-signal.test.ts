@@ -1,4 +1,5 @@
 import { connect } from "node:net";
+import { createServer } from "node:http";
 
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -16,6 +17,8 @@ import {
 import type { ServerConfig } from "../src/server/config.ts";
 import { RoomDatabase } from "../src/server/room-database.ts";
 import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
+import { SignalingServer } from "../src/server/signaling.ts";
+import type { SfuTokenIssuer } from "../src/server/livekit-token.ts";
 
 const allowedOrigin = "http://allowed.test";
 let runningServer: ScreenerServer | undefined;
@@ -27,6 +30,7 @@ afterEach(async () => {
 
 class MessageInbox {
   private readonly messages: ServerMessage[] = [];
+  private readonly ignoredTypes = new Set<ServerMessage["type"]>();
   private readonly waiters: Array<{
     type: ServerMessage["type"];
     resolve: (message: ServerMessage) => void;
@@ -37,6 +41,9 @@ class MessageInbox {
   constructor(socket: WebSocket) {
     socket.on("message", (data) => {
       const message = decodeServerMessage(data.toString());
+      if (this.ignoredTypes.has(message.type)) {
+        return;
+      }
       const waiterIndex = this.waiters.findIndex((waiter) => waiter.type === message.type);
       if (waiterIndex === -1) {
         this.messages.push(message);
@@ -83,6 +90,15 @@ class MessageInbox {
     await new Promise((resolve) => setTimeout(resolve, timeoutMs));
     if (this.messages.length > 0) {
       throw new Error(`Unexpected message: ${this.messages[0].type}`);
+    }
+  }
+
+  ignore(type: ServerMessage["type"]): void {
+    this.ignoredTypes.add(type);
+    for (let index = this.messages.length - 1; index >= 0; index -= 1) {
+      if (this.messages[index]?.type === type) {
+        this.messages.splice(index, 1);
+      }
     }
   }
 }
@@ -161,6 +177,77 @@ async function startHarness(
   };
 }
 
+async function startSfuHarness(options: {
+  tokenIssuer: SfuTokenIssuer;
+  prepareTimeoutMs?: number;
+  maxRoots?: number;
+  viewerDisconnectGraceMs?: number;
+}): Promise<SignalHarness> {
+  const roomStore = new RoomStore({
+    ttlMs: 14_400_000,
+    maxRooms: 10,
+    maxViewersPerRoom: 8,
+  });
+  const room = roomStore.createRoom();
+  const httpServer = createServer((_request, response) => {
+    response.statusCode = 404;
+    response.end();
+  });
+  const signaling = new SignalingServer({
+    server: httpServer,
+    roomStore,
+    peerAssistedMedia: true,
+    sfuFallback: {
+      url: "wss://sfu.example.test",
+      tokenIssuer: options.tokenIssuer,
+      maxRoots: options.maxRoots ?? 2,
+      prepareTimeoutMs: options.prepareTimeoutMs,
+    },
+    ice: {
+      stunUrls: [],
+      turnUrls: [],
+      credentialTtlSeconds: 3_600,
+    },
+    allowedOrigins: new Set([allowedOrigin]),
+    authorizeUpgrade: () => true,
+    authenticationTimeoutMs: 500,
+    viewerDisconnectGraceMs: options.viewerDisconnectGraceMs ?? 50,
+    heartbeatIntervalMs: 60_000,
+    cleanupIntervalMs: 60_000,
+  });
+  runningServer = {
+    httpServer,
+    roomStore,
+    listen: (port = 0, host = "127.0.0.1") =>
+      new Promise<number>((resolve, reject) => {
+        httpServer.once("error", reject);
+        httpServer.listen(port, host, () => {
+          httpServer.off("error", reject);
+          const address = httpServer.address();
+          if (!address || typeof address === "string") {
+            reject(new Error("Test HTTP server has no TCP address"));
+            return;
+          }
+          resolve(address.port);
+        });
+      }),
+    async close() {
+      await signaling.close();
+      await new Promise<void>((resolve, reject) => {
+        httpServer.close((error) => (error ? reject(error) : resolve()));
+      });
+      roomStore.close();
+    },
+  };
+  const port = await runningServer.listen();
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    webSocketUrl: `ws://127.0.0.1:${port}/signal`,
+    roomStore,
+    room,
+  };
+}
+
 async function openClient(
   webSocketUrl: string,
   cookie?: string,
@@ -229,6 +316,8 @@ async function authenticate(
   room: CreatedRoom,
   role: Role,
   clientId: string,
+  relayCapacity: 0 | 1 | null = 1,
+  shareGeneration?: string,
 ) {
   client.socket.send(
     JSON.stringify(
@@ -239,6 +328,7 @@ async function authenticate(
             role,
             token: room.hostToken,
             clientId,
+            ...(shareGeneration ? { shareGeneration } : {}),
           }
         : {
             type: "authenticate",
@@ -248,7 +338,20 @@ async function authenticate(
           },
     ),
   );
-  return client.inbox.next("authenticated");
+  const authenticated = await client.inbox.next("authenticated");
+  if (
+    role === "viewer" &&
+    relayCapacity !== null &&
+    "mediaMode" in authenticated
+  ) {
+    client.socket.send(
+      JSON.stringify({
+        type: "relay-capacity",
+        downstreamEdges: relayCapacity,
+      }),
+    );
+  }
+  return authenticated;
 }
 
 function peerAssisted(
@@ -258,6 +361,219 @@ function peerAssisted(
     throw new Error("Expected a peer-assisted authenticated message");
   }
   return message;
+}
+
+async function nextActiveRouteAfter(
+  client: TestClient,
+  revision: number,
+) {
+  while (true) {
+    const message = await client.inbox.next("route-update");
+    if (message.phase === "active" && message.revision > revision) {
+      return message;
+    }
+  }
+}
+
+async function nextPreparedRoute(client: TestClient) {
+  while (true) {
+    const message = await client.inbox.next("route-update");
+    if (message.phase === "prepare") {
+      return message;
+    }
+  }
+}
+
+async function nextActiveRouteRevision(client: TestClient, revision: number) {
+  while (true) {
+    const message = await client.inbox.next("route-update");
+    if (message.phase === "active" && message.revision === revision) {
+      return message;
+    }
+  }
+}
+
+async function prepareFallbackForTwoViewers(
+  webSocketUrl: string,
+  room: CreatedRoom,
+  prefix: string,
+  shareGeneration?: string,
+) {
+  const host = await openClient(webSocketUrl);
+  const hostAuth = peerAssisted(
+    await authenticate(
+      host,
+      room,
+      "host",
+      `${prefix}-host-client`,
+      1,
+      shareGeneration,
+    ),
+  );
+  const failedViewer = await openClient(webSocketUrl);
+  const failedAuth = peerAssisted(
+    await authenticate(
+      failedViewer,
+      room,
+      "viewer",
+      `${prefix}-failed-client`,
+    ),
+  );
+  const rootViewer = await openClient(webSocketUrl);
+  const rootAuth = peerAssisted(
+    await authenticate(
+      rootViewer,
+      room,
+      "viewer",
+      `${prefix}-root-client`,
+    ),
+  );
+  const directRoute = await nextActiveRouteAfter(
+    failedViewer,
+    failedAuth.routeRevision,
+  );
+  host.socket.send(
+    JSON.stringify({
+      type: "signal",
+      targetPeerId: failedAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: `${prefix}-direct-connection`,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }),
+  );
+  await failedViewer.inbox.next("signal");
+  failedViewer.socket.send(
+    JSON.stringify({
+      type: "route-failed",
+      revision: directRoute.revision,
+      phase: "active",
+      connectionId: `${prefix}-direct-connection`,
+    }),
+  );
+  const reparented = await nextActiveRouteAfter(
+    failedViewer,
+    directRoute.revision,
+  );
+  rootViewer.socket.send(
+    JSON.stringify({
+      type: "signal",
+      targetPeerId: failedAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: `${prefix}-deep-connection`,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }),
+  );
+  await failedViewer.inbox.next("signal");
+  failedViewer.socket.send(
+    JSON.stringify({
+      type: "route-failed",
+      revision: reparented.revision,
+      phase: "active",
+      connectionId: `${prefix}-deep-connection`,
+    }),
+  );
+  const hostPrepare = await nextPreparedRoute(host);
+  const rootPrepare = await nextPreparedRoute(failedViewer);
+  await host.inbox.next("sfu-config");
+  await failedViewer.inbox.next("sfu-config");
+  return {
+    host,
+    hostAuth,
+    failedViewer,
+    failedAuth,
+    rootViewer,
+    rootAuth,
+    hostPrepare,
+    rootPrepare,
+  };
+}
+
+async function exhaustDeepViewerPeerRoutes(
+  webSocketUrl: string,
+  room: CreatedRoom,
+  prefix: string,
+) {
+  const host = await openClient(webSocketUrl);
+  const hostAuth = peerAssisted(
+    await authenticate(host, room, "host", `${prefix}-host`),
+  );
+  const firstRoot = await openClient(webSocketUrl);
+  const firstRootAuth = peerAssisted(
+    await authenticate(firstRoot, room, "viewer", `${prefix}-root-a`),
+  );
+  const secondRoot = await openClient(webSocketUrl);
+  const secondRootAuth = peerAssisted(
+    await authenticate(secondRoot, room, "viewer", `${prefix}-root-b`),
+  );
+  const failedViewer = await openClient(webSocketUrl);
+  const failedAuth = peerAssisted(
+    await authenticate(failedViewer, room, "viewer", `${prefix}-failed`),
+  );
+
+  firstRoot.socket.send(
+    JSON.stringify({
+      type: "signal",
+      targetPeerId: failedAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: `${prefix}-edge-a`,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }),
+  );
+  await failedViewer.inbox.next("signal");
+  failedViewer.socket.send(
+    JSON.stringify({
+      type: "route-failed",
+      revision: failedAuth.routeRevision,
+      phase: "active",
+      connectionId: `${prefix}-edge-a`,
+    }),
+  );
+  const reparented = await nextActiveRouteAfter(
+    failedViewer,
+    failedAuth.routeRevision,
+  );
+  expect(reparented.assignment.upstream).toEqual({
+    kind: "peer",
+    peerId: secondRootAuth.peerId,
+  });
+
+  secondRoot.socket.send(
+    JSON.stringify({
+      type: "signal",
+      targetPeerId: failedAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: `${prefix}-edge-b`,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }),
+  );
+  await failedViewer.inbox.next("signal");
+  failedViewer.socket.send(
+    JSON.stringify({
+      type: "route-failed",
+      revision: reparented.revision,
+      phase: "active",
+      connectionId: `${prefix}-edge-b`,
+    }),
+  );
+
+  return {
+    host,
+    hostAuth,
+    firstRoot,
+    firstRootAuth,
+    secondRoot,
+    secondRootAuth,
+    failedViewer,
+    failedAuth,
+  };
 }
 
 async function closeClient(client: TestClient): Promise<void> {
@@ -303,6 +619,7 @@ describe("WebSocket signaling", () => {
     );
     expect(viewerAuth.hostOnline).toBe(false);
     expect("mediaMode" in viewerAuth).toBe(false);
+    expect("routeRevision" in viewerAuth).toBe(false);
 
     const host = await openClient(harness.webSocketUrl);
     await authenticate(host, harness.room, "host", "host-client-stable");
@@ -310,6 +627,35 @@ describe("WebSocket signaling", () => {
     expect(await viewer.inbox.next("host-status")).toEqual({
       type: "host-status",
       online: true,
+    });
+  });
+
+  it("advances a provisional peer route when the host arrives after viewers", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "early-relay-viewer",
+      ),
+    );
+    expect(viewerAuth).toMatchObject({
+      routeRevision: 0,
+      routeAssignment: { upstream: { kind: "none" } },
+    });
+
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "early-relay-host"),
+    );
+    expect(hostAuth.routeRevision).toBeGreaterThan(viewerAuth.routeRevision);
+    expect(await nextActiveRouteAfter(viewer, viewerAuth.routeRevision)).toMatchObject({
+      revision: hostAuth.routeRevision,
+      assignment: {
+        upstream: { kind: "peer", peerId: hostAuth.peerId },
+      },
     });
   });
 
@@ -376,6 +722,79 @@ describe("WebSocket signaling", () => {
     await lateViewer.inbox.expectNone(30);
   });
 
+  it("uses only explicitly advertised viewer relay slots without moving healthy edges", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "capacity-host"),
+    );
+    const first = await openClient(harness.webSocketUrl);
+    const firstAuth = peerAssisted(
+      await authenticate(
+        first,
+        harness.room,
+        "viewer",
+        "capacity-first",
+        null,
+      ),
+    );
+    const second = await openClient(harness.webSocketUrl);
+    const secondAuth = peerAssisted(
+      await authenticate(
+        second,
+        harness.room,
+        "viewer",
+        "capacity-second",
+        null,
+      ),
+    );
+    const pending = await openClient(harness.webSocketUrl);
+    const pendingAuth = peerAssisted(
+      await authenticate(
+        pending,
+        harness.room,
+        "viewer",
+        "capacity-pending",
+        null,
+      ),
+    );
+
+    expect(firstAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    expect(secondAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    expect(pendingAuth.routeAssignment.upstream).toEqual({ kind: "none" });
+
+    first.socket.send(
+      JSON.stringify({ type: "relay-capacity", downstreamEdges: 1 }),
+    );
+    const pendingRoute = await nextActiveRouteAfter(
+      pending,
+      pendingAuth.routeRevision,
+    );
+    expect(pendingRoute.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: firstAuth.peerId,
+    });
+    const secondRoute = await nextActiveRouteAfter(
+      second,
+      secondAuth.routeRevision,
+    );
+    expect(secondRoute.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+
+    host.socket.send(
+      JSON.stringify({ type: "relay-capacity", downstreamEdges: 1 }),
+    );
+    expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
+  });
+
   it("keeps the P2P authenticated wire unchanged and forbids profile updates", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);
@@ -411,6 +830,10 @@ describe("WebSocket signaling", () => {
         type: "set-quality-profile",
         qualityProfileId: "720p30",
       }),
+    );
+    expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    viewer.socket.send(
+      JSON.stringify({ type: "relay-capacity", downstreamEdges: 1 }),
     );
     expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
     await viewer.inbox.expectNone(30);
@@ -501,6 +924,14 @@ describe("WebSocket signaling", () => {
       parentPeerId: null,
       childPeerIds: [],
     });
+    expect(hostAuth).toMatchObject({
+      routeRevision: 0,
+      routeAssignment: {
+        upstream: { kind: "none" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      },
+    });
 
     const firstViewer = await openClient(harness.webSocketUrl);
     const firstAuth = peerAssisted(
@@ -512,6 +943,10 @@ describe("WebSocket signaling", () => {
       ),
     );
     expect(firstAuth.mediaAssignment.parentPeerId).toBe(hostAuth.peerId);
+    expect(firstAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
     expect((await host.inbox.next("media-assignment")).mediaAssignment).toEqual({
       parentPeerId: null,
       childPeerIds: [firstAuth.peerId],
@@ -671,6 +1106,1106 @@ describe("WebSocket signaling", () => {
     await foreignViewer.inbox.expectNone(30);
   });
 
+  it("reparents failed peer edges before committing a bounded SFU fallback", async () => {
+    const issued: Array<
+      Parameters<SfuTokenIssuer["issueToken"]>[0]
+    > = [];
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          issued.push(request);
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "hybrid-host"),
+    );
+    const firstViewer = await openClient(harness.webSocketUrl);
+    const firstAuth = peerAssisted(
+      await authenticate(
+        firstViewer,
+        harness.room,
+        "viewer",
+        "hybrid-viewer-a",
+      ),
+    );
+    const secondViewer = await openClient(harness.webSocketUrl);
+    const secondAuth = peerAssisted(
+      await authenticate(
+        secondViewer,
+        harness.room,
+        "viewer",
+        "hybrid-viewer-b",
+      ),
+    );
+    const firstBeforeFailure = await nextActiveRouteAfter(
+      firstViewer,
+      firstAuth.routeRevision,
+    );
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "hybrid-direct-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await firstViewer.inbox.next("signal");
+    firstViewer.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: firstBeforeFailure.revision,
+        phase: "active",
+        connectionId: "hybrid-direct-connection",
+      }),
+    );
+
+    const firstReparented = await nextActiveRouteAfter(
+      firstViewer,
+      firstBeforeFailure.revision,
+    );
+    expect(firstReparented.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: secondAuth.peerId,
+    });
+    const hostAfterReparent = await nextActiveRouteAfter(
+      host,
+      firstBeforeFailure.revision,
+    );
+    expect(hostAfterReparent.assignment).toMatchObject({
+      childPeerIds: [secondAuth.peerId],
+      sfuPublicationGeneration: null,
+    });
+
+    secondViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "hybrid-deep-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await firstViewer.inbox.next("signal");
+    firstViewer.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: firstReparented.revision,
+        phase: "active",
+        connectionId: "hybrid-deep-connection",
+      }),
+    );
+
+    const hostPrepare = await nextPreparedRoute(host);
+    const rootPrepare = await nextPreparedRoute(firstViewer);
+    expect(rootPrepare.revision).toBe(hostPrepare.revision);
+    expect(hostPrepare.assignment).toMatchObject({
+      upstream: { kind: "none" },
+      childPeerIds: [secondAuth.peerId],
+    });
+    expect(rootPrepare.assignment).toMatchObject({
+      upstream: { kind: "sfu" },
+      childPeerIds: [],
+    });
+    expect(await host.inbox.next("sfu-config")).toMatchObject({
+      revision: hostPrepare.revision,
+      url: "wss://sfu.example.test",
+    });
+    expect(await firstViewer.inbox.next("sfu-config")).toMatchObject({
+      revision: hostPrepare.revision,
+    });
+    await expect(secondViewer.inbox.next("sfu-config", 30)).rejects.toThrow(
+      "Timed out",
+    );
+
+    secondViewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    expect((await secondViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    host.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    firstViewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+
+    const hostActive = await nextActiveRouteAfter(
+      host,
+      hostPrepare.revision - 1,
+    );
+    const rootActive = await nextActiveRouteAfter(
+      firstViewer,
+      hostPrepare.revision - 1,
+    );
+    expect(hostActive.revision).toBe(hostPrepare.revision);
+    expect(hostActive.assignment.childPeerIds).toEqual([secondAuth.peerId]);
+    expect(hostActive.assignment.sfuPublicationGeneration).toBeTruthy();
+    expect(rootActive.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(new Set(issued.map(({ peerId }) => peerId))).toEqual(
+      new Set([hostAuth.peerId, firstAuth.peerId]),
+    );
+    expect(new Set(issued.map(({ publicationGeneration }) => publicationGeneration)).size).toBe(1);
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "candidate",
+          connectionId: "no-longer-direct",
+          candidate: null,
+        },
+      }),
+    );
+    expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
+
+    await closeClient(firstViewer);
+    const reconnectedRoot = await openClient(harness.webSocketUrl);
+    const reconnectedRootAuth = peerAssisted(
+      await authenticate(
+        reconnectedRoot,
+        harness.room,
+        "viewer",
+        "hybrid-viewer-a",
+      ),
+    );
+    expect(reconnectedRootAuth).toMatchObject({
+      peerId: firstAuth.peerId,
+      routeRevision: hostPrepare.revision,
+      routeAssignment: { upstream: { kind: "sfu" } },
+      mediaAssignment: { parentPeerId: null },
+    });
+    expect(await reconnectedRoot.inbox.next("sfu-config")).toMatchObject({
+      revision: hostPrepare.revision,
+    });
+
+    const issuedBeforeRefresh = issued.length;
+    for (let requestIndex = 0; requestIndex < 2; requestIndex += 1) {
+      reconnectedRoot.socket.send(
+        JSON.stringify({
+          type: "refresh-sfu",
+          revision: hostPrepare.revision,
+        }),
+      );
+    }
+    expect(await reconnectedRoot.inbox.next("sfu-config")).toMatchObject({
+      revision: hostPrepare.revision,
+    });
+    expect((await reconnectedRoot.inbox.next("error")).code).toBe("FORBIDDEN");
+    expect(issued).toHaveLength(issuedBeforeRefresh + 1);
+    const issuedBeforeFailback = issued.length;
+    reconnectedRoot.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: hostPrepare.revision,
+        phase: "active",
+        connectionId: null,
+      }),
+    );
+    const peerBaseline = await nextActiveRouteAfter(
+      reconnectedRoot,
+      hostPrepare.revision,
+    );
+    const hostPeerBaseline = await nextActiveRouteAfter(
+      host,
+      hostPrepare.revision,
+    );
+    expect(peerBaseline.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: secondAuth.peerId,
+    });
+    expect(hostPeerBaseline.assignment).toMatchObject({
+      childPeerIds: [secondAuth.peerId],
+      sfuPublicationGeneration: null,
+    });
+
+    secondViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "after-sfu-root-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await reconnectedRoot.inbox.next("signal");
+    reconnectedRoot.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: peerBaseline.revision,
+        phase: "active",
+        connectionId: "after-sfu-root-connection",
+      }),
+    );
+    const directAgain = await nextActiveRouteAfter(
+      reconnectedRoot,
+      peerBaseline.revision,
+    );
+    expect(directAgain.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "after-sfu-host-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await reconnectedRoot.inbox.next("signal");
+    reconnectedRoot.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: directAgain.revision,
+        phase: "active",
+        connectionId: "after-sfu-host-connection",
+      }),
+    );
+    expect((await reconnectedRoot.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
+    expect(issued).toHaveLength(issuedBeforeFailback);
+
+    host.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    await reconnectedRoot.inbox.next("sharing-stopped");
+    const resumedHost = await openClient(harness.webSocketUrl);
+    const resumedHostAuth = peerAssisted(
+      await authenticate(resumedHost, harness.room, "host", "hybrid-host"),
+    );
+    expect(resumedHostAuth.routeAssignment).toMatchObject({
+      upstream: { kind: "none" },
+      sfuPublicationGeneration: null,
+    });
+    expect(resumedHostAuth.routeAssignment.childPeerIds).toHaveLength(2);
+
+    const resumedFirstRoute = await nextActiveRouteRevision(
+      reconnectedRoot,
+      resumedHostAuth.routeRevision,
+    );
+    resumedHost.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "resumed-direct-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await reconnectedRoot.inbox.next("signal");
+    reconnectedRoot.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: resumedFirstRoute.revision,
+        phase: "active",
+        connectionId: "resumed-direct-connection",
+      }),
+    );
+    const resumedReparent = await nextActiveRouteAfter(
+      reconnectedRoot,
+      resumedFirstRoute.revision,
+    );
+    secondViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "resumed-deep-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await reconnectedRoot.inbox.next("signal");
+    reconnectedRoot.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: resumedReparent.revision,
+        phase: "active",
+        connectionId: "resumed-deep-connection",
+      }),
+    );
+    const resumedPrepare = await nextPreparedRoute(resumedHost);
+    expect(await resumedHost.inbox.next("sfu-config")).toMatchObject({
+      revision: resumedPrepare.revision,
+    });
+    expect(issued.length).toBeGreaterThan(issuedBeforeFailback);
+  });
+
+  it("moves both a failed deep viewer and its host branch within two SFU roots", async () => {
+    const issued: Array<Parameters<SfuTokenIssuer["issueToken"]>[0]> = [];
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          issued.push(request);
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const peers = await exhaustDeepViewerPeerRoutes(
+      harness.webSocketUrl,
+      harness.room,
+      "deep-budget",
+    );
+
+    const hostPrepare = await nextPreparedRoute(peers.host);
+    const branchPrepare = await nextPreparedRoute(peers.secondRoot);
+    const failedPrepare = await nextPreparedRoute(peers.failedViewer);
+    expect(branchPrepare.revision).toBe(hostPrepare.revision);
+    expect(failedPrepare.revision).toBe(hostPrepare.revision);
+    expect(hostPrepare.assignment.childPeerIds).toEqual([
+      peers.firstRootAuth.peerId,
+    ]);
+    expect(branchPrepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(failedPrepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(
+      new Set(issued.map(({ peerId }) => peerId)),
+    ).toEqual(
+      new Set([
+        peers.hostAuth.peerId,
+        peers.secondRootAuth.peerId,
+        peers.failedAuth.peerId,
+      ]),
+    );
+  });
+
+  it("fails a deep SFU fallback cleanly when its root budget is one", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          return `token-${request.peerId}`;
+        },
+      },
+      maxRoots: 1,
+    });
+    const peers = await exhaustDeepViewerPeerRoutes(
+      harness.webSocketUrl,
+      harness.room,
+      "deep-limited",
+    );
+
+    expect((await peers.failedViewer.inbox.next("error")).code).toBe(
+      "PEER_NOT_FOUND",
+    );
+    await expect(nextPreparedRoute(peers.host)).rejects.toThrow("Timed out");
+    expect(peers.host.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("admits a leaf with no peer slot through a selective SFU route", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "admission-host");
+    const firstLeaf = await openClient(harness.webSocketUrl);
+    const firstAuth = peerAssisted(
+      await authenticate(
+        firstLeaf,
+        harness.room,
+        "viewer",
+        "admission-leaf-a",
+        0,
+      ),
+    );
+    const secondLeaf = await openClient(harness.webSocketUrl);
+    const secondAuth = peerAssisted(
+      await authenticate(
+        secondLeaf,
+        harness.room,
+        "viewer",
+        "admission-leaf-b",
+        0,
+      ),
+    );
+    const pendingLeaf = await openClient(harness.webSocketUrl);
+    const pendingAuth = peerAssisted(
+      await authenticate(
+        pendingLeaf,
+        harness.room,
+        "viewer",
+        "admission-leaf-c",
+        0,
+      ),
+    );
+    expect(pendingAuth.routeAssignment.upstream).toEqual({ kind: "none" });
+
+    const hostPrepare = await nextPreparedRoute(host);
+    const budgetPrepare = await nextPreparedRoute(firstLeaf);
+    const pendingPrepare = await nextPreparedRoute(pendingLeaf);
+    expect(hostPrepare.assignment.childPeerIds).toEqual([secondAuth.peerId]);
+    expect(budgetPrepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(pendingPrepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(await firstLeaf.inbox.next("sfu-config")).toMatchObject({
+      token: `token-${firstAuth.peerId}`,
+    });
+    expect(await pendingLeaf.inbox.next("sfu-config")).toMatchObject({
+      token: `token-${pendingAuth.peerId}`,
+    });
+  });
+
+  it("uses a free direct slot beside an active SFU publication", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "active-slot-host"),
+    );
+    const root = await openClient(harness.webSocketUrl);
+    const rootAuth = peerAssisted(
+      await authenticate(root, harness.room, "viewer", "active-slot-root", 0),
+    );
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: rootAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "active-slot-failed-edge",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await root.inbox.next("signal");
+    root.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: rootAuth.routeRevision,
+        phase: "active",
+        connectionId: "active-slot-failed-edge",
+      }),
+    );
+    const hostPrepare = await nextPreparedRoute(host);
+    const rootPrepare = await nextPreparedRoute(root);
+    await host.inbox.next("sfu-config");
+    await root.inbox.next("sfu-config");
+    host.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    root.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: rootPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    await nextActiveRouteAfter(host, hostPrepare.revision - 1);
+
+    const directViewer = await openClient(harness.webSocketUrl);
+    const directAuth = peerAssisted(
+      await authenticate(
+        directViewer,
+        harness.room,
+        "viewer",
+        "active-slot-direct",
+        0,
+      ),
+    );
+    expect(directAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    expect(directAuth.routeAssignment.sfuPublicationGeneration).toBeNull();
+  });
+
+  it("retires an SFU publication when its root allowlist shrinks", async () => {
+    const issued: Array<Parameters<SfuTokenIssuer["issueToken"]>[0]> = [];
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          issued.push(request);
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const peers = await exhaustDeepViewerPeerRoutes(
+      harness.webSocketUrl,
+      harness.room,
+      "shrink-roots",
+    );
+    const hostPrepare = await nextPreparedRoute(peers.host);
+    const branchPrepare = await nextPreparedRoute(peers.secondRoot);
+    const failedPrepare = await nextPreparedRoute(peers.failedViewer);
+    await peers.host.inbox.next("sfu-config");
+    await peers.secondRoot.inbox.next("sfu-config");
+    await peers.failedViewer.inbox.next("sfu-config");
+    for (const [client, revision] of [
+      [peers.host, hostPrepare.revision],
+      [peers.secondRoot, branchPrepare.revision],
+      [peers.failedViewer, failedPrepare.revision],
+    ] as const) {
+      client.socket.send(
+        JSON.stringify({ type: "route-ready", revision, phase: "prepare" }),
+      );
+    }
+    const hostActive = await nextActiveRouteAfter(
+      peers.host,
+      hostPrepare.revision - 1,
+    );
+    await nextActiveRouteAfter(
+      peers.secondRoot,
+      branchPrepare.revision - 1,
+    );
+    expect(hostActive.assignment.sfuPublicationGeneration).toBeTruthy();
+    expect(issued).toHaveLength(3);
+
+    await closeClient(peers.failedViewer);
+    const retiredHost = await nextActiveRouteAfter(
+      peers.host,
+      hostActive.revision,
+    );
+    const retiredRoot = await nextActiveRouteAfter(
+      peers.secondRoot,
+      hostActive.revision,
+    );
+    expect(retiredHost.assignment.sfuPublicationGeneration).toBeNull();
+    expect(retiredRoot.assignment).toMatchObject({
+      upstream: { kind: "peer", peerId: peers.hostAuth.peerId },
+      sfuPublicationGeneration: null,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(issued).toHaveLength(3);
+  });
+
+  it("separates host signaling reconnects from new sharing generations", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const prepared = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "share-generation",
+      "share-gen-a",
+    );
+    prepared.host.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: prepared.hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    prepared.failedViewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: prepared.rootPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    const active = await nextActiveRouteRevision(
+      prepared.failedViewer,
+      prepared.rootPrepare.revision,
+    );
+    expect(active.assignment.upstream).toEqual({ kind: "sfu" });
+
+    const sameShareHost = await openClient(harness.webSocketUrl);
+    const sameShareAuth = peerAssisted(
+      await authenticate(
+        sameShareHost,
+        harness.room,
+        "host",
+        "share-generation-host-client",
+        1,
+        "share-gen-a",
+      ).catch((error: unknown) => {
+        throw new Error("same-generation authentication failed", {
+          cause: error,
+        });
+      }),
+    );
+    expect(sameShareAuth.routeRevision).toBe(active.revision);
+    expect(sameShareAuth.routeAssignment.sfuPublicationGeneration).toBeTruthy();
+    await expect(
+      prepared.failedViewer.inbox.next("sharing-stopped", 30),
+    ).rejects.toThrow("Timed out");
+
+    const nextShareHost = await openClient(harness.webSocketUrl);
+    const nextShareAuth = peerAssisted(
+      await authenticate(
+        nextShareHost,
+        harness.room,
+        "host",
+        "share-generation-host-client",
+        1,
+        "share-gen-b",
+      ).catch((error: unknown) => {
+        throw new Error("new-generation authentication failed", {
+          cause: error,
+        });
+      }),
+    );
+    await prepared.failedViewer.inbox.next("sharing-stopped");
+    expect(nextShareAuth.routeRevision).toBeLessThanOrEqual(active.revision);
+    expect(nextShareAuth.routeAssignment.sfuPublicationGeneration).toBeNull();
+
+    const staleStopClosed = new Promise<number>((resolve) =>
+      nextShareHost.socket.once("close", (code) => resolve(code)),
+    );
+    nextShareHost.socket.send(
+      JSON.stringify({
+        type: "stop-sharing",
+        shareGeneration: "share-gen-a",
+      }),
+    );
+    expect(await staleStopClosed).toBe(4001);
+    await expect(
+      prepared.failedViewer.inbox.next("sharing-stopped", 30),
+    ).rejects.toThrow("Timed out");
+
+    const resumedSameShare = await openClient(harness.webSocketUrl);
+    const resumedAuth = peerAssisted(
+      await authenticate(
+        resumedSameShare,
+        harness.room,
+        "host",
+        "share-generation-host-client",
+        1,
+        "share-gen-b",
+      ).catch((error: unknown) => {
+        throw new Error("resumed-generation authentication failed", {
+          cause: error,
+        });
+      }),
+    );
+    expect(resumedAuth.routeRevision).toBe(nextShareAuth.routeRevision);
+  });
+
+  it("replans a pending fallback after unrelated topology churn", async () => {
+    const generations: string[] = [];
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          generations.push(request.publicationGeneration);
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const prepared = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "topology-churn",
+    );
+    const extraViewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      extraViewer,
+      harness.room,
+      "viewer",
+      "topology-churn-extra",
+      0,
+    );
+
+    let rollbackRevision: number | undefined;
+    let retriedPrepareRevision: number | undefined;
+    while (
+      rollbackRevision === undefined ||
+      retriedPrepareRevision === undefined
+    ) {
+      const message = await prepared.host.inbox.next("route-update");
+      if (
+        message.phase === "active" &&
+        message.revision > prepared.hostPrepare.revision
+      ) {
+        rollbackRevision = message.revision;
+      }
+      if (message.phase === "prepare") {
+        retriedPrepareRevision = message.revision;
+      }
+    }
+    expect(retriedPrepareRevision).toBeGreaterThan(rollbackRevision);
+    expect(new Set(generations).size).toBe(2);
+  });
+
+  it("keeps a prepared fallback when an unrelated viewer disconnects", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          return `token-${request.peerId}`;
+        },
+      },
+      viewerDisconnectGraceMs: 500,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "unrelated-close-host"),
+    );
+    const parentA = await openClient(harness.webSocketUrl);
+    const parentAAuth = peerAssisted(
+      await authenticate(parentA, harness.room, "viewer", "unrelated-parent-a"),
+    );
+    const parentB = await openClient(harness.webSocketUrl);
+    await authenticate(parentB, harness.room, "viewer", "unrelated-parent-b");
+    const failedViewer = await openClient(harness.webSocketUrl);
+    const failedAuth = peerAssisted(
+      await authenticate(
+        failedViewer,
+        harness.room,
+        "viewer",
+        "unrelated-failed",
+      ),
+    );
+    const unrelatedViewer = await openClient(harness.webSocketUrl);
+    const unrelatedAuth = peerAssisted(
+      await authenticate(
+        unrelatedViewer,
+        harness.room,
+        "viewer",
+        "unrelated-disconnected",
+        0,
+      ),
+    );
+    expect(failedAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentAAuth.peerId,
+    });
+
+    parentA.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: failedAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "unrelated-close-failed-edge",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await failedViewer.inbox.next("signal");
+    failedViewer.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: unrelatedAuth.routeRevision,
+        phase: "active",
+        connectionId: "unrelated-close-failed-edge",
+      }),
+    );
+    const hostPrepare = await nextPreparedRoute(host).catch((error: unknown) => {
+      throw new Error("host did not receive unrelated-close prepare", {
+        cause: error,
+      });
+    });
+    const failedPrepare = await nextPreparedRoute(failedViewer).catch(
+      (error: unknown) => {
+        throw new Error("failed viewer did not receive unrelated-close prepare", {
+          cause: error,
+        });
+      },
+    );
+    const parentPrepare = await nextPreparedRoute(parentA);
+    await host.inbox.next("sfu-config");
+    await failedViewer.inbox.next("sfu-config");
+    await parentA.inbox.next("sfu-config");
+
+    await closeClient(unrelatedViewer);
+    host.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    failedViewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: failedPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    parentA.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: parentPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    const committed = await nextActiveRouteRevision(
+      host,
+      hostPrepare.revision,
+    ).catch((error: unknown) => {
+      throw new Error("unrelated close aborted the prepared route", {
+        cause: error,
+      });
+    });
+    expect(committed.assignment).toMatchObject({
+      upstream: { kind: "none" },
+      sfuPublicationGeneration: expect.any(String),
+    });
+    expect(committed.assignment.childPeerIds.length).toBeLessThanOrEqual(1);
+    expect(hostAuth.peerId).toBeTruthy();
+  });
+
+  it("rolls back SFU prepare on timeout and expected-session replacement", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          return `token-${request.peerId}`;
+        },
+      },
+      prepareTimeoutMs: 120,
+    });
+    const timedOut = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "timeout",
+    );
+    const timedOutRollback = await nextActiveRouteAfter(
+      timedOut.host,
+      timedOut.hostPrepare.revision,
+    );
+    expect(timedOutRollback).toMatchObject({
+      revision: timedOut.hostPrepare.revision + 1,
+      assignment: {
+        upstream: { kind: "none" },
+        childPeerIds: [timedOut.rootAuth.peerId],
+        sfuPublicationGeneration: null,
+      },
+    });
+
+    const replacementRoom = harness.roomStore.createRoom();
+    const replacing = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      replacementRoom,
+      "replacement",
+    );
+    const replacementRoot = await openClient(harness.webSocketUrl);
+    const replacementAuth = peerAssisted(
+      await authenticate(
+        replacementRoot,
+        replacementRoom,
+        "viewer",
+        "replacement-failed-client",
+      ),
+    );
+    expect(replacementAuth).toMatchObject({
+      peerId: replacing.failedAuth.peerId,
+      routeRevision: replacing.hostPrepare.revision + 1,
+      routeAssignment: {
+        upstream: { kind: "peer", peerId: replacing.rootAuth.peerId },
+        sfuPublicationGeneration: null,
+      },
+    });
+    const replacementRollback = await nextActiveRouteAfter(
+      replacing.host,
+      replacing.hostPrepare.revision,
+    );
+    expect(replacementRollback.revision).toBe(
+      replacing.hostPrepare.revision + 1,
+    );
+
+    replacing.rootViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: replacementAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "replacement-reported-again",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await replacementRoot.inbox.next("signal");
+    replacementRoot.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: replacementAuth.routeRevision,
+        phase: "active",
+        connectionId: "replacement-reported-again",
+      }),
+    );
+    const replacementRecovered = await nextActiveRouteAfter(
+      replacementRoot,
+      replacementAuth.routeRevision,
+    );
+    expect(replacementRecovered.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: replacing.hostAuth.peerId,
+    });
+
+    replacing.failedViewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: replacing.hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(replacementRoot.socket.readyState).toBe(WebSocket.OPEN);
+
+    const prepareFailureRoom = harness.roomStore.createRoom();
+    const prepareFailure = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      prepareFailureRoom,
+      "prepare-failure",
+    );
+    prepareFailure.failedViewer.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: prepareFailure.rootPrepare.revision,
+        phase: "prepare",
+        connectionId: null,
+      }),
+    );
+    const failedPrepareRollback = await nextActiveRouteAfter(
+      prepareFailure.host,
+      prepareFailure.hostPrepare.revision,
+    );
+    expect(failedPrepareRollback.revision).toBe(
+      prepareFailure.hostPrepare.revision + 1,
+    );
+    expect(failedPrepareRollback.assignment).toMatchObject({
+      childPeerIds: [prepareFailure.rootAuth.peerId],
+      sfuPublicationGeneration: null,
+    });
+  });
+
+  it("fails back to peer routes when an active SFU token refresh fails", async () => {
+    let rejectTokens = false;
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          if (rejectTokens) {
+            throw new Error("issuer unavailable");
+          }
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const prepared = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "refresh-failure",
+    );
+    prepared.host.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: prepared.hostPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    prepared.failedViewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: prepared.rootPrepare.revision,
+        phase: "prepare",
+      }),
+    );
+    await nextActiveRouteAfter(
+      prepared.host,
+      prepared.hostPrepare.revision - 1,
+    );
+    await nextActiveRouteAfter(
+      prepared.failedViewer,
+      prepared.rootPrepare.revision - 1,
+    );
+
+    rejectTokens = true;
+    prepared.failedViewer.socket.send(
+      JSON.stringify({
+        type: "refresh-sfu",
+        revision: prepared.rootPrepare.revision,
+      }),
+    );
+    const rollback = await nextActiveRouteAfter(
+      prepared.host,
+      prepared.hostPrepare.revision,
+    );
+    expect(rollback).toMatchObject({
+      revision: prepared.hostPrepare.revision + 1,
+      assignment: {
+        childPeerIds: [prepared.rootAuth.peerId],
+        sfuPublicationGeneration: null,
+      },
+    });
+  });
+
+  it("keeps route revisions monotonic when a disconnected host is replaced", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const firstHost = await openClient(harness.webSocketUrl);
+    const firstHostAuth = peerAssisted(
+      await authenticate(firstHost, harness.room, "host", "takeover-host-a"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(viewer, harness.room, "viewer", "takeover-viewer-a"),
+    );
+    const secondViewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      secondViewer,
+      harness.room,
+      "viewer",
+      "takeover-viewer-b",
+    );
+    const previousRoute = await nextActiveRouteAfter(
+      viewer,
+      viewerAuth.routeRevision,
+    );
+
+    await closeClient(firstHost);
+    await viewer.inbox.next("host-status");
+    const replacementHost = await openClient(harness.webSocketUrl);
+    const replacementAuth = peerAssisted(
+      await authenticate(
+        replacementHost,
+        harness.room,
+        "host",
+        "takeover-host-b",
+      ),
+    );
+    expect(replacementAuth.peerId).not.toBe(firstHostAuth.peerId);
+    expect(replacementAuth.routeRevision).toBeGreaterThan(
+      previousRoute.revision,
+    );
+    const viewerRoute = await nextActiveRouteAfter(
+      viewer,
+      previousRoute.revision,
+    );
+    expect(viewerRoute).toMatchObject({
+      revision: replacementAuth.routeRevision,
+      assignment: {
+        upstream: { kind: "peer", peerId: replacementAuth.peerId },
+      },
+    });
+  });
+
   it("keeps relay assignments through grace and reattaches only the direct child subtree", async () => {
     const harness = await startHarness({
       peerAssistedMedia: true,
@@ -738,6 +2273,8 @@ describe("WebSocket signaling", () => {
       childPeerIds: [fifthAuth.peerId],
     });
 
+    host.inbox.ignore("route-update");
+    thirdViewer.inbox.ignore("route-update");
     await closeClient(firstViewer);
     await host.inbox.expectNone(30);
     await thirdViewer.inbox.expectNone(30);
@@ -792,6 +2329,7 @@ describe("WebSocket signaling", () => {
       parentPeerId: hostAuth.peerId,
       childPeerIds: [fifthAuth.peerId],
     });
+    fifthViewer.inbox.ignore("route-update");
     await fifthViewer.inbox.expectNone(30);
   });
 
@@ -1124,6 +2662,50 @@ describe("WebSocket signaling", () => {
     expect(reconnectedAuth.peerId).toBe(originalAuth.peerId);
     expect(await host.inbox.next("peer-joined")).toMatchObject({
       peerId: originalAuth.peerId,
+    });
+  });
+
+  it("reasserts an authoritative parent route when a peer-assisted viewer reconnects", async () => {
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      viewerDisconnectGraceMs: 300,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    peerAssisted(
+      await authenticate(host, harness.room, "host", "relay-reauth-host"),
+    );
+    const originalViewer = await openClient(harness.webSocketUrl);
+    const originalAuth = peerAssisted(
+      await authenticate(
+        originalViewer,
+        harness.room,
+        "viewer",
+        "relay-reauth-viewer",
+      ),
+    );
+    await host.inbox.next("media-assignment");
+    await host.inbox.next("route-update");
+    await closeClient(originalViewer);
+
+    const reconnectedViewer = await openClient(harness.webSocketUrl);
+    const reconnectedAuth = peerAssisted(
+      await authenticate(
+        reconnectedViewer,
+        harness.room,
+        "viewer",
+        "relay-reauth-viewer",
+      ),
+    );
+    expect(reconnectedAuth.peerId).toBe(originalAuth.peerId);
+    expect(reconnectedAuth.connectionId).toBeNull();
+    expect(await host.inbox.next("route-update")).toMatchObject({
+      revision: reconnectedAuth.routeRevision,
+      phase: "active",
+      assignment: {
+        upstream: { kind: "none" },
+        childPeerIds: [originalAuth.peerId],
+        sfuPublicationGeneration: null,
+      },
     });
   });
 
