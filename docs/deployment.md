@@ -82,6 +82,13 @@ the old TURN wire. Run candidate rooms on an isolated instance/hostname and keep
 the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
 
+A shared-public-IP instance can test candidate behavior while the old TURN
+service stays live, but it cannot prove the clean-port boundary and must not
+approve migration. Prefer a separate VM/public IP for the full gate. Before
+starting, require candidate DNS/TLS, host and provider-firewall access,
+independent LiveKit secrets, verified UDP 7882 and resource state, and
+representative external networks and devices.
+
 Optional selected-edge TURN is not supported by this candidate. If later network
 evidence justifies it, configuration, generation-bound grants, client wire,
 tests, and deployment must arrive together in a separate PR. HTTPS/WSS always

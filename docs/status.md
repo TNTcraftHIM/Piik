@@ -13,10 +13,8 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Capture precedes room creation; live source/quality changes preserve peers and picture pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
 - Optional `ACCESS_PASSWORD` uses a stateless 12-hour HMAC HttpOnly Strict cookie; host auth stays internal and signaling role-bound.
 - Without `ROOM_DATABASE_PATH`, rooms are temporary. With it and the password, sequential links persist after stop; SQLite stores only room ID and host-token digest.
-- Old production keeps coturn UDP/TCP. The candidate uses self-hosted STUN-only ordinary ICE, separate SFU/UDP roots, and bounded failure; HTTPS/WSS stays TLS/TCP. Selected-edge TURN is future work, not dormant config.
-- SFU normally feeds one or two roots. Downstream cap is two, browser relay one; exceptional central edges need a separate cap. Production routing is off.
-- Configured fallback adds a non-secret standby URL and token-free DNS/TLS warmup; absent configuration adds no field, import, request, participant, or edge.
-- Each viewer advertises relay capacity 0/1; detected mobile/iPad clients are leaves. Withdrawal does not move a healthy edge. Browser relays stay one-child and host two-child.
+- PR #44 merged the default-off exact-room candidate code: ordinary ICE is process-wide STUN-only, LiveKit SFU/UDP feeds at most two roots, browser relays stay at one child, the host stays at two, and exhaustion fails boundedly. Old production/coturn remains rollback; HTTPS/WSS stays TLS/TCP.
+- Fallback prewarm is token-free and dormant without configuration. Mobile/iPad viewers are leaves and healthy edges stay sticky.
 - Production has memory-only video settings and manual readback. Automatic `HIGH`/`FALLBACK` plus one shared on-demand `LOW` is accepted but not deployed; local A+B and authenticated P2P Viewer C are read-only evidence. Browser audio is request/presence-only.
 
 ## Verified Evidence
@@ -40,7 +38,6 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - ADR-0007 remains incomplete. A+B/C browser support and the reported case are unverified; the controller, `LOW`, and an authenticated SFU last-hop C generation are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
 - Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
-- ADR-0005's candidate is process-wide STUN-only ordinary ICE plus separate LiveKit SFU/UDP and bounded failure, with no all-room TURN wire. It is default-off; enabling it requires non-empty exact room IDs, and missing/blank fails startup. The old release is isolated rollback.
 - Pinned LiveKit 1.13.5 Dynacast enables all qualities at or below the room's maximum request, so a `HIGH` root is expected to keep `LOW` enabled. It remains a bounded rejection/verification spike, not evidence that on-demand `LOW` can stop.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
@@ -73,9 +70,10 @@ separate experiments, not ways to relabel a failed browser route.
 
 ## Blockers And Decisions
 
-Peer assistance and automatic routing remain No-Go until ADR-0004/0005 migration gates pass.
-Without LiveKit, two mobile leaves can fill both host roots; use an isolated
-exact-room canary only.
+ADR-0004/0005 remain No-Go. Public canary lacks candidate DNS/TLS,
+host/security-group access, independent LiveKit secrets, verified UDP
+7882/resources, and external devices. Shared IP is smoke-only and cannot
+approve clean-port migration; the full gate needs an isolated VM/IP.
 Deferred architecture audit: `docs/maintenance.md`.
 
 - Whole-system versus selected-game audio for the first release.
