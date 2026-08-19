@@ -36,6 +36,9 @@ export interface ConnectionMetrics {
   intervalRetransmittedPackets: number | null;
   intervalRetransmittedBytes: number | null;
   codec: string | null;
+  codecProfile: string | null;
+  codecParameters: string | null;
+  scalabilityMode: string | null;
   encoderImplementation: string | null;
   powerEfficientEncoder: boolean | null;
   intervalEncodeMs: number | null;
@@ -84,6 +87,9 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   intervalRetransmittedPackets: null,
   intervalRetransmittedBytes: null,
   codec: null,
+  codecProfile: null,
+  codecParameters: null,
+  scalabilityMode: null,
   encoderImplementation: null,
   powerEfficientEncoder: null,
   intervalEncodeMs: null,

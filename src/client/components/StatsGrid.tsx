@@ -96,8 +96,17 @@ export function StatsGrid({
         title="本地 / 远端候选类型"
       />
       <Metric label="Codec" value={metrics.codec ?? "未知"} />
+      {metrics.codecProfile && (
+        <Metric label="Codec profile token" value={metrics.codecProfile} />
+      )}
+      {metrics.codecParameters && (
+        <Metric label="Codec 协商参数" value={metrics.codecParameters} />
+      )}
       {direction === "send" ? (
         <>
+          {metrics.scalabilityMode && (
+            <Metric label="当前流伸缩模式" value={metrics.scalabilityMode} />
+          )}
           <Metric label="编码器" value={encoder} />
           <Metric
             label="最近区间编码/帧"
@@ -138,6 +147,17 @@ export function StatsGrid({
                   preferenceLabel,
                 )}
               />
+              {(senderParameters.requested.scalabilityMode !== null ||
+                senderParameters.applied.scalabilityMode !== null) && (
+                <Metric
+                  label="请求 / 应用伸缩模式"
+                  value={requestedApplied(
+                    senderParameters.requested.scalabilityMode,
+                    senderParameters.applied.scalabilityMode,
+                    String,
+                  )}
+                />
+              )}
             </>
           )}
         </>

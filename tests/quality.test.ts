@@ -99,12 +99,14 @@ describe("realtime quality controls", () => {
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
         degradationPreference: "maintain-resolution",
+        scalabilityMode: null,
       },
       applied: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
         degradationPreference: "maintain-resolution",
+        scalabilityMode: null,
       },
       mismatches: [],
     });
@@ -117,7 +119,7 @@ describe("realtime quality controls", () => {
     const after = {
       encodings: [{ maxBitrate: 8_000_000 }],
       degradationPreference: "balanced",
-    } as RTCRtpSendParameters;
+    } as unknown as RTCRtpSendParameters;
     const getParameters = vi
       .fn<() => RTCRtpSendParameters>()
       .mockReturnValueOnce(before)
@@ -141,6 +143,74 @@ describe("realtime quality controls", () => {
     expect(senderParameterWarning(readback)).toContain("帧率上限");
     expect(senderParameterWarning(readback)).toContain("分辨率缩放");
     expect(senderParameterWarning(readback)).toContain("质量优先级");
+  });
+
+  it("reports an applied default scalability mode without claiming a request", async () => {
+    const before = {
+      encodings: [{}],
+    } as unknown as RTCRtpSendParameters;
+    const after = {
+      encodings: [
+        {
+          maxBitrate: 8_000_000,
+          maxFramerate: 60,
+          scaleResolutionDownBy: 1,
+          scalabilityMode: "L1T2",
+        },
+      ],
+      degradationPreference: "maintain-resolution",
+    } as unknown as RTCRtpSendParameters;
+    const sender = {
+      track: { getSettings: () => ({ width: 1920, height: 1080 }) },
+      getParameters: vi
+        .fn<() => RTCRtpSendParameters>()
+        .mockReturnValueOnce(before)
+        .mockReturnValue(after),
+      setParameters: vi.fn(async () => undefined),
+    } as unknown as RTCRtpSender;
+
+    const readback = await configureVideoSender(
+      sender,
+      QUALITY_PROFILES["1080p60"],
+    );
+
+    expect(readback.requested.scalabilityMode).toBeNull();
+    expect(readback.applied.scalabilityMode).toBe("L1T2");
+    expect(readback.mismatches).not.toContain("scalabilityMode");
+    expect(senderParameterWarning(readback)).toBeNull();
+  });
+
+  it("keeps scalability mode unknown when sender encodings are ambiguous", async () => {
+    const before = { encodings: [{}] } as RTCRtpSendParameters;
+    const after = {
+      encodings: [
+        {
+          rid: "low",
+          maxBitrate: 8_000_000,
+          maxFramerate: 60,
+          scaleResolutionDownBy: 1,
+          scalabilityMode: "L1T1",
+        },
+        { rid: "high", scalabilityMode: "L1T2" },
+      ],
+      degradationPreference: "maintain-resolution",
+    } as unknown as RTCRtpSendParameters;
+    const sender = {
+      track: { getSettings: () => ({ width: 1920, height: 1080 }) },
+      getParameters: vi
+        .fn<() => RTCRtpSendParameters>()
+        .mockReturnValueOnce(before)
+        .mockReturnValue(after),
+      setParameters: vi.fn(async () => undefined),
+    } as unknown as RTCRtpSender;
+
+    const readback = await configureVideoSender(
+      sender,
+      QUALITY_PROFILES["1080p60"],
+    );
+
+    expect(readback.applied.scalabilityMode).toBeNull();
+    expect(readback.mismatches).not.toContain("scalabilityMode");
   });
 
   it("pauses only the video track and can resume it", () => {

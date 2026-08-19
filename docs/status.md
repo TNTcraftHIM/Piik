@@ -17,7 +17,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU roots`; TURN is selected per edge, and SFU roots retain bounded peer descendants. Exact-room canaries use `PEER_ASSISTED_ROOM_IDS`; production is off.
 - Configured fallback adds a non-secret standby URL and token-free DNS/TLS warmup; absent configuration adds no field, import, request, participant, or edge.
 - Each viewer advertises relay capacity 0/1; detected mobile/iPad clients are leaves. Withdrawal does not move a healthy edge. Browser relays stay one-child and host two-child.
-- Production has one memory-only video setting with manual ceilings/readback. Automatic per-path `HIGH`/`FALLBACK` and one on-demand shared `LOW` are accepted but not deployed; only the first local A+B foundation exists. Browser audio is request/presence-only.
+- Production has memory-only video settings and manual readback. Automatic `HIGH`/`FALLBACK` plus one shared on-demand `LOW` is accepted but not deployed; host A+B exists, while C/actions do not. Browser audio is request/presence-only.
 
 ## Verified Evidence
 
@@ -26,7 +26,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Synthetic Chrome 151 720p30 propagated balanced/clarity to one host and three viewers without peer changes; decoding and 2/1 fanout continued. This proves control continuity only.
 - Chrome 151/LiveKit localhost A/B measured cold active/render at 1.481/2.257 seconds versus standby 0.200/0.320 with host edges at two. It includes SDK/prewarm and is not public-network evidence.
 - Atomic activation passed health/access, exact bundle, SQLite preservation, services, and logs; the old release is rollback-ready. Responsive 320/375/390 px checks passed without live media.
-- The local A+B alignment foundation samples capture settings with one uniquely matched host outbound track, explicit window/media identity and valid adjacent deltas, `remoteId`, and the RTP-bound selected path. Source replacement blocks sampling and discards stale in-flight generations; ambiguous, changed, and reset evidence rebases to unknown.
+- Host A+B aligns capture with one unique outbound RTP, interval/identity/deltas, `remoteId`, and path. Its same-transport codec exposes nullable MIME/self-describing profile token/allowlisted fmtp/`scalabilityMode`; tokens imply no quality or capability conclusion, and no raw fmtp/SDP/stats are added. Stale, ambiguous, reset, or cross-transport evidence stays unknown. Independent review found no P1/P2 issues; the final local check passed 22 files/299 tests and both builds.
 - HTTPS/WSS, access and room/WebSocket auth, renewal, public STUN, and authenticated TURN/UDP/TCP relay-only paths pass; TURN/TLS is off.
 - Draft native ladder #16/#18/#22/#23/#25/#28 passed one bounded 720p30 two-leg loop with an experiment-only minimum GCC target and one recovered loss; it is not product behavior.
 
@@ -37,7 +37,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio, heterogeneous clients, mobile lifecycle, quality/pause, room `1` republish, and sustained profiles are unverified. Poor movie/video audio is user-reported but unclassified; after video A+B, diagnose capture settings, codec/fmtp, actual bitrate, loss, jitter, concealment, jitter buffer, and A/V sync.
 - Production `769de201f7cc` reportedly sustains native `qualityLimitationReason=bandwidth` and severe blur with one capable LAN/direct viewer; only Host refresh restores quality. Within the five-second grace, stable-clientId Viewer refresh retains its `peerId`/`HostPeer`, while Host refresh rebuilds peers/capture; churn persistence is also reported. This prioritizes but does not prove sender/PC/GCC/capture generation over network or lifecycle causes.
-- ADR-0007 is incomplete. Local A+B alignment exists, but codec evidence is MIME-only; derived profile/parameters/`scalabilityMode`, authenticated C, the controller, and `LOW` runtime are absent. Weak paths must ultimately share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
+- ADR-0007 remains incomplete. Host A+B codec fields exist, but browser support and the reported case are unverified; authenticated C, the controller, and `LOW` are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
 - Browser relays re-encode. The native ladder proves one WebCodecs object, not hardware encode. GCC+RTX is no-go; no-RTX weakens stats. Broader audio/loss/routes/reconnect/browser/product/striping gates remain.
 - The endpoint budget remains host/relay at most two downstream edges; the browser path is host two/viewer one.
 - ADR-0005 permits SFU only after peer failure. Stable dual-TURN roots are shadow-only; exact-room TURN-root/SFU-root cost, recovery, and trust evidence is absent.
@@ -46,9 +46,9 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 
 ## Next Milestone
 
-Finish video A+B codec derivation, then reproduce the same-LAN/direct case.
-First rebuild one affected `HostPeer`/`connectionId` while retaining capture and
-healthy peers; separately compare capture-only and full Host rebuilds with
+Use the completed local host A+B diagnostics to reproduce the same-LAN/direct
+case. First rebuild one affected `HostPeer`/`connectionId` while retaining
+capture and healthy peers; separately compare capture-only and full Host rebuilds with
 A+B/C evidence and opaque generations. The affected viewer must recover without
 moving healthy peers or breaking the host-edge cap. Only proven stuck
 generations justify guarded/cooldown recovery; never reconnect periodically or

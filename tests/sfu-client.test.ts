@@ -275,12 +275,14 @@ describe("SfuPublisher", () => {
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
         degradationPreference: "maintain-resolution",
+        scalabilityMode: null,
       },
       applied: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
         degradationPreference: "maintain-resolution",
+        scalabilityMode: null,
       },
       mismatches: [],
     });
