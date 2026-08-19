@@ -283,28 +283,45 @@ defines `hardwareAcceleration` only as a hint the user agent may ignore.
 Therefore none is, by itself, proof of a particular hardware encoder, and a
 software SVC fallback must not be silent.
 
-After trustworthy A+B/C, evaluate three bounded capability spikes in order and
-stop at the first accepted path before custom dual-representation media work;
-they do not wait for ADR-0006 native-sender product acceptance. First, negotiate
-`HIGH`/`LOW` simulcast in one sender's
-initial envelope with `LOW` inactive and prove applied parameters, per-RID
-bytes/frames, and CPU/GPU/encoder release; separate PeerConnections have no
-portable shared-encode contract. Second, test at most two independently
-selecting LiveKit roots, but expect pinned server 1.13.5 to enable every layer
-at or below the maximum requested quality, so a `HIGH` root also keeps `LOW`
-enabled; client 2.22.0 then applies `active`, with Firefox using only a low-rate,
-low-FPS, 4x-scale fallback. Reject Dynacast for the exact on-demand-`LOW`
-requirement unless runtime and resource counters disprove that boundary. Third,
-compare requested/applied SVC mode and Media Capabilities `powerEfficient`,
-with no software fallback. None may bypass PR #28's stock-GCC/RTX stop line.
+The first two standard capability candidates close on static semantics, without
+a Chrome run. WebRTC provides sender-side encoding control but no
+`RTCRtpReceiver.setParameters()` or other standard per-RID subscription method.
+Consequently, direct P2P receivers cannot explicitly choose `HIGH` versus `LOW`
+from one shared simulcast sender, while separate viewer PeerConnections have no
+portable shared-encoder contract. This is
+`no-go-web-p2p-simulcast-layer-selection`. The unrun sender experiment makes no
+claim about per-RID traffic or whether `active=false` releases a physical
+encoder, CPU work, or GPU allocation.
 
-Retain a favorable, testable hypothesis: on target GPUs, adding one low-rate,
-low-resolution hardware `LOW` representation may have no material game impact.
-Compare `HIGH` against `HIGH+LOW` under one scene using game FPS/p1 low, CPU,
-GPU video-encode/copy activity, interval encode cost, actual encoder identity,
-and LOW bytes/frames. If the increment stays inside the accepted game budget,
-adopt the simpler on-demand dual representation and stop; do not continue into
-SVC or custom media merely for theoretical encoder-count elegance.
+Pinned LiveKit is also a static no-go for this exact policy. Server 1.13.5 takes
+the maximum requested quality across subscribers and subscriber nodes and
+enables every quality at or below that maximum. Client 2.22.0 applies those
+flags to simulcast encoding `active`. Thus any `HIGH` root also keeps `LOW`
+enabled, which cannot produce healthy-room `HIGH` only, a shared `LOW` only
+while weak roots need it, and `LOW` off after recovery. Because its Firefox
+path does not rely on `active=false` being honored, it also applies 4x scale and
+10 bps; its `maxFrameRate` field is not the standard `maxFramerate`, so neither
+a 2 fps cap nor a stopped layer can be treated as applied. This is
+`no-go-livekit-1.13.5-dynacast-cumulative-layers`; a browser resource run
+could not change the pinned control contract and was not performed. Screener's
+current publisher remains `simulcast: false` with default-disabled Dynacast, so
+this is not a claim about current runtime behavior.
+
+The next standard candidate is a bounded SVC spike. Its static codec/layer
+semantics may be checked before A+B/C; browser media and resource gates wait for
+trustworthy A+B/C. Compare requested/applied mode and Media Capabilities
+`powerEfficient`, with no silent software fallback. Stop before custom media if
+it meets the on-demand selection and resource gates. None of these paths may
+bypass PR #28's stock-GCC/RTX stop line.
+
+If SVC does not pass and custom dual representation remains necessary, retain a
+favorable, testable hypothesis: one low-rate, low-resolution hardware `LOW` may
+have no material game impact. Before accepting that custom path, compare `HIGH`
+against `HIGH+LOW` under one scene using game FPS/p1 low, CPU, GPU
+video-encode/copy activity, interval encode cost, actual encoder identity, and
+`LOW` bytes/frames. Passing permits the custom on-demand path; failure preserves
+`HIGH` and fails the weak path visibly. It cannot reopen an earlier static no-go
+or bypass the two-state policy and resource budget.
 
 ## Why Offline Encoding Presets Do Not Transfer
 
