@@ -32,7 +32,7 @@ repository candidate deliberately replaces that contract: ordinary authenticated
 ICE contains only self-hosted STUN, LiveKit separately serves normally one or two
 SFU/UDP roots, and exhausted paths fail clearly after bounded recovery. Run it on
 an isolated instance for exact-room acceptance rather than retaining a same-process
-legacy transport branch. Optional generation-bound TURN for a selected exceptional
+old-release compatibility branch. Optional generation-bound TURN for a selected exceptional
 edge is not implemented and requires a separate evidence-backed change. HTTPS/WSS
 continues to use TLS/TCP independently.
 

@@ -2,6 +2,7 @@ import {
   MAX_ICE_SERVER_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   roomCodeSchema,
+  stunUrlSchema,
 } from "../shared/protocol.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
@@ -13,6 +14,11 @@ const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const DEFAULT_MAX_SFU_ROOTS_PER_ROOM = 2;
 const MAX_SFU_ROOTS_PER_ROOM = 2;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
+const REMOVED_TURN_ENVIRONMENT_VARIABLES = [
+  "TURN_URLS",
+  "TURN_SHARED_SECRET",
+  "TURN_CREDENTIAL_TTL_SECONDS",
+] as const;
 
 export interface LiveKitFallbackConfig {
   url: string;
@@ -173,17 +179,8 @@ function parseStunUrlList(value: string | undefined): string[] {
     throw new Error(`${name} must contain at most ${MAX_ICE_SERVER_URLS} URLs`);
   }
   return values.map((value) => {
-    let protocol: string;
-    try {
-      protocol = new URL(value).protocol;
-    } catch {
-      throw new Error(`${name} contains an invalid URL`);
-    }
-    if (protocol !== "stun:") {
-      throw new Error(`${name} contains an unsupported URL scheme`);
-    }
-    if (!parseStunEndpoint(value)) {
-      throw new Error(`${name} contains an invalid ICE URL`);
+    if (!stunUrlSchema.safeParse(value).success) {
+      throw new Error(`${name} contains an invalid STUN URL`);
     }
     return value;
   });
@@ -220,59 +217,6 @@ function parsePeerAssistedRoomIds(
   return roomIds;
 }
 
-function parseStunEndpoint(value: string): boolean {
-  const schemeSeparator = value.indexOf(":");
-  if (schemeSeparator <= 0) {
-    return false;
-  }
-
-  const scheme = value.slice(0, schemeSeparator).toLowerCase();
-  if (scheme !== "stun") {
-    return false;
-  }
-
-  const remainder = value.slice(schemeSeparator + 1);
-  if (!remainder || remainder.includes("#")) {
-    return false;
-  }
-
-  if (remainder.includes("?")) {
-    return false;
-  }
-  const authorityText = remainder;
-  if (
-    !authorityText ||
-    /[\\/\s]/.test(authorityText) ||
-    authorityText.endsWith(":")
-  ) {
-    return false;
-  }
-
-  let authority: URL;
-  try {
-    authority = new URL(`http://${authorityText}`);
-  } catch {
-    return false;
-  }
-  if (
-    !authority.hostname ||
-    authority.username ||
-    authority.password ||
-    authority.pathname !== "/" ||
-    authority.search ||
-    authority.hash
-  ) {
-    return false;
-  }
-
-  const port = authority.port ? Number(authority.port) : undefined;
-  if (port === 0) {
-    return false;
-  }
-
-  return true;
-}
-
 function toOrigin(value: string): string {
   const url = new URL(value);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -284,6 +228,14 @@ function toOrigin(value: string): string {
 export function loadConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ServerConfig {
+  for (const name of REMOVED_TURN_ENVIRONMENT_VARIABLES) {
+    if (Object.prototype.hasOwnProperty.call(environment, name)) {
+      throw new Error(
+        `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
+      );
+    }
+  }
+
   const nodeEnv = parseEnvironment(environment.NODE_ENV);
   const port = parsePositiveInteger(environment.PORT, 8787, "PORT");
   if (port > 65_535) {
@@ -339,6 +291,11 @@ export function loadConfig(
   if (peerAssistedRoomIds && !peerAssistedMedia) {
     throw new Error(
       "PEER_ASSISTED_ROOM_IDS requires PEER_ASSISTED_MEDIA=true",
+    );
+  }
+  if (peerAssistedMedia && !peerAssistedRoomIds) {
+    throw new Error(
+      "PEER_ASSISTED_MEDIA=true requires non-empty PEER_ASSISTED_ROOM_IDS",
     );
   }
   if (livekitFallback && !peerAssistedMedia) {

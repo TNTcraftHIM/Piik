@@ -40,7 +40,7 @@ describe("peer-assisted client assignment", () => {
     });
   });
 
-  it("leaves legacy viewer signaling untargeted", () => {
+  it("leaves ordinary viewer signaling untargeted", () => {
     expect(viewerSignalMessage(false, "host_12345678", offer)).toEqual({
       type: "signal",
       payload: offer,

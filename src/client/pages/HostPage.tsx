@@ -110,7 +110,6 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
       {
         onMessage: () => undefined,
         onStatus: () => undefined,
-        onProtocolError: () => undefined,
         onTerminated: () => undefined,
         onAccessRequired: () => undefined,
       },
@@ -127,10 +126,6 @@ interface HostPageProps {
 }
 
 export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
-  const forceRelay = useMemo(
-    () => new URLSearchParams(window.location.search).get("relay") === "1",
-    [],
-  );
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
   );
@@ -613,7 +608,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           }
         },
       },
-      forceRelay,
     );
     peersRef.current.set(peerId, peer);
     let started: boolean;
@@ -933,14 +927,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               setSignalStatus(status);
             }
           },
-          onProtocolError: (message) => {
-            if (
-              isCurrentGeneration(generation) &&
-              signalRef.current === signal
-            ) {
-              setNotice(message);
-            }
-          },
           onTerminated: (message) => {
             if (
               isCurrentGeneration(generation) &&
@@ -1208,9 +1194,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         : "尚未开始"}
               </p>
             </div>
-            {showConnectionDetails && forceRelay && (
-              <span className="diagnostic-badge">强制中继</span>
-            )}
             {(phase === "live" || phase === "starting") && (
               <div className="broadcast-actions">
                 {phase === "live" && (

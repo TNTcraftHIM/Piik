@@ -9,7 +9,6 @@ listening-port=3478
 stun-only
 no-tcp
 no-tls
-no-dtls
 
 # Keep automatic address selection on a single-homed public host. On a
 # multi-homed host, bind only the intended public interface.

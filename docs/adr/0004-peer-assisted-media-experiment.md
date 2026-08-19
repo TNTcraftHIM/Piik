@@ -44,13 +44,13 @@ cross-mode fallback as a product goal.
 The experiment is gated by `PEER_ASSISTED_MEDIA`, which defaults to `false`.
 Enabling it requires `MAX_VIEWERS_PER_ROOM` at or below eight; larger configured
 rooms fail configuration rather than silently running a different topology.
-An optional non-empty `PEER_ASSISTED_ROOM_IDS` deployment allowlist restricts
-the experiment to exact valid room IDs. Non-allowlisted rooms must use the
-legacy P2P authenticated wire, signaling, quality behavior, and lifecycle and
-must never enter `HybridMediaRouter`. Missing or empty retains the original
-all-room behavior when the experiment is enabled; isolated canaries therefore
-must provide at least one ID. Invalid, empty-list-entry, or duplicate values
-fail startup. This adds no UI, percentage rollout, or routing score.
+A required non-empty `PEER_ASSISTED_ROOM_IDS` deployment allowlist restricts
+the experiment to exact valid room IDs. Non-allowlisted rooms use the current
+ordinary P2P authenticated wire, signaling, quality behavior, and lifecycle and
+must never enter `HybridMediaRouter`. Missing, blank, invalid, empty-list-entry,
+or duplicate values fail startup when the experiment is enabled; there is no
+all-room fail-open. This exact-room gate is temporary validation scope and adds
+no UI, percentage rollout, or routing score.
 
 The signaling server assigns two sticky, balanced chains with a deterministic
 breadth-first walk. The host has capacity for at most two children and each
@@ -66,8 +66,10 @@ host's two-child limit is a hard invariant across join, reconnect,
 reparent, and recovery paths. If the deterministic topology has no connected
 eligible parent, the viewer remains admitted but waits without media until a
 slot becomes reachable; it must not create a third host connection.
-Each logical edge still uses its own ICE process and authenticated TURN fallback
-when direct connectivity is unavailable.
+Each logical edge still uses its own ICE process. In the repository candidate,
+ordinary edges receive only STUN and route exhaustion proceeds to the bounded
+SFU virtual parent or clear failure; the old production TURN behavior is not a
+same-process compatibility branch.
 
 Every edge uses the existing standard WebRTC media path. A viewer receives the
 remote `MediaStream`, renders it, and sends those remote tracks through one new

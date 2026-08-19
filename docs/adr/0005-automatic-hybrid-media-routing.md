@@ -81,20 +81,21 @@ one-host-peer-per-viewer P2P/TURN.
 The repository candidate now removes the old all-room coturn contract. Production
 requires STUN, ordinary authenticated ICE snapshots contain only STUN servers,
 and the protocol has no TURN credential expiry or refresh messages. The tracked
-LiveKit sample also omits ICE/TCP and every TURN service. The SFU controller still
+LiveKit sample explicitly sets `tcp_port: 0`, disables TCP fallback, supplies
+the deployment-owned STUN server, and configures no TURN service. The SFU controller still
 activates only after a peer edge exhausts recovery, so public transport and route
 admission remain unverified. Production `769de201f7cc` keeps its old coturn relay
 until an isolated candidate canary passes; rollback is release/instance based,
-not a permanent legacy branch in the new code.
+not a permanent old-release compatibility branch in the new code.
 
-The repository also supports an optional strict `PEER_ASSISTED_ROOM_IDS`
-deployment allowlist. When non-empty, only exact listed room IDs enter the
-controller or receive optional LiveKit standby and grants. All other rooms
-retain the legacy P2P authentication shape and signaling/quality/lifecycle
-behavior. Missing or empty preserves the previous all-room behavior when
-`PEER_ASSISTED_MEDIA=true`; malformed or duplicate entries fail startup. The
-boundary is deployment-only and intentionally has no browser selector,
-percentage framework, or second router.
+The repository also requires a strict, non-empty `PEER_ASSISTED_ROOM_IDS`
+deployment allowlist whenever `PEER_ASSISTED_MEDIA=true`. Only exact listed room
+IDs enter the controller or receive optional LiveKit standby and grants. All
+other rooms retain the current ordinary P2P authentication shape and
+signaling/quality/lifecycle behavior. Missing, blank, malformed, or duplicate
+entries fail startup; there is no configuration state that enables all rooms. The boundary is a
+temporary deployment-only validation gate with no browser selector, percentage
+framework, or second router.
 
 The implementation keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
@@ -393,7 +394,7 @@ record which boundary is actually configured and the UI must not claim E2EE.
 - In one process, non-allowlisted rooms preserve ordinary P2P route fields,
   directed signaling, quality rejection, stop/reconnect/delete semantics, and
   remain isolated from allowlisted peer/SFU state. All rooms receive the same
-  process-wide STUN-only ordinary ICE contract; no legacy TURN branch exists.
+  process-wide STUN-only ordinary ICE contract; no old-release TURN branch exists.
 - LiveKit/SFU UDP must pass CGNAT, double-NAT, hotspot, home-network, loss,
   rollback, and SFU-unavailable gates. Blocked UDP fails clearly within a
   bounded window. A future selected-edge TURN or media TCP implementation needs

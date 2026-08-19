@@ -20,7 +20,6 @@ export class ViewerRelay {
     private iceConfig: IceConfig,
     private desiredProfile: QualityProfile,
     private readonly events: ViewerRelayEvents,
-    private readonly forceRelay = false,
   ) {}
 
   getSnapshot(): PeerSnapshot | null {
@@ -218,7 +217,6 @@ export class ViewerRelay {
           }
         },
       },
-      this.forceRelay,
     );
     this.peer = peer;
     void peer

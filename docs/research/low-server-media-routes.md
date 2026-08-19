@@ -195,12 +195,14 @@ Production `769de201f7cc` remains the old baseline with coturn UDP/TCP. The
 repository candidate has crossed a clean config/wire boundary: production
 requires STUN, ordinary ICE snapshots contain only STUN servers, and no TURN
 credential or refresh message remains. The tracked coturn example is UDP
-`stun-only`; the LiveKit example exposes only ICE/UDP mux 7882 and configures no
-external or embedded TURN. Candidate validation and rollback use isolated
-instances rather than a process-wide legacy branch. HTTPS/WSS remains TLS/TCP.
-Coturn 4.17.2 documents `stun-only` as ignoring TURN requests and independently
-provides `no-tcp`, `no-tls`, and `no-dtls` listener switches. This makes coturn
-the explicit self-hosted STUN owner without retaining a relay allocation surface.
+`stun-only`; the LiveKit example exposes only ICE/UDP mux 7882, explicitly sets
+`tcp_port: 0` and `allow_tcp_fallback: false`, supplies the self-hosted STUN
+endpoint, and configures no external or embedded TURN. Candidate validation and rollback use isolated
+instances rather than a process-wide old-release compatibility branch. HTTPS/WSS remains TLS/TCP.
+Coturn 4.17.2 documents `stun-only` as ignoring TURN requests and provides
+`no-tcp` and `no-tls`; it marks `no-dtls` deprecated, so the tracked candidate
+does not use that switch. Coturn remains the explicit self-hosted STUN owner
+without a TURN allocation surface or reliance on public Google STUN.
 
 No public port is selected by this decision. LiveKit documents ICE/UDP mux as
 optional and its pinned sample recommends a multi-port UDP mux range at least
@@ -233,8 +235,8 @@ One bounded exact-room gate owns rollout evidence:
    8 and 12 Mbps with one and two roots. Record CPU seconds/GiB, RX/TX bytes,
    packets/s, RSS, host upload, p95/p99 forwarding latency, loss/recovery, and
    final decoded quality.
-2. Cover representative consumer networks on an isolated candidate with no
-   `rtc.tcp_port` and no external or embedded TURN. Verify ordinary peers and
+2. Cover representative consumer networks on an isolated candidate with
+   `rtc.tcp_port: 0`, `allow_tcp_fallback: false`, and no external or embedded TURN. Verify ordinary peers and
    SFU roots use UDP. Keep the old release on a separate rollback instance;
    `PEER_ASSISTED_ROOM_IDS` does not preserve old TURN wire for unlisted rooms.
 3. Block all UDP and show a bounded explicit failure rather than a long

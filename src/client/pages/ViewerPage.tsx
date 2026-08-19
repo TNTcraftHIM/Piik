@@ -60,10 +60,6 @@ type ViewerQualityEvidence = Extract<
 >;
 
 export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps) {
-  const forceRelay = useMemo(
-    () => new URLSearchParams(window.location.search).get("relay") === "1",
-    [],
-  );
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
   const [statusText, setStatusText] = useState("正在连接");
@@ -132,13 +128,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         onStatus: (status) => {
           if (active) {
             setSignalStatus(status);
-          }
-        },
-        onProtocolError: (message) => {
-          if (active) {
-            messageAuthority.invalidate();
-            setSfuStandbyUrl(null);
-            setStatusText(message);
           }
         },
         onTerminated: (message) => {
@@ -234,7 +223,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             }
           },
         },
-        forceRelay,
       );
       viewerRelay.setChild(currentAssignment.childPeerIds[0] ?? null);
       return viewerRelay;
@@ -451,7 +439,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             return true;
           },
         },
-        forceRelay,
       );
       peerRef.current = peer;
       return peer;
@@ -688,7 +675,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       viewerRelay?.dispose();
       viewerRelay = null;
     };
-  }, [forceRelay, onAuthorizationRequired, roomId]);
+  }, [onAuthorizationRequired, roomId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -770,9 +757,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             <p className="section-meta">房间 {roomId}</p>
           </div>
           <div className="viewer-badges">
-            {showConnectionDetails && forceRelay && (
-              <span className="diagnostic-badge">强制中继</span>
-            )}
             <PeerStatusBadge state={peerSnapshot?.connectionState ?? "waiting"} />
             {showConnectionDetails && (
               <PathBadge path={peerSnapshot?.metrics.path ?? "unknown"} />

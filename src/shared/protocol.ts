@@ -4,6 +4,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
+export const SIGNALING_PROTOCOL = "screener-v1";
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
@@ -88,11 +89,46 @@ export const relayDownstreamEdgesSchema = z.union([
 ]);
 export type RelayDownstreamEdges = z.infer<typeof relayDownstreamEdgesSchema>;
 
-const stunUrlSchema = z
+function isValidStunUrl(value: string): boolean {
+  const schemeSeparator = value.indexOf(":");
+  if (
+    schemeSeparator <= 0 ||
+    value.slice(0, schemeSeparator).toLowerCase() !== "stun"
+  ) {
+    return false;
+  }
+
+  const authorityText = value.slice(schemeSeparator + 1);
+  if (
+    !authorityText ||
+    /[\\/\s?#]/.test(authorityText) ||
+    authorityText.endsWith(":")
+  ) {
+    return false;
+  }
+
+  let authority: URL;
+  try {
+    authority = new URL(`http://${authorityText}`);
+  } catch {
+    return false;
+  }
+  return Boolean(
+    authority.hostname &&
+      !authority.username &&
+      !authority.password &&
+      authority.pathname === "/" &&
+      !authority.search &&
+      !authority.hash &&
+      (!authority.port || Number(authority.port) > 0),
+  );
+}
+
+export const stunUrlSchema = z
   .string()
   .min(1)
   .max(512)
-  .regex(/^stun:/i);
+  .refine(isValidStunUrl, { message: "Invalid STUN URL" });
 
 const iceServerSchema = z
   .object({
@@ -281,6 +317,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
       type: z.literal("authenticate"),
+      protocol: z.literal(SIGNALING_PROTOCOL),
       roomId: roomCodeSchema,
       role: z.literal("host"),
       token: tokenSchema,
@@ -291,6 +328,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
       type: z.literal("authenticate"),
+      protocol: z.literal(SIGNALING_PROTOCOL),
       roomId: roomCodeSchema,
       role: z.literal("viewer"),
       clientId: opaqueIdSchema,
@@ -355,8 +393,6 @@ export const clientMessageSchema = z.union([
       shareGeneration: opaqueIdSchema.optional(),
     })
     .strict(),
-  // Kept as a compatibility alias while previously deployed clients age out.
-  z.object({ type: z.literal("close-room") }).strict(),
   z.object({ type: z.literal("abandon-room") }).strict(),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -375,6 +411,7 @@ const errorCodeSchema = z.enum([
 
 const authenticatedMessageShape = {
   type: z.literal("authenticated"),
+  protocol: z.literal(SIGNALING_PROTOCOL),
   role: roleSchema,
   peerId: opaqueIdSchema,
   roomExpiresAt: z.string().datetime().nullable(),

@@ -340,6 +340,7 @@ describe("server HTTP listener and health", () => {
     const baseUrl = await start(
       testConfig({
         peerAssistedMedia: true,
+        peerAssistedRoomIds: new Set(["1"]),
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiKey: "test-key",

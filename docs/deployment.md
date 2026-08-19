@@ -58,10 +58,10 @@ should connect. A container can instead use `0.0.0.0` and enforce the intended
 boundary with port publishing rules or a host firewall.
 
 The optional same-host LiveKit layout needs no additional public hostname:
-`LIVEKIT_URL=wss://share.example.com` and nginx forwards only the exact `/rtc`
-endpoint and paths below `/rtc/` to LiveKit. Its HTTP/WebSocket listener on TCP
-7880 is private to nginx, while WebRTC media reaches LiveKit directly on UDP
-7882.
+`LIVEKIT_URL=wss://share.example.com` and nginx proxies only current `/rtc/v1*`
+requests to LiveKit. Retired `/rtc` and `/rtc/validate` endpoints return 404
+without request-target logging. LiveKit's HTTP/WebSocket listener on TCP 7880 is
+private to nginx, while WebRTC media reaches LiveKit directly on UDP 7882.
 
 ## Candidate boundary and rollback
 
@@ -126,7 +126,8 @@ LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
 MAX_SFU_ROOTS_PER_ROOM=2
 ```
 
-`PEER_ASSISTED_ROOM_IDS` is the deployment canary boundary. A non-empty value
+`PEER_ASSISTED_ROOM_IDS` is the required deployment canary boundary whenever
+`PEER_ASSISTED_MEDIA=true`. Its non-empty value
 is a comma-separated set of exact positive numeric room IDs, using the same
 1-to-12-digit syntax as room authentication. Duplicate IDs, empty entries,
 leading zeroes, and malformed IDs fail startup. A non-empty allowlist requires
@@ -134,10 +135,9 @@ leading zeroes, and malformed IDs fail startup. A non-empty allowlist requires
 authentication, routing, room quality state, or optional LiveKit fallback;
 every other room keeps ordinary P2P route fields and signaling behavior. The
 ordinary STUN-only ICE snapshot is process-wide; unlisted rooms do not retain
-the old TURN contract. Omitting the
-variable or leaving it empty deliberately preserves the earlier all-room
-behavior when peer assistance is enabled, so a canary deployment must set at
-least one exact ID. There is no browser control or percentage rollout.
+the old TURN contract. Omitting or blanking the variable fails startup rather
+than enabling every room. There is no browser control, percentage rollout, or
+all-room fail-open.
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
 `ACCESS_PASSWORD` is optional: omit it or leave it empty for a public site. A
@@ -171,8 +171,9 @@ second non-allowlisted room contains none of `mediaMode`, `qualitySettings`,
 answer, stop, reconnect, and room deletion in both rooms. Both rooms receive
 STUN-only ordinary ICE. Roll back by directing traffic to the unchanged old
 release; disabling `PEER_ASSISTED_MEDIA` only disables topology/SFU routing and
-does not restore the removed TURN wire. After acceptance, remove the allowlist
-to enable all rooms rather than retaining a permanent canary branch.
+does not restore the removed TURN wire. After acceptance, retire or replace the
+temporary exact-room gate in a separate coherent change; never clear the value
+to trigger an implicit all-room rollout.
 
 When `ACCESS_PASSWORD` is configured, both host and viewer routes first show the
 same login gate. Only `POST /api/session` accepts the password in an
@@ -228,9 +229,10 @@ access is acceptable or another trusted access layer exists.
 Production startup requires one to eight syntactically valid `stun:` URLs
 before the server listens. This validates shape only; it does not prove DNS,
 firewall, NAT mappings, or external STUN reachability. The current application
-does not read `TURN_URLS`, `TURN_SHARED_SECRET`, or
-`TURN_CREDENTIAL_TTL_SECONDS`; remove those obsolete values from the candidate
-environment instead of assuming they still enable compatibility.
+rejects `TURN_URLS`, `TURN_SHARED_SECRET`, or `TURN_CREDENTIAL_TTL_SECONDS` when
+any key is present, including with an empty value. Remove those obsolete keys
+from the candidate environment; startup fails instead of pretending they enable
+compatibility.
 
 ## HTTPS and WSS ingress
 
@@ -261,11 +263,10 @@ location / {
 The tracked
 [`share.bonfire.icu.conf.example`](../deploy/nginx/share.bonfire.icu.conf.example)
 follows this simple model and listens directly on public TCP 443. It does not
-need an SNI transport router. Its optional exact `/rtc` and `/rtc/` prefix
-locations preserve the LiveKit request URI and disable both access logging and
-request-line error logging. Legacy `/rtc?token=...` and current versioned
-requests carry a short-lived LiveKit JWT in the query string, so neither request
-target may fall through to the site's ordinary logs.
+need an SNI transport router. Exact `/rtc` and pinned-v0 `/rtc/validate` requests
+return 404 with access and request-line error logging disabled; only `/rtc/v1*`
+is proxied. Current versioned requests carry a short-lived LiveKit JWT in the
+query string, so no `/rtc*` target may fall through to the site's ordinary logs.
 
 When Certbot manages the Web certificate, install the tracked
 [`reload-nginx.sh`](../deploy/certbot/reload-nginx.sh) as an executable under
@@ -295,9 +296,11 @@ from its official release assets, generate an independent key pair with
 `/etc/livekit/keys.yaml`. Keep that file owned by the `livekit` service account
 with mode `0600`; put the same values in Screener's untracked process secrets.
 
-The example deliberately omits Redis, ICE/TCP, and every recording, ingress,
-egress, webhook, external-TURN, and embedded-TURN service. Do not add Redis for
-this one-node workload.
+The example deliberately omits Redis and every recording, ingress, egress,
+webhook, external-TURN, and embedded-TURN service. It explicitly sets
+`tcp_port: 0` and `allow_tcp_fallback: false`, and points `stun_servers` at the
+deployment's self-hosted STUN listener so pinned LiveKit cannot inherit its
+default public Google STUN servers. Do not add Redis for this one-node workload.
 The service journal is the diagnostic log; keep its retention finite and access
 restricted. Never enable debug/Pion packet logging continuously or persist JWTs,
 SDP, ICE candidates, API secrets, or full `/rtc` and `/rtc/*` request targets.
@@ -315,7 +318,8 @@ must be its only ingress. UDP 7882 is a direct media listener and must not be
 placed behind the HTTP reverse proxy. If the host is behind NAT, forward it
 without port translation and verify the advertised candidate from an external
 network. UDP-blocked networks are expected to fail clearly in this candidate;
-do not add `rtc.tcp_port` or TURN to make a canary pass silently.
+do not set `rtc.tcp_port` above zero, enable TCP fallback, or add TURN to make a
+canary pass silently.
 
 ## Self-hosted STUN
 
@@ -323,8 +327,10 @@ Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.
 to an untracked service-owned location and use the tracked
 [`coturn.service.example`](../deploy/systemd/coturn.service.example). The config
 uses coturn's documented `stun-only` mode, ignores every TURN allocation request,
-and disables TCP, TLS, and DTLS client listeners. It has no auth secret, user
-database, relay port range, certificate, quota, or TURN REST credential.
+and disables TCP and TLS client listeners. It has no auth secret, user database,
+relay port range, certificate, quota, or TURN REST credential. Pinned coturn
+4.17.2 deprecates `no-dtls`, so the tracked config does not use that obsolete
+switch or claim a separate DTLS listener gate.
 
 On a single-homed public host, automatic listener selection is sufficient. On a
 multi-homed host, set `listening-ip` to the intended public interface. Open only
@@ -359,7 +365,7 @@ Run these checks from real external networks before calling the deployment usabl
    ordinary direct UDP and host/relay downstream caps remain two/one.
 4. Block all UDP on one test client. Verify bounded ICE recovery ends in a clear
    connection failure, without an ICE/TCP, TURN/TCP, or long pseudo-connected
-   path. The `?relay=1` diagnostic is expected to fail in this candidate.
+   path. No force-relay product branch exists in this candidate.
 5. Exercise root departure, reconnect, SFU unavailable, route prepare rollback,
    stop, and source/profile changes. Unaffected subtrees must not migrate.
 6. Repeat at 1, 3, 5, and 8 viewers across representative consumer networks.

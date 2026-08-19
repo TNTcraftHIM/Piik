@@ -19,6 +19,7 @@ describe("server configuration", () => {
   it("enables LiveKit fallback only for a complete credential tuple", () => {
     const config = loadConfig({
       PEER_ASSISTED_MEDIA: "true",
+      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: " ws://livekit.test:7880 ",
       LIVEKIT_API_KEY: " test-key ",
       LIVEKIT_API_SECRET: ` ${"s".repeat(32)} `,
@@ -37,6 +38,7 @@ describe("server configuration", () => {
     (maxSfuRootsPerRoom) => {
       const config = loadConfig({
         PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: "1",
         LIVEKIT_URL: "wss://livekit.test",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
@@ -103,6 +105,7 @@ describe("server configuration", () => {
         PUBLIC_BASE_URL: "https://share.test",
         STUN_URLS: "stun:stun.test:3478",
         PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: "1",
         LIVEKIT_URL: "ws://livekit.test:7880",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
@@ -134,12 +137,14 @@ describe("server configuration", () => {
     {
       ACCESS_PASSWORD: "x".repeat(32),
       PEER_ASSISTED_MEDIA: "true",
+      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "x".repeat(32),
     },
     {
       PEER_ASSISTED_MEDIA: "true",
+      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "x".repeat(32),
       LIVEKIT_API_SECRET: "x".repeat(32),
@@ -151,9 +156,12 @@ describe("server configuration", () => {
   });
 
   it("requires an explicit boolean to enable peer-assisted media", () => {
-    expect(loadConfig({ PEER_ASSISTED_MEDIA: "true" }).peerAssistedMedia).toBe(
-      true,
-    );
+    expect(
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: "1",
+      }).peerAssistedMedia,
+    ).toBe(true);
     expect(loadConfig({ PEER_ASSISTED_MEDIA: "false" }).peerAssistedMedia).toBe(
       false,
     );
@@ -163,6 +171,7 @@ describe("server configuration", () => {
     expect(() =>
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: "1",
         MAX_VIEWERS_PER_ROOM: "9",
       }),
     ).toThrow(
@@ -170,19 +179,25 @@ describe("server configuration", () => {
     );
   });
 
-  it("parses an optional strict peer-assisted room allowlist", () => {
+  it("requires and parses a strict peer-assisted room allowlist", () => {
     expect(
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
         PEER_ASSISTED_ROOM_IDS: " 1,123456789012 ",
       }).peerAssistedRoomIds,
     ).toEqual(new Set(["1", "123456789012"]));
-    expect(
-      loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
-        PEER_ASSISTED_ROOM_IDS: "  ",
-      }).peerAssistedRoomIds,
-    ).toBeUndefined();
+    for (const peerAssistedRoomIds of [undefined, "  "]) {
+      expect(() =>
+        loadConfig({
+          PEER_ASSISTED_MEDIA: "true",
+          ...(peerAssistedRoomIds === undefined
+            ? {}
+            : { PEER_ASSISTED_ROOM_IDS: peerAssistedRoomIds }),
+        }),
+      ).toThrow(
+        "PEER_ASSISTED_MEDIA=true requires non-empty PEER_ASSISTED_ROOM_IDS",
+      );
+    }
   });
 
   it("requires peer-assisted media for a non-empty room allowlist", () => {
@@ -242,6 +257,7 @@ describe("server configuration", () => {
       PUBLIC_BASE_URL: "https://share.test",
       STUN_URLS: "stun:stun.test:3478",
       PEER_ASSISTED_MEDIA: "true",
+      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
@@ -279,21 +295,32 @@ describe("server configuration", () => {
     "stun:stun.test/path",
     "stun:stun.test?transport=udp",
     "stun:stun.test#fragment",
+    "stun:",
     "stun:stun.test:",
     "stun:stun.test:0",
     "stun:user@stun.test:3478",
   ])("rejects a malformed STUN URL: %s", (invalidUrl) => {
     expect(() => loadConfig({ STUN_URLS: invalidUrl })).toThrow(
-      "STUN_URLS contains an invalid ICE URL",
+      "STUN_URLS contains an invalid STUN URL",
     );
   });
 
   it("rejects non-STUN schemes in the ordinary ICE configuration", () => {
     expect(() => loadConfig({ STUN_URLS: "turn:turn.test:3478" })).toThrow(
-      "STUN_URLS contains an unsupported URL scheme",
+      "STUN_URLS contains an invalid STUN URL",
     );
     expect(() => loadConfig({ STUN_URLS: "stuns:stun.test:5349" })).toThrow(
-      "STUN_URLS contains an unsupported URL scheme",
+      "STUN_URLS contains an invalid STUN URL",
+    );
+  });
+
+  it.each([
+    "TURN_URLS",
+    "TURN_SHARED_SECRET",
+    "TURN_CREDENTIAL_TTL_SECONDS",
+  ] as const)("rejects removed TURN configuration even when %s is blank", (name) => {
+    expect(() => loadConfig({ [name]: "" })).toThrow(
+      `${name} is no longer supported`,
     );
   });
 

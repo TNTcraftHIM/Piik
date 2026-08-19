@@ -40,7 +40,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - ADR-0007 remains incomplete. A+B/C browser support and the reported case are unverified; the controller, `LOW`, and an authenticated SFU last-hop C generation are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
 - Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
-- ADR-0005's candidate is process-wide STUN-only ordinary ICE plus separate LiveKit SFU/UDP and bounded failure, with no all-room TURN wire. It is default-off and lacks public gates; the old release is rollback.
+- ADR-0005's candidate is process-wide STUN-only ordinary ICE plus separate LiveKit SFU/UDP and bounded failure, with no all-room TURN wire. It is default-off; enabling it requires non-empty exact room IDs, and missing/blank fails startup. The old release is isolated rollback.
 - Pinned LiveKit 1.13.5 Dynacast enables all qualities at or below the room's maximum request, so a `HIGH` root is expected to keep `LOW` enabled. It remains a bounded rejection/verification spike, not evidence that on-demand `LOW` can stop.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 

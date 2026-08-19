@@ -37,9 +37,25 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Optional LiveKit signaling for automatic SFU fallback. Set LIVEKIT_URL to
-    # wss://share.bonfire.icu. Legacy clients use the exact /rtc endpoint.
+    # Reject the retired unversioned LiveKit endpoint. Keep this exact location
+    # out of logs because old URLs may still contain a short-lived join token.
     location = /rtc {
+        access_log off;
+        error_log /dev/null crit;
+        return 404;
+    }
+
+    # LiveKit client v0 validates this retired path before joining. Reject it
+    # explicitly so the broader current-v1 proxy cannot accept an old SDK.
+    location = /rtc/validate {
+        access_log off;
+        error_log /dev/null crit;
+        return 404;
+    }
+
+    # Current LiveKit clients use v1 paths only. Set
+    # LIVEKIT_URL to wss://share.bonfire.icu.
+    location ^~ /rtc/v1 {
         # The WebSocket query contains a short-lived LiveKit join token. Do not
         # persist the request target in either access or error logs.
         access_log off;
@@ -58,24 +74,11 @@ server {
         proxy_buffering off;
     }
 
-    # Current clients use versioned paths below /rtc/.
+    # Reject any other retired or unknown LiveKit path without logging tokens.
     location ^~ /rtc/ {
-        # The WebSocket query contains a short-lived LiveKit join token. Do not
-        # persist the request target in either access or error logs.
         access_log off;
         error_log /dev/null crit;
-        proxy_pass http://127.0.0.1:7880;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $screener_connection_upgrade;
-        proxy_read_timeout 5h;
-        proxy_send_timeout 5h;
-        proxy_buffering off;
+        return 404;
     }
 
     location / {

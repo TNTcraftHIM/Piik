@@ -8,6 +8,7 @@ import {
   DEFAULT_QUALITY_SETTINGS,
   MAX_SIGNAL_BYTES,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
+  SIGNALING_PROTOCOL,
   VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
   decodeClientMessage,
   type ClientMessage,
@@ -124,12 +125,14 @@ export class SignalingServer {
     if (options.sfuFallback && !options.peerAssistedMedia) {
       throw new Error("SFU fallback requires peer-assisted media");
     }
-    if (
-      options.peerAssistedRoomIds &&
-      options.peerAssistedRoomIds.size > 0 &&
-      !options.peerAssistedMedia
-    ) {
+    if (options.peerAssistedRoomIds && !options.peerAssistedMedia) {
       throw new Error("Peer-assisted room IDs require peer-assisted media");
+    }
+    if (
+      options.peerAssistedMedia &&
+      (!options.peerAssistedRoomIds || options.peerAssistedRoomIds.size === 0)
+    ) {
+      throw new Error("Peer-assisted media requires exact room IDs");
     }
     if (options.peerAssistedMedia) {
       this.hybridMediaRouter = new HybridMediaRouter({
@@ -254,11 +257,25 @@ export class SignalingServer {
   }
 
   private handleMessage(socket: WebSocket, encoded: string): void {
+    const state = this.socketStates.get(socket);
+    if (!state) {
+      return;
+    }
+
     let message: ClientMessage;
     try {
       message = decodeClientMessage(encoded);
     } catch {
-      this.rejectInvalidMessage(socket);
+      if (!state.authenticated) {
+        this.sendError(
+          socket,
+          "AUTH_REQUIRED",
+          "页面版本已更新，请刷新后重试",
+        );
+        socket.close(4001, "Protocol mismatch");
+      } else {
+        this.rejectInvalidMessage(socket);
+      }
       return;
     }
     if (
@@ -269,10 +286,6 @@ export class SignalingServer {
       return;
     }
 
-    const state = this.socketStates.get(socket);
-    if (!state) {
-      return;
-    }
     if (!state.authenticated) {
       if (message.type !== "authenticate") {
         this.sendError(socket, "AUTH_REQUIRED", "Authenticate before sending messages");
@@ -401,6 +414,7 @@ export class SignalingServer {
 
     const authenticatedMessage = {
       type: "authenticated" as const,
+      protocol: SIGNALING_PROTOCOL,
       role: participant.role,
       peerId: participant.peerId,
       roomExpiresAt: participant.expiresAt,
@@ -409,7 +423,7 @@ export class SignalingServer {
       connectionId,
       viewerPeerIds: [...participant.viewerPeerIds],
       iceConfig: this.iceConfig(),
-    };
+    } satisfies Extract<ServerMessage, { type: "authenticated" }>;
     if (hybridState) {
       this.send(socket, {
         ...authenticatedMessage,
@@ -589,7 +603,6 @@ export class SignalingServer {
         this.handleViewerQualityEvidence(socket, authenticated, message);
         return;
       case "stop-sharing":
-      case "close-room":
         if (authenticated.role !== "host") {
           this.sendError(socket, "FORBIDDEN", "Only the host may stop sharing");
           return;
@@ -598,8 +611,7 @@ export class SignalingServer {
           authenticated.shareGeneration === null ||
           this.shareGenerationsByRoom.get(authenticated.roomId) !==
             authenticated.shareGeneration ||
-          (message.type === "stop-sharing" &&
-            message.shareGeneration !== undefined &&
+          (message.shareGeneration !== undefined &&
             message.shareGeneration !== authenticated.shareGeneration)
         ) {
           socket.close(4001, "Sharing generation replaced");
@@ -1050,8 +1062,7 @@ export class SignalingServer {
     if (!this.hybridMediaRouter) {
       return false;
     }
-    const allowlist = this.options.peerAssistedRoomIds;
-    return !allowlist || allowlist.size === 0 || allowlist.has(roomId);
+    return this.options.peerAssistedRoomIds?.has(roomId) ?? false;
   }
 
   private hasConnectionCapacity(): boolean {
