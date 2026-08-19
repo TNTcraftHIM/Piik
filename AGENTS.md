@@ -29,9 +29,12 @@
 ## Git Workflow
 
 - Work on a short-lived branch for each coherent change. Use `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `spike/` prefixes.
-- Make focused commits, push the branch, open a pull request, pass checks, merge, and delete the branch. Direct changes to `main` require an explicit exception.
+- Keep work-in-progress and checkpoint branches local. Do not push a branch merely for backup, agent handoff, or intermediate review; after local validation and review, push it once to open the final pull request. Direct changes to `main` require an explicit exception.
+- Default to squash-merging each coherent, non-stacked pull request so `main` receives one meaningful `feat`, `fix`, `docs`, or other conventional commit. Use a merge commit only for an explicitly stacked dependency whose parent ancestry must remain intact; do not use ordinary merge by habit.
+- Delete a remote branch only after verifying that its pull request is merged, its current head still equals the merged pull request head, and no open pull request uses it as a head or base. Keep branches required by an active stacked pull request chain.
+- Once a merged branch's worktree is verified clean, remove the auxiliary worktree and local branch rather than accumulating completed branches. Before any local worktree or directory removal, resolve the exact absolute target and enumerate contained reparse points, junctions, and symlinks without following them. Verify every link target and handle the link itself with a non-following operation first; never run recursive deletion while an unresolved reparse point remains.
 - Keep unrelated work out of a branch. Update tests, docs, ADRs, project memory, and status in the same pull request when their source facts change.
-- Follow `CONTRIBUTING.md` and the pull request template. Never rewrite shared history unless the user explicitly requests it.
+- Before the first push, a local branch may be rebased onto the latest `main` to keep the pull request focused. Follow `CONTRIBUTING.md` and the pull request template; never rewrite shared history unless the user explicitly requests it.
 
 ## Context Hygiene
 
