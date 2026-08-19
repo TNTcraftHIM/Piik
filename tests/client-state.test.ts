@@ -224,57 +224,68 @@ describe("client signaling recovery policy", () => {
       viewerPeerIds: [],
       iceConfig: { iceServers: [] },
     }),
-  ])("terminates once when an old server uses an incompatible protocol", (payload) => {
-    const sockets: FakeWebSocket[] = [];
-    class FakeWebSocket extends EventTarget {
-      static readonly CLOSING = 2;
-      readyState = 1;
-      readonly send = vi.fn();
-      readonly close = vi.fn();
+  ])(
+    "terminates once when an old server uses an incompatible protocol",
+    (payload) => {
+      const sockets: FakeWebSocket[] = [];
+      class FakeWebSocket extends EventTarget {
+        static readonly CLOSING = 2;
+        readyState = 1;
+        readonly send = vi.fn();
+        readonly close = vi.fn();
 
-      constructor(readonly url: string) {
-        super();
-        sockets.push(this);
+        constructor(readonly url: string) {
+          super();
+          sockets.push(this);
+        }
       }
-    }
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-    vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/123456789012"),
-      setTimeout,
-      clearTimeout,
-    });
-    const onTerminated = vi.fn();
-    const signal = new SignalingClient(
-      {
-        roomId: "123456789012",
-        role: "viewer",
-        clientId: "viewer-client",
-      },
-      {
-        onMessage: () => undefined,
-        onStatus: () => undefined,
-        onTerminated,
-        onAccessRequired: () => undefined,
-      },
-    );
+      vi.stubGlobal("WebSocket", FakeWebSocket);
+      vi.stubGlobal("window", {
+        location: new URL("https://share.test/r/123456789012"),
+        setTimeout,
+        clearTimeout,
+      });
+      const onTerminated = vi.fn();
+      const signal = new SignalingClient(
+        {
+          roomId: "123456789012",
+          role: "viewer",
+          clientId: "viewer-client",
+        },
+        {
+          onMessage: () => undefined,
+          onStatus: () => undefined,
+          onTerminated,
+          onAccessRequired: () => undefined,
+        },
+      );
 
-    signal.start();
-    sockets[0]!.dispatchEvent(new Event("open"));
-    expect(JSON.parse(String(sockets[0]!.send.mock.calls[0]![0]))).toMatchObject({
-      type: "authenticate",
-      protocol: "screener-v1",
-    });
-    const message = new Event("message");
-    Object.defineProperty(message, "data", { value: payload });
-    sockets[0]!.dispatchEvent(message);
+      signal.start();
+      sockets[0]!.dispatchEvent(new Event("open"));
+      expect(
+        JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
+      ).toMatchObject({
+        type: "authenticate",
+        protocol: "screener-v1",
+      });
+      const message = new Event("message");
+      Object.defineProperty(message, "data", { value: payload });
+      sockets[0]!.dispatchEvent(message);
+      const close = new Event("close");
+      Object.defineProperties(close, {
+        code: { value: 1008 },
+        reason: { value: "Invalid message" },
+      });
+      sockets[0]!.dispatchEvent(close);
 
-    expect(onTerminated).toHaveBeenCalledOnce();
-    expect(onTerminated).toHaveBeenCalledWith(
-      "页面版本已更新，请刷新后重试",
-    );
-    expect(sockets[0]!.close).toHaveBeenCalledOnce();
-    expect(sockets).toHaveLength(1);
-  });
+      expect(onTerminated).toHaveBeenCalledOnce();
+      expect(onTerminated).toHaveBeenCalledWith(
+        "页面版本已更新，请刷新后重试",
+      );
+      expect(sockets[0]!.close).toHaveBeenCalledOnce();
+      expect(sockets).toHaveLength(1);
+    },
+  );
 
   it("returns to the access gate after an unauthorized upgrade", async () => {
     const sockets: FakeWebSocket[] = [];

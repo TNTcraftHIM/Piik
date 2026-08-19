@@ -203,7 +203,9 @@ export class SignalingClient {
         this.events.onTerminated(
           event.reason === "Session replaced"
             ? "此页面的会话已被另一个标签页接管"
-            : "信令会话已终止，请刷新后重试",
+            : event.code === INVALID_MESSAGE_CLOSE_CODE
+              ? PROTOCOL_REFRESH_MESSAGE
+              : "信令会话已终止，请刷新后重试",
         );
       }
     });

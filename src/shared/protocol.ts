@@ -503,12 +503,12 @@ export const serverMessageSchema = z.union([
       ...viewerQualityEvidenceWindowShape,
     })
     .strict()
-     .refine(freezeFitsEvidenceWindow, {
-       message: "Viewer freeze duration exceeds its evidence window",
-     }),
-   z
-     .object({
-       type: z.literal("host-status"),
+    .refine(freezeFitsEvidenceWindow, {
+      message: "Viewer freeze duration exceeds its evidence window",
+    }),
+  z
+    .object({
+      type: z.literal("host-status"),
       online: z.boolean(),
     })
     .strict(),
