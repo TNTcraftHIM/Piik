@@ -6,6 +6,7 @@ import WebSocket from "ws";
 
 import {
   MAX_SIGNAL_BYTES,
+  MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   decodeServerMessage,
   type Role,
   type ServerMessage,
@@ -161,6 +162,7 @@ async function startHarness(
     persistent?: boolean;
     peerAssistedMedia?: boolean;
     peerAssistedPrimaryRoomOnly?: boolean;
+    now?: () => number;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
@@ -182,6 +184,7 @@ async function startHarness(
     config,
     roomStore,
     serveFrontend: false,
+    now: overrides.now,
     authenticationTimeoutMs: overrides.authenticationTimeoutMs ?? 500,
     viewerDisconnectGraceMs: overrides.viewerDisconnectGraceMs ?? 50,
     heartbeatIntervalMs: 60_000,
@@ -197,6 +200,38 @@ async function startHarness(
     roomStore,
     room,
   };
+}
+
+function viewerQualityEvidence(
+  connectionId: string,
+  routeRevision: number,
+  sequence: number,
+  bitrateKbps = 7_500,
+) {
+  return {
+    type: "viewer-quality-evidence",
+    guard: { connectionId, routeRevision },
+    sequence,
+    windowMs: 2_000,
+    metrics: {
+      width: 1_920,
+      height: 1_080,
+      framesPerSecond: 60,
+      bitrateKbps,
+      packetsReceivedDelta: 1_500,
+      packetsLostDelta: 2,
+      jitterMs: 3.5,
+      framesDecodedDelta: 120,
+      framesDroppedDelta: 1,
+      decodeMsPerFrame: 2.4,
+      freezeCountDelta: 0,
+      freezeDurationMsDelta: 0,
+      codec: "video/H264",
+      codecProfile: "profile-level-id=42e01f",
+      codecParameters:
+        "packetization-mode=1; level-asymmetry-allowed=1",
+    },
+  } as const;
 }
 
 async function startSfuHarness(options: {
@@ -1117,6 +1152,314 @@ describe("WebSocket signaling", () => {
     await resumedLegacyHost.inbox.next("room-closed");
     await resumedLegacyViewer.inbox.next("room-closed");
     expect(harness.roomStore.size).toBe(0);
+  });
+
+  it("forwards only current, bounded ordinary-P2P viewer C evidence", async () => {
+    let now = Date.now();
+    const harness = await startHarness({ now: () => now });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "quality-host-client",
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "quality-viewer-client",
+    );
+    await host.inbox.next("peer-joined");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_connection_first",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+
+    viewer.socket.send(
+      JSON.stringify(viewerQualityEvidence("quality_connection_first", 0, 0)),
+    );
+    expect(await host.inbox.next("viewer-quality-evidence")).toEqual({
+      ...viewerQualityEvidence("quality_connection_first", 0, 0),
+      viewerPeerId: viewerAuth.peerId,
+      parentPeerId: hostAuth.peerId,
+    });
+
+    viewer.socket.send(
+      JSON.stringify(viewerQualityEvidence("quality_connection_first", 0, 1)),
+    );
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_first", 0, 1, 7_000),
+      ),
+    );
+    await host.inbox.expectNone(30);
+
+    now += 2_000;
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_first", 0, 1, 7_000),
+      ),
+    );
+    expect(
+      (await host.inbox.next("viewer-quality-evidence")).metrics.bitrateKbps,
+    ).toBe(7_000);
+
+    now += 2_000;
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_first", 0, 2, 7_000),
+      ),
+    );
+    expect(
+      (await host.inbox.next("viewer-quality-evidence")).metrics.bitrateKbps,
+    ).toBe(7_000);
+
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_stale", 0, 3, 6_500),
+      ),
+    );
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_first", 1, 3, 6_500),
+      ),
+    );
+    await host.inbox.expectNone(30);
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_connection_second",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_first", 0, 3, 6_000),
+      ),
+    );
+    await host.inbox.expectNone(30);
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_second", 0, 0, 6_000),
+      ),
+    );
+    expect(
+      (await host.inbox.next("viewer-quality-evidence")).guard.connectionId,
+    ).toBe("quality_connection_second");
+
+    host.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_second", 0, 1, 5_500),
+      ),
+    );
+    await host.inbox.expectNone(30);
+
+    const replacementViewer = await openClient(harness.webSocketUrl);
+    const replacementAuth = await authenticate(
+      replacementViewer,
+      harness.room,
+      "viewer",
+      "quality-viewer-client",
+    );
+    expect(replacementAuth).toMatchObject({
+      peerId: viewerAuth.peerId,
+      connectionId: "quality_connection_second",
+    });
+    expect(await host.inbox.next("peer-joined")).toMatchObject({
+      peerId: viewerAuth.peerId,
+    });
+    replacementViewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence("quality_connection_second", 0, 0, 5_000),
+      ),
+    );
+    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
+      viewerPeerId: viewerAuth.peerId,
+      guard: { connectionId: "quality_connection_second" },
+      sequence: 0,
+      metrics: { bitrateKbps: 5_000 },
+    });
+  });
+
+  it("derives peer-assisted C routing from the active assignment", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "peer-quality-host"),
+    );
+    host.inbox.ignore("route-update");
+    host.inbox.ignore("media-assignment");
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "peer-quality-viewer",
+      ),
+    );
+    expect(viewerAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "peer_quality_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence(
+          "peer_quality_connection",
+          viewerAuth.routeRevision,
+          0,
+        ),
+      ),
+    );
+    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
+      viewerPeerId: viewerAuth.peerId,
+      parentPeerId: hostAuth.peerId,
+      guard: {
+        connectionId: "peer_quality_connection",
+        routeRevision: viewerAuth.routeRevision,
+      },
+    });
+
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence(
+          "peer_quality_connection",
+          viewerAuth.routeRevision + 1,
+          1,
+          7_000,
+        ),
+      ),
+    );
+    await host.inbox.expectNone(30);
+
+    viewer.inbox.ignore("route-update");
+    viewer.inbox.ignore("media-assignment");
+    const secondViewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      secondViewer,
+      harness.room,
+      "viewer",
+      "peer-quality-viewer-two",
+    );
+    const relayChild = await openClient(harness.webSocketUrl);
+    const relayChildAuth = peerAssisted(
+      await authenticate(
+        relayChild,
+        harness.room,
+        "viewer",
+        "peer-quality-relay-child",
+      ),
+    );
+    expect(relayChildAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: viewerAuth.peerId,
+    });
+
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence(
+          "peer_quality_connection",
+          relayChildAuth.routeRevision,
+          1,
+          6_500,
+        ),
+      ),
+    );
+    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
+      viewerPeerId: viewerAuth.peerId,
+      guard: {
+        connectionId: "peer_quality_connection",
+        routeRevision: relayChildAuth.routeRevision,
+      },
+      sequence: 1,
+    });
+
+    viewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: relayChildAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "relay_child_quality_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await relayChild.inbox.next("signal");
+    relayChild.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence(
+          "relay_child_quality_connection",
+          relayChildAuth.routeRevision,
+          0,
+        ),
+      ),
+    );
+    expect(await viewer.inbox.next("viewer-quality-evidence")).toMatchObject({
+      viewerPeerId: relayChildAuth.peerId,
+      parentPeerId: viewerAuth.peerId,
+      guard: {
+        connectionId: "relay_child_quality_connection",
+        routeRevision: relayChildAuth.routeRevision,
+      },
+    });
+    await host.inbox.expectNone(30);
+  });
+
+  it("rejects viewer C evidence above the byte cap", async () => {
+    const harness = await startHarness();
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "oversized-quality-viewer",
+    );
+    const closed = new Promise<number>((resolve) =>
+      viewer.socket.once("close", (code) => resolve(code)),
+    );
+    const valid = JSON.stringify(
+      viewerQualityEvidence("oversized_quality_connection", 0, 0),
+    );
+
+    viewer.socket.send(
+      `${valid}${" ".repeat(MAX_VIEWER_QUALITY_EVIDENCE_BYTES + 1)}`,
+    );
+
+    expect(await viewer.inbox.next("error")).toMatchObject({
+      code: "INVALID_MESSAGE",
+    });
+    expect(await closed).toBe(1008);
   });
 
   it("routes offer and answer only between the host and the targeted viewer", async () => {
