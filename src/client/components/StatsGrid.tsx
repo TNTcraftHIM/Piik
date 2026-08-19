@@ -1,4 +1,5 @@
 import type { ConnectionMetrics } from "../types";
+import type { VideoSenderParameterReadback } from "../media/quality";
 
 function readableNumber(value: number | null, digits = 0): string {
   return value === null || !Number.isFinite(value) ? "未知" : value.toFixed(digits);
@@ -14,6 +15,25 @@ function qualityReason(value: string | null): string {
   return value ? (labels[value] ?? value) : "未知";
 }
 
+function requestedApplied(
+  requested: number | string | null,
+  applied: number | string | null,
+  format: (value: number | string) => string,
+): string {
+  const requestedText = requested === null ? "?" : format(requested);
+  const appliedText = applied === null ? "未读回" : format(applied);
+  return `${requestedText} / ${appliedText}`;
+}
+
+function preferenceLabel(value: number | string): string {
+  const labels: Record<string, string> = {
+    "maintain-resolution": "清晰",
+    balanced: "平衡",
+    "maintain-framerate": "流畅",
+  };
+  return labels[String(value)] ?? String(value);
+}
+
 function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="metric" title={title}>
@@ -26,9 +46,11 @@ function Metric({ label, value, title }: { label: string; value: string; title?:
 export function StatsGrid({
   metrics,
   direction,
+  senderParameters,
 }: {
   metrics: ConnectionMetrics;
   direction: "send" | "receive";
+  senderParameters?: VideoSenderParameterReadback | null;
 }) {
   const encoder = metrics.encoderImplementation
     ? `${metrics.encoderImplementation}${
@@ -82,6 +104,42 @@ export function StatsGrid({
             value={`${readableNumber(metrics.intervalEncodeMs, 1)} ms`}
           />
           <Metric label="质量状态" value={qualityReason(metrics.qualityLimitationReason)} />
+          {senderParameters && (
+            <>
+              <Metric
+                label="请求 / 应用码率"
+                value={requestedApplied(
+                  senderParameters.requested.maxBitrate,
+                  senderParameters.applied.maxBitrate,
+                  (value) => `${(Number(value) / 1_000_000).toFixed(1)} Mbps`,
+                )}
+              />
+              <Metric
+                label="请求 / 应用帧率"
+                value={requestedApplied(
+                  senderParameters.requested.maxFramerate,
+                  senderParameters.applied.maxFramerate,
+                  (value) => `${Number(value).toFixed(0)} fps`,
+                )}
+              />
+              <Metric
+                label="请求 / 应用缩放"
+                value={requestedApplied(
+                  senderParameters.requested.scaleResolutionDownBy,
+                  senderParameters.applied.scaleResolutionDownBy,
+                  (value) => `${Number(value).toFixed(2)}x`,
+                )}
+              />
+              <Metric
+                label="请求 / 应用优先级"
+                value={requestedApplied(
+                  senderParameters.requested.degradationPreference,
+                  senderParameters.applied.degradationPreference,
+                  preferenceLabel,
+                )}
+              />
+            </>
+          )}
         </>
       ) : (
         <>

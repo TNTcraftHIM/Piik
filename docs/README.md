@@ -16,6 +16,6 @@
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): accepted P2P-first media topology and its consequences.
 - [ADR-0002](./adr/0002-persistent-protected-rooms.md): optional SQLite persistence, protected sequential room IDs, and room lifecycle.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): proposed, experiment-only standard-WebRTC peer-assisted spike with hard fanout and failure gates.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): proposed, Draft-implemented automatic P2P/peer/SFU preparation, commit, failback, and rollback with a hard host-edge budget.
+- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): proposed, default-off automatic P2P/peer/SFU preparation, commit, failback, and rollback with a hard host-edge budget.
 
 Documentation and project memory are part of the product source of truth. Update them in the same change that alters the corresponding requirement or architecture.

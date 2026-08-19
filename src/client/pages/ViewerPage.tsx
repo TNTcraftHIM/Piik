@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  DEFAULT_QUALITY_PROFILE_ID,
+  DEFAULT_QUALITY_SETTINGS,
   type IceConfig,
   type MediaAssignment,
   type ServerMessage,
@@ -25,10 +25,7 @@ import {
 import { StatsGrid } from "../components/StatsGrid";
 import { getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
-import {
-  QUALITY_PROFILES,
-  type QualityProfileId,
-} from "../media/quality";
+import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
@@ -85,7 +82,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
     let peerAssisted = false;
-    let currentQualityProfileId: QualityProfileId = DEFAULT_QUALITY_PROFILE_ID;
+    let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
     let currentAssignment: MediaAssignment = {
       parentPeerId: null,
       childPeerIds: [],
@@ -149,7 +146,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       }
       viewerRelay = new ViewerRelay(
         currentIceConfig,
-        QUALITY_PROFILES[currentQualityProfileId],
+        currentQualitySettings,
         {
           sendSignal: (targetPeerId, payload) =>
             active &&
@@ -402,11 +399,9 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         currentHostOnline = message.hostOnline;
         setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
-        if (nextPeerAssisted && "qualityProfileId" in message) {
-          currentQualityProfileId = message.qualityProfileId;
-          void viewerRelay?.updateProfile(
-            QUALITY_PROFILES[currentQualityProfileId],
-          );
+        if (nextPeerAssisted && "qualitySettings" in message) {
+          currentQualitySettings = message.qualitySettings;
+          void viewerRelay?.updateProfile(currentQualitySettings);
           await ensureViewerSfuRoute().resyncAuthoritative(
             {
               revision: message.routeRevision,
@@ -471,12 +466,10 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         }
         return;
       }
-      if (message.type === "quality-profile") {
+      if (message.type === "quality-settings") {
         if (peerAssisted) {
-          currentQualityProfileId = message.qualityProfileId;
-          void viewerRelay?.updateProfile(
-            QUALITY_PROFILES[currentQualityProfileId],
-          );
+          currentQualitySettings = message.qualitySettings;
+          void viewerRelay?.updateProfile(currentQualitySettings);
         }
         return;
       }
@@ -776,7 +769,11 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         {showConnectionDetails && relaySnapshot && (
           <section className="viewer-stats" aria-labelledby="relay-stats-heading">
             <h2 id="relay-stats-heading">转发数据</h2>
-            <StatsGrid metrics={relaySnapshot.metrics} direction="send" />
+            <StatsGrid
+              metrics={relaySnapshot.metrics}
+              direction="send"
+              senderParameters={relaySnapshot.senderParameters}
+            />
           </section>
         )}
       </main>

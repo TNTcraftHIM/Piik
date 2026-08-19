@@ -6,17 +6,16 @@
 
 ## Finding
 
-Screener should not optimize a single quality dimension at the expense of the
-others. The previous combination of `contentHint = "motion"` and an explicit
-`degradationPreference = "maintain-framerate"` told WebRTC to preserve frame
-rate primarily by reducing resolution. That is appropriate for some fast
-motion, but it can make game UI, maps, subtitles, and text unreadable.
+Screener should not optimize one quality dimension at the expense of the
+others. `maintain-framerate` may preserve motion by reducing resolution until
+game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
+may instead lower frame rate. Neither preference overrides congestion control.
 
-The smallest correction is to retain the game-oriented `motion` hint while
-explicitly selecting `balanced` degradation. The WebRTC API allows the user
-agent to balance frame-rate and resolution degradation; it does not prescribe
-the algorithm or guarantee a clarity-first result. Congestion control remains
-authoritative, and Chromium, Firefox, and Safari behavior must be measured.
+The current bounded implementation retains the game-oriented `motion` hint,
+defaults to `maintain-resolution`, and offers explicit balanced and fluid
+choices. This is a readability-first default, not a quality guarantee: the
+WebRTC API describes a user-agent preference rather than its algorithm, so
+Chromium, Firefox, and Safari behavior still needs measured comparison.
 
 The inspected Chromium/libwebrtc source chain makes a screen-only shortcut
 especially unsafe to assume for Screener. The JavaScript `motion` hint reaches
@@ -102,28 +101,38 @@ resolution, frame rate, or bitrate.
 - A live profile change uses `track.applyConstraints()` and updates every
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
-- The video track keeps `contentHint = "motion"`, while each sender explicitly
-  uses `degradationPreference = "balanced"`. This is a user-agent preference,
-  not a promise to preserve either resolution or frame rate.
+- The video track keeps `contentHint = "motion"`; recommended profiles default
+  to `maintain-resolution`, with explicit `balanced` and
+  `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
+- The folded advanced panel accepts only 720p/1080p/1440p, integer 15-60 fps,
+  2-12 Mbps, and the three preferences. Audio stereo/bitrate is not exposed
+  because standard sender controls cannot reliably guarantee the negotiated
+  browser audio mode.
+- Every sender update derives from `getParameters()`, calls `setParameters()`,
+  then reads requested/applied bitrate, frame rate, scale, and preference.
+  Rejection or browser rewriting is visible rather than console-only.
+- One strict room setting is last-wins for current/future peer relays and the
+  optional SFU publisher. Ordinary P2P keeps that state local and does not add
+  it to the authenticated wire.
 - Pausing the picture disables the existing video track, producing black video
   without closing the room or media connection. Audio remains enabled.
 
-The next bounded A/B changes only degradation preference: keep `motion`, compare
-the current `balanced` behavior with `maintain-resolution`, and expose the
-result as a default clarity-first choice plus optional balanced/fluid choices.
-It may trade frame rate for readability and is not a universal fix. The
-advanced panel remains bounded to resolution ceiling, frame-rate ceiling,
-bitrate ceiling, quality priority, and audio mode; it does not expose raw SDP or
-codec internals.
+The implementation deliberately stops at manual bounded controls. It adds no
+composite score, periodic adjustment, codec forcing, SDP bitrate manipulation,
+or scene detector. Three consecutive samples of one non-`none` native
+`qualityLimitationReason` produce one explanatory warning; a reason change or
+recovery resets it and never triggers a media action.
 
-A Chromium 151 loopback smoke with one host, three viewers, and a synthetic
-640x360/30 source kept the same relay peer, sender, and signaling generations
-while applying 8 Mbps/60 fps, 5 Mbps/30 fps, and 3 Mbps/30 fps sender ceilings.
-The leaf continued decoding after both live switches. This verifies control
-propagation and connection preservation, not actual 1080p output, visual
-quality, CPU/GPU cost, public-network behavior, or sustained performance.
+A Chrome 151 loopback smoke with one host, three viewers, and synthetic 720p30
+video propagated balanced then clarity settings to every participant. Every
+baseline active outbound video sender displayed the matching requested/applied
+preference, peer-connection fingerprints stayed unchanged, and every viewer's
+decoded-frame and foreground `requestVideoFrameCallback` counters grew after
+each change. Host media edges peaked at two and relay edges at one. This verifies
+controls and continuity, not visual quality, full-resolution performance,
+CPU/GPU cost, public networks, or sustained behavior.
 
 ## Deliberate Non-Goals
 
@@ -166,6 +175,7 @@ profiles before adding an application-level adaptation controller.
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
+- [MDN `RTCRtpSender.setParameters()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
 - [Chromium `motion` to libwebrtc `kFluid` bridge](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc)
 - [libwebrtc `motion`/`kFluid` sender classification](https://webrtc.googlesource.com/src/+/3b1eab8a69cb5078befb021c5492d3f204a7d6a2/pc/rtp_sender.cc)
 - [libwebrtc encoder content-type selection](https://webrtc.googlesource.com/src/+/9caef2a8b88f389af10cee841732c42a98d3d45d/media/engine/webrtc_video_engine.cc)

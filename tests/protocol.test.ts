@@ -12,6 +12,12 @@ import {
 
 const token = "a".repeat(43);
 const roomId = "123456789012";
+const qualitySettings = {
+  resolution: "1080p",
+  maxFramerate: 60,
+  maxBitrate: 8_000_000,
+  degradationPreference: "maintain-resolution",
+} as const;
 
 describe("client signaling protocol", () => {
   it("accepts a bounded authentication message", () => {
@@ -152,24 +158,36 @@ describe("client signaling protocol", () => {
     );
   });
 
-  it("accepts only a bounded quality profile update", () => {
+  it("accepts only strict, bounded quality settings", () => {
     expect(
       clientMessageSchema.safeParse({
-        type: "set-quality-profile",
-        qualityProfileId: "1080p30",
+        type: "set-quality-settings",
+        qualitySettings,
       }).success,
     ).toBe(true);
+    for (const invalid of [
+      { ...qualitySettings, resolution: "2160p" },
+      { ...qualitySettings, maxFramerate: 14 },
+      { ...qualitySettings, maxFramerate: 61 },
+      { ...qualitySettings, maxFramerate: 30.5 },
+      { ...qualitySettings, maxBitrate: 1_999_999 },
+      { ...qualitySettings, maxBitrate: 12_000_001 },
+      { ...qualitySettings, maxBitrate: 5_000_000.5 },
+      { ...qualitySettings, degradationPreference: "automatic" },
+      { ...qualitySettings, codec: "video/VP9" },
+    ]) {
+      expect(
+        clientMessageSchema.safeParse({
+          type: "set-quality-settings",
+          qualitySettings: invalid,
+        }).success,
+      ).toBe(false);
+    }
+    const { maxFramerate: _missing, ...missingField } = qualitySettings;
     expect(
       clientMessageSchema.safeParse({
-        type: "set-quality-profile",
-        qualityProfileId: "1440p60",
-      }).success,
-    ).toBe(false);
-    expect(
-      clientMessageSchema.safeParse({
-        type: "set-quality-profile",
-        qualityProfileId: "1080p30",
-        bitrate: 5_000_000,
+        type: "set-quality-settings",
+        qualitySettings: missingField,
       }).success,
     ).toBe(false);
   });
@@ -307,7 +325,7 @@ describe("server signaling protocol", () => {
         childPeerIds: ["viewer_12345678", "viewer_87654321"],
         sfuPublicationGeneration: null,
       },
-      qualityProfileId: "1080p60",
+      qualitySettings,
     };
 
     expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);
@@ -323,7 +341,7 @@ describe("server signaling protocol", () => {
         mediaMode: "peer-assisted",
         routeRevision: 0,
         routeAssignment: peerAssisted.routeAssignment,
-        qualityProfileId: "1080p60",
+        qualitySettings,
       }).success,
     ).toBe(false);
     expect(
@@ -351,25 +369,30 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({
         ...peerAssisted,
-        qualityProfileId: "1440p60",
+        qualitySettings: { ...qualitySettings, maxBitrate: 20_000_000 },
       }).success,
     ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
-        qualityProfileId: "1080p60",
+        qualitySettings,
       }).success,
     ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
-        type: "quality-profile",
-        qualityProfileId: "720p30",
+        type: "quality-settings",
+        qualitySettings: {
+          resolution: "720p",
+          maxFramerate: 30,
+          maxBitrate: 3_000_000,
+          degradationPreference: "balanced",
+        },
       }).success,
     ).toBe(true);
     expect(
       serverMessageSchema.safeParse({
-        type: "quality-profile",
-        qualityProfileId: "1440p60",
+        type: "quality-settings",
+        qualitySettings: { ...qualitySettings, maxFramerate: 0 },
       }).success,
     ).toBe(false);
   });

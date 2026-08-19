@@ -29,10 +29,10 @@ The smallest current plan is:
    disappear.
 
 Any browser-spike failure other than isolated relay re-encoding closes that
-browser-relay route. It does not cancel the separate native sender plan. Draft
-SFU PR #12 remains unmerged and undeployed. ADR-0005 now owns a separate Draft
-implementation of the automatic cross-mode controller; it is also undeployed
-and has not passed real LiveKit/browser network validation.
+browser-relay route. It does not cancel the separate native sender plan. Closed
+PR #12's explicit whole-room SFU mode is superseded. ADR-0005 and merged PR #17
+own the default-off automatic cross-mode controller; it remains undeployed and
+has not passed real LiveKit/browser network validation.
 
 ## Traffic Conservation And The Impossible Triangle
 
@@ -67,7 +67,7 @@ lost.
 | Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
 | User-operated mini-SFU | User's SFU emits viewer copies | Separate deployment and its egress bill; running it on the host does not reduce that host's uplink | Optional capacity; automatic final fallback when enabled |
-| Central single-node SFU | Service SFU emits viewer copies | Lowest endpoint relay burden; service pays approximately `N * B` egress | Optional capacity; automatic final fallback when enabled; Draft PR #12 only |
+| Central single-node SFU | Service SFU emits viewer copies | Lowest endpoint relay burden; service pays approximately `N * B` egress | Optional capacity; automatic final fallback through merged PR #17 when enabled |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
 | MoQ | Publishers and MoQ relays emit object copies | New transport, packaging, player, relay, and auth stack | Optional central-fallback benchmark; still pays server egress |
