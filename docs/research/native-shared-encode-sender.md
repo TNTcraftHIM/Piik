@@ -200,10 +200,11 @@ identity do not participate in quality control.
 A native relay forwards the selected encoded packets and must not decode or
 re-encode them. An ordinary non-scalable representation cannot be forwarded
 into a second quality; the bounded choices are a temporary second encode, SVC,
-or transcoding. The default is the temporary second representation. SVC is
-considered only for a later strict-one-output requirement and only after the
-exact applied codec/mode, available encoder-implementation/native evidence, and
-the real game/power matrix establish the path. Media Capabilities or RTCStats
+or transcoding. Test standard simulcast, LiveKit/Dynacast, then SVC and stop at
+the first path that meets on-demand selection and resource gates. SVC still
+requires the exact applied codec/mode, encoder/native evidence, and the real
+game/power matrix; a future strict-one-output requirement strengthens but does
+not create that case. Media Capabilities or RTCStats
 power-efficiency signals are admission evidence, not hardware proof; an
 unestablished path stays disabled rather than silently using software. Future
 dual-tree/striped distribution may reduce two-copy host upload toward one copy

@@ -7,13 +7,19 @@ import WebSocket, { WebSocketServer } from "ws";
 import {
   DEFAULT_QUALITY_SETTINGS,
   MAX_SIGNAL_BYTES,
+  MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
+  VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
   decodeClientMessage,
   type ClientMessage,
   type QualitySettings,
   type Role,
   type ServerMessage,
 } from "../shared/protocol.js";
-import { RoomStore, RoomStoreError } from "./room-store.js";
+import {
+  RoomStore,
+  RoomStoreError,
+  type ConnectedPeer,
+} from "./room-store.js";
 import {
   HybridMediaRouter,
   type SfuFallbackOptions,
@@ -39,6 +45,16 @@ interface SocketState {
   alive: boolean;
   authenticationTimer: NodeJS.Timeout;
   authenticated?: AuthenticatedSession;
+}
+
+interface ViewerQualityEvidenceGate {
+  viewerSessionId: string;
+  parentSessionId: string;
+  parentPeerId: string;
+  connectionId: string;
+  routeRevision: number;
+  sequence: number;
+  acceptedAtMs: number;
 }
 
 export interface SignalingOptions {
@@ -70,6 +86,10 @@ export class SignalingServer {
   private readonly socketsBySessionId = new Map<string, WebSocket>();
   private readonly viewerGraceTimers = new Map<string, NodeJS.Timeout>();
   private readonly connectionIdsByViewer = new Map<string, string>();
+  private readonly viewerQualityEvidenceGates = new Map<
+    string,
+    ViewerQualityEvidenceGate
+  >();
   private readonly qualitySettingsByRoom = new Map<string, QualitySettings>();
   private readonly shareGenerationsByRoom = new Map<string, string>();
   private readonly hybridMediaRouter?: HybridMediaRouter;
@@ -122,9 +142,7 @@ export class SignalingServer {
             viewerConnectionKey(roomId, viewerPeerId),
           ),
         deleteConnectionId: (roomId, viewerPeerId) =>
-          this.connectionIdsByViewer.delete(
-            viewerConnectionKey(roomId, viewerPeerId),
-          ),
+          this.deleteViewerConnectionId(roomId, viewerPeerId),
       });
     }
 
@@ -185,6 +203,7 @@ export class SignalingServer {
     }
     this.viewerGraceTimers.clear();
     this.hybridMediaRouter?.close();
+    this.viewerQualityEvidenceGates.clear();
     this.shareGenerationsByRoom.clear();
     this.options.server.off("upgrade", this.upgradeHandler);
 
@@ -239,6 +258,13 @@ export class SignalingServer {
     try {
       message = decodeClientMessage(encoded);
     } catch {
+      this.rejectInvalidMessage(socket);
+      return;
+    }
+    if (
+      message.type === "viewer-quality-evidence" &&
+      Buffer.byteLength(encoded, "utf8") > MAX_VIEWER_QUALITY_EVIDENCE_BYTES
+    ) {
       this.rejectInvalidMessage(socket);
       return;
     }
@@ -339,6 +365,11 @@ export class SignalingServer {
           : Date.parse(participant.expiresAt),
       shareGeneration,
     };
+    if (participant.role === "viewer") {
+      this.viewerQualityEvidenceGates.delete(
+        viewerConnectionKey(participant.roomId, participant.peerId),
+      );
+    }
     this.clearViewerGrace(participant.roomId, participant.peerId);
     const routeParticipant = {
       roomId: participant.roomId,
@@ -554,6 +585,9 @@ export class SignalingServer {
           message.revision,
         );
         return;
+      case "viewer-quality-evidence":
+        this.handleViewerQualityEvidence(socket, authenticated, message);
+        return;
       case "stop-sharing":
       case "close-room":
         if (authenticated.role !== "host") {
@@ -597,6 +631,98 @@ export class SignalingServer {
     }
   }
 
+  private handleViewerQualityEvidence(
+    socket: WebSocket,
+    source: AuthenticatedSession,
+    message: Extract<ClientMessage, { type: "viewer-quality-evidence" }>,
+  ): void {
+    if (source.role !== "viewer") {
+      return;
+    }
+    const viewerState = this.socketStates.get(socket);
+    if (!viewerState || viewerState.authenticated !== source) {
+      return;
+    }
+
+    const connectionId = this.connectionIdsByViewer.get(
+      viewerConnectionKey(source.roomId, source.peerId),
+    );
+    if (!connectionId || message.guard.connectionId !== connectionId) {
+      return;
+    }
+
+    let routeRevision = 0;
+    let parent: ConnectedPeer | undefined;
+    if (this.isPeerAssistedRoom(source.roomId)) {
+      const edge = this.hybridMediaRouter?.resolveActivePeerEdge(
+        source.roomId,
+        source.peerId,
+      );
+      if (!edge) {
+        return;
+      }
+      routeRevision = edge.revision;
+      parent = this.connectedPeer(source.roomId, edge.parentPeerId);
+    } else {
+      parent = this.options.roomStore.getConnectedHost(source.roomId);
+    }
+    if (
+      !parent ||
+      message.guard.routeRevision !== routeRevision ||
+      parent.peerId === source.peerId
+    ) {
+      return;
+    }
+
+    const gateKey = viewerConnectionKey(source.roomId, source.peerId);
+    const previous = this.viewerQualityEvidenceGates.get(gateKey);
+    const sameGeneration =
+      previous?.viewerSessionId === viewerState.sessionId &&
+      previous.parentSessionId === parent.sessionId &&
+      previous.parentPeerId === parent.peerId &&
+      previous.connectionId === connectionId &&
+      previous.routeRevision === routeRevision;
+    const now = this.now();
+    if (
+      sameGeneration &&
+      previous &&
+      (message.sequence <= previous.sequence ||
+        now - previous.acceptedAtMs < VIEWER_QUALITY_EVIDENCE_INTERVAL_MS)
+    ) {
+      return;
+    }
+
+    const forwarded = {
+      type: "viewer-quality-evidence" as const,
+      viewerPeerId: source.peerId,
+      parentPeerId: parent.peerId,
+      guard: {
+        connectionId,
+        routeRevision,
+      },
+      sequence: message.sequence,
+      windowMs: message.windowMs,
+      metrics: message.metrics,
+    };
+    const encoded = JSON.stringify(forwarded);
+    if (
+      Buffer.byteLength(encoded, "utf8") >
+      MAX_VIEWER_QUALITY_EVIDENCE_BYTES ||
+      !this.sendEncodedToSession(parent.sessionId, encoded)
+    ) {
+      return;
+    }
+    this.viewerQualityEvidenceGates.set(gateKey, {
+      viewerSessionId: viewerState.sessionId,
+      parentSessionId: parent.sessionId,
+      parentPeerId: parent.peerId,
+      connectionId,
+      routeRevision,
+      sequence: message.sequence,
+      acceptedAtMs: now,
+    });
+  }
+
   private routeSignal(
     sourceSocket: WebSocket,
     source: AuthenticatedSession,
@@ -624,8 +750,9 @@ export class SignalingServer {
         return;
       }
       if (description?.type === "offer") {
-        this.connectionIdsByViewer.set(
-          viewerConnectionKey(source.roomId, viewer.peerId),
+        this.setViewerConnectionId(
+          source.roomId,
+          viewer.peerId,
           message.payload.connectionId,
         );
       }
@@ -697,8 +824,9 @@ export class SignalingServer {
     }
 
     if (description?.type === "offer") {
-      this.connectionIdsByViewer.set(
-        viewerConnectionKey(source.roomId, targetPeerId),
+      this.setViewerConnectionId(
+        source.roomId,
+        targetPeerId,
         message.payload.connectionId,
       );
     }
@@ -803,8 +931,9 @@ export class SignalingServer {
           disconnected.peerId,
         )
       ) {
-        this.connectionIdsByViewer.delete(
-          viewerConnectionKey(disconnected.roomId, disconnected.peerId),
+        this.deleteViewerConnectionId(
+          disconnected.roomId,
+          disconnected.peerId,
         );
         if (this.isPeerAssistedRoom(disconnected.roomId)) {
           this.hybridMediaRouter!.removeViewer(
@@ -952,6 +1081,19 @@ export class SignalingServer {
     }
   }
 
+  private sendEncodedToSession(sessionId: string, encoded: string): boolean {
+    const socket = this.socketsBySessionId.get(sessionId);
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    if (socket.bufferedAmount > MAX_BUFFERED_SIGNAL_BYTES) {
+      socket.terminate();
+      return false;
+    }
+    socket.send(encoded);
+    return true;
+  }
+
   private send(socket: WebSocket, message: ServerMessage): void {
     if (socket.readyState !== WebSocket.OPEN) {
       return;
@@ -998,6 +1140,32 @@ export class SignalingServer {
         this.connectionIdsByViewer.delete(key);
       }
     }
+    for (const key of this.viewerQualityEvidenceGates.keys()) {
+      if (key.startsWith(prefix)) {
+        this.viewerQualityEvidenceGates.delete(key);
+      }
+    }
+  }
+
+  private setViewerConnectionId(
+    roomId: string,
+    viewerPeerId: string,
+    connectionId: string,
+  ): void {
+    const key = viewerConnectionKey(roomId, viewerPeerId);
+    if (this.connectionIdsByViewer.get(key) !== connectionId) {
+      this.viewerQualityEvidenceGates.delete(key);
+    }
+    this.connectionIdsByViewer.set(key, connectionId);
+  }
+
+  private deleteViewerConnectionId(
+    roomId: string,
+    viewerPeerId: string,
+  ): void {
+    const key = viewerConnectionKey(roomId, viewerPeerId);
+    this.connectionIdsByViewer.delete(key);
+    this.viewerQualityEvidenceGates.delete(key);
   }
 }
 

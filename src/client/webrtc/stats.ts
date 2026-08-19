@@ -2,6 +2,7 @@ import {
   EMPTY_METRICS,
   type ConnectionMetrics,
 } from "../types";
+import { deriveVideoCodecEvidence } from "../../shared/video-codec-evidence";
 
 type StatsRecord = Record<string, unknown> & {
   id: string;
@@ -18,6 +19,8 @@ export interface StatsAccumulator {
   timestamp: number | null;
   previousTotalEncodeTime: number | null;
   previousTotalDecodeTime: number | null;
+  previousPacketsReceived: number | null;
+  previousPacketsLost: number | null;
   previousFramesDropped: number | null;
   previousFreezeCount: number | null;
   previousTotalFreezesDuration: number | null;
@@ -39,6 +42,8 @@ export function createStatsAccumulator(): StatsAccumulator {
     timestamp: null,
     previousTotalEncodeTime: null,
     previousTotalDecodeTime: null,
+    previousPacketsReceived: null,
+    previousPacketsLost: null,
     previousFramesDropped: null,
     previousFreezeCount: null,
     previousTotalFreezesDuration: null,
@@ -200,56 +205,6 @@ function linkedRemoteInbound(
     : null;
 }
 
-interface CodecEvidence {
-  codec: string | null;
-  profile: string | null;
-  parameters: string | null;
-}
-
-type CodecParameterRule = {
-  profileKey: string | null;
-  parameterKeys: readonly string[];
-  validators: Readonly<Record<string, RegExp>>;
-};
-
-const CODEC_PARAMETER_RULES: Readonly<Record<string, CodecParameterRule>> = {
-  "video/h264": {
-    profileKey: "profile-level-id",
-    parameterKeys: ["packetization-mode", "level-asymmetry-allowed"],
-    validators: {
-      "profile-level-id": /^[0-9a-f]{6}$/i,
-      "packetization-mode": /^[0-2]$/,
-      "level-asymmetry-allowed": /^[01]$/,
-    },
-  },
-  "video/vp9": {
-    profileKey: "profile-id",
-    parameterKeys: ["max-fr", "max-fs"],
-    validators: {
-      "profile-id": /^[0-3]$/,
-      "max-fr": /^[1-9][0-9]{0,9}$/,
-      "max-fs": /^[1-9][0-9]{0,9}$/,
-    },
-  },
-  "video/vp8": {
-    profileKey: null,
-    parameterKeys: ["max-fr", "max-fs"],
-    validators: {
-      "max-fr": /^[1-9][0-9]{0,9}$/,
-      "max-fs": /^[1-9][0-9]{0,9}$/,
-    },
-  },
-  "video/av1": {
-    profileKey: "profile",
-    parameterKeys: ["level-idx", "tier"],
-    validators: {
-      profile: /^[0-2]$/,
-      "level-idx": /^(?:[0-9]|[12][0-9]|3[01])$/,
-      tier: /^[01]$/,
-    },
-  },
-};
-
 function linkedVideoCodec(
   report: RTCStatsReport,
   media: StatsRecord | null,
@@ -266,62 +221,12 @@ function linkedVideoCodec(
     : null;
 }
 
-function deriveCodecEvidence(codec: StatsRecord | null): CodecEvidence {
+function deriveCodecEvidence(codec: StatsRecord | null) {
   const mimeType = stringValue(codec, "mimeType");
-  if (!mimeType) {
-    return { codec: null, profile: null, parameters: null };
-  }
-  const rule = CODEC_PARAMETER_RULES[mimeType.toLowerCase()];
-  const fmtp = stringValue(codec, "sdpFmtpLine");
-  if (!rule || !fmtp || fmtp.length > 2_048) {
-    return { codec: mimeType, profile: null, parameters: null };
-  }
-
-  const segments = fmtp.split(";");
-  if (segments.length > 32) {
-    return { codec: mimeType, profile: null, parameters: null };
-  }
-  const values = new Map<string, string>();
-  const seenKeys = new Set<string>();
-  for (const segment of segments) {
-    const separator = segment.indexOf("=");
-    if (separator < 1) {
-      continue;
-    }
-    const key = segment.slice(0, separator).trim().toLowerCase();
-    const validator = rule.validators[key];
-    if (!validator) {
-      continue;
-    }
-    if (seenKeys.has(key)) {
-      values.delete(key);
-      continue;
-    }
-    seenKeys.add(key);
-    const value = segment.slice(separator + 1).trim().toLowerCase();
-    if (!validator.test(value)) {
-      continue;
-    }
-    values.set(key, value);
-  }
-
-  const profileValue = rule.profileKey
-    ? values.get(rule.profileKey)
-    : undefined;
-  const parameters = rule.parameterKeys
-    .flatMap((key) => {
-      const value = values.get(key);
-      return value ? [`${key}=${value}`] : [];
-    })
-    .join("; ");
-  return {
-    codec: mimeType,
-    profile:
-      rule.profileKey && profileValue
-        ? `${rule.profileKey}=${profileValue}`
-        : null,
-    parameters: parameters || null,
-  };
+  return deriveVideoCodecEvidence(
+    mimeType,
+    stringValue(codec, "sdpFmtpLine"),
+  );
 }
 
 function scalabilityModeValue(media: StatsRecord | null): string | null {
@@ -383,6 +288,11 @@ export async function collectConnectionMetrics(
   const timestamp = numberValue(media, "timestamp");
   const framesEncoded = numberValue(media, "framesEncoded");
   const framesDecoded = numberValue(media, "framesDecoded");
+  const packetsReceived = numberValue(media, "packetsReceived");
+  const packetsLost = numberValue(
+    direction === "send" ? remoteInbound : media,
+    "packetsLost",
+  );
   const totalEncodeTime = numberValue(media, "totalEncodeTime");
   const totalDecodeTime = numberValue(media, "totalDecodeTime");
   const framesDropped = numberValue(media, "framesDropped");
@@ -441,6 +351,30 @@ export async function collectConnectionMetrics(
           sampleWindowMs !== null ? previous.frames : null,
         )
       : null;
+  const intervalPacketsReceived =
+    direction === "receive"
+      ? intervalDelta(
+          packetsReceived,
+          previous.previousPacketsReceived,
+          sampleWindowMs !== null,
+        )
+      : null;
+  const intervalPacketsLost =
+    direction === "receive"
+      ? intervalDelta(
+          packetsLost,
+          previous.previousPacketsLost,
+          sampleWindowMs !== null,
+        )
+      : null;
+  const intervalFramesDecoded =
+    direction === "receive"
+      ? intervalDelta(
+          framesDecoded,
+          previous.frames,
+          sampleWindowMs !== null,
+        )
+      : null;
   const intervalFramesDropped = intervalDelta(
     framesDropped,
     previous.previousFramesDropped,
@@ -474,6 +408,8 @@ export async function collectConnectionMetrics(
   previous.timestamp = timestamp;
   previous.previousTotalEncodeTime = totalEncodeTime;
   previous.previousTotalDecodeTime = totalDecodeTime;
+  previous.previousPacketsReceived = packetsReceived;
+  previous.previousPacketsLost = packetsLost;
   previous.previousFramesDropped = framesDropped;
   previous.previousFreezeCount = freezeCount;
   previous.previousTotalFreezesDuration = totalFreezesDuration;
@@ -481,14 +417,7 @@ export async function collectConnectionMetrics(
   previous.previousRetransmittedBytes = retransmittedBytes;
 
   const linkedCodec = linkedVideoCodec(report, media, transport);
-  const codecEvidence =
-    direction === "send"
-      ? deriveCodecEvidence(linkedCodec)
-      : {
-          codec: stringValue(linkedCodec, "mimeType"),
-          profile: null,
-          parameters: null,
-        };
+  const codecEvidence = deriveCodecEvidence(linkedCodec);
   const width = numberValue(media, "frameWidth");
   const height = numberValue(media, "frameHeight");
   const iceProtocol =
@@ -523,15 +452,19 @@ export async function collectConnectionMetrics(
         ? numberValue(pair, "availableOutgoingBitrate")! / 1_000
         : null,
     framesPerSecond: numberValue(media, "framesPerSecond") ?? derivedFps,
+    frameWidth: width,
+    frameHeight: height,
     resolution: width !== null && height !== null ? `${width}x${height}` : null,
-    packetsLost:
-      numberValue(direction === "send" ? remoteInbound : media, "packetsLost"),
+    packetsLost,
+    intervalPacketsReceived,
+    intervalPacketsLost,
     jitterMs:
       numberValue(direction === "send" ? remoteInbound : media, "jitter") !== null
         ? numberValue(direction === "send" ? remoteInbound : media, "jitter")! *
           1_000
         : null,
     framesDropped,
+    intervalFramesDecoded,
     intervalFramesDropped,
     intervalFreezeCount,
     intervalFreezeDurationMs:

@@ -26,10 +26,15 @@ export interface ConnectionMetrics {
   bitrateKbps: number | null;
   availableOutgoingKbps: number | null;
   framesPerSecond: number | null;
+  frameWidth: number | null;
+  frameHeight: number | null;
   resolution: string | null;
   packetsLost: number | null;
+  intervalPacketsReceived: number | null;
+  intervalPacketsLost: number | null;
   jitterMs: number | null;
   framesDropped: number | null;
+  intervalFramesDecoded: number | null;
   intervalFramesDropped: number | null;
   intervalFreezeCount: number | null;
   intervalFreezeDurationMs: number | null;
@@ -77,10 +82,15 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   bitrateKbps: null,
   availableOutgoingKbps: null,
   framesPerSecond: null,
+  frameWidth: null,
+  frameHeight: null,
   resolution: null,
   packetsLost: null,
+  intervalPacketsReceived: null,
+  intervalPacketsLost: null,
   jitterMs: null,
   framesDropped: null,
+  intervalFramesDecoded: null,
   intervalFramesDropped: null,
   intervalFreezeCount: null,
   intervalFreezeDurationMs: null,

@@ -1,11 +1,16 @@
 import { z } from "zod";
 
+import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
+
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
+export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
+export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
+export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
 
 const opaqueIdSchema = z
   .string()
@@ -184,6 +189,94 @@ export type ParticipantRouteAssignment = z.infer<
   typeof participantRouteAssignmentSchema
 >;
 
+const nullableEvidenceNumber = (maximum: number) =>
+  z.number().finite().min(0).max(maximum).nullable();
+
+const nullableEvidenceInteger = (maximum: number) =>
+  z.number().int().min(0).max(maximum).nullable();
+
+export const viewerQualityEvidenceMetricsSchema = z
+  .object({
+    width: z.number().int().min(1).max(16_384).nullable(),
+    height: z.number().int().min(1).max(16_384).nullable(),
+    framesPerSecond: nullableEvidenceNumber(240),
+    bitrateKbps: nullableEvidenceNumber(100_000),
+    packetsReceivedDelta: nullableEvidenceInteger(1_000_000),
+    packetsLostDelta: nullableEvidenceInteger(1_000_000),
+    jitterMs: nullableEvidenceNumber(60_000),
+    framesDecodedDelta: nullableEvidenceInteger(10_000),
+    framesDroppedDelta: nullableEvidenceInteger(10_000),
+    decodeMsPerFrame: nullableEvidenceNumber(60_000),
+    freezeCountDelta: nullableEvidenceInteger(10_000),
+    freezeDurationMsDelta: nullableEvidenceNumber(5_000),
+    codec: z
+      .string()
+      .max(64)
+      .regex(/^video\/[A-Za-z0-9.+-]{1,32}$/i)
+      .nullable(),
+    codecProfile: z
+      .string()
+      .max(64)
+      .regex(/^[a-z0-9-]+=[a-z0-9]+$/)
+      .nullable(),
+    codecParameters: z
+      .string()
+      .max(128)
+      .regex(/^[a-z0-9-]+=[a-z0-9]+(?:; [a-z0-9-]+=[a-z0-9]+)*$/)
+      .nullable(),
+  })
+  .strict()
+  .refine(
+    (metrics) =>
+      (metrics.width === null && metrics.height === null) ||
+      (metrics.width !== null && metrics.height !== null),
+    { message: "Viewer quality dimensions must be present together" },
+  )
+  .refine(isCanonicalVideoCodecEvidence, {
+    message: "Viewer codec evidence is not canonical",
+    path: ["codecParameters"],
+  });
+export type ViewerQualityEvidenceMetrics = z.infer<
+  typeof viewerQualityEvidenceMetricsSchema
+>;
+
+const viewerQualityEvidenceGuardSchema = z
+  .object({
+    connectionId: opaqueIdSchema,
+    routeRevision: mediaRouteRevisionSchema,
+  })
+  .strict();
+
+const viewerQualityEvidenceWindowShape = {
+  sequence: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  windowMs: z.number().int().min(1_000).max(5_000),
+  metrics: viewerQualityEvidenceMetricsSchema,
+};
+
+function freezeFitsEvidenceWindow(value: {
+  windowMs: number;
+  metrics: ViewerQualityEvidenceMetrics;
+}): boolean {
+  return (
+    value.metrics.freezeDurationMsDelta === null ||
+    value.metrics.freezeDurationMsDelta <= value.windowMs
+  );
+}
+
+export const viewerQualityEvidenceMessageSchema = z
+  .object({
+    type: z.literal("viewer-quality-evidence"),
+    guard: viewerQualityEvidenceGuardSchema,
+    ...viewerQualityEvidenceWindowShape,
+  })
+  .strict()
+  .refine(freezeFitsEvidenceWindow, {
+    message: "Viewer freeze duration exceeds its evidence window",
+  });
+export type ViewerQualityEvidenceMessage = z.infer<
+  typeof viewerQualityEvidenceMessageSchema
+>;
+
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
@@ -255,6 +348,7 @@ export const clientMessageSchema = z.union([
       revision: mediaRouteRevisionSchema,
     })
     .strict(),
+  viewerQualityEvidenceMessageSchema,
   z
     .object({
       type: z.literal("stop-sharing"),
@@ -365,7 +459,19 @@ export const serverMessageSchema = z.union([
     .strict(),
   z
     .object({
-      type: z.literal("host-status"),
+      type: z.literal("viewer-quality-evidence"),
+      viewerPeerId: opaqueIdSchema,
+      parentPeerId: opaqueIdSchema,
+      guard: viewerQualityEvidenceGuardSchema,
+      ...viewerQualityEvidenceWindowShape,
+    })
+    .strict()
+     .refine(freezeFitsEvidenceWindow, {
+       message: "Viewer freeze duration exceeds its evidence window",
+     }),
+   z
+     .object({
+       type: z.literal("host-status"),
       online: z.boolean(),
     })
     .strict(),

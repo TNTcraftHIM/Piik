@@ -88,6 +88,47 @@ are ceilings rather than targets. Raising them cannot repair CPU or bandwidth
 limitation and should only follow evidence that the encoder is already pinned
 to the ceiling while spare transport capacity remains.
 
+The same production release is also reported to reduce game-stream frame rate
+and consume noticeable Host resources. That report applies only to deployed
+`769de201f7cc`, not automatically to the newer diagnostics on `main`. The Web
+sender creates one independent `RTCRtpSender` per viewer and has no cross-PC
+shared-encoder guarantee; its muted local preview creates no media edge or
+server traffic but may still consume compositor/GPU work. Compare the exact
+release and current `main` under one fixture, with preview on/off as a separate
+binary intervention.
+
+## Codec And Hardware Gate
+
+Do not default to AV1 from compression efficiency alone. The deployed release
+does not call `setCodecPreferences()`, and a browser may expose a negotiable
+codec without a power-efficient WebRTC encoder. `getCapabilities()` establishes
+only an optimistic negotiation set; Media Capabilities supplies
+supported/smooth/power-efficient candidate evidence; outbound `codecId`,
+`encoderImplementation`, and `powerEfficientEncoder` describe the stream only
+when the browser exposes them. Final acceptance still requires interval encode
+cost, game FPS, CPU/GPU video-encode activity, and active sender count. Chromium
+`main` on the access date gates WebRTC AV1 hardware encoding off by default on
+Windows even when a platform accelerator exists; this is an implementation
+snapshot, not a permanent browser contract.
+
+First diagnose the Host-refresh case using the browser-selected codec. Only if
+encode cost or `cpu` limitation is abnormal, hold scene, resolution/FPS/bitrate,
+network, and viewer constant while comparing browser default, H.264, and VP8.
+VP9 or AV1 enters that spike only when both endpoints can negotiate it and
+Media Capabilities reports the exact configuration supported, smooth, and
+power-efficient. A preference change must retain negotiated repair codecs and
+is successful only when outbound stats prove the codec actually in use; silent
+software fallback fails the gate.
+
+Discord's published Go Live material is a useful architecture comparison, not
+a preset to copy. It describes native OS/driver-integrated capture and encoding,
+GPU hardware encoding, WebRTC transport, and product-specific rate-control
+tuning. It also documents a feedback loop that could lock 60 fps output down to
+30 fps. This supports measuring the complete capture/encoder/congestion loop;
+it does not show that Discord servers re-encode each viewer stream or that AV1
+is universally cheaper. No equivalent first-party implementation evidence was
+found for KOOK or Oopz, so they are not used as design facts.
+
 ## Evidence Before Adaptation
 
 Verified specification facts: the W3C stats model supports the needed
@@ -123,19 +164,27 @@ This is a diagnostic classification, not a weighted health score. Missing or
 reset evidence remains unknown and rebases the interval.
 
 The smallest implementation sequence is local A+B correlation in one host
-sampling tick, including the interval, media/stat identity, and valid deltas.
-Only after that is trustworthy should a minimal authenticated C report carry
-the receive/decode and derived negotiation signals needed by the two-state
+sampling tick, followed by a minimal authenticated C report carrying the
+receive/decode and derived negotiation signals needed by the two-state
 predicate. It never carries raw SDP, raw stats, candidate addresses, or raw
-device/network identifiers. Opaque server-issued path and connection-generation
-IDs provide authorization and correlation; a general remote stats stream or
+device/network identifiers. Server-authoritative path and connection generations
+provide authorization and correlation; a general remote stats stream or
 telemetry pipeline is unnecessary.
 
-The repository now implements the local host A+B foundation: same-tick capture
+The repository implements the local host A+B foundation: same-tick capture
 settings plus one uniquely matched outbound RTP sample, explicit sample/media
 identity and adjacent deltas, `remoteId` linkage, and the selected path reached
 through that RTP stream's transport. Source replacement blocks sampling and
 invalidates in-flight generations.
+
+Authenticated Viewer C is also implemented for each current ordinary or
+peer-assisted P2P hop. A viewer sends one nullable, sanitized aggregate window
+on the existing two-second stats cadence, bounded to 2 KiB; the server derives
+the current viewer, parent, connection, and route revision, while the parent
+accepts only the matching local generation and expires it. The report contains
+no raw SDP, stats, candidates, addresses, device identifiers, or room identity,
+is neither stored nor used for media or routing action, and fails closed for an
+SFU-fed root until a real SFU last-hop B/generation exists.
 
 Codec evidence follows only that outbound RTP object's `codecId`, and the
 referenced `RTCCodecStats` must use the same transport. The local diagnostics
@@ -154,9 +203,10 @@ The same unique outbound object supplies nullable current configured
 `scalabilityMode`. Sender parameter readback exposes an applied mode only for
 one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
-a mismatch; multiple encodings remain unknown. This still does not implement
-an authenticated C report, two-state controller, or on-demand `LOW` runtime,
-and browser support remains subject to the controlled matrix.
+a mismatch; multiple encodings remain unknown. Inbound stats provide no current
+standard `scalabilityMode` source, so C does not carry a null-only placeholder.
+The two-state controller and on-demand `LOW` runtime remain unimplemented, and
+browser support remains subject to the controlled matrix.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -212,19 +262,20 @@ capacity.
 An ordinary non-scalable stream cannot yield a second independent quality by
 packet forwarding alone. The alternatives are a second representation,
 scalable layers, or relay/SFU transcoding. Screener tests standard capabilities
-before custom media. The bounded SVC spike is scheduled now, but product
-adoption remains conditional on a future strict-one-output need, an exact
-negotiated mode, a positively established hardware or power-efficient
-path, and measured game performance. WebRTC-SVC permits the browser to return a
+before custom media. SVC is the third short-circuit candidate when simulcast
+and LiveKit/Dynacast fail; adoption requires an exact negotiated mode, a
+positively established hardware or power-efficient path, and measured game
+performance. WebRTC-SVC permits the browser to return a
 different configured `scalabilityMode`; Media Capabilities reports support and
 expected smoothness/power efficiency for a specified configuration; WebCodecs
 defines `hardwareAcceleration` only as a hint the user agent may ignore.
 Therefore none is, by itself, proof of a particular hardware encoder, and a
 software SVC fallback must not be silent.
 
-After trustworthy A+B/C, run three bounded capability spikes before custom
-dual-representation media work; they do not wait for ADR-0006 native-sender
-product acceptance. First, negotiate `HIGH`/`LOW` simulcast in one sender's
+After trustworthy A+B/C, evaluate three bounded capability spikes in order and
+stop at the first accepted path before custom dual-representation media work;
+they do not wait for ADR-0006 native-sender product acceptance. First, negotiate
+`HIGH`/`LOW` simulcast in one sender's
 initial envelope with `LOW` inactive and prove applied parameters, per-RID
 bytes/frames, and CPU/GPU/encoder release; separate PeerConnections have no
 portable shared-encode contract. Second, test at most two independently
@@ -235,6 +286,14 @@ low-FPS, 4x-scale fallback. Reject Dynacast for the exact on-demand-`LOW`
 requirement unless runtime and resource counters disprove that boundary. Third,
 compare requested/applied SVC mode and Media Capabilities `powerEfficient`,
 with no software fallback. None may bypass PR #28's stock-GCC/RTX stop line.
+
+Retain a favorable, testable hypothesis: on target GPUs, adding one low-rate,
+low-resolution hardware `LOW` representation may have no material game impact.
+Compare `HIGH` against `HIGH+LOW` under one scene using game FPS/p1 low, CPU,
+GPU video-encode/copy activity, interval encode cost, actual encoder identity,
+and LOW bytes/frames. If the increment stays inside the accepted game budget,
+adopt the simpler on-demand dual representation and stop; do not continue into
+SVC or custom media merely for theoretical encoder-count elegance.
 
 ## Why Offline Encoding Presets Do Not Transfer
 
@@ -358,6 +417,7 @@ recovery, and that each supported sender cohort can start it reliably.
 - [W3C MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
+- [W3C WebRTC codec preferences](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver-setcodecpreferences)
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
@@ -367,6 +427,8 @@ recovery, and that each supported sender cohort can start it reliably.
 - [RFC 9628 VP9 RTP payload format](https://www.rfc-editor.org/rfc/rfc9628.html)
 - [IANA AV1 media type and format parameters](https://www.iana.org/assignments/media-types/video/AV1)
 - [Chromium/libwebrtc video stats origins](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/stats.md)
+- [Chromium WebRTC hardware encoder factory](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder_factory.cc)
+- [Chromium WebRTC AV1 hardware feature gate](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/webrtc/webrtc_features.cc)
 - [MDN `RTCRtpSender.setParameters()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
 - [Chromium `motion` to libwebrtc `kFluid` bridge](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc)
 - [libwebrtc `motion`/`kFluid` sender classification](https://webrtc.googlesource.com/src/+/3b1eab8a69cb5078befb021c5492d3f204a7d6a2/pc/rtp_sender.cc)

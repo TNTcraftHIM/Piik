@@ -17,6 +17,7 @@ import {
   shouldReconnectSignaling,
   SignalingClient,
 } from "../src/client/lib/signaling.ts";
+import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import { createStatsAccumulator, collectConnectionMetrics } from "../src/client/webrtc/stats.ts";
 
 afterEach(() => {
@@ -574,17 +575,26 @@ describe("WebRTC stats parsing", () => {
         getStats: async () => report,
       } as unknown as RTCPeerConnection;
 
-      await expect(
-        collectConnectionMetrics(
-          connection,
-          "send",
-          createStatsAccumulator(),
-        ),
-      ).resolves.toMatchObject({
+      const metrics = await collectConnectionMetrics(
+        connection,
+        "send",
+        createStatsAccumulator(),
+      );
+      expect(metrics).toMatchObject({
         codec: mimeType,
         codecProfile: profile,
         codecParameters: parameters,
         scalabilityMode: null,
+      });
+      expect(
+        qualityEvidenceWindowFromMetrics({
+          ...metrics,
+          sampleWindowMs: 2_000,
+        })?.metrics,
+      ).toMatchObject({
+        codec: mimeType,
+        codecProfile: profile,
+        codecParameters: parameters,
       });
     },
   );
@@ -995,5 +1005,94 @@ describe("WebRTC stats parsing", () => {
       intervalRetransmittedPackets: 4,
       intervalRetransmittedBytes: 800,
     });
+  });
+
+  it("derives a bounded inbound C window from adjacent RTP counters", async () => {
+    const inbound = (
+      timestamp: number,
+      packetsReceived: number,
+      packetsLost: number,
+      framesDecoded: number,
+      totalDecodeTime: number,
+    ) =>
+      new Map<string, unknown>([
+        [
+          "transport",
+          { id: "transport", type: "transport", timestamp },
+        ],
+        [
+          "codec",
+          {
+            id: "codec",
+            type: "codec",
+            timestamp,
+            transportId: "transport",
+            mimeType: "video/H264",
+            sdpFmtpLine:
+              "profile-level-id=42e01f; packetization-mode=1; " +
+              "sprop-parameter-sets=must-not-leave-stats",
+          },
+        ],
+        [
+          "inbound",
+          {
+            id: "inbound",
+            type: "inbound-rtp",
+            timestamp,
+            kind: "video",
+            ssrc: 101,
+            transportId: "transport",
+            codecId: "codec",
+            bytesReceived: timestamp * 10,
+            packetsReceived,
+            packetsLost,
+            framesDecoded,
+            framesDropped: 3,
+            freezeCount: 1,
+            totalFreezesDuration: 0.25,
+            totalDecodeTime,
+            frameWidth: 1_920,
+            frameHeight: 1_080,
+            scalabilityMode: "L3T3_KEY",
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+    const reports = [
+      inbound(1_000, 1_000, 10, 60, 0.12),
+      inbound(3_000, 2_500, 12, 180, 0.42),
+      inbound(5_000, 4_000, 11, 300, 0.72),
+    ];
+    const connection = {
+      getStats: async () => reports.shift()!,
+    } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
+
+    await collectConnectionMetrics(connection, "receive", accumulator);
+    const stable = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const correctedLoss = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+
+    expect(stable).toMatchObject({
+      sampleWindowMs: 2_000,
+      frameWidth: 1_920,
+      frameHeight: 1_080,
+      intervalPacketsReceived: 1_500,
+      intervalPacketsLost: 2,
+      intervalFramesDecoded: 120,
+      intervalDecodeMs: 2.5,
+      codec: "video/H264",
+      codecProfile: "profile-level-id=42e01f",
+      codecParameters: "packetization-mode=1",
+      scalabilityMode: null,
+    });
+    expect(JSON.stringify(stable)).not.toContain("sprop-parameter-sets");
+    expect(correctedLoss.intervalPacketsLost).toBeNull();
   });
 });
