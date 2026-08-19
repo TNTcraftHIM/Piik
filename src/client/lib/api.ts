@@ -1,9 +1,10 @@
 import {
   createRoomResponseSchema,
   type CreateRoomResponse,
+  type ViewerAccessPolicy,
 } from "../../shared/protocol";
 
-export interface SessionStatus {
+export interface HostAdmissionStatus {
   required: boolean;
   authenticated: boolean;
 }
@@ -45,7 +46,7 @@ async function responseBody(response: Response): Promise<unknown> {
   }
 }
 
-function parseSessionStatus(value: unknown): SessionStatus {
+function parseHostAdmissionStatus(value: unknown): HostAdmissionStatus {
   if (!value || typeof value !== "object") {
     throw new ApiError("验证服务返回的数据格式不正确", 502);
   }
@@ -62,8 +63,8 @@ function parseSessionStatus(value: unknown): SessionStatus {
   };
 }
 
-export async function getSession(): Promise<SessionStatus> {
-  const response = await fetch("/api/session", {
+export async function getHostAdmission(): Promise<HostAdmissionStatus> {
+  const response = await fetch("/api/host-admission", {
     headers: { Accept: "application/json" },
   });
   const body = await responseBody(response);
@@ -75,13 +76,13 @@ export async function getSession(): Promise<SessionStatus> {
       response.status,
     );
   }
-  return parseSessionStatus(body);
+  return parseHostAdmissionStatus(body);
 }
 
-export async function authenticate(
+export async function authenticateHost(
   password: string,
-): Promise<SessionStatus> {
-  const response = await fetch("/api/session", {
+): Promise<HostAdmissionStatus> {
+  const response = await fetch("/api/host-admission", {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -97,13 +98,19 @@ export async function authenticate(
       response.status,
     );
   }
-  return parseSessionStatus(body);
+  return parseHostAdmissionStatus(body);
 }
 
-export async function createRoom(): Promise<CreateRoomResponse> {
+export async function createRoom(
+  viewerPolicy: ViewerAccessPolicy,
+): Promise<CreateRoomResponse> {
   const response = await fetch("/api/rooms", {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ viewerPolicy }),
   });
 
   const body = await responseBody(response);

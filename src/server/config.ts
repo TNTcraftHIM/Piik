@@ -7,7 +7,8 @@ import {
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
-const MAX_ACCESS_PASSWORD_BYTES = 128;
+const MIN_HOST_ADMISSION_PASSWORD_BYTES = 16;
+const MAX_HOST_ADMISSION_PASSWORD_BYTES = 128;
 const MIN_LIVEKIT_API_SECRET_BYTES = 32;
 const MAX_PEER_ASSISTED_VIEWERS = 8;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
@@ -33,7 +34,7 @@ export interface ServerConfig {
   listenHost: string;
   publicBaseUrl: URL;
   allowedOrigins: ReadonlySet<string>;
-  accessPassword?: string;
+  hostAdmissionPassword?: string;
   roomDatabasePath?: string;
   roomTtlMs: number;
   maxRooms: number;
@@ -235,6 +236,11 @@ export function loadConfig(
       );
     }
   }
+  if (Object.prototype.hasOwnProperty.call(environment, "ACCESS_PASSWORD")) {
+    throw new Error(
+      "ACCESS_PASSWORD is no longer supported; use HOST_ADMISSION_PASSWORD",
+    );
+  }
 
   const nodeEnv = parseEnvironment(environment.NODE_ENV);
   const port = parsePositiveInteger(environment.PORT, 8787, "PORT");
@@ -267,7 +273,10 @@ export function loadConfig(
     throw new Error("PUBLIC_BASE_URL must use https in production");
   }
 
-  const accessPassword = environment.ACCESS_PASSWORD?.trim() || undefined;
+  const hostAdmissionPassword =
+    environment.HOST_ADMISSION_PASSWORD === ""
+      ? undefined
+      : environment.HOST_ADMISSION_PASSWORD;
   const roomDatabasePath =
     environment.ROOM_DATABASE_PATH?.trim() || undefined;
   const stunUrls = parseStunUrlList(environment.STUN_URLS);
@@ -302,26 +311,32 @@ export function loadConfig(
     throw new Error("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
   }
   const configuredSecrets = [
-    accessPassword,
+    hostAdmissionPassword,
     livekitFallback?.apiKey,
     livekitFallback?.apiSecret,
   ].filter((secret): secret is string => secret !== undefined);
   if (new Set(configuredSecrets).size !== configuredSecrets.length) {
     throw new Error(
-      "ACCESS_PASSWORD, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
+      "HOST_ADMISSION_PASSWORD, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
     );
   }
   if (
-    accessPassword &&
-    (!VISIBLE_ASCII_PATTERN.test(accessPassword) ||
-      Buffer.byteLength(accessPassword) > MAX_ACCESS_PASSWORD_BYTES)
+    hostAdmissionPassword &&
+    (!VISIBLE_ASCII_PATTERN.test(hostAdmissionPassword) ||
+      Buffer.byteLength(hostAdmissionPassword) <
+        MIN_HOST_ADMISSION_PASSWORD_BYTES ||
+      Buffer.byteLength(hostAdmissionPassword) >
+        MAX_HOST_ADMISSION_PASSWORD_BYTES)
   ) {
     throw new Error(
-      "ACCESS_PASSWORD must contain at most 128 visible ASCII characters",
+      "HOST_ADMISSION_PASSWORD must contain 16 to 128 visible ASCII bytes",
     );
   }
-  if (roomDatabasePath && !accessPassword) {
-    throw new Error("ROOM_DATABASE_PATH requires ACCESS_PASSWORD");
+  if (nodeEnv === "production" && !hostAdmissionPassword) {
+    throw new Error("HOST_ADMISSION_PASSWORD is required in production");
+  }
+  if (roomDatabasePath && !hostAdmissionPassword) {
+    throw new Error("ROOM_DATABASE_PATH requires HOST_ADMISSION_PASSWORD");
   }
   if (nodeEnv === "production" && roomDatabasePath === ":memory:") {
     throw new Error("ROOM_DATABASE_PATH must be file-backed in production");
@@ -344,7 +359,7 @@ export function loadConfig(
       environment.ALLOWED_ORIGINS,
       publicBaseUrl.origin,
     ),
-    accessPassword,
+    hostAdmissionPassword,
     roomDatabasePath,
     roomTtlMs:
       parsePositiveInteger(environment.ROOM_TTL_SECONDS, 14_400, "ROOM_TTL_SECONDS") *

@@ -13,7 +13,7 @@ import {
 import type { ServerConfig } from "../src/server/config.ts";
 
 const allowedOrigin = "http://allowed.test";
-const accessPassword = "instance-access-password";
+const hostAdmissionPassword = "instance-access-password";
 let runningServer: ScreenerServer | undefined;
 const temporaryDirectories: string[] = [];
 
@@ -38,7 +38,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     listenHost: "127.0.0.1",
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
-    accessPassword,
+    hostAdmissionPassword,
     roomTtlMs: 14_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,
@@ -52,7 +52,7 @@ async function start(
   config = testConfig(),
   options: Pick<
     CreateServerOptions,
-    "now" | "accessSessionTtlSeconds" | "sfuTokenIssuer"
+    "now" | "hostAdmissionTtlSeconds" | "sfuTokenIssuer"
   > = {},
 ): Promise<string> {
   runningServer = await createScreenerServer({
@@ -73,19 +73,35 @@ function cookiePair(response: Response): string {
 }
 
 async function login(baseUrl: string): Promise<Response> {
-  return fetch(`${baseUrl}/api/session`, {
+  return fetch(`${baseUrl}/api/host-admission`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${accessPassword}`,
+      Authorization: `Bearer ${hostAdmissionPassword}`,
       Origin: allowedOrigin,
     },
   });
 }
 
-describe("site access session", () => {
+async function createRoom(
+  baseUrl: string,
+  cookie?: string,
+  viewerPolicy: "private-link" | "public-watch" = "private-link",
+): Promise<Response> {
+  return fetch(`${baseUrl}/api/rooms`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: allowedOrigin,
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+    body: JSON.stringify({ viewerPolicy }),
+  });
+}
+
+describe("Host admission", () => {
   it("reports status and issues a stateless 12-hour cookie", async () => {
     const baseUrl = await start();
-    const initial = await fetch(`${baseUrl}/api/session`);
+    const initial = await fetch(`${baseUrl}/api/host-admission`);
 
     expect(initial.status).toBe(200);
     expect(initial.headers.get("cache-control")).toBe("no-store");
@@ -94,7 +110,7 @@ describe("site access session", () => {
       authenticated: false,
     });
 
-    const denied = await fetch(`${baseUrl}/api/session`, {
+    const denied = await fetch(`${baseUrl}/api/host-admission`, {
       method: "POST",
       headers: {
         Authorization: "Bearer wrong-password",
@@ -107,15 +123,15 @@ describe("site access session", () => {
     const authenticated = await login(baseUrl);
     const setCookie = authenticated.headers.get("set-cookie") ?? "";
     expect(authenticated.status).toBe(200);
-    expect(setCookie).toContain("screener-session=v1.");
+    expect(setCookie).toContain("screener-host-admission=v1.");
     expect(setCookie).toContain("Path=/");
     expect(setCookie).toContain("Max-Age=43200");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
     expect(setCookie).not.toContain("Secure");
-    expect(setCookie).not.toContain(accessPassword);
+    expect(setCookie).not.toContain(hostAdmissionPassword);
 
-    const status = await fetch(`${baseUrl}/api/session`, {
+    const status = await fetch(`${baseUrl}/api/host-admission`, {
       headers: { Cookie: cookiePair(authenticated) },
     });
     expect(await status.json()).toEqual({
@@ -129,7 +145,7 @@ describe("site access session", () => {
     const response = await login(baseUrl);
     const setCookie = response.headers.get("set-cookie") ?? "";
 
-    expect(setCookie).toContain("__Host-screener-session=");
+    expect(setCookie).toContain("__Host-screener-host-admission=");
     expect(setCookie).toContain("Secure");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
@@ -139,11 +155,13 @@ describe("site access session", () => {
 
   it("requires an allowed Origin and an empty login body", async () => {
     const baseUrl = await start();
-    const authorization = { Authorization: `Bearer ${accessPassword}` };
+    const authorization = {
+      Authorization: `Bearer ${hostAdmissionPassword}`,
+    };
 
     expect(
       (
-        await fetch(`${baseUrl}/api/session`, {
+        await fetch(`${baseUrl}/api/host-admission`, {
           method: "POST",
           headers: authorization,
         })
@@ -151,7 +169,7 @@ describe("site access session", () => {
     ).toBe(403);
     expect(
       (
-        await fetch(`${baseUrl}/api/session`, {
+        await fetch(`${baseUrl}/api/host-admission`, {
           method: "POST",
           headers: { ...authorization, Origin: "https://foreign.test" },
         })
@@ -159,7 +177,7 @@ describe("site access session", () => {
     ).toBe(403);
     expect(
       (
-        await fetch(`${baseUrl}/api/session`, {
+        await fetch(`${baseUrl}/api/host-admission`, {
           method: "POST",
           headers: { ...authorization, Origin: `${allowedOrigin}/path` },
         })
@@ -167,7 +185,7 @@ describe("site access session", () => {
     ).toBe(403);
     expect(
       (
-        await fetch(`${baseUrl}/api/session`, {
+        await fetch(`${baseUrl}/api/host-admission`, {
           method: "POST",
           headers: { ...authorization, Origin: allowedOrigin },
           body: "{}",
@@ -180,18 +198,18 @@ describe("site access session", () => {
     let now = 1_000;
     const baseUrl = await start(testConfig(), {
       now: () => now,
-      accessSessionTtlSeconds: 1,
+      hostAdmissionTtlSeconds: 1,
     });
     const authenticated = await login(baseUrl);
     const cookie = cookiePair(authenticated);
 
-    const modified = await fetch(`${baseUrl}/api/session`, {
+    const modified = await fetch(`${baseUrl}/api/host-admission`, {
       headers: { Cookie: `${cookie}x` },
     });
     expect((await modified.json()).authenticated).toBe(false);
 
     now = 2_000;
-    const expired = await fetch(`${baseUrl}/api/session`, {
+    const expired = await fetch(`${baseUrl}/api/host-admission`, {
       headers: { Cookie: cookie },
     });
     expect(await expired.json()).toEqual({
@@ -201,14 +219,16 @@ describe("site access session", () => {
   });
 
   it("is immediately authenticated when the access password is empty", async () => {
-    const baseUrl = await start(testConfig({ accessPassword: undefined }));
-    const status = await fetch(`${baseUrl}/api/session`);
+    const baseUrl = await start(
+      testConfig({ hostAdmissionPassword: undefined }),
+    );
+    const status = await fetch(`${baseUrl}/api/host-admission`);
 
     expect(await status.json()).toEqual({
       required: false,
       authenticated: true,
     });
-    const post = await fetch(`${baseUrl}/api/session`, {
+    const post = await fetch(`${baseUrl}/api/host-admission`, {
       method: "POST",
       headers: { Origin: allowedOrigin },
     });
@@ -220,33 +240,26 @@ describe("site access session", () => {
 describe("room HTTP API", () => {
   it("requires a logged-in browser when access protection is enabled", async () => {
     const baseUrl = await start();
-    const anonymous = await fetch(`${baseUrl}/api/rooms`, {
-      method: "POST",
-      headers: { Origin: allowedOrigin },
-    });
+    const anonymous = await createRoom(baseUrl);
     expect(anonymous.status).toBe(401);
     expect(anonymous.headers.get("www-authenticate")).toBeNull();
 
     const bearerBypass = await fetch(`${baseUrl}/api/rooms`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessPassword}`,
+        Authorization: `Bearer ${hostAdmissionPassword}`,
+        "Content-Type": "application/json",
         Origin: allowedOrigin,
       },
+      body: JSON.stringify({ viewerPolicy: "private-link" }),
     });
     expect(bearerBypass.status).toBe(401);
   });
 
-  it("creates a numeric room and token-free invite for an authenticated browser", async () => {
+  it("creates a private room with a fragment-only Viewer grant", async () => {
     const baseUrl = await start();
     const authenticated = await login(baseUrl);
-    const response = await fetch(`${baseUrl}/api/rooms`, {
-      method: "POST",
-      headers: {
-        Cookie: cookiePair(authenticated),
-        Origin: allowedOrigin,
-      },
-    });
+    const response = await createRoom(baseUrl, cookiePair(authenticated));
 
     expect(response.status).toBe(201);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -255,18 +268,27 @@ describe("room HTTP API", () => {
     expect(body.roomId).toMatch(/^\d{12}$/);
     expect(invite.origin).toBe("https://share.example.test");
     expect(invite.pathname).toBe(`/r/${body.roomId}`);
-    expect(invite.hash).toBe("");
+    expect(invite.hash).toMatch(
+      new RegExp(`^#v=g1\\.${body.roomId}\\.\\d+\\.[A-Za-z0-9_-]{43}$`),
+    );
     expect(invite.search).toBe("");
+    expect(body.viewerPolicy).toBe("private-link");
+    expect(body.viewerGrantExpiresAt).toBeTruthy();
     expect("iceConfig" in body).toBe(false);
   });
 
-  it("allows room creation without a session in public mode", async () => {
-    const baseUrl = await start(testConfig({ accessPassword: undefined }));
-    const response = await fetch(`${baseUrl}/api/rooms`, {
-      method: "POST",
-      headers: { Origin: allowedOrigin },
-    });
+  it("allows explicit public-watch creation without Host admission in local mode", async () => {
+    const baseUrl = await start(
+      testConfig({ hostAdmissionPassword: undefined }),
+    );
+    const response = await createRoom(baseUrl, undefined, "public-watch");
     expect(response.status).toBe(201);
+    const body = createRoomResponseSchema.parse(await response.json());
+    expect(body).toMatchObject({
+      viewerPolicy: "public-watch",
+      viewerGrantExpiresAt: null,
+    });
+    expect(new URL(body.inviteUrl).hash).toBe("");
   });
 
   it("persists sequential protected rooms across server restarts", async () => {
@@ -274,11 +296,7 @@ describe("room HTTP API", () => {
     let baseUrl = await start(config);
     const authenticated = await login(baseUrl);
     const cookie = cookiePair(authenticated);
-    const create = () =>
-      fetch(`${baseUrl}/api/rooms`, {
-        method: "POST",
-        headers: { Cookie: cookie, Origin: allowedOrigin },
-      });
+    const create = () => createRoom(baseUrl, cookie);
 
     const responses = await Promise.all([create(), create()]);
     const rooms = await Promise.all(
@@ -294,41 +312,40 @@ describe("room HTTP API", () => {
     await runningServer?.close();
     runningServer = undefined;
     baseUrl = await start(config);
-    const third = await fetch(`${baseUrl}/api/rooms`, {
-      method: "POST",
-      headers: { Cookie: cookie, Origin: allowedOrigin },
-    });
+    const third = await createRoom(baseUrl, cookie);
     expect(createRoomResponseSchema.parse(await third.json())).toMatchObject({
       roomId: "3",
       expiresAt: null,
     });
   });
 
-  it("rejects request bodies and foreign browser origins", async () => {
-    const baseUrl = await start(testConfig({ accessPassword: undefined }));
+  it("rejects malformed room requests and foreign browser origins", async () => {
+    const baseUrl = await start(
+      testConfig({ hostAdmissionPassword: undefined }),
+    );
     const withBody = await fetch(`${baseUrl}/api/rooms`, {
       method: "POST",
-      headers: { Origin: allowedOrigin },
+      headers: {
+        "Content-Type": "application/json",
+        Origin: allowedOrigin,
+      },
       body: "{}",
     });
     expect(withBody.status).toBe(400);
 
     const foreign = await fetch(`${baseUrl}/api/rooms`, {
       method: "POST",
-      headers: { Origin: "https://foreign.test" },
+      headers: { "Content-Type": "application/json", Origin: "https://foreign.test" },
+      body: JSON.stringify({ viewerPolicy: "private-link" }),
     });
     expect(foreign.status).toBe(403);
   });
 
   it("returns service unavailable at the global room bound", async () => {
     const baseUrl = await start(
-      testConfig({ accessPassword: undefined, maxRooms: 1 }),
+      testConfig({ hostAdmissionPassword: undefined, maxRooms: 1 }),
     );
-    const create = () =>
-      fetch(`${baseUrl}/api/rooms`, {
-        method: "POST",
-        headers: { Origin: allowedOrigin },
-      });
+    const create = () => createRoom(baseUrl);
 
     expect((await create()).status).toBe(201);
     expect((await create()).status).toBe(503);

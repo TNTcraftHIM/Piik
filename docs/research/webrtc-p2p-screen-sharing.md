@@ -228,7 +228,7 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 ### 最小访问模型
 
-当前 runtime 的 `ACCESS_PASSWORD`、同一 Host/Viewer cookie gate 和 code-only Viewer 是已部署事实，不再是接受的目标。目标把“谁可以建立/发布房间”和“谁可以看这一间房”分开：production 必配的 `HOST_ADMISSION_PASSWORD` 无状态 cookie 只允许建房及尝试 Host role，房间 Host token 仍独立验证；默认 private-link 使用一个 room-scoped Viewer bearer grant，public-watch 才接受 code-only Viewer。它们不需要账号、JWT、服务端 session Map、逐人 ACL 或人类房间密码。WebSocket upgrade 不知道未来 role，因此只能保留 Origin/容量门并记录 Host cookie 状态；首条 Host 鉴权再同时要求该状态和 Host token，Viewer 只走 room policy。RFC 6455 明确允许服务端用 handshake `Origin` 作接纳判断，但这不是 Viewer 授权本身。
+旧 production 的 `ACCESS_PASSWORD`、同一 Host/Viewer cookie gate 和 code-only Viewer 是已部署事实，不再是接受的目标；仓库 access candidate 已把“谁可以建立/发布房间”和“谁可以看这一间房”分开。production 必配的 `HOST_ADMISSION_PASSWORD` 无状态 cookie 只允许建房及尝试 Host role，房间 Host token 仍独立验证；默认 private-link 使用一个 room-scoped Viewer bearer grant，public-watch 才接受 code-only Viewer。它们不需要账号、JWT、服务端 session Map、逐人 ACL 或人类房间密码。WebSocket upgrade 不知道未来 role，因此只能保留 Origin/容量门并记录 Host cookie 状态；首条 Host 鉴权再同时要求该状态和 Host token，Viewer 只走 room policy。RFC 6455 明确允许服务端用 handshake `Origin` 作接纳判断，但这不是 Viewer 授权本身。
 
 RFC 3986 的规范事实是 fragment 在 URI dereference 前由 user agent 分离；WHATWG WebSockets 进一步规定含 fragment 的 constructor URL 必须抛 `SyntaxError`。因此把 256-bit room grant 放在 `/r/{code}#v=...`，再由页面在首个 WSS application message 发送，可以使它不进入 HTTP 或 WebSocket request-target。RFC 6750 对 OAuth bearer query 的警告并不直接规定本产品，但它提供了适用的安全类比：URI query 高概率被日志记录，不应承载此 grant。W3C Referrer Policy 的算法会从 referrer URL 移除 fragment，production 的 `no-referrer` header 再禁止整个 header；这是传输边界，不是“不会泄漏”的保证。
 

@@ -4,8 +4,11 @@ import { fileURLToPath } from "node:url";
 import sirv from "sirv";
 import type { ViteDevServer } from "vite";
 
-import type { CreateRoomResponse } from "../shared/protocol.js";
-import { AccessSession } from "./access-session.js";
+import {
+  createRoomRequestSchema,
+  type CreateRoomResponse,
+} from "../shared/protocol.js";
+import { HostAdmission } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import { RoomDatabase } from "./room-database.js";
@@ -24,7 +27,7 @@ export interface CreateServerOptions {
   cleanupIntervalMs?: number;
   maxSignalConnections?: number;
   maxUnauthenticatedSignalConnections?: number;
-  accessSessionTtlSeconds?: number;
+  hostAdmissionTtlSeconds?: number;
   sfuTokenIssuer?: SfuTokenIssuer;
 }
 
@@ -68,13 +71,13 @@ export async function createScreenerServer(
         : undefined,
       now,
     });
-  const accessSession = new AccessSession({
-    password: config.accessPassword,
+  const hostAdmission = new HostAdmission({
+    password: config.hostAdmissionPassword,
     secure:
       config.nodeEnv === "production" &&
       config.publicBaseUrl.protocol === "https:",
     now,
-    ttlSeconds: options.accessSessionTtlSeconds,
+    ttlSeconds: options.hostAdmissionTtlSeconds,
   });
   const iceOptions = {
     stunUrls: config.stunUrls,
@@ -88,7 +91,7 @@ export async function createScreenerServer(
       response,
       config,
       roomStore,
-      accessSession,
+      hostAdmission,
       () => frontendHandler,
     ).catch((error: unknown) => {
       console.error("HTTP request failed", {
@@ -112,8 +115,9 @@ export async function createScreenerServer(
     ...(sfuFallback ? { sfuFallback } : {}),
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
-    authorizeUpgrade: (request) =>
-      accessSession.isAuthenticated(request.headers.cookie),
+    hostAdmissionAtUpgrade: (request) =>
+      hostAdmission.isAuthenticated(request.headers.cookie),
+    publicBaseUrl: config.publicBaseUrl,
     now,
     authenticationTimeoutMs: options.authenticationTimeoutMs,
     viewerDisconnectGraceMs: options.viewerDisconnectGraceMs,
@@ -208,7 +212,7 @@ async function handleRequest(
   response: ServerResponse,
   config: ServerConfig,
   roomStore: RoomStore,
-  accessSession: AccessSession,
+  hostAdmission: HostAdmission,
   getFrontendHandler: () => FrontendHandler | undefined,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", config.publicBaseUrl);
@@ -223,8 +227,8 @@ async function handleRequest(
     return;
   }
 
-  if (url.pathname === "/api/session") {
-    handleSessionRequest(request, response, config, accessSession);
+  if (url.pathname === "/api/host-admission") {
+    handleHostAdmissionRequest(request, response, config, hostAdmission);
     return;
   }
 
@@ -236,35 +240,51 @@ async function handleRequest(
       sendJson(response, 405, { error: "Method not allowed" });
       return;
     }
-    if (!isAllowedRequestOrigin(request.headers.origin, config.allowedOrigins)) {
+    if (
+      !isStrictlyAllowedRequestOrigin(
+        request.headers.origin,
+        config.allowedOrigins,
+      )
+    ) {
       sendJson(response, 403, { error: "Forbidden" });
-      return;
-    }
-    if (hasRequestBody(request)) {
-      sendJson(response, 400, { error: "Request body is not accepted" });
       return;
     }
     if (
       !isRoomCreationAuthorized(
         request,
-        accessSession,
-        isStrictlyAllowedRequestOrigin(
-          request.headers.origin,
-          config.allowedOrigins,
-        ),
+        hostAdmission,
       )
     ) {
       sendJson(response, 401, { error: "Unauthorized" });
       return;
     }
 
+    let parsedRequest;
     try {
-      const room = roomStore.createRoom();
+      parsedRequest = createRoomRequestSchema.safeParse(
+        await readJsonBody(request, 1_024),
+      );
+    } catch {
+      sendJson(response, 400, { error: "Invalid room request" });
+      return;
+    }
+    if (!parsedRequest.success) {
+      sendJson(response, 400, { error: "Invalid room request" });
+      return;
+    }
+
+    try {
+      const room = roomStore.createRoom(parsedRequest.data.viewerPolicy);
       const inviteUrl = new URL(`/r/${room.roomId}`, config.publicBaseUrl);
+      if (room.viewerGrant) {
+        inviteUrl.hash = `v=${room.viewerGrant}`;
+      }
       const responseBody: CreateRoomResponse = {
         roomId: room.roomId,
         hostToken: room.hostToken,
         inviteUrl: inviteUrl.toString(),
+        viewerPolicy: room.viewerPolicy,
+        viewerGrantExpiresAt: room.viewerGrantExpiresAt,
         expiresAt: room.expiresAt,
       };
       sendJson(response, 201, responseBody);
@@ -292,17 +312,17 @@ async function handleRequest(
   sendJson(response, 404, { error: "Not found" });
 }
 
-function handleSessionRequest(
+function handleHostAdmissionRequest(
   request: IncomingMessage,
   response: ServerResponse,
   config: ServerConfig,
-  accessSession: AccessSession,
+  hostAdmission: HostAdmission,
 ): void {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("X-Content-Type-Options", "nosniff");
 
   if (request.method === "GET") {
-    sendJson(response, 200, sessionStatus(request, accessSession));
+    sendJson(response, 200, hostAdmissionStatus(request, hostAdmission));
     return;
   }
 
@@ -326,27 +346,27 @@ function handleSessionRequest(
     return;
   }
 
-  if (!accessSession.required) {
+  if (!hostAdmission.required) {
     sendJson(response, 200, { required: false, authenticated: true });
     return;
   }
-  if (!isBearerAuthorized(request, accessSession)) {
+  if (!isBearerAuthorized(request, hostAdmission)) {
     response.setHeader("WWW-Authenticate", "Bearer");
     sendJson(response, 401, { error: "Unauthorized" });
     return;
   }
 
-  response.setHeader("Set-Cookie", accessSession.createCookie()!);
+  response.setHeader("Set-Cookie", hostAdmission.createCookie()!);
   sendJson(response, 200, { required: true, authenticated: true });
 }
 
-function sessionStatus(
+function hostAdmissionStatus(
   request: IncomingMessage,
-  accessSession: AccessSession,
+  hostAdmission: HostAdmission,
 ): { required: boolean; authenticated: boolean } {
   return {
-    required: accessSession.required,
-    authenticated: accessSession.isAuthenticated(request.headers.cookie),
+    required: hostAdmission.required,
+    authenticated: hostAdmission.isAuthenticated(request.headers.cookie),
   };
 }
 
@@ -358,20 +378,6 @@ function hasRequestBody(request: IncomingMessage): boolean {
     !Number.isFinite(parsedLength) ||
     parsedLength !== 0
   );
-}
-
-function isAllowedRequestOrigin(
-  origin: string | undefined,
-  allowedOrigins: ReadonlySet<string>,
-): boolean {
-  if (!origin) {
-    return true;
-  }
-  try {
-    return allowedOrigins.has(new URL(origin).origin);
-  } catch {
-    return false;
-  }
 }
 
 function isStrictlyAllowedRequestOrigin(
@@ -391,25 +397,48 @@ function isStrictlyAllowedRequestOrigin(
 
 function isRoomCreationAuthorized(
   request: IncomingMessage,
-  accessSession: AccessSession,
-  hasAllowedOrigin: boolean,
+  hostAdmission: HostAdmission,
 ): boolean {
-  if (!accessSession.required) {
+  if (!hostAdmission.required) {
     return true;
   }
-  return hasAllowedOrigin && accessSession.isAuthenticated(request.headers.cookie);
+  return hostAdmission.isAuthenticated(request.headers.cookie);
 }
 
 function isBearerAuthorized(
   request: IncomingMessage,
-  accessSession: AccessSession,
+  hostAdmission: HostAdmission,
 ): boolean {
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith("Bearer ")) {
     return false;
   }
   const provided = authorization.slice("Bearer ".length);
-  return provided.length > 0 && accessSession.passwordMatches(provided);
+  return provided.length > 0 && hostAdmission.passwordMatches(provided);
+}
+
+async function readJsonBody(
+  request: IncomingMessage,
+  maximumBytes: number,
+): Promise<unknown> {
+  const contentType = request.headers["content-type"]?.split(";", 1)[0]?.trim();
+  if (contentType !== "application/json") {
+    throw new Error("Request content type must be application/json");
+  }
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > maximumBytes) {
+      throw new Error("Request body is too large");
+    }
+    chunks.push(buffer);
+  }
+  if (bytes === 0) {
+    throw new Error("Request body is required");
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {

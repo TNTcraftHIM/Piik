@@ -3,18 +3,18 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 const DEFAULT_SESSION_TTL_SECONDS = 12 * 60 * 60;
 const COOKIE_VERSION = "v1";
 
-export interface AccessSessionOptions {
+export interface HostAdmissionOptions {
   password?: string;
   secure: boolean;
   now?: () => number;
   ttlSeconds?: number;
 }
 
-export class AccessSession {
+export class HostAdmission {
   private readonly now: () => number;
   private readonly ttlSeconds: number;
 
-  constructor(private readonly options: AccessSessionOptions) {
+  constructor(private readonly options: HostAdmissionOptions) {
     this.now = options.now ?? Date.now;
     this.ttlSeconds = options.ttlSeconds ?? DEFAULT_SESSION_TTL_SECONDS;
     if (!Number.isSafeInteger(this.ttlSeconds) || this.ttlSeconds <= 0) {
@@ -76,8 +76,8 @@ export class AccessSession {
 
   private get cookieName(): string {
     return this.options.secure
-      ? "__Host-screener-session"
-      : "screener-session";
+      ? "__Host-screener-host-admission"
+      : "screener-host-admission";
   }
 
   private sign(payload: string): string {

@@ -14,6 +14,7 @@ import {
 
 const token = "a".repeat(43);
 const roomId = "123456789012";
+const viewerGrant = `g1.${roomId}.1787076000.${"b".repeat(43)}`;
 const qualitySettings = {
   resolution: "1080p",
   maxFramerate: 60,
@@ -69,6 +70,18 @@ describe("client signaling protocol", () => {
       ),
     ).toMatchObject({ type: "authenticate", role: "viewer" });
     expect(
+      decodeClientMessage(
+        JSON.stringify({
+          type: "authenticate",
+          protocol: SIGNALING_PROTOCOL,
+          roomId,
+          role: "viewer",
+          viewerGrant,
+          clientId: "client_12345678",
+        }),
+      ),
+    ).toMatchObject({ viewerGrant });
+    expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
         roomId,
@@ -83,6 +96,40 @@ describe("client signaling protocol", () => {
         roomId,
         role: "viewer",
         clientId: "client_12345678",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only canonical bounded Viewer grants and access actions", () => {
+    for (const malformedGrant of [
+      `g0.${roomId}.1787076000.${"b".repeat(43)}`,
+      `g1.${roomId}.0.${"b".repeat(43)}`,
+      `g1.${roomId}.1787076000.${"b".repeat(42)}`,
+      `${viewerGrant}.extra`,
+    ]) {
+      expect(
+        clientMessageSchema.safeParse({
+          type: "authenticate",
+          protocol: SIGNALING_PROTOCOL,
+          roomId,
+          role: "viewer",
+          viewerGrant: malformedGrant,
+          clientId: "client_12345678",
+        }).success,
+      ).toBe(false);
+    }
+    for (const action of ["public-watch", "rotate", "revoke"]) {
+      expect(
+        clientMessageSchema.safeParse({
+          type: "set-viewer-access",
+          action,
+        }).success,
+      ).toBe(true);
+    }
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-viewer-access",
+        action: "private-link",
       }).success,
     ).toBe(false);
   });
@@ -456,6 +503,8 @@ describe("server signaling protocol", () => {
       hostOnline: true,
       connectionId: null,
       viewerPeerIds,
+      viewerPolicy: "private-link",
+      viewerAuthorizationGeneration: "viewer_generation_12345678",
       iceConfig: {
         iceServers: [],
       },

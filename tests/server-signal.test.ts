@@ -1,7 +1,7 @@
 import { connect } from "node:net";
 import { createServer } from "node:http";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import {
@@ -158,7 +158,7 @@ async function startHarness(
     maxViewersPerRoom?: number;
     maxSignalConnections?: number;
     maxUnauthenticatedSignalConnections?: number;
-    accessPassword?: string;
+    hostAdmissionPassword?: string;
     persistent?: boolean;
     peerAssistedMedia?: boolean;
     stunUrls?: readonly string[];
@@ -166,7 +166,7 @@ async function startHarness(
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
-  config.accessPassword = overrides.accessPassword;
+  config.hostAdmissionPassword = overrides.hostAdmissionPassword;
   config.peerAssistedMedia = overrides.peerAssistedMedia ?? false;
   config.stunUrls = overrides.stunUrls ?? [];
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
@@ -270,7 +270,8 @@ async function startSfuHarness(options: {
       stunUrls: options.stunUrls ?? [],
     },
     allowedOrigins: new Set([allowedOrigin]),
-    authorizeUpgrade: () => true,
+    hostAdmissionAtUpgrade: () => true,
+    publicBaseUrl: new URL("https://share.example.test"),
     authenticationTimeoutMs: 500,
     viewerDisconnectGraceMs: options.viewerDisconnectGraceMs ?? 50,
     heartbeatIntervalMs: 60_000,
@@ -399,6 +400,7 @@ async function authenticate(
             roomId: room.roomId,
             role,
             clientId,
+            ...(room.viewerGrant ? { viewerGrant: room.viewerGrant } : {}),
           },
     ),
   );
@@ -650,26 +652,289 @@ async function closeClient(client: TestClient): Promise<void> {
 }
 
 describe("WebSocket signaling", () => {
-  it("requires the global access session when protection is enabled", async () => {
-    const accessPassword = "protected-instance-password";
-    const harness = await startHarness({ accessPassword });
+  it("protects Host admission without gating authorized Viewers", async () => {
+    const hostAdmissionPassword = "protected-instance-password";
+    const harness = await startHarness({ hostAdmissionPassword });
 
-    expect(await rejectedUpgradeStatus(harness.webSocketUrl)).toBe(401);
+    const viewer = await openClient(harness.webSocketUrl);
+    await expect(
+      authenticate(viewer, harness.room, "viewer", "viewer-client-protected"),
+    ).resolves.toMatchObject({ role: "viewer" });
 
-    const login = await fetch(`${harness.baseUrl}/api/session`, {
+    const unauthorizedHost = await openClient(harness.webSocketUrl);
+    unauthorizedHost.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: harness.room.roomId,
+        role: "host",
+        token: harness.room.hostToken,
+        clientId: "host-client-without-admission",
+      }),
+    );
+    await expect(unauthorizedHost.inbox.next("error")).resolves.toMatchObject({
+      code: "AUTH_REQUIRED",
+    });
+
+    const login = await fetch(`${harness.baseUrl}/api/host-admission`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessPassword}`,
+        Authorization: `Bearer ${hostAdmissionPassword}`,
         Origin: allowedOrigin,
       },
     });
     const cookie = login.headers.get("set-cookie")?.split(";", 1)[0];
     expect(cookie).toBeTruthy();
 
-    const viewer = await openClient(harness.webSocketUrl, cookie);
+    const viewerWithHostCookie = await openClient(harness.webSocketUrl, cookie);
+    viewerWithHostCookie.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: harness.room.roomId,
+        role: "viewer",
+        clientId: "viewer-with-host-cookie",
+      }),
+    );
+    await expect(viewerWithHostCookie.inbox.next("error")).resolves.toMatchObject({
+      code: "INVALID_TOKEN",
+    });
+
+    const host = await openClient(harness.webSocketUrl, cookie);
     await expect(
-      authenticate(viewer, harness.room, "viewer", "viewer-client-protected"),
-    ).resolves.toMatchObject({ role: "viewer" });
+      authenticate(host, harness.room, "host", "host-client-protected"),
+    ).resolves.toMatchObject({ role: "host" });
+  });
+
+  it("leaves established authorization and media untouched when access persistence fails", async () => {
+    const harness = await startHarness({ persistent: true });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "persistence-failure-host",
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "persistence-failure-viewer",
+    );
+    await host.inbox.next("peer-joined");
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "persistence-failure-edge",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+
+    const update = vi
+      .spyOn(harness.roomStore, "setViewerAccess")
+      .mockImplementationOnce(() => {
+        throw new Error("simulated database write failure");
+      });
+    host.socket.send(
+      JSON.stringify({ type: "set-viewer-access", action: "rotate" }),
+    );
+    expect(await host.inbox.next("error")).toMatchObject({ code: "SERVER_ERROR" });
+    await expect(
+      viewer.inbox.next("viewer-access-revoked", 30),
+    ).rejects.toThrow("Timed out");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "candidate",
+          connectionId: "persistence-failure-edge",
+          candidate: null,
+        },
+      }),
+    );
+    expect(await viewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: hostAuth.peerId,
+      payload: { connectionId: "persistence-failure-edge" },
+    });
+    update.mockRestore();
+
+    const secondViewer = await openClient(harness.webSocketUrl);
+    expect(
+      await authenticate(
+        secondViewer,
+        harness.room,
+        "viewer",
+        "persistence-failure-new-viewer",
+      ),
+    ).toMatchObject({
+      viewerAuthorizationGeneration:
+        viewerAuth.viewerAuthorizationGeneration,
+    });
+  });
+
+  it("strongly rotates and revokes every Viewer generation and media edge", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken(request) {
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const peers = await exhaustDeepViewerPeerRoutes(
+      harness.webSocketUrl,
+      harness.room,
+      "access-generation",
+    );
+    const hostPrepare = await nextPreparedRoute(peers.host);
+    const branchPrepare = await nextPreparedRoute(peers.secondRoot);
+    const failedPrepare = await nextPreparedRoute(peers.failedViewer);
+    await peers.host.inbox.next("sfu-config");
+    await peers.secondRoot.inbox.next("sfu-config");
+    await peers.failedViewer.inbox.next("sfu-config");
+    for (const [client, revision] of [
+      [peers.host, hostPrepare.revision],
+      [peers.secondRoot, branchPrepare.revision],
+      [peers.failedViewer, failedPrepare.revision],
+    ] as const) {
+      client.socket.send(
+        JSON.stringify({ type: "route-ready", revision, phase: "prepare" }),
+      );
+    }
+    const hostActive = await nextActiveRouteAfter(
+      peers.host,
+      hostPrepare.revision - 1,
+    );
+    expect(hostActive.assignment.sfuPublicationGeneration).toBeTruthy();
+
+    const revokedViewers = [
+      peers.firstRoot,
+      peers.secondRoot,
+      peers.failedViewer,
+    ];
+    const closeCodes = revokedViewers.map(
+      (viewer) =>
+        new Promise<number>((resolve) =>
+          viewer.socket.once("close", (code) => resolve(code)),
+        ),
+    );
+    for (const viewer of revokedViewers) {
+      viewer.socket.on("message", (data) => {
+        if (
+          decodeServerMessage(data.toString()).type === "viewer-access-revoked" &&
+          viewer.socket.readyState === WebSocket.OPEN
+        ) {
+          viewer.socket.send(
+            JSON.stringify({
+              type: "signal",
+              targetPeerId: peers.hostAuth.peerId,
+              payload: {
+                kind: "candidate",
+                connectionId: "stale-revoked-generation",
+                candidate: null,
+              },
+            }),
+          );
+        }
+      });
+    }
+
+    peers.host.socket.send(
+      JSON.stringify({ type: "set-viewer-access", action: "rotate" }),
+    );
+    for (const viewer of revokedViewers) {
+      expect(await viewer.inbox.next("viewer-access-revoked")).toEqual({
+        type: "viewer-access-revoked",
+        viewerAuthorizationGeneration:
+          peers.firstRootAuth.viewerAuthorizationGeneration,
+      });
+    }
+    expect(await Promise.all(closeCodes)).toEqual([4004, 4004, 4004]);
+    expect(harness.roomStore.getConnectedViewers(harness.room.roomId)).toEqual(
+      [],
+    );
+
+    let finalHostRoute = hostActive;
+    for (let change = 0; change < 6; change += 1) {
+      if (
+        finalHostRoute.assignment.childPeerIds.length === 0 &&
+        finalHostRoute.assignment.sfuPublicationGeneration === null
+      ) {
+        break;
+      }
+      finalHostRoute = await nextActiveRouteAfter(
+        peers.host,
+        finalHostRoute.revision,
+      );
+    }
+    expect(finalHostRoute.assignment).toMatchObject({
+      childPeerIds: [],
+      sfuPublicationGeneration: null,
+    });
+    await expect(peers.host.inbox.next("signal", 30)).rejects.toThrow(
+      "Timed out",
+    );
+
+    const rotated = await peers.host.inbox.next("viewer-access-updated");
+    expect(rotated.viewerPolicy).toBe("private-link");
+    expect(rotated.viewerAuthorizationGeneration).not.toBe(
+      peers.firstRootAuth.viewerAuthorizationGeneration,
+    );
+    const inviteUrl = new URL(rotated.inviteUrl!);
+    const rotatedGrant = new URLSearchParams(inviteUrl.hash.slice(1)).get("v");
+    expect(rotatedGrant).toBeTruthy();
+
+    const oldGrantViewer = await openClient(harness.webSocketUrl);
+    oldGrantViewer.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: harness.room.roomId,
+        role: "viewer",
+        viewerGrant: harness.room.viewerGrant,
+        clientId: "old-generation-viewer",
+      }),
+    );
+    expect(await oldGrantViewer.inbox.next("error")).toMatchObject({
+      code: "INVALID_TOKEN",
+    });
+
+    const rotatedRoom = {
+      ...harness.room,
+      viewerGrant: rotatedGrant,
+    } satisfies CreatedRoom;
+    const currentViewer = await openClient(harness.webSocketUrl);
+    const currentAuth = await authenticate(
+      currentViewer,
+      rotatedRoom,
+      "viewer",
+      "current-generation-viewer",
+    );
+    expect(currentAuth.viewerAuthorizationGeneration).toBe(
+      rotated.viewerAuthorizationGeneration,
+    );
+
+    const currentClosed = new Promise<number>((resolve) =>
+      currentViewer.socket.once("close", (code) => resolve(code)),
+    );
+    peers.host.socket.send(
+      JSON.stringify({ type: "set-viewer-access", action: "revoke" }),
+    );
+    expect(await currentViewer.inbox.next("viewer-access-revoked")).toMatchObject({
+      viewerAuthorizationGeneration: rotated.viewerAuthorizationGeneration,
+    });
+    expect(await currentClosed).toBe(4004);
+    expect(await peers.host.inbox.next("viewer-access-updated")).toMatchObject({
+      viewerPolicy: "private-link",
+      inviteUrl: null,
+    });
   });
 
   it("lets viewers arrive first and replays their snapshot when the host joins", async () => {
@@ -955,7 +1220,9 @@ describe("WebSocket signaling", () => {
         "role",
         "roomExpiresAt",
         "type",
+        "viewerAuthorizationGeneration",
         "viewerPeerIds",
+        "viewerPolicy",
       ].sort(),
     );
     expect(ordinaryHostAuth.iceConfig).toEqual(hybridHostAuth.iceConfig);
@@ -3538,6 +3805,7 @@ describe("WebSocket signaling", () => {
         protocol: SIGNALING_PROTOCOL,
         roomId: harness.room.roomId,
         role: "viewer",
+        viewerGrant: harness.room.viewerGrant,
         clientId: `viewer-client-${maxViewersPerRoom + 1}`,
       }),
     );
@@ -3622,7 +3890,7 @@ describe("WebSocket signaling", () => {
     oldClient.socket.send(
       JSON.stringify({
         type: "authenticate",
-        roomId: harness.room.roomId,
+        roomId: "999999999999",
         role: "viewer",
         clientId: "old-client",
       }),

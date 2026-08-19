@@ -1,6 +1,6 @@
 # ADR-0002: Persistent Rooms And Scoped Viewer Access
 
-- Status: Accepted design; runtime migration pending
+- Status: Accepted; runtime candidate implemented, deployment pending
 - Date: 2026-08-19
 
 ## Context
@@ -11,7 +11,8 @@ so the deployment owner must control Host admission. Watching should remain a
 normal-browser, link-first action and should not reveal the deployment's Host
 password to every invited friend.
 
-The current runtime uses one optional `ACCESS_PASSWORD`, one stateless cookie,
+The superseded runtime and current production deployment use one optional
+`ACCESS_PASSWORD`, one stateless cookie,
 and the same WebSocket upgrade gate for both roles. A Viewer then authenticates
 with only a numeric room code. This is simple but conflates deployment admission
 with room privacy: sharing the site password grants broader access than a Viewer
@@ -190,3 +191,14 @@ SQLite or participates in authorization, routing, or quality decisions.
 - A production-copy v1 `STRICT` database migrates transactionally to checked,
   locked-private v2; malformed non-null values fail closed, rollback restores its
   backup, and v1 tabs terminate without compatibility code.
+
+## Implementation Status
+
+The 2026-08-20 repository candidate implements the single-version v2 runtime,
+same-row SQLite migration, private/public room policy, fragment consumption,
+Host admission, and commit-first generation teardown. Focused automated tests
+cover protocol bounds, exact-room grants, persistent-write failure, active
+peer/SFU edge retirement, old-generation socket rejection, and v1 migration
+rollback. The tracked nginx limiter and backup/restore procedure are present.
+Production ingress loading, browser storage/request/log leak inspection, a
+production-copy migration rehearsal, and deployment remain acceptance work.

@@ -4,7 +4,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v1";
+export const SIGNALING_PROTOCOL = "screener-v2";
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
@@ -24,6 +24,18 @@ const tokenSchema = z
   .min(32)
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
+
+export const viewerGrantSchema = z
+  .string()
+  .min(50)
+  .max(96)
+  .regex(/^g1\.[1-9]\d{0,11}\.[1-9]\d{0,12}\.[A-Za-z0-9_-]{43}$/);
+
+export const viewerAccessPolicySchema = z.enum([
+  "private-link",
+  "public-watch",
+]);
+export type ViewerAccessPolicy = z.infer<typeof viewerAccessPolicySchema>;
 
 const liveKitWebSocketUrlSchema = z
   .string()
@@ -332,6 +344,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       roomId: roomCodeSchema,
       role: z.literal("viewer"),
       clientId: opaqueIdSchema,
+      viewerGrant: viewerGrantSchema.optional(),
     })
     .strict(),
 ]);
@@ -389,6 +402,12 @@ export const clientMessageSchema = z.union([
   viewerQualityEvidenceMessageSchema,
   z
     .object({
+      type: z.literal("set-viewer-access"),
+      action: z.enum(["public-watch", "rotate", "revoke"]),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("stop-sharing"),
       shareGeneration: opaqueIdSchema.optional(),
     })
@@ -420,6 +439,8 @@ const authenticatedMessageShape = {
   connectionId: opaqueIdSchema.nullable(),
   viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   iceConfig: iceConfigSchema,
+  viewerPolicy: viewerAccessPolicySchema,
+  viewerAuthorizationGeneration: opaqueIdSchema,
 };
 
 const authenticatedMessageSchema = z.union([
@@ -512,6 +533,21 @@ export const serverMessageSchema = z.union([
       online: z.boolean(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("viewer-access-updated"),
+      viewerPolicy: viewerAccessPolicySchema,
+      viewerAuthorizationGeneration: opaqueIdSchema,
+      inviteUrl: z.string().url().max(2048).nullable(),
+      viewerGrantExpiresAt: z.string().datetime().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("viewer-access-revoked"),
+      viewerAuthorizationGeneration: opaqueIdSchema,
+    })
+    .strict(),
   z.object({ type: z.literal("sharing-stopped") }).strict(),
   z
     .object({
@@ -534,10 +570,19 @@ export const createRoomResponseSchema = z
     roomId: roomCodeSchema,
     hostToken: tokenSchema,
     inviteUrl: z.string().url().max(2048),
+    viewerPolicy: viewerAccessPolicySchema,
+    viewerGrantExpiresAt: z.string().datetime().nullable(),
     expiresAt: z.string().datetime().nullable(),
   })
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;
+
+export const createRoomRequestSchema = z
+  .object({
+    viewerPolicy: viewerAccessPolicySchema,
+  })
+  .strict();
+export type CreateRoomRequest = z.infer<typeof createRoomRequestSchema>;
 
 export function decodeClientMessage(value: string): ClientMessage {
   return clientMessageSchema.parse(JSON.parse(value));

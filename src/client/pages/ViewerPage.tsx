@@ -25,7 +25,7 @@ import {
   WarningBanner,
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
-import { getStableClientId } from "../lib/session";
+import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
@@ -58,7 +58,7 @@ import { ViewerRelay } from "../webrtc/viewer-relay";
 
 interface ViewerPageProps {
   roomId: string;
-  onAuthorizationRequired: () => void;
+  viewerGrant?: string;
 }
 
 type ViewerQualityEvidence = Extract<
@@ -66,7 +66,7 @@ type ViewerQualityEvidence = Extract<
   { type: "viewer-quality-evidence" }
 >;
 
-export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps) {
+export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
   const [statusText, setStatusText] = useState("正在连接");
@@ -103,6 +103,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     let peerAssisted = false;
     let currentPeerId: string | null = null;
     let currentRouteRevision = 0;
+    let viewerAuthorizationGeneration: string | null = null;
     let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
     let currentAssignment: MediaAssignment = {
       parentPeerId: null,
@@ -133,6 +134,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         roomId,
         role: "viewer",
         clientId: getStableClientId("viewer", roomId),
+        ...(viewerGrant ? { viewerGrant } : {}),
       },
       {
         onStatus: (status) => {
@@ -154,7 +156,9 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           if (active) {
             messageAuthority.invalidate();
             setSfuStandbyUrl(null);
-            onAuthorizationRequired();
+            clearViewerSfuRoute();
+            clearPeerState();
+            setStatusText("邀请无效或已失效");
           }
         },
         onMessage: (message) => {
@@ -461,6 +465,8 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       if (message.type === "authenticated") {
         clearRelayChildEvidence();
         currentPeerId = message.peerId;
+        viewerAuthorizationGeneration =
+          message.viewerAuthorizationGeneration;
         setSfuStandbyUrl(
           "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
         );
@@ -634,6 +640,22 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         setStatusText("等待开始分享");
         return;
       }
+      if (message.type === "viewer-access-revoked") {
+        if (
+          viewerAuthorizationGeneration !==
+          message.viewerAuthorizationGeneration
+        ) {
+          return;
+        }
+        viewerAuthorizationGeneration = null;
+        clearViewerGrant(roomId);
+        setSfuStandbyUrl(null);
+        clearViewerSfuRoute();
+        clearPeerState();
+        setStatusText("邀请已失效，请向分享者获取新链接");
+        signal.stop();
+        return;
+      }
       if (message.type === "room-closed") {
         setSfuStandbyUrl(null);
         clearViewerSfuRoute();
@@ -660,6 +682,11 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           clearViewerSfuRoute();
           clearPeerState();
         }
+        if (message.code === "INVALID_TOKEN") {
+          clearViewerGrant(roomId);
+          setStatusText("邀请无效或已失效");
+          return;
+        }
         setStatusText(message.message);
       }
     }
@@ -685,7 +712,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       viewerRelay?.dispose();
       viewerRelay = null;
     };
-  }, [onAuthorizationRequired, roomId]);
+  }, [roomId, viewerGrant]);
 
   useEffect(() => {
     const video = videoRef.current;

@@ -441,6 +441,23 @@ h3 {
   min-width: 0;
 }
 
+.viewer-policy-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  gap: 9px;
+  align-items: center;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.viewer-policy-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--green-strong);
+}
+
 .advanced-quality {
   margin-top: 10px;
   border-top: 1px solid var(--border);
@@ -700,6 +717,12 @@ h3 {
 .invite-copy {
   min-width: 0;
   flex: 1;
+}
+
+.invite-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
 .invite-copy .field-label {
