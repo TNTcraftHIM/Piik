@@ -137,11 +137,8 @@ which is not runtime evidence.
 
 No second viewer, two-edge proof, third-viewer waiting/FIFO promotion, or
 direct/TURN pair ran. Do not treat the attempted branch as usable or mergeable
-product code. A separately authorized rerun must retain bounded checkpoints for
-host auth/config/bridge/source RTP, viewer auth/presence/signaling/PC state,
-inbound decode/render, then add viewers 2 and 3 in order. TURN is tested once
-only when the isolated environment has valid credentials. ADR-0006 owns the
-exact staged gate and stop line.
+product code. ADR-0006 owns the separately authorized staged revalidation and
+exact stop line; this research does not redefine it.
 
 ## Stacked Validation Ladder
 

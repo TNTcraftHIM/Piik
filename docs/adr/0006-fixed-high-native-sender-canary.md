@@ -29,26 +29,12 @@ third host edge. The missing audio path remains a product-acceptance gap.
 
 ## 2026-08-19 Gate Result
 
-The sole authorized product-wiring run used a local current Node ordinary-P2P
-server with peer assistance and TURN disabled, the loopback helper UI, and
-isolated headless Chrome.
-
-| Checkpoint | Retained evidence |
-| --- | --- |
-| Node and native host | The listener started and `/api/start` returned an invite. By the attempted branch's control flow, room creation and host signaling authentication completed first. |
-| Local encoder | The configuration acknowledgement preceded construction; the probe observed one `VideoEncoder` object and encoded output. Helper ingress and source RTP were not proven. |
-| Viewer page | The page and probe loaded, then the 30-second combined decoded-and-rendered condition timed out. |
-| Downstream path | Viewer auth, `peer-joined`, SDP/candidates, PC states, source RTP/edge packets, inbound RTP, video readiness, and console state were not retained. |
-
-The earliest missing evidence checkpoint is viewer authentication, not a proven
-authentication failure. The probe discarded false samples, swallowed some
-stats errors, and used render-callback evidence without readiness/current-time
-fallback. It therefore cannot identify the first runtime break or exclude a
-probe-only false negative.
-
-The result is `no-go-unclassified`. No second viewer, two-edge proof,
-third-viewer wait/FIFO promotion, or direct/TURN pairing ran. The attempted
-native branch must not be opened or merged as product code from this state.
+The sole authorized run is `no-go-unclassified`; the retained evidence and
+probe limitations are recorded in the native sender research. The earliest
+missing checkpoint is viewer authentication, not a proven authentication
+failure. No viewer-1 acceptance means there is no two-viewer, third-viewer
+FIFO, or direct/TURN proof. The attempted native branch must not be opened or
+merged as product code from this state.
 
 ## Staged Revalidation
 
