@@ -21,11 +21,11 @@ cost is unavoidable in ordinary browsers: every relay decodes and re-encodes
 the screen stream. The first spike measures whether that cost is acceptable; it
 does not hide it or claim shared encoding.
 
-The product preference is `direct P2P -> peer-assisted -> optional SFU`. This is
-an engineering priority, not permission for silent in-room migration. Direct
+The product preference is `direct P2P -> peer-assisted -> optional SFU`. Direct
 P2P remains the simplest path for one or two viewers. The experiment assigns the
-third and later viewers to peers automatically. The optional SFU remains an
-explicit, independently reversible deployment choice.
+third and later viewers to peers automatically. Deployment decides whether SFU
+capacity exists; when it does, a later small route controller must use it as an
+automatic last fallback without asking host or viewers to select a topology.
 
 ## What Browsers Can Share
 

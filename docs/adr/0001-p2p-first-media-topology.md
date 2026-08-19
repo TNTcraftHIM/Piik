@@ -3,6 +3,12 @@
 - Status: Accepted for the MVP
 - Date: 2026-08-18
 
+Current clarification, 2026-08-19: the MVP remains unchanged, but statements
+below that exclude automatic topology migration do not describe the product
+target. Automatic, viewer-transparent routing through direct P2P,
+peer-assisted media, and an enabled SFU fallback is a standing requirement and
+will be governed by a later ADR.
+
 Draft ADR-0003 and Proposed ADR-0004 do not supersede this production baseline.
 They isolate an optional SFU implementation and a bounded peer-assisted
 experiment respectively. A later Accepted ADR is required before either changes
@@ -22,7 +28,7 @@ Use separate control and media planes:
 - Only pairs that cannot connect directly use authenticated TURN. Production requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement, using its standard TCP port 5349 by default. Port 443 is optional and requires a dedicated public IP or a validated layer-4/SNI route when HTTPS already owns that address and port.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
 - The deployed MVP broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise. A newer product target caps host media fanout at two; the current implementation does not satisfy that target above two viewers, and Proposed ADR-0004 owns the isolated experiment rather than silently changing this accepted baseline.
-- No SFU is the automatic or default path for the normal product envelope. Severe user-observed multi-viewer degradation triggered Draft ADR-0003/PR #12 as an explicit optional experiment, but it is not merged, deployed, or accepted while that PR remains Draft.
+- An SFU is not the default path for the normal product envelope. Severe user-observed multi-viewer degradation triggered Draft ADR-0003/PR #12 as optional infrastructure, but it is not merged, deployed, or accepted while that PR remains Draft. If configured later, it may be selected automatically only after cheaper endpoint-carried routes cannot satisfy the route contract.
 
 ## Consequences
 
@@ -39,7 +45,7 @@ Negative:
 - Browser APIs do not guarantee that several peer connections share a single hardware encode.
 - Direct peers learn one another's network addresses; this is acceptable only for the initial trusted-friends threat model.
 - If the site-wide password is disabled, the numeric room code is the sole viewing capability and does not provide a strong privacy guarantee.
-- A room-level P2P-to-SFU migration adds state, keyframe, and reconnection complexity and is not part of the first prototype.
+- A room-level P2P-to-SFU migration adds state, keyframe, and reconnection complexity and is not part of the first prototype. This implementation boundary does not remove the product requirement for automatic, viewer-transparent fallback.
 - TURN over TCP can suffer head-of-line blocking, and its `turn:` client-to-server transport is not TLS-wrapped. The WebRTC media remains protected by DTLS-SRTP independently of that TURN transport.
 - Optional TURN/TLS on port 5349 or 443 can improve compatibility but cannot guarantee success through every authenticated proxy or policy-controlled network. A normal Cloudflare HTTP proxy does not proxy TURN; using Cloudflare for TURN requires a compatible layer-4 product such as Spectrum.
 

@@ -22,13 +22,15 @@ The smallest current plan is:
 4. Only if browser relay re-encoding is the isolated failure should another
    experiment add opt-in native volunteer encoded-RTP relays.
 5. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
-   explicit fallbacks. They transfer fanout bandwidth to their operator; they do
-   not make it disappear.
+   optional capacity. When configured, a later route controller uses that
+   capacity automatically only after cheaper endpoint-carried routes fail.
+   They transfer fanout bandwidth to their operator; they do not make it
+   disappear.
 
 Any browser-spike failure other than isolated relay re-encoding closes that
 browser-relay route. It does not cancel the separate native sender plan. Draft
-SFU PR #12 remains unmerged and undeployed. There is no automatic topology
-migration in this plan.
+SFU PR #12 remains unmerged and undeployed. The required automatic cross-mode
+fallback is not implemented in the current spike and needs its own bounded ADR.
 
 ## Traffic Conservation And The Impossible Triangle
 
@@ -62,11 +64,11 @@ lost.
 | Fixed two-chain browser relay | Host emits at most two copies; each relay emits at most one | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current default-off, maximum-eight-viewer spike |
 | Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
-| User-operated mini-SFU | User's SFU emits viewer copies | Separate deployment and its egress bill; running it on the host does not reduce that host's uplink | Explicit fallback |
-| Central single-node SFU | Service SFU emits viewer copies | Lowest endpoint relay burden; service pays approximately `N * B` egress | Explicit fallback; Draft PR #12 only |
-| SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Reject for the current product |
-| Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Reject for the current product |
-| MoQ | Publishers and MoQ relays emit object copies | New transport, packaging, player, relay, and auth stack | Reject for the current WebRTC product |
+| User-operated mini-SFU | User's SFU emits viewer copies | Separate deployment and its egress bill; running it on the host does not reduce that host's uplink | Optional capacity; automatic final fallback when enabled |
+| Central single-node SFU | Service SFU emits viewer copies | Lowest endpoint relay burden; service pays approximately `N * B` egress | Optional capacity; automatic final fallback when enabled; Draft PR #12 only |
+| SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
+| Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
+| MoQ | Publishers and MoQ relays emit object copies | New transport, packaging, player, relay, and auth stack | Optional central-fallback benchmark; still pays server egress |
 | Peer-assisted CDN | Peers cache or upload segments/objects | Discovery, locality, scheduling, incentives, abuse, and privacy systems | Reject for this trusted group |
 | IP multicast | Multicast routers replicate packets | Requires multicast-enabled hosts and routed networks unavailable to ordinary Internet browsers | Reject outside managed networks |
 
@@ -93,20 +95,20 @@ sole browser-spike failure. They must not rescue failures in deterministic
 assignment, host fanout, relay loss recovery, ICE/TURN connectivity, mobile
 leaves, or end-to-end latency.
 
-## Rejected For The Current Implementation
+## Outside The Current Browser-Track Spike
 
 - **SVC and multiple trees:** WebRTC SVC controls layered encoding; it does not
   distribute replicas. SplitStream shows how striping across multiple trees can
-  spread peer load, but the required tree maintenance, reassembly, scheduling,
-  and redundancy contradict the fixed two-chain experiment.
+  spread peer load. A separate encoded-object/native spike now owns its tree
+  maintenance, reassembly, scheduling, and redundancy gates; none belongs in
+  the fixed full-stream two-chain experiment.
 - **Network coding:** published work improves block distribution in large
-  overlays. Generations, coding/decoding, pollution protection, and buffering
-  create a custom transport and add latency; it is not a small extension to live
-  browser WebRTC.
+  overlays. A trace-first FEC experiment must prove lower freeze/repair delay
+  within strict byte and buffering budgets before any media integration.
 - **MoQ:** Media over QUIC provides promising relay-oriented publish/subscribe,
-  priorities, and partial reliability, but MOQT and its streaming format remain
-  active Internet-Drafts. Adopting it would replace the media plane and still
-  leave relay operators paying fanout egress.
+  priorities, and partial reliability, but MOQT remains an active Internet-Draft.
+  Benchmark it only as a central fallback because a browser cannot act as an
+  inbound WebTransport peer and the relay still pays fanout egress.
 - **Peer-assisted CDN:** PCDN research addresses large file or segmented VoD
   distribution and ISP/provider cost. Its discovery, caching, locality,
   scheduling, incentives, and abuse controls are disproportionate for at most
@@ -115,6 +117,9 @@ leaves, or end-to-end latency.
   require participating hosts and multicast routers. ICE establishes unicast
   candidate-pair transports; normal browser WebRTC across NAT and mobile networks
   exposes no Internet multicast delivery path.
+
+The measurable gates and exact staged experiments are in
+[Advanced Peer Distribution](./advanced-peer-distribution.md).
 
 ## Sources And License Boundary
 

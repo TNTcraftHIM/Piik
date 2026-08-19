@@ -33,8 +33,12 @@ Preserve the product priority in this order:
 1. direct P2P for one or two viewers;
 2. peer-assisted forwarding for later viewers when this experiment is active
    and every required capability is present; and
-3. the optional SFU as an explicit deployment alternative, not a silent
-   in-room migration.
+3. an enabled optional SFU as the final automatic fallback in a later route
+   controller.
+
+This bounded experiment implements only the first two levels. That scope must
+not be read as requiring users to select a topology or rejecting automatic
+cross-mode fallback as a product goal.
 
 The experiment is gated by `PEER_ASSISTED_MEDIA`, which defaults to `false`.
 Enabling it requires `MAX_VIEWERS_PER_ROOM` at or below eight; larger configured
@@ -77,8 +81,9 @@ resolution, bitrate, frame rate, or resource cost.
 
 Encoded Transform, DataChannel media, WebCodecs rendering, dummy-sender byte
 replacement, custom congestion control, codec ladders, multiple trees, mobile
-background relay, and automatic SFU migration are excluded. They are not rescue
-work if standard track relay fails.
+background relay, and cross-mode SFU migration are excluded from this spike.
+They are not rescue work if standard track relay fails; a separate automatic
+route-controller ADR owns cross-mode fallback.
 
 ## Shared Encoding Boundary
 
@@ -138,8 +143,9 @@ meeting a gate requires Encoded Transform/DataChannel/WebCodecs media, custom
 congestion control, FEC/RTX changes, multiple trees, relay scoring, transcoding,
 a codec ladder, relaxed host fanout, or a browser-specific RTP injection hack,
 stop. Change this ADR to Rejected and delete the experimental browser-relay
-runtime path and dependencies. That result keeps standard P2P plus explicit
-user-operated or central SFU fallbacks. It does not cancel the separate planned
+runtime path and dependencies. That result keeps standard P2P plus enabled
+user-operated or central SFU fallbacks for the later automatic controller. It
+does not cancel the separate planned
 native shared-encode sender, and that sender cannot be used to mark an otherwise
 failed browser-relay topology as passing.
 
@@ -174,8 +180,9 @@ Negative:
 
 - ADR-0001 remains the accepted production baseline. This proposal narrows its
   peer-tree rejection only enough to run an isolated experiment.
-- Draft ADR-0003 in PR #12 remains the separate explicit optional-SFU proposal.
-  This proposal neither accepts/removes it nor adds automatic P2P/SFU switching.
+- Draft ADR-0003 in PR #12 remains the separate optional-SFU proposal. This
+  experiment neither accepts/removes it nor implements the required automatic
+  P2P/peer-assisted/SFU route controller.
 - If a later ADR accepts peer-assisted media, it must state exactly which parts
   of ADR-0001 and ADR-0003 it supersedes.
 

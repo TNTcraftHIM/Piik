@@ -4,19 +4,14 @@ Last updated: 2026-08-19
 
 ## Phase
 
-The WebRTC proof of concept is deployed at `https://share.bonfire.icu` on commit
-`5b2fb005f6f7`. It supports live quality/source changes, video-only pause,
-protected SQLite persistence, sequential room IDs, and reusable links; room ID
-`1` survived the deployment restart.
+The WebRTC proof of concept at `https://share.bonfire.icu` runs commit
+`5b2fb005f6f7` with live quality/source changes, video pause, protected SQLite
+rooms, sequential IDs, and reusable links.
 
-Production still uses one host `RTCPeerConnection` per viewer. Draft PR #13 adds
-a default-off, standard-WebRTC peer-assisted experiment for later viewers: two
-sticky chains with host capacity two, viewer capacity one, and decode/re-encode
-at every browser relay hop. The Draft now also propagates the host-selected
-1080p60/1080p30/720p30 room profile to current and future relay senders.
-`PEER_ASSISTED_MEDIA=false` remains the default, the mode cannot be enabled above
-eight viewers, and it is neither merged, deployed, nor production-validated.
-Draft SFU PR #12 is also unmerged and undeployed.
+Production still creates one host `RTCPeerConnection` per viewer. Draft PR #13
+adds default-off, maximum-eight-viewer peer assistance: two sticky chains,
+host capacity two, viewer capacity one, per-hop decode/re-encode, and synchronized
+quality profiles. Draft SFU PR #12 is also unmerged and undeployed.
 
 ## Current Snapshot
 
@@ -24,57 +19,54 @@ Draft SFU PR #12 is also unmerged and undeployed.
 - Whole-site `ACCESS_PASSWORD` is optional. Protected sessions use a stateless 12-hour HMAC HttpOnly `SameSite=Strict` cookie; host authentication remains internal and signaling is role-bound.
 - Without `ROOM_DATABASE_PATH`, rooms are random and temporary. With both the database path and site password, room IDs start at `1`, links persist, and stopping a share leaves viewers waiting. SQLite stores only room ID and host-token digest.
 - Direct ICE is preferred independently per media edge. Authenticated TURN/UDP and TURN/TCP are required production fallbacks; TURN/TLS is optional.
-- The media priority is direct P2P for one or two viewers, peer assistance only after every ADR-0004 gate passes, then user-operated or central single-node SFU as an explicit fallback. There is no automatic migration.
+- The required media priority has always been direct P2P, then peer assistance, then an enabled user-operated or central SFU fallback, with route allocation and recovery hidden from host and viewers. The current peer-assisted Draft already assigns the first two viewers to the host and later viewers to peers automatically. Cross-mode failure fallback and live migration are not implemented yet; they must preserve the host two-edge budget, minimize server egress, and use a small deterministic state machine rather than composite health scoring.
 - Peer-assisted profile state is bounded, server-memory-only, and absent from the ordinary P2P wire. The host reasserts its choice after authentication; online viewers receive changes, and each relay applies the latest desired profile to its current or future child through serialized sender mutations.
 
 ## Verified Evidence
 
-- Production release `5b2fb005f6f7` passed type checking, 108 tests, both builds, loopback/public HTTPS and access-gate checks, and clean activation without disturbing nginx, coturn, or the blog.
-- The protected production database and permissions survived restart, and room ID `1` remained present. Stop-and-republish and link reuse still require a browser cycle.
-- The recorded peer-assisted full check passes type checking, 12 Vitest files with 144 tests, and both production builds.
-- Chromium 151 one-to-three evidence held exactly two connected host outbound peers. Viewer 1 held one inbound plus one outbound peer and forwarded to viewer 3; viewer 2 stayed direct; all three decoded frames.
-- A Chromium 151 one-to-three loopback smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings; calls succeeded and the leaf kept decoding. Its synthetic 640x360/30 source proves propagation and connection preservation, not 1080p quality or load.
-- A Chromium 151 one-to-eight synthetic functional smoke formed two depth-four chains. The host held two outbound peers; viewers 1 through 6 each held one inbound plus one outbound; viewers 7 and 8 were leaves; all decoded frames. This proves topology only, not quality, resource cost, latency, or endurance.
-- Closing the first-level relay caused its branch to reattach and decode again after about 5.3 seconds while host active connected outbound edges peaked at two.
+- Production passed 108 tests, both builds, public HTTPS/access/TURN checks, clean activation, and a database restart with room `1` retained.
+- Draft PR #13 now provides `npm run benchmark:peer-assisted`; the full check passes type checking, 13 Vitest files with 152 tests, and both production builds.
+- A short Chrome 151 synthetic `1/3/5/8` benchmark passed every topology check: host active edges peaked at two, relay edges at one, every viewer kept increasing decoded frames through the measurement window, and the slowest first decoded frame was about 1.05 seconds. Closing a first-level relay in the three-viewer run recovered in about 5.32 seconds without exceeding host fanout two.
+- A separate live-profile smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings while its leaf kept decoding.
 - Local WebRTC diagnostics derive per-frame encode/decode cost from adjacent non-overlapping `getStats()` samples. First, empty, changed-stream, and reset intervals stay unknown and rebase instead of publishing a misleading lifetime average.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
 
 ## Unverified Boundaries
 
-- Room profile propagation and live sender-ceiling changes are verified on the synthetic loopback path. Actual full-resolution cross-hop output, sustained bitrate and frame rate, encode cost, visual quality, and heterogeneous-network behavior under each profile remain unverified.
-- Peer assistance has not completed 1/3/5/8-viewer 30-minute runs, relay CPU/GPU and generational-quality measurements, controlled loss/RTT tests, or depth-four latency gates.
+- The short harness uses synthetic headless capture and proves topology, controls, stats collection, and recovery only. Full-resolution 30-minute runs, relay CPU/GPU, generational quality, controlled loss/RTT, depth latency, and actual game-capture behavior remain unverified.
 - Android Chrome and iOS Safari remain required leaves but are not verified for this topology. There is no runtime relay-capability bit; controlled join order is the only mobile-leaf enforcement, so arbitrary-user deployment is excluded.
 - The observed recovery starts from a page close immediately seen by the server. A silent partition can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; it remains unverified.
 - Real screen/game audio, heterogeneous machines and networks, mobile lifecycle behavior, the production live quality/pause cycle, room `1` stop-and-republish/link reuse, and sustained profile performance remain unverified.
-- Browser relays do not provide shared encoding. Encoded Transform, DataChannel/WebCodecs media, custom congestion control, multiple trees, relay scoring, and automatic SFU switching remain outside the experiment.
+- Browser relays do not provide shared encoding. Encoded Transform, DataChannel/WebCodecs media, custom congestion control, multiple trees, and network coding remain researched alternatives rather than current implementation. They may enter a separate bounded experiment only when measurements identify a specific bottleneck and show a plausible sub-second benefit.
+- The long-term endpoint budget is at most two downstream edges for both the host and relay-capable viewers, with one compatible encoded output reused across both edges where a native media engine can prove it. The current browser spike remains host capacity two/viewer capacity one and performs a new encode at each relay. Packet/layer striping and multi-parent assembly are recorded, not implemented.
 
 ## Next Milestone
 
-Complete only the bounded ADR-0004 experiment, with distribution work ahead of
-UI polish:
+Complete ADR-0004 before UI polish: run full-resolution 30-minute `1/3/5/8`
+matrices with network shaping and resource/quality/latency capture; exercise source,
+profile, stop/restart, rebuild, reparent, signaling and silent-partition paths; and
+verify Chrome/Edge relays with Android Chrome and iOS Safari leaves.
 
-- repeat live switching with full-resolution high-motion capture, then validate stream replacement, stop/restart, child rebuild, reparenting, and signaling interruption against the latest room profile in real browsers;
-- preserve host fanout at two and viewer fanout at one across joins, reconnects, grace expiry, and reparenting;
-- run reproducible 1/3/5/8-viewer measurements using the deployed profiles, recording topology depth, selected ICE path, host/relay upload, encode/decode work, first picture, decoded FPS, quality limitation, and glass-to-glass latency;
-- repeat first-level relay loss with a server-observed close and separately measure silent heartbeat-detected partition recovery; and
-- verify current Chrome/Edge relays plus Android Chrome and iOS Safari leaves.
+In parallel, Proposed ADR-0005 defines the smallest automatic route controller
+for `direct P2P -> peer-assisted -> optional SFU`. It must use explicit
+budgets and discrete failure events, avoid continuous composite scoring, and
+specify make-before-break or a bounded visible interruption before any live
+migration is implemented. The current Draft still performs no automatic
+cross-mode migration.
 
 For a disconnect immediately observed by the server, the gate retains the
 default 5-second grace followed by at most 3 seconds to restore a decodable
 picture, about 8 seconds total. Silent partitions include their detection delay.
 
-All gates fail closed. If success requires a custom browser media plane, changed
-RTP recovery, multiple trees, scoring, transcoding, a codec ladder, or more than
-two host edges, remove the browser-relay experiment. A separate native
-shared-encode sender remains planned regardless of that result; it lowers host
-encode work, does not remove per-edge upload, and cannot rescue another failed
-topology gate.
+ADR-0004 gates fail closed for the current full-stream browser path. Native
+shared encode and packet/layer striping are separate measured experiments, not
+ways to relabel a failed browser-relay result.
 
 ## Blockers And Decisions
 
-No infrastructure blocker remains. Production adoption of peer assistance is
-blocked on the measurement matrix and ADR-0004 gates above. Native shared encode
-requires its own later ADR and is not part of Draft PR #13.
+Production peer assistance remains blocked on the matrix and ADR-0004 gates.
+Automatic cross-mode routing, native shared encode, and multi-tree striping each
+require their own bounded ADR/spike.
 
 - Whole-system versus selected-game audio for the first release.
 - Initial deployment region and network cohort.
