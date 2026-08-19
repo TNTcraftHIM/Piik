@@ -4,7 +4,7 @@ Screener is a private, low-latency screen-sharing project for one game player an
 
 The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code. Rooms default to a private fragment invitation whose capability authorizes only one room; a Host may explicitly choose public watching by room code. During a share, the host can change between three ceiling profiles without reopening the source picker: 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps. The host can also temporarily pause the picture or switch sources. Rooms are random and temporary by default. A Host-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. Default routing gives each viewer an independent direct WebRTC connection; the exact-room controller can instead use bounded peer descendants and LiveKit SFU roots. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
 
-This is not yet a production release. Production runs the bounded SFU failure-stage diagnostic from `9610032`; the repository uses self-hosted STUN-only ordinary ICE plus a separate LiveKit SFU/UDP domain. Real cross-network media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
+This is not yet a broadly validated production release. Production runs `bbe4654` with room-scoped Viewer access and the bounded SFU failure-stage diagnostic; it uses self-hosted STUN-only ordinary ICE plus a separate LiveKit SFU/UDP domain. Real cross-network media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
 
 ## Run locally
 
@@ -26,9 +26,8 @@ must remain on `localhost` or HTTPS because screen capture requires a secure
 context. The local default has no STUN, so cross-network use still requires
 HTTPS and the production ICE configuration documented separately.
 
-Before deploying this access migration, take the stopped v1 SQLite backup and
-rehearse its restore as documented in [Deployment](./docs/deployment.md). After
-deployment, `HOST_ADMISSION_PASSWORD` authorizes only creation and Host role;
+Production keeps a stopped v1 SQLite backup and restore boundary as documented
+in [Deployment](./docs/deployment.md). `HOST_ADMISSION_PASSWORD` authorizes only creation and Host role;
 private Viewers use an expiring room-scoped fragment grant, while explicit
 public-watch accepts a room code. The release has no v1 parser, old cookie, or
 dual-schema runtime. Ordinary ICE contains only self-hosted STUN, LiveKit serves
