@@ -13,8 +13,8 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Capture precedes room creation; live source/quality changes preserve peers and picture pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
 - Optional `ACCESS_PASSWORD` uses a stateless 12-hour HMAC HttpOnly Strict cookie; host auth stays internal and signaling role-bound.
 - Without `ROOM_DATABASE_PATH`, rooms are temporary. With it and the password, sequential links persist after stop; SQLite stores only room ID and host-token digest.
-- Direct ICE is preferred independently per media edge. Authenticated TURN/UDP and TURN/TCP are required production fallbacks; TURN/TLS is optional.
-- Hidden routing is `direct P2P -> peer-assisted -> optional SFU roots`; TURN is selected per edge, and SFU roots retain bounded peer descendants. Exact-room canaries use `PEER_ASSISTED_ROOM_IDS`; production is off.
+- Production still requires coturn UDP/TCP. Target media is peer UDP -> SFU/UDP roots -> optional edge TURN -> failure; HTTPS/WSS stays TLS/TCP.
+- SFU normally feeds one or two roots. Downstream cap is two, browser relay one; exceptional central edges need a separate cap. Production routing is off.
 - Configured fallback adds a non-secret standby URL and token-free DNS/TLS warmup; absent configuration adds no field, import, request, participant, or edge.
 - Each viewer advertises relay capacity 0/1; detected mobile/iPad clients are leaves. Withdrawal does not move a healthy edge. Browser relays stay one-child and host two-child.
 - Production has memory-only video settings and manual readback. Automatic `HIGH`/`FALLBACK` plus one shared on-demand `LOW` is accepted but not deployed; host A+B exists, while C/actions do not. Browser audio is request/presence-only.
@@ -26,7 +26,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Synthetic Chrome 151 720p30 propagated balanced/clarity to one host and three viewers without peer changes; decoding and 2/1 fanout continued. This proves control continuity only.
 - Chrome 151/LiveKit localhost A/B measured cold active/render at 1.481/2.257 seconds versus standby 0.200/0.320 with host edges at two. It includes SDK/prewarm and is not public-network evidence.
 - Atomic activation passed health/access, exact bundle, SQLite preservation, services, and logs; the old release is rollback-ready. Responsive 320/375/390 px checks passed without live media.
-- Host A+B aligns capture with one unique outbound RTP, interval/identity/deltas, `remoteId`, and path. Its same-transport codec exposes nullable MIME/self-describing profile token/allowlisted fmtp/`scalabilityMode`; tokens imply no quality or capability conclusion, and no raw fmtp/SDP/stats are added. Stale, ambiguous, reset, or cross-transport evidence stays unknown. Independent review found no P1/P2 issues; the final local check passed 22 files/299 tests and both builds.
+- Host A+B aligns capture with one outbound RTP, interval/deltas, `remoteId`, path, and nullable transport-bound codec/profile/fmtp/`scalabilityMode`. It infers no quality/capability, retains no raw fmtp/SDP/stats, and treats stale, ambiguous, reset, or cross-transport data as unknown. Review found no P1/P2; 22 files/299 tests and both builds passed.
 - HTTPS/WSS, access and room/WebSocket auth, renewal, public STUN, and authenticated TURN/UDP/TCP relay-only paths pass; TURN/TLS is off.
 - Draft #16/#18/#22/#23/#25/#28 passed isolated experiments only. ADR-0006 reached host setup/one encoder output, then timed out before viewer 1 decoded/rendered.
 
@@ -38,9 +38,9 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Real audio, heterogeneous clients, mobile lifecycle, quality/pause, room `1` republish, and sustained profiles are unverified. Poor movie/video audio is user-reported but unclassified; after video A+B, diagnose capture settings, codec/fmtp, actual bitrate, loss, jitter, concealment, jitter buffer, and A/V sync.
 - Production `769de201f7cc` reportedly sustains native `qualityLimitationReason=bandwidth` and severe blur with one capable LAN/direct viewer; only Host refresh restores quality. Within the five-second grace, stable-clientId Viewer refresh retains its `peerId`/`HostPeer`, while Host refresh rebuilds peers/capture; churn persistence is also reported. This prioritizes but does not prove sender/PC/GCC/capture generation over network or lifecycle causes.
 - ADR-0007 remains incomplete. Host A+B codec fields exist, but browser support and the reported case are unverified; authenticated C, the controller, and `LOW` are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
-- Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints were not retained; two-edge/FIFO/TURN/product gates remain unrun. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
-- The endpoint budget remains host/relay at most two downstream edges; the browser path is host two/viewer one.
-- ADR-0005 permits SFU only after peer failure. Stable dual-TURN roots are shadow-only; exact-room TURN-root/SFU-root cost, recovery, and trust evidence is absent.
+- Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
+- Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
+- ADR-0005 accepts SFU-root fallback, but code is failure-only/TURN-required; UDP-first config, edge grants, bounded failure, cost/trust, and public canary are absent.
 - Pinned LiveKit 1.13.5 Dynacast enables all qualities at or below the room's maximum request, so a `HIGH` root is expected to keep `LOW` enabled. It remains a bounded rejection/verification spike, not evidence that on-demand `LOW` can stop.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
@@ -54,11 +54,11 @@ moving healthy peers or breaking the host-edge cap. Only proven stuck
 generations justify guarded/cooldown recovery; never reconnect periodically or
 raise ceilings blindly.
 
-After video A+B, separately run the movie/video audio A/B/C and sync diagnosis
-in `docs/research/browser-screen-audio-quality.md`; `maxBitrate` is not a quality
-fix. Then add minimal authenticated video C, the two-state controller, and
-on-demand shared `LOW`. Later route work starts with manual ICE ground truth and
-shadow-only exact-room TURN-root/SFU-root comparisons, not automatic migration.
+After video A+B, run the audio A/B/C and sync diagnosis; `maxBitrate` is not a
+quality fix. Then add authenticated video C and test standard
+simulcast/LiveKit/SVC before custom `LOW`, independently of ADR-0006. The app
+owns only the two-state policy; WebRTC/LiveKit owns congestion/layers. Later one exact room must pass peer/SFU UDP, optional
+compatibility, and bounded-failure gates before changing coturn/TCP.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix.
@@ -75,7 +75,7 @@ decode/render, 2/3-viewer, and TURN evidence.
 
 ## Blockers And Decisions
 
-Peer assistance and automatic routing remain No-Go until ADR-0004/0005 pass.
+Peer assistance and automatic routing remain No-Go until ADR-0004/0005 migration gates pass.
 Without LiveKit, two mobile leaves can fill both host roots; use an isolated
 exact-room canary only.
 Native shared encode and striping remain separate experiments.

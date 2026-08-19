@@ -4,11 +4,12 @@
 
 - Build private, low-latency game screen sharing for one broadcaster and a small group of trusted friends.
 - This is not a public or large-scale streaming product; users can use OBS/Twitch-class services for that workload.
-- Keep the media path P2P-first. Use centralized services for rooms, authentication, signaling, STUN, observability, and TURN fallback.
+- Keep the media path P2P-first. Use centralized services for rooms, authentication, signaling, STUN, observability, and bounded SFU-root capacity; TURN is an optional transport compatibility fallback.
 - Let viewers join from a normal desktop or mobile browser without installing the sender application.
-- STUN and authenticated TURN fallback are required. "P2P-first" must never mean "direct-only"; fallback is decided independently for every viewer.
+- STUN is required. The target automatic ladder is direct/peer ICE over UDP, then an SFU virtual parent feeding at most two roots, then optional authenticated TURN for deployments that explicitly cover restrictive networks, followed by a clear bounded failure. Ordinary peer edges must not receive TURN candidates by default merely to maximize rare-network coverage. HTTPS/WSS remains TLS/TCP and is independent of this media-transport policy.
+- Every non-server endpoint has at most two active downstream media edges; an upstream receive edge does not consume this upload budget. Browser relays remain stricter at one downstream edge until their re-encode/resource gates pass. Central media normally serves at most two roots; extra server-fed exceptional viewers require an explicit deployment egress/admission cap and must never create unbounded fanout.
 - Treat a web client as the initial delivery target. A packaged desktop sender or native capture helper is a later optimization, not an assumed requirement.
-- Do not silently change the product into an always-SFU conferencing system. Record any topology change as an ADR with measured justification.
+- Do not silently change the product into an always-SFU conferencing system. An SFU is a virtual parent for one or two necessary roots whose peer descendants remain distributed; record any broader topology change as an ADR with measured justification.
 
 ## Repository Knowledge
 

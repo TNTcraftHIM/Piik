@@ -6,25 +6,25 @@ Last updated: 2026-08-19
 
 - Build low-latency game screen sharing for one broadcaster and a small trusted group; public or large broadcasts belong on OBS/Twitch-class services.
 - Viewers join from normal desktop/mobile browsers. A later native sender may share encoding and improve capture/audio without changing the Web viewer requirement.
-- Use a small central service for access, rooms, signaling, deterministic topology, STUN/TURN, and observability while clients carry media whenever practical.
-- Minimize server bandwidth. Automatic, viewer-transparent routing follows direct P2P, measured peer assistance, then enabled user-operated/central SFU fallback under deterministic budgets; TURN is transport chosen per edge, not a topology.
-- Host/native roots have at most two downstream edges; browser relays have one. An SFU is only a virtual parent for one or two necessary roots, which retain bounded peer descendants; a zero-descendant viewer consumes the same root cap only when no reliable relay root exists. A long-term native/object path should reuse one encode, while browsers re-encode.
+- Use a small central service for access, rooms, signaling, deterministic topology, STUN, observability, and bounded SFU-root capacity; TURN is optional extreme-network transport.
+- Minimize server bandwidth. The accepted invisible ladder is direct/peer UDP, then SFU/UDP roots, then optional TURN for a selected exceptional edge, then bounded failure. TURN is transport, not topology.
+- Non-server nodes have at most two downstream edges; browser relays stay at one until resource gates pass. SFU normally feeds one or two roots that retain peer descendants; separately capped server edges may serve multiple exceptional viewers that cannot attach behind a healthy root. Native/object paths should reuse one encode while browsers re-encode.
 - Two-tree packet/layer striping may reduce endpoint upload toward one stream bitrate, but needs a bounded multi-parent, loss, sync, churn, and latency experiment; it is not in the current full-stream chains.
-- Shared encoding reduces compute, not each viewer's last-hop copy. Automatic quality uses shared `HIGH` plus exactly one on-demand `LOW` whenever verified weak paths exist; all weak paths share it and recovery stops it. An unavailable efficient second encoder fails closed for that attempt while protecting `HIGH`, but a supported sender cohort that cannot start `LOW` reliably fails controller acceptance and must be optimized or marked unsupported. SVC has no software fallback.
+- Shared encoding reduces compute, not each viewer's last-hop copy. Automatic quality uses one active `HIGH` representation plus at most one on-demand `LOW`; all verified weak paths share `LOW` and recovery stops its bytes/frames. This does not prove one/two physical encoders or GPU release. An over-budget media path fails closed for that attempt while protecting `HIGH`, but a supported cohort that cannot start `LOW` reliably fails acceptance. SVC has no software fallback.
 - Keep decisions, snapshots, research, code, `AGENTS.md`, and `.codex/` in Git; rewrite memory/status in place. Research current primary sources before material work and reject speculative machinery.
 
 ## Current Recommendation
 
 - Keep desktop Chrome/Edge and the responsive Web viewer as the baseline. Validate Android Chrome and iOS Safari as leaves.
-- Use direct host P2P for one or two viewers. Keep ADR-0004 off for broad production traffic: two mobile leaves can consume both host roots. Use the exact-room allowlist only on an isolated canary until its resource, quality, recovery, TURN, and browser/mobile gates pass.
+- Use direct host P2P for one or two viewers. Keep ADR-0004 off broadly; use an exact-room canary until resource, quality, recovery, SFU/UDP, optional-TURN, and browser/mobile gates pass.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep browser experiments bounded; spike native RTP relay, encoded-object striping, SVC, and FEC separately.
 - ADR-0006 retains a fixed-`HIGH` native canary boundary, but its sole product-wiring run reached only host setup and one encoder output before the first-viewer decoded/rendered gate timed out. Downstream checkpoints were not retained, so the result is no-go-unclassified, not a diagnosed product bug. No native product code is accepted; revisit only through the staged evidence gate.
-- Optional single-node SFU capacity is failure-only final fallback; it never defaults to whole-room fanout. Stable dual-TURN host roots are only a future exact-room shadow comparison against the same SFU roots, with real hop/egress and E2EE/operator accounting, until evidence amends ADR-0005. PR #12's whole-room SFU mode is superseded.
-- Keep ADR-0005 routing default-off: discrete failures drive peer/SFU recovery, full host fanout uses break-before-make, and mobile/iPad clients stay leaves. PR #20 prewarm passes locally; public transport/load gates remain.
+- ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP, never default whole-room fanout. Optional TURN is issued only to an exceptional assigned edge; PR #12 is superseded.
+- Keep the current failure-only controller default-off until config migration and exact-room gates pass. Preserve break-before-make, sticky healthy subtrees, mobile leaves, and PR #20 prewarm; public transport/load remains open.
 - Local reparenting is a later candidate: start with unassigned relay admission rescue; do not block current work.
-- Prefer direct UDP, then TURN/UDP, with TURN/TCP required; optional TURN/TLS defaults to 5349, while 443 needs a dedicated address or validated L4/SNI routing.
-- Treat video settings as ceilings and degradation as unclassified. Local host A+B now covers same-tick capture/outbound identity, windows, deltas, remote linkage, path, and nullable negotiated codec/profile token/allowlisted parameters/current stream `scalabilityMode`. Use it first to reproduce the reported Host-only recovery, then add minimal authenticated C, a two-state controller, and shared `LOW`. Never use UA or a composite score.
+- Flagship media defaults to UDP; HTTPS/WSS remains TLS/TCP. Current production still requires coturn UDP/TCP. Future TURN absence is normal, partial config fails, and any media-TCP/port compatibility mode is chosen only by canary.
+- Treat video settings as ceilings and degradation as unclassified. Local host A+B now covers same-tick capture/outbound identity, windows, deltas, remote linkage, path, and nullable negotiated codec/profile token/allowlisted parameters/current stream `scalabilityMode`. Use it first to reproduce the reported Host-only recovery, then add minimal authenticated C and test standard simulcast/LiveKit/SVC before custom `LOW`; this need not wait for ADR-0006. Never use UA or a composite score.
 - Reported poor movie/video audio is unclassified. After video A+B, separately diagnose audio A/B/C and A/V sync across capture settings, codec/fmtp, actual bitrate, loss, jitter, concealment, and jitter buffer. `maxBitrate` is not quality-up; do not expand runtime before evidence. See `docs/research/browser-screen-audio-quality.md`.
 - Do not add custom scene detection or dynamic-FPS control until WebRTC statistics and host resource measurements prove a material gap. Keep browser codec order until target hardware proves a more efficient common codec.
 - Keep room policy deployment-driven: public/password-only rooms are random and temporary; password plus SQLite enables sequential persistent rooms and reusable stopped links.
@@ -52,7 +52,7 @@ Last updated: 2026-08-19
 ## Provisional Quality Targets
 
 - Controlled direct path at RTT no more than 40 ms and loss no more than 1%: glass-to-glass p50 no more than 150 ms and p95 no more than 250 ms.
-- Regional TURN/UDP under the same endpoint conditions: glass-to-glass p95 no more than 350 ms.
+- Regional SFU/UDP roots under the same endpoint conditions: glass-to-glass p95 no more than 350 ms; optional TURN is measured separately.
 - First picture within 3 seconds after a watch request, excluding explicit permission time.
 - A 60 fps profile must not remain below 50 decoded fps for more than 5 seconds without a visible downgrade or limiting reason.
 
@@ -62,7 +62,7 @@ These are measurement gates, not performance claims.
 
 - Sustainable viewer count by broadcaster and relay hardware, quality profile, network class, and media route; use instrumented 1/3/5/8 comparisons rather than a 1:8 claim.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
-- Whether ADR-0005 standby gains persist across public LiveKit UDP/ICE-TCP/TURN, rollback, reconnect, restart, egress, load, and browser-matrix gates.
+- Which optional TURN/media-TCP transport and port, if any, survives ADR-0005's public UDP-first canary; current LiveKit ICE/TCP/coturn stays until migration passes.
 - Exact mobile lifecycle behavior and whether Windows per-application audio is required for the first release.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
@@ -74,5 +74,5 @@ These are measurement gates, not performance claims.
 - Documentation index and current phase: `docs/README.md` and `docs/status.md`
 - Requirements and design: `docs/需求理解.md` and `docs/方案设计.md`
 - Media research: `docs/research/`, indexed by `docs/README.md`
-- Architecture: ADR-0001/0002, proposed ADR-0004/0005, no-go proposed ADR-0006, accepted ADR-0007, and rejected/superseded ADR-0003
+- Architecture: ADR-0001/0002, proposed ADR-0004, accepted-but-unverified ADR-0005, no-go proposed ADR-0006, accepted ADR-0007, and rejected/superseded ADR-0003
 - Deployment and maintenance: `docs/deployment.md`, `docs/maintenance.md`, `AGENTS.md`, and `.codex/`

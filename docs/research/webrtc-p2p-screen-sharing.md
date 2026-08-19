@@ -2,7 +2,7 @@
 
 - 调研日期：2026-08-18
 - 目标场景：一名玩家向少量熟人私密分享，观看者可用手机/桌面浏览器加入，低延迟，尽量不消耗媒体服务器带宽
-- 结论状态：标准 P2P 原型基线已采用；多人退化已触发独立的 peer-assisted 调研与 Draft SFU 对照，二者都未成为默认路径
+- 结论状态：本文记录已部署 PoC 的 P2P/coturn 基线。ADR-0005 与[低服务器成本媒体路由](./low-server-media-routes.md)已取代本文早期“每条 peer edge 必带 TURN”的旗舰建议；生产代码尚未迁移
 
 ## 结论
 
@@ -16,7 +16,7 @@
    |
    +---- 仅直连失败的观看者 ---- TURN relay -------+
 
-首选顺序：一至两名观看者直接 P2P -> 通过门槛后的 peer-assisted -> 部署已提供的可选 SFU。
+旗舰目标顺序：一至两名观看者 direct P2P -> 通过门槛后的 peer-assisted -> SFU virtual parent 服务必要 roots；当前生产仍未配置 peer assistance/LiveKit。
 系统必须无感完成拓扑分配、恢复和必要迁移；大规模公开分享仍直接使用现有直播服务。
 ```
 
@@ -32,7 +32,7 @@
 | 产品 | 已公开的可靠事实 | 对本项目的含义 |
 | --- | --- | --- |
 | Discord Go Live | 使用 WebRTC，但媒体发往 Discord RTC Worker 后再转发给观看者；官方明确这是为了路由控制和隐藏用户 IP。桌面端有原生 C++ media engine、自研捕获/编码、多后端回退和硬件编码。 | Discord 的稳定性并不是纯 P2P 或纯浏览器免费获得的。它是未来质量上限参考，不是首版拓扑参考。 |
-| TeamSpeak 6 | 官方技术回复说明用 WebRTC/ICE 做 P2P 屏幕分享；Windows 在 DX、Windows Game Capture 与传统捕获路径间选择。2026-04 官方称其 `turn.*` 主机实际仅启用 STUN，server-side SFU 仍在开发。 | 与当前目标最接近，也解释了 direct-only/STUN-only 在严格 NAT 下可能出现“同房间部分人能看、部分人不能看”；本项目必须从首版部署 TURN relay。 |
+| TeamSpeak 6 | 官方技术回复说明用 WebRTC/ICE 做 P2P 屏幕分享；Windows 在 DX、Windows Game Capture 与传统捕获路径间选择。2026-04 官方称其 `turn.*` 主机实际仅启用 STUN，server-side SFU 仍在开发。 | 与当前目标接近，也解释了 direct-only/STUN-only 的部分可达风险；Screener 已部署 coturn 基线，旗舰迁移改由 SFU/UDP roots 兜底并把 TURN 设为可选兼容层。 |
 | KOOK / Oopz | 官方 SDK 清单只足以证明屏幕分享接入声网相关能力，没有公开具体媒体拓扑。 | 可以参考交互，不能把它们写成已经证实的 P2P 或 SFU 案例。 |
 
 来源：
@@ -53,7 +53,7 @@
 - STUN 让客户端发现公网映射并产生 server-reflexive candidate。它不承载媒体，也不能保证穿过所有 NAT。
 - ICE 测试 host、server-reflexive、peer-reflexive 和 relay candidates，并选择可工作的候选对。Trickle ICE 可以减少建连等待。
 - TURN 在无法直连时转发完整媒体流，是 NAT 组件中真正产生高带宽成本的部分。
-- 生产最小候选集合是 STUN、TURN/UDP 和 TURN/TCP；可选再加入 TURN/TLS。整体偏好应表达 direct UDP -> TURN/UDP -> TURN/TCP -> optional TURN/TLS，但 ICE 可能交错或并发进行候选检查，应用不应手写严格串行计时器。TCP 在丢包时可能产生队头阻塞。
+- 当前 release `769de201f7cc` 的生产候选集合是 STUN、TURN/UDP 和 TURN/TCP，可选再加入 TURN/TLS；这是部署事实，不是新旗舰目标。ADR-0005 的迁移目标是 ordinary peer ICE/UDP -> SFU/UDP roots -> 可选兼容 transport -> bounded failure。ICE 仍可能交错或并发检查候选，应用不手写严格串行计时器；媒体 TCP 在丢包时可能产生队头阻塞。
 
 不存在适用于所有用户的权威“P2P 直连率”。CGNAT、endpoint-dependent mapping、校园/企业防火墙、移动网络、IPv6 和地区运营商都会改变结果。首版必须通过 `getStats()` 统计自己的 `host/srflx/prflx/relay` 比例，而不是引用未经验证的行业百分比。
 
@@ -61,11 +61,11 @@
 
 ICE 是按分享者与每一名观看者的网络组合独立选路，而不是整个房间只做一次连接。一个家庭宽带观看者可能成功 UDP 打洞，另一个处于 CGNAT、对称 NAT、校园网、企业代理或蜂窝网络的观看者却没有可用直连候选。因此同一房间天然可能出现不同结果。
 
-解决方式不是强迫所有人走服务器，也不是继续增加 STUN 地址，而是同时提供有效的 TURN 凭据和多种传输：
+已部署 PoC 的处理方式是同时提供有效 TURN 凭据和多种传输；旗舰迁移后，下列 2/3 项只描述现行基线：
 
 1. 将 direct UDP 设为最高优先级，成功者保持零媒体服务器路径。
-2. 同时提供有效的 TURN/UDP 与 TURN/TCP candidates，由 ICE 连通性检查和优先级选择路径；需要额外兼容性时再加入 `turns`，默认使用标准 TCP 5349。
-3. 通过统计确认最终选中的 candidate pair，而不是从应用计时顺序推断路径。
+2. 当前生产同时提供 TURN/UDP 与 TURN/TCP candidates；目标 ordinary peer edge 不再默认收到它们，UDP 失败时优先使用 SFU root，可选 coturn 只由新 per-edge grant/wire 授予异常连接。
+3. 通过统计确认最终选中的 candidate pair；LiveKit participant TURN 与 ordinary peer coturn 分别记录，不能从应用计时顺序推断路径。
 4. 网络切换或候选对失效时执行 ICE restart，超时后重建该 peer connection。
 5. 在 UI 和诊断中区分“直连”“服务器中继”“正在恢复”和明确失败原因。
 
@@ -90,7 +90,7 @@ ICE 是按分享者与每一名观看者的网络组合独立选路，而不是�
 | P2P 星型 | `N * B` | 直连时接近 0 | 最符合成本目标；适合少量朋友 |
 | P2P + TURN | 仍为 `N * B` | 每条中继约 `B` 入 + `B` 出 | 只解决不可达，不解决分享者上行 |
 | Peer-assisted 两链 | 分享端最多约 `2 * B` | 直连边接近 0；TURN 仍按边计费 | 每名 viewer 最多转发一份；标准 browser relay 逐跳解码/重编码 |
-| SFU | 约 `B` | `B` 入 + `N * B` 出 | 分享者轻松，但服务器承担全部观看流量 |
+| 整房 SFU（仅对照） | 约 `B` | `B` 入 + `N * B` 出 | 分享者轻松，但服务器承担全部观看流量；当前 root-shape 目标另按 `B_pub`、`B_i` 和 `B_exc,j` 计量 |
 | MCU | 约 `B` | 另有解码、合成、重编码 | 本场景没有合成需求，不采用 |
 
 以 `8 Mbps` 的 1080p60 目标流为例：
@@ -120,10 +120,10 @@ IETF 对 mesh/SFU 的拓扑说明见 [RFC 7667](https://www.rfc-editor.org/rfc/r
 - 若一开始就有多条 `relay`，应提示服务器带宽正在增加。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
-新的产品目标要求分享端 fanout 永远不超过二。Proposed ADR-0004 用一个可整体删除的实验验证第三名及后续 viewer 能否由客户端转发；`main` 中已合并 PR #17 按 ADR-0005 提供默认关闭的自动可选 SFU 兜底。已关闭 PR #12 的显式整房 SFU 模式已被取代，不再作为当前方案；自动路由通过真实门槛前仍不可部署，超过小房间上限时仍建议使用外部直播服务。观察项包括：
+新的产品目标要求分享端 fanout 永远不超过二。Proposed ADR-0004 用一个可整体删除的实验验证第三名及后续 viewer 能否由客户端转发；`main` 中已合并 PR #17 按 ADR-0005 提供默认关闭、failure-only 的 SFU-root 控制器。旗舰目标要求 SFU 只服务必要 roots 并保留 peer descendants，但配置迁移与真实门槛尚未通过。已关闭 PR #12 的显式整房 SFU 模式已被取代，不再作为当前方案；自动路由通过真实门槛前仍不可部署，超过小房间上限时仍建议使用外部直播服务。观察项包括：
 
 - 正常工作负载持续超过实测可承载的 P2P 人数。
-- 第一名或多名观看者已使用 TURN，继续 P2P 会重复占用服务器上行。
+- 第一名或多名观看者已使用 TURN；这只进入成本观测，不直接触发自动迁移。
 - 分享者上行安全余量不足。
 - 分享者因 CPU/encoder 限制降质。
 - 产品开始要求隐藏好友之间的 IP。
@@ -244,7 +244,7 @@ WebRTC 媒体本身使用 DTLS-SRTP 加密；但 direct P2P 仍会让这组可�
 
 WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件，并使用画面时间码或高速摄像机测量玻璃到玻璃延迟。60 fps 的单帧周期是 16.7 ms，端到端延迟还包含采集等待、编码、单程网络、jitter buffer、解码和显示。
 
-建议原型目标：受控 direct/RTT <= 40 ms/丢包 <= 1% 时 p50 <= 150 ms、p95 <= 250 ms；区域 TURN/UDP p95 <= 350 ms。先测量，再决定是否需要原生或 SFU。
+建议目标：受控 direct/RTT <= 40 ms/丢包 <= 1% 时 p50 <= 150 ms、p95 <= 250 ms；区域 SFU/UDP root p95 <= 350 ms，可选 TURN 单独测量。先测量，再决定原生优化。
 
 ## 安全与成本防护
 
@@ -263,7 +263,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 | [Tailchat Meeting](https://github.com/msgbyte/tailchat-meeting) | React 捕获生命周期与会议产品交互参考 | Apache-2.0，但媒体基于 mediasoup/SFU，不能作为当前 P2P 拓扑底座 | [ScreenShare.ts](https://github.com/msgbyte/tailchat-meeting/blob/master/app/src/features/ScreenShare.ts)、[media.ts](https://github.com/msgbyte/tailchat-meeting/blob/master/packages/sdk/src/client/media.ts) |
 | [WebRTC samples](https://github.com/webrtc/samples) | 官方浏览器 API 最小示例 | BSD 风格。用于理解 API，不是产品框架 | [getDisplayMedia](https://github.com/webrtc/samples/tree/gh-pages/src/content/getusermedia/getdisplaymedia)、[peer connection examples](https://github.com/webrtc/samples/tree/gh-pages/src/content/peerconnection) |
 | [PeerJS](https://github.com/peers/peerjs) | 快速 P2P 原型与简单信令抽象 | MIT。原型快，但产品最终可能需要直接控制 RTCPeerConnection 和统计 | [PeerJS server](https://github.com/peers/peerjs-server) |
-| [coturn](https://github.com/coturn/coturn) | 生产 STUN/TURN fallback | BSD-3-Clause。P2P-first 必需基础设施 | [turnserver 文档](https://github.com/coturn/coturn/blob/master/README.turnserver)、[Docker](https://github.com/coturn/coturn/blob/master/docker/coturn/README.md) |
+| [coturn](https://github.com/coturn/coturn) | 当前生产 STUN/TURN 与未来可选 ordinary-peer fallback | BSD-3-Clause。当前 release 必需，旗舰目标按异常 edge 可选 | [turnserver 文档](https://github.com/coturn/coturn/blob/master/README.turnserver)、[Docker](https://github.com/coturn/coturn/blob/master/docker/coturn/README.md) |
 | [Peer Calls](https://github.com/peer-calls/peer-calls) | 同一应用中的 mesh/SFU 双模式 | Apache-2.0；维护速度较慢，适合参考而非首选底座 | [mesh.go](https://github.com/peer-calls/peer-calls/blob/master/server/mesh.go)、[sfu.go](https://github.com/peer-calls/peer-calls/blob/master/server/sfu.go)、[iceauth.go](https://github.com/peer-calls/peer-calls/blob/master/server/iceauth.go) |
 | [Broadcast Box](https://github.com/Glimesh/broadcast-box) | 未来专用一对多 SFU，WHIP 推流/WHEP 播放 | MIT。比会议型 SFU 更贴近单路广播 | [Broadcast.tsx](https://github.com/Glimesh/broadcast-box/blob/main/web/src/components/broadcast/Broadcast.tsx)、[simple watcher](https://github.com/Glimesh/broadcast-box/blob/main/examples/simple-watcher.html) |
 | [LiveKit](https://github.com/livekit/livekit) | 生产级区域 SFU、SDK、内置 TURN、鉴权 | Apache-2.0。未来需要稳定 SFU 时的首选完整底座 | [屏幕共享](https://docs.livekit.io/transport/media/screenshare/)、[turn.go](https://github.com/livekit/livekit/blob/master/pkg/service/turn.go) |
@@ -320,8 +320,8 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 1. 首版坚持 P2P-first，但明确只服务小房间；默认接入上限为八名、可配置 1 至 16，真实 1:8 测量完成前不把它写成性能承诺。
 2. Web 先行，目标 Windows Chrome/Edge；把 1080p60 写成 best effort，同时提供降档。
-3. 从第一天部署 coturn，并验证 direct、TURN/UDP、TURN/TCP 以及移动网络切换；这是避免“部分好友永远看不了”的必要条件。TURN/TLS 按部署需要选配，默认 5349，443 只作为受限网络增强。
+3. 保留当前 coturn 部署直到 ADR-0005 迁移 gate 通过。旗舰默认验证 direct/peer UDP 与 SFU/UDP roots；ordinary peer coturn 不再向房间常驻广告。LiveKit participant TURN 单独 canary，pinned participant-wide 形态不满足 selected-edge 目标，无法隔离或扩展时即拒绝。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。
 5. 产品代码优先直接使用浏览器 WebRTC API；借鉴 MiroTalk BRO 和 Screego，不在许可证未定前直接 fork GPL/AGPL 代码。
 6. 分享端 hard fanout 为二；一至两名 viewer 走直接 P2P，第三名及以后只通过 ADR-0004 的 bounded peer-assisted spike 验证，不得隐藏回退为更多 host 连接。
-7. 可选 SFU 保持可逆且非默认；部署提供后可被后续路由控制器自动用作最后兜底。peer-assisted 若未通过逐跳重编码负载、延迟、兼容和换父门槛就整体放弃，不通过 encoded custom media、评分器、多树或自研 RTP 来挽救。
+7. SFU 保持 root-only、可逆且非整房默认；旗舰部署通过 canary 后由 ADR-0005 控制器自动用作中央兜底。peer-assisted 若未通过逐跳重编码负载、延迟、兼容和换父门槛就整体放弃，不通过 encoded custom media、评分器、多树或自研 RTP 来挽救。

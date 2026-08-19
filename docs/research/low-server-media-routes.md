@@ -3,9 +3,9 @@
 - Research date: 2026-08-19
 - Scope: one broadcaster, at most eight trusted viewers, low latency, and host
   media fanout at most two
-- Status: route screening for ADR-0004/ADR-0005; automatic failure-only hybrid
-  routing has a Draft implementation, while dual-TURN optimization and every
-  non-browser data-plane candidate remain separate, unimplemented experiments
+- Status: ADR-0005 accepts SFU/UDP roots as the primary central fallback and
+  optional TURN only for exceptional edges; the current failure-only,
+  TURN-required controller and every non-browser data plane remain unverified
 
 ## Current Route Ladder
 
@@ -23,7 +23,7 @@ The smallest current plan is:
 4. Only if browser relay re-encoding is the isolated failure should another
    experiment add opt-in native volunteer encoded-RTP relays.
 5. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
-   optional capacity. The current ADR-0005 Draft controller uses that capacity
+   optional capacity. The current default-off ADR-0005 controller uses that capacity
    automatically only after deterministic peer recovery is exhausted. The SFU
    is a virtual parent for only one or two necessary roots; those roots continue
    bounded peer descendants. A necessary viewer may be a zero-descendant root
@@ -72,20 +72,23 @@ still require measurement.
 This is an engineering accounting identity, not a named theorem. Let `B` be
 the measured useful media bitrate for one same-representation branch, `B_pub`
 the actual SFU publication bitrate, `B_i` root `i`'s selected bitrate, `N` the
-viewer count, `R` the one or two seed/root viewers, and `B_edge` a descendant
-edge's actual bitrate.
-Useful last-hop delivery is approximately `N*B`. Ignoring protocol overhead:
+viewer count, `R` the one or two normal roots, `D` their peer descendants, `E`
+the separately admitted exceptional server-fed viewers, `B_exc,j` exception
+`j`'s selected bitrate, and `B_edge` a descendant edge's actual bitrate. Thus
+`N = R + D + E`. For the equal-representation normal-root baseline `E=0`,
+useful last-hop delivery is approximately `N*B`. Ignoring protocol overhead:
 
 `host last-hop copies + peer last-hop copies + server last-hop copies = N * B`
 
 | Full-stream shape | Host upload | Viewer-relay upload | Central media traffic |
 | --- | ---: | ---: | ---: |
-| Peer roots, direct edges | `R*B` | `(N-R)*B` | none |
-| Peer roots, all `R` seed edges through TURN | `R*B` | `(N-R)*B` | TURN ingress `R*B` + egress `R*B` |
-| SFU virtual parent to the same roots | `B_pub` | `(N-R)*B` | SFU ingress `B_pub` + egress `sum(B_i)` |
+| Peer roots, direct edges | `R*B` | `D*B` | none |
+| Peer roots, all `R` seed edges through TURN | `R*B` | `D*B` | TURN ingress `R*B` + egress `R*B` |
+| SFU virtual parent to the same roots | `B_pub` | `D*B` | SFU ingress `B_pub` + egress `sum(B_i)` |
 | Same-representation full-room SFU | `B` | `0` | SFU ingress `B` + egress `N*B` |
 
-The table's `R*B` and `(N-R)*B` rows are equal-representation screening cases.
+The table's `R*B` and `D*B` rows are equal-representation screening cases with
+`E=0`.
 With mixed root representations, peer host/seed-TURN traffic is `sum(B_i)` and
 descendant upload is `sum(B_edge)`. SFU host upload and ingress are `B_pub`, the
 sum of all actively published representations; if simulcast `HIGH` and `LOW`
@@ -100,6 +103,14 @@ distinct interface/service traffic. A relayed root leg likewise adds TURN
 ingress and egress `B_i`; a relayed descendant edge adds both directions for
 that edge's actual bitrate. They are one logical useful payload copy but real
 physical hops, so NIC, service, and billing counters must never be folded.
+
+If `E>0`, SFU root/exception egress is
+`sum(B_i) + sum(B_exc,j)` and central SFU traffic is
+`B_pub + sum(B_i) + sum(B_exc,j)`. Peer descendant upload remains
+`sum(B_edge)`. Any TURN-relayed root, exception, or descendant leg adds TURN
+ingress and egress equal to that leg's measured bitrate. The separately capped
+exceptions are therefore never hidden inside the normal `R<=2` root budget or
+the equal-representation formulas.
 
 RTP/RTCP/SRTP, DTLS, ICE/TURN and IP headers, retransmission, FEC, and redundant
 paths only add traffic. W3C candidate-pair byte counters exclude some transport
@@ -143,50 +154,109 @@ Never retain raw `errorText`, address, port, URL, candidate strings, SDP, or
 device/network identifiers. Stats members may be absent, and the pair-change
 counter is transport-lifetime state, so events and generation baselines prevent
 old connection or ICE-restart history from being attributed to a new route.
-Use opaque generations only. This is a shadow diagnostic manifest, not a
+Use opaque generations only. This is a bounded diagnostic manifest, not a
 backend telemetry schema or controller input.
 
-## Dual-TURN Shadow Candidate
+## SFU-First UDP And Optional Selected-Edge TURN
 
-Use four explicit network scenarios; no threshold or optimizer is selected:
+The accepted target is `direct/peer UDP -> SFU/UDP roots -> optional
+selected-edge TURN -> bounded failure`. It keeps distribution after central
+fallback: the SFU normally emits only one or two root copies, and roots keep
+their peer descendants. Every endpoint has at most two downstream edges;
+browser relays remain at one until re-encode/resource gates pass. Multiple
+exceptional viewers that cannot attach behind any healthy root may require
+additional server-fed edges, but only under a separate explicit central egress
+and admission cap.
 
-1. **Direct/direct roots:** retain peer distribution.
-2. **Direct/TURN roots:** retain the mixed peer distribution; one relayed edge
-   does not justify an SFU.
-3. **TURN/TURN roots:** after both host seed edges remain selected relay pairs
-   across a future reviewed stability window, emit only a shadow candidate.
-   The active route does not move under ADR-0005. A necessary useful-payload
-   condition for any host-upload claim is measured `B_pub < sum(B_i)`; real
-   hop counters must still prove the total benefit.
-4. **No reliable relay root:** after deterministic recovery is exhausted, use
-   the existing failure-only SFU route; necessary viewers may consume the same
-   one-or-two root slots with zero descendants, never a second fanout budget.
+STUN/ICE discovers and checks paths. RFC 8656 TURN allocates a relayed address
+and continuously carries media; it is not a handshake helper. The target
+therefore does not advertise coturn to every ordinary peer edge. If that
+compatibility service is configured, a future controller may issue short-lived,
+assignment/generation-bound credentials only for an exceptional ordinary
+host-to-root or root-to-viewer transport after UDP is exhausted. Other healthy
+UDP paths stay unchanged.
 
-The evidence sequence is deliberately narrow:
+Pinned LiveKit 1.13.5 includes authenticated embedded TURN, but those
+credentials and relays belong to LiveKit participants and are advertised
+participant-wide when configured. They can cover a publisher or subscriber
+connection to the SFU; they are not Screener assignment/generation grants and
+do not transparently serve an ordinary peer `RTCPeerConnection`. A selected
+host/root-to-viewer TURN edge still needs independent coturn plus a new per-edge
+grant/wire path.
+Participant-wide LiveKit TURN is therefore only an isolated canary candidate;
+unless the integration can isolate or extend it to satisfy the accepted
+exceptional-edge scope, reject it rather than silently broadening the target.
+LiveKit TURN cannot rescue an unavailable SFU. Independent coturn can carry a
+separately authorized ordinary peer edge that bypasses the SFU, but TURN itself
+does not choose or create that topology.
 
-1. Use local `webrtc-internals` as manual ground truth for selected pairs and
-   redact SDP, addresses, candidates, and identifiers before retention.
-2. Enable privacy-safe diagnostics for one exact `PEER_ASSISTED_ROOM_IDS` room
-   in shadow mode. It records a candidate but changes no media or protocol.
-3. Run matched, non-simultaneous exact-room A/B sessions for two TURN roots and
-   one SFU publisher feeding the same one or two roots. This avoids exceeding
-   the live host-edge budget merely to benchmark both routes concurrently.
-4. Compare real host upload, TURN/SFU ingress and egress, selected protocols,
-   RTT/loss/bitrate, first picture, steady latency, recovery, host/root load,
-   and the actual E2EE/operator boundary. The host-to-SFU publisher is an
-   independent ICE connection that may use ICE/UDP, ICE/TCP, or deployed
-   TURN/TLS. Retain every transport and service hop separately, including TURN
-   on publisher, subscriber-root, or peer-descendant edges; distinguish only
-   physical traffic totals from logical useful-payload copies. Thresholds
-   remain unknown.
-5. Only a measured win plus an amended ADR-0005 may authorize an automatic
-   exact-room canary; broad rollout remains default-off.
+The tracked deployment is intentionally still the old baseline. It exposes
+LiveKit ICE/TCP 7881 and ICE/UDP mux 7882, omits embedded TURN, configures
+coturn UDP/TCP, and the application refuses production startup without both
+TURN transports. LiveKit 1.13.5 also defaults `allow_tcp_fallback` to true when
+TCP/TURN-TLS is configured. Do not remove those listeners or variables until
+the config migration and exact-room gate land. The target disables media TCP
+by default; HTTPS/WSS remains TLS/TCP.
 
-Ordinary SFU transport encryption lets the SFU operator access media. LiveKit
-offers application E2EE for media/data, but signaling and APIs remain visible
-and Screener does not yet implement key distribution. Compare the configured
-boundary instead of treating E2EE as a checkbox. This candidate adds no route
-score, controller trigger, wire field, backend telemetry system, or code.
+No public port is selected by this decision. LiveKit documents ICE/UDP mux as
+optional and its pinned sample recommends a multi-port UDP mux range at least
+as wide as the CPU count for performance. Embedded TURN/UDP defaults to 3478
+and recommends 443 only when it does not conflict with HTTP/3/QUIC; TURN/TLS
+has different certificate and 443 constraints. The current nginx template has
+no HTTP/3 listener, but that fact alone does not prove one UDP port or UDP 443
+is the best production layout.
+
+For one equal representation of measured bitrate `B` and `R` roots:
+
+- `R` TURN seed edges: host upload `R*B`, server ingress `R*B`, server egress
+  `R*B`, total central traffic `2R*B`;
+- one SFU publisher to `R` roots: host upload `B`, server ingress `B`, server
+  egress `R*B`, total central traffic `(R+1)*B`.
+
+At `R=1` useful-payload traffic is equal, so the identity alone gives neither
+route a preference; CPU and allocation cost require the same-host benchmark.
+At `R=2`, the equal-representation SFU case halves host upload and
+central ingress and reduces total central traffic from `4B` to `3B`, with the
+same `2B` egress. Mixed representations replace `B` with measured `B_pub` and
+`sum(B_i)`; a HIGH+LOW publication may erase that advantage. Public LiveKit
+benchmarks and the Jitsi profiling breakdown establish capacity and component
+categories only. Different machines and implementations cannot support a
+universal coturn/SFU CPU ratio or a claimed fixed percentage saving.
+
+One bounded exact-room gate owns rollout evidence:
+
+1. On the same host and NIC, compare coturn UDP and LiveKit SFU UDP at measured
+   8 and 12 Mbps with one and two roots. Record CPU seconds/GiB, RX/TX bytes,
+   packets/s, RSS, host upload, p95/p99 forwarding latency, loss/recovery, and
+   final decoded quality.
+2. Cover representative consumer networks with a temporary canary config that
+   removes `rtc.tcp_port`, closes public 7881, and configures no TURN/TCP or
+   TURN/TLS listener. Verify host and roots use SFU/UDP. In one separately
+   chosen restrictive-network case, prove an ordinary coturn grant affects only
+   its authorized generation. Test LiveKit participant-wide TURN separately and
+   do not label it selected-edge issuance.
+3. Block all UDP. With the optional compatibility layer absent, show a bounded
+   explicit failure rather than a long pseudo-connection. Any later media TCP
+   mode is measured separately and cannot be marketed as a quality path.
+4. Exercise root departure, reconnect, SFU unavailable, and rollback. Endpoint
+   downstream edges stay at most two, normal SFU roots at most two, separately
+   capped exceptional server edges stay bounded, and unaffected peer subtrees
+   do not migrate.
+5. Correlate only selected candidate type/protocol/relayProtocol and opaque
+   generations; never upload raw SDP, candidate/address/IP, credentials, or
+   device identifiers.
+
+Ordinary TURN retains endpoint-to-endpoint DTLS-SRTP. Ordinary SFU transport
+terminates DTLS-SRTP on both sides, so its operator can access media unless
+Screener later implements application E2EE and key distribution. That accepted
+tradeoff remains visible in deployment and UI claims.
+
+A peer root simultaneously re-publishing its received stream to the SFU and
+serving peer children is only a later bounded experiment. The current browser
+relay would decode and re-encode, and publication ownership adds another
+failure domain. Do not add it to the controller until measurements prove a
+specific consumer. No global score, continuous optimizer, geography, IP, UA,
+or self-reported capability chooses these routes.
 
 On today's unicast Internet, a design cannot maximize all three of these for
 more than one viewer:
@@ -208,8 +278,8 @@ lost.
 | Fixed two-chain browser relay | Host emits at most two copies; each relay emits at most one | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current default-off, maximum-eight-viewer spike |
 | Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
-| SFU virtual parent | SFU emits only one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Default retained SFU shape; automatic only after peer failure under ADR-0005 |
-| Zero-descendant SFU roots | SFU emits necessary viewer copies | Same root budget; service egress is at most `sum(B_i)` | Last resort only when no reliable relay root exists |
+| SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; current code is failure-only |
+| Exceptional server-fed viewers | SFU/TURN emits necessary copies that no healthy root can distribute | Additional capped central egress | Explicit compatibility exception only; never unbounded whole-room fanout |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
 | MoQ | Publishers and MoQ relays emit object copies | New transport, packaging, player, relay, and auth stack | Optional central-fallback benchmark; still pays server egress |
@@ -289,6 +359,9 @@ Primary sources checked on 2026-08-19:
   under IETF Trust terms.
 - [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html) - the relay is
   transport for client/peer traffic, not a room distribution topology.
+- [WebRTC transports, RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html) -
+  browser transport capability requirements do not require an application to
+  advertise every supported fallback on every connection.
 - [WebRTC](https://www.w3.org/TR/webrtc/),
   [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/),
   [WebRTC Encoded Transform](https://w3c.github.io/webrtc-encoded-transform/#stream-processing),
@@ -310,14 +383,22 @@ Primary sources checked on 2026-08-19:
 - [IP multicast, RFC 1112](https://www.rfc-editor.org/rfc/rfc1112.html) and
   [Source-Specific Multicast, RFC 4607](https://www.rfc-editor.org/rfc/rfc4607.html)
   - IETF standards under IETF Trust terms.
-- [LiveKit](https://github.com/livekit/livekit) - Apache-2.0; the optional SFU
+- [LiveKit](https://github.com/livekit/livekit) - Apache-2.0; the SFU
   reference, with no code copied into this research change.
+- [LiveKit 1.13.5 configuration sample](https://github.com/livekit/livekit/blob/v1.13.5/config-sample.yaml),
+  [pinned configuration source](https://github.com/livekit/livekit/blob/v1.13.5/pkg/config/config.go),
+  [ports/firewall](https://docs.livekit.io/transport/self-hosting/ports-firewall/),
+  [deployment/embedded TURN](https://docs.livekit.io/transport/self-hosting/deployment/),
+  and [benchmark guidance](https://docs.livekit.io/transport/self-hosting/benchmark/)
+  - transport, port, authentication, and capacity boundaries; no source copied.
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
   and [end-to-end encryption](https://docs.livekit.io/transport/encryption/) -
   official behavior and operator-boundary references.
 - [LiveKit client 2.22.0 `Room.prepareConnection`](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
   and [official usage](https://github.com/livekit/client-sdk-js#usage) -
   Apache-2.0; API behavior was inspected, with no source copied.
+- [Grozev, *Towards a Scalable Video Conferencing System*](https://publication-theses.unistra.fr/public/theses_doctorat/2019/Grozev_Boris_2019_ED269.pdf)
+  - one Jitsi profiling breakdown, not a coturn/LiveKit cross-system CPU ratio.
 
 No GPL/AGPL code was copied. Published papers and specifications support design
 analysis only; their presence here is not an implementation license.

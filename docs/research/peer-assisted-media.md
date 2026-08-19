@@ -23,11 +23,12 @@ cost is unavoidable in ordinary browsers: every relay decodes and re-encodes
 the screen stream. The first spike measures whether that cost is acceptable; it
 does not hide it or claim shared encoding.
 
-The product preference is `direct P2P -> peer-assisted -> optional SFU`. Direct
-P2P remains the simplest path for one or two viewers. The experiment assigns the
-third and later viewers to peers automatically. Deployment decides whether SFU
-capacity exists; when it does, the current ADR-0005 Draft controller uses it as
-an automatic last fallback without asking host or viewers to select a topology.
+The accepted flagship preference is `direct/peer UDP -> SFU-root fallback ->
+optional exceptional-edge TURN -> bounded failure`. Direct P2P remains the
+simplest path for one or two viewers. The experiment assigns the third and later
+viewers to peers automatically. ADR-0005 makes SFU capacity part of the flagship
+target while retaining peer descendants; its current default-off controller is
+still failure-only and unconfigured in production.
 
 ## What Browsers Can Share
 
@@ -212,7 +213,7 @@ current local senders still apply the setting but the UI reports that room sync
 is waiting for reconnect. The next successful host authentication reasserts the
 latest object; no acknowledgement state machine is added.
 
-The optional SFU publisher follows the same boundary: first publication,
+The configured SFU publisher follows the same boundary: first publication,
 successful track replacement, and live setting changes all configure the real
 `RTCRtpSender`, then retain requested/applied bitrate, frame rate, scale, and
 preference. Configuration rejection uses the existing rollback/fail-closed
@@ -281,7 +282,7 @@ slot:
 Peer assistance distributes traffic; it does not eliminate it. Relay
 eligibility must therefore be visible and voluntary in any production design.
 The standalone ADR-0004 spike has no runtime capability flag and relies on
-controlled join order. The stacked ADR-0005 Draft starts every viewer as a leaf,
+controlled join order. The accepted ADR-0005 direction's current default-off controller starts every viewer as a leaf,
 then accepts an explicit per-session capacity of zero or one; its Web client
 reports detected mobile/iPad clients as leaves and desktop-class browsers as
 one-child relays. That conservative heuristic is still unverified on the real

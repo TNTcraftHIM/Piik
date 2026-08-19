@@ -35,7 +35,7 @@ overhead. Protocol headers, retransmission, and TURN overhead are additional.
 | Current full-stream browser chains | at most `2B` | zero except TURN edges | host up to two encoders; every relay encodes again |
 | Native full-stream RTP relay | at most `2B` | zero except TURN edges | relay zero encode; native host can share one encode |
 | Two encoded-object stripe trees | about `(1+r)B` | zero except TURN edges | host one encode; relay zero encode |
-| SFU virtual parent to bounded roots | about `B` | root-only; see low-server model | host one publication; roots keep peer descendants |
+| SFU virtual parent to bounded roots | measured `B_pub` | root-only; see low-server model | one publication may carry at most two active representations; physical encoder count remains measured evidence |
 | Full central SFU/MoQ fanout | about `B` | ingress `B`, egress `N*B` | comparison class, not the accepted fallback shape |
 
 Useful last-hop traffic remains approximately `N*B`; these routes only decide
@@ -196,7 +196,8 @@ host -> other root
 
 This admits the waiting viewer while keeping host fanout two and browser relay
 fanout one. It must pass the existing depth, codec, authorization, and recovery
-gates; otherwise the controller proceeds to the optional SFU or visible wait.
+gates; otherwise the controller proceeds to the ADR-0005 SFU-root fallback or
+visible wait.
 
 Eligibility is discrete: an active authenticated session, explicit relay
 capacity, compatible representation, a free downstream slot, acyclicity, and
@@ -237,19 +238,21 @@ healthy TURN-to-direct optimization.
 
 The accepted product order is:
 
-`direct host P2P -> accepted peer-assisted capability -> enabled SFU roots -> wait/fail`
+`direct/peer UDP -> SFU roots -> optional exceptional-edge TURN -> wait/fail`
 
 Native full-stream relay and striped-object routes remain the bounded candidates
 above; passing their own gates may change capability, but does not insert them
 into the current product ladder.
 
-The enabled SFU is a virtual parent for at most `R=2` roots. Roots retain
-bounded peer descendants; only if no reliable relay root exists may a necessary
-viewer consume one of the same root slots with zero descendants. There is no
-second whole-room central-fanout budget. The detailed direct/direct,
-direct/TURN, TURN/TURN shadow, and no-root matrix lives in
-[Low-Server-Cost Media Routes](./low-server-media-routes.md); it does not alter
-the sticky local-reparenting candidate above or ADR-0005's failure-only trigger.
+The enabled SFU is normally a virtual parent for at most `R=2` roots, which
+retain bounded peer descendants. A viewer that cannot attach behind any healthy
+root may be separately admitted only under the explicit `E`/central-egress cap;
+this is an exceptional compatibility budget, not unbounded whole-room fanout.
+The SFU/UDP and optional selected-edge transport accounting lives in
+[Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005's current
+controller remains failure-only, while its accepted target also handles
+admission with no eligible peer path; neither changes the sticky local
+reparenting candidate above.
 
 The controller must be automatic and invisible. It uses explicit capability
 bits, route revisions, media generations, edge budgets, and discrete failures;

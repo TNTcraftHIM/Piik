@@ -7,12 +7,14 @@ Current clarification, 2026-08-19: the MVP remains unchanged, but statements
 below that exclude automatic topology migration do not describe the product
 target. Automatic, viewer-transparent routing through direct P2P,
 peer-assisted media, and an enabled SFU fallback is a standing requirement and
-will be governed by a later ADR.
+is governed by ADR-0005.
 
 Historical ADR-0003's explicit whole-room SFU mode is rejected/superseded.
-Proposed ADR-0004 and ADR-0005 do not supersede this production baseline; they
-govern default-off peer-assisted and automatic optional-SFU experiments. A
-later Accepted ADR is required before either changes the production topology.
+Proposed ADR-0004 and the default-off ADR-0005 implementation do not yet
+supersede this production baseline. ADR-0005 now accepts the target direct/peer
+UDP -> SFU-root UDP -> optional exceptional-edge TURN ladder, but its config
+migration and exact-room acceptance gates must pass before production topology
+changes.
 
 ## Context
 
@@ -25,10 +27,10 @@ Use separate control and media planes:
 - A small HTTPS/WSS service owns identity, rooms, invitations, presence, and WebRTC signaling.
 - A viewer can join through a numeric room code on desktop or mobile without installing the sharing client. The viewer link has no separate token or fragment; the host publication token remains internal. A deployment may place one site-wide password gate in front of both hosting and viewing; access policy remains control-plane state and does not change the media topology. ADR-0002 owns the current room-ID and lifetime policy.
 - ICE attempts a direct UDP path for every current broadcaster-viewer edge, using STUN to discover candidates. A later accepted peer-assisted topology must apply the same rule independently to each assigned parent-child edge.
-- Only pairs that cannot connect directly use authenticated TURN. Production requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement, using its standard TCP port 5349 by default. Port 443 is optional and requires a dedicated public IP or a validated layer-4/SNI route when HTTPS already owns that address and port.
+- For the deployed MVP, only pairs that cannot connect directly use authenticated TURN. Its current production contract requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement. ADR-0005 owns the accepted future change to optional, controller-selected exceptional-edge TURN.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
 - The deployed MVP broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise. A newer product target caps host media fanout at two; the current implementation does not satisfy that target above two viewers, and Proposed ADR-0004 owns the isolated experiment rather than silently changing this accepted baseline.
-- An SFU is not the default path for the normal product envelope. Closed PR #12's explicit whole-room mode is superseded by merged PR #17's default-off automatic fallback. ADR-0005 permits selecting configured SFU capacity only after cheaper endpoint routes fail. The code ships in production but remains unconfigured, inactive, and unaccepted for production enablement.
+- An SFU is not the default whole-room path. Closed PR #12's explicit whole-room mode is superseded by merged PR #17's default-off automatic fallback. Its current code selects SFU only after peer recovery fails and remains unconfigured in production. ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP while retaining distributed descendants; rollout remains gated.
 
 ## Consequences
 
