@@ -40,7 +40,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - ADR-0007 remains incomplete. A+B/C browser support and the reported case are unverified; the controller, `LOW`, and an authenticated SFU last-hop C generation are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
 - Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
-- ADR-0005's candidate is process-wide STUN-only ordinary ICE plus separate LiveKit SFU/UDP and bounded failure, with no all-room TURN wire. It is default-off; enabling it requires non-empty exact room IDs, and missing/blank fails startup. The old release is isolated rollback.
+- ADR-0005 is default-off, process-wide STUN-only ordinary ICE plus exact-room LiveKit SFU/UDP and bounded failure; missing/blank room IDs fail startup, and the old release is isolated rollback.
 - Pinned LiveKit 1.13.5 Dynacast enables all qualities at or below the room's maximum request, so a `HIGH` root is expected to keep `LOW` enabled. It remains a bounded rejection/verification spike, not evidence that on-demand `LOW` can stop.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
@@ -73,9 +73,10 @@ separate experiments, not ways to relabel a failed browser route.
 
 ## Blockers And Decisions
 
-Peer assistance and automatic routing remain No-Go until ADR-0004/0005 migration gates pass.
-Without LiveKit, two mobile leaves can fill both host roots; use an isolated
-exact-room canary only.
+ADR-0004/0005 remain No-Go. Public canary lacks candidate DNS/TLS,
+host/security-group access, independent LiveKit secrets, verified UDP
+7882/resources, and external devices. Shared IP is smoke-only and cannot
+approve clean-port migration; the full gate needs an isolated VM/IP.
 Deferred architecture audit: `docs/maintenance.md`.
 
 - Whole-system versus selected-game audio for the first release.
