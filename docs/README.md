@@ -10,7 +10,7 @@
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, runtime relay-capacity extension, and abandon gates.
 - [Low-server-cost media routes](./research/low-server-media-routes.md): traffic accounting, route screening, token-free SFU standby prewarm, conditional native encoded-RTP relay, and automatic final fallback.
 - [Advanced peer distribution](./research/advanced-peer-distribution.md): multi-tree/SVC, encoded-object relay, native RTP forwarding, FEC/network-coding, MoQ, and measurable go/no-go gates.
-- [Native shared-encode sender](./research/native-shared-encode-sender.md): bounded libwebrtc encoder-proxy risk spike, Draft PR #16's transport-only Pion fanout oracle, and hard failure gates.
+- [Native shared-encode sender](./research/native-shared-encode-sender.md): consolidated Draft #16/#18/#22/#23/#25/#28 evidence ladder, current Pion/WebCodecs verdicts, and product stop line.
 - [Realtime quality adaptation](./research/realtime-quality-adaptation.md): browser degradation policy, live profile changes, offline-encoding boundaries, and measurement gates.
 - [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, standard readback limits, Opus negotiation boundaries, and the retained no-control decision.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.

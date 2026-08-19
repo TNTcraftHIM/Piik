@@ -15,8 +15,7 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Whole-site `ACCESS_PASSWORD` is optional. Protected sessions use a stateless 12-hour HMAC HttpOnly `SameSite=Strict` cookie; host authentication remains internal and signaling is role-bound.
 - Without `ROOM_DATABASE_PATH`, rooms are random and temporary. With both the database path and site password, room IDs start at `1`, links persist, and stopping a share leaves viewers waiting. SQLite stores only room ID and host-token digest.
 - Direct ICE is preferred independently per media edge. Authenticated TURN/UDP and TURN/TCP are required production fallbacks; TURN/TLS is optional.
-- Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
-- Optional strict `PEER_ASSISTED_ROOM_IDS` isolates peer/SFU routing to exact rooms; unlisted rooms retain legacy P2P wire, signaling, quality rejection, and lifecycle. Empty or missing means all rooms when enabled. Production has not enabled it.
+- Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. Strict optional `PEER_ASSISTED_ROOM_IDS` limits peer/SFU state to exact rooms; unlisted rooms stay legacy P2P, while empty or missing means all rooms when enabled. Production remains disabled.
 - Complete fallback configuration adds a non-secret standby URL to peer-assisted authentication. Host and viewers import the SDK and make one token-free DNS/TLS warmup; no configuration means no field, import, request, participant, or media edge.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
 - Production uses one strict, memory-only video quality setting with bounded manual ceilings and sender readback. It also carries equal idle-stage share/join actions and default-closed technical details. Browser audio remains request/presence-only.
@@ -31,6 +30,7 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Chrome 151 CDP checks at 320/375/390 CSS px keep the two idle-stage actions equal, on one row, 44 px high, and free of horizontal overflow. The Viewer waiting page also has no overflow; its details checkbox starts false, changes locally, and resets after navigation. These checks cover idle/waiting states, not live media.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
+- Draft native ladder #16/#18/#22/#23/#25/#28 passed a bounded 720p30 two-leg loop: one WebCodecs object accepted the lower stock-GCC target, one isolated loss recovered, and leg 2 stayed clean. Research-only.
 
 ## Unverified Boundaries
 
@@ -39,8 +39,8 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real screen/game audio, heterogeneous machines/networks, mobile lifecycle, the new production quality/pause cycle, room `1` stop/re-publish, and sustained profiles remain unverified.
 - Earlier production showed severe degradation across all profiles. The new controls permit clarity/balanced comparison, but a controlled 1/2/3-viewer and TURN sample must still isolate capture, CPU, path, and receiver limits before any quality claim or automatic controller.
-- Browser relays do not share encoding. Encoded objects, custom congestion control, multiple trees, and network coding remain separate measured candidates.
-- The endpoint budget is host/relay at most two downstream edges; a native engine must prove shared encoding. The browser path remains host two/viewer one and re-encodes per relay. Striping and multi-parent assembly are only recorded.
+- Browser relays re-encode. The native ladder proves one WebCodecs object, not one physical/hardware encode. Stock GCC plus RTX is no-go; no-RTX passed one controlled loss but weakens statistics. Audio, heterogeneous estimates, broader loss, direct/TURN, reconnect, browser diversity, product wiring, striping, and multi-parent assembly remain unverified.
+- The endpoint budget remains host/relay at most two downstream edges; the browser path is host two/viewer one.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
 ## Next Milestone
@@ -58,6 +58,9 @@ picture, about 8 seconds total. Silent partitions include their detection delay.
 
 ADR-0004 fails closed. Native shared encode and packet/layer striping remain
 separate experiments, not ways to relabel a failed browser route.
+
+The native ladder stops at #28. Do not bypass stock GCC/RTX with custom
+transport/control; no-RTX remains research-only.
 
 ## Blockers And Decisions
 

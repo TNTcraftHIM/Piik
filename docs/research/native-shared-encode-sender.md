@@ -3,8 +3,9 @@
 - Research date: 2026-08-19
 - Scope: one Windows game-capture sender, one encoded video stream, and at most
   two independent standard WebRTC media edges
-- Status: Pion transport-fanout sub-oracle passed in Draft PR #16; physical
-  shared encoding and browser end-to-end behavior remain unproven
+- Status: stacked Draft PRs #16/#18/#22/#23/#25/#28 pass one bounded live
+  two-leg WebCodecs/Pion candidate; product and physical shared encoding remain
+  unproven
 
 ## Decision Input
 
@@ -16,6 +17,13 @@ must prove one narrow property before adding capture, audio, UI, or packaging:
 > Two unmodified browser viewers receive two independent WebRTC sessions while
 > one physical encoder invocation produces the compatible encoded access unit
 > consumed by both sessions.
+
+The completed Pion/WebCodecs research ladder proves a narrower property: one
+JavaScript `VideoEncoder` object emitted the encoded chunks consumed by two
+browser sessions. WebCodecs does not expose physical encoder-instance counts,
+and Chrome used `hardwareAcceleration: "no-preference"` after rejecting the
+single allowed `prefer-hardware` attempt. The result therefore must not be
+described as one hardware or physical encode.
 
 The preferred first experiment is a standalone Windows C++ sender using a fixed
 libwebrtc revision. It keeps libwebrtc's mature PeerConnection, RTP/RTCP, pacing,
@@ -85,10 +93,10 @@ Audio, per-process WASAPI capture, WGC/DDA fallback, source selection, Electron,
 installers, updating, and cross-platform abstractions stay outside the first
 spike.
 
-## Pion Fallback
+## Pion Validation Route
 
-Pion is the fallback when public libwebrtc encoder APIs cannot satisfy the
-shared property without internal changes. `TrackLocalStaticSample` owns one
+Pion is the released-public-API validation route while the larger libwebrtc
+encoder-proxy experiment remains unbuilt. `TrackLocalStaticSample` owns one
 packetizer and writes through a `TrackLocalStaticRTP` that can bind to multiple
 PeerConnections, making encoded-payload fanout explicit.
 
@@ -99,41 +107,55 @@ aggregation of both edge targets, encoder bitrate control, PLI handling, and
 bounded RTP/RTX queues. A Pion route must use the same minimum-edge rate rule and
 must not invent a custom SRTP, ICE, or congestion protocol.
 
-### Draft PR #16 Transport Oracle
+## Stacked Validation Ladder
 
-[Draft PR #16](https://github.com/TNTcraftHIM/Screener/pull/16), branch
-`spike/native-rtp-fanout-oracle` at commit `5b09f0a`, passes CI for one narrower
-public-API question. With Pion WebRTC v4.2.18, one shared
-`TrackLocalStaticRTP.WriteRTP` call reaches two independent PeerConnections.
-Both receivers observe the same semantic payload, RTP sequence number, and
-timestamp, while each binding receives its own transport SSRC and the caller's
-packet is not mutated.
+These Draft PRs are deliberately stacked research, not six product features:
 
-This is an in-process RTP transport-fanout oracle, not the shared-encode
-acceptance gate above. It contains no physical encoder and therefore cannot
-prove one encoder invocation per input frame. It also does not prove browser
-interoperability, capture, decoding, RTCP/PLI aggregation, congestion-control
-fairness, retransmission, pacing, sustained throughput, latency, or production
-readiness. The next independent gate is one browser publisher through the
-native relay to two unmodified browser viewers with bounded RTCP, PLI, queue,
-and bandwidth-estimation behavior.
+| PR / commit | Bounded gate | Result |
+| --- | --- | --- |
+| [#16](https://github.com/TNTcraftHIM/Screener/pull/16) / `5b09f0a` | One Pion RTP write across two independent transports | Equivalent payload reached two transport-local SSRCs. There was no encoder or browser. |
+| [#18](https://github.com/TNTcraftHIM/Screener/pull/18) / `80f65d0` | Synthetic WebCodecs VP8 chunks through Pion to two Chrome receivers | One encoder object produced 120 inputs/outputs and both browsers decoded; this was an offline fixture, not physical-encode evidence. |
+| [#22](https://github.com/TNTcraftHIM/Screener/pull/22) / `8121b69` | Continuous 320x180@30 live bridge for about 12 seconds | One encoder object sent 360 chunks; each viewer decoded and presented 331 frames, with encoder/native queue peaks of one. |
+| [#23](https://github.com/TNTcraftHIM/Screener/pull/23) / `eb9aabe` | Merged PLI/FIR policy, min-of-two target policy, and independent 512-packet NACK/RTX state | Policy traces passed, but stock Pion GCC plus negotiated RTX failed with `unknown ssrc: 2001`. This composition is no-go. |
+| [#25](https://github.com/TNTcraftHIM/Screener/pull/25) / `a6c3456` | No-RTX primary-SSRC replay under one controlled leg loss | Leg 1 emitted one NACK and one replay with fresh TWCC, then decoded another 278 frames; leg 2 stayed clean. This can distort RTCP loss accounting. |
+| [#28](https://github.com/TNTcraftHIM/Screener/pull/28) / `aad560e` | Live two-leg stock-GCC target applied to the same encoder object, then one controlled loss | The bounded gate passed. Both estimates happened to be 600 kbps, so heterogeneous-estimate behavior remains unproven. |
 
-## Acceptance And Failure Gates
+### Final Live Gate Evidence
 
-- Two current unmodified browsers decode continuously.
-- Unique physical encode calls equal unique input frames, not twice that count.
-- Direct and TURN edges can coexist; rebuilding one edge does not create a
-  second physical encoder or interrupt the other edge.
-- Limiting one edge lowers the common encoder target without an unbounded pacer
-  queue; removing that weak edge lets the remaining target recover.
-- One viewer's PLI produces one physical keyframe and both viewers recover.
-- Measurements include encode count/time, target and actual bitrate, PLI/NACK,
-  RTT/loss, queue growth, CPU, GPU, and host upload.
+The sole authorized #28 browser run used Headless Chrome 151 and Pion WebRTC
+v4.2.18 on Windows amd64. It ran 1280x720@30 for 12.972 seconds with 390
+scheduled inputs and 390 outputs from one `VideoEncoder` object. The encoder
+queue peaked at 1/4, the native queue at 1/8, and the WebSocket buffer at
+12,467/524,288 bytes; no encoder or socket drop occurred.
 
-Reject a libwebrtc fork, deprecated internal-source encoder APIs, SVC/simulcast,
-a second codec, FFmpeg/x264, a third host edge, custom RTP/SRTP or congestion
-control, automatic topology switching, audio, UI, and packaging in the risk
-spike. These are separate decisions after the shared property is proven.
+Both legs returned real Transport-CC before target selection. Their final stock
+GCC estimates were both 600 kbps. The coordinator took the minimum, published
+one 600 kbps target, and the host serialized `flush()`, `configure()` on the
+same encoder object, and a forced key frame to acknowledge the change from the
+initial 1.2 Mbps ceiling.
+
+After acknowledgment, the boundary dropped one leg-1 primary packet. Chrome
+sent one NACK and Pion replayed the same primary RTP identity with a new TWCC
+sequence; leg 2 recorded no drop, NACK, or replay. Both viewers decoded another
+359 frames after the shared recovery marker. This is a go result only for the
+bounded live target plus primary-SSRC recovery candidate.
+
+## Product Stop Line
+
+The stock Pion GCC plus negotiated RFC 4588 RTX composition is
+`no-go-stock-pion-gcc-rtx`; do not work around it with a custom pacer,
+congestion controller, interceptor fork, or private transport. The no-RTX
+primary-SSRC path stays research-only because it sacrifices retransmission-
+specific receiver statistics and can distort RTP/RTCP loss accounting.
+
+No stacked PR is connected to Screener's product controller, capture path, or
+audio path. Before product consideration, a target native sender must still
+prove one physical encoder invocation on representative hardware, live
+PLI/FIR-to-encoder control, heterogeneous downstream estimates, bounded burst
+and sustained loss, audio/A-V synchronization, mixed direct/TURN edges,
+reconnect isolation, browser diversity, lifecycle, and sustained CPU/GPU,
+memory, latency, quality, and upload measurements. A third host edge, custom
+RTP/SRTP, or a custom congestion-control framework remains out of scope.
 
 ## Primary Sources And License Boundary
 
@@ -153,6 +175,12 @@ spike. These are separate decisions after the shared property is proven.
 - [Pion track fanout implementation](https://github.com/pion/webrtc/blob/main/track_local_static.go)
 - [Pion send-side bandwidth estimator](https://github.com/pion/interceptor/blob/main/pkg/gcc/send_side_bwe.go)
 - [Pion WebRTC license](https://github.com/pion/webrtc/blob/main/LICENSE)
+- [WebCodecs](https://www.w3.org/TR/webcodecs/)
+- [Pion WebRTC v4.2.18](https://github.com/pion/webrtc/tree/v4.2.18)
+- [Pion Interceptor v0.1.47](https://github.com/pion/interceptor/tree/v0.1.47)
+- [RFC 4585 RTP/AVPF feedback](https://www.rfc-editor.org/rfc/rfc4585.html)
+- [RFC 4588 RTP retransmission](https://www.rfc-editor.org/rfc/rfc4588.html)
+- [RFC 8888 congestion-control feedback](https://www.rfc-editor.org/rfc/rfc8888.html)
 - [Electron desktop capture](https://www.electronjs.org/docs/latest/api/desktop-capturer/)
 
 libwebrtc uses a BSD-style license and Pion uses MIT, but distribution still
