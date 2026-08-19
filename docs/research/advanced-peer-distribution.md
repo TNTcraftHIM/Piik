@@ -164,6 +164,73 @@ central fallback and keep it only if, at equal quality and egress, latency or
 server CPU improves at least 20% over the SFU reference and draft-version churn
 is isolated behind a small adapter.
 
+## Candidate 6: Bounded Capability-Aware Local Reparenting
+
+This is a later topology candidate, not part of ADR-0004 or the current
+implementation milestone. Narada and Overcast demonstrate measurement-driven
+overlay improvement, but neither supplies a maintained WebRTC RTP/RTCP routing
+library. BitTorrent/WebTorrent and P2P Media Loader use chunk-pull swarms and
+playout buffers, while SplitStream requires striped multi-tree media.
+Their exploration and hysteresis ideas are useful, but none is a drop-in route
+controller for sub-second screen sharing. A mature SFU is the directly reusable
+low-latency alternative, with central egress rather than audience forwarding.
+
+With host degree two and the current browser-relay degree one, two balanced
+chains already minimize maximum depth at `ceil(N/2)`. A tree for `N` viewers
+still has `N` media edges, approximately `N*B` useful upload in aggregate, and
+approximately `2B` host upload once both roots are used. Local reparenting does
+not reduce either bandwidth quantity. Reordering an already balanced healthy
+tree also cannot reduce depth; a move needs a discrete admission, path, TURN,
+relay-resource, recovery, or future native-capacity benefit.
+
+The initial spike is limited to admission rescue. If a relay-capable viewer is
+unassigned because two zero-capacity roots, especially mobile leaves, occupy
+both host slots, insert that viewer above one deterministic childless root:
+
+```text
+host -> new relay -> existing leaf
+host -> other root
+```
+
+This admits the waiting viewer while keeping host fanout two and browser relay
+fanout one. It must pass the existing depth, codec, authorization, and recovery
+gates; otherwise the controller proceeds to the optional SFU or visible wait.
+
+Eligibility is discrete: an active authenticated session, explicit relay
+capacity, compatible representation, a free downstream slot, acyclicity, and
+depth/edge budgets; a candidate already in the tree must also have healthy
+inbound media. For admission rescue, choose the eligible childless root by
+server join order; do not probe or rank alternate paths. Broader experiments
+may react to a hard media failure, a reviewed threshold-crossing event from
+correlated path evidence, or a proven native capacity change, but never a
+continuous optimizer. Do not use a weighted score, UA/device model, IP
+geography, or one party's unverified report. Keep healthy assignments sticky,
+move only one affected subtree, use separate enter and recovery thresholds plus
+a cooldown, and disable proactive moves for the share after repeated rollback.
+
+Use make-before-break only when the new parent has a free downstream media slot
+and every affected endpoint remains within its limit: host at most two, current
+browser relay one, and any future native relay at most two. Admission rescue
+starts with both host slots occupied, so it is break-before-make: retire the
+chosen host-to-leaf media edge before activating host-to-new-relay media. A
+control-only `RTCPeerConnection` may prewarm ICE but cannot prove media uplink:
+WebRTC exposes `availableOutgoingBitrate` only after congestion-controlled RTP
+has used that candidate pair. Zero interruption, active standby media, and a
+hard endpoint edge limit cannot all be guaranteed at once.
+
+Proceed only after the current evidence-alignment and peer canary gates pass.
+Every sampled instant must retain host/relay fanout limits; unaffected branches
+must not freeze; make-before-break must decode at every affected receiver on the
+new path before retiring the old edge, while break-before-make must do so within
+one second p95 after the break and before declaring the move successful. Stable
+reference runs must not migrate; each move must record one discrete benefit,
+avoid reversal during cooldown, and restore the prior deterministic route on
+rollback. Reject this candidate if it needs all-pairs probing, a continuous
+optimizer, temporary fanout above budget, self-reported geography or device
+quality, or cannot beat the unchanged route. Start and stop the initial spike
+at admission rescue. Later measured work owns quality-driven moves and
+healthy TURN-to-direct optimization.
+
 ## Automatic Route Controller Boundary
 
 The product order is:
@@ -198,6 +265,19 @@ Sources checked on 2026-08-19:
 - [SplitStream](https://www.microsoft.com/en-us/research/publication/splitstream-high-bandwidth-multicast-in-a-cooperative-environment/)
   and [Network Coding for Large Scale Content Distribution](https://www.microsoft.com/en-us/research/publication/network-coding-for-large-scale-content-distribution/)
   - research evidence, not reusable source licenses.
+- [Narada](https://www.cs.cmu.edu/~srini/papers/papers/2002-Chu-jsac/2002-Chu-jsac.pdf),
+  [Overcast](https://pdos.csail.mit.edu/~jj/jannotti.com/papers/overcast-osdi00/),
+  [NICE](https://conferences.sigcomm.org/sigcomm/2002/papers/appmulti.pdf), and
+  [CoolStreaming/DONet](https://www.cs.sfu.ca/~jcliu/Papers/47_01.pdf) -
+  original application-layer multicast and live-streaming research.
+- [BitTorrent BEP 3](https://www.bittorrent.org/beps/bep_0003.html),
+  [WebTorrent](https://github.com/webtorrent/webtorrent), and
+  [P2P Media Loader](https://github.com/Novage/p2p-media-loader) - mature
+  chunk/segment swarms, not an RTP route implementation.
+- [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/),
+  [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html), and
+  [LiveKit SFU](https://docs.livekit.io/reference/internals/livekit-sfu/) -
+  observable path boundaries and the centralized low-latency alternative.
 - [MOQT draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) and
   [moq-dev/moq](https://github.com/moq-dev/moq) - core MIT/Apache-2.0; its OBS
   plugin is separately GPL-2.0-or-later and remains study-only.
