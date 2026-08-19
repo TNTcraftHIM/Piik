@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Proposed - Draft Implementation, Experiment Only
+- Status: Proposed - Default-Off Implementation, Experiment Only
 - Date: 2026-08-19
 
 ## Context
@@ -24,8 +24,9 @@ relay have a downstream budget of at most two active media edges. The current
 browser relay remains stricter at one child.
 
 ADR-0004 implements automatic peer assignment but not cross-mode fallback.
-Draft PR #12 implements a mutually exclusive process-wide `p2p|sfu` mode. That
-model cannot satisfy the required priority or minimize server egress.
+Closed PR #12 proposed a mutually exclusive process-wide `p2p|sfu` mode; this
+ADR and merged PR #17 supersede that model because it cannot satisfy the route
+priority or minimize server egress.
 
 ## Proposed Experiment
 
@@ -245,9 +246,9 @@ encrypted from the SFU operator; the deployment and UI must not claim otherwise.
 
 ## Implementation Order
 
-1. Port only LiveKit dependencies, token issuance, deployment templates, and
-   thin publisher/subscriber classes from Draft PR #12. Do not merge its
-   mutually exclusive protocol or page branches.
+1. Reuse only the LiveKit dependencies, token issuance, deployment templates,
+   and thin publisher/subscriber boundary developed in closed PR #12. Do not
+   restore its mutually exclusive protocol or page branches.
 2. Split publisher lifecycle into connect, activate, deactivate, and profile
    update; make subscriber connections selective and inactive until assigned.
 3. Add versioned route state and pure invariant/property tests.
@@ -301,9 +302,9 @@ Negative:
 - This proposal corrects the automatic-migration interpretation in ADR-0001
   without changing the currently deployed MVP.
 - ADR-0004 remains the bounded full-stream browser-relay experiment.
-- If accepted, this ADR supersedes Draft ADR-0003's process-wide explicit media
-  mode with automatic hybrid fallback using the same optional LiveKit building
-  blocks.
+- This experiment and merged PR #17 supersede ADR-0003/closed PR #12's
+  process-wide explicit media mode with default-off automatic hybrid fallback.
+  ADR-0003 remains historical rejected/superseded context.
 - Native shared encoding and two-tree striped distribution remain orthogonal
   data-plane experiments under separate decisions.
 

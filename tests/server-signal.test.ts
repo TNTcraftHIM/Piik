@@ -21,6 +21,24 @@ import { SignalingServer } from "../src/server/signaling.ts";
 import type { SfuTokenIssuer } from "../src/server/livekit-token.ts";
 
 const allowedOrigin = "http://allowed.test";
+const defaultQualitySettings = {
+  resolution: "1080p",
+  maxFramerate: 60,
+  maxBitrate: 8_000_000,
+  degradationPreference: "maintain-resolution",
+} as const;
+const balancedQualitySettings = {
+  resolution: "1080p",
+  maxFramerate: 30,
+  maxBitrate: 5_000_000,
+  degradationPreference: "balanced",
+} as const;
+const lowQualitySettings = {
+  resolution: "720p",
+  maxFramerate: 30,
+  maxBitrate: 3_000_000,
+  degradationPreference: "maintain-resolution",
+} as const;
 let runningServer: ScreenerServer | undefined;
 
 afterEach(async () => {
@@ -674,30 +692,40 @@ describe("WebSocket signaling", () => {
     expect(authenticated.hostOnline).toBe(false);
   });
 
-  it("synchronizes a bounded quality profile across a peer-assisted room", async () => {
+  it("synchronizes strict last-wins quality settings across a peer-assisted room", async () => {
     const harness = await startHarness({ peerAssistedMedia: true });
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = peerAssisted(
       await authenticate(host, harness.room, "host", "quality-host"),
     );
-    expect(hostAuth.qualityProfileId).toBe("1080p60");
+    expect(hostAuth.qualitySettings).toEqual(defaultQualitySettings);
 
     const viewer = await openClient(harness.webSocketUrl);
     const viewerAuth = peerAssisted(
       await authenticate(viewer, harness.room, "viewer", "quality-viewer"),
     );
-    expect(viewerAuth.qualityProfileId).toBe("1080p60");
+    expect(viewerAuth.qualitySettings).toEqual(defaultQualitySettings);
     await host.inbox.next("media-assignment");
 
     host.socket.send(
       JSON.stringify({
-        type: "set-quality-profile",
-        qualityProfileId: "1080p30",
+        type: "set-quality-settings",
+        qualitySettings: balancedQualitySettings,
       }),
     );
-    expect(await viewer.inbox.next("quality-profile")).toEqual({
-      type: "quality-profile",
-      qualityProfileId: "1080p30",
+    expect(await viewer.inbox.next("quality-settings")).toEqual({
+      type: "quality-settings",
+      qualitySettings: balancedQualitySettings,
+    });
+    host.socket.send(
+      JSON.stringify({
+        type: "set-quality-settings",
+        qualitySettings: lowQualitySettings,
+      }),
+    );
+    expect(await viewer.inbox.next("quality-settings")).toEqual({
+      type: "quality-settings",
+      qualitySettings: lowQualitySettings,
     });
 
     const lateViewer = await openClient(harness.webSocketUrl);
@@ -709,13 +737,13 @@ describe("WebSocket signaling", () => {
         "quality-viewer-late",
       ),
     );
-    expect(lateViewerAuth.qualityProfileId).toBe("1080p30");
+    expect(lateViewerAuth.qualitySettings).toEqual(lowQualitySettings);
     await host.inbox.next("media-assignment");
 
     viewer.socket.send(
       JSON.stringify({
-        type: "set-quality-profile",
-        qualityProfileId: "720p30",
+        type: "set-quality-settings",
+        qualitySettings: defaultQualitySettings,
       }),
     );
     expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
@@ -806,7 +834,7 @@ describe("WebSocket signaling", () => {
       "p2p-quality-host",
     );
     expect("mediaMode" in hostAuth).toBe(false);
-    expect("qualityProfileId" in hostAuth).toBe(false);
+    expect("qualitySettings" in hostAuth).toBe(false);
     expect("sfuStandbyUrl" in hostAuth).toBe(false);
 
     const viewer = await openClient(harness.webSocketUrl);
@@ -817,21 +845,21 @@ describe("WebSocket signaling", () => {
       "p2p-quality-viewer",
     );
     expect("mediaMode" in viewerAuth).toBe(false);
-    expect("qualityProfileId" in viewerAuth).toBe(false);
+    expect("qualitySettings" in viewerAuth).toBe(false);
     expect("sfuStandbyUrl" in viewerAuth).toBe(false);
     await host.inbox.next("peer-joined");
 
     host.socket.send(
       JSON.stringify({
-        type: "set-quality-profile",
-        qualityProfileId: "1080p30",
+        type: "set-quality-settings",
+        qualitySettings: balancedQualitySettings,
       }),
     );
     expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
     viewer.socket.send(
       JSON.stringify({
-        type: "set-quality-profile",
-        qualityProfileId: "720p30",
+        type: "set-quality-settings",
+        qualitySettings: lowQualitySettings,
       }),
     );
     expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
@@ -2438,13 +2466,13 @@ describe("WebSocket signaling", () => {
 
     host.socket.send(
       JSON.stringify({
-        type: "set-quality-profile",
-        qualityProfileId: "720p30",
+        type: "set-quality-settings",
+        qualitySettings: lowQualitySettings,
       }),
     );
-    expect(await viewer.inbox.next("quality-profile")).toEqual({
-      type: "quality-profile",
-      qualityProfileId: "720p30",
+    expect(await viewer.inbox.next("quality-settings")).toEqual({
+      type: "quality-settings",
+      qualitySettings: lowQualitySettings,
     });
 
     host.socket.send(
@@ -2487,7 +2515,7 @@ describe("WebSocket signaling", () => {
         parentPeerId: hostAuth.peerId,
         childPeerIds: [],
       },
-      qualityProfileId: "720p30",
+      qualitySettings: lowQualitySettings,
     });
 
     const resumedHost = await openClient(harness.webSocketUrl);
@@ -2505,7 +2533,7 @@ describe("WebSocket signaling", () => {
         parentPeerId: null,
         childPeerIds: [viewerAuth.peerId],
       },
-      qualityProfileId: "720p30",
+      qualitySettings: lowQualitySettings,
     });
     expect(await reconnectedViewer.inbox.next("host-status")).toMatchObject({
       online: true,

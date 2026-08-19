@@ -8,11 +8,11 @@ The WebRTC proof of concept at `https://share.bonfire.icu` runs commit
 `5b2fb005f6f7` with live quality/source changes, video pause, protected SQLite
 rooms, sequential IDs, and reusable links.
 
-Production still creates one host peer connection per viewer. Draft PR #13 adds
-default-off two-chain peer assistance with per-hop re-encoding; ADR-0005 adds
-optional automatic SFU fallback in Draft PR #17. Corrected recovery passes the
-local sub-second gate with token-free standby prewarm in Draft PR #20; neither
-PR is merged or deployed.
+Production still creates one host peer connection per viewer. `main` now
+contains the default-off two-chain peer assistance, optional automatic SFU
+fallback, simplified entry/diagnostics, and bounded quality settings from merged
+PRs #13, #17, #19, and #21; none is deployed. Draft PR #20's token-free standby
+prewarm passes the local sub-second recovery gate.
 
 ## Current Snapshot
 
@@ -23,35 +23,36 @@ PR is merged or deployed.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
 - Complete fallback configuration adds a non-secret standby URL to peer-assisted authentication. Host and viewers import the SDK and make one token-free DNS/TLS warmup; no configuration means no field, import, request, participant, or media edge.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
-- Peer-assisted profile state is bounded, memory-only, absent from ordinary P2P wire, and applied to current and future relay children.
+- `main` uses one strict, memory-only quality setting for current/future relays and optional SFU; ordinary P2P wire stays unchanged. It defaults clarity-first, exposes bounded manual ceilings, and keeps SFU initial/update/replacement warnings visible.
+- `main` also carries equal idle-stage share/join actions and default-closed technical details. These changes are not deployed.
 
 ## Verified Evidence
 
 - Production passed 108 tests, both builds, public HTTPS/access/TURN checks, clean activation, and a database restart retaining room `1`.
-- Draft PR #13 now provides `npm run benchmark:peer-assisted`; the full check passes type checking, 13 Vitest files with 152 tests, and both production builds.
 - A short Chrome 151 synthetic `1/3/5/8` benchmark passed every topology check: host active edges peaked at two, relay edges at one, every viewer kept increasing decoded frames through the measurement window, and the slowest first decoded frame was about 1.05 seconds. Closing a first-level relay in the three-viewer run recovered in about 5.32 seconds without exceeding host fanout two.
-- A separate live-profile smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings while its leaf kept decoding.
+- A localhost/headless Chrome 151 run with one host, three viewers, and synthetic 720p30 propagated balanced and clarity settings to every participant. Every active sender matched preference readback, peer fingerprints stayed stable, all viewers decoded/rendered new frames, and fanout stayed host two/relay one. This proves control continuity, not visual quality or performance.
 - Corrected Chrome 151/LiveKit 1.13.5 localhost/headless/video-only same-leaf A/B measured the cold path at 1.481 seconds to active and 2.257 seconds to render. Standby prepare arrived in 5 ms, active in 200 ms, and the same leaf rendered in 319.7 ms with 31 new decoded/frame-callback frames; 25 ms sampling kept host edge peak two. The roughly 86% result combines early SDK download/parse with token-free DNS/TLS/HTTP prewarm, creates no participant/media edge, and does not predict public-network performance.
-- Draft PR #17 passes CI. Draft PR [#20](https://github.com/TNTcraftHIM/Screener/pull/20) passes CI, type checking, 20 Vitest files/259 tests, both production builds, dependency audit, and repository hygiene.
-- Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes CI for one Pion RTP write fanned to two transports. It has no encoder and proves neither physical encode nor browser E2E.
+- The integrated PR #20 revision passes repository hygiene, type checking, 22 Vitest files/274 tests, both production builds, and the existing Chrome evidence above.
+- Chrome 151 CDP checks at 320/375/390 CSS px keep the two idle-stage actions equal, on one row, 44 px high, and free of horizontal overflow. The Viewer waiting page also has no overflow; its details checkbox starts false, changes locally, and resets after navigation. These checks cover idle/waiting states, not live media.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
 
 ## Unverified Boundaries
 
-- The short harness uses synthetic headless capture and proves topology, controls, stats collection, and recovery only. Full-resolution 30-minute runs, relay CPU/GPU, generational quality, controlled loss/RTT, depth latency, and actual game-capture behavior remain unverified.
+- Full-resolution 30-minute runs, relay CPU/GPU, generational quality, controlled loss/RTT, depth latency, and actual game capture remain unverified.
 - Android Chrome and iOS Safari remain unverified leaves. Runtime capability conservatively marks detected mobile/iPad clients as leaves; real UA/lifecycle behavior remains open.
-- The observed recovery starts from a page close immediately seen by the server. A silent partition can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; it remains unverified.
+- Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real screen/game audio, heterogeneous machines and networks, mobile lifecycle behavior, the production live quality/pause cycle, room `1` stop-and-republish/link reuse, and sustained profile performance remain unverified.
-- Production users report severe resolution/bitrate/FPS degradation across all profiles. A controlled 1/2/3-viewer and TURN sample must distinguish capture, per-edge CPU, bandwidth/path, and receiver limits before changing ceilings or codecs; clarity-first versus `balanced` is the first bounded A/B.
+- Production users report severe resolution/bitrate/FPS degradation across all profiles. The Draft now permits bounded clarity/balanced comparison, but a controlled 1/2/3-viewer and TURN sample must still distinguish capture, per-edge CPU, path, and receiver limits before any quality claim or automatic controller.
 - Browser relays do not share encoding. Encoded objects, custom congestion control, multiple trees, and network coding remain separate measured candidates.
-- The long-term endpoint budget is at most two downstream edges for both the host and relay-capable viewers, with one compatible encoded output reused across both edges where a native media engine can prove it. The current browser spike remains host capacity two/viewer capacity one and performs a new encode at each relay. Packet/layer striping and multi-parent assembly are recorded, not implemented.
+- The endpoint budget is host/relay at most two downstream edges; a native engine must prove shared encoding. The browser path remains host two/viewer one and re-encodes per relay. Striping and multi-parent assembly are only recorded.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
 ## Next Milestone
 
-Finish ADR-0005 before UI polish: validate standby gains across public
-transports, rollback, reconnect, controls, edge counts, egress, and load.
+Before enabling `main`'s experimental routes, validate standby gains across
+public transports, rollback, reconnect, controls, edge counts, egress, and load.
+The quality and routing stacks remain undeployed until those gates pass.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix.
@@ -65,7 +66,8 @@ separate experiments, not ways to relabel a failed browser route.
 
 ## Blockers And Decisions
 
-Peer assistance and automatic routing remain blocked on ADR-0004/0005 gates.
+Production enablement of peer assistance and automatic routing remains blocked
+on ADR-0004/0005 gates.
 Native shared encode and multi-tree striping remain separate experiments.
 
 - Whole-system versus selected-game audio for the first release.

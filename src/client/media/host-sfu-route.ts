@@ -5,7 +5,10 @@ import type {
   ServerMessage,
 } from "../../shared/protocol";
 import { SfuPublisher, type SfuConnectionConfig } from "../sfu/publisher";
-import type { QualityProfile } from "./quality";
+import type {
+  QualityProfile,
+  VideoSenderParameterReadback,
+} from "./quality";
 import {
   MediaRouteTransition,
   type RouteOperationToken,
@@ -19,6 +22,8 @@ interface HostPublisherTransport {
   deactivate(): Promise<boolean>;
   replaceStream(stream: MediaStream): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
+  getQualityWarning?(): string | null;
+  getSenderParameters?(): VideoSenderParameterReadback | null;
   disconnect(): Promise<void>;
 }
 
@@ -86,11 +91,21 @@ export class HostSfuRoute {
     return result;
   }
 
+  async acceptAndWait(
+    update: RouteUpdateInput,
+    acknowledge = true,
+  ): Promise<RouteUpdateResult> {
+    const result = this.accept(update, acknowledge);
+    await this.transitionTail;
+    return result;
+  }
+
   async resyncAuthoritative(
     update: RouteUpdateInput,
   ): Promise<RouteUpdateResult> {
     const result = this.accept(update, false);
     if (result !== "stale" || this.closed) {
+      await this.transitionTail;
       return result;
     }
 
@@ -215,6 +230,18 @@ export class HostSfuRoute {
     return this.active?.active
       ? this.active.publisher.updateProfile(profile).catch(() => false)
       : Promise.resolve(true);
+  }
+
+  getQualityWarning(): string | null {
+    return this.active?.active
+      ? (this.active.publisher.getQualityWarning?.() ?? null)
+      : null;
+  }
+
+  getSenderParameters(): VideoSenderParameterReadback | null {
+    return this.active?.active
+      ? (this.active.publisher.getSenderParameters?.() ?? null)
+      : null;
   }
 
   replaceStream(stream: MediaStream): Promise<boolean> {

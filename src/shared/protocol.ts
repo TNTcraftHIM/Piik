@@ -48,6 +48,34 @@ export const qualityProfileIdSchema = z.enum([
 export type QualityProfileId = z.infer<typeof qualityProfileIdSchema>;
 export const DEFAULT_QUALITY_PROFILE_ID: QualityProfileId = "1080p60";
 
+export const qualityResolutionSchema = z.enum(["720p", "1080p", "1440p"]);
+export type QualityResolution = z.infer<typeof qualityResolutionSchema>;
+
+export const degradationPreferenceSchema = z.enum([
+  "maintain-resolution",
+  "balanced",
+  "maintain-framerate",
+]);
+export type DegradationPreference = z.infer<
+  typeof degradationPreferenceSchema
+>;
+
+export const qualitySettingsSchema = z
+  .object({
+    resolution: qualityResolutionSchema,
+    maxFramerate: z.number().int().min(15).max(60),
+    maxBitrate: z.number().int().min(2_000_000).max(12_000_000),
+    degradationPreference: degradationPreferenceSchema,
+  })
+  .strict();
+export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
+export const DEFAULT_QUALITY_SETTINGS = {
+  resolution: "1080p",
+  maxFramerate: 60,
+  maxBitrate: 8_000_000,
+  degradationPreference: "maintain-resolution",
+} as const satisfies QualitySettings;
+
 export const relayDownstreamEdgesSchema = z.union([
   z.literal(0),
   z.literal(1),
@@ -194,8 +222,8 @@ export const clientMessageSchema = z.union([
   z.object({ type: z.literal("refresh-ice") }).strict(),
   z
     .object({
-      type: z.literal("set-quality-profile"),
-      qualityProfileId: qualityProfileIdSchema,
+      type: z.literal("set-quality-settings"),
+      qualitySettings: qualitySettingsSchema,
     })
     .strict(),
   z
@@ -270,7 +298,7 @@ const authenticatedMessageSchema = z.union([
       mediaAssignment: mediaAssignmentSchema,
       routeRevision: mediaRouteRevisionSchema,
       routeAssignment: participantRouteAssignmentSchema,
-      qualityProfileId: qualityProfileIdSchema,
+      qualitySettings: qualitySettingsSchema,
       sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
     })
     .strict(),
@@ -329,8 +357,8 @@ export const serverMessageSchema = z.union([
     .strict(),
   z
     .object({
-      type: z.literal("quality-profile"),
-      qualityProfileId: qualityProfileIdSchema,
+      type: z.literal("quality-settings"),
+      qualitySettings: qualitySettingsSchema,
     })
     .strict(),
   z

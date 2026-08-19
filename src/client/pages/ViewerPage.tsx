@@ -8,12 +8,14 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  DEFAULT_QUALITY_PROFILE_ID,
+  DEFAULT_QUALITY_SETTINGS,
   type IceConfig,
   type MediaAssignment,
   type ServerMessage,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
+import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
+import { qualityLimitationSummary } from "../components/connection-details";
 import {
   PathBadge,
   PeerStatusBadge,
@@ -23,10 +25,7 @@ import {
 import { StatsGrid } from "../components/StatsGrid";
 import { getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
-import {
-  QUALITY_PROFILES,
-  type QualityProfileId,
-} from "../media/quality";
+import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
@@ -56,7 +55,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
   );
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
-  const [statusText, setStatusText] = useState("正在进入房间");
+  const [statusText, setStatusText] = useState("正在连接");
   const [hostOnline, setHostOnline] = useState(false);
   const [relayAvailable, setRelayAvailable] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -64,6 +63,17 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [showConnectionDetails, setShowConnectionDetails] = useState(false);
+
+  const qualityLimitation = useMemo(
+    () =>
+      qualityLimitationSummary(
+        [peerSnapshot, relaySnapshot].filter(
+          (snapshot): snapshot is PeerSnapshot => snapshot !== null,
+        ),
+      ),
+    [peerSnapshot, relaySnapshot],
+  );
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
@@ -73,7 +83,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
     let peerAssisted = false;
-    let currentQualityProfileId: QualityProfileId = DEFAULT_QUALITY_PROFILE_ID;
+    let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
     let currentAssignment: MediaAssignment = {
       parentPeerId: null,
       childPeerIds: [],
@@ -150,7 +160,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       }
       viewerRelay = new ViewerRelay(
         currentIceConfig,
-        QUALITY_PROFILES[currentQualityProfileId],
+        currentQualitySettings,
         {
           sendSignal: (targetPeerId, payload) =>
             active &&
@@ -313,11 +323,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
 
       if (previousParentId !== nextAssignment.parentPeerId) {
         clearUpstreamState();
-        setStatusText(
-          nextAssignment.parentPeerId
-            ? "正在切换媒体来源"
-            : "等待可用的媒体来源",
-        );
+        setStatusText("正在恢复连接");
       }
       ensureViewerRelay()?.setChild(nextAssignment.childPeerIds[0] ?? null);
     }
@@ -361,7 +367,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
                 snapshot.connectionState === "failed"
               ) {
                 clearPeerState();
-                setStatusText("等待分享者再次开始");
+                setStatusText("等待开始分享");
                 return;
               }
               setPeerSnapshot(snapshot);
@@ -371,7 +377,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
                 snapshot.connectionState === "failed" ||
                 snapshot.connectionState === "disconnected"
               ) {
-                setStatusText("正在恢复媒体连接");
+                setStatusText("正在恢复连接");
               }
             }
           },
@@ -410,11 +416,9 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         currentHostOnline = message.hostOnline;
         setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
-        if (nextPeerAssisted && "qualityProfileId" in message) {
-          currentQualityProfileId = message.qualityProfileId;
-          void viewerRelay?.updateProfile(
-            QUALITY_PROFILES[currentQualityProfileId],
-          );
+        if (nextPeerAssisted && "qualitySettings" in message) {
+          currentQualitySettings = message.qualitySettings;
+          void viewerRelay?.updateProfile(currentQualitySettings);
           await ensureViewerSfuRoute().resyncAuthoritative(
             {
               revision: message.routeRevision,
@@ -433,9 +437,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         ) {
           clearPeerState();
         }
-        setStatusText(
-          message.hostOnline ? "等待分享画面" : "等待分享者开始分享",
-        );
+        setStatusText(message.hostOnline ? "正在连接" : "等待开始分享");
         const peer = peerRef.current;
         peer?.updateIceConfig(message.iceConfig);
         viewerRelay?.updateIceConfig(message.iceConfig);
@@ -481,12 +483,10 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         }
         return;
       }
-      if (message.type === "quality-profile") {
+      if (message.type === "quality-settings") {
         if (peerAssisted) {
-          currentQualityProfileId = message.qualityProfileId;
-          void viewerRelay?.updateProfile(
-            QUALITY_PROFILES[currentQualityProfileId],
-          );
+          currentQualitySettings = message.qualitySettings;
+          void viewerRelay?.updateProfile(currentQualitySettings);
         }
         return;
       }
@@ -516,7 +516,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         }
         const peer = ensurePeer();
         if (!peer) {
-          setStatusText("尚未收到可用的 ICE 配置");
+          setStatusText("正在连接");
           return;
         }
         await peer.acceptSignal(message.fromPeerId, message.payload);
@@ -543,9 +543,9 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         currentHostOnline = message.online;
         setHostOnline(message.online);
         if (!message.online && !peerRef.current?.isConnected()) {
-          setStatusText("等待分享者开始分享");
+          setStatusText("等待开始分享");
         } else if (message.online && !peerRef.current?.isConnected()) {
-          setStatusText("等待分享画面");
+          setStatusText("正在连接");
         }
         return;
       }
@@ -555,21 +555,21 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         clearViewerSfuRoute();
         clearPeerState();
         setHostOnline(false);
-        setStatusText("分享已停止，等待分享者再次开始");
+        setStatusText("等待开始分享");
         return;
       }
       if (message.type === "room-closed") {
         setSfuStandbyUrl(null);
         clearViewerSfuRoute();
         clearPeerState();
-        setStatusText(message.reason === "expired" ? "房间已过期" : "分享已结束");
+        setStatusText(message.reason === "expired" ? "房间已过期" : "房间已关闭");
         signal.stop();
         return;
       }
       if (message.type === "error") {
         if (message.code === "PEER_NOT_FOUND" && !currentHostOnline) {
           clearPeerState();
-          setStatusText("等待分享者再次开始");
+          setStatusText("等待开始分享");
           return;
         }
         if (
@@ -661,15 +661,21 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
 
   function retryConnection(): void {
     if (!peerRef.current?.requestRecovery()) {
-      setStatusText(hostOnline ? "等待分享画面" : "等待分享者开始分享");
+      setStatusText(hostOnline ? "正在连接" : "等待开始分享");
     } else {
-      setStatusText("正在恢复媒体连接");
+      setStatusText("正在恢复连接");
     }
   }
 
   return (
     <div className="app-shell viewer-shell">
-      <AppHeader status={<SignalStatusBadge state={signalStatus} />} />
+      <AppHeader
+        status={
+          showConnectionDetails ? (
+            <SignalStatusBadge state={signalStatus} />
+          ) : null
+        }
+      />
 
       <main className="viewer-workspace">
         <div className="viewer-title-row">
@@ -678,9 +684,13 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             <p className="section-meta">房间 {roomId}</p>
           </div>
           <div className="viewer-badges">
-            {forceRelay && <span className="diagnostic-badge">强制中继</span>}
+            {showConnectionDetails && forceRelay && (
+              <span className="diagnostic-badge">强制中继</span>
+            )}
             <PeerStatusBadge state={peerSnapshot?.connectionState ?? "waiting"} />
-            <PathBadge path={peerSnapshot?.metrics.path ?? "unknown"} />
+            {showConnectionDetails && (
+              <PathBadge path={peerSnapshot?.metrics.path ?? "unknown"} />
+            )}
           </div>
         </div>
 
@@ -747,7 +757,13 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           </div>
         </div>
 
-        {!relayAvailable &&
+        <ConnectionDetailsToggle
+          checked={showConnectionDetails}
+          onChange={setShowConnectionDetails}
+        />
+
+        {showConnectionDetails &&
+          !relayAvailable &&
           signalStatus === "connected" &&
           (hostOnline || peerSnapshot) && (
           <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
@@ -757,16 +773,28 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             {peerSnapshot.error}
           </div>
         )}
-        {peerSnapshot && (
+        {relaySnapshot?.error && (
+          <div className="notice notice-error" role="status">
+            {relaySnapshot.error}
+          </div>
+        )}
+        {qualityLimitation && (
+          <WarningBanner>{qualityLimitation}</WarningBanner>
+        )}
+        {showConnectionDetails && peerSnapshot && (
           <section className="viewer-stats" aria-labelledby="stats-heading">
             <h2 id="stats-heading">连接数据</h2>
             <StatsGrid metrics={peerSnapshot.metrics} direction="receive" />
           </section>
         )}
-        {relaySnapshot && (
+        {showConnectionDetails && relaySnapshot && (
           <section className="viewer-stats" aria-labelledby="relay-stats-heading">
             <h2 id="relay-stats-heading">转发数据</h2>
-            <StatsGrid metrics={relaySnapshot.metrics} direction="send" />
+            <StatsGrid
+              metrics={relaySnapshot.metrics}
+              direction="send"
+              senderParameters={relaySnapshot.senderParameters}
+            />
           </section>
         )}
       </main>

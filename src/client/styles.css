@@ -44,7 +44,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   letter-spacing: 0;
 }
@@ -55,6 +56,7 @@ button {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
@@ -252,6 +254,70 @@ h3 {
   background: rgba(5, 7, 6, 0.72);
 }
 
+.stage-entry {
+  gap: 13px;
+  width: 100%;
+}
+
+.stage-status {
+  color: var(--muted);
+}
+
+.entry-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  width: min(520px, calc(100% - 20px));
+  gap: 8px;
+  align-items: stretch;
+}
+
+.entry-action {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid #326645;
+  border-radius: 6px;
+  color: var(--text);
+  background: #14271b;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.entry-action svg {
+  flex: 0 0 auto;
+  color: var(--green);
+}
+
+.entry-action:hover {
+  border-color: var(--green-strong);
+  background: var(--green-soft);
+}
+
+.entry-divider {
+  display: grid;
+  grid-template-rows: minmax(3px, 1fr) auto minmax(3px, 1fr);
+  gap: 3px;
+  justify-items: center;
+  align-items: center;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.entry-divider::before,
+.entry-divider::after {
+  width: 1px;
+  height: 100%;
+  background: var(--border-strong);
+  content: "";
+}
+
 .capture-strip {
   display: flex;
   min-height: 34px;
@@ -291,26 +357,107 @@ h3 {
 }
 
 .setup-controls {
-  display: grid;
-  grid-template-columns: minmax(310px, 1fr) auto;
-  gap: 18px;
-  align-items: end;
   margin-top: 22px;
 }
 
-.join-room-link {
-  display: inline-flex;
-  grid-column: 1 / -1;
-  width: fit-content;
-  gap: 7px;
-  align-items: center;
-  color: var(--muted);
-  font-size: 13px;
-  text-decoration: none;
+.quality-controls {
+  min-width: 0;
 }
 
-.join-room-link:hover {
+.advanced-quality {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.advanced-quality summary {
+  width: fit-content;
+  padding-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.advanced-quality summary:hover {
   color: var(--text);
+}
+
+.advanced-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  align-items: end;
+  padding-top: 14px;
+}
+
+.advanced-quality-grid > label > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.advanced-quality-grid select {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.range-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  min-height: 40px;
+  gap: 10px;
+  align-items: center;
+}
+
+.range-control input {
+  width: 100%;
+  accent-color: var(--green);
+}
+
+.range-control output {
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.quality-priority {
+  grid-column: 1 / -1;
+}
+
+.advanced-quality-grid > .button {
+  justify-self: start;
+}
+
+.connection-details-toggle {
+  display: inline-flex;
+  min-height: 44px;
+  max-width: 100%;
+  gap: 9px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.connection-details-toggle:hover {
+  color: var(--text);
+}
+
+.connection-details-toggle input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  accent-color: var(--green-strong);
 }
 
 .control-group {
@@ -733,14 +880,13 @@ h3 {
     flex-wrap: wrap;
   }
 
-  .setup-controls {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .advanced-quality-grid {
+    grid-template-columns: 1fr;
   }
 
-  .start-button {
+  .quality-priority {
     grid-column: auto;
   }
-
   .viewer-stats .stats-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -765,15 +911,6 @@ h3 {
     padding: 20px 14px 28px;
     border-top: 1px solid var(--border);
     border-left: 0;
-  }
-
-  .setup-controls {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-
-  .start-button {
-    grid-column: auto;
   }
 
   .remote-stage {

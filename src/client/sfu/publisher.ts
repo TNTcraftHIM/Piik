@@ -7,7 +7,9 @@ import type {
 
 import {
   configureVideoSender,
+  senderParameterWarning,
   type QualityProfile,
+  type VideoSenderParameterReadback,
 } from "../media/quality";
 
 export interface SfuConnectionConfig {
@@ -40,6 +42,8 @@ export class SfuPublisher {
   private video: PublishedTrack | null = null;
   private audio: PublishedTrack | null = null;
   private profile: QualityProfile | null = null;
+  private senderParameters: VideoSenderParameterReadback | null = null;
+  private qualityWarning: string | null = null;
   private state: PublisherState = "idle";
   private generation = 0;
   private operationTail: Promise<void> = Promise.resolve();
@@ -119,6 +123,10 @@ export class SfuPublisher {
         if (!this.owns(room, generation)) {
           return false;
         }
+        const senderParameters = await configurePublishedVideo(video, profile);
+        if (!this.owns(room, generation)) {
+          return false;
+        }
 
         let audio: PublishedTrack | null = null;
         if (audioTrack) {
@@ -136,6 +144,7 @@ export class SfuPublisher {
         this.video = video;
         this.audio = audio;
         this.profile = profile;
+        this.retainSenderParameters(senderParameters);
         this.state = "active";
         return true;
       } catch (error) {
@@ -183,6 +192,8 @@ export class SfuPublisher {
       this.video = null;
       this.audio = null;
       this.profile = null;
+      this.senderParameters = null;
+      this.qualityWarning = null;
       this.state = "prepared";
       return true;
     });
@@ -197,7 +208,8 @@ export class SfuPublisher {
       }
       const sdk = this.sdk;
       const previousVideo = this.video;
-      if (!sdk || !previousVideo) {
+      const profile = this.profile;
+      if (!sdk || !previousVideo || !profile) {
         throw new Error("SFU publisher has no active video publication");
       }
 
@@ -239,15 +251,27 @@ export class SfuPublisher {
           this.audio = nextAudio;
         }
 
+        const senderParameters = await configurePublishedVideo(
+          previousVideo,
+          profile,
+        );
+        if (!this.owns(room, generation)) {
+          return false;
+        }
         previousVideo.rawTrack = nextVideoTrack;
         if (previousAudio && nextAudioTrack) {
           previousAudio.rawTrack = nextAudioTrack;
         }
+        this.retainSenderParameters(senderParameters);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
           return false;
         }
+        const failureWarning =
+          error instanceof Error && error.message
+            ? `切换 SFU 分享来源失败：${error.message}`
+            : "切换 SFU 分享来源失败";
 
         // A rejected publish/unpublish may have changed server state without
         // returning enough ownership information to undo it safely.
@@ -271,6 +295,15 @@ export class SfuPublisher {
             if (!this.owns(room, generation)) {
               return false;
             }
+            const senderParameters = await configurePublishedVideo(
+              previousVideo,
+              profile,
+            );
+            if (!this.owns(room, generation)) {
+              return false;
+            }
+            this.senderParameters = senderParameters;
+            this.qualityWarning = failureWarning;
           }
           return false;
         } catch (rollbackError) {
@@ -297,21 +330,28 @@ export class SfuPublisher {
       }
 
       try {
-        await configurePublishedVideo(video, profile);
+        const readback = await configurePublishedVideo(video, profile);
         if (!this.owns(room, generation)) {
           return false;
         }
         this.profile = profile;
+        this.retainSenderParameters(readback);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
           return false;
         }
+        const failureWarning =
+          error instanceof Error && error.message
+            ? `应用 SFU 发送参数失败：${error.message}`
+            : "应用 SFU 发送参数失败";
         try {
-          await configurePublishedVideo(video, previousProfile);
+          const readback = await configurePublishedVideo(video, previousProfile);
           if (!this.owns(room, generation)) {
             return false;
           }
+          this.senderParameters = readback;
+          this.qualityWarning = failureWarning;
           return false;
         } catch (rollbackError) {
           if (this.owns(room, generation)) {
@@ -321,6 +361,14 @@ export class SfuPublisher {
         }
       }
     });
+  }
+
+  getQualityWarning(): string | null {
+    return this.qualityWarning;
+  }
+
+  getSenderParameters(): VideoSenderParameterReadback | null {
+    return this.senderParameters;
   }
 
   async disconnect(): Promise<void> {
@@ -378,6 +426,8 @@ export class SfuPublisher {
     this.video = null;
     this.audio = null;
     this.profile = null;
+    this.senderParameters = null;
+    this.qualityWarning = null;
     return room;
   }
 
@@ -396,6 +446,13 @@ export class SfuPublisher {
     }
     this.terminalNotified = true;
     this.events.onDisconnected?.();
+  }
+
+  private retainSenderParameters(
+    readback: VideoSenderParameterReadback,
+  ): void {
+    this.senderParameters = readback;
+    this.qualityWarning = senderParameterWarning(readback);
   }
 }
 
@@ -437,17 +494,18 @@ async function unpublishTrack(room: Room, published: PublishedTrack): Promise<vo
 async function configurePublishedVideo(
   published: PublishedTrack,
   profile: QualityProfile,
-): Promise<void> {
+): Promise<VideoSenderParameterReadback> {
   const videoTrack = published.publication.videoTrack;
   const sender = videoTrack?.sender;
   if (!sender) {
     throw new Error("SFU video publication has no RTP sender");
   }
-  await configureVideoSender(sender, profile);
+  const readback = await configureVideoSender(sender, profile);
   videoTrack.publishOptions = {
     ...videoTrack.publishOptions,
     ...videoPublishOptions(profile),
   };
+  return readback;
 }
 
 function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
@@ -455,9 +513,9 @@ function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
     simulcast: false,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,
-      maxFramerate: profile.frameRate,
+      maxFramerate: profile.maxFramerate,
     },
-    degradationPreference: "balanced",
+    degradationPreference: profile.degradationPreference,
   };
 }
 

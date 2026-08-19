@@ -187,6 +187,32 @@ describe("MediaRouteTransition", () => {
 });
 
 describe("HostSfuRoute", () => {
+  it("settles authoritative activation before exposing its quality warning", async () => {
+    const publisher = {
+      ...createFakePublisher([], "publisher"),
+      getQualityWarning: vi.fn(() => "SFU sender parameters were rewritten"),
+    };
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: () => true,
+      createPublisher: () => publisher,
+    });
+    const assignment = hostAssignment("generation-a");
+
+    route.accept({ revision: 1, phase: "prepare", assignment });
+    await route.acceptConfig(sfuConfig(1));
+    await expect(
+      route.resyncAuthoritative({ revision: 1, phase: "active", assignment }),
+    ).resolves.toBe("accepted");
+
+    expect(publisher.activate).toHaveBeenCalledOnce();
+    expect(route.getQualityWarning()).toBe(
+      "SFU sender parameters were rewritten",
+    );
+  });
+
   it("reports a publisher prepare failure without requesting refresh", async () => {
     const messages: ClientMessage[] = [];
     const publisher = createFakePublisher([], "publisher");

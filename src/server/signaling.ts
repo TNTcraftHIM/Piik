@@ -5,11 +5,11 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer } from "ws";
 
 import {
-  DEFAULT_QUALITY_PROFILE_ID,
+  DEFAULT_QUALITY_SETTINGS,
   MAX_SIGNAL_BYTES,
   decodeClientMessage,
   type ClientMessage,
-  type QualityProfileId,
+  type QualitySettings,
   type Role,
   type ServerMessage,
 } from "../shared/protocol.js";
@@ -69,10 +69,7 @@ export class SignalingServer {
   private readonly socketsBySessionId = new Map<string, WebSocket>();
   private readonly viewerGraceTimers = new Map<string, NodeJS.Timeout>();
   private readonly connectionIdsByViewer = new Map<string, string>();
-  private readonly qualityProfileIdsByRoom = new Map<
-    string,
-    QualityProfileId
-  >();
+  private readonly qualitySettingsByRoom = new Map<string, QualitySettings>();
   private readonly shareGenerationsByRoom = new Map<string, string>();
   private readonly hybridMediaRouter?: HybridMediaRouter;
   private readonly now: () => number;
@@ -385,9 +382,9 @@ export class SignalingServer {
         mediaAssignment: hybridState.mediaAssignment,
         routeRevision: hybridState.routeRevision,
         routeAssignment: hybridState.routeAssignment,
-        qualityProfileId:
-          this.qualityProfileIdsByRoom.get(participant.roomId) ??
-          DEFAULT_QUALITY_PROFILE_ID,
+        qualitySettings:
+          this.qualitySettingsByRoom.get(participant.roomId) ??
+          DEFAULT_QUALITY_SETTINGS,
         ...(this.options.sfuFallback
           ? { sfuStandbyUrl: this.options.sfuFallback.url }
           : {}),
@@ -476,25 +473,25 @@ export class SignalingServer {
           ),
         });
         return;
-      case "set-quality-profile":
+      case "set-quality-settings":
         if (!this.options.peerAssistedMedia || authenticated.role !== "host") {
           this.sendError(
             socket,
             "FORBIDDEN",
-            "Only a peer-assisted host may set the quality profile",
+            "Only a peer-assisted host may set quality settings",
           );
           return;
         }
-        this.qualityProfileIdsByRoom.set(
+        this.qualitySettingsByRoom.set(
           authenticated.roomId,
-          message.qualityProfileId,
+          { ...message.qualitySettings },
         );
         for (const viewer of this.options.roomStore.getConnectedViewers(
           authenticated.roomId,
         )) {
           this.sendToSession(viewer.sessionId, {
-            type: "quality-profile",
-            qualityProfileId: message.qualityProfileId,
+            type: "quality-settings",
+            qualitySettings: message.qualitySettings,
           });
         }
         return;
@@ -844,7 +841,7 @@ export class SignalingServer {
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
     this.hybridMediaRouter?.deleteRoom(roomId);
-    this.qualityProfileIdsByRoom.delete(roomId);
+    this.qualitySettingsByRoom.delete(roomId);
     this.shareGenerationsByRoom.delete(roomId);
     for (const sessionId of abandoned.sessionIds) {
       const socket = this.socketsBySessionId.get(sessionId);
@@ -861,7 +858,7 @@ export class SignalingServer {
       this.clearRoomGraceTimers(expired.roomId);
       this.clearRoomConnectionIds(expired.roomId);
       this.hybridMediaRouter?.deleteRoom(expired.roomId);
-      this.qualityProfileIdsByRoom.delete(expired.roomId);
+      this.qualitySettingsByRoom.delete(expired.roomId);
       this.shareGenerationsByRoom.delete(expired.roomId);
       for (const sessionId of expired.sessionIds) {
         const socket = this.socketsBySessionId.get(sessionId);

@@ -11,14 +11,16 @@ import {
   type ScreenerServer,
 } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
+import {
+  QUALITY_PROFILES,
+  QUALITY_RESOLUTIONS,
+  qualitySettingsEqual,
+  type QualityProfileId,
+  type QualitySettings,
+} from "../src/client/media/quality";
 
-const PROFILE_SETTINGS = {
-  "1080p60": { width: 1920, height: 1080, frameRate: 60 },
-  "1080p30": { width: 1920, height: 1080, frameRate: 30 },
-  "720p30": { width: 1280, height: 720, frameRate: 30 },
-} as const;
-
-type ProfileId = keyof typeof PROFILE_SETTINGS;
+const PROFILE_SETTINGS = QUALITY_PROFILES;
+type ProfileId = QualityProfileId;
 type PageRole = "host" | "viewer";
 
 export interface BenchmarkConfig {
@@ -34,6 +36,7 @@ export interface BenchmarkConfig {
   outputPath: string | null;
   headless: boolean;
   noSandbox: boolean;
+  qualityControlSmoke: boolean;
 }
 
 interface MediaTotals {
@@ -72,12 +75,13 @@ interface PageObservation {
   authenticatedAtEpochMs: number | null;
   authenticateSentAtEpochMs: number | null;
   signalingConnected: boolean;
-  qualityProfileId: string | null;
+  qualitySettings: QualitySettings | null;
   assignment: MediaAssignmentObservation;
   maxActiveOutboundMediaEdges: number;
   maxAssignedChildren: number;
   firstDecodedAtEpochMs: number | null;
   firstRenderedAtEpochMs: number | null;
+  renderedFrames: number;
   connections: ConnectionObservation[];
 }
 
@@ -343,6 +347,16 @@ export function parseBenchmarkConfig(
     throw new Error("BENCHMARK_PROFILE must be 1080p60, 1080p30, or 720p30");
   }
   const viewerCounts = parseViewerCounts(environment.BENCHMARK_VIEWERS);
+  const qualityControlSmoke = parseBoolean(
+    environment.BENCHMARK_QUALITY_SMOKE,
+    false,
+    "BENCHMARK_QUALITY_SMOKE",
+  );
+  if (qualityControlSmoke && !viewerCounts.some((count) => count >= 3)) {
+    throw new Error(
+      "BENCHMARK_QUALITY_SMOKE requires a selected viewer count of at least 3",
+    );
+  }
   const recoveryText = environment.BENCHMARK_RECOVERY_VIEWERS?.trim();
   const recoveryViewerCount = recoveryText ? Number(recoveryText) : null;
   if (
@@ -410,6 +424,7 @@ export function parseBenchmarkConfig(
       false,
       "BENCHMARK_CHROME_NO_SANDBOX",
     ),
+    qualityControlSmoke,
   };
 }
 
@@ -551,7 +566,7 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       role: page.role,
       viewerIndex: page.viewerIndex,
       peerId: page.peerId,
-      qualityProfileId: page.qualityProfileId,
+      qualitySettings: page.qualitySettings,
       parentPeerId: page.assignment.parentPeerId,
       childPeerIds: page.assignment.childPeerIds,
     })),
@@ -617,14 +632,18 @@ function buildRunChecks(
       expected: "<= 3000 ms after signaling authentication starts",
     },
     {
-      name: "quality-profile-propagated",
+      name: "quality-settings-propagated",
       passed: summary.finalTopology.every(
-        (participant) => participant.qualityProfileId === profileId,
+        (participant) =>
+          JSON.stringify(participant.qualitySettings) ===
+          JSON.stringify(PROFILE_SETTINGS[profileId]),
       ),
       actual: summary.finalTopology.every(
-        (participant) => participant.qualityProfileId === profileId,
+        (participant) =>
+          JSON.stringify(participant.qualitySettings) ===
+          JSON.stringify(PROFILE_SETTINGS[profileId]),
       ),
-      expected: `${profileId} on every participant`,
+      expected: `${profileId} quality settings on every participant`,
     },
   ];
 }
@@ -654,12 +673,13 @@ export function buildBenchmarkInitScript(options: {
       authenticatedAtEpochMs: null,
       authenticateSentAtEpochMs: null,
       signalingConnected: false,
-      qualityProfileId: null,
+      qualitySettings: null,
       assignment: { parentPeerId: null, childPeerIds: [] },
       maxActiveOutboundMediaEdges: 0,
       maxAssignedChildren: 0,
       firstDecodedAtEpochMs: null,
       firstRenderedAtEpochMs: null,
+      renderedFrames: 0,
     };
     const connections = [];
     const descriptions = [];
@@ -710,8 +730,8 @@ export function buildBenchmarkInitScript(options: {
         state.role = message.role;
         state.roomId = message.roomId;
         state.authenticateSentAtEpochMs = Date.now();
-      } else if (direction === "out" && message.type === "set-quality-profile") {
-        state.qualityProfileId = message.qualityProfileId;
+      } else if (direction === "out" && message.type === "set-quality-settings") {
+        state.qualitySettings = message.qualitySettings;
       }
       if (direction === "in" && message.type === "authenticated") {
         socket.__screenerBenchmarkSignal = true;
@@ -720,12 +740,12 @@ export function buildBenchmarkInitScript(options: {
         state.signalingConnected = true;
         if (message.mediaMode === "peer-assisted") {
           setAssignment(message.mediaAssignment);
-          state.qualityProfileId = message.qualityProfileId;
+          state.qualitySettings = message.qualitySettings;
         }
       } else if (direction === "in" && message.type === "media-assignment") {
         setAssignment(message.mediaAssignment);
-      } else if (direction === "in" && message.type === "quality-profile") {
-        state.qualityProfileId = message.qualityProfileId;
+      } else if (direction === "in" && message.type === "quality-settings") {
+        state.qualitySettings = message.qualitySettings;
       }
       if (message.type === "signal") recordDescription(message, direction);
     }
@@ -842,6 +862,7 @@ export function buildBenchmarkInitScript(options: {
         const onFrame = (now) => {
           const at = performance.timeOrigin + now;
           if (state.firstRenderedAtEpochMs === null) state.firstRenderedAtEpochMs = at;
+          state.renderedFrames += 1;
           video.requestVideoFrameCallback(onFrame);
         };
         video.requestVideoFrameCallback(onFrame);
@@ -1228,7 +1249,7 @@ async function startHost(
   await waitForPage(
     cdp,
     page,
-    "document.querySelector('.start-button')",
+    "document.querySelector('.entry-actions button.entry-action')",
     15_000,
     "host controls",
     signal,
@@ -1237,11 +1258,11 @@ async function startHost(
     cdp,
     page,
     `(() => {
-      const profiles = document.querySelectorAll('.segmented-control button');
+      const profiles = document.querySelectorAll('.quality-controls .segmented-control button');
       const profile = profiles[${profileIndex}];
       if (!(profile instanceof HTMLButtonElement)) throw new Error('Quality profile button missing');
       profile.click();
-      const start = document.querySelector('.start-button');
+      const start = document.querySelector('.entry-actions button.entry-action');
       if (!(start instanceof HTMLButtonElement)) throw new Error('Start button missing');
       start.click();
       return true;
@@ -1302,10 +1323,242 @@ async function samplePages(
   };
 }
 
+function peerConnectionFingerprint(pages: PageObservation[]): string {
+  return pages
+    .map((page) =>
+      [
+        page.label,
+        ...page.connections.map(
+          (connection) =>
+            `${connection.index}:${connection.connectionId ?? "?"}`,
+        ),
+      ].join("|"),
+    )
+    .sort()
+    .join("\n");
+}
+
+async function applyQualityPreference(
+  cdp: CdpConnection,
+  hostPage: PageHandle,
+  label: "平衡" | "清晰优先",
+  signal: AbortSignal,
+): Promise<void> {
+  const serializedLabel = JSON.stringify(label);
+  await evaluate(
+    cdp,
+    hostPage,
+    `(() => {
+      const details = document.querySelector('.advanced-quality');
+      if (!(details instanceof HTMLDetailsElement)) return false;
+      details.open = true;
+      const button = Array.from(document.querySelectorAll('.quality-priority button'))
+        .find((item) => item.textContent?.trim() === ${serializedLabel});
+      if (!(button instanceof HTMLButtonElement)) return false;
+      button.click();
+      return true;
+    })()`,
+  );
+  await waitForPage(
+    cdp,
+    hostPage,
+    `Array.from(document.querySelectorAll('.quality-priority button.is-selected')).some((item) => item.textContent?.trim() === ${serializedLabel})`,
+    5_000,
+    `${label} advanced quality selection`,
+    signal,
+  );
+  await evaluate(
+    cdp,
+    hostPage,
+    `(() => {
+      const button = Array.from(document.querySelectorAll('.advanced-quality-grid > button'))
+        .find((item) => item.textContent?.includes('应用视频设置'));
+      if (!(button instanceof HTMLButtonElement)) return false;
+      button.click();
+      return true;
+    })()`,
+  );
+}
+
+async function runQualityControlSmoke(
+  cdp: CdpConnection,
+  pages: PageHandle[],
+  initialSettings: QualitySettings,
+  signal: AbortSignal,
+): Promise<{
+  settingsPropagated: boolean;
+  peerConnectionsStable: boolean;
+  senderReadbacksMatched: boolean;
+  viewersAdvanced: boolean;
+}> {
+  const hostPage = pages[0];
+  if (!hostPage) {
+    throw new Error("Quality control smoke requires a host page");
+  }
+  const baseline = await Promise.all(pages.map((page) => quickSnapshot(cdp, page)));
+  const baselineFingerprint = peerConnectionFingerprint(baseline);
+  const balanced = {
+    ...initialSettings,
+    degradationPreference: "balanced",
+  } as const satisfies QualitySettings;
+
+  const waitForSettings = async (settings: QualitySettings): Promise<boolean> => {
+    const serializedSettings = JSON.stringify(JSON.stringify(settings));
+    await Promise.all(
+      pages.map((page) =>
+        waitForPage(
+          cdp,
+          page,
+          `JSON.stringify(globalThis.__SCREENER_BENCHMARK__.snapshot().qualitySettings) === ${serializedSettings}`,
+          10_000,
+          `${settings.degradationPreference} quality propagation`,
+          signal,
+        ),
+      ),
+    );
+    const snapshots = await Promise.all(
+      pages.map((page) => quickSnapshot(cdp, page)),
+    );
+    return snapshots.every(
+      (page) =>
+        page.qualitySettings !== null &&
+        qualitySettingsEqual(page.qualitySettings, settings),
+    );
+  };
+  const activeSenderCounts = new Map(
+    baseline.map((page) => [page.label, activeVideoEdgeCount(page, "send")]),
+  );
+  const sendingPages = pages.filter(
+    (page) => (activeSenderCounts.get(page.label) ?? 0) > 0,
+  );
+  await Promise.all(
+    sendingPages.map((page) =>
+      evaluate(
+        cdp,
+        page,
+        `(() => {
+          const toggle = document.querySelector('.connection-details-toggle input');
+          if (!(toggle instanceof HTMLInputElement)) return false;
+          if (!toggle.checked) toggle.click();
+          return true;
+        })()`,
+      ),
+    ),
+  );
+  const waitForReadback = async (
+    label: "平衡" | "清晰",
+  ): Promise<boolean> => {
+    const matched = await Promise.all(
+      sendingPages.map(async (page) => {
+        const expectedCount = activeSenderCounts.get(page.label) ?? 0;
+        const expected = JSON.stringify(`${label} / ${label}`);
+        const predicate = `(() => {
+          const values = Array.from(document.querySelectorAll('.metric'))
+            .filter((metric) => metric.querySelector('dt')?.textContent?.trim() === '请求 / 应用优先级')
+            .map((metric) => metric.querySelector('dd')?.textContent?.trim());
+          return values.length === ${expectedCount} && values.every((value) => value === ${expected});
+        })()`;
+        await waitForPage(
+          cdp,
+          page,
+          predicate,
+          10_000,
+          `${label} sender parameter readback`,
+          signal,
+        );
+        return evaluate<boolean>(cdp, page, `Boolean(${predicate})`);
+      }),
+    );
+    return (
+      sendingPages.length > 0 &&
+      matched.length === sendingPages.length &&
+      matched.every(Boolean)
+    );
+  };
+  const viewerPages = pages.slice(1);
+  const waitForViewerProgress = async (): Promise<boolean> => {
+    for (const page of viewerPages) {
+      await cdp.call("Page.bringToFront", {}, page.sessionId);
+      const before = [await progressSample(cdp, page)];
+      const deadline = Date.now() + 10_000;
+      let advanced = false;
+      while (Date.now() < deadline) {
+        const after = [await progressSample(cdp, page)];
+        if (everyViewerAdvanced(before, after)) {
+          advanced = true;
+          break;
+        }
+        await delay(100, signal);
+      }
+      if (!advanced) {
+        return false;
+      }
+    }
+    return viewerPages.length > 0;
+  };
+
+  const runStep = async (
+    label: "平衡" | "清晰优先",
+    readbackLabel: "平衡" | "清晰",
+    settings: QualitySettings,
+  ): Promise<{
+    settingsPropagated: boolean;
+    senderReadbacksMatched: boolean;
+    viewersAdvanced: boolean;
+  }> => {
+    await cdp.call("Page.bringToFront", {}, hostPage.sessionId);
+    await applyQualityPreference(cdp, hostPage, label, signal);
+    const settingsPropagated = await waitForSettings(settings);
+    const senderReadbacksMatched = await waitForReadback(readbackLabel);
+    const viewersAdvanced = await waitForViewerProgress();
+    return {
+      settingsPropagated,
+      senderReadbacksMatched,
+      viewersAdvanced,
+    };
+  };
+
+  const balancedResult = await runStep("平衡", "平衡", balanced);
+  const clarityResult = await runStep("清晰优先", "清晰", initialSettings);
+
+  const final = await Promise.all(pages.map((page) => quickSnapshot(cdp, page)));
+
+  return {
+    settingsPropagated:
+      balancedResult.settingsPropagated && clarityResult.settingsPropagated,
+    peerConnectionsStable:
+      peerConnectionFingerprint(final) === baselineFingerprint,
+    senderReadbacksMatched:
+      balancedResult.senderReadbacksMatched &&
+      clarityResult.senderReadbacksMatched,
+    viewersAdvanced:
+      balancedResult.viewersAdvanced && clarityResult.viewersAdvanced,
+  };
+}
+
 function totalDecodedFrames(page: PageObservation): number {
   return page.connections.reduce(
     (total, connection) => total + (connection.receiveTotals?.framesTotal ?? 0),
     0,
+  );
+}
+
+export function everyViewerAdvanced(
+  before: PageObservation[],
+  after: PageObservation[],
+): boolean {
+  const baselineViewers = before.filter((page) => page.role === "viewer");
+  const currentByLabel = new Map(after.map((page) => [page.label, page]));
+  return (
+    baselineViewers.length > 0 &&
+    baselineViewers.every((baseline) => {
+      const current = currentByLabel.get(baseline.label);
+      return (
+        current !== undefined &&
+        totalDecodedFrames(current) > totalDecodedFrames(baseline) &&
+        current.renderedFrames > baseline.renderedFrames
+      );
+    })
   );
 }
 
@@ -1450,10 +1703,11 @@ async function runCase(
   let recovery: RecoveryResult = { triggered: false };
   try {
     const capture = PROFILE_SETTINGS[config.profileId];
+    const captureResolution = QUALITY_RESOLUTIONS[capture.resolution];
     const commonInit = {
-      width: capture.width,
-      height: capture.height,
-      frameRate: capture.frameRate,
+      width: captureResolution.width,
+      height: captureResolution.height,
+      frameRate: capture.maxFramerate,
     };
     const hostPage = await createPage(cdp, baseUrl, {
       ...commonInit,
@@ -1505,6 +1759,38 @@ async function runCase(
 
     const summary = summarizeSamples(samples, viewerCount);
     const checks = buildRunChecks(summary, viewerCount, config.profileId);
+    if (config.qualityControlSmoke && viewerCount >= 3) {
+      const qualityControl = await runQualityControlSmoke(
+        cdp,
+        pages,
+        capture,
+        signal,
+      );
+      checks.push({
+        name: "quality-control-propagation",
+        passed: qualityControl.settingsPropagated,
+        actual: qualityControl.settingsPropagated,
+        expected: "balanced and clarity settings reach every participant",
+      });
+      checks.push({
+        name: "quality-control-no-peer-rebuild",
+        passed: qualityControl.peerConnectionsStable,
+        actual: qualityControl.peerConnectionsStable,
+        expected: "peer connection identities stay unchanged",
+      });
+      checks.push({
+        name: "quality-control-sender-readback",
+        passed: qualityControl.senderReadbacksMatched,
+        actual: qualityControl.senderReadbacksMatched,
+        expected: "every baseline active video sender displays matching preference readback",
+      });
+      checks.push({
+        name: "quality-control-viewer-progress",
+        passed: qualityControl.viewersAdvanced,
+        actual: qualityControl.viewersAdvanced,
+        expected: "every viewer decodes and renders frames after both setting changes",
+      });
+    }
     if (config.recoveryViewerCount === viewerCount) {
       recovery = await runRecovery(
         cdp,
@@ -1589,6 +1875,7 @@ export async function main(): Promise<number> {
   }
 
   const profile = PROFILE_SETTINGS[config.profileId];
+  const profileResolution = QUALITY_RESOLUTIONS[profile.resolution];
   const report: BenchmarkReport = {
     schemaVersion: 1,
     startedAt: new Date().toISOString(),
@@ -1612,14 +1899,15 @@ export async function main(): Promise<number> {
       recoveryTimeoutMs: config.recoveryTimeoutMs,
       headless: config.headless,
       noSandbox: config.noSandbox,
+      qualityControlSmoke: config.qualityControlSmoke,
       chromeExecutable: basename(config.chromePath),
       output: config.outputPath ?? "stdout",
     },
     capture: {
       kind: "deterministic-canvas",
-      width: profile.width,
-      height: profile.height,
-      frameRate: profile.frameRate,
+      width: profileResolution.width,
+      height: profileResolution.height,
+      frameRate: profile.maxFramerate,
       audio: false,
     },
     limitations: [
