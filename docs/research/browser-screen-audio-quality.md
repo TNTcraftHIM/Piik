@@ -1,0 +1,170 @@
+# Browser Screen-Audio Quality Controls
+
+Accessed: 2026-08-19
+
+Status: retained no-go for user-facing browser audio quality controls.
+
+## Scope And Decision
+
+This review covers audio returned with `getDisplayMedia()` and sent through a
+browser `RTCPeerConnection`. It does not decide whether the product ultimately
+needs Windows per-application capture; that remains a separate native-sender
+requirement.
+
+The Web sender keeps the current minimal behavior:
+
+- request audio with `audio: true`;
+- treat an audio track as optional and warn before publishing when none exists;
+- preserve returned audio through source changes, picture pause, P2P, relay, and
+  configured SFU routes; and
+- expose no channel-count, sample-rate, Opus bitrate, stereo, DTX, or FEC
+  quality control.
+
+No runtime or UI change is justified. In particular, Screener will not add
+application-owned SDP munging for these controls or add a control whose value
+cannot be separated into requested, applied, negotiated, and observed states
+using standard APIs.
+
+## Standard API Boundary
+
+| Concern | Standard request or control | Honest readback | What it does not prove | Current product action |
+| --- | --- | --- | --- | --- |
+| Audio presence | `getDisplayMedia({ audio: true, video: ... })` expresses interest | `stream.getAudioTracks().length` proves only whether a track was returned | The browser may still return video only; a track does not identify system, window, tab, or selected-game audio | Keep the existing presence check and visible no-audio warning |
+| Audio source choice | `systemAudio`, `windowAudio`, and `audioSelection` are picker hints that a user agent may ignore | There is no standard audio-source category readback corresponding to those hints | The selected audio scope, per-application isolation, or cross-browser availability | Do not present these hints as quality or source guarantees |
+| Capture channels | The Screen Capture specification does not list generic `channelCount` as applicable to display audio | `track.getSettings().channelCount` may describe the returned track when the browser supplies it | That the app controlled the value, or that the RTP encoder sends stereo | Observe only in a future diagnostic; absent means unknown |
+| Capture sample rate | The Screen Capture specification does not list generic `sampleRate` as applicable to display audio | `track.getSettings().sampleRate` may be present in an implementation | The Opus mode, RTP clock semantics, receiver output rate, or end-to-end fidelity | Observe only in a future diagnostic; absent means unknown |
+| RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio | A following `getParameters()` can show the applied ceiling; outbound byte deltas show actual traffic | A target, minimum, quality increase, or Opus `maxaveragebitrate`; other limits may keep traffic lower | Do not add a control without a measured need to reduce audio bandwidth |
+| Codec | The user agent chooses among negotiated send codecs unless a separately negotiated codec selection is available | `RTCCodecStats.mimeType` and `sdpFmtpLine` identify the codec and negotiated format parameters in use | That Opus was selected before stats exist, or that negotiated preferences describe actual content | Label only observed negotiated data; do not force a codec |
+| Stereo | No stable sender parameter controls Opus stereo | Capture settings and negotiated codec/fmtp data can be inspected separately | Capture channel count does not prove encoded stereo; `opus/48000/2` does not prove stereo content | No control and no inferred stereo badge |
+| DTX | The current WebRTC `RTCRtpEncodingParameters` dictionary has no `dtx` member | No portable standard sender readback proves DTX operation | A deprecated, non-standard browser field or SDK option is not a cross-browser contract | No control |
+| FEC | There is no direct, portable audio FEC on/off sender parameter | Negotiated codec/fmtp data and inbound `fecPacketsReceived`/`fecBytesReceived` may provide evidence after use | Negotiation does not prove recovery occurred; zero counters do not prove FEC was disabled | No control; retain stats only as future diagnostic evidence |
+
+The one technically portable write, audio `maxBitrate`, is not a quality-up
+knob. The WebRTC specification defines it as a maximum and allows other limits
+to constrain the sender further. It also warns that an audio ceiling below the
+chosen encoding's needs may require playback to stop. Leaving it unset already
+avoids an application-imposed ceiling, so adding a higher value cannot promise
+better game audio.
+
+## Capture And Browser Compatibility
+
+The Screen Capture Working Draft says constraints are applied only after the
+user chooses a surface and that `getUserMedia()` constraints do not apply to
+display tracks unless this specification lists them. The only audio
+constrainable properties it currently lists are `restrictOwnAudio` and
+`suppressLocalAudioPlayback`; neither controls fidelity. It explicitly permits
+a browser to return no audio despite an audio request.
+
+MDN browser-compatibility data on the access date reports:
+
+- display-audio capture in Chromium from Chrome 74, with whole-system audio on
+  Windows and ChromeOS but tab-only audio on Linux and macOS;
+- no display-audio capture support in Firefox or Safari;
+- `systemAudio` in desktop Chromium from Chrome 105, but not Firefox or Safari;
+- `windowAudio` only partially implemented in Chrome 141: `"exclude"` and
+  `"system"` are supported, while `"window"` is not; and
+- `MediaTrackSettings.channelCount` as non-Baseline because it is missing in
+  widely used browsers.
+
+These are an implementation snapshot, not permanent product guarantees.
+Chromium's own capture documentation also separates Windows/ChromeOS system
+loopback capture from tab capture. It publishes no stable Web contract for a
+fixed display-audio sample rate or channel count.
+
+`encodings[].maxBitrate` has much broader compatibility: MDN data records
+Chrome 69, Firefox 46, and Safari 11. The old `encodings[].dtx` field is absent
+from Chrome and Firefox, present only as a deprecated non-standard Safari
+feature, and absent from the current WebRTC IDL.
+
+## Opus Signaling Is Not Source Truth
+
+WebRTC endpoints must implement Opus, but negotiation may select another
+mandatory audio codec. The application must wait for the in-use codec stats
+before calling a stream Opus.
+
+RFC 7587 requires an Opus SDP `a=rtpmap` clock rate of 48000 and channel count
+of 2 for all Opus sessions. It separately explains that actual Opus media may
+use another internal sampling rate. Therefore `audio/opus`, `clockRate=48000`,
+and `channels=2` in codec stats do not establish a 48 kHz stereo capture or
+stereo payload.
+
+Opus `maxaveragebitrate`, `stereo`, `useinbandfec`, and `usedtx` are fmtp
+offer/answer parameters. `stereo` is a receive preference, while
+`sprop-stereo` is only a sender hint and explicitly not a guarantee. A browser
+API that merely exposes the negotiated `sdpFmtpLine` can report those facts,
+but does not provide a portable setter or prove the encoder's moment-to-moment
+behavior.
+
+## Reference Implementations
+
+No code was copied. All repositories were inspected at pinned commits on
+2026-08-19.
+
+- LiveKit client-sdk-js, Apache-2.0, commit
+  [`0a2110d`](https://github.com/livekit/client-sdk-js/tree/0a2110d39904a06722a0c4d1ddbb9390bb06ad4d):
+  it treats
+  [`getSettings().channelCount` or requested constraints](https://github.com/livekit/client-sdk-js/blob/0a2110d39904a06722a0c4d1ddbb9390bb06ad4d/src/room/participant/LocalParticipant.ts#L899-L920)
+  as a stereo-input heuristic and populates standard
+  `RTCRtpEncodingParameters.maxBitrate`, but stereo/DTX/RED also travel in
+  LiveKit signaling. Its transport then
+  [munges Opus bitrate fmtp](https://github.com/livekit/client-sdk-js/blob/0a2110d39904a06722a0c4d1ddbb9390bb06ad4d/src/room/PCTransport.ts#L269-L333)
+  in SDP.
+- lib-jitsi-meet, Apache-2.0, commit
+  [`63a04ec`](https://github.com/jitsi/lib-jitsi-meet/tree/63a04ecabd972ea75e877f9ba12086c13cb68210):
+  [`mungeOpus()`](https://github.com/jitsi/lib-jitsi-meet/blob/63a04ecabd972ea75e877f9ba12086c13cb68210/modules/RTC/TPCUtils.ts#L871-L929)
+  writes `stereo`, `sprop-stereo`, `maxaveragebitrate`, and `usedtx` into SDP,
+  including a Firefox-specific DTX exception.
+- simple-peer, MIT, commit
+  [`f1a492d`](https://github.com/feross/simple-peer/tree/f1a492d1999ce727fa87193ebdea20ac89c1fc6d):
+  it has no higher-level audio quality contract and exposes only an advanced
+  generic
+  [`sdpTransform`](https://github.com/feross/simple-peer/blob/f1a492d1999ce727fa87193ebdea20ac89c1fc6d/index.js#L608-L664)
+  hook for SDP changes.
+
+The Apache and MIT implementations support the same conclusion: a library can
+offer product-specific audio modes, but the stereo/DTX/FEC/Opus-fmtp portion is
+not equivalent to a portable browser sender control.
+
+## Honest Future Diagnostics
+
+If audio diagnostics become necessary, keep four layers separate:
+
+1. **Capture:** track absent/present, plus `channelCount` and `sampleRate` only
+   when the browser returns numeric values.
+2. **Requested/applied:** an RTP ceiling only if Screener actually calls
+   `setParameters()`, followed by immediate `getParameters()` readback.
+3. **Negotiated:** the in-use codec MIME type and raw fmtp from `RTCCodecStats`,
+   labelled as negotiated parameters rather than actual stereo/DTX/FEC.
+4. **Observed:** interval audio bitrate from byte deltas and receiver FEC
+   counters when implemented; missing values remain unknown.
+
+Never substitute `48000`, `2`, `false`, or `0` for an unavailable field.
+
+## Revisit Gates
+
+Add a user-facing audio setting only when all of these are true:
+
+1. A real Windows game/system-audio matrix identifies a reproducible user
+   problem and a desired outcome, such as a measured bandwidth reduction.
+2. The setting uses a standards-track API without SDP munging or private
+   signaling and is supported across the declared sender-browser matrix.
+3. The app can read back the applied value and separately observe the
+   negotiated codec and actual traffic or recovery behavior.
+4. A controlled audible stereo/frequency fixture and packet-loss test shows
+   the intended result without silence, channel collapse, or route-specific
+   divergence.
+
+## Primary Sources
+
+- [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
+- [W3C WebRTC](https://www.w3.org/TR/webrtc/)
+- [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
+- [RFC 7587: RTP Payload Format for Opus](https://www.rfc-editor.org/rfc/rfc7587.html)
+- [RFC 7874: WebRTC Audio Codec and Processing Requirements](https://www.rfc-editor.org/rfc/rfc7874.html)
+- [MDN `getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
+- [MDN `MediaTrackSettings.channelCount`](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackSettings/channelCount)
+- [MDN Browser Compatibility Data: `MediaDevices`](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
+- [MDN Browser Compatibility Data: `RTCRtpSender`](https://github.com/mdn/browser-compat-data/blob/main/api/RTCRtpSender.json)
+- [Chrome screen-sharing controls](https://developer.chrome.com/docs/web-platform/screen-sharing-controls)
+- [Chrome 141 window-audio release note](https://developer.chrome.com/release-notes/141)
+- [Chromium media-capture architecture index](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/media/capture/)
