@@ -45,7 +45,7 @@ Last updated: 2026-08-19
 - The current quality stack uses one strict, non-persistent `QualitySettings` value: 720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, and clarity/balanced/fluid preference. Host-only peer-assisted updates are last-wins for current/future relays and optional SFU; ordinary P2P wire stays unchanged. Sender updates are serialized and read back; rejection, rewriting, or three identical native limitation samples produce one visible warning without automatic action.
 - Chrome 151 with one host, three viewers, and synthetic 720p30 passed balanced-to-clarity propagation, sender preference readback, stable peer-connection fingerprints, host fanout two, relay fanout one, and continued decoding. This is control evidence, not a quality, load, public-network, or endurance claim.
 - Per-frame encode/decode diagnostics use adjacent non-overlapping `getStats()` deltas rather than connection-lifetime averages; first, empty, changed-stream, and reset intervals remain unknown and rebase.
-- The current quality/UI stack passes repository hygiene, type checking, 20 Vitest files/260 tests, and both builds. Production separately passed 108 tests and deployment checks.
+- Draft PR #21 passes CI, repository hygiene, type checking, 20 Vitest files/260 tests, and both builds. Production separately passed 108 tests and deployment checks.
 
 ## Provisional Quality Targets
 
