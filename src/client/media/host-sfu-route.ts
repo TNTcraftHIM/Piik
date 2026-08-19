@@ -5,7 +5,10 @@ import type {
   ServerMessage,
 } from "../../shared/protocol";
 import { SfuPublisher, type SfuConnectionConfig } from "../sfu/publisher";
-import type { QualityProfile } from "./quality";
+import type {
+  QualityProfile,
+  VideoSenderParameterReadback,
+} from "./quality";
 import {
   MediaRouteTransition,
   type RouteOperationToken,
@@ -20,6 +23,7 @@ interface HostPublisherTransport {
   replaceStream(stream: MediaStream): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
   getQualityWarning?(): string | null;
+  getSenderParameters?(): VideoSenderParameterReadback | null;
   disconnect(): Promise<void>;
 }
 
@@ -221,6 +225,12 @@ export class HostSfuRoute {
   getQualityWarning(): string | null {
     return this.active?.active
       ? (this.active.publisher.getQualityWarning?.() ?? null)
+      : null;
+  }
+
+  getSenderParameters(): VideoSenderParameterReadback | null {
+    return this.active?.active
+      ? (this.active.publisher.getSenderParameters?.() ?? null)
       : null;
   }
 

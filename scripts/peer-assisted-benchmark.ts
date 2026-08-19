@@ -14,6 +14,7 @@ import { loadConfig } from "../src/server/config";
 import {
   QUALITY_PROFILES,
   QUALITY_RESOLUTIONS,
+  qualitySettingsEqual,
   type QualityProfileId,
   type QualitySettings,
 } from "../src/client/media/quality";
@@ -80,6 +81,7 @@ interface PageObservation {
   maxAssignedChildren: number;
   firstDecodedAtEpochMs: number | null;
   firstRenderedAtEpochMs: number | null;
+  renderedFrames: number;
   connections: ConnectionObservation[];
 }
 
@@ -677,6 +679,7 @@ export function buildBenchmarkInitScript(options: {
       maxAssignedChildren: 0,
       firstDecodedAtEpochMs: null,
       firstRenderedAtEpochMs: null,
+      renderedFrames: 0,
     };
     const connections = [];
     const descriptions = [];
@@ -859,6 +862,7 @@ export function buildBenchmarkInitScript(options: {
         const onFrame = (now) => {
           const at = performance.timeOrigin + now;
           if (state.firstRenderedAtEpochMs === null) state.firstRenderedAtEpochMs = at;
+          state.renderedFrames += 1;
           video.requestVideoFrameCallback(onFrame);
         };
         video.requestVideoFrameCallback(onFrame);
@@ -1382,7 +1386,10 @@ async function runQualityControlSmoke(
   initialSettings: QualitySettings,
   signal: AbortSignal,
 ): Promise<{
+  settingsPropagated: boolean;
   peerConnectionsStable: boolean;
+  senderReadbacksMatched: boolean;
+  viewersAdvanced: boolean;
 }> {
   const hostPage = pages[0];
   if (!hostPage) {
@@ -1395,7 +1402,7 @@ async function runQualityControlSmoke(
     degradationPreference: "balanced",
   } as const satisfies QualitySettings;
 
-  const waitForSettings = async (settings: QualitySettings): Promise<void> => {
+  const waitForSettings = async (settings: QualitySettings): Promise<boolean> => {
     const serializedSettings = JSON.stringify(JSON.stringify(settings));
     await Promise.all(
       pages.map((page) =>
@@ -1409,13 +1416,21 @@ async function runQualityControlSmoke(
         ),
       ),
     );
+    const snapshots = await Promise.all(
+      pages.map((page) => quickSnapshot(cdp, page)),
+    );
+    return snapshots.every(
+      (page) =>
+        page.qualitySettings !== null &&
+        qualitySettingsEqual(page.qualitySettings, settings),
+    );
   };
-  const sendingLabels = new Set(
-    baseline
-      .filter((page) => page.assignment.childPeerIds.length > 0)
-      .map((page) => page.label),
+  const activeSenderCounts = new Map(
+    baseline.map((page) => [page.label, activeVideoEdgeCount(page, "send")]),
   );
-  const sendingPages = pages.filter((page) => sendingLabels.has(page.label));
+  const sendingPages = pages.filter(
+    (page) => (activeSenderCounts.get(page.label) ?? 0) > 0,
+  );
   await Promise.all(
     sendingPages.map((page) =>
       evaluate(
@@ -1430,37 +1445,94 @@ async function runQualityControlSmoke(
       ),
     ),
   );
-  const waitForReadback = async (label: "平衡" | "清晰"): Promise<void> => {
-    const expected = JSON.stringify(`${label} / ${label}`);
-    await Promise.all(
-      sendingPages.map((page) =>
-        waitForPage(
+  const waitForReadback = async (
+    label: "平衡" | "清晰",
+  ): Promise<boolean> => {
+    const matched = await Promise.all(
+      sendingPages.map(async (page) => {
+        const expectedCount = activeSenderCounts.get(page.label) ?? 0;
+        const expected = JSON.stringify(`${label} / ${label}`);
+        const predicate = `(() => {
+          const values = Array.from(document.querySelectorAll('.metric'))
+            .filter((metric) => metric.querySelector('dt')?.textContent?.trim() === '请求 / 应用优先级')
+            .map((metric) => metric.querySelector('dd')?.textContent?.trim());
+          return values.length === ${expectedCount} && values.every((value) => value === ${expected});
+        })()`;
+        await waitForPage(
           cdp,
           page,
-          `Array.from(document.querySelectorAll('.metric')).some((metric) =>
-            metric.querySelector('dt')?.textContent?.trim() === '请求 / 应用优先级' &&
-            metric.querySelector('dd')?.textContent?.trim() === ${expected}
-          )`,
+          predicate,
           10_000,
           `${label} sender parameter readback`,
           signal,
-        ),
-      ),
+        );
+        return evaluate<boolean>(cdp, page, `Boolean(${predicate})`);
+      }),
+    );
+    return (
+      sendingPages.length > 0 &&
+      matched.length === sendingPages.length &&
+      matched.every(Boolean)
     );
   };
+  const viewerPages = pages.slice(1);
+  const waitForViewerProgress = async (): Promise<boolean> => {
+    for (const page of viewerPages) {
+      await cdp.call("Page.bringToFront", {}, page.sessionId);
+      const before = [await progressSample(cdp, page)];
+      const deadline = Date.now() + 10_000;
+      let advanced = false;
+      while (Date.now() < deadline) {
+        const after = [await progressSample(cdp, page)];
+        if (everyViewerAdvanced(before, after)) {
+          advanced = true;
+          break;
+        }
+        await delay(100, signal);
+      }
+      if (!advanced) {
+        return false;
+      }
+    }
+    return viewerPages.length > 0;
+  };
 
-  await applyQualityPreference(cdp, hostPage, "平衡", signal);
-  await waitForSettings(balanced);
-  await waitForReadback("平衡");
-  await applyQualityPreference(cdp, hostPage, "清晰优先", signal);
-  await waitForSettings(initialSettings);
-  await waitForReadback("清晰");
+  const runStep = async (
+    label: "平衡" | "清晰优先",
+    readbackLabel: "平衡" | "清晰",
+    settings: QualitySettings,
+  ): Promise<{
+    settingsPropagated: boolean;
+    senderReadbacksMatched: boolean;
+    viewersAdvanced: boolean;
+  }> => {
+    await cdp.call("Page.bringToFront", {}, hostPage.sessionId);
+    await applyQualityPreference(cdp, hostPage, label, signal);
+    const settingsPropagated = await waitForSettings(settings);
+    const senderReadbacksMatched = await waitForReadback(readbackLabel);
+    const viewersAdvanced = await waitForViewerProgress();
+    return {
+      settingsPropagated,
+      senderReadbacksMatched,
+      viewersAdvanced,
+    };
+  };
+
+  const balancedResult = await runStep("平衡", "平衡", balanced);
+  const clarityResult = await runStep("清晰优先", "清晰", initialSettings);
 
   const final = await Promise.all(pages.map((page) => quickSnapshot(cdp, page)));
 
   return {
+    settingsPropagated:
+      balancedResult.settingsPropagated && clarityResult.settingsPropagated,
     peerConnectionsStable:
       peerConnectionFingerprint(final) === baselineFingerprint,
+    senderReadbacksMatched:
+      balancedResult.senderReadbacksMatched &&
+      clarityResult.senderReadbacksMatched,
+    viewersAdvanced:
+      balancedResult.viewersAdvanced && clarityResult.viewersAdvanced,
   };
 }
 
@@ -1468,6 +1540,25 @@ function totalDecodedFrames(page: PageObservation): number {
   return page.connections.reduce(
     (total, connection) => total + (connection.receiveTotals?.framesTotal ?? 0),
     0,
+  );
+}
+
+export function everyViewerAdvanced(
+  before: PageObservation[],
+  after: PageObservation[],
+): boolean {
+  const baselineViewers = before.filter((page) => page.role === "viewer");
+  const currentByLabel = new Map(after.map((page) => [page.label, page]));
+  return (
+    baselineViewers.length > 0 &&
+    baselineViewers.every((baseline) => {
+      const current = currentByLabel.get(baseline.label);
+      return (
+        current !== undefined &&
+        totalDecodedFrames(current) > totalDecodedFrames(baseline) &&
+        current.renderedFrames > baseline.renderedFrames
+      );
+    })
   );
 }
 
@@ -1677,8 +1768,8 @@ async function runCase(
       );
       checks.push({
         name: "quality-control-propagation",
-        passed: true,
-        actual: true,
+        passed: qualityControl.settingsPropagated,
+        actual: qualityControl.settingsPropagated,
         expected: "balanced and clarity settings reach every participant",
       });
       checks.push({
@@ -1689,9 +1780,15 @@ async function runCase(
       });
       checks.push({
         name: "quality-control-sender-readback",
-        passed: true,
-        actual: true,
-        expected: "host and active relay display both sender preference readbacks",
+        passed: qualityControl.senderReadbacksMatched,
+        actual: qualityControl.senderReadbacksMatched,
+        expected: "every baseline active video sender displays matching preference readback",
+      });
+      checks.push({
+        name: "quality-control-viewer-progress",
+        passed: qualityControl.viewersAdvanced,
+        actual: qualityControl.viewersAdvanced,
+        expected: "every viewer decodes and renders frames after both setting changes",
       });
     }
     if (config.recoveryViewerCount === viewerCount) {

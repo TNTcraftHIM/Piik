@@ -128,13 +128,14 @@ or scene detector. Three consecutive samples of one non-`none` native
 `qualityLimitationReason` produce one explanatory warning; a reason change or
 recovery resets it and never triggers a media action.
 
-A Chromium 151 loopback smoke with one host, three viewers, and synthetic
-720p30 video propagated balanced then clarity settings to every participant,
-displayed both sender preference readbacks, and preserved all peer-connection
-fingerprints. Host media edges peaked at two, relay edges at one, and all three
-viewers kept decoding. This verifies controls and connection preservation, not
-visual quality, full-resolution performance, CPU/GPU cost, public networks, or
-sustained behavior.
+A Chrome 151 loopback smoke with one host, three viewers, and synthetic 720p30
+video propagated balanced then clarity settings to every participant. Every
+baseline active outbound video sender displayed the matching requested/applied
+preference, peer-connection fingerprints stayed unchanged, and every viewer's
+decoded-frame and foreground `requestVideoFrameCallback` counters grew after
+each change. Host media edges peaked at two and relay edges at one. This verifies
+controls and continuity, not visual quality, full-resolution performance,
+CPU/GPU cost, public networks, or sustained behavior.
 
 ## Deliberate Non-Goals
 

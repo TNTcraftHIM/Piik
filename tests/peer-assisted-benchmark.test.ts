@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeVideoEdgeCount,
   buildBenchmarkInitScript,
+  everyViewerAdvanced,
   parseBenchmarkConfig,
   parseViewerCounts,
   summarizeSamples,
@@ -31,7 +32,6 @@ function page(
     authenticateSentAtEpochMs: 900,
     signalingConnected: true,
     qualitySettings: lowQualitySettings,
-    senderParameterApplications: [],
     maxActiveOutboundMediaEdges: sendEdges,
     maxAssignedChildren: sendEdges,
     assignment: {
@@ -40,6 +40,7 @@ function page(
     },
     firstDecodedAtEpochMs: role === "viewer" ? 1_500 : null,
     firstRenderedAtEpochMs: role === "viewer" ? 1_550 : null,
+    renderedFrames: role === "viewer" ? 10 : 0,
     connections: [
       ...Array.from({ length: sendEdges }, (_, index) => ({
         index,
@@ -193,6 +194,27 @@ describe("peer-assisted benchmark observations", () => {
     ).toBe(false);
   });
 
+  it("requires every viewer to decode and render after a quality change", () => {
+    const before = [
+      page("host", "host", 2, 0),
+      page("viewer", "viewer-1", 1, 1),
+      page("viewer", "viewer-2", 0, 1),
+    ];
+    const after = structuredClone(before);
+    for (const viewer of after.filter((entry) => entry.role === "viewer")) {
+      viewer.connections.at(-1)!.receiveTotals!.framesTotal += 1;
+      viewer.renderedFrames += 1;
+    }
+    expect(everyViewerAdvanced(before, after)).toBe(true);
+
+    after[2]!.renderedFrames = before[2]!.renderedFrames;
+    expect(everyViewerAdvanced(before, after)).toBe(false);
+    after[2]!.renderedFrames += 1;
+    after[1]!.connections.at(-1)!.receiveTotals!.framesTotal =
+      before[1]!.connections.at(-1)!.receiveTotals!.framesTotal;
+    expect(everyViewerAdvanced(before, after)).toBe(false);
+  });
+
   it("injects the requested deterministic capture dimensions", () => {
     const source = buildBenchmarkInitScript({
       label: "host-1",
@@ -208,5 +230,6 @@ describe("peer-assisted benchmark observations", () => {
     expect(source).toContain("getDisplayMedia");
     expect(source).toContain("collectConnectionMetrics");
     expect(source).toContain("set-quality-settings");
+    expect(source).toContain("renderedFrames");
   });
 });
