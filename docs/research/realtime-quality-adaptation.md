@@ -142,6 +142,17 @@ dimensions/FPS, byte/loss/jitter counters, decoded/dropped frames, and freeze
 counters when implemented. Stats members may be absent, and cumulative values
 must be compared across two samples rather than treated as interval values.
 
+The user-facing loss value should therefore be an RTP interval loss rate, not
+the cumulative `packetsLost` counter and not a claim about UDP itself. For one
+unchanged RTP stats object, compute `lostDelta / (receivedDelta + lostDelta)`;
+an initial sample, reset, negative delta, zero denominator, or absent field is
+unknown. `RTCReceivedRtpStreamStats` defines both counters and notes that
+`packetsLost` can be negative. `RTCIceCandidateStats.address` is privacy-sensitive
+and remote addresses are null by default unless the application supplied the
+candidate. Screener may show a selected address locally in collapsed details,
+but it must never enter Viewer C, signaling, logs, exports, persistence, route
+selection, or NAT/geography inference.
+
 Correlate one time interval and media generation across:
 
 | Evidence | Fields |
