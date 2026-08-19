@@ -15,6 +15,10 @@ temporary picture pause with audio unaffected, and clearer stopped/waiting and
 TURN-warning states. Real capture, game audio, mobile lifecycle, sustained
 multi-viewer behavior, and performance targets remain unverified.
 
+A separate Draft spike now proves a native Pion sender can fan one pre-encoded
+VP8 sample sequence to two independent Chrome WebRTC sessions that both decode
+and present changing frames. It is not connected to the Web product.
+
 ## Established Baseline
 
 - Runtime: Node.js 24, React, TypeScript, Vite, native browser WebRTC, `ws`, Zod, and a separate coturn deployment.
@@ -42,6 +46,7 @@ multi-viewer behavior, and performance targets remain unverified.
 - Headless Chrome layout checks at actual inner widths 500, 781, and 820 px keep all live controls inside the host area, including the forced-relay badge. Chrome clamped the requested 390 px window to 500 px, so a true 390 px browser viewport remains unverified.
 - Production configuration fails closed without HTTPS, STUN, TURN credentials, explicit TURN/UDP, or explicit TURN/TCP. Public STUN and authenticated relay-only DataChannel tests passed over TURN/UDP and TURN/TCP.
 - Staging runs Debian 12, nginx, Node.js 24.19.0, and coturn 4.17.2. Screener binds loopback behind nginx; the protected SQLite directory and database permissions survive a clean service restart. TURN/TLS is intentionally disabled.
+- Native browser oracle on Windows/Chrome 151: one WebCodecs fixture instance produced 120 VP8 chunks; the native coordinator read 120 source samples and made 240 track writes. Each browser decoded and presented 30 changing 320x180 frames. Native legs used different SSRCs and first sequences (`1000`, `30000`), each received RTCP receiver reports, and their ICE ufrags and DTLS fingerprints differed. This does not prove a physical hardware encode.
 
 ## Next Milestone
 
@@ -58,10 +63,16 @@ Execute and record the manual browser/network matrix:
 - live 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps changes without a second source prompt or peer rebuild, plus picture pause/resume while audio continues;
 - codec implementation, encode load, bitrate, frame rate, first picture, and glass-to-glass latency.
 
+Keep native fanout out of the product controller until separate bounded tests
+prove two-edge send-side BWE aggregation, PLI/FIR coordination, asymmetric-loss
+NACK/RTX and pacing bounds, mixed direct/TURN operation, and reconnect isolation.
+
 ## Current Blocker
 
 - No infrastructure blocker remains. The live-control browser cycle, room `1`
   browser lifecycle, and real-device media matrix remain unverified.
+- Native product integration is deliberately blocked by unimplemented BWE and
+  keyframe policy plus unverified loss recovery, TURN, pacing, and lifecycle.
 
 ## Blocking Decisions
 

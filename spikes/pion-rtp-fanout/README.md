@@ -27,7 +27,35 @@ go run ./cmd/oracle
 The module requires Go 1.24 or newer because the pinned Pion release does. It
 was initially verified with Go 1.26.6 and Pion WebRTC v4.2.18.
 
-## Scope Boundaries
+## Browser Decode And Render Oracle
+
+The follow-up command generates a 320x180@30 VP8 sequence from a synthetic
+canvas with one browser WebCodecs encoder instance. A native Pion coordinator
+reads each encoded frame once and writes it to two independent
+`TrackLocalStaticSample` tracks. Each track has its own packetizer, RTP sequence
+space, SSRC, RTCP reader, ICE credentials, DTLS association, and SRTP context.
+
+Two separate unmodified headless Chrome/Chromium/Edge processes receive the
+tracks. The run passes only when both browsers report decoded frames and
+`requestVideoFrameCallback` callbacks with changing sampled pixels. A public
+Pion interceptor records the actual transport-local RTP headers.
+
+```sh
+go run ./cmd/browser-oracle
+```
+
+Use `-browser /path/to/browser` or `SCREENER_BROWSER_BIN` when automatic browser
+discovery is insufficient. The same run is available as an opt-in automated
+test by setting `SCREENER_RUN_BROWSER_ORACLE=1` before `go test ./...`.
+
+Initial Windows evidence used Go 1.26.6 and Headless Chrome 151. Both receivers
+decoded and presented 30 changing 320x180 frames before reporting success. The
+native legs used distinct SSRCs and first sequence numbers `1000` and `30000`,
+and received independent RTCP receiver reports. See
+[`docs/research/native-shared-encode-sender.md`](../../docs/research/native-shared-encode-sender.md)
+for the full measurements and stop lines.
+
+## RTP Oracle Scope Boundaries
 
 This is an API and in-process transport oracle. It proves that Pion's public
 API can bind one static RTP track to two separate `PeerConnection` transports
@@ -42,6 +70,11 @@ It does **not** include or prove:
   pacing, loss recovery, latency, or sustained throughput;
 - zero-copy transport, constant memory use, or production readiness; or
 - that this should replace the current P2P-first browser path.
+
+The browser oracle additionally does **not** prove physical or hardware shared
+encoding. Its one WebCodecs instance only generates the reproducible fixture.
+Send-side bandwidth estimation, PLI/FIR aggregation, loss/RTX behavior, bounded
+pacing, and TURN/reconnect behavior remain hard stops before product use.
 
 ## Decision Gate
 
