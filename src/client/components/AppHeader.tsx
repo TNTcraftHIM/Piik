@@ -10,7 +10,7 @@ export function AppHeader({ status }: { status: ReactNode }) {
         </span>
         <span>Screener</span>
       </a>
-      <div className="header-status">{status}</div>
+      {status && <div className="header-status">{status}</div>}
     </header>
   );
 }

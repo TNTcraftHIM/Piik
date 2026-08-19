@@ -17,6 +17,8 @@ import {
   type ServerMessage,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
+import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
+import { qualityLimitationSummary } from "../components/connection-details";
 import {
   PathBadge,
   PeerStatusBadge,
@@ -133,6 +135,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
   const [picturePaused, setPicturePaused] = useState(false);
+  const [showConnectionDetails, setShowConnectionDetails] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -152,6 +155,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const viewers = useMemo(
     () => Array.from(peerSnapshots.values()),
     [peerSnapshots],
+  );
+  const qualityLimitation = useMemo(
+    () => qualityLimitationSummary(viewers),
+    [viewers],
   );
 
   useEffect(() => {
@@ -1001,7 +1008,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   return (
     <div className="app-shell">
-      <AppHeader status={<SignalStatusBadge state={signalStatus} />} />
+      <AppHeader
+        status={
+          showConnectionDetails ? (
+            <SignalStatusBadge state={signalStatus} />
+          ) : null
+        }
+      />
 
       <main className="host-workspace">
         <section className="broadcast-area" aria-labelledby="broadcast-heading">
@@ -1012,13 +1025,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 {phase === "live"
                   ? `${viewers.length}/${maxViewers ?? "-"} 人正在观看`
                   : phase === "starting"
-                    ? "正在建立房间"
-                    : room
-                      ? "房间已就绪"
-                      : "尚未开始"}
+                    ? "正在连接"
+                    : phase === "ended" && room
+                      ? "已停止分享"
+                      : room
+                        ? "房间已就绪"
+                        : "尚未开始"}
               </p>
             </div>
-            {forceRelay && <span className="diagnostic-badge">强制中继</span>}
+            {showConnectionDetails && forceRelay && (
+              <span className="diagnostic-badge">强制中继</span>
+            )}
             {(phase === "live" || phase === "starting") && (
               <div className="broadcast-actions">
                 {phase === "live" && (
@@ -1065,13 +1082,46 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             )}
           </div>
 
-          <div className="video-stage local-stage">
+          <div
+            className="video-stage local-stage"
+            role="group"
+            aria-label="分享或加入房间"
+          >
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
+            ) : phase === "idle" ||
+              phase === "ended" ||
+              phase === "error" ? (
+              <div className="stage-placeholder stage-entry">
+                {phase === "ended" && room && (
+                  <span className="stage-status">已停止分享</span>
+                )}
+                <div className="entry-actions">
+                  <button
+                    className="entry-action"
+                    type="button"
+                    title="开始分享屏幕"
+                    onClick={() => void startSharing()}
+                  >
+                    <MonitorUp size={18} aria-hidden="true" />
+                    开始分享
+                  </button>
+                  <span className="entry-divider" aria-hidden="true">
+                    或
+                  </span>
+                  <a
+                    className="entry-action"
+                    href="/join"
+                    title="输入房间码加入观看"
+                  >
+                    <Hash size={18} aria-hidden="true" />
+                    加入房间
+                  </a>
+                </div>
+              </div>
             ) : (
               <div className="stage-placeholder">
                 <MonitorUp size={36} strokeWidth={1.5} aria-hidden="true" />
-                <span>{phase === "ended" ? "等待开始分享" : "未分享画面"}</span>
               </div>
             )}
             {(phase === "starting" || switchingSource || picturePaused) && (
@@ -1085,7 +1135,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             )}
           </div>
 
-          {details && stream && (
+          {showConnectionDetails && details && stream && (
             <div className="capture-strip" aria-label="实际捕获参数">
               <span>{details.resolution}</span>
               <span>{details.frameRate ? `${details.frameRate.toFixed(0)} fps` : "帧率未知"}</span>
@@ -1096,14 +1146,25 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           {!details?.hasAudio && stream && (
             <WarningBanner>当前来源没有可共享音频</WarningBanner>
           )}
-          {room && signalStatus === "connected" && !relayAvailable && (
+          {showConnectionDetails &&
+            room &&
+            signalStatus === "connected" &&
+            !relayAvailable && (
             <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
+          )}
+          {qualityLimitation && (
+            <WarningBanner>{qualityLimitation}</WarningBanner>
           )}
           {notice && (
             <div className="notice" role="status" aria-live="polite">
               {notice}
             </div>
           )}
+
+          <ConnectionDetailsToggle
+            checked={showConnectionDetails}
+            onChange={setShowConnectionDetails}
+          />
 
           <div className="setup-controls">
             <fieldset className="control-group">
@@ -1129,24 +1190,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 )}
               </div>
             </fieldset>
-
-            {phase !== "live" && (
-              <button
-                className="button button-primary start-button"
-                type="button"
-                disabled={phase === "starting"}
-                onClick={() => void startSharing()}
-              >
-                <MonitorUp size={18} aria-hidden="true" />
-                {phase === "starting" ? "正在启动" : "开始分享"}
-              </button>
-            )}
-            {phase !== "live" && (
-              <a className="join-room-link" href="/join">
-                <Hash size={15} aria-hidden="true" />
-                输入房间码观看
-              </a>
-            )}
           </div>
           {room && (
             <div className="invite-bar">
@@ -1188,9 +1231,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     <h3>朋友 {index + 1}</h3>
                     <PeerStatusBadge state={viewer.connectionState} />
                   </div>
-                  <PathBadge path={viewer.metrics.path} />
+                  {showConnectionDetails && (
+                    <PathBadge path={viewer.metrics.path} />
+                  )}
                 </div>
-                <StatsGrid metrics={viewer.metrics} direction="send" />
+                {showConnectionDetails && (
+                  <StatsGrid metrics={viewer.metrics} direction="send" />
+                )}
                 {viewer.error && <p className="inline-error">{viewer.error}</p>}
               </article>
             ))}

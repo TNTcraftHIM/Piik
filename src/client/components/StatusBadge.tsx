@@ -39,7 +39,7 @@ export function PeerStatusBadge({
   state: RTCPeerConnectionState | "waiting";
 }) {
   const labels: Record<RTCPeerConnectionState | "waiting", BadgeProps> = {
-    waiting: { tone: "neutral", label: "等待画面" },
+    waiting: { tone: "neutral", label: "等待开始分享" },
     new: { tone: "neutral", label: "准备中" },
     connecting: { tone: "neutral", label: "正在连接" },
     connected: { tone: "good", label: "已连接" },
