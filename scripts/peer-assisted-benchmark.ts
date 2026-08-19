@@ -1245,7 +1245,7 @@ async function startHost(
   await waitForPage(
     cdp,
     page,
-    "document.querySelector('.start-button')",
+    "document.querySelector('.entry-actions button.entry-action')",
     15_000,
     "host controls",
     signal,
@@ -1254,11 +1254,11 @@ async function startHost(
     cdp,
     page,
     `(() => {
-      const profiles = document.querySelectorAll('.segmented-control button');
+      const profiles = document.querySelectorAll('.quality-controls .segmented-control button');
       const profile = profiles[${profileIndex}];
       if (!(profile instanceof HTMLButtonElement)) throw new Error('Quality profile button missing');
       profile.click();
-      const start = document.querySelector('.start-button');
+      const start = document.querySelector('.entry-actions button.entry-action');
       if (!(start instanceof HTMLButtonElement)) throw new Error('Start button missing');
       start.click();
       return true;
