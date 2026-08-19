@@ -9,8 +9,13 @@ key_file: /etc/livekit/keys.yaml
 rtc:
   # These media ports must be reached directly by clients. Port 7880 is only
   # for the same-host reverse proxy and must be denied by every public firewall.
-  tcp_port: 7881
   udp_port: 7882
+  tcp_port: 0
+  allow_tcp_fallback: false
+  # Do not inherit LiveKit's public Google STUN defaults. This is the same
+  # deployment-owned STUN-only listener advertised to ordinary peer edges.
+  stun_servers:
+    - stun.example.com:3478
   use_external_ip: true
 
 room:
@@ -23,5 +28,6 @@ logging:
   level: info
   pion_level: error
 
-# Redis, embedded TURN, recording, ingress, egress, and webhooks are omitted on
-# purpose. This first fallback deployment is one process on one node.
+# External or embedded TURN, Redis, recording, ingress, egress, and webhooks are
+# omitted on purpose. ICE/TCP fallback is explicitly disabled above. This
+# candidate is one process on one node.

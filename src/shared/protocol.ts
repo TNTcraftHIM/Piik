@@ -4,9 +4,11 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
+export const SIGNALING_PROTOCOL = "screener-v1";
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
+export const MAX_ICE_SERVER_URLS = 8;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
@@ -87,22 +89,59 @@ export const relayDownstreamEdgesSchema = z.union([
 ]);
 export type RelayDownstreamEdges = z.infer<typeof relayDownstreamEdgesSchema>;
 
+function isValidStunUrl(value: string): boolean {
+  const schemeSeparator = value.indexOf(":");
+  if (
+    schemeSeparator <= 0 ||
+    value.slice(0, schemeSeparator).toLowerCase() !== "stun"
+  ) {
+    return false;
+  }
+
+  const authorityText = value.slice(schemeSeparator + 1);
+  if (
+    !authorityText ||
+    /[\\/\s?#]/.test(authorityText) ||
+    authorityText.endsWith(":")
+  ) {
+    return false;
+  }
+
+  let authority: URL;
+  try {
+    authority = new URL(`http://${authorityText}`);
+  } catch {
+    return false;
+  }
+  return Boolean(
+    authority.hostname &&
+      !authority.username &&
+      !authority.password &&
+      authority.pathname === "/" &&
+      !authority.search &&
+      !authority.hash &&
+      (!authority.port || Number(authority.port) > 0),
+  );
+}
+
+export const stunUrlSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine(isValidStunUrl, { message: "Invalid STUN URL" });
+
 const iceServerSchema = z
   .object({
     urls: z.union([
-      z.string().min(1).max(512),
-      z.array(z.string().min(1).max(512)).min(1).max(8),
+      stunUrlSchema,
+      z.array(stunUrlSchema).min(1).max(MAX_ICE_SERVER_URLS),
     ]),
-    username: z.string().max(512).optional(),
-    credential: z.string().max(512).optional(),
   })
   .strict();
 
 export const iceConfigSchema = z
   .object({
     iceServers: z.array(iceServerSchema).max(8),
-    expiresAt: z.string().datetime().nullable(),
-    relayAvailable: z.boolean(),
   })
   .strict();
 export type IceConfig = z.infer<typeof iceConfigSchema>;
@@ -278,6 +317,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
       type: z.literal("authenticate"),
+      protocol: z.literal(SIGNALING_PROTOCOL),
       roomId: roomCodeSchema,
       role: z.literal("host"),
       token: tokenSchema,
@@ -288,6 +328,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
       type: z.literal("authenticate"),
+      protocol: z.literal(SIGNALING_PROTOCOL),
       roomId: roomCodeSchema,
       role: z.literal("viewer"),
       clientId: opaqueIdSchema,
@@ -312,7 +353,6 @@ export const clientMessageSchema = z.union([
       rebuild: z.boolean(),
     })
     .strict(),
-  z.object({ type: z.literal("refresh-ice") }).strict(),
   z
     .object({
       type: z.literal("set-quality-settings"),
@@ -353,8 +393,6 @@ export const clientMessageSchema = z.union([
       shareGeneration: opaqueIdSchema.optional(),
     })
     .strict(),
-  // Kept as a compatibility alias while previously deployed clients age out.
-  z.object({ type: z.literal("close-room") }).strict(),
   z.object({ type: z.literal("abandon-room") }).strict(),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -373,6 +411,7 @@ const errorCodeSchema = z.enum([
 
 const authenticatedMessageShape = {
   type: z.literal("authenticated"),
+  protocol: z.literal(SIGNALING_PROTOCOL),
   role: roleSchema,
   peerId: opaqueIdSchema,
   roomExpiresAt: z.string().datetime().nullable(),
@@ -467,12 +506,6 @@ export const serverMessageSchema = z.union([
     .refine(freezeFitsEvidenceWindow, {
       message: "Viewer freeze duration exceeds its evidence window",
     }),
-  z
-    .object({
-      type: z.literal("ice-config"),
-      iceConfig: iceConfigSchema,
-    })
-    .strict(),
   z
     .object({
       type: z.literal("host-status"),

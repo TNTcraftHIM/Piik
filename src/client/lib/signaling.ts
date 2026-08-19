@@ -1,20 +1,25 @@
 import {
   decodeServerMessage,
+  SIGNALING_PROTOCOL,
   type ClientMessage,
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
 import { getSession } from "./api";
 
-type WithoutType<T> = T extends { type: string } ? Omit<T, "type"> : never;
-type SignalingIdentity = WithoutType<
+type WithoutProtocolEnvelope<T> = T extends {
+  type: string;
+  protocol: string;
+}
+  ? Omit<T, "type" | "protocol">
+  : never;
+type SignalingIdentity = WithoutProtocolEnvelope<
   Extract<ClientMessage, { type: "authenticate" }>
 >;
 
 interface SignalingEvents {
   onMessage: (message: ServerMessage) => void;
   onStatus: (status: SignalConnectionState) => void;
-  onProtocolError: (message: string) => void;
   onTerminated: (message: string) => void;
   onAccessRequired: () => void;
 }
@@ -27,10 +32,14 @@ const FATAL_SIGNAL_ERRORS = new Set([
   "HOST_ALREADY_CONNECTED",
 ]);
 const SESSION_REPLACED_CLOSE_CODE = 4001;
+const INVALID_MESSAGE_CLOSE_CODE = 1008;
+const PROTOCOL_REFRESH_MESSAGE = "页面版本已更新，请刷新后重试";
 const TERMINAL_SEND_TIMEOUT_MS = 15_000;
 
 export function shouldReconnectSignaling(code: number): boolean {
-  return code !== SESSION_REPLACED_CLOSE_CODE;
+  return (
+    code !== SESSION_REPLACED_CLOSE_CODE && code !== INVALID_MESSAGE_CLOSE_CODE
+  );
 }
 
 function signalUrl(): string {
@@ -46,7 +55,6 @@ export class SignalingClient {
   private reconnectAttempt = 0;
   private reconnectTimer: number | null = null;
   private authenticationTimer: number | null = null;
-  private iceRefreshTimer: number | null = null;
   private terminalTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
   private accessCheck: Promise<void> | null = null;
@@ -121,6 +129,7 @@ export class SignalingClient {
       }
       const authenticate: ClientMessage = {
         type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
         ...this.identity,
       };
       socket.send(JSON.stringify(authenticate));
@@ -139,7 +148,16 @@ export class SignalingClient {
       try {
         message = decodeServerMessage(event.data);
       } catch {
-        this.events.onProtocolError("信令服务返回了无法识别的消息");
+        this.terminateForProtocolMismatch();
+        return;
+      }
+
+      if (
+        message.type === "error" &&
+        message.code === "INVALID_MESSAGE" &&
+        !this.authenticated
+      ) {
+        this.terminateForProtocolMismatch();
         return;
       }
 
@@ -161,10 +179,7 @@ export class SignalingClient {
             return;
           }
         }
-        this.scheduleIceRefresh(message.iceConfig.expiresAt);
         this.events.onStatus("connected");
-      } else if (message.type === "ice-config") {
-        this.scheduleIceRefresh(message.iceConfig.expiresAt);
       }
       this.events.onMessage(message);
     });
@@ -188,7 +203,9 @@ export class SignalingClient {
         this.events.onTerminated(
           event.reason === "Session replaced"
             ? "此页面的会话已被另一个标签页接管"
-            : "信令会话已终止，请刷新后重试",
+            : event.code === INVALID_MESSAGE_CLOSE_CODE
+              ? PROTOCOL_REFRESH_MESSAGE
+              : "信令会话已终止，请刷新后重试",
         );
       }
     });
@@ -207,6 +224,11 @@ export class SignalingClient {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private terminateForProtocolMismatch(): void {
+    this.stop();
+    this.events.onTerminated(PROTOCOL_REFRESH_MESSAGE);
   }
 
   private checkAccess(): void {
@@ -233,26 +255,6 @@ export class SignalingClient {
       });
   }
 
-  private scheduleIceRefresh(expiresAt: string | null): void {
-    if (this.iceRefreshTimer !== null) {
-      window.clearTimeout(this.iceRefreshTimer);
-      this.iceRefreshTimer = null;
-    }
-    if (!expiresAt) {
-      return;
-    }
-
-    const expiresAtMs = Date.parse(expiresAt);
-    if (!Number.isFinite(expiresAtMs)) {
-      return;
-    }
-    const delay = Math.max(5_000, expiresAtMs - Date.now() - 60_000);
-    this.iceRefreshTimer = window.setTimeout(() => {
-      this.iceRefreshTimer = null;
-      this.send({ type: "refresh-ice" });
-    }, delay);
-  }
-
   private clearAuthenticationTimer(): void {
     if (this.authenticationTimer !== null) {
       window.clearTimeout(this.authenticationTimer);
@@ -265,10 +267,6 @@ export class SignalingClient {
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
-    }
-    if (this.iceRefreshTimer !== null) {
-      window.clearTimeout(this.iceRefreshTimer);
-      this.iceRefreshTimer = null;
     }
     if (this.terminalTimer !== null) {
       window.clearTimeout(this.terminalTimer);

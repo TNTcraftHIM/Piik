@@ -264,7 +264,7 @@ function createPeer(
 ): HostPeer {
   return new HostPeer(
     "viewer-peer",
-    { iceServers: [], expiresAt: null, relayAvailable: false },
+    { iceServers: [] },
     stream,
     QUALITY_PROFILES["720p30"],
     {
@@ -780,7 +780,7 @@ describe("HostPeer source replacement", () => {
 describe("ViewerRelay downstream ownership", () => {
   it("exposes a defensive snapshot of current downstream send metrics", async () => {
     const relay = new ViewerRelay(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       QUALITY_PROFILES["720p30"],
       { sendSignal: () => true },
     );
@@ -837,7 +837,7 @@ describe("ViewerRelay downstream ownership", () => {
 
   it("clears snapshots across child replacement, stop, and dispose", async () => {
     const relay = new ViewerRelay(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       QUALITY_PROFILES["720p30"],
       { sendSignal: () => true },
     );
@@ -873,7 +873,7 @@ describe("ViewerRelay downstream ownership", () => {
       resolveOldStats = resolve;
     });
     const relay = new ViewerRelay(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       QUALITY_PROFILES["720p30"],
       { sendSignal: () => true },
     );
@@ -917,7 +917,7 @@ describe("ViewerRelay downstream ownership", () => {
     });
     const targets: string[] = [];
     const relay = new ViewerRelay(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       QUALITY_PROFILES["720p30"],
       {
         sendSignal: (peerId) => {
@@ -942,7 +942,7 @@ describe("ViewerRelay downstream ownership", () => {
       FakePeerConnection.offersFailing = 2;
       const targets: string[] = [];
       const relay = new ViewerRelay(
-        { iceServers: [], expiresAt: null, relayAvailable: false },
+        { iceServers: [] },
         QUALITY_PROFILES["720p30"],
         {
           sendSignal: (peerId) => {
@@ -972,7 +972,7 @@ describe("ViewerRelay downstream ownership", () => {
   it("rebuilds a stalled peer but preserves a connected peer on reconciliation", async () => {
     const targets: string[] = [];
     const relay = new ViewerRelay(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       QUALITY_PROFILES["720p30"],
       {
         sendSignal: (peerId) => {
@@ -1004,7 +1004,7 @@ describe("ViewerRelay downstream ownership", () => {
   it("keeps one downstream connection across upstream stream replacement", async () => {
     const targets: string[] = [];
     const relay = new ViewerRelay(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       QUALITY_PROFILES["1080p60"],
       {
         sendSignal: (peerId) => {
@@ -1047,7 +1047,7 @@ describe("ViewerRelay downstream ownership", () => {
       degradationPreference: "balanced",
     } as const;
     const relay = new ViewerRelay(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       QUALITY_PROFILES["1080p60"],
       { sendSignal: () => true },
     );

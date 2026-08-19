@@ -1,19 +1,24 @@
 import {
+  MAX_ICE_SERVER_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   roomCodeSchema,
+  stunUrlSchema,
 } from "../shared/protocol.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
-const MAX_TURN_CREDENTIAL_TTL_SECONDS = 3_600;
 const MAX_ACCESS_PASSWORD_BYTES = 128;
-const MIN_TURN_SECRET_BYTES = 32;
 const MIN_LIVEKIT_API_SECRET_BYTES = 32;
 const MAX_PEER_ASSISTED_VIEWERS = 8;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const DEFAULT_MAX_SFU_ROOTS_PER_ROOM = 2;
 const MAX_SFU_ROOTS_PER_ROOM = 2;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
+const REMOVED_TURN_ENVIRONMENT_VARIABLES = [
+  "TURN_URLS",
+  "TURN_SHARED_SECRET",
+  "TURN_CREDENTIAL_TTL_SECONDS",
+] as const;
 
 export interface LiveKitFallbackConfig {
   url: string;
@@ -37,9 +42,6 @@ export interface ServerConfig {
   peerAssistedRoomIds?: ReadonlySet<string>;
   livekitFallback?: LiveKitFallbackConfig;
   stunUrls: readonly string[];
-  turnUrls: readonly string[];
-  turnSharedSecret?: string;
-  turnCredentialTtlSeconds: number;
 }
 
 function parseBoolean(
@@ -57,12 +59,6 @@ function parseBoolean(
     return false;
   }
   throw new Error(`${name} must be true or false`);
-}
-
-interface IceEndpoint {
-  scheme: "stun" | "stuns" | "turn" | "turns";
-  port?: number;
-  transport?: "udp" | "tcp";
 }
 
 function parsePositiveInteger(
@@ -176,23 +172,15 @@ function parseUrlList(value: string | undefined, name: string): string[] {
   });
 }
 
-function parseIceUrlList(
-  value: string | undefined,
-  name: string,
-  allowedProtocols: ReadonlySet<string>,
-): string[] {
-  return parseUrlList(value, name).map((value) => {
-    let protocol: string;
-    try {
-      protocol = new URL(value).protocol;
-    } catch {
-      throw new Error(`${name} contains an invalid URL`);
-    }
-    if (!allowedProtocols.has(protocol)) {
-      throw new Error(`${name} contains an unsupported URL scheme`);
-    }
-    if (!parseIceEndpoint(value)) {
-      throw new Error(`${name} contains an invalid ICE URL`);
+function parseStunUrlList(value: string | undefined): string[] {
+  const name = "STUN_URLS";
+  const values = parseUrlList(value, name);
+  if (values.length > MAX_ICE_SERVER_URLS) {
+    throw new Error(`${name} must contain at most ${MAX_ICE_SERVER_URLS} URLs`);
+  }
+  return values.map((value) => {
+    if (!stunUrlSchema.safeParse(value).success) {
+      throw new Error(`${name} contains an invalid STUN URL`);
     }
     return value;
   });
@@ -229,96 +217,6 @@ function parsePeerAssistedRoomIds(
   return roomIds;
 }
 
-function parseIceEndpoint(value: string): IceEndpoint | undefined {
-  const schemeSeparator = value.indexOf(":");
-  if (schemeSeparator <= 0) {
-    return undefined;
-  }
-
-  const scheme = value.slice(0, schemeSeparator).toLowerCase();
-  if (
-    scheme !== "stun" &&
-    scheme !== "stuns" &&
-    scheme !== "turn" &&
-    scheme !== "turns"
-  ) {
-    return undefined;
-  }
-
-  const remainder = value.slice(schemeSeparator + 1);
-  if (!remainder || remainder.includes("#")) {
-    return undefined;
-  }
-
-  const querySeparator = remainder.indexOf("?");
-  const authorityText =
-    querySeparator === -1 ? remainder : remainder.slice(0, querySeparator);
-  const query =
-    querySeparator === -1 ? undefined : remainder.slice(querySeparator + 1);
-  let transport: IceEndpoint["transport"];
-  if (scheme === "stun" || scheme === "stuns") {
-    if (query !== undefined) {
-      return undefined;
-    }
-  } else if (query !== undefined) {
-    if (query === "transport=udp" || query === "transport=tcp") {
-      transport = query.slice("transport=".length) as "udp" | "tcp";
-    } else {
-      return undefined;
-    }
-  }
-  if (
-    !authorityText ||
-    /[\\/\s]/.test(authorityText) ||
-    authorityText.endsWith(":")
-  ) {
-    return undefined;
-  }
-
-  let authority: URL;
-  try {
-    authority = new URL(`http://${authorityText}`);
-  } catch {
-    return undefined;
-  }
-  if (
-    !authority.hostname ||
-    authority.username ||
-    authority.password ||
-    authority.pathname !== "/" ||
-    authority.search ||
-    authority.hash
-  ) {
-    return undefined;
-  }
-
-  const port = authority.port ? Number(authority.port) : undefined;
-  if (port === 0) {
-    return undefined;
-  }
-
-  return {
-    scheme,
-    port,
-    transport,
-  };
-}
-
-function requireProductionTurnCoverage(turnUrls: readonly string[]): void {
-  const endpoints = turnUrls.map((value) => parseIceEndpoint(value)!);
-  const hasTurnUdp = endpoints.some(
-    ({ scheme, transport }) => scheme === "turn" && transport === "udp",
-  );
-  const hasTurnTcp = endpoints.some(
-    ({ scheme, transport }) => scheme === "turn" && transport === "tcp",
-  );
-  if (!hasTurnUdp || !hasTurnTcp) {
-    throw new Error(
-      "TURN_URLS must include explicit TURN/UDP and TURN/TCP endpoints in production",
-    );
-  }
-}
-
 function toOrigin(value: string): string {
   const url = new URL(value);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -330,6 +228,14 @@ function toOrigin(value: string): string {
 export function loadConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ServerConfig {
+  for (const name of REMOVED_TURN_ENVIRONMENT_VARIABLES) {
+    if (Object.prototype.hasOwnProperty.call(environment, name)) {
+      throw new Error(
+        `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
+      );
+    }
+  }
+
   const nodeEnv = parseEnvironment(environment.NODE_ENV);
   const port = parsePositiveInteger(environment.PORT, 8787, "PORT");
   if (port > 65_535) {
@@ -364,17 +270,7 @@ export function loadConfig(
   const accessPassword = environment.ACCESS_PASSWORD?.trim() || undefined;
   const roomDatabasePath =
     environment.ROOM_DATABASE_PATH?.trim() || undefined;
-  const turnSharedSecret = environment.TURN_SHARED_SECRET?.trim() || undefined;
-  const stunUrls = parseIceUrlList(
-    environment.STUN_URLS,
-    "STUN_URLS",
-    new Set(["stun:", "stuns:"]),
-  );
-  const turnUrls = parseIceUrlList(
-    environment.TURN_URLS,
-    "TURN_URLS",
-    new Set(["turn:", "turns:"]),
-  );
+  const stunUrls = parseStunUrlList(environment.STUN_URLS);
   const maxViewersPerRoom = parseBoundedInteger(
     environment.MAX_VIEWERS_PER_ROOM,
     DEFAULT_MAX_VIEWERS_PER_ROOM,
@@ -397,23 +293,22 @@ export function loadConfig(
       "PEER_ASSISTED_ROOM_IDS requires PEER_ASSISTED_MEDIA=true",
     );
   }
+  if (peerAssistedMedia && !peerAssistedRoomIds) {
+    throw new Error(
+      "PEER_ASSISTED_MEDIA=true requires non-empty PEER_ASSISTED_ROOM_IDS",
+    );
+  }
   if (livekitFallback && !peerAssistedMedia) {
     throw new Error("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
   }
-  if ((turnUrls.length > 0) !== Boolean(turnSharedSecret)) {
-    throw new Error(
-      "TURN_URLS and TURN_SHARED_SECRET must either both be configured or both be absent",
-    );
-  }
   const configuredSecrets = [
     accessPassword,
-    turnSharedSecret,
     livekitFallback?.apiKey,
     livekitFallback?.apiSecret,
   ].filter((secret): secret is string => secret !== undefined);
   if (new Set(configuredSecrets).size !== configuredSecrets.length) {
     throw new Error(
-      "ACCESS_PASSWORD, TURN_SHARED_SECRET, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
+      "ACCESS_PASSWORD, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
     );
   }
   if (
@@ -431,21 +326,8 @@ export function loadConfig(
   if (nodeEnv === "production" && roomDatabasePath === ":memory:") {
     throw new Error("ROOM_DATABASE_PATH must be file-backed in production");
   }
-  if (nodeEnv === "production" && turnUrls.length === 0) {
-    throw new Error("TURN is required in production");
-  }
   if (nodeEnv === "production" && stunUrls.length === 0) {
     throw new Error("STUN is required in production");
-  }
-  if (
-    nodeEnv === "production" &&
-    turnSharedSecret &&
-    Buffer.byteLength(turnSharedSecret) < MIN_TURN_SECRET_BYTES
-  ) {
-    throw new Error("TURN_SHARED_SECRET must contain at least 32 bytes in production");
-  }
-  if (nodeEnv === "production") {
-    requireProductionTurnCoverage(turnUrls);
   }
   if (peerAssistedMedia && maxViewersPerRoom > MAX_PEER_ASSISTED_VIEWERS) {
     throw new Error(
@@ -473,14 +355,5 @@ export function loadConfig(
     peerAssistedRoomIds,
     livekitFallback,
     stunUrls,
-    turnUrls,
-    turnSharedSecret,
-    turnCredentialTtlSeconds: parseBoundedInteger(
-      environment.TURN_CREDENTIAL_TTL_SECONDS,
-      3_600,
-      "TURN_CREDENTIAL_TTL_SECONDS",
-      60,
-      MAX_TURN_CREDENTIAL_TTL_SECONDS,
-    ),
   };
 }

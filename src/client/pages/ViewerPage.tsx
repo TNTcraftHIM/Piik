@@ -60,15 +60,10 @@ type ViewerQualityEvidence = Extract<
 >;
 
 export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps) {
-  const forceRelay = useMemo(
-    () => new URLSearchParams(window.location.search).get("relay") === "1",
-    [],
-  );
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
   const [statusText, setStatusText] = useState("正在连接");
   const [hostOnline, setHostOnline] = useState(false);
-  const [relayAvailable, setRelayAvailable] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
@@ -133,13 +128,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         onStatus: (status) => {
           if (active) {
             setSignalStatus(status);
-          }
-        },
-        onProtocolError: (message) => {
-          if (active) {
-            messageAuthority.invalidate();
-            setSfuStandbyUrl(null);
-            setStatusText(message);
           }
         },
         onTerminated: (message) => {
@@ -235,7 +223,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             }
           },
         },
-        forceRelay,
       );
       viewerRelay.setChild(currentAssignment.childPeerIds[0] ?? null);
       return viewerRelay;
@@ -444,10 +431,14 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
               }
             }
           },
-          onRecoveryExhausted: (parentPeerId, connectionId) =>
-            viewerSfuRoute?.reportPeerFailure(parentPeerId, connectionId) ?? true,
+          onRecoveryExhausted: (parentPeerId, connectionId) => {
+            if (viewerSfuRoute) {
+              return viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId);
+            }
+            setStatusText("无法建立媒体连接");
+            return true;
+          },
         },
-        forceRelay,
       );
       peerRef.current = peer;
       return peer;
@@ -487,7 +478,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         }
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
-        setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
@@ -615,13 +605,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         }
         return;
       }
-      if (message.type === "ice-config") {
-        currentIceConfig = message.iceConfig;
-        setRelayAvailable(message.iceConfig.relayAvailable);
-        peerRef.current?.updateIceConfig(message.iceConfig);
-        viewerRelay?.updateIceConfig(message.iceConfig);
-        return;
-      }
       if (message.type === "host-status") {
         currentHostOnline = message.online;
         setHostOnline(message.online);
@@ -692,7 +675,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       viewerRelay?.dispose();
       viewerRelay = null;
     };
-  }, [forceRelay, onAuthorizationRequired, roomId]);
+  }, [onAuthorizationRequired, roomId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -774,9 +757,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             <p className="section-meta">房间 {roomId}</p>
           </div>
           <div className="viewer-badges">
-            {showConnectionDetails && forceRelay && (
-              <span className="diagnostic-badge">强制中继</span>
-            )}
             <PeerStatusBadge state={peerSnapshot?.connectionState ?? "waiting"} />
             {showConnectionDetails && (
               <PathBadge path={peerSnapshot?.metrics.path ?? "unknown"} />
@@ -852,12 +832,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           onChange={setShowConnectionDetails}
         />
 
-        {showConnectionDetails &&
-          !relayAvailable &&
-          signalStatus === "connected" &&
-          (hostOnline || peerSnapshot) && (
-          <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
-        )}
         {peerSnapshot?.error && (
           <div className="notice notice-error" role="status">
             {peerSnapshot.error}

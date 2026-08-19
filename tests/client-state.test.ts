@@ -203,8 +203,89 @@ describe("room codes", () => {
 describe("client signaling recovery policy", () => {
   it("does not reconnect a session that another tab replaced", () => {
     expect(shouldReconnectSignaling(4001)).toBe(false);
+    expect(shouldReconnectSignaling(1008)).toBe(false);
     expect(shouldReconnectSignaling(1006)).toBe(true);
   });
+
+  it.each([
+    JSON.stringify({
+      type: "error",
+      code: "INVALID_MESSAGE",
+      message: "Message is invalid",
+    }),
+    JSON.stringify({
+      type: "authenticated",
+      role: "viewer",
+      peerId: "viewer_12345678",
+      roomExpiresAt: null,
+      maxViewers: 8,
+      hostOnline: true,
+      connectionId: null,
+      viewerPeerIds: [],
+      iceConfig: { iceServers: [] },
+    }),
+  ])(
+    "terminates once when an old server uses an incompatible protocol",
+    (payload) => {
+      const sockets: FakeWebSocket[] = [];
+      class FakeWebSocket extends EventTarget {
+        static readonly CLOSING = 2;
+        readyState = 1;
+        readonly send = vi.fn();
+        readonly close = vi.fn();
+
+        constructor(readonly url: string) {
+          super();
+          sockets.push(this);
+        }
+      }
+      vi.stubGlobal("WebSocket", FakeWebSocket);
+      vi.stubGlobal("window", {
+        location: new URL("https://share.test/r/123456789012"),
+        setTimeout,
+        clearTimeout,
+      });
+      const onTerminated = vi.fn();
+      const signal = new SignalingClient(
+        {
+          roomId: "123456789012",
+          role: "viewer",
+          clientId: "viewer-client",
+        },
+        {
+          onMessage: () => undefined,
+          onStatus: () => undefined,
+          onTerminated,
+          onAccessRequired: () => undefined,
+        },
+      );
+
+      signal.start();
+      sockets[0]!.dispatchEvent(new Event("open"));
+      expect(
+        JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
+      ).toMatchObject({
+        type: "authenticate",
+        protocol: "screener-v1",
+      });
+      const message = new Event("message");
+      Object.defineProperty(message, "data", { value: payload });
+      sockets[0]!.dispatchEvent(message);
+      const close = new Event("close");
+      Object.defineProperties(close, {
+        code: { value: 1008 },
+        reason: { value: "Invalid message" },
+      });
+      sockets[0]!.dispatchEvent(close);
+
+      expect(onTerminated).toHaveBeenCalledOnce();
+      expect(onTerminated).toHaveBeenCalledWith(
+        "页面版本已更新，请刷新后重试",
+      );
+      expect(sockets[0]!.close).toHaveBeenCalledOnce();
+      expect(sockets).toHaveLength(1);
+    },
+  );
 
   it("returns to the access gate after an unauthorized upgrade", async () => {
     const sockets: FakeWebSocket[] = [];
@@ -243,7 +324,6 @@ describe("client signaling recovery policy", () => {
       {
         onMessage: () => undefined,
         onStatus: (status) => statuses.push(status),
-        onProtocolError: () => undefined,
         onTerminated: () => undefined,
         onAccessRequired,
       },

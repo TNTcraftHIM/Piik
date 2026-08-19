@@ -83,11 +83,9 @@ export class HostPeer {
     private stream: MediaStream,
     private desiredProfile: QualityProfile,
     private readonly events: HostPeerEvents,
-    private readonly forceRelay = false,
   ) {
     this.connection = new RTCPeerConnection({
       iceServers: iceConfig.iceServers,
-      iceTransportPolicy: forceRelay ? "relay" : "all",
     });
     this.snapshot = {
       peerId,
@@ -254,10 +252,9 @@ export class HostPeer {
     try {
       this.connection.setConfiguration({
         iceServers: iceConfig.iceServers,
-        iceTransportPolicy: this.forceRelay ? "relay" : "all",
       });
     } catch (error) {
-      this.setError(error, "更新 TURN 配置失败");
+      this.setError(error, "更新 ICE 配置失败");
     }
   }
 

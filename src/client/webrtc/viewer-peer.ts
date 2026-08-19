@@ -56,7 +56,6 @@ export class ViewerPeer {
   constructor(
     iceConfig: IceConfig,
     private readonly events: ViewerPeerEvents,
-    private readonly forceRelay = false,
   ) {
     this.currentIceConfig = iceConfig;
   }
@@ -172,10 +171,9 @@ export class ViewerPeer {
     try {
       this.connection.setConfiguration({
         iceServers: iceConfig.iceServers,
-        iceTransportPolicy: this.forceRelay ? "relay" : "all",
       });
     } catch (error) {
-      this.setError(error, "更新 TURN 配置失败");
+      this.setError(error, "更新 ICE 配置失败");
     }
   }
 
@@ -235,7 +233,6 @@ export class ViewerPeer {
 
     const connection = new RTCPeerConnection({
       iceServers: this.currentIceConfig.iceServers,
-      iceTransportPolicy: this.forceRelay ? "relay" : "all",
     });
     this.connection = connection;
     this.snapshot = {

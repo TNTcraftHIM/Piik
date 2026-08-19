@@ -4,7 +4,7 @@
 - [方案设计](./方案设计.md): accepted, code-ready design for the first measurable WebRTC proof of concept.
 - [Project memory](./project-memory.md): durable decisions and unresolved questions to read at the start of future work.
 - [Current status](./status.md): bounded snapshot of the current phase, completed baseline, next step, and blockers.
-- [Deployment](./deployment.md): current Node/nginx/coturn/LiveKit contract plus the gated SFU/UDP-first, optional-TURN flagship migration.
+- [Deployment](./deployment.md): old production rollback boundary and the isolated self-hosted-STUN plus LiveKit-SFU/UDP candidate contract.
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, runtime relay-capacity extension, and abandon gates.

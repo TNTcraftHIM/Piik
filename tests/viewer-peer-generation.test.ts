@@ -133,7 +133,7 @@ function createPeer(
   signalPeers: string[] = [],
 ): ViewerPeer {
   return new ViewerPeer(
-    { iceServers: [], expiresAt: null, relayAvailable: false },
+    { iceServers: [] },
     {
       sendSignal: (peerId, payload) => {
         signalPeers.push(peerId);
@@ -189,7 +189,7 @@ describe("ViewerPeer connection generations", () => {
     }> = [];
     const exhausted: Array<{ peerId: string; connectionId: string }> = [];
     const peer = new ViewerPeer(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       {
         sendSignal: () => true,
         sendRestartRequest: (peerId, connectionId, rebuild) => {
@@ -236,7 +236,7 @@ describe("ViewerPeer connection generations", () => {
     let reportAvailable = false;
     const exhausted: string[] = [];
     const peer = new ViewerPeer(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       {
         sendSignal: () => true,
         sendRestartRequest: () => true,
@@ -276,7 +276,7 @@ describe("ViewerPeer connection generations", () => {
       rebuild: boolean;
     }> = [];
     const peer = new ViewerPeer(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       {
         sendSignal: () => true,
         sendRestartRequest: (peerId, connectionId, rebuild) => {
@@ -307,7 +307,7 @@ describe("ViewerPeer connection generations", () => {
       rebuild: boolean;
     }> = [];
     const peer = new ViewerPeer(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       {
         sendSignal: () => false,
         sendRestartRequest: (peerId, connectionId, rebuild) => {
@@ -339,7 +339,7 @@ describe("ViewerPeer connection generations", () => {
       rebuild: boolean;
     }> = [];
     const peer = new ViewerPeer(
-      { iceServers: [], expiresAt: null, relayAvailable: false },
+      { iceServers: [] },
       {
         sendSignal: (peerId, payload) => {
           signalPeers.push(peerId);

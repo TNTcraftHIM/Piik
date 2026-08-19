@@ -2,7 +2,6 @@ import type { ServerMessage } from "../../shared/protocol";
 
 const AUTHORITY_MESSAGE_TYPES = new Set<ServerMessage["type"]>([
   "authenticated",
-  "ice-config",
   "host-status",
   "sharing-stopped",
   "room-closed",

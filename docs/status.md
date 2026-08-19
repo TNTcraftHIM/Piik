@@ -13,7 +13,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Capture precedes room creation; live source/quality changes preserve peers and picture pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
 - Optional `ACCESS_PASSWORD` uses a stateless 12-hour HMAC HttpOnly Strict cookie; host auth stays internal and signaling role-bound.
 - Without `ROOM_DATABASE_PATH`, rooms are temporary. With it and the password, sequential links persist after stop; SQLite stores only room ID and host-token digest.
-- Production still requires coturn UDP/TCP. Target media is peer UDP -> SFU/UDP roots -> optional edge TURN -> failure; HTTPS/WSS stays TLS/TCP.
+- Old production keeps coturn UDP/TCP. The candidate uses self-hosted STUN-only ordinary ICE, separate SFU/UDP roots, and bounded failure; HTTPS/WSS stays TLS/TCP. Selected-edge TURN is future work, not dormant config.
 - SFU normally feeds one or two roots. Downstream cap is two, browser relay one; exceptional central edges need a separate cap. Production routing is off.
 - Configured fallback adds a non-secret standby URL and token-free DNS/TLS warmup; absent configuration adds no field, import, request, participant, or edge.
 - Each viewer advertises relay capacity 0/1; detected mobile/iPad clients are leaves. Withdrawal does not move a healthy edge. Browser relays stay one-child and host two-child.
@@ -40,7 +40,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - ADR-0007 remains incomplete. A+B/C browser support and the reported case are unverified; the controller, `LOW`, and an authenticated SFU last-hop C generation are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
 - Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
-- ADR-0005 accepts SFU-root fallback, but code is failure-only/TURN-required; UDP-first config, edge grants, bounded failure, cost/trust, and public canary are absent.
+- ADR-0005's candidate is process-wide STUN-only ordinary ICE plus separate LiveKit SFU/UDP and bounded failure, with no all-room TURN wire. It is default-off; enabling it requires non-empty exact room IDs, and missing/blank fails startup. The old release is isolated rollback.
 - Pinned LiveKit 1.13.5 Dynacast enables all qualities at or below the room's maximum request, so a `HIGH` root is expected to keep `LOW` enabled. It remains a bounded rejection/verification spike, not evidence that on-demand `LOW` can stop.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
@@ -56,9 +56,10 @@ After that reproduction, test simulcast/LiveKit/SVC in order and stop at the
 first fit before custom `LOW`, independently of ADR-0006. Diagnose audio A/B/C,
 sync, and voice-source leakage in parallel when it does not displace that P0;
 `maxBitrate` is not a quality fix. WebRTC/LiveKit owns congestion/layers; the app
-owns two-state policy. An exact room later gates peer/SFU UDP and coturn changes.
-After media gates, UI adds local volume/mute, names/roster, local endpoint
-details, and RTP loss rate.
+owns two-state policy. An isolated exact room later gates peer/SFU UDP and
+bounded failure before replacing the old release. Selected-edge TURN, if later
+justified, is a separate complete change rather than part of this canary.
+Post-gate UI adds local volume/mute, names/roster, endpoint details, and RTP loss.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate

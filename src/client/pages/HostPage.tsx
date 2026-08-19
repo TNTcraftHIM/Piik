@@ -110,7 +110,6 @@ function closeAbandonedRoom(room: CreateRoomResponse): void {
       {
         onMessage: () => undefined,
         onStatus: () => undefined,
-        onProtocolError: () => undefined,
         onTerminated: () => undefined,
         onAccessRequired: () => undefined,
       },
@@ -127,10 +126,6 @@ interface HostPageProps {
 }
 
 export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
-  const forceRelay = useMemo(
-    () => new URLSearchParams(window.location.search).get("relay") === "1",
-    [],
-  );
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
   );
@@ -144,7 +139,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
   const [room, setRoom] = useState<CreateRoomResponse | null>(readHostRoom);
-  const [relayAvailable, setRelayAvailable] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
@@ -321,7 +315,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peerAssistedRef.current = false;
     setStream(null);
     setDetails(null);
-    setRelayAvailable(false);
     setMaxViewers(null);
     setPeerSnapshots(new Map());
     viewerQualityEvidenceTimersRef.current.forEach((timer) =>
@@ -615,7 +608,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           }
         },
       },
-      forceRelay,
     );
     peersRef.current.set(peerId, peer);
     let started: boolean;
@@ -825,12 +817,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       });
       return;
     }
-    if (message.type === "ice-config") {
-      iceConfigRef.current = message.iceConfig;
-      setRelayAvailable(message.iceConfig.relayAvailable);
-      peersRef.current.forEach((peer) => peer.updateIceConfig(message.iceConfig));
-      return;
-    }
     if (message.type === "room-closed") {
       forgetRoom();
       endSharing(
@@ -941,14 +927,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               setSignalStatus(status);
             }
           },
-          onProtocolError: (message) => {
-            if (
-              isCurrentGeneration(generation) &&
-              signalRef.current === signal
-            ) {
-              setNotice(message);
-            }
-          },
           onTerminated: (message) => {
             if (
               isCurrentGeneration(generation) &&
@@ -979,7 +957,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 expiresAt: message.roomExpiresAt,
               };
               iceConfigRef.current = message.iceConfig;
-              setRelayAvailable(message.iceConfig.relayAvailable);
+              peersRef.current.forEach((peer) =>
+                peer.updateIceConfig(message.iceConfig),
+              );
               writeHostRoom(authenticatedRoom);
               setRoom(authenticatedRoom);
               setPhase("live");
@@ -1214,9 +1194,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         : "尚未开始"}
               </p>
             </div>
-            {showConnectionDetails && forceRelay && (
-              <span className="diagnostic-badge">强制中继</span>
-            )}
             {(phase === "live" || phase === "starting") && (
               <div className="broadcast-actions">
                 {phase === "live" && (
@@ -1326,12 +1303,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
           {!details?.hasAudio && stream && (
             <WarningBanner>当前来源没有可共享音频</WarningBanner>
-          )}
-          {showConnectionDetails &&
-            room &&
-            signalStatus === "connected" &&
-            !relayAvailable && (
-            <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
           )}
           {qualityLimitation && (
             <WarningBanner>{qualityLimitation}</WarningBanner>

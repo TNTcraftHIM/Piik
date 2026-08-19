@@ -5,6 +5,7 @@ import {
   MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
+  SIGNALING_PROTOCOL,
   clientMessageSchema,
   decodeClientMessage,
   participantRouteAssignmentSchema,
@@ -49,22 +50,47 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
+  it("rejects the removed all-room ICE refresh request", () => {
+    expect(clientMessageSchema.safeParse({ type: "refresh-ice" }).success).toBe(
+      false,
+    );
+  });
+
   it("accepts a bounded authentication message", () => {
     expect(
       decodeClientMessage(
         JSON.stringify({
           type: "authenticate",
+          protocol: SIGNALING_PROTOCOL,
           roomId,
           role: "viewer",
           clientId: "client_12345678",
         }),
       ),
     ).toMatchObject({ type: "authenticate", role: "viewer" });
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: "screener-v0",
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects unknown fields and malformed tokens", () => {
     const result = clientMessageSchema.safeParse({
       type: "authenticate",
+      protocol: SIGNALING_PROTOCOL,
       roomId,
       role: "host",
       token: "short",
@@ -79,6 +105,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
         roomId,
         role: "host",
         token,
@@ -88,6 +115,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
         roomId,
         role: "viewer",
         token,
@@ -97,6 +125,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
         roomId: "1",
         role: "viewer",
         clientId: "client_12345678",
@@ -105,6 +134,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
         roomId: "0123",
         role: "viewer",
         clientId: "client_12345678",
@@ -113,6 +143,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
         roomId: "1".repeat(13),
         role: "viewer",
         clientId: "client_12345678",
@@ -159,7 +190,7 @@ describe("client signaling protocol", () => {
     ).toBe(false);
   });
 
-  it("accepts explicit and legacy sharing-stop messages", () => {
+  it("accepts explicit sharing-stop and abandonment messages", () => {
     expect(clientMessageSchema.safeParse({ type: "stop-sharing" }).success).toBe(
       true,
     );
@@ -172,6 +203,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
         roomId,
         role: "host",
         token,
@@ -179,9 +211,6 @@ describe("client signaling protocol", () => {
         shareGeneration: "share_generation_12345678",
       }).success,
     ).toBe(true);
-    expect(clientMessageSchema.safeParse({ type: "close-room" }).success).toBe(
-      true,
-    );
     expect(clientMessageSchema.safeParse({ type: "abandon-room" }).success).toBe(
       true,
     );
@@ -377,9 +406,49 @@ describe("client signaling protocol", () => {
 });
 
 describe("server signaling protocol", () => {
+  it("rejects the removed all-room TURN credential wire", () => {
+    expect(
+      serverMessageSchema.safeParse({
+        type: "ice-config",
+        iceConfig: { iceServers: [] },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        iceConfig: {
+          iceServers: [
+            {
+              urls: "turn:relay.example.test:3478",
+              username: "expires:viewer_12345678",
+              credential: "credential",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        iceConfig: {
+          iceServers: [{ urls: "turn:relay.example.test:3478" }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        iceConfig: {
+          iceServers: [{ urls: "stuns:stun.example.test:5349" }],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   function authenticatedMessage(maxViewers: number, viewerPeerIds: string[] = []) {
     return {
       type: "authenticated",
+      protocol: SIGNALING_PROTOCOL,
       role: "host",
       peerId: "host_12345678",
       roomExpiresAt: "2026-08-18T18:00:00.000Z",
@@ -389,8 +458,6 @@ describe("server signaling protocol", () => {
       viewerPeerIds,
       iceConfig: {
         iceServers: [],
-        expiresAt: null,
-        relayAvailable: false,
       },
     };
   }
