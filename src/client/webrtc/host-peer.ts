@@ -7,6 +7,7 @@ import {
 } from "../media/quality";
 import {
   EMPTY_METRICS,
+  type ConnectionMetrics,
   type PeerSnapshot,
 } from "../types";
 import {
@@ -25,6 +26,38 @@ interface HostPeerEvents {
   onUpdate: (snapshot: PeerSnapshot) => void;
 }
 
+type CaptureMetrics = Pick<
+  ConnectionMetrics,
+  "captureWidth" | "captureHeight" | "captureFramesPerSecond"
+>;
+
+function captureMetrics(track: MediaStreamTrack): CaptureMetrics {
+  if (typeof track.getSettings !== "function") {
+    return {
+      captureWidth: null,
+      captureHeight: null,
+      captureFramesPerSecond: null,
+    };
+  }
+
+  try {
+    const settings = track.getSettings();
+    const finiteNumber = (value: unknown): number | null =>
+      typeof value === "number" && Number.isFinite(value) ? value : null;
+    return {
+      captureWidth: finiteNumber(settings.width),
+      captureHeight: finiteNumber(settings.height),
+      captureFramesPerSecond: finiteNumber(settings.frameRate),
+    };
+  } catch {
+    return {
+      captureWidth: null,
+      captureHeight: null,
+      captureFramesPerSecond: null,
+    };
+  }
+}
+
 export class HostPeer {
   readonly connectionId = createOpaqueId();
 
@@ -35,6 +68,7 @@ export class HostPeer {
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
   private statsInFlight = false;
+  private statsSamplingBlocked = false;
   private senderWarning: string | null = null;
   private limitationReason: string | null = null;
   private limitationSamples = 0;
@@ -115,28 +149,37 @@ export class HostPeer {
       const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
       const previousVideoTrack = videoSender.track;
       const previousAudioTrack = audioSender.track;
+      this.statsSamplingBlocked = true;
+      this.statsAccumulator = createStatsAccumulator();
 
       try {
-        await videoSender.replaceTrack(nextVideoTrack);
-        await audioSender.replaceTrack(nextAudioTrack);
-      } catch (error) {
-        await Promise.allSettled([
-          videoSender.replaceTrack(previousVideoTrack),
-          audioSender.replaceTrack(previousAudioTrack),
-        ]);
-        this.setError(error, "切换共享源失败");
-        return false;
-      }
+        try {
+          await videoSender.replaceTrack(nextVideoTrack);
+          await audioSender.replaceTrack(nextAudioTrack);
+        } catch (error) {
+          await Promise.allSettled([
+            videoSender.replaceTrack(previousVideoTrack),
+            audioSender.replaceTrack(previousAudioTrack),
+          ]);
+          this.setError(error, "切换共享源失败");
+          return false;
+        }
 
-      if (this.disposed) {
-        return false;
+        if (this.disposed) {
+          return false;
+        }
+        this.stream = nextStream;
+        this.limitationReason = null;
+        this.limitationSamples = 0;
+        this.snapshot = { ...this.snapshot, metrics: { ...EMPTY_METRICS } };
+        await this.configureSender(videoSender);
+        this.snapshot = { ...this.snapshot, error: null };
+        this.emit();
+        return true;
+      } finally {
+        this.statsAccumulator = createStatsAccumulator();
+        this.statsSamplingBlocked = false;
       }
-      this.stream = nextStream;
-      this.statsAccumulator = createStatsAccumulator();
-      await this.configureSender(videoSender);
-      this.snapshot = { ...this.snapshot, error: null };
-      this.emit();
-      return true;
     });
   }
 
@@ -309,19 +352,35 @@ export class HostPeer {
     if (
       this.disposed ||
       this.connection.connectionState === "closed" ||
-      this.statsInFlight
+      this.statsInFlight ||
+      this.statsSamplingBlocked
     ) {
+      return;
+    }
+    const captureTrack = this.videoSender?.track ?? null;
+    if (!captureTrack || this.stream.getVideoTracks()[0] !== captureTrack) {
       return;
     }
     this.statsInFlight = true;
     const statsAccumulator = this.statsAccumulator;
     try {
-      const metrics = await collectConnectionMetrics(
+      const metricsPromise = collectConnectionMetrics(
         this.connection,
         "send",
         statsAccumulator,
+        { trackIdentifier: captureTrack.id },
       );
-      if (this.disposed || this.statsAccumulator !== statsAccumulator) {
+      const capture = captureMetrics(captureTrack);
+      const metrics = { ...(await metricsPromise), ...capture };
+      if (
+        this.disposed ||
+        this.statsSamplingBlocked ||
+        this.statsAccumulator !== statsAccumulator ||
+        this.videoSender?.track !== captureTrack ||
+        this.stream.getVideoTracks()[0] !== captureTrack ||
+        (metrics.trackIdentifier !== null &&
+          metrics.trackIdentifier !== captureTrack.id)
+      ) {
         return;
       }
       this.updateLimitationWarning(metrics.qualityLimitationReason);

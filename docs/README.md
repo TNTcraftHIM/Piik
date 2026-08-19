@@ -18,6 +18,6 @@
 - [ADR-0002](./adr/0002-persistent-protected-rooms.md): optional SQLite persistence, protected sequential room IDs, and room lifecycle.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): proposed, experiment-only standard-WebRTC peer-assisted spike with hard fanout and failure gates.
 - [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): proposed, default-off automatic P2P/peer/SFU preparation, token-free standby prewarm, commit, failback, and rollback with a hard host-edge budget.
-- [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted demand-driven `HIGH + optional LOW` quality policy, path-level hysteresis, evidence contract, and SVC boundary.
+- [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted demand-driven `HIGH + at most one on-demand LOW` quality policy, path-level hysteresis, evidence contract, and SVC boundary.
 
 Documentation and project memory are part of the product source of truth. Update them in the same change that alters the corresponding requirement or architecture.

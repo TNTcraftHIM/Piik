@@ -266,6 +266,237 @@ describe("client signaling recovery policy", () => {
 });
 
 describe("WebRTC stats parsing", () => {
+  it("binds media, remote evidence, transport, and pair without guessing", async () => {
+    const entry = (
+      id: string,
+      type: string,
+      values: Record<string, unknown>,
+    ): [string, Record<string, unknown>] => [
+      id,
+      { id, type, timestamp: 2_000, ...values },
+    ];
+    const report = new Map<string, Record<string, unknown>>([
+      entry("transport-a", "transport", {
+        selectedCandidatePairId: "pair-a",
+      }),
+      entry("transport-z", "transport", {
+        selectedCandidatePairId: "pair-z",
+      }),
+      entry("pair-a", "candidate-pair", {
+        transportId: "transport-a",
+        localCandidateId: "local-a",
+        remoteCandidateId: "remote-candidate-a",
+        currentRoundTripTime: 0.02,
+      }),
+      entry("pair-z", "candidate-pair", {
+        transportId: "transport-z",
+        localCandidateId: "local-z",
+        remoteCandidateId: "remote-candidate-z",
+      }),
+      entry("local-a", "local-candidate", {
+        candidateType: "host",
+        protocol: "udp",
+      }),
+      entry("remote-candidate-a", "remote-candidate", {
+        candidateType: "srflx",
+        protocol: "udp",
+      }),
+      entry("local-z", "local-candidate", {
+        candidateType: "relay",
+        protocol: "tcp",
+      }),
+      entry("remote-candidate-z", "remote-candidate", {
+        candidateType: "relay",
+        protocol: "tcp",
+      }),
+      entry("outbound-a", "outbound-rtp", {
+        kind: "video",
+        ssrc: 111,
+        mid: "0",
+        transportId: "transport-a",
+        mediaSourceId: "source-a",
+        remoteId: "remote-inbound-a",
+        bytesSent: 2_000,
+        framesEncoded: 60,
+      }),
+      entry("outbound-z", "outbound-rtp", {
+        kind: "video",
+        ssrc: 999,
+        transportId: "transport-z",
+        mediaSourceId: "source-z",
+        remoteId: "remote-inbound-z",
+        bytesSent: 99_000,
+        framesEncoded: 99,
+      }),
+      entry("source-a", "media-source", {
+        kind: "video",
+        trackIdentifier: "capture-track-a",
+      }),
+      entry("source-z", "media-source", {
+        kind: "video",
+        trackIdentifier: "capture-track-z",
+      }),
+      entry("remote-inbound-a", "remote-inbound-rtp", {
+        kind: "video",
+        packetsLost: 2,
+        jitter: 0.004,
+      }),
+      entry("remote-inbound-z", "remote-inbound-rtp", {
+        kind: "video",
+        packetsLost: 999,
+        jitter: 0.9,
+      }),
+    ]);
+    const connection = {
+      getStats: async () => report as unknown as RTCStatsReport,
+    } as unknown as RTCPeerConnection;
+
+    const accumulator = createStatsAccumulator();
+    const metrics = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+      { trackIdentifier: "capture-track-a" },
+    );
+
+    expect(metrics).toMatchObject({
+      sampleTimestampMs: 2_000,
+      sampleWindowMs: null,
+      rtpStatsId: "outbound-a",
+      rtpSsrc: 111,
+      rtpMid: "0",
+      trackIdentifier: "capture-track-a",
+      selectedCandidatePairId: "pair-a",
+      path: "direct",
+      iceProtocol: "udp",
+      packetsLost: 2,
+      jitterMs: 4,
+      rttMs: 20,
+    });
+
+    report.get("transport-a")!.selectedCandidatePairId = "pair-z";
+    const wrongTransportPair = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+      { trackIdentifier: "capture-track-a" },
+    );
+    expect(wrongTransportPair).toMatchObject({
+      rtpStatsId: "outbound-a",
+      selectedCandidatePairId: null,
+      path: "unknown",
+    });
+
+    report.get("transport-a")!.selectedCandidatePairId = "pair-a";
+    report.get("local-a")!.type = "remote-candidate";
+    report.get("remote-candidate-a")!.type = "local-candidate";
+    const malformedCandidateReferences = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+      { trackIdentifier: "capture-track-a" },
+    );
+    expect(malformedCandidateReferences).toMatchObject({
+      selectedCandidatePairId: null,
+      path: "unknown",
+      localCandidateType: null,
+      remoteCandidateType: null,
+    });
+    report.get("local-a")!.type = "local-candidate";
+    report.get("remote-candidate-a")!.type = "remote-candidate";
+
+    delete report.get("outbound-a")!.transportId;
+    const unboundTransport = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+      { trackIdentifier: "capture-track-a" },
+    );
+    expect(unboundTransport).toMatchObject({
+      rtpStatsId: "outbound-a",
+      selectedCandidatePairId: null,
+      path: "unknown",
+    });
+    report.get("outbound-a")!.transportId = "transport-a";
+
+    report.set("outbound-a-layer-2", {
+      id: "outbound-a-layer-2",
+      type: "outbound-rtp",
+      timestamp: 3_000,
+      kind: "video",
+      ssrc: 112,
+      transportId: "transport-a",
+      mediaSourceId: "source-a",
+      bytesSent: 3_000,
+      framesEncoded: 90,
+    });
+    const ambiguous = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+      { trackIdentifier: "capture-track-a" },
+    );
+    expect(ambiguous).toMatchObject({
+      rtpStatsId: null,
+      selectedCandidatePairId: null,
+      packetsLost: null,
+    });
+  });
+
+  it("rebases sender retransmission deltas after counter rollback", async () => {
+    const outbound = (
+      timestamp: number,
+      retransmittedPacketsSent: number,
+      retransmittedBytesSent: number,
+    ) =>
+      new Map<string, unknown>([
+        [
+          "outbound",
+          {
+            id: "outbound",
+            type: "outbound-rtp",
+            timestamp,
+            kind: "video",
+            ssrc: 101,
+            bytesSent: timestamp * 10,
+            framesEncoded: timestamp / 10,
+            retransmittedPacketsSent,
+            retransmittedBytesSent,
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+    const reports = [
+      outbound(1_000, 2, 200),
+      outbound(2_000, 5, 800),
+      outbound(3_000, 1, 100),
+      outbound(4_000, 4, 700),
+    ];
+    const connection = {
+      getStats: async () => reports.shift()!,
+    } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
+    const sample = () =>
+      collectConnectionMetrics(connection, "send", accumulator);
+    const first = await sample();
+    const stable = await sample();
+    const reset = await sample();
+    const afterReset = await sample();
+
+    expect(first.intervalRetransmittedPackets).toBeNull();
+    expect(stable).toMatchObject({
+      intervalRetransmittedPackets: 3,
+      intervalRetransmittedBytes: 600,
+    });
+    expect(reset).toMatchObject({
+      intervalRetransmittedPackets: null,
+      intervalRetransmittedBytes: null,
+    });
+    expect(afterReset).toMatchObject({
+      intervalRetransmittedPackets: 3,
+      intervalRetransmittedBytes: 600,
+    });
+  });
+
   it("separates the local TURN transport from the ICE protocol", async () => {
     const report = new Map<string, Record<string, unknown>>([
       [
@@ -283,6 +514,7 @@ describe("WebRTC stats parsing", () => {
           id: "pair",
           type: "candidate-pair",
           timestamp: 2_000,
+          transportId: "transport",
           state: "succeeded",
           nominated: true,
           localCandidateId: "local",
@@ -317,6 +549,7 @@ describe("WebRTC stats parsing", () => {
           type: "inbound-rtp",
           timestamp: 2_000,
           kind: "video",
+          transportId: "transport",
           bytesReceived: 2_000,
           framesDecoded: 100,
           totalDecodeTime: 0.5,
@@ -329,6 +562,7 @@ describe("WebRTC stats parsing", () => {
       type: "inbound-rtp",
       timestamp: 4_000,
       kind: "video",
+      transportId: "transport",
       bytesReceived: 4_000,
       framesDecoded: 150,
       totalDecodeTime: 1.5,
@@ -379,6 +613,7 @@ describe("WebRTC stats parsing", () => {
           id: "pair",
           type: "candidate-pair",
           timestamp: 1_000,
+          transportId: "transport",
           localCandidateId: "local",
           remoteCandidateId: "remote",
           state: "succeeded",
@@ -403,6 +638,18 @@ describe("WebRTC stats parsing", () => {
           timestamp: 1_000,
           candidateType: "relay",
           protocol: "udp",
+        },
+      ],
+      [
+        "inbound",
+        {
+          id: "inbound",
+          type: "inbound-rtp",
+          timestamp: 1_000,
+          kind: "video",
+          transportId: "transport",
+          bytesReceived: 1_000,
+          framesDecoded: 30,
         },
       ],
     ]) as unknown as RTCStatsReport;
@@ -501,5 +748,106 @@ describe("WebRTC stats parsing", () => {
       framesPerSecond: 10,
     });
     expect(afterCounterReset.intervalDecodeMs).toBeCloseTo(20);
+  });
+
+  it("rebases receiver event deltas on SSRC changes and counter resets", async () => {
+    const inbound = (
+      timestamp: number,
+      ssrc: number,
+      framesDropped: number,
+      freezeCount: number,
+      totalFreezesDuration: number,
+      retransmittedPacketsReceived: number,
+      retransmittedBytesReceived: number,
+    ) =>
+      new Map<string, unknown>([
+        [
+          "inbound",
+          {
+            id: "inbound",
+            type: "inbound-rtp",
+            timestamp,
+            kind: "video",
+            ssrc,
+            bytesReceived: timestamp * 10,
+            framesDecoded: timestamp / 10,
+            framesDropped,
+            freezeCount,
+            totalFreezesDuration,
+            retransmittedPacketsReceived,
+            retransmittedBytesReceived,
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+    const reports = [
+      inbound(1_000, 101, 2, 1, 0.25, 3, 300),
+      inbound(2_000, 101, 5, 2, 0.75, 7, 900),
+      inbound(3_000, 202, 20, 8, 4, 30, 4_000),
+      inbound(4_000, 202, 22, 9, 4.25, 33, 4_600),
+      inbound(5_000, 202, 1, 0, 0.25, 2, 200),
+      inbound(6_000, 202, 4, 1, 0.5, 6, 1_000),
+    ];
+    const connection = {
+      getStats: async () => reports.shift()!,
+    } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
+    const sample = () =>
+      collectConnectionMetrics(connection, "receive", accumulator);
+    const first = await sample();
+    const stable = await sample();
+    const changedSsrc = await sample();
+    const afterSsrcChange = await sample();
+    const reset = await sample();
+    const afterReset = await sample();
+
+    expect(first).toMatchObject({
+      sampleWindowMs: null,
+      intervalFramesDropped: null,
+      intervalFreezeCount: null,
+      intervalFreezeDurationMs: null,
+      intervalRetransmittedPackets: null,
+      intervalRetransmittedBytes: null,
+    });
+    expect(stable).toMatchObject({
+      sampleWindowMs: 1_000,
+      intervalFramesDropped: 3,
+      intervalFreezeCount: 1,
+      intervalFreezeDurationMs: 500,
+      intervalRetransmittedPackets: 4,
+      intervalRetransmittedBytes: 600,
+    });
+    expect(changedSsrc).toMatchObject({
+      rtpSsrc: 202,
+      sampleWindowMs: null,
+      intervalFramesDropped: null,
+      intervalFreezeCount: null,
+      intervalFreezeDurationMs: null,
+      intervalRetransmittedPackets: null,
+      intervalRetransmittedBytes: null,
+    });
+    expect(afterSsrcChange).toMatchObject({
+      sampleWindowMs: 1_000,
+      intervalFramesDropped: 2,
+      intervalFreezeCount: 1,
+      intervalFreezeDurationMs: 250,
+      intervalRetransmittedPackets: 3,
+      intervalRetransmittedBytes: 600,
+    });
+    expect(reset).toMatchObject({
+      sampleWindowMs: 1_000,
+      intervalFramesDropped: null,
+      intervalFreezeCount: null,
+      intervalFreezeDurationMs: null,
+      intervalRetransmittedPackets: null,
+      intervalRetransmittedBytes: null,
+    });
+    expect(afterReset).toMatchObject({
+      sampleWindowMs: 1_000,
+      intervalFramesDropped: 3,
+      intervalFreezeCount: 1,
+      intervalFreezeDurationMs: 250,
+      intervalRetransmittedPackets: 4,
+      intervalRetransmittedBytes: 800,
+    });
   });
 });

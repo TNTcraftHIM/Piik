@@ -111,6 +111,26 @@ device/network identifiers. Opaque server-issued path and connection-generation
 IDs provide authorization and correlation; a general remote stats stream or
 telemetry pipeline is unnecessary.
 
+The repository now implements only the first local A+B alignment foundation:
+same-tick capture settings plus one uniquely matched outbound RTP sample,
+explicit sample/media identity and adjacent deltas, `remoteId` linkage, and the
+selected path reached through that RTP stream's transport. Source replacement
+blocks sampling and invalidates in-flight generations. This is not the complete
+A+B contract: codec evidence is still MIME-only, derived codec
+profile/parameters and applicable `scalabilityMode` are absent, and there is no
+authenticated C report, two-state controller, or on-demand `LOW` runtime.
+
+Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
+references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
+references the sender's current media source, whose
+[`trackIdentifier`](https://www.w3.org/TR/webrtc-stats/#dom-rtcmediasourcestats-trackidentifier)
+is the `MediaStreamTrack.id`; RTP [`transportId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcrtpstreamstats-transportid)
+references its transport, and that transport's
+[`selectedCandidatePairId`](https://www.w3.org/TR/webrtc-stats/#dom-rtctransportstats-selectedcandidatepairid)
+references its selected pair. Therefore an ambiguous RTP set or a broken or
+cross-transport reference remains unknown; an opaque stats ID is not a safe
+substitute for those relationships.
+
 ## Accepted Adaptation Direction
 
 ADR-0007 rejects room-wide worst-link adaptation. Healthy operation has one
@@ -126,6 +146,12 @@ viewer.
 path exists or the second encoder exceeds the measured CPU/GPU/game budget, the
 controller preserves `HIGH` and fails visibly for the weak path. It never buys
 weak-path recovery by degrading healthy paths.
+
+That fail-closed result is exceptional damage containment, not a supported
+steady state. A supported sender cohort that cannot reliably start the one
+shared `LOW` on demand fails automatic-quality-control acceptance; its encoding
+path must be improved or the cohort explicitly marked unsupported. `HIGH`
+remains protected in either case.
 
 A viewer's `LOW` request is advisory and must be authenticated, session-bound,
 rate-limited, deduplicated, and corroborated by sender transport/encode and
@@ -259,7 +285,8 @@ from FPS alone. If reproducible evidence later shows that `balanced` still
 oscillates or makes the wrong tradeoff on supported machines, revise the fixed
 profiles before enabling ADR-0007. Its acceptance matrix must prove one healthy
 viewer remains `HIGH` while another enters/recover from `FALLBACK`, that all weak
-viewers share at most one `LOW`, and that `LOW` stops after sustained recovery.
+viewers move to exactly one shared `LOW`, that `LOW` stops after sustained
+recovery, and that each supported sender cohort can start it reliably.
 
 ## Primary Sources
 
