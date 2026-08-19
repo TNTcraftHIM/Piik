@@ -23,6 +23,14 @@ TURN is not a separate room topology. The host and every future native/encoded
 relay have a downstream budget of at most two active media edges. The current
 browser relay remains stricter at one child.
 
+TURN and SFU occupy different layers. TURN replaces transport for only the ICE
+edge that selected a relay pair. An SFU is a virtual topology parent and may
+feed only one or two necessary roots; after media reaches a reliable root, the
+existing bounded peer subtree remains the preferred distribution path. A
+zero-descendant SFU root is allowed only when no relay root satisfies
+capability, depth, path, and recovery gates; it still counts against the same
+one-or-two-root room budget.
+
 ADR-0004 implements automatic peer assignment but not cross-mode fallback.
 Closed PR #12 proposed a mutually exclusive process-wide `p2p|sfu` mode; this
 ADR and merged PR #17 supersede that model because it cannot satisfy the route
@@ -42,9 +50,11 @@ fallback: host -> remaining peer root -> ...
           host -> SFU -> selected fallback roots -> existing descendants
 ```
 
-Only fallback roots subscribe directly to the SFU. Each root can continue to
-feed its existing peer child, so SFU egress is approximately `K*B`, where `K`
-is the number of SFU roots, rather than necessarily `N*B` for all viewers.
+Only one or two fallback roots subscribe directly to the SFU, and each can
+continue to feed its bounded peer descendants. If no reliable relay root
+exists, a necessary viewer may be an SFU root with no descendants under that
+same total; this is the last central-fanout boundary, not a default whole-room
+topology. The cost model is owned by the linked low-server research.
 
 Deployment decides whether SFU capacity exists by configuring the complete
 LiveKit endpoint/key/secret tuple. There is no user-facing topology selector and
@@ -71,9 +81,12 @@ percentage framework, or second router.
 The implementation keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
 issues short-lived room-, role-, peer-, and publication-generation-bound grants,
-and only allowlisted branch roots may subscribe. The server first retries a
-failed edge through the deterministic peer topology; only an exhausted peer
-route can request an SFU branch root.
+and only allowlisted branch roots may subscribe. A necessary viewer with no
+descendants is still a root under the same authorization and total cap. The
+server first retries a failed edge through the deterministic peer topology;
+only an exhausted peer route can request an SFU branch root. A
+healthy route does not migrate merely because one or both selected edge
+transports use TURN.
 
 Every viewer starts with zero relay capacity for each authenticated session. A
 peer-assisted Web client explicitly advertises either zero or one downstream
@@ -251,13 +264,39 @@ Sub-second failure recovery is a target after failure detection. The current
 plane needs a small 100-200 ms liveness/queue signal or an equivalent native
 transport event. This signal must be measured before its interval is fixed.
 
+## Shadow-Only Dual-TURN Candidate
+
+Four cases define the decision boundary: retain direct/direct and direct/TURN
+peer roots; treat stable TURN/TURN roots only as a shadow SFU-root candidate;
+and use the current failure-only SFU path only after no reliable relay root
+remains. A necessary zero-descendant viewer still consumes one of the same one
+or two SFU-root slots. No stability threshold or new trigger is accepted.
+
+The bounded cost model, privacy-safe ICE fields, four-case measurement matrix,
+and exact-room shadow/A/B sequence live in
+[Low-Server-Cost Media Routes](../research/low-server-media-routes.md). One
+important accounting invariant is retained here: host-to-SFU publisher,
+SFU-to-root subscriber, and peer-descendant edges are independent ICE
+connections and each may use TURN. Every host NIC, TURN ingress/egress, SFU
+ingress/egress, and root NIC hop is real traffic and remains in service and
+billing totals, even when the same logical payload traverses consecutive hops.
+
+Only measured benefit plus an amended ADR-0005 may authorize an automatic
+exact-room canary. Until then, shadow observation changes no route, wire,
+controller, or production trigger, and the implementation remains
+failure-only.
+
 ## Security And Privacy
 
 The standby URL is an origin, not a credential. LiveKit credentials remain
 short-lived, room-bound, role-bound, and memory-only.
 Only the host may publish screen tracks. Subscription permissions allow only
-the current fallback-root identities. Ordinary SFU media is not end-to-end
-encrypted from the SFU operator; the deployment and UI must not claim otherwise.
+the current fallback-root identities, including any zero-descendant roots.
+Ordinary SFU WebRTC transport encryption terminates at the SFU, so its operator
+can access media. LiveKit supports application E2EE in which its server cannot
+access media content, but signaling/API data remains visible and Screener has
+not implemented the required key distribution. The shadow comparison must
+record which boundary is actually configured and the UI must not claim E2EE.
 
 ## Implementation Order
 
@@ -280,6 +319,9 @@ encrypted from the SFU operator; the deployment and UI must not claim otherwise.
   only by a proven native/encoded capability.
 - Only necessary fallback roots receive SFU media and the configured root/egress
   budget is never exceeded.
+- A reliable SFU root continues to serve bounded peer descendants; only when no
+  reliable relay root exists may a necessary viewer be a zero-descendant root,
+  still within the same one-or-two-root cap.
 - Prepare failure leaves the old active route unchanged.
 - First new decodable picture arrives within one second after a route failure is
   detected in the reference regional network.
@@ -334,4 +376,7 @@ Negative:
 - [LiveKit track subscription permissions](https://docs.livekit.io/transport/media/publish/#track-permissions)
 - [LiveKit client 2.22.0 `prepareConnection` source](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
 - [LiveKit JavaScript client usage](https://github.com/livekit/client-sdk-js#usage)
+- [LiveKit end-to-end encryption](https://docs.livekit.io/transport/encryption/)
+- [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html)
+- [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/)
 - [WebRTC](https://w3c.github.io/webrtc-pc/)

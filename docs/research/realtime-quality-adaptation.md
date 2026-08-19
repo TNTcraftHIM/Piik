@@ -35,32 +35,52 @@ described as automatically detecting game motion and forcing a 720p cap.
 
 ## Production Degradation Report
 
-On 2026-08-19 the deployed build was reported to deliver very low resolution,
-bitrate, and frame rate across all three profiles. This is a user observation,
-not yet an instrumented result. Draft PR #28's minimum-of-two feedback loop was
-never deployed and cannot have caused it. The production `getStats()` probes are
-read-only and do not trigger a downgrade. Peer/SFU code ships in `769de201f7cc`,
-but its production configuration is absent, so relay re-encoding and LiveKit
-cannot explain the earlier observation either.
+On 2026-08-19 production `769de201f7cc` was reported to become severely blurry
+while the host repeatedly showed a sustained native
+`qualityLimitationReason=bandwidth`, despite one capable viewer on the same LAN
+and the UI showing direct P2P. This is a user report, not yet an instrumented
+root cause. The probe is read-only, requires three consecutive windows, and
+does not change media. Same-LAN/direct does not exclude Wi-Fi loss or queuing,
+per-PeerConnection GCC, aggregate host-uplink contention, or browser bandwidth
+underestimation; isolated encoder pressure would more commonly report `cpu`.
 
-Plausible causes remain: capture settings below the request; one independent
-encoder pipeline per peer exhausting CPU/GPU; GCC reacting to host uplink or a
-TURN path; treating `maxBitrate` as a target when it is only a ceiling; browser
-rewriting or scaling sender parameters; or receive loss, jitter, decode, and
-display scaling. None is selected as the root cause before correlated evidence.
+Only a full Host refresh and re-share was reported to restore immediate
+high-definition, fluid video; Viewer refresh did not. With a stable
+session-storage `clientId` and reconnect inside the five-second grace, Viewer
+reauth reuses its `peerId` and emits `peer-joined`, while `HostPage.startPeer`
+retains an already-connected `HostPeer`; a new tab, storage failure, or expired
+grace can instead allocate a new peer. The reported Viewer refresh therefore
+did not create a new host PeerConnection/GCC generation. Host-page cleanup
+disposes every peer,
+stops capture, and creates all-new capture, sender, PC, and GCC generations.
+This makes a stuck host sender/PC/GCC or shared-capture generation a priority
+hypothesis, not a conclusion. A further report that quality may remain low
+after the old viewer leaves and a new viewer joins must likewise be tested
+against lifecycle evidence rather than assumed.
 
-One controlled capture should classify the problem before changing constants:
+Use this as the first A+B/C reproduction before the viewer controller or
+`LOW` runtime:
 
-1. Run the same high-motion scene for 60 to 90 seconds with one, two, then three
-   viewers, plus one TURN/UDP case.
-2. Compare capture settings/media-source, outbound and inbound resolution/FPS,
-   actual and target bitrate, codec and encoder implementation, interval encode
-   cost, selected path, and `qualityLimitationReason`.
-3. Treat source-low as capture, outbound-low with `cpu` as encoder pressure,
-   outbound-low with `bandwidth` as uplink/path pressure, and inbound-only loss
-   or dropped/frozen frames as network or receiver pressure.
-4. Export `chrome://webrtc-internals` only as sensitive local evidence; remove
-   SDP, candidate addresses, and other identifiers before sharing or retaining.
+1. Reproduce one wired LAN/direct viewer first, then Wi-Fi, two/three viewers,
+   and forced TURN, using the same high-motion scene for 60 to 90 seconds.
+2. In one window record A capture; B actual/target/available outbound bitrate,
+   dimensions/FPS, codec, encode cost, loss/RTT/retransmission, selected path,
+   limitation, and PC/track generations; and C inbound decode/drop/freeze.
+3. First retain capture and every healthy peer while rebuilding only the
+   affected `HostPeer`/`connectionId`. Separately compare capture/track
+   replacement with PCs retained, then a full Host rebuild; do not combine the
+   interventions.
+4. For viewer churn and stable-`clientId` reconnect, retain old/new
+   `peerId`/`connectionId`, `peer-left`-to-dispose time, active sender count
+   inside/outside the five-second grace, old snapshot removal, whether a new PC
+   actually exists, capture settings, and new-path BWE/limitation.
+
+A single-edge rebuild passes only if the affected viewer recovers, unaffected
+viewers neither migrate nor interrupt, and the host-edge cap holds. Only proven
+generation-specific failure can justify a later automatic one-edge recovery
+with sustained-bandwidth and healthy-counterpart evidence, cooldown, and a
+generation guard. Do not add periodic reconnect, blindly raise a ceiling, or
+change the current controller before this gate.
 
 Missing `scaleResolutionDownBy` is not itself a root cause for a single encoding
 because its effective default is 1.0. Likewise, the current 3/5/8 Mbps values
@@ -170,6 +190,19 @@ expected smoothness/power efficiency for a specified configuration; WebCodecs
 defines `hardwareAcceleration` only as a hint the user agent may ignore.
 Therefore none is, by itself, proof of a particular hardware encoder, and a
 software SVC fallback must not be silent.
+
+After trustworthy A+B/C and the native fixed-`HIGH` path, run three bounded
+capability spikes. First, negotiate `HIGH`/`LOW` simulcast in one sender's
+initial envelope with `LOW` inactive and prove applied parameters, per-RID
+bytes/frames, and CPU/GPU/encoder release; separate PeerConnections have no
+portable shared-encode contract. Second, test at most two independently
+selecting LiveKit roots, but expect pinned server 1.13.5 to enable every layer
+at or below the maximum requested quality, so a `HIGH` root also keeps `LOW`
+enabled; client 2.22.0 then applies `active`, with Firefox using only a low-rate,
+low-FPS, 4x-scale fallback. Reject Dynacast for the exact on-demand-`LOW`
+requirement unless runtime and resource counters disprove that boundary. Third,
+compare requested/applied SVC mode and Media Capabilities `powerEfficient`,
+with no software fallback. None may bypass PR #28's stock-GCC/RTX stop line.
 
 ## Why Offline Encoding Presets Do Not Transfer
 
@@ -307,6 +340,9 @@ recovery, and that each supported sender cohort can start it reliably.
 - [libwebrtc removal of the automatic animation-detection experiment, 2024-05-22](https://webrtc.googlesource.com/src/+/1d7d0e6e2c5002815853be251ce43fe88779ac85)
 - [LiveKit screen-share presets](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
 - [LiveKit degradation defaults](https://github.com/livekit/client-sdk-js/blob/main/src/room/participant/publishUtils.ts)
+- [LiveKit client 2.22.0 Dynacast layer control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
+- [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
+- [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
 - [Jitsi desktop degradation preference](https://github.com/jitsi/lib-jitsi-meet/blob/master/modules/RTC/TraceablePeerConnection.ts)
 - [Discord Go Live architecture](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
 - [Discord encoder-quality case study](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus)

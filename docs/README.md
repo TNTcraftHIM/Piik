@@ -8,10 +8,10 @@
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, runtime relay-capacity extension, and abandon gates.
-- [Low-server-cost media routes](./research/low-server-media-routes.md): traffic accounting, route screening, token-free SFU standby prewarm, conditional native encoded-RTP relay, and automatic final fallback.
+- [Low-server-cost media routes](./research/low-server-media-routes.md): per-edge TURN versus SFU-root topology, hop-level traffic accounting, privacy-safe ICE evidence, dual-TURN shadow gates, and failure-only final fallback.
 - [Advanced peer distribution](./research/advanced-peer-distribution.md): multi-tree/SVC, encoded-object relay, native RTP forwarding, FEC/network-coding, MoQ, and measurable go/no-go gates.
 - [Native shared-encode sender](./research/native-shared-encode-sender.md): consolidated Draft #16/#18/#22/#23/#25/#28 evidence ladder, current Pion/WebCodecs verdicts, and product stop line.
-- [Realtime quality adaptation](./research/realtime-quality-adaptation.md): correlated capture/send/receive diagnosis, demand-driven dual representations, SVC boundary, and measurement gates.
+- [Realtime quality adaptation](./research/realtime-quality-adaptation.md): correlated capture/send/receive diagnosis, production generation-rebuild gate, demand-driven dual representations, and bounded simulcast/Dynacast/SVC checks.
 - [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, standard readback limits, Opus negotiation boundaries, and the retained no-control decision.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): accepted P2P-first media topology and its consequences.
