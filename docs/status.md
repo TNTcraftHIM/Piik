@@ -22,6 +22,7 @@ functionally but misses its sub-second gate; neither Draft is merged or deployed
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
 - Peer-assisted profile state is bounded, memory-only, absent from ordinary P2P wire, and applied to current and future relay children.
+- The stacked `feat/simple-entry-diagnostics` Draft places equal share/join actions in the idle 16:9 stage, removes the duplicate weak entry, and defaults Host/Viewer technical details closed while keeping actionable warnings visible. It is not deployed.
 
 ## Verified Evidence
 
@@ -31,6 +32,8 @@ functionally but misses its sub-second gate; neither Draft is merged or deployed
 - A separate live-profile smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings while its leaf kept decoding.
 - Corrected Chrome 151/LiveKit 1.13.5 synthetic 720p30 smoke physically failed the same leaf through peer recovery/reparent and a two-root SFU route. Its frames resumed; 472 hook-assisted 25 ms samples saw host edge peak two. Failure report to active took 1.481 seconds and to new render 2.257 seconds.
 - Draft PR #17 passes CI, type checking, 19 Vitest files/253 tests, both production builds, dependency audit, and repository hygiene.
+- Chrome 151 CDP checks at 320/375/390 CSS px keep the two idle-stage actions equal, on one row, 44 px high, and free of horizontal overflow. The Viewer waiting page also has no overflow; its details checkbox starts false, changes locally, and resets after navigation. These checks cover idle/waiting states, not live media.
+- The stacked UI branch passes type checking, 20 Vitest files/254 tests, both production builds, and the production dependency audit.
 - Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes CI for one Pion RTP write fanned to two transports. It has no encoder and proves neither physical encode nor browser E2E.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
@@ -48,9 +51,9 @@ functionally but misses its sub-second gate; neither Draft is merged or deployed
 
 ## Next Milestone
 
-Finish ADR-0005 before UI polish: address the 2.257-second fallback, then
-validate public transports, rollback, reconnect, controls, edge counts, egress,
-and load.
+Finish ADR-0005: address the 2.257-second fallback, then validate public
+transports, rollback, reconnect, controls, edge counts, egress, and load. Keep
+the stacked entry/diagnostics Draft separate and unmerged until its parent lands.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix.
