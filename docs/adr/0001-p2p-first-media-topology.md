@@ -12,9 +12,9 @@ is governed by ADR-0005.
 Historical ADR-0003's explicit whole-room SFU mode is rejected/superseded.
 Proposed ADR-0004 and the default-off ADR-0005 implementation do not yet
 supersede this production baseline. ADR-0005 now accepts the target direct/peer
-UDP -> SFU-root UDP -> optional exceptional-edge TURN ladder, but its config
-migration and exact-room acceptance gates must pass before production topology
-changes.
+UDP -> SFU-root UDP -> optional exceptional-edge TURN ladder. Its config/wire
+migration now exists only in the repository candidate; isolated exact-room
+acceptance gates must still pass before production topology changes.
 
 ## Context
 

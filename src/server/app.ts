@@ -78,9 +78,6 @@ export async function createScreenerServer(
   });
   const iceOptions = {
     stunUrls: config.stunUrls,
-    turnUrls: config.turnUrls,
-    turnSharedSecret: config.turnSharedSecret,
-    credentialTtlSeconds: config.turnCredentialTtlSeconds,
   };
 
   let frontendHandler: FrontendHandler | undefined;

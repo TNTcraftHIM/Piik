@@ -175,7 +175,7 @@ export class ViewerPeer {
         iceTransportPolicy: this.forceRelay ? "relay" : "all",
       });
     } catch (error) {
-      this.setError(error, "更新 TURN 配置失败");
+      this.setError(error, "更新 ICE 配置失败");
     }
   }
 

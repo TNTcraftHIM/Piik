@@ -1,73 +1,25 @@
-# Screener minimal production coturn configuration.
-# Target: coturn 4.17.2 or newer patched release.
-# Copy this file outside the repository, replace every <...> placeholder, and
-# restrict the resulting file to the coturn service account.
+# Screener self-hosted STUN-only configuration.
+# Target: coturn 4.17.2 or a newer patched release.
+# Copy this file outside the repository and restrict it to the coturn service
+# account. No application secret or relay port range is required.
 
-# Required client-facing TURN/STUN listeners.
+# Ordinary peer ICE uses UDP STUN discovery only. Coturn documents `stun-only`
+# as ignoring every TURN request, so this listener cannot allocate media relays.
 listening-port=3478
-
-# TURN/TLS is optional. The minimal deployment keeps it disabled and needs no
-# TURN certificate. To enable TLS over TCP, remove `no-tls`, uncomment the
-# standard 5349 listener and certificate paths near the end of this file, then
-# append turns:<TURN_FQDN>:5349?transport=tcp to the application's TURN_URLS.
+stun-only
+no-tcp
 no-tls
-#tls-listening-port=5349
+no-dtls
 
-# Keep the automatic address selection on a single-homed public host. For a
-# multi-homed host or a host behind 1:1 NAT, uncomment and replace these values.
-# The NAT must preserve every relay port (external port equals internal port).
-#listening-ip=<LOCAL_LISTEN_IP>
-#relay-ip=<LOCAL_RELAY_IP>
-#external-ip=<PUBLIC_IP>/<LOCAL_RELAY_IP>
-
-# A deliberately small relay range for the friend-group PoC. Open the entire
-# range bidirectionally for UDP and monitor allocation failures before changing it.
-min-port=49152
-max-port=49251
+# Keep automatic address selection on a single-homed public host. On a
+# multi-homed host, bind only the intended public interface.
+#listening-ip=<PUBLIC_LISTEN_IP>
 
 fingerprint
-realm=<TURN_FQDN>
-server-name=<TURN_FQDN>
-
-# TURN REST API credentials. This value must exactly match TURN_SHARED_SECRET
-# in the application environment. Never use a static user/password or no-auth.
-use-auth-secret
-static-auth-secret=<REPLACE_WITH_RANDOM_UNTRACKED_SECRET>
-# Some packaged builds still consult SQLite after reading the shared secret.
-# Keep that optional database writable and ephemeral under RuntimeDirectory.
-userdb=/run/coturn/turndb
-stale-nonce=600
-max-allocate-lifetime=3600
-
-# Initial abuse controls. max-bps and bps-capacity use bytes per second, not bits.
-# 2,000,000 bytes/s permits roughly 16 Mbit/s in each direction per allocation.
-# The per-user quota leaves room for the host's independent peer connections
-# and overlapping ICE restarts; it is not a verified media capacity.
-user-quota=32
-total-quota=100
-max-bps=2000000
-
-# Do not enable allow-loopback-peers: coturn 4.17.2 denies loopback by default.
-# Prevent a TURN allocation from reaching common private or link-local targets.
-denied-peer-ip=0.0.0.0-0.255.255.255
-denied-peer-ip=10.0.0.0-10.255.255.255
-denied-peer-ip=100.64.0.0-100.127.255.255
-denied-peer-ip=127.0.0.0-127.255.255.255
-denied-peer-ip=169.254.0.0-169.254.255.255
-denied-peer-ip=172.16.0.0-172.31.255.255
-denied-peer-ip=192.168.0.0-192.168.255.255
-denied-peer-ip=198.18.0.0-198.19.255.255
-denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-no-multicast-peers
-
-# A certificate for TURN_FQDN is required only by turns: URLs. Use absolute
-# paths in the deployed copy and reload/restart coturn after renewal.
-#cert=<ABSOLUTE_PATH_TO_FULLCHAIN_PEM>
-#pkey=<ABSOLUTE_PATH_TO_PRIVATE_KEY_PEM>
+no-cli
 
 # Let the service supervisor apply bounded retention. Do not enable verbose or
-# log-binding in normal production operation; coturn logs can contain client IPs.
+# log-binding in normal production; STUN logs can contain client IP addresses.
 log-file=stdout
 log-min-level=info
 new-log-timestamp

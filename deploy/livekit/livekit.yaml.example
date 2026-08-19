@@ -9,7 +9,6 @@ key_file: /etc/livekit/keys.yaml
 rtc:
   # These media ports must be reached directly by clients. Port 7880 is only
   # for the same-host reverse proxy and must be denied by every public firewall.
-  tcp_port: 7881
   udp_port: 7882
   use_external_ip: true
 
@@ -23,5 +22,5 @@ logging:
   level: info
   pion_level: error
 
-# Redis, embedded TURN, recording, ingress, egress, and webhooks are omitted on
-# purpose. This first fallback deployment is one process on one node.
+# ICE/TCP, external or embedded TURN, Redis, recording, ingress, egress, and
+# webhooks are omitted on purpose. This candidate is one process on one node.

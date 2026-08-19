@@ -20,6 +20,12 @@ const qualitySettings = {
 } as const;
 
 describe("client signaling protocol", () => {
+  it("rejects the removed all-room ICE refresh request", () => {
+    expect(clientMessageSchema.safeParse({ type: "refresh-ice" }).success).toBe(
+      false,
+    );
+  });
+
   it("accepts a bounded authentication message", () => {
     expect(
       decodeClientMessage(
@@ -267,6 +273,45 @@ describe("client signaling protocol", () => {
 });
 
 describe("server signaling protocol", () => {
+  it("rejects the removed all-room TURN credential wire", () => {
+    expect(
+      serverMessageSchema.safeParse({
+        type: "ice-config",
+        iceConfig: { iceServers: [] },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        iceConfig: {
+          iceServers: [
+            {
+              urls: "turn:relay.example.test:3478",
+              username: "expires:viewer_12345678",
+              credential: "credential",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        iceConfig: {
+          iceServers: [{ urls: "turn:relay.example.test:3478" }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        iceConfig: {
+          iceServers: [{ urls: "stuns:stun.example.test:5349" }],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   function authenticatedMessage(maxViewers: number, viewerPeerIds: string[] = []) {
     return {
       type: "authenticated",
@@ -279,8 +324,6 @@ describe("server signaling protocol", () => {
       viewerPeerIds,
       iceConfig: {
         iceServers: [],
-        expiresAt: null,
-        relayAvailable: false,
       },
     };
   }

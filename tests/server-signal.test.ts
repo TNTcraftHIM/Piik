@@ -145,8 +145,6 @@ function testConfig(): ServerConfig {
     maxViewersPerRoom: 8,
     peerAssistedMedia: false,
     stunUrls: [],
-    turnUrls: [],
-    turnCredentialTtlSeconds: 3_600,
   };
 }
 
@@ -161,11 +159,13 @@ async function startHarness(
     persistent?: boolean;
     peerAssistedMedia?: boolean;
     peerAssistedPrimaryRoomOnly?: boolean;
+    stunUrls?: readonly string[];
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
   config.accessPassword = overrides.accessPassword;
   config.peerAssistedMedia = overrides.peerAssistedMedia ?? false;
+  config.stunUrls = overrides.stunUrls ?? [];
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
   const roomStore = new RoomStore({
@@ -205,6 +205,7 @@ async function startSfuHarness(options: {
   maxRoots?: number;
   viewerDisconnectGraceMs?: number;
   peerAssistedPrimaryRoomOnly?: boolean;
+  stunUrls?: readonly string[];
 }): Promise<SignalHarness> {
   const roomStore = new RoomStore({
     ttlMs: 14_400_000,
@@ -230,9 +231,7 @@ async function startSfuHarness(options: {
       prepareTimeoutMs: options.prepareTimeoutMs,
     },
     ice: {
-      stunUrls: [],
-      turnUrls: [],
-      credentialTtlSeconds: 3_600,
+      stunUrls: options.stunUrls ?? [],
     },
     allowedOrigins: new Set([allowedOrigin]),
     authorizeUpgrade: () => true,
@@ -878,10 +877,11 @@ describe("WebSocket signaling", () => {
     await viewer.inbox.expectNone(30);
   });
 
-  it("isolates allowlisted hybrid and legacy rooms in one process", async () => {
+  it("isolates the routing allowlist while ordinary ICE stays STUN-only", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { issueToken: async () => "unused-test-token" },
       peerAssistedPrimaryRoomOnly: true,
+      stunUrls: ["stun:stun.example.test:3478"],
     });
     const legacyRoom = harness.roomStore.createRoom();
 
@@ -895,6 +895,9 @@ describe("WebSocket signaling", () => {
       ),
     );
     expect(hybridHostAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
+    expect(hybridHostAuth.iceConfig).toEqual({
+      iceServers: [{ urls: ["stun:stun.example.test:3478"] }],
+    });
 
     const legacyHost = await openClient(harness.webSocketUrl);
     const legacyHostAuth = await authenticate(
@@ -916,6 +919,12 @@ describe("WebSocket signaling", () => {
         "viewerPeerIds",
       ].sort(),
     );
+    expect(legacyHostAuth.iceConfig).toEqual(hybridHostAuth.iceConfig);
+    expect(
+      legacyHostAuth.iceConfig.iceServers.every(
+        (server) => !("username" in server) && !("credential" in server),
+      ),
+    ).toBe(true);
 
     const legacyViewer = await openClient(harness.webSocketUrl);
     const legacyViewerAuth = await authenticate(

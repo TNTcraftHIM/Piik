@@ -78,14 +78,14 @@ production release `769de201f7cc`, but the deployment has neither
 `PEER_ASSISTED_MEDIA` nor a LiveKit tuple, so its active path remains ordinary
 one-host-peer-per-viewer P2P/TURN.
 
-That implementation is not yet the accepted transport target. It advertises
-coturn per P2P edge, production configuration requires TURN/UDP plus TURN/TCP,
-and the SFU activates only after a peer edge exhausts recovery. The scheduled
-change must make the complete TURN tuple optional, omit it from ordinary peer
-ICE, make SFU/UDP the primary central fallback, and issue short-lived TURN only
-for a controller-selected exceptional edge. Until its tests and exact-room
-canary pass, the current config contract and production deployment remain
-unchanged.
+The repository candidate now removes the old all-room coturn contract. Production
+requires STUN, ordinary authenticated ICE snapshots contain only STUN servers,
+and the protocol has no TURN credential expiry or refresh messages. The tracked
+LiveKit sample also omits ICE/TCP and every TURN service. The SFU controller still
+activates only after a peer edge exhausts recovery, so public transport and route
+admission remain unverified. Production `769de201f7cc` keeps its old coturn relay
+until an isolated candidate canary passes; rollback is release/instance based,
+not a permanent legacy branch in the new code.
 
 The repository also supports an optional strict `PEER_ASSISTED_ROOM_IDS`
 deployment allowlist. When non-empty, only exact listed room IDs enter the
@@ -177,6 +177,12 @@ grant and refresh messages for ordinary peer edges. Pinned LiveKit embedded
 TURN remains participant-wide ICE configuration for a LiveKit publisher or
 subscriber and is not a Screener per-edge grant.
 
+The ordinary authenticated `iceConfig` now contains only `iceServers` populated
+from `STUN_URLS`. It has no username, credential, expiry, or relay-availability
+flag. The removed `refresh-ice` and `ice-config` messages must not be reintroduced
+as a shortcut for room-wide TURN. A signaling reconnect obtains a new static
+STUN snapshot through the next authenticated message.
+
 Authentication carries the current participant assignment and room revision,
 plus the non-secret standby URL when fallback is configured. It never carries a
 standby JWT. An authenticated snapshot is the sole authority allowed to replace
@@ -196,10 +202,11 @@ complete LiveKit tuple.
 2. A failed edge first exhausts its bounded ICE/UDP restart/rebuild and peer
    reparent options. When admission has no eligible peer path, or recovery is
    exhausted, select the SFU root plan without first advertising TURN to every
-   peer edge. If ordinary coturn is configured, its grant is issued only to a
-   selected exceptional peer edge after UDP is exhausted. Stock LiveKit
-   participant-wide TURN remains a canary candidate and does not satisfy this
-   selected-edge issuance target unless the integration isolates or extends it.
+   peer edge. A future ordinary coturn transport, if a separate complete change
+   accepts it, may issue a grant only to the selected exceptional peer edge after
+   UDP is exhausted. Stock LiveKit participant-wide TURN remains a distinct
+   candidate and does not satisfy this selected-edge issuance target unless the
+   integration isolates or extends it.
 3. The server computes revision `R+1` without mutating the active topology. It
    sends a prepare plan only to the host and required fallback roots.
 4. When fallback is configured, host and viewer clients have already made one
@@ -303,14 +310,14 @@ transport event. This signal must be measured before its interval is fixed.
 ## SFU-First UDP Transport Migration
 
 The accepted product direction supersedes the earlier dual-TURN shadow
-candidate as the preferred central comparison. Healthy direct/peer UDP stays distributed. When no such path
-can satisfy admission or recovery, one SFU publication feeds one or two roots,
-which keep their bounded peer descendants. Optional TURN is not room-wide: the
-server may grant independent coturn only to a selected exceptional ordinary
-host-to-root or root-to-viewer edge. A LiveKit publisher/subscriber connection
-may instead receive LiveKit's participant-wide embedded/external TURN config;
-that path is not assignment-level issuance. Absence of TURN is normal;
-exhausted configured paths fail clearly.
+candidate as the preferred central comparison. Healthy direct/peer UDP stays
+distributed. When no such path can satisfy admission or recovery, one SFU
+publication feeds one or two roots, which keep their bounded peer descendants.
+The current executable ladder ends in bounded failure and has no TURN config or
+wire. Optional selected-edge TURN remains a future conditional PR, not an unused
+runtime tuple. LiveKit participant-wide embedded/external TURN is likewise not
+configured by the current UDP-only candidate and would not be assignment-level
+issuance.
 
 The bounded cost model, privacy-safe ICE fields, and exact-room A/B sequence
 live in [Low-Server-Cost Media Routes](../research/low-server-media-routes.md).
@@ -323,15 +330,16 @@ bitrate `B_exc,j`, SFU egress adds `sum(B_exc,j)`; every TURN leg additionally
 adds its own ingress and egress. Every host NIC, TURN ingress/egress, SFU
 ingress/egress, root NIC, and exception NIC hop remains real traffic.
 
-Migration is gated, not optional design debate: first retain the current path
-as a baseline, then use one exact room to verify direct/peer UDP, SFU/UDP,
-one selected-edge compatibility transport when configured, and bounded failure with all UDP
-blocked. The matrix covers CGNAT, double NAT, mobile hotspot, ordinary home
-networks, root departure, reconnect, SFU unavailable, and rollback. It records
+Migration is gated, not optional design debate: retain the deployed old release
+as a separate baseline/rollback instance, then use exact test rooms on an
+isolated candidate to verify direct/peer UDP, SFU/UDP, and bounded failure with
+all UDP blocked. The candidate cannot share a process with rooms that require
+the old all-room TURN wire. The matrix covers CGNAT, double NAT, mobile hotspot,
+ordinary home networks, root departure, reconnect, SFU unavailable, and rollback. It records
 CPU seconds/GiB, NIC bytes/pps, RSS, host upload, p95/p99 forwarding latency,
 loss/recovery, final quality, host edges at most two, SFU roots at most two, and
-unchanged healthy subtrees. Only after that gate may config parsing stop
-requiring coturn and may production enable the new ladder.
+unchanged healthy subtrees. Config parsing and wire are already STUN-only; only
+after that gate may production activate the candidate and retire relay listeners.
 
 A peer root re-publishing its received stream to the SFU while also feeding
 peer descendants remains a separate bounded candidate. The current browser
@@ -362,7 +370,7 @@ record which boundary is actually configured and the UI must not claim E2EE.
 4. Implement server prepare/commit/abort and strict authorization.
 5. Integrate host/viewer first-frame switching while retaining relay children.
 6. Extend the tracked `1/3/5/8` benchmark with automatic fallback, peer/SFU UDP,
-   optional selected-edge TURN, source/profile/pause/stop, and server-egress measurements.
+   bounded UDP-blocked failure, source/profile/pause/stop, and server-egress measurements.
 
 ## Acceptance Gates
 
@@ -382,13 +390,14 @@ record which boundary is actually configured and the UI must not claim E2EE.
   persistent-room stop/restart semantics survive the transition.
 - No LiveKit configuration preserves the existing P2P/peer behavior and wire,
   but is not the final flagship deployment target.
-- In one process, non-allowlisted rooms preserve the legacy P2P wire, directed
-  signaling, quality rejection, stop/reconnect/delete semantics, and remain
-  isolated from allowlisted peer/SFU state.
+- In one process, non-allowlisted rooms preserve ordinary P2P route fields,
+  directed signaling, quality rejection, stop/reconnect/delete semantics, and
+  remain isolated from allowlisted peer/SFU state. All rooms receive the same
+  process-wide STUN-only ordinary ICE contract; no legacy TURN branch exists.
 - LiveKit/SFU UDP must pass CGNAT, double-NAT, hotspot, home-network, loss,
-  rollback, and SFU-unavailable gates. With optional TURN absent, blocked UDP
-  fails clearly within a bounded window. Any configured selected-edge TURN or
-  media TCP mode is verified separately and never becomes a quality claim.
+  rollback, and SFU-unavailable gates. Blocked UDP fails clearly within a
+  bounded window. A future selected-edge TURN or media TCP implementation needs
+  a separate ADR/PR and never becomes a quality claim.
 
 ## Consequences
 
@@ -397,8 +406,8 @@ Positive:
 - Users do not select or understand a topology.
 - Host fanout remains bounded while server media egress is paid only for
   fallback roots and separately admitted exceptional viewers.
-- The ordinary peer path stays direct/UDP by default; optional TURN is paid only
-  for a selected exceptional edge.
+- The ordinary peer path is direct/UDP with STUN discovery; the current candidate
+  has no TURN media cost or fallback.
 - Revisioned prepare/commit isolates stale asynchronous results without a
   continuous optimizer.
 

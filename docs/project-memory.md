@@ -16,14 +16,14 @@ Last updated: 2026-08-19
 ## Current Recommendation
 
 - Keep desktop Chrome/Edge and the responsive Web viewer as the baseline. Validate Android Chrome and iOS Safari as leaves.
-- Use direct host P2P for one or two viewers. Keep ADR-0004 off broadly; use an exact-room canary until resource, quality, recovery, SFU/UDP, optional-TURN, and browser/mobile gates pass.
+- Use direct host P2P for one or two viewers. Keep ADR-0004 off broadly; use an isolated exact-room candidate until resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile gates pass.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep browser experiments bounded; spike native RTP relay, encoded-object striping, SVC, and FEC separately.
 - ADR-0006 retains a fixed-`HIGH` native canary boundary, but its sole product-wiring run reached only host setup and one encoder output before the first-viewer decoded/rendered gate timed out. Downstream checkpoints were not retained, so the result is no-go-unclassified, not a diagnosed product bug. No native product code is accepted; revisit only through the staged evidence gate.
-- ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP, never default whole-room fanout. Optional TURN is issued only to an exceptional assigned edge; PR #12 is superseded.
-- Keep the current failure-only controller default-off until config migration and exact-room gates pass. Preserve break-before-make, sticky healthy subtrees, mobile leaves, and PR #20 prewarm; public transport/load remains open.
+- ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP, never default whole-room fanout. The repository candidate has no TURN consumer or credential wire; a future exceptional assigned edge requires a complete generation-bound grant change. PR #12 is superseded.
+- Keep the current failure-only controller default-off until the isolated STUN/SFU migration and exact-room gates pass. Preserve break-before-make, sticky healthy subtrees, mobile leaves, and PR #20 prewarm; public transport/load remains open.
 - Local reparenting is a later candidate: start with unassigned relay admission rescue; do not block current work.
-- Flagship media defaults to UDP; HTTPS/WSS remains TLS/TCP. Current production still requires coturn UDP/TCP. Future TURN absence is normal, partial config fails, and any media-TCP/port compatibility mode is chosen only by canary.
+- Flagship media is UDP; HTTPS/WSS stays TLS/TCP. Old production retains coturn TURN for rollback. The candidate uses self-hosted coturn STUN-only for ordinary ICE and separate LiveKit SFU/UDP, with no TURN/media-TCP config or wire. Future selected-edge TURN requires measured design and a complete consumer.
 - Treat video settings as ceilings and degradation as unclassified. Local host A+B now covers same-tick capture/outbound identity, windows, deltas, remote linkage, path, and nullable negotiated codec/profile token/allowlisted parameters/current stream `scalabilityMode`. Use it first to reproduce the reported Host-only recovery, then add minimal authenticated C and test standard simulcast/LiveKit/SVC before custom `LOW`; this need not wait for ADR-0006. Never use UA or a composite score.
 - Reported poor movie/video audio is unclassified. After video A+B, separately diagnose audio A/B/C and A/V sync across capture settings, codec/fmtp, actual bitrate, loss, jitter, concealment, and jitter buffer. `maxBitrate` is not quality-up; do not expand runtime before evidence. See `docs/research/browser-screen-audio-quality.md`.
 - Do not add custom scene detection or dynamic-FPS control until WebRTC statistics and host resource measurements prove a material gap. Keep browser codec order until target hardware proves a more efficient common codec.
@@ -38,6 +38,7 @@ Last updated: 2026-08-19
 - Access uses optional `ACCESS_PASSWORD`, a 12-hour stateless HMAC HttpOnly Strict cookie, internal host token, role-bound signaling, Origin/payload checks, and no accounts/JWT/session map.
 - With `ROOM_DATABASE_PATH` and the password, SQLite stores room ID and host-token digest; links persist and room `1` survived deployment. Without it, rooms are temporary.
 - Production uses nginx, Node.js 24.19.0, and authenticated coturn 4.17.2 at `turn.bonfire.icu:3478`; public STUN, TURN/UDP, TURN/TCP, and relay-only traffic pass. TURN/TLS is off.
+- Candidate migration is process-wide: ordinary ICE is STUN-only, coturn disables TCP/TLS/DTLS, LiveKit 1.13.5 uses separate UDP participant ICE, and old TURN parser/signer/refresh/UI/SNI artifacts are gone. Old production is an isolated rollback.
 - The default-off ADR-0005 controller has no production peer/SFU configuration. `PEER_ASSISTED_ROOM_IDS` restricts exact canary rooms; unlisted rooms stay P2P and empty/missing means all.
 - When enabled, peer recovery precedes allowlisted SFU; session revisions prepare/commit/abort and active SFU gets one token refresh before failback. Browser relays re-encode; native sharing is outside product code.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
@@ -62,7 +63,7 @@ These are measurement gates, not performance claims.
 
 - Sustainable viewer count by broadcaster and relay hardware, quality profile, network class, and media route; use instrumented 1/3/5/8 comparisons rather than a 1:8 claim.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
-- Which optional TURN/media-TCP transport and port, if any, survives ADR-0005's public UDP-first canary; current LiveKit ICE/TCP/coturn stays until migration passes.
+- Whether measured restrictive-network demand justifies a future selected-edge TURN grant at all, and which UDP transport/port it would use. The current candidate does not retain dormant TURN or media-TCP configuration.
 - Exact mobile lifecycle behavior and whether Windows per-application audio is required for the first release.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.

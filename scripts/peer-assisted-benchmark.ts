@@ -1947,8 +1947,6 @@ export async function main(): Promise<number> {
         PEER_ASSISTED_MEDIA: "true",
         MAX_VIEWERS_PER_ROOM: String(Math.max(...config.viewerCounts)),
         STUN_URLS: "",
-        TURN_URLS: "",
-        TURN_SHARED_SECRET: "",
       }),
     });
     await server.listen(appPort, "127.0.0.1");

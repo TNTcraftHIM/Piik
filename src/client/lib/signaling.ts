@@ -46,7 +46,6 @@ export class SignalingClient {
   private reconnectAttempt = 0;
   private reconnectTimer: number | null = null;
   private authenticationTimer: number | null = null;
-  private iceRefreshTimer: number | null = null;
   private terminalTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
   private accessCheck: Promise<void> | null = null;
@@ -161,10 +160,7 @@ export class SignalingClient {
             return;
           }
         }
-        this.scheduleIceRefresh(message.iceConfig.expiresAt);
         this.events.onStatus("connected");
-      } else if (message.type === "ice-config") {
-        this.scheduleIceRefresh(message.iceConfig.expiresAt);
       }
       this.events.onMessage(message);
     });
@@ -233,26 +229,6 @@ export class SignalingClient {
       });
   }
 
-  private scheduleIceRefresh(expiresAt: string | null): void {
-    if (this.iceRefreshTimer !== null) {
-      window.clearTimeout(this.iceRefreshTimer);
-      this.iceRefreshTimer = null;
-    }
-    if (!expiresAt) {
-      return;
-    }
-
-    const expiresAtMs = Date.parse(expiresAt);
-    if (!Number.isFinite(expiresAtMs)) {
-      return;
-    }
-    const delay = Math.max(5_000, expiresAtMs - Date.now() - 60_000);
-    this.iceRefreshTimer = window.setTimeout(() => {
-      this.iceRefreshTimer = null;
-      this.send({ type: "refresh-ice" });
-    }, delay);
-  }
-
   private clearAuthenticationTimer(): void {
     if (this.authenticationTimer !== null) {
       window.clearTimeout(this.authenticationTimer);
@@ -265,10 +241,6 @@ export class SignalingClient {
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
-    }
-    if (this.iceRefreshTimer !== null) {
-      window.clearTimeout(this.iceRefreshTimer);
-      this.iceRefreshTimer = null;
     }
     if (this.terminalTimer !== null) {
       window.clearTimeout(this.terminalTimer);

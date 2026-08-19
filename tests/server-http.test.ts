@@ -44,8 +44,6 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     maxViewersPerRoom: 8,
     peerAssistedMedia: false,
     stunUrls: [],
-    turnUrls: [],
-    turnCredentialTtlSeconds: 3_600,
     ...overrides,
   };
 }

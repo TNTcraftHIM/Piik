@@ -19,10 +19,10 @@ describe("ViewerMessageAuthority", () => {
     expect(authority.owns(authenticated)).toBe(false);
   });
 
-  it("invalidates pending work on a newer auth, ICE snapshot, or termination", () => {
+  it("invalidates pending work on a newer auth or termination", () => {
     const authority = new ViewerMessageAuthority();
     const first = authority.tokenFor(message("authenticated"));
-    authority.tokenFor(message("ice-config"));
+    authority.tokenFor(message("room-closed"));
     expect(authority.owns(first)).toBe(false);
 
     const second = authority.tokenFor(message("authenticated"));

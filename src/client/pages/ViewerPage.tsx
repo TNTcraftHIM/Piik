@@ -57,7 +57,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     useState<SignalConnectionState>("offline");
   const [statusText, setStatusText] = useState("正在连接");
   const [hostOnline, setHostOnline] = useState(false);
-  const [relayAvailable, setRelayAvailable] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
@@ -381,8 +380,13 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
               }
             }
           },
-          onRecoveryExhausted: (parentPeerId, connectionId) =>
-            viewerSfuRoute?.reportPeerFailure(parentPeerId, connectionId) ?? true,
+          onRecoveryExhausted: (parentPeerId, connectionId) => {
+            if (viewerSfuRoute) {
+              return viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId);
+            }
+            setStatusText("无法建立媒体连接");
+            return true;
+          },
         },
         forceRelay,
       );
@@ -414,7 +418,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         }
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
-        setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
@@ -530,13 +533,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             message.rebuild,
           );
         }
-        return;
-      }
-      if (message.type === "ice-config") {
-        currentIceConfig = message.iceConfig;
-        setRelayAvailable(message.iceConfig.relayAvailable);
-        peerRef.current?.updateIceConfig(message.iceConfig);
-        viewerRelay?.updateIceConfig(message.iceConfig);
         return;
       }
       if (message.type === "host-status") {
@@ -762,12 +758,6 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           onChange={setShowConnectionDetails}
         />
 
-        {showConnectionDetails &&
-          !relayAvailable &&
-          signalStatus === "connected" &&
-          (hostOnline || peerSnapshot) && (
-          <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
-        )}
         {peerSnapshot?.error && (
           <div className="notice notice-error" role="status">
             {peerSnapshot.error}

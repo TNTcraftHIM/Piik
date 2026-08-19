@@ -5,6 +5,7 @@ export const MAX_SIGNAL_BYTES = 64 * 1024;
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
+export const MAX_ICE_SERVER_URLS = 8;
 
 const opaqueIdSchema = z
   .string()
@@ -82,22 +83,24 @@ export const relayDownstreamEdgesSchema = z.union([
 ]);
 export type RelayDownstreamEdges = z.infer<typeof relayDownstreamEdgesSchema>;
 
+const stunUrlSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .regex(/^stun:/i);
+
 const iceServerSchema = z
   .object({
     urls: z.union([
-      z.string().min(1).max(512),
-      z.array(z.string().min(1).max(512)).min(1).max(8),
+      stunUrlSchema,
+      z.array(stunUrlSchema).min(1).max(MAX_ICE_SERVER_URLS),
     ]),
-    username: z.string().max(512).optional(),
-    credential: z.string().max(512).optional(),
   })
   .strict();
 
 export const iceConfigSchema = z
   .object({
     iceServers: z.array(iceServerSchema).max(8),
-    expiresAt: z.string().datetime().nullable(),
-    relayAvailable: z.boolean(),
   })
   .strict();
 export type IceConfig = z.infer<typeof iceConfigSchema>;
@@ -219,7 +222,6 @@ export const clientMessageSchema = z.union([
       rebuild: z.boolean(),
     })
     .strict(),
-  z.object({ type: z.literal("refresh-ice") }).strict(),
   z
     .object({
       type: z.literal("set-quality-settings"),
@@ -359,12 +361,6 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("quality-settings"),
       qualitySettings: qualitySettingsSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("ice-config"),
-      iceConfig: iceConfigSchema,
     })
     .strict(),
   z

@@ -18,7 +18,7 @@ import {
   HybridMediaRouter,
   type SfuFallbackOptions,
 } from "./hybrid-media-router.js";
-import { createIceConfig, type IceConfigOptions } from "./turn.js";
+import { createIceConfig, type IceConfigOptions } from "./ice.js";
 
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
 
@@ -377,13 +377,7 @@ export class SignalingServer {
       hostOnline: participant.hostOnline,
       connectionId,
       viewerPeerIds: [...participant.viewerPeerIds],
-      iceConfig: this.iceConfig(
-        participant.roomId,
-        participant.peerId,
-        participant.expiresAt === null
-          ? null
-          : Date.parse(participant.expiresAt),
-      ),
+      iceConfig: this.iceConfig(),
     };
     if (hybridState) {
       this.send(socket, {
@@ -471,16 +465,6 @@ export class SignalingServer {
           fromPeerId: authenticated.peerId,
           connectionId: message.connectionId,
           rebuild: message.rebuild,
-        });
-        return;
-      case "refresh-ice":
-        this.send(socket, {
-          type: "ice-config",
-          iceConfig: this.iceConfig(
-            authenticated.roomId,
-            authenticated.peerId,
-            authenticated.roomExpiresAtMs,
-          ),
         });
         return;
       case "set-quality-settings":
@@ -949,17 +933,8 @@ export class SignalingServer {
     );
   }
 
-  private iceConfig(
-    roomId: string,
-    peerId: string,
-    roomExpiresAtMs: number | null,
-  ) {
-    return createIceConfig(
-      this.options.ice,
-      `${roomId}:${peerId}`,
-      this.now(),
-      roomExpiresAtMs ?? undefined,
-    );
+  private iceConfig() {
+    return createIceConfig(this.options.ice);
   }
 
   private connectedPeer(roomId: string, peerId: string) {

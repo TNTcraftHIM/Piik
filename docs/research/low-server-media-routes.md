@@ -4,8 +4,9 @@
 - Scope: one broadcaster, at most eight trusted viewers, low latency, and host
   media fanout at most two
 - Status: ADR-0005 accepts SFU/UDP roots as the primary central fallback and
-  optional TURN only for exceptional edges; the current failure-only,
-  TURN-required controller and every non-browser data plane remain unverified
+  optional TURN only for exceptional edges; the repository candidate now has
+  STUN-only ordinary ICE plus separate LiveKit SFU/UDP, while its public
+  transport behavior and every non-browser data plane remain unverified
 
 ## Current Route Ladder
 
@@ -190,13 +191,16 @@ LiveKit TURN cannot rescue an unavailable SFU. Independent coturn can carry a
 separately authorized ordinary peer edge that bypasses the SFU, but TURN itself
 does not choose or create that topology.
 
-The tracked deployment is intentionally still the old baseline. It exposes
-LiveKit ICE/TCP 7881 and ICE/UDP mux 7882, omits embedded TURN, configures
-coturn UDP/TCP, and the application refuses production startup without both
-TURN transports. LiveKit 1.13.5 also defaults `allow_tcp_fallback` to true when
-TCP/TURN-TLS is configured. Do not remove those listeners or variables until
-the config migration and exact-room gate land. The target disables media TCP
-by default; HTTPS/WSS remains TLS/TCP.
+Production `769de201f7cc` remains the old baseline with coturn UDP/TCP. The
+repository candidate has crossed a clean config/wire boundary: production
+requires STUN, ordinary ICE snapshots contain only STUN servers, and no TURN
+credential or refresh message remains. The tracked coturn example is UDP
+`stun-only`; the LiveKit example exposes only ICE/UDP mux 7882 and configures no
+external or embedded TURN. Candidate validation and rollback use isolated
+instances rather than a process-wide legacy branch. HTTPS/WSS remains TLS/TCP.
+Coturn 4.17.2 documents `stun-only` as ignoring TURN requests and independently
+provides `no-tcp`, `no-tls`, and `no-dtls` listener switches. This makes coturn
+the explicit self-hosted STUN owner without retaining a relay allocation surface.
 
 No public port is selected by this decision. LiveKit documents ICE/UDP mux as
 optional and its pinned sample recommends a multi-port UDP mux range at least
@@ -229,15 +233,13 @@ One bounded exact-room gate owns rollout evidence:
    8 and 12 Mbps with one and two roots. Record CPU seconds/GiB, RX/TX bytes,
    packets/s, RSS, host upload, p95/p99 forwarding latency, loss/recovery, and
    final decoded quality.
-2. Cover representative consumer networks with a temporary canary config that
-   removes `rtc.tcp_port`, closes public 7881, and configures no TURN/TCP or
-   TURN/TLS listener. Verify host and roots use SFU/UDP. In one separately
-   chosen restrictive-network case, prove an ordinary coturn grant affects only
-   its authorized generation. Test LiveKit participant-wide TURN separately and
-   do not label it selected-edge issuance.
-3. Block all UDP. With the optional compatibility layer absent, show a bounded
-   explicit failure rather than a long pseudo-connection. Any later media TCP
-   mode is measured separately and cannot be marketed as a quality path.
+2. Cover representative consumer networks on an isolated candidate with no
+   `rtc.tcp_port` and no external or embedded TURN. Verify ordinary peers and
+   SFU roots use UDP. Keep the old release on a separate rollback instance;
+   `PEER_ASSISTED_ROOM_IDS` does not preserve old TURN wire for unlisted rooms.
+3. Block all UDP and show a bounded explicit failure rather than a long
+   pseudo-connection. Any later selected-edge TURN or media TCP implementation
+   is a separate complete PR and cannot be marketed as a quality path.
 4. Exercise root departure, reconnect, SFU unavailable, and rollback. Endpoint
    downstream edges stay at most two, normal SFU roots at most two, separately
    capped exceptional server edges stay bounded, and unaffected peer subtrees
@@ -359,6 +361,9 @@ Primary sources checked on 2026-08-19:
   under IETF Trust terms.
 - [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html) - the relay is
   transport for client/peer traffic, not a room distribution topology.
+- [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2)
+  and [pinned turnserver documentation](https://github.com/coturn/coturn/blob/4.17.2/README.turnserver)
+  - `stun-only` and UDP-only listener configuration; BSD-3-Clause, no code copied.
 - [WebRTC transports, RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html) -
   browser transport capability requirements do not require an application to
   advertise every supported fallback on every connection.

@@ -137,7 +137,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
   const [room, setRoom] = useState<CreateRoomResponse | null>(readHostRoom);
-  const [relayAvailable, setRelayAvailable] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
@@ -298,7 +297,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peerAssistedRef.current = false;
     setStream(null);
     setDetails(null);
-    setRelayAvailable(false);
     setMaxViewers(null);
     setPeerSnapshots(new Map());
     setSignalStatus("offline");
@@ -720,12 +718,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       });
       return;
     }
-    if (message.type === "ice-config") {
-      iceConfigRef.current = message.iceConfig;
-      setRelayAvailable(message.iceConfig.relayAvailable);
-      peersRef.current.forEach((peer) => peer.updateIceConfig(message.iceConfig));
-      return;
-    }
     if (message.type === "room-closed") {
       forgetRoom();
       endSharing(
@@ -874,7 +866,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 expiresAt: message.roomExpiresAt,
               };
               iceConfigRef.current = message.iceConfig;
-              setRelayAvailable(message.iceConfig.relayAvailable);
+              peersRef.current.forEach((peer) =>
+                peer.updateIceConfig(message.iceConfig),
+              );
               writeHostRoom(authenticatedRoom);
               setRoom(authenticatedRoom);
               setPhase("live");
@@ -1221,12 +1215,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
           {!details?.hasAudio && stream && (
             <WarningBanner>当前来源没有可共享音频</WarningBanner>
-          )}
-          {showConnectionDetails &&
-            room &&
-            signalStatus === "connected" &&
-            !relayAvailable && (
-            <WarningBanner>TURN 未配置，严格网络可能无法连接</WarningBanner>
           )}
           {qualityLimitation && (
             <WarningBanner>{qualityLimitation}</WarningBanner>
