@@ -21,7 +21,7 @@ functionally but misses its sub-second gate; neither Draft is merged or deployed
 - Direct ICE is preferred independently per media edge. Authenticated TURN/UDP and TURN/TCP are required production fallbacks; TURN/TLS is optional.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
-- The quality stack replaces the three-ID relay state with one strict, memory-only setting shared by current/future relays and optional SFU; ordinary P2P wire stays unchanged. It defaults clarity-first and exposes bounded manual ceilings.
+- Draft PR #21 replaces the three-ID relay state with one strict, memory-only setting shared by current/future relays and optional SFU; ordinary P2P wire stays unchanged. It defaults clarity-first and exposes bounded manual ceilings.
 - The same stack includes Draft PR #19's equal idle-stage share/join actions and default-closed technical details; actionable warnings remain visible. It is not deployed.
 
 ## Verified Evidence
