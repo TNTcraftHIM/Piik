@@ -1,4 +1,7 @@
-import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../shared/protocol.js";
+import {
+  MAX_VIEWERS_PER_ROOM_LIMIT,
+  roomCodeSchema,
+} from "../shared/protocol.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
@@ -31,6 +34,7 @@ export interface ServerConfig {
   maxRooms: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
+  peerAssistedRoomIds?: ReadonlySet<string>;
   livekitFallback?: LiveKitFallbackConfig;
   stunUrls: readonly string[];
   turnUrls: readonly string[];
@@ -199,6 +203,32 @@ function parseOrigins(value: string | undefined, fallback: string): Set<string> 
   return new Set((origins.length > 0 ? origins : [fallback]).map(toOrigin));
 }
 
+function parsePeerAssistedRoomIds(
+  value: string | undefined,
+): ReadonlySet<string> | undefined {
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+
+  const roomIds = new Set<string>();
+  for (const entry of value.split(",")) {
+    const roomId = entry.trim();
+    if (!roomId) {
+      throw new Error("PEER_ASSISTED_ROOM_IDS contains an empty room ID");
+    }
+    if (!roomCodeSchema.safeParse(roomId).success) {
+      throw new Error(
+        "PEER_ASSISTED_ROOM_IDS must contain comma-separated valid room IDs",
+      );
+    }
+    if (roomIds.has(roomId)) {
+      throw new Error(`PEER_ASSISTED_ROOM_IDS contains duplicate room ID ${roomId}`);
+    }
+    roomIds.add(roomId);
+  }
+  return roomIds;
+}
+
 function parseIceEndpoint(value: string): IceEndpoint | undefined {
   const schemeSeparator = value.indexOf(":");
   if (schemeSeparator <= 0) {
@@ -357,8 +387,16 @@ export function loadConfig(
     false,
     "PEER_ASSISTED_MEDIA",
   );
+  const peerAssistedRoomIds = parsePeerAssistedRoomIds(
+    environment.PEER_ASSISTED_ROOM_IDS,
+  );
   const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
 
+  if (peerAssistedRoomIds && !peerAssistedMedia) {
+    throw new Error(
+      "PEER_ASSISTED_ROOM_IDS requires PEER_ASSISTED_MEDIA=true",
+    );
+  }
   if (livekitFallback && !peerAssistedMedia) {
     throw new Error("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
   }
@@ -432,6 +470,7 @@ export function loadConfig(
     maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
     maxViewersPerRoom,
     peerAssistedMedia,
+    peerAssistedRoomIds,
     livekitFallback,
     stunUrls,
     turnUrls,

@@ -160,6 +160,7 @@ async function startHarness(
     accessPassword?: string;
     persistent?: boolean;
     peerAssistedMedia?: boolean;
+    peerAssistedPrimaryRoomOnly?: boolean;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
@@ -174,6 +175,9 @@ async function startHarness(
     database: overrides.persistent ? new RoomDatabase(":memory:") : undefined,
   });
   const room = roomStore.createRoom();
+  if (overrides.peerAssistedPrimaryRoomOnly) {
+    config.peerAssistedRoomIds = new Set([room.roomId]);
+  }
   runningServer = await createScreenerServer({
     config,
     roomStore,
@@ -200,6 +204,7 @@ async function startSfuHarness(options: {
   prepareTimeoutMs?: number;
   maxRoots?: number;
   viewerDisconnectGraceMs?: number;
+  peerAssistedPrimaryRoomOnly?: boolean;
 }): Promise<SignalHarness> {
   const roomStore = new RoomStore({
     ttlMs: 14_400_000,
@@ -215,6 +220,9 @@ async function startSfuHarness(options: {
     server: httpServer,
     roomStore,
     peerAssistedMedia: true,
+    ...(options.peerAssistedPrimaryRoomOnly
+      ? { peerAssistedRoomIds: new Set([room.roomId]) }
+      : {}),
     sfuFallback: {
       url: "wss://sfu.example.test",
       tokenIssuer: options.tokenIssuer,
@@ -868,6 +876,247 @@ describe("WebSocket signaling", () => {
     );
     expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
     await viewer.inbox.expectNone(30);
+  });
+
+  it("isolates allowlisted hybrid and legacy rooms in one process", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { issueToken: async () => "unused-test-token" },
+      peerAssistedPrimaryRoomOnly: true,
+    });
+    const legacyRoom = harness.roomStore.createRoom();
+
+    const hybridHost = await openClient(harness.webSocketUrl);
+    const hybridHostAuth = peerAssisted(
+      await authenticate(
+        hybridHost,
+        harness.room,
+        "host",
+        "allowlisted-host",
+      ),
+    );
+    expect(hybridHostAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
+
+    const legacyHost = await openClient(harness.webSocketUrl);
+    const legacyHostAuth = await authenticate(
+      legacyHost,
+      legacyRoom,
+      "host",
+      "legacy-host",
+    );
+    expect(Object.keys(legacyHostAuth).sort()).toEqual(
+      [
+        "connectionId",
+        "hostOnline",
+        "iceConfig",
+        "maxViewers",
+        "peerId",
+        "role",
+        "roomExpiresAt",
+        "type",
+        "viewerPeerIds",
+      ].sort(),
+    );
+
+    const legacyViewer = await openClient(harness.webSocketUrl);
+    const legacyViewerAuth = await authenticate(
+      legacyViewer,
+      legacyRoom,
+      "viewer",
+      "legacy-viewer",
+    );
+    expect(Object.keys(legacyViewerAuth).sort()).toEqual(
+      Object.keys(legacyHostAuth).sort(),
+    );
+    expect(await legacyHost.inbox.next("peer-joined")).toEqual({
+      type: "peer-joined",
+      peerId: legacyViewerAuth.peerId,
+    });
+
+    legacyHost.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: legacyViewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "legacy-room-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await legacyViewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: legacyHostAuth.peerId,
+      payload: { connectionId: "legacy-room-connection" },
+    });
+    legacyViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        payload: {
+          kind: "description",
+          connectionId: "legacy-room-connection",
+          description: { type: "answer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await legacyHost.inbox.next("signal")).toMatchObject({
+      fromPeerId: legacyViewerAuth.peerId,
+      payload: { connectionId: "legacy-room-connection" },
+    });
+
+    legacyHost.socket.send(
+      JSON.stringify({
+        type: "set-quality-settings",
+        qualitySettings: balancedQualitySettings,
+      }),
+    );
+    expect((await legacyHost.inbox.next("error")).code).toBe("FORBIDDEN");
+    legacyViewer.socket.send(
+      JSON.stringify({ type: "relay-capacity", downstreamEdges: 1 }),
+    );
+    expect((await legacyViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    legacyViewer.socket.send(
+      JSON.stringify({ type: "refresh-sfu", revision: 0 }),
+    );
+    expect((await legacyViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+
+    await closeClient(legacyViewer);
+    expect(await legacyHost.inbox.next("peer-left", 500)).toEqual({
+      type: "peer-left",
+      peerId: legacyViewerAuth.peerId,
+    });
+  });
+
+  it("keeps allowlisted and legacy room lifecycles independent", async () => {
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      peerAssistedPrimaryRoomOnly: true,
+      viewerDisconnectGraceMs: 500,
+    });
+    const legacyRoom = harness.roomStore.createRoom();
+
+    const hybridHost = await openClient(harness.webSocketUrl);
+    const hybridHostAuth = peerAssisted(
+      await authenticate(hybridHost, harness.room, "host", "lifecycle-hybrid-host"),
+    );
+    const hybridViewer = await openClient(harness.webSocketUrl);
+    const hybridViewerAuth = peerAssisted(
+      await authenticate(
+        hybridViewer,
+        harness.room,
+        "viewer",
+        "lifecycle-hybrid-viewer",
+      ),
+    );
+    await hybridHost.inbox.next("media-assignment");
+    hybridHost.socket.send(
+      JSON.stringify({
+        type: "set-quality-settings",
+        qualitySettings: lowQualitySettings,
+      }),
+    );
+    await hybridViewer.inbox.next("quality-settings");
+
+    const legacyHost = await openClient(harness.webSocketUrl);
+    await authenticate(legacyHost, legacyRoom, "host", "lifecycle-legacy-host");
+    const legacyViewer = await openClient(harness.webSocketUrl);
+    const legacyViewerAuth = await authenticate(
+      legacyViewer,
+      legacyRoom,
+      "viewer",
+      "lifecycle-legacy-viewer",
+    );
+    await legacyHost.inbox.next("peer-joined");
+
+    const hybridHostClosed = new Promise<number>((resolve) =>
+      hybridHost.socket.once("close", (code) => resolve(code)),
+    );
+    const legacyHostClosed = new Promise<number>((resolve) =>
+      legacyHost.socket.once("close", (code) => resolve(code)),
+    );
+    hybridHost.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    legacyHost.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    await hybridViewer.inbox.next("sharing-stopped");
+    await hybridViewer.inbox.next("host-status");
+    await legacyViewer.inbox.next("sharing-stopped");
+    await legacyViewer.inbox.next("host-status");
+    expect(await hybridHostClosed).toBe(1000);
+    expect(await legacyHostClosed).toBe(1000);
+
+    await closeClient(hybridViewer);
+    await closeClient(legacyViewer);
+    const resumedHybridViewer = await openClient(harness.webSocketUrl);
+    const resumedHybridViewerAuth = peerAssisted(
+      await authenticate(
+        resumedHybridViewer,
+        harness.room,
+        "viewer",
+        "lifecycle-hybrid-viewer",
+      ),
+    );
+    expect(resumedHybridViewerAuth).toMatchObject({
+      peerId: hybridViewerAuth.peerId,
+      connectionId: null,
+      qualitySettings: lowQualitySettings,
+    });
+    const resumedLegacyViewer = await openClient(harness.webSocketUrl);
+    const resumedLegacyViewerAuth = await authenticate(
+      resumedLegacyViewer,
+      legacyRoom,
+      "viewer",
+      "lifecycle-legacy-viewer",
+    );
+    expect(resumedLegacyViewerAuth.peerId).toBe(legacyViewerAuth.peerId);
+    expect(resumedLegacyViewerAuth.connectionId).toBeNull();
+    expect("mediaMode" in resumedLegacyViewerAuth).toBe(false);
+    expect("qualitySettings" in resumedLegacyViewerAuth).toBe(false);
+
+    const resumedHybridHost = await openClient(harness.webSocketUrl);
+    const resumedHybridHostAuth = peerAssisted(
+      await authenticate(
+        resumedHybridHost,
+        harness.room,
+        "host",
+        "lifecycle-hybrid-host",
+      ),
+    );
+    expect(resumedHybridHostAuth).toMatchObject({
+      peerId: hybridHostAuth.peerId,
+      qualitySettings: lowQualitySettings,
+    });
+    const resumedLegacyHost = await openClient(harness.webSocketUrl);
+    const resumedLegacyHostAuth = await authenticate(
+      resumedLegacyHost,
+      legacyRoom,
+      "host",
+      "lifecycle-legacy-host",
+    );
+    expect(await resumedLegacyHost.inbox.next("peer-joined")).toMatchObject({
+      peerId: resumedLegacyViewerAuth.peerId,
+    });
+
+    resumedHybridHost.socket.send(JSON.stringify({ type: "abandon-room" }));
+    await resumedHybridHost.inbox.next("room-closed");
+    await resumedHybridViewer.inbox.next("room-closed");
+    expect(harness.roomStore.size).toBe(1);
+
+    resumedLegacyHost.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: resumedLegacyViewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "legacy-after-hybrid-delete",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await resumedLegacyViewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: resumedLegacyHostAuth.peerId,
+      payload: { connectionId: "legacy-after-hybrid-delete" },
+    });
+    resumedLegacyHost.socket.send(JSON.stringify({ type: "abandon-room" }));
+    await resumedLegacyHost.inbox.next("room-closed");
+    await resumedLegacyViewer.inbox.next("room-closed");
+    expect(harness.roomStore.size).toBe(0);
   });
 
   it("routes offer and answer only between the host and the targeted viewer", async () => {

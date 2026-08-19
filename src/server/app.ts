@@ -111,6 +111,7 @@ export async function createScreenerServer(
     server: httpServer,
     roomStore,
     peerAssistedMedia: config.peerAssistedMedia,
+    peerAssistedRoomIds: config.peerAssistedRoomIds,
     ...(sfuFallback ? { sfuFallback } : {}),
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
