@@ -14,6 +14,27 @@ describe("server configuration", () => {
     expect(config.allowedOrigins).toEqual(new Set(["http://localhost:9123"]));
     expect(config.turnUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
+    expect(config.peerAssistedMedia).toBe(false);
+  });
+
+  it("requires an explicit boolean to enable peer-assisted media", () => {
+    expect(loadConfig({ PEER_ASSISTED_MEDIA: "true" }).peerAssistedMedia).toBe(
+      true,
+    );
+    expect(loadConfig({ PEER_ASSISTED_MEDIA: "false" }).peerAssistedMedia).toBe(
+      false,
+    );
+    expect(() => loadConfig({ PEER_ASSISTED_MEDIA: "1" })).toThrow(
+      "PEER_ASSISTED_MEDIA must be true or false",
+    );
+    expect(() =>
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        MAX_VIEWERS_PER_ROOM: "9",
+      }),
+    ).toThrow(
+      "PEER_ASSISTED_MEDIA currently supports at most 8 viewers per room",
+    );
   });
 
   it("allows an explicit loopback listen host", () => {

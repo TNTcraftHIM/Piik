@@ -323,23 +323,42 @@ describe("WebRTC stats parsing", () => {
         },
       ],
     ]);
+    const secondReport = new Map(report);
+    secondReport.set("inbound", {
+      id: "inbound",
+      type: "inbound-rtp",
+      timestamp: 4_000,
+      kind: "video",
+      bytesReceived: 4_000,
+      framesDecoded: 150,
+      totalDecodeTime: 1.5,
+    });
+    const reports = [report, secondReport];
     const connection = {
-      getStats: async () => report as unknown as RTCStatsReport,
+      getStats: async () =>
+        reports.shift() as unknown as RTCStatsReport,
     } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
 
+    const firstMetrics = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
     const metrics = await collectConnectionMetrics(
       connection,
       "receive",
-      createStatsAccumulator(),
+      accumulator,
     );
 
+    expect(firstMetrics.intervalDecodeMs).toBeNull();
     expect(metrics).toMatchObject({
       path: "relay",
       iceProtocol: "udp",
       localRelayProtocol: "tls",
       localCandidateType: "relay",
       remoteCandidateType: "host",
-      averageDecodeMs: 5,
+      intervalDecodeMs: 20,
     });
   });
 
@@ -404,5 +423,83 @@ describe("WebRTC stats parsing", () => {
       localCandidateType: "host",
       remoteCandidateType: "relay",
     });
+  });
+
+  it("rebases interval metrics when the RTP stream or its counters reset", async () => {
+    const inbound = (
+      id: string,
+      timestamp: number,
+      bytesReceived: number,
+      framesDecoded: number,
+      totalDecodeTime: number,
+    ) =>
+      new Map<string, unknown>([
+        [
+          id,
+          {
+            id,
+            type: "inbound-rtp",
+            timestamp,
+            kind: "video",
+            bytesReceived,
+            framesDecoded,
+            totalDecodeTime,
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+    const reports = [
+      inbound("inbound-a", 1_000, 10_000, 100, 0.5),
+      inbound("inbound-b", 2_000, 20_000, 150, 1.5),
+      inbound("inbound-b", 3_000, 22_000, 160, 1.7),
+      inbound("inbound-b", 4_000, 1_000, 10, 0.1),
+      inbound("inbound-b", 5_000, 3_000, 20, 0.3),
+    ];
+    const connection = {
+      getStats: async () => reports.shift()!,
+    } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
+
+    await collectConnectionMetrics(connection, "receive", accumulator);
+    const streamChanged = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const afterStreamChange = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const countersReset = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const afterCounterReset = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+
+    expect(streamChanged).toMatchObject({
+      bitrateKbps: null,
+      framesPerSecond: null,
+      intervalDecodeMs: null,
+    });
+    expect(afterStreamChange).toMatchObject({
+      bitrateKbps: 16,
+      framesPerSecond: 10,
+    });
+    expect(afterStreamChange.intervalDecodeMs).toBeCloseTo(20);
+    expect(countersReset).toMatchObject({
+      bitrateKbps: null,
+      framesPerSecond: null,
+      intervalDecodeMs: null,
+    });
+    expect(afterCounterReset).toMatchObject({
+      bitrateKbps: 16,
+      framesPerSecond: 10,
+    });
+    expect(afterCounterReset.intervalDecodeMs).toBeCloseTo(20);
   });
 });

@@ -23,8 +23,8 @@ export interface ConnectionMetrics {
   codec: string | null;
   encoderImplementation: string | null;
   powerEfficientEncoder: boolean | null;
-  averageEncodeMs: number | null;
-  averageDecodeMs: number | null;
+  intervalEncodeMs: number | null;
+  intervalDecodeMs: number | null;
   qualityLimitationReason: string | null;
 }
 
@@ -54,7 +54,7 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   codec: null,
   encoderImplementation: null,
   powerEfficientEncoder: null,
-  averageEncodeMs: null,
-  averageDecodeMs: null,
+  intervalEncodeMs: null,
+  intervalDecodeMs: null,
   qualityLimitationReason: null,
 };

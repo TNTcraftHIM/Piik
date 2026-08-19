@@ -109,6 +109,7 @@ function testConfig(): ServerConfig {
     roomTtlMs: 14_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,
+    peerAssistedMedia: false,
     stunUrls: [],
     turnUrls: [],
     turnCredentialTtlSeconds: 3_600,
@@ -124,10 +125,12 @@ async function startHarness(
     maxUnauthenticatedSignalConnections?: number;
     accessPassword?: string;
     persistent?: boolean;
+    peerAssistedMedia?: boolean;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
   config.accessPassword = overrides.accessPassword;
+  config.peerAssistedMedia = overrides.peerAssistedMedia ?? false;
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
   const roomStore = new RoomStore({
@@ -248,6 +251,15 @@ async function authenticate(
   return client.inbox.next("authenticated");
 }
 
+function peerAssisted(
+  message: Extract<ServerMessage, { type: "authenticated" }>,
+) {
+  if (!("mediaMode" in message)) {
+    throw new Error("Expected a peer-assisted authenticated message");
+  }
+  return message;
+}
+
 async function closeClient(client: TestClient): Promise<void> {
   if (client.socket.readyState === WebSocket.CLOSED) {
     return;
@@ -290,6 +302,7 @@ describe("WebSocket signaling", () => {
       "viewer-client-early",
     );
     expect(viewerAuth.hostOnline).toBe(false);
+    expect("mediaMode" in viewerAuth).toBe(false);
 
     const host = await openClient(harness.webSocketUrl);
     await authenticate(host, harness.room, "host", "host-client-stable");
@@ -313,6 +326,94 @@ describe("WebSocket signaling", () => {
     );
     expect(authenticated.roomExpiresAt).toBeNull();
     expect(authenticated.hostOnline).toBe(false);
+  });
+
+  it("synchronizes a bounded quality profile across a peer-assisted room", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-host"),
+    );
+    expect(hostAuth.qualityProfileId).toBe("1080p60");
+
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(viewer, harness.room, "viewer", "quality-viewer"),
+    );
+    expect(viewerAuth.qualityProfileId).toBe("1080p60");
+    await host.inbox.next("media-assignment");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+      }),
+    );
+    expect(await viewer.inbox.next("quality-profile")).toEqual({
+      type: "quality-profile",
+      qualityProfileId: "1080p30",
+    });
+
+    const lateViewer = await openClient(harness.webSocketUrl);
+    const lateViewerAuth = peerAssisted(
+      await authenticate(
+        lateViewer,
+        harness.room,
+        "viewer",
+        "quality-viewer-late",
+      ),
+    );
+    expect(lateViewerAuth.qualityProfileId).toBe("1080p30");
+    await host.inbox.next("media-assignment");
+
+    viewer.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "720p30",
+      }),
+    );
+    expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    await lateViewer.inbox.expectNone(30);
+  });
+
+  it("keeps the P2P authenticated wire unchanged and forbids profile updates", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "p2p-quality-host",
+    );
+    expect("mediaMode" in hostAuth).toBe(false);
+    expect("qualityProfileId" in hostAuth).toBe(false);
+
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "p2p-quality-viewer",
+    );
+    expect("mediaMode" in viewerAuth).toBe(false);
+    expect("qualityProfileId" in viewerAuth).toBe(false);
+    await host.inbox.next("peer-joined");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+      }),
+    );
+    expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
+    viewer.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "720p30",
+      }),
+    );
+    expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    await viewer.inbox.expectNone(30);
   });
 
   it("routes offer and answer only between the host and the targeted viewer", async () => {
@@ -387,6 +488,484 @@ describe("WebSocket signaling", () => {
     );
     expect((await host.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
     await foreignViewer.inbox.expectNone(30);
+  });
+
+  it("assigns a bounded peer relay tree and authorizes only direct media edges", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const secondRoom = harness.roomStore.createRoom();
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "relay-host"),
+    );
+    expect(hostAuth.mediaAssignment).toEqual({
+      parentPeerId: null,
+      childPeerIds: [],
+    });
+
+    const firstViewer = await openClient(harness.webSocketUrl);
+    const firstAuth = peerAssisted(
+      await authenticate(
+        firstViewer,
+        harness.room,
+        "viewer",
+        "relay-viewer-a",
+      ),
+    );
+    expect(firstAuth.mediaAssignment.parentPeerId).toBe(hostAuth.peerId);
+    expect((await host.inbox.next("media-assignment")).mediaAssignment).toEqual({
+      parentPeerId: null,
+      childPeerIds: [firstAuth.peerId],
+    });
+
+    const secondViewer = await openClient(harness.webSocketUrl);
+    const secondAuth = peerAssisted(
+      await authenticate(
+        secondViewer,
+        harness.room,
+        "viewer",
+        "relay-viewer-b",
+      ),
+    );
+    expect(secondAuth.mediaAssignment.parentPeerId).toBe(hostAuth.peerId);
+    expect((await host.inbox.next("media-assignment")).mediaAssignment).toEqual({
+      parentPeerId: null,
+      childPeerIds: [firstAuth.peerId, secondAuth.peerId],
+    });
+
+    const thirdViewer = await openClient(harness.webSocketUrl);
+    const thirdAuth = peerAssisted(
+      await authenticate(
+        thirdViewer,
+        harness.room,
+        "viewer",
+        "relay-viewer-c",
+      ),
+    );
+    expect(thirdAuth.mediaAssignment.parentPeerId).toBe(firstAuth.peerId);
+    expect(
+      (await firstViewer.inbox.next("media-assignment")).mediaAssignment,
+    ).toEqual({
+      parentPeerId: hostAuth.peerId,
+      childPeerIds: [thirdAuth.peerId],
+    });
+
+    firstViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: thirdAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "relay-connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await thirdViewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: firstAuth.peerId,
+      payload: { description: { type: "offer" } },
+    });
+
+    thirdViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "relay-connection",
+          description: { type: "answer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await firstViewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: thirdAuth.peerId,
+      payload: { description: { type: "answer" } },
+    });
+
+    thirdViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "candidate",
+          connectionId: "relay-connection",
+          candidate: null,
+        },
+      }),
+    );
+    expect(await firstViewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: thirdAuth.peerId,
+      payload: { kind: "candidate" },
+    });
+
+    thirdViewer.socket.send(
+      JSON.stringify({
+        type: "restart-request",
+        targetPeerId: firstAuth.peerId,
+        connectionId: "relay-connection",
+        rebuild: true,
+      }),
+    );
+    expect(await firstViewer.inbox.next("restart-request")).toMatchObject({
+      fromPeerId: thirdAuth.peerId,
+      connectionId: "relay-connection",
+      rebuild: true,
+    });
+
+    thirdViewer.socket.send(
+      JSON.stringify({
+        type: "restart-request",
+        targetPeerId: hostAuth.peerId,
+        connectionId: "relay-connection",
+        rebuild: false,
+      }),
+    );
+    expect((await thirdViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: thirdAuth.peerId,
+        payload: {
+          kind: "candidate",
+          connectionId: "forbidden-non-edge",
+          candidate: null,
+        },
+      }),
+    );
+    expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
+
+    thirdViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "forbidden-direction",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect((await thirdViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+
+    const foreignViewer = await openClient(harness.webSocketUrl);
+    const foreignAuth = peerAssisted(
+      await authenticate(
+        foreignViewer,
+        secondRoom,
+        "viewer",
+        "relay-foreign-viewer",
+      ),
+    );
+    firstViewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: foreignAuth.peerId,
+        payload: {
+          kind: "candidate",
+          connectionId: "cross-room",
+          candidate: null,
+        },
+      }),
+    );
+    expect((await firstViewer.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
+    await foreignViewer.inbox.expectNone(30);
+  });
+
+  it("keeps relay assignments through grace and reattaches only the direct child subtree", async () => {
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      viewerDisconnectGraceMs: 200,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "relay-grace-host"),
+    );
+
+    const firstViewer = await openClient(harness.webSocketUrl);
+    const firstAuth = peerAssisted(
+      await authenticate(
+        firstViewer,
+        harness.room,
+        "viewer",
+        "relay-grace-a",
+      ),
+    );
+    await host.inbox.next("media-assignment");
+
+    const secondViewer = await openClient(harness.webSocketUrl);
+    const secondAuth = peerAssisted(
+      await authenticate(
+        secondViewer,
+        harness.room,
+        "viewer",
+        "relay-grace-b",
+      ),
+    );
+    await host.inbox.next("media-assignment");
+
+    const thirdViewer = await openClient(harness.webSocketUrl);
+    const thirdAuth = peerAssisted(
+      await authenticate(
+        thirdViewer,
+        harness.room,
+        "viewer",
+        "relay-grace-c",
+      ),
+    );
+    await firstViewer.inbox.next("media-assignment");
+
+    const fourthViewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      fourthViewer,
+      harness.room,
+      "viewer",
+      "relay-grace-d",
+    );
+    await secondViewer.inbox.next("media-assignment");
+
+    const fifthViewer = await openClient(harness.webSocketUrl);
+    const fifthAuth = peerAssisted(
+      await authenticate(
+        fifthViewer,
+        harness.room,
+        "viewer",
+        "relay-grace-e",
+      ),
+    );
+    const thirdWithChild = await thirdViewer.inbox.next("media-assignment");
+    expect(thirdWithChild.mediaAssignment).toEqual({
+      parentPeerId: firstAuth.peerId,
+      childPeerIds: [fifthAuth.peerId],
+    });
+
+    await closeClient(firstViewer);
+    await host.inbox.expectNone(30);
+    await thirdViewer.inbox.expectNone(30);
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "offer-while-child-offline",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect((await host.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
+
+    const reconnectedFirstViewer = await openClient(harness.webSocketUrl);
+    const reconnectedFirstAuth = peerAssisted(
+      await authenticate(
+        reconnectedFirstViewer,
+        harness.room,
+        "viewer",
+        "relay-grace-a",
+      ),
+    );
+    expect(reconnectedFirstAuth).toMatchObject({
+      peerId: firstAuth.peerId,
+      connectionId: null,
+      mediaAssignment: {
+        parentPeerId: hostAuth.peerId,
+        childPeerIds: [thirdAuth.peerId],
+      },
+    });
+    expect(
+      (await host.inbox.next("media-assignment", 500)).mediaAssignment,
+    ).toEqual({
+      parentPeerId: null,
+      childPeerIds: [firstAuth.peerId, secondAuth.peerId],
+    });
+    await closeClient(reconnectedFirstViewer);
+
+    expect(
+      (await host.inbox.next("media-assignment", 500)).mediaAssignment,
+    ).toEqual({
+      parentPeerId: null,
+      childPeerIds: [secondAuth.peerId, thirdAuth.peerId],
+    });
+    expect(
+      (await thirdViewer.inbox.next("media-assignment", 500)).mediaAssignment,
+    ).toEqual({
+      parentPeerId: hostAuth.peerId,
+      childPeerIds: [fifthAuth.peerId],
+    });
+    await fifthViewer.inbox.expectNone(30);
+  });
+
+  it("reattaches a subtree root that reconnects after its parent expires", async () => {
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      viewerDisconnectGraceMs: 200,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "relay-offline-host"),
+    );
+    const firstViewer = await openClient(harness.webSocketUrl);
+    const firstAuth = peerAssisted(
+      await authenticate(
+        firstViewer,
+        harness.room,
+        "viewer",
+        "relay-offline-a",
+      ),
+    );
+    await host.inbox.next("media-assignment");
+    const secondViewer = await openClient(harness.webSocketUrl);
+    const secondAuth = peerAssisted(
+      await authenticate(
+        secondViewer,
+        harness.room,
+        "viewer",
+        "relay-offline-b",
+      ),
+    );
+    await host.inbox.next("media-assignment");
+    const subtreeRoot = await openClient(harness.webSocketUrl);
+    const subtreeRootAuth = peerAssisted(
+      await authenticate(
+        subtreeRoot,
+        harness.room,
+        "viewer",
+        "relay-offline-c",
+      ),
+    );
+    expect(subtreeRootAuth.mediaAssignment.parentPeerId).toBe(firstAuth.peerId);
+    await firstViewer.inbox.next("media-assignment");
+
+    await closeClient(firstViewer);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await closeClient(subtreeRoot);
+
+    expect(
+      (await host.inbox.next("media-assignment", 500)).mediaAssignment,
+    ).toEqual({
+      parentPeerId: null,
+      childPeerIds: [secondAuth.peerId],
+    });
+
+    const reconnectedSubtreeRoot = await openClient(harness.webSocketUrl);
+    const reconnectedAuth = peerAssisted(
+      await authenticate(
+        reconnectedSubtreeRoot,
+        harness.room,
+        "viewer",
+        "relay-offline-c",
+      ),
+    );
+    expect(reconnectedAuth).toMatchObject({
+      peerId: subtreeRootAuth.peerId,
+      connectionId: null,
+      mediaAssignment: {
+        parentPeerId: hostAuth.peerId,
+        childPeerIds: [],
+      },
+    });
+    expect(
+      (await host.inbox.next("media-assignment", 500)).mediaAssignment,
+    ).toEqual({
+      parentPeerId: null,
+      childPeerIds: [secondAuth.peerId, subtreeRootAuth.peerId],
+    });
+  });
+
+  it("retains peer relay assignments but clears connection generations when sharing stops", async () => {
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      viewerDisconnectGraceMs: 500,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "relay-stop-host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "relay-stop-viewer",
+      ),
+    );
+    await host.inbox.next("media-assignment");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-quality-profile",
+        qualityProfileId: "720p30",
+      }),
+    );
+    expect(await viewer.inbox.next("quality-profile")).toEqual({
+      type: "quality-profile",
+      qualityProfileId: "720p30",
+    });
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "connection-before-relay-stop",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+
+    const stoppedHostClosed = new Promise<number>((resolve) =>
+      host.socket.once("close", (code) => resolve(code)),
+    );
+    host.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    await viewer.inbox.next("sharing-stopped");
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: false,
+    });
+    expect(await stoppedHostClosed).toBe(1000);
+
+    await closeClient(viewer);
+    const reconnectedViewer = await openClient(harness.webSocketUrl);
+    const reconnectedViewerAuth = peerAssisted(
+      await authenticate(
+        reconnectedViewer,
+        harness.room,
+        "viewer",
+        "relay-stop-viewer",
+      ),
+    );
+    expect(reconnectedViewerAuth).toMatchObject({
+      peerId: viewerAuth.peerId,
+      connectionId: null,
+      mediaAssignment: {
+        parentPeerId: hostAuth.peerId,
+        childPeerIds: [],
+      },
+      qualityProfileId: "720p30",
+    });
+
+    const resumedHost = await openClient(harness.webSocketUrl);
+    const resumedHostAuth = peerAssisted(
+      await authenticate(
+        resumedHost,
+        harness.room,
+        "host",
+        "relay-stop-host",
+      ),
+    );
+    expect(resumedHostAuth).toMatchObject({
+      peerId: hostAuth.peerId,
+      mediaAssignment: {
+        parentPeerId: null,
+        childPeerIds: [viewerAuth.peerId],
+      },
+      qualityProfileId: "720p30",
+    });
+    expect(await reconnectedViewer.inbox.next("host-status")).toMatchObject({
+      online: true,
+    });
   });
 
   it("keeps a viewer peer stable when it reconnects inside the grace period", async () => {

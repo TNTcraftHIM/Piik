@@ -3,6 +3,17 @@
 - Status: Accepted for the MVP
 - Date: 2026-08-18
 
+Current clarification, 2026-08-19: the MVP remains unchanged, but statements
+below that exclude automatic topology migration do not describe the product
+target. Automatic, viewer-transparent routing through direct P2P,
+peer-assisted media, and an enabled SFU fallback is a standing requirement and
+will be governed by a later ADR.
+
+Draft ADR-0003 and Proposed ADR-0004 do not supersede this production baseline.
+They isolate an optional SFU implementation and a bounded peer-assisted
+experiment respectively. A later Accepted ADR is required before either changes
+the default topology.
+
 ## Context
 
 The product targets one game broadcaster and a small group of trusted friends. Low glass-to-glass latency, private access, no-install browser viewing, and low server bandwidth cost matter more than large-room scalability. Public broadcasting is deliberately delegated to existing OBS/Twitch-class services. NATs, CGNAT, restrictive firewalls, variable publisher upload, and browser capture limitations prevent a direct-only design from being reliable for every user; partial room reachability is not acceptable behavior.
@@ -13,11 +24,11 @@ Use separate control and media planes:
 
 - A small HTTPS/WSS service owns identity, rooms, invitations, presence, and WebRTC signaling.
 - A viewer can join through a numeric room code on desktop or mobile without installing the sharing client. The viewer link has no separate token or fragment; the host publication token remains internal. A deployment may place one site-wide password gate in front of both hosting and viewing; access policy remains control-plane state and does not change the media topology. ADR-0002 owns the current room-ID and lifetime policy.
-- ICE attempts a direct UDP path for every broadcaster-viewer pair, using STUN to discover candidates.
+- ICE attempts a direct UDP path for every current broadcaster-viewer edge, using STUN to discover candidates. A later accepted peer-assisted topology must apply the same rule independently to each assigned parent-child edge.
 - Only pairs that cannot connect directly use authenticated TURN. Production requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement, using its standard TCP port 5349 by default. Port 443 is optional and requires a dedicated public IP or a validated layer-4/SNI route when HTTPS already owns that address and port.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
-- The broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise; the sustainable envelope is decided from publisher upload, encoder, latency, and stability measurements.
-- No SFU is planned for the normal product envelope. It is only a future reconsideration point if the small-room scope changes or measured relay/upload/encoder pressure makes the chosen envelope unworkable.
+- The deployed MVP broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise. A newer product target caps host media fanout at two; the current implementation does not satisfy that target above two viewers, and Proposed ADR-0004 owns the isolated experiment rather than silently changing this accepted baseline.
+- An SFU is not the default path for the normal product envelope. Severe user-observed multi-viewer degradation triggered Draft ADR-0003/PR #12 as optional infrastructure, but it is not merged, deployed, or accepted while that PR remains Draft. If configured later, it may be selected automatically only after cheaper endpoint-carried routes cannot satisfy the route contract.
 
 ## Consequences
 
@@ -34,7 +45,7 @@ Negative:
 - Browser APIs do not guarantee that several peer connections share a single hardware encode.
 - Direct peers learn one another's network addresses; this is acceptable only for the initial trusted-friends threat model.
 - If the site-wide password is disabled, the numeric room code is the sole viewing capability and does not provide a strong privacy guarantee.
-- A room-level P2P-to-SFU migration adds state, keyframe, and reconnection complexity and is not part of the first prototype.
+- A room-level P2P-to-SFU migration adds state, keyframe, and reconnection complexity and is not part of the first prototype. This implementation boundary does not remove the product requirement for automatic, viewer-transparent fallback.
 - TURN over TCP can suffer head-of-line blocking, and its `turn:` client-to-server transport is not TLS-wrapped. The WebRTC media remains protected by DTLS-SRTP independently of that TURN transport.
 - Optional TURN/TLS on port 5349 or 443 can improve compatibility but cannot guarantee success through every authenticated proxy or policy-controlled network. A normal Cloudflare HTTP proxy does not proxy TURN; using Cloudflare for TURN requires a compatible layer-4 product such as Spectrum.
 
@@ -43,7 +54,7 @@ Negative:
 - Always-SFU: operationally stable but makes the server carry all viewer egress, contrary to the main cost constraint.
 - Public-broadcast scaling: Twitch/OBS-class services already solve this separate workload and it would distort the private-room design.
 - MCU/transcoding: unnecessary CPU/GPU work and added latency for a single screen stream.
-- Peer-assisted relay tree: adds churn handling, extra latency, trust problems, and browser re-encoding or a custom packet-forwarding protocol.
+- Peer-assisted relay tree for the MVP: adds churn handling, extra latency, trust problems, and browser re-encoding or a custom packet-forwarding protocol. Proposed ADR-0004 permits only a bounded, removable experiment; production use remains rejected until a later ADR passes measured gates.
 - Custom Parsec-like transport: duplicates capture, codec, congestion-control, NAT, and security work already provided by WebRTC.
 
 ## Revisit Triggers

@@ -7,7 +7,12 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { IceConfig, ServerMessage } from "../../shared/protocol";
+import {
+  DEFAULT_QUALITY_PROFILE_ID,
+  type IceConfig,
+  type MediaAssignment,
+  type ServerMessage,
+} from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import {
   PathBadge,
@@ -18,11 +23,22 @@ import {
 import { StatsGrid } from "../components/StatsGrid";
 import { getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
+import {
+  QUALITY_PROFILES,
+  type QualityProfileId,
+} from "../media/quality";
 import type {
   PeerSnapshot,
   SignalConnectionState,
 } from "../types";
+import {
+  limitMediaAssignment,
+  MAX_VIEWER_MEDIA_CHILDREN,
+  viewerRestartMessage,
+  viewerSignalMessage,
+} from "../webrtc/media-assignment";
 import { ViewerPeer } from "../webrtc/viewer-peer";
+import { ViewerRelay } from "../webrtc/viewer-relay";
 
 interface ViewerPageProps {
   roomId: string;
@@ -41,6 +57,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
   const [relayAvailable, setRelayAvailable] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
+  const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [muted, setMuted] = useState(false);
 
@@ -51,6 +68,13 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     let active = true;
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
+    let peerAssisted = false;
+    let currentQualityProfileId: QualityProfileId = DEFAULT_QUALITY_PROFILE_ID;
+    let currentAssignment: MediaAssignment = {
+      parentPeerId: null,
+      childPeerIds: [],
+    };
+    let viewerRelay: ViewerRelay | null = null;
 
     const signal = new SignalingClient(
       {
@@ -90,12 +114,69 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       },
     );
 
-    function clearPeerState(): void {
+    function ensureViewerRelay(): ViewerRelay | null {
+      if (viewerRelay) {
+        return viewerRelay;
+      }
+      if (!peerAssisted || !currentIceConfig) {
+        return null;
+      }
+      viewerRelay = new ViewerRelay(
+        currentIceConfig,
+        QUALITY_PROFILES[currentQualityProfileId],
+        {
+          sendSignal: (targetPeerId, payload) =>
+            active &&
+            peerAssisted &&
+            currentAssignment.childPeerIds[0] === targetPeerId
+              ? signal.send({
+                  type: "signal",
+                  targetPeerId,
+                  payload,
+                })
+              : false,
+          onUpdate: (snapshot) => {
+            if (active) {
+              setRelaySnapshot(snapshot);
+            }
+          },
+        },
+        forceRelay,
+      );
+      viewerRelay.setChild(currentAssignment.childPeerIds[0] ?? null);
+      return viewerRelay;
+    }
+
+    function clearUpstreamState(): void {
       peerRef.current?.dispose();
       peerRef.current = null;
       setRemoteStream(null);
       setPeerSnapshot(null);
       setPlaybackBlocked(false);
+    }
+
+    function clearPeerState(): void {
+      clearUpstreamState();
+      viewerRelay?.stop();
+    }
+
+    function applyMediaAssignment(assignment: MediaAssignment): void {
+      const nextAssignment = limitMediaAssignment(
+        assignment,
+        MAX_VIEWER_MEDIA_CHILDREN,
+      );
+      const previousParentId = currentAssignment.parentPeerId;
+      currentAssignment = nextAssignment;
+
+      if (previousParentId !== nextAssignment.parentPeerId) {
+        clearUpstreamState();
+        setStatusText(
+          nextAssignment.parentPeerId
+            ? "正在切换媒体来源"
+            : "等待可用的媒体来源",
+        );
+      }
+      ensureViewerRelay()?.setChild(nextAssignment.childPeerIds[0] ?? null);
     }
 
     function ensurePeer(): ViewerPeer | null {
@@ -108,13 +189,26 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       const peer = new ViewerPeer(
         currentIceConfig,
         {
-          sendSignal: (payload) => signal.send({ type: "signal", payload }),
-          sendRestartRequest: (connectionId, rebuild) =>
-            signal.send({ type: "restart-request", connectionId, rebuild }),
+          sendSignal: (targetPeerId, payload) =>
+            signal.send(
+              viewerSignalMessage(peerAssisted, targetPeerId, payload),
+            ),
+          sendRestartRequest: (targetPeerId, connectionId, rebuild) =>
+            signal.send(
+              viewerRestartMessage(
+                peerAssisted,
+                targetPeerId,
+                connectionId,
+                rebuild,
+              ),
+            ),
           onStream: (nextStream) => {
             if (active) {
               setRemoteStream(nextStream);
               setStatusText("正在播放");
+              // Audio and video can arrive as separate track events on the
+              // same MediaStream, so refresh both downstream senders each time.
+              ensureViewerRelay()?.setStream(nextStream);
             }
           },
           onUpdate: (snapshot) => {
@@ -147,10 +241,26 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
 
     async function handleMessage(message: ServerMessage): Promise<void> {
       if (message.type === "authenticated") {
+        const nextPeerAssisted =
+          "mediaMode" in message && message.mediaMode === "peer-assisted";
+        if (!nextPeerAssisted && peerAssisted) {
+          clearPeerState();
+          viewerRelay?.dispose();
+          viewerRelay = null;
+          currentAssignment = { parentPeerId: null, childPeerIds: [] };
+        }
+        peerAssisted = nextPeerAssisted;
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
         setRelayAvailable(message.iceConfig.relayAvailable);
         setHostOnline(message.hostOnline);
+        if (nextPeerAssisted && "qualityProfileId" in message) {
+          currentQualityProfileId = message.qualityProfileId;
+          void viewerRelay?.updateProfile(
+            QUALITY_PROFILES[currentQualityProfileId],
+          );
+          applyMediaAssignment(message.mediaAssignment);
+        }
         if (
           !message.hostOnline &&
           message.connectionId === null &&
@@ -163,21 +273,63 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         );
         const peer = peerRef.current;
         peer?.updateIceConfig(message.iceConfig);
+        viewerRelay?.updateIceConfig(message.iceConfig);
         if (
           message.connectionId &&
           !peer?.hasConnectionId(message.connectionId)
         ) {
-          signal.send({
-            type: "restart-request",
-            connectionId: message.connectionId,
-            rebuild: true,
-          });
+          const parentPeerId = currentAssignment.parentPeerId;
+          if (!peerAssisted) {
+            signal.send({
+              type: "restart-request",
+              connectionId: message.connectionId,
+              rebuild: true,
+            });
+          } else if (parentPeerId) {
+            signal.send({
+              type: "restart-request",
+              targetPeerId: parentPeerId,
+              connectionId: message.connectionId,
+              rebuild: true,
+            });
+          }
         } else if (peer?.hasConnection() && !peer.isConnected()) {
           peer.requestRecovery();
         }
         return;
       }
+      if (message.type === "media-assignment") {
+        if (peerAssisted) {
+          applyMediaAssignment(message.mediaAssignment);
+        }
+        return;
+      }
+      if (message.type === "quality-profile") {
+        if (peerAssisted) {
+          currentQualityProfileId = message.qualityProfileId;
+          void viewerRelay?.updateProfile(
+            QUALITY_PROFILES[currentQualityProfileId],
+          );
+        }
+        return;
+      }
       if (message.type === "signal") {
+        if (
+          peerAssisted &&
+          currentAssignment.childPeerIds[0] === message.fromPeerId
+        ) {
+          await viewerRelay?.acceptSignal(
+            message.fromPeerId,
+            message.payload,
+          );
+          return;
+        }
+        if (
+          peerAssisted &&
+          currentAssignment.parentPeerId !== message.fromPeerId
+        ) {
+          return;
+        }
         const peer = ensurePeer();
         if (!peer) {
           setStatusText("尚未收到可用的 ICE 配置");
@@ -186,10 +338,21 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         await peer.acceptSignal(message.fromPeerId, message.payload);
         return;
       }
+      if (message.type === "restart-request") {
+        if (peerAssisted) {
+          await viewerRelay?.recover(
+            message.fromPeerId,
+            message.connectionId,
+            message.rebuild,
+          );
+        }
+        return;
+      }
       if (message.type === "ice-config") {
         currentIceConfig = message.iceConfig;
         setRelayAvailable(message.iceConfig.relayAvailable);
         peerRef.current?.updateIceConfig(message.iceConfig);
+        viewerRelay?.updateIceConfig(message.iceConfig);
         return;
       }
       if (message.type === "host-status") {
@@ -241,6 +404,8 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       signal.stop();
       peerRef.current?.dispose();
       peerRef.current = null;
+      viewerRelay?.dispose();
+      viewerRelay = null;
     };
   }, [forceRelay, onAuthorizationRequired, roomId]);
 
@@ -401,6 +566,12 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
           <section className="viewer-stats" aria-labelledby="stats-heading">
             <h2 id="stats-heading">连接数据</h2>
             <StatsGrid metrics={peerSnapshot.metrics} direction="receive" />
+          </section>
+        )}
+        {relaySnapshot && (
+          <section className="viewer-stats" aria-labelledby="relay-stats-heading">
+            <h2 id="relay-stats-heading">转发数据</h2>
+            <StatsGrid metrics={relaySnapshot.metrics} direction="send" />
           </section>
         )}
       </main>

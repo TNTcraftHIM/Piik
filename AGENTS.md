@@ -13,10 +13,9 @@
 ## Repository Knowledge
 
 - At the start of substantial work, read `docs/project-memory.md`, `docs/status.md`, and the relevant requirement, ADR, and research documents.
-- Keep durable project decisions, requirements, research, code, and agent configuration inside this repository and Git-tracked.
-- Do not leave required project context only in chat history, a user home directory, or an untracked scratch file.
-- Treat `docs/project-memory.md` and `docs/status.md` as bounded current snapshots, not append-only journals. Replace or remove stale facts and use Git history for the timeline.
-- Update project memory when a durable decision changes, before context compaction on long tasks, and at task handoff. Use `docs/adr/` for architecture decisions and tradeoffs.
+- Treat the Git-tracked repository as the persistent source of truth. Before dependent work continues, write every accepted requirement or priority, design change, durable research conclusion or retained candidate, actionable TODO or blocker, and material status change to its owning repository document; chat alone is not a durable record.
+- Maintain one minimal truth set: current snapshots in `docs/project-memory.md` and `docs/status.md`, current requirements and design in their specifications, decisions in `docs/adr/`, evidence in `docs/research/`, and the timeline in Git history. Replace stale facts in place and do not duplicate detailed content into this file.
+- Checkpoint that truth set at material phase boundaries, after accepted decisions change, at branch/PR or agent handoff, and before likely context compaction or a long pause. After compaction or resumption, re-read the snapshots and inspect Git state before continuing.
 - Keep `docs/README.md` current when documentation is added, moved, or superseded.
 
 ## Research Before Changes
@@ -37,7 +36,6 @@
 
 - Keep this root file concise and stable; put specialized rules in the closest relevant directory only when that code exists.
 - Never store raw transcripts, large logs, generated summaries, temporary plans, or facts that can be cheaply rediscovered in always-loaded memory.
-- On a long session, checkpoint accepted decisions and current state before relying on automatic context compression. After compression or resumption, re-read the current snapshots and inspect Git state.
 - When a fact changes, update it in place and remove conflicting text in the same change. Do not preserve obsolete guidance merely for history.
 
 ## Security
@@ -59,6 +57,7 @@
 - Keep changes scoped and preserve unrelated user work.
 - Prefer the smallest proven extension point; do not add speculative frameworks, hooks, or abstractions without a current consumer.
 - Add automated tests in proportion to behavioral risk. For realtime media changes, also document the manual network and browser matrix used.
+- Batch validation by risk and phase: run narrow checks while iterating, and run expensive full suites, browser matrices, endurance tests, or deployment checks only at an acceptance boundary or when a relevant change invalidates prior evidence. Documentation-only or unrelated changes do not invalidate media-path evidence.
 - Use comments for non-obvious rationale, invariants, protocol constraints, and workarounds; do not narrate obvious code.
 - Use WebRTC statistics and reproducible measurements for latency, bitrate, candidate type, packet loss, encode time, and quality limitations. Do not claim performance from assumptions alone.
 - Keep repository scripts and hooks cross-platform, deterministic, fast, and runnable in CI. A hook must call a tracked script rather than hide project logic in machine-local configuration.

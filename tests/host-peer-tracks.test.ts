@@ -1,17 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
+import type { PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer } from "../src/client/webrtc/host-peer.ts";
+import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
+
+const statsCallbacks: Array<() => void> = [];
 
 class FakeSender {
   failNextReplace = false;
   failNextSetParameters = false;
+  deferNextSetParameters = false;
+  readonly appliedMaxBitrates: Array<number | undefined> = [];
+  private releaseSetParameters: (() => void) | null = null;
   readonly setParameters = vi.fn(
-    async (_parameters: RTCRtpSendParameters) => {
+    async (parameters: RTCRtpSendParameters) => {
       if (this.failNextSetParameters) {
         this.failNextSetParameters = false;
         throw new Error("setParameters failed");
       }
+      if (this.deferNextSetParameters) {
+        this.deferNextSetParameters = false;
+        await new Promise<void>((resolve) => {
+          this.releaseSetParameters = resolve;
+        });
+      }
+      this.appliedMaxBitrates.push(parameters.encodings[0]?.maxBitrate);
     },
   );
   readonly replaceTrack = vi.fn(async (track: MediaStreamTrack | null) => {
@@ -27,10 +41,16 @@ class FakeSender {
   getParameters(): RTCRtpSendParameters {
     return { encodings: [{}] } as RTCRtpSendParameters;
   }
+
+  releaseDeferredSetParameters(): void {
+    this.releaseSetParameters?.();
+    this.releaseSetParameters = null;
+  }
 }
 
 class FakePeerConnection {
   static latest: FakePeerConnection | null = null;
+  static offersFailing = 0;
 
   readonly senders: FakeSender[] = [];
   readonly transceiverInputs: Array<{
@@ -42,6 +62,7 @@ class FakePeerConnection {
   signalingState: RTCSignalingState = "stable";
   localDescription: RTCSessionDescription | null = null;
   remoteDescription: RTCSessionDescription | null = null;
+  readonly statsReports: Array<RTCStatsReport | Promise<RTCStatsReport>> = [];
 
   constructor() {
     FakePeerConnection.latest = this;
@@ -62,6 +83,10 @@ class FakePeerConnection {
   addEventListener(): void {}
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
+    if (FakePeerConnection.offersFailing > 0) {
+      FakePeerConnection.offersFailing -= 1;
+      throw new Error("createOffer failed");
+    }
     return { type: "offer", sdp: "test-offer" };
   }
 
@@ -71,9 +96,104 @@ class FakePeerConnection {
     this.localDescription = description as RTCSessionDescription;
   }
 
+  readonly getStats = vi.fn(async (): Promise<RTCStatsReport> =>
+    await (this.statsReports.shift() ?? emptyStatsReport())
+  );
+
   close(): void {
     this.connectionState = "closed";
   }
+}
+
+function emptyStatsReport(): RTCStatsReport {
+  return new Map() as unknown as RTCStatsReport;
+}
+
+function sendStatsReport({
+  bytesSent,
+  framesEncoded,
+  timestamp,
+  totalEncodeTime,
+  qualityLimitationReason,
+}: {
+  bytesSent: number;
+  framesEncoded: number;
+  timestamp: number;
+  totalEncodeTime?: number;
+  qualityLimitationReason: string;
+}): RTCStatsReport {
+  return new Map<string, Record<string, unknown>>([
+    [
+      "transport",
+      {
+        id: "transport",
+        type: "transport",
+        timestamp,
+        selectedCandidatePairId: "pair",
+      },
+    ],
+    [
+      "pair",
+      {
+        id: "pair",
+        type: "candidate-pair",
+        timestamp,
+        state: "succeeded",
+        nominated: true,
+        localCandidateId: "local",
+        remoteCandidateId: "remote",
+        currentRoundTripTime: 0.02,
+        availableOutgoingBitrate: 6_000_000,
+      },
+    ],
+    [
+      "local",
+      {
+        id: "local",
+        type: "local-candidate",
+        timestamp,
+        candidateType: "host",
+        protocol: "udp",
+      },
+    ],
+    [
+      "remote",
+      {
+        id: "remote",
+        type: "remote-candidate",
+        timestamp,
+        candidateType: "host",
+        protocol: "udp",
+      },
+    ],
+    [
+      "outbound-video",
+      {
+        id: "outbound-video",
+        type: "outbound-rtp",
+        timestamp,
+        kind: "video",
+        bytesSent,
+        framesEncoded,
+        framesPerSecond: 30,
+        frameWidth: 1280,
+        frameHeight: 720,
+        totalEncodeTime: totalEncodeTime ?? framesEncoded * 0.005,
+        qualityLimitationReason,
+        encoderImplementation: "test-encoder",
+        codecId: "codec",
+      },
+    ],
+    [
+      "codec",
+      {
+        id: "codec",
+        type: "codec",
+        timestamp,
+        mimeType: "video/VP8",
+      },
+    ],
+  ]) as unknown as RTCStatsReport;
 }
 
 function createTrack(kind: "video" | "audio", id: string): MediaStreamTrack {
@@ -92,7 +212,10 @@ function createStream(
   } as unknown as MediaStream;
 }
 
-function createPeer(stream: MediaStream): HostPeer {
+function createPeer(
+  stream: MediaStream,
+  onUpdate: (snapshot: PeerSnapshot) => void = () => undefined,
+): HostPeer {
   return new HostPeer(
     "viewer-peer",
     { iceServers: [], expiresAt: null, relayAvailable: false },
@@ -100,17 +223,26 @@ function createPeer(stream: MediaStream): HostPeer {
     QUALITY_PROFILES["720p30"],
     {
       sendSignal: () => true,
-      onUpdate: () => undefined,
+      onUpdate,
     },
   );
 }
 
 beforeEach(() => {
   FakePeerConnection.latest = null;
+  FakePeerConnection.offersFailing = 0;
+  statsCallbacks.length = 0;
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
   vi.stubGlobal("window", {
-    setInterval: vi.fn(() => 1),
+    setInterval: vi.fn((callback: () => void) => {
+      statsCallbacks.push(callback);
+      return statsCallbacks.length;
+    }),
     clearInterval: vi.fn(),
+    setTimeout: (callback: () => void, delay: number) =>
+      globalThis.setTimeout(callback, delay),
+    clearTimeout: (timer: ReturnType<typeof setTimeout>) =>
+      globalThis.clearTimeout(timer),
   });
 });
 
@@ -135,14 +267,12 @@ describe("HostPeer source replacement", () => {
     const nextVideo = createTrack("video", "next-video");
     const nextAudio = createTrack("audio", "next-audio");
     await expect(
-      peer.replaceStream(
-        createStream(nextVideo, nextAudio),
-        QUALITY_PROFILES["1080p60"],
-      ),
+      peer.replaceStream(createStream(nextVideo, nextAudio)),
     ).resolves.toBe(true);
 
     expect(connection.senders[0]?.track).toBe(nextVideo);
     expect(connection.senders[1]?.track).toBe(nextAudio);
+    expect(connection.transceiverInputs).toHaveLength(2);
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
   });
 
@@ -160,7 +290,6 @@ describe("HostPeer source replacement", () => {
     await expect(
       peer.replaceStream(
         createStream(createTrack("video", "next-video"), nextAudio),
-        QUALITY_PROFILES["1080p30"],
       ),
     ).resolves.toBe(true);
     expect(connection.senders[1]?.track).toBe(nextAudio);
@@ -179,7 +308,6 @@ describe("HostPeer source replacement", () => {
     await expect(
       peer.replaceStream(
         createStream(createTrack("video", "next-video"), null),
-        QUALITY_PROFILES["720p30"],
       ),
     ).resolves.toBe(true);
 
@@ -208,6 +336,55 @@ describe("HostPeer source replacement", () => {
     });
   });
 
+  it("serializes initial sender configuration with a live profile update", async () => {
+    const peer = createPeer(
+      createStream(
+        createTrack("video", "video"),
+        createTrack("audio", "audio"),
+      ),
+    );
+
+    const starting = peer.start();
+    const videoSender = FakePeerConnection.latest!.senders[0]!;
+    videoSender.deferNextSetParameters = true;
+    await vi.waitFor(() =>
+      expect(videoSender.setParameters).toHaveBeenCalledTimes(1),
+    );
+
+    const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
+    await Promise.resolve();
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(1);
+
+    videoSender.releaseDeferredSetParameters();
+    await expect(starting).resolves.toBe(true);
+    await expect(updating).resolves.toBe(true);
+    expect(videoSender.appliedMaxBitrates).toEqual([3_000_000, 8_000_000]);
+  });
+
+  it("continues queued profile updates after initial configuration rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const peer = createPeer(
+        createStream(
+          createTrack("video", "video"),
+          createTrack("audio", "audio"),
+        ),
+      );
+
+      const starting = peer.start();
+      const videoSender = FakePeerConnection.latest!.senders[0]!;
+      videoSender.failNextSetParameters = true;
+      const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
+
+      await expect(starting).resolves.toBe(true);
+      await expect(updating).resolves.toBe(true);
+      expect(videoSender.setParameters).toHaveBeenCalledTimes(2);
+      expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("can retry the selected quality after a sender update fails", async () => {
     const peer = createPeer(
       createStream(
@@ -234,6 +411,79 @@ describe("HostPeer source replacement", () => {
     });
   });
 
+  it("discards an in-flight stats sample after a profile reset", async () => {
+    let resolveOldStats!: (report: RTCStatsReport) => void;
+    const oldStats = new Promise<RTCStatsReport>((resolve) => {
+      resolveOldStats = resolve;
+    });
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      (snapshot) => updates.push(snapshot),
+    );
+
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    connection.statsReports.push(oldStats);
+    statsCallbacks[0]!();
+    await vi.waitFor(() => expect(connection.statsReports).toHaveLength(0));
+    statsCallbacks[0]!();
+    expect(connection.getStats).toHaveBeenCalledOnce();
+
+    await expect(
+      peer.updateProfile(QUALITY_PROFILES["1080p60"]),
+    ).resolves.toBe(true);
+    resolveOldStats(
+      sendStatsReport({
+        bytesSent: 1_000_000,
+        framesEncoded: 30,
+        timestamp: 1_000,
+        totalEncodeTime: 0.15,
+        qualityLimitationReason: "cpu",
+      }),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(
+      updates.some(
+        ({ metrics }) => metrics.qualityLimitationReason === "cpu",
+      ),
+    ).toBe(false);
+
+    connection.statsReports.push(
+      sendStatsReport({
+        bytesSent: 2_000_000,
+        framesEncoded: 60,
+        timestamp: 2_000,
+        totalEncodeTime: 0.3,
+        qualityLimitationReason: "bandwidth",
+      }),
+      sendStatsReport({
+        bytesSent: 2_500_000,
+        framesEncoded: 90,
+        timestamp: 3_000,
+        totalEncodeTime: 0.9,
+        qualityLimitationReason: "bandwidth",
+      }),
+    );
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.qualityLimitationReason).toBe(
+        "bandwidth",
+      ),
+    );
+    expect(updates.at(-1)?.metrics.intervalEncodeMs).toBeNull();
+
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.intervalEncodeMs).toBeCloseTo(20),
+    );
+    expect(
+      updates.some(
+        ({ metrics }) => metrics.qualityLimitationReason === "cpu",
+      ),
+    ).toBe(false);
+  });
+
   it("rolls the first sender back when the second replacement fails", async () => {
     const oldVideo = createTrack("video", "old-video");
     const oldAudio = createTrack("audio", "old-audio");
@@ -247,10 +497,7 @@ describe("HostPeer source replacement", () => {
     const nextVideo = createTrack("video", "next-video");
     const nextAudio = createTrack("audio", "next-audio");
     await expect(
-      peer.replaceStream(
-        createStream(nextVideo, nextAudio),
-        QUALITY_PROFILES["1080p60"],
-      ),
+      peer.replaceStream(createStream(nextVideo, nextAudio)),
     ).resolves.toBe(false);
 
     expect(videoSender.replaceTrack).toHaveBeenNthCalledWith(1, nextVideo);
@@ -259,5 +506,305 @@ describe("HostPeer source replacement", () => {
     expect(audioSender.replaceTrack).toHaveBeenNthCalledWith(2, oldAudio);
     expect(videoSender.track).toBe(oldVideo);
     expect(audioSender.track).toBe(oldAudio);
+  });
+});
+
+describe("ViewerRelay downstream ownership", () => {
+  it("exposes a defensive snapshot of current downstream send metrics", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+    relay.setChild("metrics-child");
+    relay.setStream(
+      createStream(createTrack("video", "metrics-video"), null),
+    );
+
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.peerId).toBe("metrics-child"),
+    );
+    const connection = FakePeerConnection.latest!;
+    connection.statsReports.push(
+      sendStatsReport({
+        bytesSent: 1_000_000,
+        framesEncoded: 30,
+        timestamp: 1_000,
+        totalEncodeTime: 0.15,
+        qualityLimitationReason: "cpu",
+      }),
+      sendStatsReport({
+        bytesSent: 1_500_000,
+        framesEncoded: 60,
+        timestamp: 2_000,
+        totalEncodeTime: 0.75,
+        qualityLimitationReason: "bandwidth",
+      }),
+    );
+
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.metrics.qualityLimitationReason).toBe("cpu"),
+    );
+    expect(relay.getSnapshot()?.metrics.intervalEncodeMs).toBeNull();
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.metrics.intervalEncodeMs).toBe(20),
+    );
+
+    const snapshot = relay.getSnapshot()!;
+    expect(snapshot.metrics).toMatchObject({
+      intervalEncodeMs: 20,
+      bitrateKbps: 4_000,
+      encoderImplementation: "test-encoder",
+      qualityLimitationReason: "bandwidth",
+    });
+    snapshot.metrics.qualityLimitationReason = "mutated";
+    expect(relay.getSnapshot()?.metrics.qualityLimitationReason).toBe(
+      "bandwidth",
+    );
+  });
+
+  it("clears snapshots across child replacement, stop, and dispose", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+    const stream = createStream(createTrack("video", "relay-video"), null);
+    relay.setChild("first-child");
+    relay.setStream(stream);
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.peerId).toBe("first-child"),
+    );
+
+    relay.setChild("second-child");
+    expect(relay.getSnapshot()).toBeNull();
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.peerId).toBe("second-child"),
+    );
+
+    relay.stop();
+    expect(relay.getSnapshot()).toBeNull();
+    relay.setStream(stream);
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.peerId).toBe("second-child"),
+    );
+
+    relay.dispose();
+    expect(relay.getSnapshot()).toBeNull();
+    relay.setStream(stream);
+    expect(relay.getSnapshot()).toBeNull();
+  });
+
+  it("does not publish a stale stats result after replacing its child", async () => {
+    let resolveOldStats!: (report: RTCStatsReport) => void;
+    const pendingOldStats = new Promise<RTCStatsReport>((resolve) => {
+      resolveOldStats = resolve;
+    });
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+    relay.setChild("old-child");
+    relay.setStream(
+      createStream(createTrack("video", "relay-video"), null),
+    );
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.peerId).toBe("old-child"),
+    );
+    FakePeerConnection.latest!.statsReports.push(pendingOldStats);
+    statsCallbacks[0]!();
+
+    relay.setChild("current-child");
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot()?.peerId).toBe("current-child"),
+    );
+    resolveOldStats(
+      sendStatsReport({
+        bytesSent: 999_999,
+        framesEncoded: 30,
+        timestamp: 1_000,
+        qualityLimitationReason: "old-peer",
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(relay.getSnapshot()).toMatchObject({
+      peerId: "current-child",
+      metrics: { qualityLimitationReason: null },
+    });
+  });
+
+  it("creates a downstream peer without secure-context randomUUID", async () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.fill(7);
+        return bytes;
+      },
+    });
+    const targets: string[] = [];
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId) => {
+          targets.push(peerId);
+          return true;
+        },
+      },
+    );
+
+    relay.setChild("lan-child-peer");
+    relay.setStream(
+      createStream(createTrack("video", "lan-video"), null),
+    );
+
+    await vi.waitFor(() => expect(targets).toEqual(["lan-child-peer"]));
+    expect(FakePeerConnection.latest?.connectionState).toBe("new");
+  });
+
+  it("retries a missing peer when the same assignment is reconciled", async () => {
+    vi.useFakeTimers();
+    try {
+      FakePeerConnection.offersFailing = 2;
+      const targets: string[] = [];
+      const relay = new ViewerRelay(
+        { iceServers: [], expiresAt: null, relayAvailable: false },
+        QUALITY_PROFILES["720p30"],
+        {
+          sendSignal: (peerId) => {
+            targets.push(peerId);
+            return true;
+          },
+        },
+      );
+      const stream = createStream(createTrack("video", "relay-video"), null);
+      relay.setChild("same-child-peer");
+      relay.setStream(stream);
+
+      await vi.runAllTimersAsync();
+      const failedPeer = FakePeerConnection.latest;
+      expect(targets).toEqual([]);
+
+      relay.setChild("same-child-peer");
+      await vi.runAllTimersAsync();
+
+      expect(FakePeerConnection.latest).not.toBe(failedPeer);
+      expect(targets).toEqual(["same-child-peer"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rebuilds a stalled peer but preserves a connected peer on reconciliation", async () => {
+    const targets: string[] = [];
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId) => {
+          targets.push(peerId);
+          return true;
+        },
+      },
+    );
+    relay.setChild("reconciled-child");
+    relay.setStream(
+      createStream(createTrack("video", "reconciled-video"), null),
+    );
+    await vi.waitFor(() => expect(targets).toEqual(["reconciled-child"]));
+    const stalledConnection = FakePeerConnection.latest!;
+
+    relay.setChild("reconciled-child");
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.latest).not.toBe(stalledConnection),
+    );
+    const connectedConnection = FakePeerConnection.latest!;
+    await vi.waitFor(() => expect(targets).toHaveLength(2));
+    connectedConnection.connectionState = "connected";
+
+    relay.setChild("reconciled-child");
+    expect(FakePeerConnection.latest).toBe(connectedConnection);
+    expect(targets).toHaveLength(2);
+  });
+
+  it("keeps one downstream connection across upstream stream replacement", async () => {
+    const targets: string[] = [];
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["1080p60"],
+      {
+        sendSignal: (peerId) => {
+          targets.push(peerId);
+          return true;
+        },
+      },
+    );
+    const firstStream = createStream(
+      createTrack("video", "first-video"),
+      createTrack("audio", "first-audio"),
+    );
+
+    relay.setChild("child-peer-one");
+    relay.setStream(firstStream);
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
+    const connection = FakePeerConnection.latest!;
+    await vi.waitFor(() => expect(targets).toEqual(["child-peer-one"]));
+
+    const nextVideo = createTrack("video", "next-video");
+    const nextAudio = createTrack("audio", "next-audio");
+    relay.setStream(createStream(nextVideo, nextAudio));
+    await vi.waitFor(() => expect(connection.senders[0]?.track).toBe(nextVideo));
+
+    expect(FakePeerConnection.latest).toBe(connection);
+    expect(connection.senders[1]?.track).toBe(nextAudio);
+    expect(connection.transceiverInputs).toHaveLength(2);
+
+    relay.setChild("child-peer-two");
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBe(connection));
+    expect(connection.connectionState).toBe("closed");
+    await vi.waitFor(() => expect(targets.at(-1)).toBe("child-peer-two"));
+  });
+
+  it("applies the latest profile to the current and future child", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      QUALITY_PROFILES["1080p60"],
+      { sendSignal: () => true },
+    );
+    relay.setChild("first-profile-child");
+    relay.setStream(createStream(createTrack("video", "profile-video"), null));
+    await vi.waitFor(() =>
+      expect(
+        FakePeerConnection.latest?.senders[0]?.setParameters,
+      ).toHaveBeenCalled(),
+    );
+    const firstConnection = FakePeerConnection.latest!;
+
+    await expect(
+      relay.updateProfile(QUALITY_PROFILES["720p30"]),
+    ).resolves.toBe(true);
+    expect(
+      firstConnection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+    });
+
+    relay.setChild("second-profile-child");
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.latest).not.toBe(firstConnection),
+    );
+    const secondConnection = FakePeerConnection.latest!;
+    await vi.waitFor(() =>
+      expect(secondConnection.senders[0]?.setParameters).toHaveBeenCalled(),
+    );
+    expect(
+      secondConnection.senders[0]?.setParameters.mock.calls[0]?.[0],
+    ).toMatchObject({
+      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+    });
   });
 });

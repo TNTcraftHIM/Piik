@@ -80,6 +80,13 @@ resolution, frame rate, or bitrate.
 - Pausing the picture disables the existing video track, producing black video
   without closing the room or media connection. Audio remains enabled.
 
+A Chromium 151 loopback smoke with one host, three viewers, and a synthetic
+640x360/30 source kept the same relay peer, sender, and signaling generations
+while applying 8 Mbps/60 fps, 5 Mbps/30 fps, and 3 Mbps/30 fps sender ceilings.
+The leaf continued decoding after both live switches. This verifies control
+propagation and connection preservation, not actual 1080p output, visual
+quality, CPU/GPU cost, public-network behavior, or sustained performance.
+
 ## Deliberate Non-Goals
 
 - No canvas pixel-difference detector, machine-learned rate controller, or
@@ -98,6 +105,15 @@ bitrate, `qualityLimitationReason`, codec, encoder implementation, encode time,
 dropped frames, RTT, packet loss, and host CPU/GPU utilization. A live profile
 change must preserve peer connection IDs, avoid a second source prompt, and
 visibly converge to the requested bounds.
+
+Compute per-frame encode and decode cost from adjacent samples of cumulative
+`totalEncodeTime`/`totalDecodeTime` and frame counters. The first sample, a
+zero-frame interval, changed stats object, or a counter reset is unknown and
+establishes a new baseline. Skip overlapping sampling ticks on the same peer so
+reports cannot complete out of order. Do not use a connection-lifetime average
+to judge a later overload. Use browser WebRTC diagnostics plus a small run
+manifest for time series and percentiles rather than adding a server telemetry
+pipeline.
 
 Compare image readability and motion continuity instead of declaring success
 from FPS alone. If reproducible evidence later shows that `balanced` still

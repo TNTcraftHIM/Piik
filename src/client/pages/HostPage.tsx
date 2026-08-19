@@ -10,10 +10,11 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  CreateRoomResponse,
-  IceConfig,
-  ServerMessage,
+import {
+  DEFAULT_QUALITY_PROFILE_ID,
+  type CreateRoomResponse,
+  type IceConfig,
+  type ServerMessage,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import {
@@ -44,6 +45,10 @@ import type {
   SignalConnectionState,
 } from "../types";
 import { HostPeer } from "../webrtc/host-peer";
+import {
+  limitMediaAssignment,
+  MAX_HOST_MEDIA_CHILDREN,
+} from "../webrtc/media-assignment";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
 
@@ -105,7 +110,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     () => new URLSearchParams(window.location.search).get("relay") === "1",
     [],
   );
-  const [qualityId, setQualityId] = useState<QualityProfileId>("1080p60");
+  const [qualityId, setQualityId] = useState<QualityProfileId>(
+    DEFAULT_QUALITY_PROFILE_ID,
+  );
   const [phase, setPhase] = useState<HostPhase>("idle");
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
@@ -128,11 +135,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const signalRef = useRef<SignalingClient | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
+  const peerAssistedRef = useRef(false);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
   const sourceSwitchRef = useRef<object | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
-  const qualityIdRef = useRef<QualityProfileId>("1080p60");
+  const qualityIdRef = useRef<QualityProfileId>(DEFAULT_QUALITY_PROFILE_ID);
   const picturePausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
 
@@ -191,6 +199,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     streamRef.current = null;
     retiringStreamRef.current = null;
     iceConfigRef.current = null;
+    peerAssistedRef.current = false;
     setStream(null);
     setDetails(null);
     setRelayAvailable(false);
@@ -296,6 +305,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
       commitQuality(nextId);
       setDetails(captureDetails(activeStream));
+      if (peerAssistedRef.current) {
+        signalRef.current?.send({
+          type: "set-quality-profile",
+          qualityProfileId: nextId,
+        });
+      }
       const results = await Promise.all(
         [...peersRef.current.values()].map((peer) => peer.updateProfile(profile)),
       );
@@ -467,12 +482,51 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     await startPeer(peerId, generation);
   }
 
+  function reconcilePeerAssistedChildren(
+    childPeerIds: string[],
+    generation: number,
+  ): void {
+    const assignment = limitMediaAssignment(
+      { parentPeerId: null, childPeerIds },
+      MAX_HOST_MEDIA_CHILDREN,
+    );
+    const assignedChildren = new Set(assignment.childPeerIds);
+    for (const peerId of peersRef.current.keys()) {
+      if (!assignedChildren.has(peerId)) {
+        removePeer(peerId);
+      }
+    }
+    for (const peerId of assignedChildren) {
+      void startPeer(peerId, generation).catch((error: unknown) => {
+        if (isCurrentGeneration(generation)) {
+          setNotice(readableError(error));
+        }
+      });
+    }
+  }
+
   function handleSignalMessage(message: ServerMessage, generation: number): void {
     if (!isCurrentGeneration(generation)) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
       setMaxViewers(message.maxViewers);
+      if (
+        "mediaMode" in message &&
+        message.mediaMode === "peer-assisted"
+      ) {
+        peerAssistedRef.current = true;
+        signalRef.current?.send({
+          type: "set-quality-profile",
+          qualityProfileId: qualityIdRef.current,
+        });
+        reconcilePeerAssistedChildren(
+          message.mediaAssignment.childPeerIds,
+          generation,
+        );
+        return;
+      }
+      peerAssistedRef.current = false;
       const currentViewerIds = new Set(message.viewerPeerIds);
       for (const peerId of peersRef.current.keys()) {
         if (!currentViewerIds.has(peerId)) {
@@ -481,7 +535,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       return;
     }
+    if (message.type === "media-assignment") {
+      if (peerAssistedRef.current) {
+        reconcilePeerAssistedChildren(
+          message.mediaAssignment.childPeerIds,
+          generation,
+        );
+      }
+      return;
+    }
     if (message.type === "peer-joined") {
+      if (peerAssistedRef.current) {
+        return;
+      }
       void startPeer(message.peerId, generation).catch((error: unknown) => {
         if (isCurrentGeneration(generation)) {
           setNotice(readableError(error));
@@ -490,6 +556,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "peer-left") {
+      if (peerAssistedRef.current) {
+        return;
+      }
       removePeer(message.peerId);
       return;
     }
@@ -756,10 +825,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             return {
               peerId,
               peer,
-              replaced: await peer.replaceStream(
-                captured,
-                QUALITY_PROFILES[qualityIdRef.current],
-              ),
+              replaced: await peer.replaceStream(captured),
             };
           } catch {
             return { peerId, peer, replaced: false };

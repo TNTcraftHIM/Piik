@@ -18,6 +18,7 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 interface ConnectionPlan {
+  answerError?: Error;
   candidateGates?: Promise<void>[];
   localDescriptionGate?: Promise<void>;
 }
@@ -46,6 +47,7 @@ class FakePeerConnection extends EventTarget {
 
   private readonly candidateGates: Promise<void>[];
   private readonly localDescriptionGate: Promise<void> | null;
+  private readonly answerError: Error | null;
 
   readonly addIceCandidate = vi.fn(async (_candidate: RTCIceCandidateInit | null) => {
     const gate = this.candidateGates.shift();
@@ -73,6 +75,7 @@ class FakePeerConnection extends EventTarget {
     const plan = FakePeerConnection.plans.shift() ?? {};
     this.candidateGates = [...(plan.candidateGates ?? [])];
     this.localDescriptionGate = plan.localDescriptionGate ?? null;
+    this.answerError = plan.answerError ?? null;
     FakePeerConnection.instances.push(this);
   }
 
@@ -83,6 +86,9 @@ class FakePeerConnection extends EventTarget {
   }
 
   async createAnswer(): Promise<RTCSessionDescriptionInit> {
+    if (this.answerError) {
+      throw this.answerError;
+    }
     return {
       type: "answer",
       sdp: `answer-${FakePeerConnection.instances.indexOf(this)}`,
@@ -122,11 +128,13 @@ function candidate(connectionId: string, value: string): SignalPayload {
 function createPeer(
   signals: SignalPayload[],
   snapshots: PeerSnapshot[],
+  signalPeers: string[] = [],
 ): ViewerPeer {
   return new ViewerPeer(
     { iceServers: [], expiresAt: null, relayAvailable: false },
     {
-      sendSignal: (payload) => {
+      sendSignal: (peerId, payload) => {
+        signalPeers.push(peerId);
         signals.push(payload);
         return true;
       },
@@ -165,6 +173,80 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it("requests one bounded rebuild when answer negotiation fails", async () => {
+    FakePeerConnection.plans.push(
+      { answerError: new Error("first answer failed") },
+      { answerError: new Error("second answer failed") },
+    );
+    const restartRequests: Array<{
+      peerId: string;
+      connectionId: string;
+      rebuild: boolean;
+    }> = [];
+    const peer = new ViewerPeer(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: (peerId, connectionId, rebuild) => {
+          restartRequests.push({ peerId, connectionId, rebuild });
+          return true;
+        },
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+      },
+    );
+
+    await peer.acceptSignal("relay-parent", offer("connection-first"));
+    await peer.acceptSignal("relay-parent", offer("connection-second"));
+
+    expect(restartRequests).toEqual([
+      {
+        peerId: "relay-parent",
+        connectionId: "connection-first",
+        rebuild: true,
+      },
+    ]);
+  });
+
+  it("targets answers and recovery requests at the current parent", async () => {
+    const signals: SignalPayload[] = [];
+    const signalPeers: string[] = [];
+    const restartRequests: Array<{
+      peerId: string;
+      connectionId: string;
+      rebuild: boolean;
+    }> = [];
+    const peer = new ViewerPeer(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      {
+        sendSignal: (peerId, payload) => {
+          signalPeers.push(peerId);
+          signals.push(payload);
+          return true;
+        },
+        sendRestartRequest: (peerId, connectionId, rebuild) => {
+          restartRequests.push({ peerId, connectionId, rebuild });
+          return true;
+        },
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+      },
+    );
+
+    await peer.acceptSignal("parent-old", offer("connection-old"));
+    await peer.acceptSignal("parent-new", offer("connection-new"));
+    expect(signalPeers).toEqual(["parent-old", "parent-new"]);
+
+    expect(peer.requestRecovery()).toBe(true);
+    expect(restartRequests).toEqual([
+      {
+        peerId: "parent-new",
+        connectionId: "connection-new",
+        rebuild: false,
+      },
+    ]);
+  });
+
   it("does not send an old answer or candidate after replacing the connection", async () => {
     const oldLocalDescription = createDeferred<void>();
     FakePeerConnection.plans.push({
@@ -271,5 +353,26 @@ describe("ViewerPeer connection generations", () => {
     );
     expect(newSnapshots).toHaveLength(newSnapshotCount);
     expect(newSnapshots.at(-1)?.metrics.resolution).toBeNull();
+  });
+
+  it("skips overlapping stats ticks on the same connection", async () => {
+    const peer = createPeer([], []);
+    await peer.acceptSignal("host", offer("connection"));
+    const connection = FakePeerConnection.instances[0]!;
+    const stats = createDeferred<RTCStatsReport>();
+    connection.statsGate = stats.promise;
+    const statsCallback = intervalCallbacks.get(1)!;
+
+    statsCallback();
+    statsCallback();
+    await vi.waitFor(() => expect(connection.getStats).toHaveBeenCalledOnce());
+
+    stats.resolve(new Map() as unknown as RTCStatsReport);
+    await flushAsyncWork();
+    connection.statsGate = null;
+    statsCallback();
+    await vi.waitFor(() =>
+      expect(connection.getStats).toHaveBeenCalledTimes(2),
+    );
   });
 });

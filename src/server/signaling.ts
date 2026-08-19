@@ -5,13 +5,19 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer } from "ws";
 
 import {
+  DEFAULT_QUALITY_PROFILE_ID,
   MAX_SIGNAL_BYTES,
   decodeClientMessage,
   type ClientMessage,
+  type QualityProfileId,
   type Role,
   type ServerMessage,
 } from "../shared/protocol.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
+import {
+  PeerRelayTopology,
+  type MediaAssignmentChange,
+} from "./peer-relay-topology.js";
 import { createIceConfig, type IceConfigOptions } from "./turn.js";
 
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
@@ -37,6 +43,7 @@ interface SocketState {
 export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
+  peerAssistedMedia: boolean;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
   authorizeUpgrade: (request: IncomingMessage) => boolean;
@@ -60,6 +67,11 @@ export class SignalingServer {
   private readonly socketsBySessionId = new Map<string, WebSocket>();
   private readonly viewerGraceTimers = new Map<string, NodeJS.Timeout>();
   private readonly connectionIdsByViewer = new Map<string, string>();
+  private readonly qualityProfileIdsByRoom = new Map<
+    string,
+    QualityProfileId
+  >();
+  private readonly peerRelayTopology = new PeerRelayTopology();
   private readonly now: () => number;
   private readonly authenticationTimeoutMs: number;
   private readonly viewerDisconnectGraceMs: number;
@@ -283,6 +295,32 @@ export class SignalingServer {
           : Date.parse(participant.expiresAt),
     };
     this.clearViewerGrace(participant.roomId, participant.peerId);
+    const assignmentChanges = this.options.peerAssistedMedia
+      ? participant.role === "host"
+        ? this.peerRelayTopology.setHost(
+            participant.roomId,
+            participant.peerId,
+            this.connectedPeerIds(participant.roomId),
+          )
+        : this.peerRelayTopology.addViewer(
+            participant.roomId,
+            participant.peerId,
+            this.connectedPeerIds(participant.roomId),
+          )
+      : [];
+    this.clearChangedConnectionIds(participant.roomId, assignmentChanges);
+    const mediaAssignment = this.options.peerAssistedMedia
+      ? this.peerRelayTopology.getAssignment(
+          participant.roomId,
+          participant.peerId,
+        )
+      : undefined;
+    if (this.options.peerAssistedMedia && !mediaAssignment) {
+      console.error("Peer relay topology did not assign an authenticated participant");
+      this.sendError(socket, "SERVER_ERROR", "Media assignment failed");
+      socket.close(1011, "Media assignment failed");
+      return;
+    }
     const connectionId =
       participant.role === "viewer"
         ? (this.connectionIdsByViewer.get(
@@ -294,8 +332,8 @@ export class SignalingServer {
         ? this.options.roomStore.getConnectedViewers(participant.roomId)
         : [];
 
-    this.send(socket, {
-      type: "authenticated",
+    const authenticatedMessage = {
+      type: "authenticated" as const,
       role: participant.role,
       peerId: participant.peerId,
       roomExpiresAt: participant.expiresAt,
@@ -310,7 +348,19 @@ export class SignalingServer {
           ? null
           : Date.parse(participant.expiresAt),
       ),
-    });
+    };
+    if (mediaAssignment) {
+      this.send(socket, {
+        ...authenticatedMessage,
+        mediaMode: "peer-assisted",
+        mediaAssignment,
+        qualityProfileId:
+          this.qualityProfileIdsByRoom.get(participant.roomId) ??
+          DEFAULT_QUALITY_PROFILE_ID,
+      });
+    } else {
+      this.send(socket, authenticatedMessage);
+    }
 
     if (participant.replacedSessionId) {
       const replaced = this.socketsBySessionId.get(participant.replacedSessionId);
@@ -319,11 +369,37 @@ export class SignalingServer {
       }
     }
 
+    if (this.options.peerAssistedMedia) {
+      this.sendMediaAssignmentChanges(
+        participant.roomId,
+        assignmentChanges,
+        participant.peerId,
+      );
+      if (
+        participant.role === "viewer" &&
+        mediaAssignment?.parentPeerId &&
+        !assignmentChanges.some(
+          ({ peerId }) => peerId === mediaAssignment.parentPeerId,
+        )
+      ) {
+        this.sendCurrentParentAssignment(
+          participant.roomId,
+          participant.peerId,
+        );
+      }
+    }
+
     if (participant.role === "host") {
       for (const viewer of connectedViewers) {
         this.sendToSession(viewer.sessionId, { type: "host-status", online: true });
-        this.send(socket, { type: "peer-joined", peerId: viewer.peerId });
+        if (!this.options.peerAssistedMedia) {
+          this.send(socket, { type: "peer-joined", peerId: viewer.peerId });
+        }
       }
+      return;
+    }
+
+    if (this.options.peerAssistedMedia) {
       return;
     }
 
@@ -354,6 +430,14 @@ export class SignalingServer {
           this.sendError(socket, "FORBIDDEN", "Only viewers may request an ICE restart");
           return;
         }
+        if (this.options.peerAssistedMedia) {
+          this.routePeerAssistedRestart(socket, authenticated, message);
+          return;
+        }
+        if (message.targetPeerId) {
+          this.sendError(socket, "FORBIDDEN", "P2P restart requests target the host implicitly");
+          return;
+        }
         this.routeToHost(socket, authenticated, {
           type: "restart-request",
           fromPeerId: authenticated.peerId,
@@ -370,6 +454,28 @@ export class SignalingServer {
             authenticated.roomExpiresAtMs,
           ),
         });
+        return;
+      case "set-quality-profile":
+        if (!this.options.peerAssistedMedia || authenticated.role !== "host") {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "Only a peer-assisted host may set the quality profile",
+          );
+          return;
+        }
+        this.qualityProfileIdsByRoom.set(
+          authenticated.roomId,
+          message.qualityProfileId,
+        );
+        for (const viewer of this.options.roomStore.getConnectedViewers(
+          authenticated.roomId,
+        )) {
+          this.sendToSession(viewer.sessionId, {
+            type: "quality-profile",
+            qualityProfileId: message.qualityProfileId,
+          });
+        }
         return;
       case "stop-sharing":
       case "close-room":
@@ -408,6 +514,11 @@ export class SignalingServer {
     source: AuthenticatedSession,
     message: Extract<ClientMessage, { type: "signal" }>,
   ): void {
+    if (this.options.peerAssistedMedia) {
+      this.routePeerAssistedSignal(sourceSocket, source, message);
+      return;
+    }
+
     const description =
       message.payload.kind === "description" ? message.payload.description : undefined;
 
@@ -446,6 +557,101 @@ export class SignalingServer {
       type: "signal",
       fromPeerId: source.peerId,
       payload: message.payload,
+    });
+  }
+
+  private routePeerAssistedSignal(
+    sourceSocket: WebSocket,
+    source: AuthenticatedSession,
+    message: Extract<ClientMessage, { type: "signal" }>,
+  ): void {
+    const targetPeerId = message.targetPeerId;
+    if (!targetPeerId) {
+      this.sendError(
+        sourceSocket,
+        "FORBIDDEN",
+        "Peer-assisted signals must target an assigned peer",
+      );
+      return;
+    }
+    const target = this.connectedPeer(source.roomId, targetPeerId);
+    if (!target) {
+      this.sendError(sourceSocket, "PEER_NOT_FOUND", "Target peer is not connected");
+      return;
+    }
+
+    const parentToChild = this.peerRelayTopology.isParentOf(
+      source.roomId,
+      source.peerId,
+      targetPeerId,
+    );
+    const childToParent = this.peerRelayTopology.isParentOf(
+      source.roomId,
+      targetPeerId,
+      source.peerId,
+    );
+    const description =
+      message.payload.kind === "description"
+        ? message.payload.description
+        : undefined;
+    const authorized = description
+      ? description.type === "offer"
+        ? parentToChild
+        : childToParent
+      : parentToChild || childToParent;
+    if (!authorized) {
+      this.sendError(
+        sourceSocket,
+        "FORBIDDEN",
+        "Signal target is not authorized by the media assignment",
+      );
+      return;
+    }
+
+    if (description?.type === "offer") {
+      this.connectionIdsByViewer.set(
+        viewerConnectionKey(source.roomId, targetPeerId),
+        message.payload.connectionId,
+      );
+    }
+    this.sendToSession(target.sessionId, {
+      type: "signal",
+      fromPeerId: source.peerId,
+      payload: message.payload,
+    });
+  }
+
+  private routePeerAssistedRestart(
+    sourceSocket: WebSocket,
+    source: AuthenticatedSession,
+    message: Extract<ClientMessage, { type: "restart-request" }>,
+  ): void {
+    const targetPeerId = message.targetPeerId;
+    if (
+      !targetPeerId ||
+      !this.peerRelayTopology.isParentOf(
+        source.roomId,
+        targetPeerId,
+        source.peerId,
+      )
+    ) {
+      this.sendError(
+        sourceSocket,
+        "FORBIDDEN",
+        "Restart target is not the assigned media parent",
+      );
+      return;
+    }
+    const parent = this.connectedPeer(source.roomId, targetPeerId);
+    if (!parent) {
+      this.sendError(sourceSocket, "PEER_NOT_FOUND", "Media parent is not connected");
+      return;
+    }
+    this.sendToSession(parent.sessionId, {
+      type: "restart-request",
+      fromPeerId: source.peerId,
+      connectionId: message.connectionId,
+      rebuild: message.rebuild,
     });
   }
 
@@ -509,6 +715,22 @@ export class SignalingServer {
         this.connectionIdsByViewer.delete(
           viewerConnectionKey(disconnected.roomId, disconnected.peerId),
         );
+        if (this.options.peerAssistedMedia) {
+          const assignmentChanges = this.peerRelayTopology.removeViewer(
+            disconnected.roomId,
+            disconnected.peerId,
+            this.connectedPeerIds(disconnected.roomId),
+          );
+          this.clearChangedConnectionIds(
+            disconnected.roomId,
+            assignmentChanges,
+          );
+          this.sendMediaAssignmentChanges(
+            disconnected.roomId,
+            assignmentChanges,
+          );
+          return;
+        }
         const host = this.options.roomStore.getConnectedHost(disconnected.roomId);
         if (host) {
           this.sendToSession(host.sessionId, {
@@ -537,6 +759,8 @@ export class SignalingServer {
     }
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
+    this.peerRelayTopology.deleteRoom(roomId);
+    this.qualityProfileIdsByRoom.delete(roomId);
     for (const sessionId of abandoned.sessionIds) {
       const socket = this.socketsBySessionId.get(sessionId);
       if (!socket) {
@@ -551,6 +775,8 @@ export class SignalingServer {
     for (const expired of this.options.roomStore.expireRooms(this.now())) {
       this.clearRoomGraceTimers(expired.roomId);
       this.clearRoomConnectionIds(expired.roomId);
+      this.peerRelayTopology.deleteRoom(expired.roomId);
+      this.qualityProfileIdsByRoom.delete(expired.roomId);
       for (const sessionId of expired.sessionIds) {
         const socket = this.socketsBySessionId.get(sessionId);
         if (!socket) {
@@ -619,6 +845,87 @@ export class SignalingServer {
       this.now(),
       roomExpiresAtMs ?? undefined,
     );
+  }
+
+  private connectedPeerIds(roomId: string): Set<string> {
+    const peerIds = new Set(
+      this.options.roomStore
+        .getConnectedViewers(roomId)
+        .map((viewer) => viewer.peerId),
+    );
+    const host = this.options.roomStore.getConnectedHost(roomId);
+    if (host) {
+      peerIds.add(host.peerId);
+    }
+    return peerIds;
+  }
+
+  private connectedPeer(roomId: string, peerId: string) {
+    const host = this.options.roomStore.getConnectedHost(roomId);
+    if (host?.peerId === peerId) {
+      return host;
+    }
+    return this.options.roomStore.getConnectedViewer(roomId, peerId);
+  }
+
+  private clearChangedConnectionIds(
+    roomId: string,
+    changes: readonly MediaAssignmentChange[],
+  ): void {
+    for (const change of changes) {
+      if (
+        change.previousParentPeerId !== undefined &&
+        change.previousParentPeerId !==
+          change.mediaAssignment.parentPeerId
+      ) {
+        this.connectionIdsByViewer.delete(
+          viewerConnectionKey(roomId, change.peerId),
+        );
+      }
+    }
+  }
+
+  private sendMediaAssignmentChanges(
+    roomId: string,
+    changes: readonly MediaAssignmentChange[],
+    excludedPeerId?: string,
+  ): void {
+    for (const change of changes) {
+      if (change.peerId === excludedPeerId) {
+        continue;
+      }
+      const peer = this.connectedPeer(roomId, change.peerId);
+      if (peer) {
+        this.sendToSession(peer.sessionId, {
+          type: "media-assignment",
+          mediaAssignment: change.mediaAssignment,
+        });
+      }
+    }
+  }
+
+  private sendCurrentParentAssignment(
+    roomId: string,
+    childPeerId: string,
+  ): void {
+    const parentPeerId = this.peerRelayTopology.getAssignment(
+      roomId,
+      childPeerId,
+    )?.parentPeerId;
+    if (!parentPeerId) {
+      return;
+    }
+    const parent = this.connectedPeer(roomId, parentPeerId);
+    const parentAssignment = this.peerRelayTopology.getAssignment(
+      roomId,
+      parentPeerId,
+    );
+    if (parent && parentAssignment) {
+      this.sendToSession(parent.sessionId, {
+        type: "media-assignment",
+        mediaAssignment: parentAssignment,
+      });
+    }
   }
 
   private sendToSession(sessionId: string, message: ServerMessage): void {

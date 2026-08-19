@@ -42,6 +42,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     roomTtlMs: 14_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,
+    peerAssistedMedia: false,
     stunUrls: [],
     turnUrls: [],
     turnCredentialTtlSeconds: 3_600,

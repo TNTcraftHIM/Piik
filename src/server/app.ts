@@ -93,6 +93,7 @@ export async function createScreenerServer(
   const signaling = new SignalingServer({
     server: httpServer,
     roomStore,
+    peerAssistedMedia: config.peerAssistedMedia,
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
     authorizeUpgrade: (request) =>

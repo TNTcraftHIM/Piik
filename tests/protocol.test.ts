@@ -109,6 +109,12 @@ describe("client signaling protocol", () => {
     expect(clientMessageSchema.safeParse(restartRequest).success).toBe(true);
     expect(
       clientMessageSchema.safeParse({
+        ...restartRequest,
+        targetPeerId: "parent_12345678",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
         type: restartRequest.type,
         connectionId: restartRequest.connectionId,
       }).success,
@@ -125,6 +131,28 @@ describe("client signaling protocol", () => {
     expect(clientMessageSchema.safeParse({ type: "abandon-room" }).success).toBe(
       true,
     );
+  });
+
+  it("accepts only a bounded quality profile update", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-profile",
+        qualityProfileId: "1440p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-profile",
+        qualityProfileId: "1080p30",
+        bitrate: 5_000_000,
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -171,6 +199,77 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({ type: "sharing-stopped" }).success,
     ).toBe(true);
+  });
+
+  it("requires a complete bounded peer-assisted assignment", () => {
+    const peerAssisted = {
+      ...authenticatedMessage(8),
+      mediaMode: "peer-assisted",
+      mediaAssignment: {
+        parentPeerId: null,
+        childPeerIds: ["viewer_12345678", "viewer_87654321"],
+      },
+      qualityProfileId: "1080p60",
+    };
+
+    expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "media-assignment",
+        mediaAssignment: peerAssisted.mediaAssignment,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        mediaMode: "peer-assisted",
+        qualityProfileId: "1080p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        mediaMode: "peer-assisted",
+        mediaAssignment: peerAssisted.mediaAssignment,
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...peerAssisted,
+        mediaAssignment: {
+          parentPeerId: null,
+          childPeerIds: [
+            "viewer_12345678",
+            "viewer_87654321",
+            "viewer_overflow",
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...peerAssisted,
+        qualityProfileId: "1440p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authenticatedMessage(8),
+        qualityProfileId: "1080p60",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "quality-profile",
+        qualityProfileId: "720p30",
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "quality-profile",
+        qualityProfileId: "1440p60",
+      }).success,
+    ).toBe(false);
   });
 
   it.each([0, 1.5, MAX_VIEWERS_PER_ROOM_LIMIT + 1])(

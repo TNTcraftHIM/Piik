@@ -13,6 +13,7 @@
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node dist/server/server/index.js",
+    "benchmark:peer-assisted": "tsx scripts/peer-assisted-benchmark.ts",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",

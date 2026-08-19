@@ -78,8 +78,8 @@ export function StatsGrid({
         <>
           <Metric label="编码器" value={encoder} />
           <Metric
-            label="平均编码"
-            value={`${readableNumber(metrics.averageEncodeMs, 1)} ms`}
+            label="最近区间编码/帧"
+            value={`${readableNumber(metrics.intervalEncodeMs, 1)} ms`}
           />
           <Metric label="质量状态" value={qualityReason(metrics.qualityLimitationReason)} />
         </>
@@ -87,8 +87,8 @@ export function StatsGrid({
         <>
           <Metric label="丢帧" value={readableNumber(metrics.framesDropped)} />
           <Metric
-            label="平均解码"
-            value={`${readableNumber(metrics.averageDecodeMs, 1)} ms`}
+            label="最近区间解码/帧"
+            value={`${readableNumber(metrics.intervalDecodeMs, 1)} ms`}
           />
         </>
       )}
