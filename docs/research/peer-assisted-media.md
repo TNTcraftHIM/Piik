@@ -183,41 +183,56 @@ Per-edge ICE remains independent. An edge may be direct or may use authenticated
 TURN, so peer assistance reduces normal server media traffic but cannot promise
 zero server traffic in restrictive networks.
 
-## Implemented Quality Profile Coordination
+## Implemented Bounded Quality Coordination
 
-The current Draft implementation coordinates one room profile across the
-peer-assisted tree without adding adaptation logic. Its strict ID set is
-`1080p60`, `1080p30`, and `720p30`, matching the existing capture and sender
-profiles. The signaling server stores the current ID in a room-count-bounded
-in-memory map, defaults to `1080p60`, includes it in peer-assisted authenticated
-snapshots, and broadcasts host changes to online viewers. The value is retained
-when sharing stops, removed when the room is abandoned or expires, and is not
-written to SQLite. The standard P2P authenticated variant is unchanged and
-profile-control messages are forbidden in that mode.
+The current Draft coordinates one strict `QualitySettings` object across the
+peer-assisted tree without adaptation logic. It accepts only 720p/1080p/1440p,
+integer 15-60 fps, integer 2-12 Mbps, and the three standard degradation
+preferences; missing, extra, or out-of-range fields fail schema validation.
+The three visible presets are recommendations rather than wire IDs. The server
+stores the latest complete object in a room-count-bounded in-memory map,
+defaults to 1080p60 at 8 Mbps with clarity priority, includes it in
+peer-assisted authenticated snapshots, and broadcasts host changes to online
+viewers. The value survives a stopped share, is removed with the room, and is
+not written to SQLite. Ordinary P2P authentication remains unchanged and
+setting-control messages are forbidden in that mode.
 
 After peer-assisted authentication, the host reasserts its local selection
 before reconciling assigned children. A viewer records the snapshot or update
 before applying its assignment. `ViewerRelay` keeps a synchronously updated
-desired profile and serializes profile changes with stream replacement, so both
+desired setting and serializes setting changes with stream replacement, so both
 an existing child and a later replacement start from the latest target. Inside
-`HostPeer`, initial sender configuration, stream replacement, and profile
-updates share one mutation queue; operations read the latest desired profile at
+`HostPeer`, initial sender configuration, stream replacement, and setting
+updates share one mutation queue; operations read the latest desired setting at
 execution time, giving rapid changes last-wins behavior without versions or
 acknowledgements.
+
+If the host changes quality while signaling cannot accept the room update, its
+current local senders still apply the setting but the UI reports that room sync
+is waiting for reconnect. The next successful host authentication reasserts the
+latest object; no acknowledgement state machine is added.
+
+The optional SFU publisher follows the same boundary: first publication,
+successful track replacement, and live setting changes all configure the real
+`RTCRtpSender`, then retain requested/applied bitrate, frame rate, scale, and
+preference. Configuration rejection uses the existing rollback/fail-closed
+path rather than silently leaving the publication on unverified parameters.
 
 This only removes the previous fixed-1080p60 relay envelope. Browser constraints
 and RTP sender parameters remain targets, so achieved bitrate, frame rate,
 resolution, encode work, and cross-hop quality still require the measurement
 matrix below. It does not add or imply shared encoding.
 
-A controlled Chromium 151 loopback smoke used one host, three viewers, and a
-synthetic 640x360/30 source. The downstream relay kept the same peer, sender,
-and signaling generations while its configured ceilings changed from
-8 Mbps/60 fps to 5 Mbps/30 fps and then 3 Mbps/30 fps. Each real
-`setParameters()` call and both host `applyConstraints()` calls succeeded, and
-the leaf kept decoding. This verifies wire ordering, relay propagation, and
-connection preservation only. It does not verify 1080p output, visual quality,
-CPU/GPU cost, TURN, public networks, or endurance.
+A controlled Chrome 151 loopback smoke used one host, three viewers, and a
+synthetic 720p30 source. Balanced and clarity settings reached every
+participant; every baseline active outbound video sender displayed the matching
+requested/applied preference; peer-connection fingerprints stayed unchanged;
+and every viewer's decoded-frame and `requestVideoFrameCallback` counters grew
+after each change. The harness brought each viewer page to the foreground for
+its render check because Chrome throttles background frame callbacks. Host
+fanout stayed at two and relay fanout at one. This is control and continuity
+evidence only, not visual-quality, full-resolution, load, TURN, public-network,
+or endurance evidence.
 
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
@@ -280,9 +295,10 @@ existing screen-audio track when the browser provides one. SVC/simulcast,
 custom encoded transport, FEC changes, multi-tree striping, transcoding,
 background mobile relay, and automatic SFU migration are excluded.
 
-Run 1, 3, 5, and 8 viewers for 30 minutes across the 1080p60, 1080p30, and
-720p30 profiles under controlled per-edge RTT at or below 40 ms and loss at or
-below 1%. Record topology generation and depth, selected candidate type, host
+Run 1, 3, 5, and 8 viewers for 30 minutes across the three recommended ceiling
+combinations, plus any advanced combination proposed for production, under
+controlled per-edge RTT at or below 40 ms and loss at or below 1%. Record
+topology generation and depth, selected candidate type, host
 and relay upload, packets lost, jitter, frames encoded/decoded/dropped, total
 encode/decode time, decoded FPS, `qualityLimitationReason`, first picture,
 reparent time, CPU, GPU, and glass-to-glass latency.

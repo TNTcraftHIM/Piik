@@ -11,9 +11,10 @@ custom packet-forwarding protocol. Real multi-viewer use later degraded severely
 The product now also has a hard target that a broadcaster must never carry more
 than two outgoing media edges.
 
-Draft PR #12 proposes an independently reversible deployment-level SFU under
-ADR-0003, but it is not merged or accepted. Making an SFU the normal path would
-move every viewer's egress cost to the server. TeamSpeak-style shared encoding
+Closed PR #12's explicit whole-room SFU proposal under ADR-0003 is historical
+and superseded. Merged PR #17 instead supplies ADR-0005's default-off automatic
+optional-SFU fallback. Making that fallback the normal path would still move
+every viewer's egress cost to the server. TeamSpeak-style shared encoding
 reduces host encode work but still sends one network copy to every viewer, so it
 cannot meet the new fanout target alone.
 
@@ -67,17 +68,23 @@ downstream `RTCPeerConnection`. The browser therefore decodes and re-encodes at
 every relay hop. Existing audio follows the same stream when capture provides
 it; the experiment does not invent a separate audio protocol.
 
-The peer-assisted wire accepts exactly `1080p60`, `1080p30`, and `720p30` as
-room quality profile IDs. The signaling server holds the current ID in bounded,
-per-room memory only; it is not persisted. An authenticated peer-assisted
-snapshot includes the current value, the host reasserts its local choice before
-reconciling assigned children, and live changes are sent to all online viewers.
-The viewer relay keeps one desired profile for its current and future child.
-Sender setup, stream replacement, and profile changes are serialized inside
-each `HostPeer`, with the latest desired value winning. The ordinary P2P
-authenticated wire remains unchanged and profile-control messages are forbidden
-in that mode. This coordinates sender targets; it does not prove achieved
-resolution, bitrate, frame rate, or resource cost.
+The authoritative peer-assisted wire value is one exact `QualitySettings`
+object, not a profile ID. It accepts only 720p/1080p/1440p, integer 15-60 fps,
+integer 2-12 Mbps, and clarity/balanced/fluid preference, with missing, extra,
+or out-of-range fields rejected. The three presets remain UI recommendations,
+not protocol states. The server keeps the latest object in bounded per-room
+memory only; it is not persisted. Authentication carries it, the host reasserts
+its local value before reconciling children, and live changes reach online
+viewers without an acknowledgement protocol.
+
+`HostPeer`, the current and future viewer relay sender, and an enabled SFU
+publisher consume that same last-wins setting. Initial sender setup, successful
+track replacement, and live changes use the same serialized mutation path and
+read back requested/applied bitrate, frame rate, scale, and preference. A
+rejected mutation rolls back or fails closed through the existing route
+controller. The ordinary P2P authenticated wire remains unchanged and rejects
+room-setting messages. These are sender ceilings and preferences, not proof of
+achieved resolution, bitrate, frame rate, or resource cost.
 
 Encoded Transform, DataChannel media, WebCodecs rendering, dummy-sender byte
 replacement, custom congestion control, codec ladders, multiple trees, mobile
@@ -102,9 +109,10 @@ viewing remains required.
 
 ## Acceptance Gate
 
-Test 1, 3, 5, and 8 viewers for 30 minutes across the 1080p60, 1080p30, and
-720p30 profiles with controlled per-edge RTT at or below 40 ms and loss at or
-below 1%. Current desktop Chrome and Edge form the relay cohort; current Android
+Test 1, 3, 5, and 8 viewers for 30 minutes across the three recommended ceiling
+combinations, plus any advanced combination proposed for production, with
+controlled per-edge RTT at or below 40 ms and loss at or below 1%. Current
+desktop Chrome and Edge form the relay cohort; current Android
 Chrome and iOS Safari join last as leaf checks. The protocol has no
 relay-capability bit, so controlled join order is the only enforcement and this
 spike is not safe for arbitrary-user deployment.
@@ -120,8 +128,8 @@ The proposal advances only if every condition holds:
   zero-copy forwarding;
 - excluding explicit TURN paths, the application server carries no media;
 - host and relay upload remain within 20% of `childCount * observedBitrate`;
-- authentication and live profile changes leave every current and future child
-  sender targeting the same latest room profile without altering the P2P wire;
+- authentication and live setting changes leave every current and future child
+  sender targeting the same latest room setting without altering the P2P wire;
 - first picture is at most 3 seconds, a 60 fps run does not remain below 50
   decoded fps for more than 5 seconds, and depth-four p95 glass-to-glass
   latency is at most 350 ms;
@@ -180,11 +188,12 @@ Negative:
 
 - ADR-0001 remains the accepted production baseline. This proposal narrows its
   peer-tree rejection only enough to run an isolated experiment.
-- Draft ADR-0003 in PR #12 remains the separate optional-SFU proposal. This
-  experiment neither accepts/removes it nor implements the required automatic
-  P2P/peer-assisted/SFU route controller.
+- ADR-0003/PR #12 is retained only as the rejected/superseded explicit
+  whole-room SFU history. ADR-0005 and merged PR #17 own the default-off
+  automatic optional-SFU fallback; this ADR does not accept that route for
+  production.
 - If a later ADR accepts peer-assisted media, it must state exactly which parts
-  of ADR-0001 and ADR-0003 it supersedes.
+  of ADR-0001 and ADR-0005 it supersedes.
 
 ## References
 
