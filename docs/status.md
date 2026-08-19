@@ -19,11 +19,9 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 
 ## Verified Evidence
 
-- Release `769de201f7cc` passed CI/hygiene/typecheck, 22 files/274 tests, both builds, and zero production dependency vulnerabilities.
-- Chrome 151 synthetic `1/3/5/8` kept host/relay edges at 2/1 and all viewers decoding; slowest first frame was 1.05 seconds and one three-viewer relay close recovered in 5.32 seconds.
-- Synthetic Chrome 151 720p30 propagated balanced/clarity to one host and three viewers without peer changes; decoding and 2/1 fanout continued. This proves control continuity only.
+- Release `769de201f7cc` passed CI/hygiene/typecheck, 274 tests, both builds, zero production dependency vulnerabilities, atomic health/access/bundle/SQLite/service/log checks, and responsive 320/375/390 px checks without live media; rollback is ready.
+- Chrome 151 synthetic `1/3/5/8` and 720p30 quality-change runs kept 2/1 fanout and decoding; slowest first frame was 1.05 seconds and one relay close recovered in 5.32 seconds. This is control evidence only.
 - Chrome 151/LiveKit localhost A/B measured cold active/render at 1.481/2.257 seconds versus standby 0.200/0.320 with host edges at two. It includes SDK/prewarm and is not public-network evidence.
-- Atomic activation passed health/access, exact bundle, SQLite preservation, services, and logs; the old release is rollback-ready. Responsive 320/375/390 px checks passed without live media.
 - Host A+B aligns capture/outbound identity, deltas, path, and nullable transport-bound codec/`scalabilityMode`. Authenticated Viewer C is limited to the current ordinary or peer-assisted P2P hop and its connection/revision; two-second windows are at most 2 KiB, sanitized, generation-bound, and read-only. Stale, ambiguous, and SFU-fed evidence fails closed; no raw media metadata is retained.
 - HTTPS/WSS, access and room/WebSocket auth, renewal, public STUN, and authenticated TURN/UDP/TCP relay-only paths pass; TURN/TLS is off.
 - Draft #16/#18/#22/#23/#25/#28 passed isolated experiments only. ADR-0006 reached host setup/one encoder output, then timed out before viewer 1 decoded/rendered.
@@ -34,11 +32,11 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Android Chrome/iOS Safari leaves are unverified; runtime conservatively marks detected mobile/iPad clients as leaves.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
-- Production `769de201f7cc` reportedly sustains native `qualityLimitationReason=bandwidth` and severe blur with one capable LAN/direct viewer; only Host refresh restores quality. Within the five-second grace, stable-clientId Viewer refresh retains its `peerId`/`HostPeer`, while Host refresh rebuilds peers/capture; churn persistence is also reported. This prioritizes but does not prove sender/PC/GCC/capture generation over network or lifecycle causes.
-- ADR-0007 remains incomplete. A+B/C browser support and the reported case are unverified; the controller, `LOW`, and an authenticated SFU last-hop C generation are absent. Weak paths must share one `LOW`; fail closed protects `HIGH` only exceptionally, and an unreliable supported cohort fails acceptance.
+- Production `769de201f7cc` reportedly sustains bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not, and persistence across churn was also reported. This prioritizes, but does not prove, host sender/PC/GCC/capture generation.
+- ADR-0007 remains incomplete: the reported case/A+B/C matrix is unverified; the controller, `LOW`, and SFU last-hop C are absent. Weak paths share one `LOW`, and an unreliable supported cohort fails acceptance.
 - Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
-- Pinned LiveKit 1.13.5 Dynacast enables all qualities at or below the room's maximum request, so a `HIGH` root is expected to keep `LOW` enabled. It remains a bounded rejection/verification spike, not evidence that on-demand `LOW` can stop.
+- Web P2P simulcast and pinned LiveKit 1.13.5/JS 2.22.0 Dynacast are static no-go: no receiver RID-selection/shared-encoder contract, and `HIGH` cumulatively enables `LOW`. No Chrome/resource-release claim follows; current SFU publishing is non-simulcast/Dynacast-off. SVC is next.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
 ## Next Milestone
@@ -49,8 +47,8 @@ A+B while separately rebuilding one `HostPeer`, replacing capture, and fully
 refreshing Host. Only a proven stuck generation justifies guarded recovery; never
 reconnect periodically, force AV1, or raise ceilings blindly.
 
-After that reproduction, test simulcast/LiveKit/SVC in order and stop at the
-first fit before custom `LOW`, independently of ADR-0006. Diagnose audio A/B/C,
+After that reproduction, run the bounded SVC capability gate and stop if it
+fits before custom `LOW`, independently of ADR-0006. Diagnose audio A/B/C,
 sync, and voice-source leakage in parallel when it does not displace that P0;
 `maxBitrate` is not a quality fix. WebRTC/LiveKit owns congestion/layers; the app
 owns two-state policy. An isolated exact room later gates peer/SFU UDP and

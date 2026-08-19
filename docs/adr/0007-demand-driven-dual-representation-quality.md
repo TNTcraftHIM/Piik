@@ -104,35 +104,45 @@ selection. The existing mobile/iPad heuristic remains limited to conservative
 relay-capacity admission. Browser capability queries can guide a bounded probe,
 but runtime encode/decode behavior is authoritative.
 
-## Deferred Capability Spikes
+## Standard Capability Short-Circuits
 
-These spikes start only after the A+B/C evidence contract is trustworthy. They
-run in order and stop at the first accepted path, may proceed independently of
-ADR-0006 native-sender revalidation, and precede any custom dual-representation
-media implementation. They do not change the accepted two-state controller:
+Inspect standard capabilities in order and stop at the first accepted path
+before custom dual-representation media. Static API or pinned-protocol
+incompatibilities can close a candidate without a browser run; runtime media
+gates start only after the A+B/C evidence contract is trustworthy. These
+results do not change the accepted two-state controller:
 
-1. Negotiate exactly two `HIGH`/`LOW` simulcast encodings on one sender in its
-   initial envelope, with `LOW` inactive. Verify requested/applied parameters,
-   per-RID traffic, restart behavior, and actual encoder/CPU/GPU release when
-   `LOW` is inactive. W3C `active=false` stops that encoding from being sent;
-   it does not guarantee that a physical encoder or GPU resource is released.
-   Separate direct PeerConnections have no portable shared-encode contract.
-2. On the SFU path, publish at most two LiveKit simulcast
-   representations and let each one or two roots select independently. Treat
-   Dynacast as a bounded rejection/verification spike, not an assumed fit. The
-   pinned server 1.13.5 aggregates the maximum quality requested across all
-   subscribers/nodes and marks every quality `q <= maxQuality` enabled; client
-   2.22.0 applies those flags to simulcast encoding `active`. Thus any `HIGH`
-   root is expected to keep `LOW` enabled. Firefox disabling is only a roughly
-   10 bps, 2 fps, 4x-scale compatibility reduction. Accept this path only if
-   actual per-RID bytes/frames plus host CPU/GPU/encoder evidence prove that
-   `LOW` stops while `HIGH` continues; otherwise reject it for the exact
-   on-demand-`LOW` requirement.
-3. Run a bounded SVC viability spike and compare the applied
-   codec/`scalabilityMode` with Media Capabilities `powerEfficient` and the
-   game-performance matrix. If simulcast and LiveKit/Dynacast fail while this
-   path meets current on-demand selection and resource gates, adopt it and stop
-   before custom media. Reject silent software fallback.
+1. **Web P2P simulcast: rejected
+   (`no-go-web-p2p-simulcast-layer-selection`).** WebRTC exposes
+   `getParameters()` and `setParameters()` on `RTCRtpSender`, including the
+   sender-side `active` flag, but `RTCRtpReceiver` exposes only
+   `getParameters()` and no standard per-RID layer-selection setter. A sender
+   toggle is scoped to that sender and PeerConnection; separate viewer
+   PeerConnections have no portable shared-encoder contract. The standard API
+   therefore cannot provide one shared `HIGH`/`LOW` encode whose direct P2P
+   receivers independently select a layer. Chrome was not run because the
+   required product semantic is absent. In particular, the normative rule that
+   `active=false` stops sending an encoding is not evidence that its physical
+   encoder, CPU work, or GPU allocation is released.
+2. **Pinned LiveKit Dynacast: rejected
+   (`no-go-livekit-1.13.5-dynacast-cumulative-layers`).** Server 1.13.5 takes
+   the maximum quality requested across subscribers and subscriber nodes, then
+   enables every quality `q <= maxQuality`; client 2.22.0 applies those flags to
+   simulcast encoding `active`. Any root requesting `HIGH` consequently keeps
+   `LOW` enabled. This cannot satisfy healthy-room `HIGH` only, one shared `LOW`
+   while a weak cohort exists, and `LOW` off after that cohort recovers. The
+   Firefox client does not rely on `active=false` being honored and also reduces
+   a disabled encoding to 4x scale and 10 bps; it writes non-standard
+   `maxFrameRate`, so a 2 fps cap or a stopped layer cannot be relied upon. No
+   browser run could change this pinned control contract, so none was run.
+   Screener's current publisher still sets `simulcast: false` and constructs a
+   Room with Dynacast at its default `false`;
+   this result is a capability rejection, not a runtime behavior claim.
+3. **SVC: next bounded candidate.** Compare the applied codec and
+   `scalabilityMode` with Media Capabilities `powerEfficient` and the
+   game-performance matrix. Adopt it only if it meets the on-demand selection
+   and resource gates, then stop before custom media. Reject silent software
+   fallback.
 
 None may reuse PR #28's minimum-of-two target, bypass a per-edge stock WebRTC
 congestion controller, or expand the representation limit beyond two.
