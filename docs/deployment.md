@@ -14,9 +14,9 @@ current controller's automatic final media fallback. This capacity is dormant un
 the peer-assisted experiment, or required STUN discovery. It is configured with
 ICE/UDP only; the candidate has no ordinary TURN or media-TCP configuration.
 
-Production `d6c8aa06dbd` runs this candidate for exact room `1` on the existing
-shared public IP. The unchanged `769de201f7cc` release, environment backup and
-coturn relay remain rollback-only. This is a bounded production smoke, not
+Production `bbe4654a7a9b` runs this candidate for exact room `1` on the existing
+shared public IP. The unchanged `9610032fc5f5` release, v1 database/environment
+backup, and coturn relay remain rollback-only. This is a bounded production smoke, not
 clean-port or broad-rollout acceptance; the media procedures below still apply.
 
 ## Topology and prerequisites
@@ -46,6 +46,13 @@ npm ci
 npm run check
 npm start
 ```
+
+Each immutable release must own an independent dependency tree. Never hard-link
+`node_modules` or another file that deployment may `chown`, `chmod`, replace, or
+remove: metadata changes would also mutate the rollback release. A copy or
+copy-on-write reflink is acceptable only after an inode audit confirms that the
+old and new regular-file sets have zero shared inodes. Do not recursively change
+permissions until that check passes.
 
 Run `npm start` under a service supervisor that injects the environment, restarts
 on failure, and applies bounded logs. For a simple untracked environment file,
@@ -251,6 +258,16 @@ maintenance boundary. If rollback is required, stop the v2 service, preserve the
 v2 database separately for diagnosis, restore the exact v1 backup with service
 ownership and mode `0600`, verify integrity and `user_version = 1`, and only then
 start the old binary. Never point the old binary at the migrated v2 file.
+
+Production completed this migration at 2026-08-20 03:06 +08 on exact
+`bbe4654a7a9b`; its artifact SHA-256 is
+`3C09AF81BCE68B51DD9E36E1C253A880D8D6F24BB498A090CF815AB196C392AA`.
+A stopped, read-only-verified v1 backup retained all four rooms;
+the v2 integrity/schema and locked-private digest checks passed, including room
+`1`. Host admission and a cookie-free private Viewer denial also passed. An
+earlier artifact attempt was rolled back after hard-linked dependencies let a
+permission change make the rollback release unreadable for 3m11s; the final release has an
+independent dependency tree and zero shared regular-file inodes.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
