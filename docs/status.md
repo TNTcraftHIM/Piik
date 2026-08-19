@@ -61,7 +61,8 @@ After media gates, UI adds local volume/mute, names/roster, local endpoint
 details, and RTP loss rate.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
-resource, quality, latency, recovery, and browser/mobile-leaf matrix.
+resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
+20-viewer gate must pass before the current default eight changes to target 20.
 
 Observed disconnects retain 5-second grace plus at most 3 seconds to a decodable
 picture; silent partitions add detection delay.
