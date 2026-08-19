@@ -30,6 +30,7 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Chrome 151 CDP checks at 320/375/390 CSS px keep the two idle-stage actions equal, on one row, 44 px high, and free of horizontal overflow. The Viewer waiting page also has no overflow; its details checkbox starts false, changes locally, and resets after navigation. These checks cover idle/waiting states, not live media.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
+- Draft native ladder #16/#18/#22/#23/#25/#28 passed a bounded 720p30 two-leg loop: one WebCodecs object accepted the lower stock-GCC target, one isolated loss recovered, and leg 2 stayed clean. Research-only.
 
 ## Unverified Boundaries
 
@@ -38,8 +39,8 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real screen/game audio, heterogeneous machines/networks, mobile lifecycle, the new production quality/pause cycle, room `1` stop/re-publish, and sustained profiles remain unverified.
 - Earlier production showed severe degradation across all profiles. The new controls permit clarity/balanced comparison, but a controlled 1/2/3-viewer and TURN sample must still isolate capture, CPU, path, and receiver limits before any quality claim or automatic controller.
-- Browser relays do not share encoding. Encoded objects, custom congestion control, multiple trees, and network coding remain separate measured candidates.
-- The endpoint budget is host/relay at most two downstream edges; a native engine must prove shared encoding. The browser path remains host two/viewer one and re-encodes per relay. Striping and multi-parent assembly are only recorded.
+- Browser relays re-encode. The native ladder proves one WebCodecs object, not one physical/hardware encode. Stock GCC plus RTX is no-go; no-RTX passed one controlled loss but weakens statistics. Audio, heterogeneous estimates, broader loss, direct/TURN, reconnect, browser diversity, product wiring, striping, and multi-parent assembly remain unverified.
+- The endpoint budget remains host/relay at most two downstream edges; the browser path is host two/viewer one.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
 ## Next Milestone
@@ -57,6 +58,9 @@ picture, about 8 seconds total. Silent partitions include their detection delay.
 
 ADR-0004 fails closed. Native shared encode and packet/layer striping remain
 separate experiments, not ways to relabel a failed browser route.
+
+The native ladder stops at #28. Do not bypass stock GCC/RTX with custom
+transport/control; no-RTX remains research-only.
 
 ## Blockers And Decisions
 
