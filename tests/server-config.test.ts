@@ -15,6 +15,165 @@ describe("server configuration", () => {
     expect(config.turnUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
+    expect(config.livekitFallback).toBeUndefined();
+  });
+
+  it("enables LiveKit fallback only for a complete credential tuple", () => {
+    const config = loadConfig({
+      PEER_ASSISTED_MEDIA: "true",
+      LIVEKIT_URL: " ws://livekit.test:7880 ",
+      LIVEKIT_API_KEY: " test-key ",
+      LIVEKIT_API_SECRET: ` ${"s".repeat(32)} `,
+    });
+
+    expect(config.livekitFallback).toEqual({
+      url: "ws://livekit.test:7880",
+      apiKey: "test-key",
+      apiSecret: "s".repeat(32),
+      maxSfuRootsPerRoom: 2,
+    });
+  });
+
+  it.each(["1", "2"])(
+    "accepts an SFU root limit of %s when fallback is configured",
+    (maxSfuRootsPerRoom) => {
+      const config = loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+        MAX_SFU_ROOTS_PER_ROOM: maxSfuRootsPerRoom,
+      });
+
+      expect(config.livekitFallback?.maxSfuRootsPerRoom).toBe(
+        Number(maxSfuRootsPerRoom),
+      );
+    },
+  );
+
+  it("does not activate fallback from the root limit alone", () => {
+    expect(
+      loadConfig({ MAX_SFU_ROOTS_PER_ROOM: "2" }).livekitFallback,
+    ).toBeUndefined();
+  });
+
+  it("requires peer-assisted media for LiveKit fallback", () => {
+    expect(() =>
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "false",
+        LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+      }),
+    ).toThrow("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
+  });
+
+  it.each([
+    { LIVEKIT_URL: "wss://livekit.test" },
+    { LIVEKIT_API_KEY: "test-key" },
+    { LIVEKIT_API_SECRET: "s".repeat(32) },
+    {
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "test-key",
+    },
+  ])("rejects a partial LiveKit credential tuple", (partial) => {
+    expect(() => loadConfig(partial)).toThrow(
+      "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+    );
+  });
+
+  it.each([
+    "https://livekit.test",
+    "wss://user:pass@livekit.test",
+    "wss://livekit.test/rtc",
+    "wss://livekit.test?token=value",
+    "wss://livekit.test#fragment",
+  ])("rejects an invalid LiveKit origin: %s", (url) => {
+    expect(() =>
+      loadConfig({
+        LIVEKIT_URL: url,
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+      }),
+    ).toThrow("LIVEKIT_URL");
+  });
+
+  it("requires wss for LiveKit fallback in production", () => {
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "production",
+        PUBLIC_BASE_URL: "https://share.test",
+        LIVEKIT_URL: "ws://livekit.test:7880",
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+      }),
+    ).toThrow("LIVEKIT_URL must use wss in production");
+  });
+
+  it("rejects a short LiveKit API secret and invalid root limits", () => {
+    const fallback = {
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "s".repeat(32),
+    };
+
+    expect(() =>
+      loadConfig({ ...fallback, LIVEKIT_API_SECRET: "too-short" }),
+    ).toThrow("LIVEKIT_API_SECRET must contain at least 32 bytes");
+    for (const maxSfuRootsPerRoom of ["0", "3", "1.5"]) {
+      expect(() =>
+        loadConfig({
+          ...fallback,
+          MAX_SFU_ROOTS_PER_ROOM: maxSfuRootsPerRoom,
+        }),
+      ).toThrow("MAX_SFU_ROOTS_PER_ROOM");
+    }
+  });
+
+  it("keeps production STUN and TURN mandatory with LiveKit configured", () => {
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "production",
+        PUBLIC_BASE_URL: "https://share.test",
+        PEER_ASSISTED_MEDIA: "true",
+        LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+      }),
+    ).toThrow("TURN is required in production");
+  });
+
+  it.each([
+    {
+      ACCESS_PASSWORD: "x".repeat(32),
+      TURN_URLS: "turn:turn.test:3478",
+      TURN_SHARED_SECRET: "x".repeat(32),
+    },
+    {
+      ACCESS_PASSWORD: "x".repeat(32),
+      PEER_ASSISTED_MEDIA: "true",
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "x".repeat(32),
+    },
+    {
+      TURN_URLS: "turn:turn.test:3478",
+      TURN_SHARED_SECRET: "x".repeat(32),
+      PEER_ASSISTED_MEDIA: "true",
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "x".repeat(32),
+    },
+    {
+      PEER_ASSISTED_MEDIA: "true",
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "x".repeat(32),
+      LIVEKIT_API_SECRET: "x".repeat(32),
+    },
+  ])("rejects reused infrastructure secrets", (environment) => {
+    expect(() => loadConfig(environment)).toThrow(
+      "ACCESS_PASSWORD, TURN_SHARED_SECRET, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
+    );
   });
 
   it("requires an explicit boolean to enable peer-assisted media", () => {

@@ -6,6 +6,24 @@ function connected(...peerIds: string[]): Set<string> {
   return new Set(peerIds);
 }
 
+function addRelayViewer(
+  topology: PeerRelayTopology,
+  roomId: string,
+  peerId: string,
+  connectedPeerIds: ReadonlySet<string>,
+) {
+  const changes = topology.addViewer(roomId, peerId, connectedPeerIds);
+  return [
+    ...changes,
+    ...topology.setViewerRelayCapacity(
+      roomId,
+      peerId,
+      1,
+      connectedPeerIds,
+    ),
+  ];
+}
+
 function expectValidTree(
   topology: PeerRelayTopology,
   roomId: string,
@@ -42,6 +60,98 @@ function expectValidTree(
 }
 
 describe("PeerRelayTopology", () => {
+  it("keeps viewers as leaves until a relay slot is explicitly advertised", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "viewer-a", "viewer-b", "viewer-c");
+    topology.setHost("room", "host", peers);
+    topology.addViewer("room", "viewer-a", peers);
+    topology.addViewer("room", "viewer-b", peers);
+    topology.addViewer("room", "viewer-c", peers);
+
+    expect(topology.getAssignment("room", "viewer-c")?.parentPeerId).toBeNull();
+    expect(
+      topology.setViewerRelayCapacity("room", "viewer-a", 0, peers),
+    ).toEqual([]);
+
+    const changes = topology.setViewerRelayCapacity(
+      "room",
+      "viewer-a",
+      1,
+      peers,
+    );
+    expect(changes.map(({ peerId }) => peerId).sort()).toEqual([
+      "viewer-a",
+      "viewer-c",
+    ]);
+    expect(topology.getAssignment("room", "viewer-a")).toEqual({
+      parentPeerId: "host",
+      childPeerIds: ["viewer-c"],
+    });
+    expect(topology.getAssignment("room", "viewer-b")?.parentPeerId).toBe(
+      "host",
+    );
+  });
+
+  it("does not migrate healthy edges when a relay withdraws capacity", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "viewer-a", "viewer-b", "viewer-c", "viewer-d");
+    topology.setHost("room", "host", peers);
+    topology.addViewer("room", "viewer-a", peers);
+    topology.addViewer("room", "viewer-b", peers);
+    topology.setViewerRelayCapacity("room", "viewer-a", 1, peers);
+    topology.addViewer("room", "viewer-c", peers);
+
+    expect(
+      topology.setViewerRelayCapacity("room", "viewer-a", 0, peers),
+    ).toEqual([]);
+    topology.addViewer("room", "viewer-d", peers);
+
+    expect(topology.getAssignment("room", "viewer-c")?.parentPeerId).toBe(
+      "viewer-a",
+    );
+    expect(topology.getAssignment("room", "viewer-d")?.parentPeerId).toBeNull();
+  });
+
+  it("does not reassign a failed edge through a viewer leaf", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "viewer-a", "viewer-b", "viewer-c");
+    topology.setHost("room", "host", peers);
+    topology.addViewer("room", "viewer-a", peers);
+    topology.addViewer("room", "viewer-b", peers);
+    topology.setViewerRelayCapacity("room", "viewer-a", 1, peers);
+    topology.addViewer("room", "viewer-c", peers);
+
+    expect(
+      topology.reassignViewer(
+        "room",
+        "viewer-c",
+        peers,
+        new Set(["viewer-a"]),
+      ),
+    ).toBeUndefined();
+    expect(topology.getAssignment("room", "viewer-c")?.parentPeerId).toBe(
+      "viewer-a",
+    );
+  });
+
+  it("requires a reconnecting viewer to advertise capacity again", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "viewer-a", "viewer-b", "viewer-c", "viewer-d");
+    topology.setHost("room", "host", peers);
+    topology.addViewer("room", "viewer-a", peers);
+    topology.addViewer("room", "viewer-b", peers);
+    topology.setViewerRelayCapacity("room", "viewer-a", 1, peers);
+    topology.addViewer("room", "viewer-c", peers);
+
+    topology.addViewer("room", "viewer-a", peers);
+    topology.addViewer("room", "viewer-d", peers);
+
+    expect(topology.getAssignment("room", "viewer-c")?.parentPeerId).toBe(
+      "viewer-a",
+    );
+    expect(topology.getAssignment("room", "viewer-d")?.parentPeerId).toBeNull();
+  });
+
   it("fills the shallowest stable slots with bounded fanout", () => {
     const topology = new PeerRelayTopology();
     const roomId = "room";
@@ -50,7 +160,7 @@ describe("PeerRelayTopology", () => {
 
     const viewers = ["viewer-a", "viewer-b", "viewer-c", "viewer-d", "viewer-e"];
     for (const viewer of viewers) {
-      topology.addViewer(roomId, viewer, connected(host, ...viewers));
+      addRelayViewer(topology, roomId, viewer, connected(host, ...viewers));
     }
 
     expect(topology.getAssignment(roomId, host)).toEqual({
@@ -81,7 +191,8 @@ describe("PeerRelayTopology", () => {
     );
     topology.setHost(roomId, hostPeerId, connected(hostPeerId));
     for (const peerId of viewerPeerIds) {
-      topology.addViewer(
+      addRelayViewer(
+        topology,
         roomId,
         peerId,
         connected(hostPeerId, ...viewerPeerIds),
@@ -91,23 +202,63 @@ describe("PeerRelayTopology", () => {
     expect(expectValidTree(topology, roomId, hostPeerId, viewerPeerIds)).toBe(4);
   });
 
+  it("uses the same depth-four bound for initial admission", () => {
+    const topology = new PeerRelayTopology();
+    const roomId = "room";
+    const peerIds = [
+      "host",
+      "viewer-a",
+      "viewer-b",
+      "viewer-c",
+      "viewer-d",
+      "viewer-e",
+      "viewer-f",
+    ];
+    const peers = connected(...peerIds);
+    topology.setHost(roomId, "host", peers);
+    topology.addViewer(roomId, "viewer-a", peers);
+    topology.setViewerRelayCapacity(roomId, "viewer-a", 1, peers);
+    topology.addViewer(roomId, "viewer-b", peers);
+    for (const peerId of ["viewer-c", "viewer-d", "viewer-e"]) {
+      topology.addViewer(roomId, peerId, peers);
+      topology.setViewerRelayCapacity(roomId, peerId, 1, peers);
+    }
+    topology.addViewer(roomId, "viewer-f", peers);
+
+    expect(topology.getAssignment(roomId, "viewer-e")?.parentPeerId).toBe(
+      "viewer-d",
+    );
+    expect(topology.getAssignment(roomId, "viewer-f")?.parentPeerId).toBeNull();
+    expect(
+      expectValidTree(
+        topology,
+        roomId,
+        "host",
+        peerIds.slice(1, -1),
+      ),
+    ).toBe(4);
+  });
+
   it("leaves a disconnected viewer subtree sticky during its grace window", () => {
     const topology = new PeerRelayTopology();
     const roomId = "room";
     topology.setHost(roomId, "host", connected("host"));
-    topology.addViewer(roomId, "viewer-a", connected("host", "viewer-a"));
-    topology.addViewer(
+    addRelayViewer(topology, roomId, "viewer-a", connected("host", "viewer-a"));
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-b",
       connected("host", "viewer-a", "viewer-b"),
     );
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-c",
       connected("host", "viewer-a", "viewer-b", "viewer-c"),
     );
 
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-d",
       connected("host", "viewer-b", "viewer-c", "viewer-d"),
@@ -125,23 +276,27 @@ describe("PeerRelayTopology", () => {
     const topology = new PeerRelayTopology();
     const roomId = "room";
     topology.setHost(roomId, "host", connected("host"));
-    topology.addViewer(roomId, "viewer-a", connected("host", "viewer-a"));
-    topology.addViewer(
+    addRelayViewer(topology, roomId, "viewer-a", connected("host", "viewer-a"));
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-b",
       connected("host", "viewer-a", "viewer-b"),
     );
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-c",
       connected("host", "viewer-a", "viewer-b", "viewer-c"),
     );
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-d",
       connected("host", "viewer-a", "viewer-b", "viewer-c", "viewer-d"),
     );
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-e",
       connected(
@@ -180,13 +335,15 @@ describe("PeerRelayTopology", () => {
     const topology = new PeerRelayTopology();
     const roomId = "room";
     topology.setHost(roomId, "host", connected("host"));
-    topology.addViewer(roomId, "viewer-a", connected("host", "viewer-a"));
-    topology.addViewer(
+    addRelayViewer(topology, roomId, "viewer-a", connected("host", "viewer-a"));
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-b",
       connected("host", "viewer-a", "viewer-b"),
     );
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       roomId,
       "viewer-c",
       connected("host", "viewer-a", "viewer-b", "viewer-c"),
@@ -203,7 +360,8 @@ describe("PeerRelayTopology", () => {
       "viewer-b",
     ]);
 
-    const reconnectChanges = topology.addViewer(
+    const reconnectChanges = addRelayViewer(
+      topology,
       roomId,
       "viewer-c",
       connected("host", "viewer-b", "viewer-c"),
@@ -223,14 +381,15 @@ describe("PeerRelayTopology", () => {
     const roomId = "room";
     topology.setHost(roomId, "host", connected("host"));
     for (const peerId of ["a", "b", "c", "d"]) {
-      topology.addViewer(
+      addRelayViewer(
+        topology,
         roomId,
         peerId,
         connected("host", "a", "b", "c", "d"),
       );
     }
 
-    topology.addViewer(roomId, "e", connected("host", "c", "d", "e"));
+    addRelayViewer(topology, roomId, "e", connected("host", "c", "d", "e"));
     expect(topology.getAssignment(roomId, "e")?.parentPeerId).toBeNull();
 
     topology.removeViewer(roomId, "a", connected("host", "c", "d", "e"));
@@ -242,7 +401,7 @@ describe("PeerRelayTopology", () => {
 
   it("keeps pending viewers unassigned until a host arrives", () => {
     const topology = new PeerRelayTopology();
-    topology.addViewer("room", "viewer-a", connected("viewer-a"));
+    addRelayViewer(topology, "room", "viewer-a", connected("viewer-a"));
     expect(topology.getAssignment("room", "viewer-a")?.parentPeerId).toBeNull();
 
     topology.setHost(
@@ -258,17 +417,20 @@ describe("PeerRelayTopology", () => {
   it("updates only direct root parents when the host identity changes", () => {
     const topology = new PeerRelayTopology();
     topology.setHost("room", "host-a", connected("host-a"));
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       "room",
       "viewer-a",
       connected("host-a", "viewer-a"),
     );
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       "room",
       "viewer-b",
       connected("host-a", "viewer-a", "viewer-b"),
     );
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       "room",
       "viewer-c",
       connected("host-a", "viewer-a", "viewer-b", "viewer-c"),
@@ -291,10 +453,123 @@ describe("PeerRelayTopology", () => {
     );
   });
 
+  it("reassigns a failed edge deterministically without entering its subtree", () => {
+    const topology = new PeerRelayTopology();
+    const peers = ["host", "a", "b", "c", "d", "e"];
+    topology.setHost("room", "host", connected(...peers));
+    for (const peerId of peers.slice(1)) {
+      addRelayViewer(topology, "room", peerId, connected(...peers));
+    }
+
+    expect(topology.getAssignment("room", "e")?.parentPeerId).toBe("c");
+    const changes = topology.reassignViewer(
+      "room",
+      "e",
+      connected(...peers),
+      new Set(["c"]),
+      4,
+    );
+
+    expect(changes?.map(({ peerId }) => peerId).sort()).toEqual([
+      "c",
+      "d",
+      "e",
+    ]);
+    expect(topology.getAssignment("room", "e")?.parentPeerId).toBe("d");
+    expect(expectValidTree(topology, "room", "host", peers.slice(1))).toBe(3);
+  });
+
+  it("does not mutate when every bounded reparent candidate is excluded", () => {
+    const topology = new PeerRelayTopology();
+    topology.setHost("room", "host", connected("host", "a", "b", "c"));
+    for (const peerId of ["a", "b", "c"]) {
+      addRelayViewer(
+        topology,
+        "room",
+        peerId,
+        connected("host", "a", "b", "c"),
+      );
+    }
+    const before = topology.getAssignments("room");
+
+    expect(
+      topology.reassignViewer(
+        "room",
+        "c",
+        connected("host", "a", "b", "c"),
+        new Set(["host", "a", "b"]),
+        4,
+      ),
+    ).toBeUndefined();
+    expect(topology.getAssignments("room")).toEqual(before);
+  });
+
+  it("rejects a reparent whose deepest descendant would exceed max depth", () => {
+    const topology = new PeerRelayTopology();
+    const peers = ["host", "a", "b", "c", "d", "e", "f", "g", "h"];
+    topology.setHost("room", "host", connected(...peers));
+    for (const peerId of peers.slice(1)) {
+      addRelayViewer(topology, "room", peerId, connected(...peers));
+    }
+    const before = topology.getAssignments("room");
+
+    expect(topology.getAssignment("room", "g")?.parentPeerId).toBe("e");
+    expect(
+      topology.reassignViewer(
+        "room",
+        "g",
+        connected(...peers),
+        new Set(["e"]),
+        4,
+      ),
+    ).toBeUndefined();
+    expect(topology.getAssignments("room")).toEqual(before);
+  });
+
+  it("does not attach a pending subtree beyond the initial-admission depth bound", () => {
+    const topology = new PeerRelayTopology();
+    const initialPeers = ["host", "a", "b", "c", "d", "e", "f", "g", "h"];
+    topology.setHost("room", "host", connected(...initialPeers));
+    for (const peerId of initialPeers.slice(1)) {
+      addRelayViewer(topology, "room", peerId, connected(...initialPeers));
+    }
+    expect(topology.getAssignment("room", "e")).toMatchObject({
+      parentPeerId: "c",
+      childPeerIds: ["g"],
+    });
+
+    topology.removeViewer(
+      "room",
+      "c",
+      connected("host", "a", "b", "d", "f", "h"),
+    );
+    topology.removeViewer(
+      "room",
+      "h",
+      connected("host", "a", "b", "d", "f"),
+    );
+    topology.addViewer(
+      "room",
+      "x",
+      connected("host", "a", "b", "d", "f", "x"),
+    );
+
+    topology.addViewer(
+      "room",
+      "e",
+      connected("host", "a", "b", "d", "e", "f", "g", "x"),
+    );
+
+    expect(topology.getAssignment("room", "e")?.parentPeerId).toBeNull();
+    expect(topology.getAssignment("room", "g")?.parentPeerId).toBe("e");
+    expect(topology.getAssignment("room", "f")?.childPeerIds).toEqual([]);
+  });
+
   it("drops all assignments when a room is deleted", () => {
     const topology = new PeerRelayTopology();
     topology.setHost("room", "host-a", connected("host-a"));
-    topology.addViewer(
+    addRelayViewer(
+      topology,
       "room",
       "viewer-a",
       connected("host-a", "viewer-a"),

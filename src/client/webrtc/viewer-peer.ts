@@ -10,6 +10,8 @@ import {
 } from "./stats";
 
 const MAX_PENDING_CANDIDATES = 64;
+const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
+const AUTOMATIC_RECOVERY_TIMEOUT_MS = 3_000;
 type SignalCandidate = Extract<
   SignalPayload,
   { kind: "candidate" }
@@ -24,6 +26,10 @@ interface ViewerPeerEvents {
   ) => boolean;
   onStream: (stream: MediaStream) => void;
   onUpdate: (snapshot: PeerSnapshot) => void;
+  onRecoveryExhausted?: (
+    parentPeerId: string,
+    connectionId: string,
+  ) => boolean;
 }
 
 export class ViewerPeer {
@@ -39,8 +45,10 @@ export class ViewerPeer {
   private statsTimer: number | null = null;
   private statsInFlightConnection: RTCPeerConnection | null = null;
   private disconnectTimer: number | null = null;
-  private restartRequested = false;
+  private recoveryTimer: number | null = null;
   private offerRecoveryAttempts = 0;
+  private automaticRecoveryRequests = 0;
+  private recoveryExhaustedReported = false;
   private disposed = false;
   private currentIceConfig: IceConfig;
   private snapshot: PeerSnapshot | null = null;
@@ -101,15 +109,16 @@ export class ViewerPeer {
         if (!connection.localDescription) {
           throw new Error("Local description was not created");
         }
-        this.events.sendSignal(parentPeerId, {
+        if (!this.events.sendSignal(parentPeerId, {
           kind: "description",
           connectionId,
           description: {
             type: "answer",
             sdp: connection.localDescription.sdp,
           },
-        });
-        this.restartRequested = false;
+        })) {
+          throw new Error("Signaling is unavailable while sending the answer");
+        }
         this.offerRecoveryAttempts = 0;
       } else if (
         this.connection &&
@@ -147,7 +156,10 @@ export class ViewerPeer {
         )
       ) {
         this.offerRecoveryAttempts += 1;
-        this.restartRequested = true;
+        this.automaticRecoveryRequests = MAX_AUTOMATIC_RECOVERY_REQUESTS;
+        this.scheduleRecoveryDeadline();
+      } else if (payload.kind === "description") {
+        this.reportRecoveryExhausted();
       }
     }
   }
@@ -177,7 +189,11 @@ export class ViewerPeer {
       false,
     );
     if (sent) {
-      this.restartRequested = true;
+      this.automaticRecoveryRequests = Math.max(
+        this.automaticRecoveryRequests,
+        1,
+      );
+      this.scheduleRecoveryDeadline();
     }
     return sent;
   }
@@ -199,6 +215,7 @@ export class ViewerPeer {
       return;
     }
     this.disposed = true;
+    this.clearRecoveryTimer();
     this.disposeConnection();
     this.pendingByConnection.clear();
   }
@@ -209,12 +226,12 @@ export class ViewerPeer {
     this.disposeConnection();
     if (parentChanged) {
       this.offerRecoveryAttempts = 0;
+      this.resetAutomaticRecovery();
     }
     this.parentPeerId = parentPeerId;
     this.connectionId = connectionId;
     this.remoteStream = new MediaStream();
     this.statsAccumulator = createStatsAccumulator();
-    this.restartRequested = false;
 
     const connection = new RTCPeerConnection({
       iceServers: this.currentIceConfig.iceServers,
@@ -280,25 +297,90 @@ export class ViewerPeer {
 
   private handleConnectionState(state: RTCPeerConnectionState): void {
     if (state === "connected") {
-      this.restartRequested = false;
       this.clearDisconnectTimer();
+      this.resetAutomaticRecovery();
       return;
     }
     if (state === "failed") {
       this.clearDisconnectTimer();
-      if (!this.restartRequested) {
-        this.requestRecovery();
-      }
+      this.attemptAutomaticRecovery();
       return;
     }
     if (state === "disconnected" && this.disconnectTimer === null) {
       this.disconnectTimer = window.setTimeout(() => {
         this.disconnectTimer = null;
         if (this.connection?.connectionState === "disconnected") {
-          this.requestRecovery();
+          this.attemptAutomaticRecovery();
         }
       }, 3_000);
     }
+  }
+
+  private attemptAutomaticRecovery(): void {
+    if (
+      this.disposed ||
+      this.recoveryTimer !== null ||
+      this.recoveryExhaustedReported ||
+      this.connection?.connectionState === "connected" ||
+      !this.connectionId ||
+      !this.parentPeerId
+    ) {
+      return;
+    }
+    if (this.automaticRecoveryRequests >= MAX_AUTOMATIC_RECOVERY_REQUESTS) {
+      this.reportRecoveryExhausted();
+      return;
+    }
+    const rebuild = this.automaticRecoveryRequests > 0;
+    if (
+      !this.events.sendRestartRequest(
+        this.parentPeerId,
+        this.connectionId,
+        rebuild,
+      )
+    ) {
+      this.reportRecoveryExhausted();
+      return;
+    }
+    this.automaticRecoveryRequests += 1;
+    this.scheduleRecoveryDeadline();
+  }
+
+  private scheduleRecoveryDeadline(): void {
+    this.clearRecoveryTimer();
+    this.recoveryTimer = window.setTimeout(() => {
+      this.recoveryTimer = null;
+      if (this.connection?.connectionState !== "connected") {
+        this.attemptAutomaticRecovery();
+      }
+    }, AUTOMATIC_RECOVERY_TIMEOUT_MS);
+  }
+
+  private reportRecoveryExhausted(): void {
+    if (
+      this.recoveryExhaustedReported ||
+      !this.parentPeerId ||
+      !this.connectionId
+    ) {
+      return;
+    }
+    this.clearRecoveryTimer();
+    const reported =
+      this.events.onRecoveryExhausted?.(
+        this.parentPeerId,
+        this.connectionId,
+      ) ?? true;
+    if (reported) {
+      this.recoveryExhaustedReported = true;
+    } else {
+      this.scheduleRecoveryDeadline();
+    }
+  }
+
+  private resetAutomaticRecovery(): void {
+    this.clearRecoveryTimer();
+    this.automaticRecoveryRequests = 0;
+    this.recoveryExhaustedReported = false;
   }
 
   private queueCandidate(
@@ -413,6 +495,13 @@ export class ViewerPeer {
     if (this.disconnectTimer !== null) {
       window.clearTimeout(this.disconnectTimer);
       this.disconnectTimer = null;
+    }
+  }
+
+  private clearRecoveryTimer(): void {
+    if (this.recoveryTimer !== null) {
+      window.clearTimeout(this.recoveryTimer);
+      this.recoveryTimer = null;
     }
   }
 

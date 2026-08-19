@@ -104,6 +104,8 @@ class FakePeerConnection extends EventTarget {
 
 const intervalCallbacks = new Map<number, () => void>();
 let nextIntervalId = 1;
+const timeoutCallbacks = new Map<number, () => void>();
+let nextTimeoutId = 1;
 
 function offer(connectionId: string): SignalPayload {
   return {
@@ -154,6 +156,8 @@ beforeEach(() => {
   FakePeerConnection.plans.length = 0;
   intervalCallbacks.clear();
   nextIntervalId = 1;
+  timeoutCallbacks.clear();
+  nextTimeoutId = 1;
   vi.stubGlobal("MediaStream", FakeMediaStream);
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
   vi.stubGlobal("window", {
@@ -163,8 +167,12 @@ beforeEach(() => {
       return id;
     },
     clearInterval: (id: number) => intervalCallbacks.delete(id),
-    setTimeout,
-    clearTimeout,
+    setTimeout: (callback: () => void) => {
+      const id = nextTimeoutId++;
+      timeoutCallbacks.set(id, callback);
+      return id;
+    },
+    clearTimeout: (id: number) => timeoutCallbacks.delete(id),
   });
 });
 
@@ -173,6 +181,90 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it("reports one exhausted edge after bounded restart and rebuild attempts", async () => {
+    const restartRequests: Array<{
+      peerId: string;
+      connectionId: string;
+      rebuild: boolean;
+    }> = [];
+    const exhausted: Array<{ peerId: string; connectionId: string }> = [];
+    const peer = new ViewerPeer(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: (peerId, connectionId, rebuild) => {
+          restartRequests.push({ peerId, connectionId, rebuild });
+          return true;
+        },
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+        onRecoveryExhausted: (peerId, connectionId) => {
+          exhausted.push({ peerId, connectionId });
+          return true;
+        },
+      },
+    );
+    await peer.acceptSignal("relay-parent", offer("failed-connection"));
+    const connection = FakePeerConnection.instances[0]!;
+    connection.connectionState = "failed";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+
+    expect(restartRequests).toEqual([
+      {
+        peerId: "relay-parent",
+        connectionId: "failed-connection",
+        rebuild: false,
+      },
+    ]);
+    timeoutCallbacks.get(1)!();
+    expect(restartRequests.at(-1)).toEqual({
+      peerId: "relay-parent",
+      connectionId: "failed-connection",
+      rebuild: true,
+    });
+    timeoutCallbacks.get(2)!();
+    expect(exhausted).toEqual([
+      { peerId: "relay-parent", connectionId: "failed-connection" },
+    ]);
+
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    expect(restartRequests).toHaveLength(2);
+    expect(exhausted).toHaveLength(1);
+  });
+
+  it("retries delivery of an exhausted edge after signaling reconnects", async () => {
+    let reportAvailable = false;
+    const exhausted: string[] = [];
+    const peer = new ViewerPeer(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: () => true,
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+        onRecoveryExhausted: (_peerId, connectionId) => {
+          exhausted.push(connectionId);
+          return reportAvailable;
+        },
+      },
+    );
+    await peer.acceptSignal("relay-parent", offer("failed-connection"));
+    const connection = FakePeerConnection.instances[0]!;
+    connection.connectionState = "failed";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+
+    timeoutCallbacks.get(1)!();
+    timeoutCallbacks.get(2)!();
+    expect(exhausted).toEqual(["failed-connection"]);
+
+    reportAvailable = true;
+    timeoutCallbacks.get(3)!();
+    expect(exhausted).toEqual(["failed-connection", "failed-connection"]);
+
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    expect(exhausted).toHaveLength(2);
+  });
+
   it("requests one bounded rebuild when answer negotiation fails", async () => {
     FakePeerConnection.plans.push(
       { answerError: new Error("first answer failed") },
@@ -203,6 +295,36 @@ describe("ViewerPeer connection generations", () => {
       {
         peerId: "relay-parent",
         connectionId: "connection-first",
+        rebuild: true,
+      },
+    ]);
+  });
+
+  it("requests a rebuild when the completed answer cannot be signaled", async () => {
+    const restartRequests: Array<{
+      peerId: string;
+      connectionId: string;
+      rebuild: boolean;
+    }> = [];
+    const peer = new ViewerPeer(
+      { iceServers: [], expiresAt: null, relayAvailable: false },
+      {
+        sendSignal: () => false,
+        sendRestartRequest: (peerId, connectionId, rebuild) => {
+          restartRequests.push({ peerId, connectionId, rebuild });
+          return true;
+        },
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+      },
+    );
+
+    await peer.acceptSignal("relay-parent", offer("unsent-answer"));
+
+    expect(restartRequests).toEqual([
+      {
+        peerId: "relay-parent",
+        connectionId: "unsent-answer",
         rebuild: true,
       },
     ]);

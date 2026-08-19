@@ -3,6 +3,8 @@ import { z } from "zod";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
 export const ROOM_CODE_LENGTH = 12;
+export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
+export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 
 const opaqueIdSchema = z
   .string()
@@ -32,6 +34,12 @@ export const qualityProfileIdSchema = z.enum([
 ]);
 export type QualityProfileId = z.infer<typeof qualityProfileIdSchema>;
 export const DEFAULT_QUALITY_PROFILE_ID: QualityProfileId = "1080p60";
+
+export const relayDownstreamEdgesSchema = z.union([
+  z.literal(0),
+  z.literal(1),
+]);
+export type RelayDownstreamEdges = z.infer<typeof relayDownstreamEdgesSchema>;
 
 const iceServerSchema = z
   .object({
@@ -95,6 +103,43 @@ export const mediaAssignmentSchema = z
   .strict();
 export type MediaAssignment = z.infer<typeof mediaAssignmentSchema>;
 
+export const mediaRouteRevisionSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_MEDIA_ROUTE_REVISION);
+
+export const mediaRoutePhaseSchema = z.enum(["prepare", "active"]);
+export type MediaRoutePhase = z.infer<typeof mediaRoutePhaseSchema>;
+
+export const mediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }).strict(),
+  z
+    .object({
+      kind: z.literal("peer"),
+      peerId: opaqueIdSchema,
+    })
+    .strict(),
+  z.object({ kind: z.literal("sfu") }).strict(),
+]);
+export type MediaRouteUpstream = z.infer<typeof mediaRouteUpstreamSchema>;
+
+export const sfuPublicationGenerationSchema = opaqueIdSchema;
+
+export const participantRouteAssignmentSchema = z
+  .object({
+    upstream: mediaRouteUpstreamSchema,
+    childPeerIds: z
+      .array(opaqueIdSchema)
+      .max(2)
+      .refine((peerIds) => new Set(peerIds).size === peerIds.length),
+    sfuPublicationGeneration: sfuPublicationGenerationSchema.nullable(),
+  })
+  .strict();
+export type ParticipantRouteAssignment = z.infer<
+  typeof participantRouteAssignmentSchema
+>;
+
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
@@ -103,6 +148,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       role: z.literal("host"),
       token: tokenSchema,
       clientId: opaqueIdSchema,
+      shareGeneration: opaqueIdSchema.optional(),
     })
     .strict(),
   z
@@ -139,7 +185,39 @@ export const clientMessageSchema = z.union([
       qualityProfileId: qualityProfileIdSchema,
     })
     .strict(),
-  z.object({ type: z.literal("stop-sharing") }).strict(),
+  z
+    .object({
+      type: z.literal("relay-capacity"),
+      downstreamEdges: relayDownstreamEdgesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("route-ready"),
+      revision: mediaRouteRevisionSchema,
+      phase: mediaRoutePhaseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("route-failed"),
+      revision: mediaRouteRevisionSchema,
+      phase: mediaRoutePhaseSchema,
+      connectionId: opaqueIdSchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("refresh-sfu"),
+      revision: mediaRouteRevisionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("stop-sharing"),
+      shareGeneration: opaqueIdSchema.optional(),
+    })
+    .strict(),
   // Kept as a compatibility alias while previously deployed clients age out.
   z.object({ type: z.literal("close-room") }).strict(),
   z.object({ type: z.literal("abandon-room") }).strict(),
@@ -177,6 +255,8 @@ const authenticatedMessageSchema = z.union([
       ...authenticatedMessageShape,
       mediaMode: z.literal("peer-assisted"),
       mediaAssignment: mediaAssignmentSchema,
+      routeRevision: mediaRouteRevisionSchema,
+      routeAssignment: participantRouteAssignmentSchema,
       qualityProfileId: qualityProfileIdSchema,
     })
     .strict(),
@@ -215,6 +295,22 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("media-assignment"),
       mediaAssignment: mediaAssignmentSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("route-update"),
+      revision: mediaRouteRevisionSchema,
+      phase: mediaRoutePhaseSchema,
+      assignment: participantRouteAssignmentSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("sfu-config"),
+      revision: mediaRouteRevisionSchema,
+      url: z.string().url().max(2048),
+      token: z.string().min(1).max(MAX_SFU_TOKEN_LENGTH),
     })
     .strict(),
   z

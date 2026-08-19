@@ -52,7 +52,10 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
 
 async function start(
   config = testConfig(),
-  options: Pick<CreateServerOptions, "now" | "accessSessionTtlSeconds"> = {},
+  options: Pick<
+    CreateServerOptions,
+    "now" | "accessSessionTtlSeconds" | "sfuTokenIssuer"
+  > = {},
 ): Promise<string> {
   runningServer = await createScreenerServer({
     ...options,
@@ -335,6 +338,28 @@ describe("room HTTP API", () => {
 });
 
 describe("server HTTP listener and health", () => {
+  it("starts with an injected optional SFU token issuer", async () => {
+    const baseUrl = await start(
+      testConfig({
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+          maxSfuRootsPerRoom: 2,
+        },
+      }),
+      {
+        sfuTokenIssuer: {
+          issueToken: async () => "unused-test-token",
+        },
+      },
+    );
+
+    const response = await fetch(`${baseUrl}/healthz`);
+    expect(response.status).toBe(200);
+  });
+
   it("uses the configured listen host by default", async () => {
     runningServer = await createScreenerServer({
       config: testConfig(),

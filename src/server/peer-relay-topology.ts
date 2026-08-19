@@ -1,4 +1,7 @@
-import type { MediaAssignment } from "../shared/protocol.js";
+import type {
+  MediaAssignment,
+  RelayDownstreamEdges,
+} from "../shared/protocol.js";
 
 export interface MediaAssignmentChange {
   peerId: string;
@@ -6,10 +9,13 @@ export interface MediaAssignmentChange {
   mediaAssignment: MediaAssignment;
 }
 
+export const MAX_PEER_RELAY_DEPTH = 4;
+
 interface RelayViewer {
   order: number;
   parentPeerId: string | null;
   childPeerIds: string[];
+  downstreamEdges: RelayDownstreamEdges;
 }
 
 interface RelayRoom {
@@ -56,16 +62,42 @@ export class PeerRelayTopology {
   ): MediaAssignmentChange[] {
     const room = this.room(roomId);
     const before = snapshot(room);
-    if (!room.viewers.has(peerId)) {
+    const existingViewer = room.viewers.get(peerId);
+    if (!existingViewer) {
       room.viewers.set(peerId, {
         order: room.nextOrder,
         parentPeerId: null,
         childPeerIds: [],
+        downstreamEdges: 0,
       });
       room.nextOrder += 1;
+    } else {
+      existingViewer.downstreamEdges = 0;
     }
     for (const [candidatePeerId, viewer] of orderedViewers(room)) {
       if (viewer.parentPeerId === null) {
+        this.assignViewer(room, candidatePeerId, connectedPeerIds);
+      }
+    }
+    return changedAssignments(before, snapshot(room));
+  }
+
+  setViewerRelayCapacity(
+    roomId: string,
+    peerId: string,
+    downstreamEdges: RelayDownstreamEdges,
+    connectedPeerIds: ReadonlySet<string>,
+  ): MediaAssignmentChange[] {
+    const room = this.rooms.get(roomId);
+    const viewer = room?.viewers.get(peerId);
+    if (!room || !viewer) {
+      return [];
+    }
+
+    const before = snapshot(room);
+    viewer.downstreamEdges = downstreamEdges;
+    for (const [candidatePeerId, candidate] of orderedViewers(room)) {
+      if (candidate.parentPeerId === null) {
         this.assignViewer(room, candidatePeerId, connectedPeerIds);
       }
     }
@@ -128,6 +160,62 @@ export class PeerRelayTopology {
       : undefined;
   }
 
+  getAssignments(roomId: string): Map<string, MediaAssignment> {
+    const room = this.rooms.get(roomId);
+    return room ? snapshot(room) : new Map();
+  }
+
+  getHostPeerId(roomId: string): string | undefined {
+    return this.rooms.get(roomId)?.hostPeerId;
+  }
+
+  reassignViewer(
+    roomId: string,
+    peerId: string,
+    connectedPeerIds: ReadonlySet<string>,
+    excludedParentPeerIds: ReadonlySet<string>,
+    maxDepth = MAX_PEER_RELAY_DEPTH,
+  ): MediaAssignmentChange[] | undefined {
+    const room = this.rooms.get(roomId);
+    const viewer = room?.viewers.get(peerId);
+    if (
+      !room?.hostPeerId ||
+      !viewer ||
+      !connectedPeerIds.has(peerId) ||
+      !Number.isSafeInteger(maxDepth) ||
+      maxDepth < 1
+    ) {
+      return undefined;
+    }
+
+    const subtreePeerIds = collectSubtreePeerIds(room, peerId);
+    const subtreeHeight = maximumSubtreeDepth(room, peerId);
+    if (maximumDepthOutsideSubtree(room, subtreePeerIds) > maxDepth) {
+      return undefined;
+    }
+    const parentPeerId = findReassignmentParent(
+      room,
+      connectedPeerIds,
+      excludedParentPeerIds,
+      subtreePeerIds,
+      maxDepth - subtreeHeight - 1,
+    );
+    if (!parentPeerId || parentPeerId === viewer.parentPeerId) {
+      return undefined;
+    }
+
+    const before = snapshot(room);
+    this.detach(room, peerId, viewer.parentPeerId);
+    viewer.parentPeerId = parentPeerId;
+    const children = childPeerIds(room, parentPeerId);
+    children.push(peerId);
+    children.sort(
+      (left, right) =>
+        room.viewers.get(left)!.order - room.viewers.get(right)!.order,
+    );
+    return changedAssignments(before, snapshot(room));
+  }
+
   isParentOf(roomId: string, parentPeerId: string, childPeerId: string): boolean {
     return (
       this.rooms.get(roomId)?.viewers.get(childPeerId)?.parentPeerId ===
@@ -165,7 +253,11 @@ export class PeerRelayTopology {
     ) {
       return;
     }
-    const parentPeerId = findShallowestAvailableParent(room, connectedPeerIds);
+    const parentPeerId = findShallowestAvailableParent(
+      room,
+      connectedPeerIds,
+      MAX_PEER_RELAY_DEPTH - maximumSubtreeDepth(room, peerId) - 1,
+    );
     if (!parentPeerId) {
       return;
     }
@@ -197,26 +289,126 @@ export class PeerRelayTopology {
 function findShallowestAvailableParent(
   room: RelayRoom,
   connectedPeerIds: ReadonlySet<string>,
+  maximumParentDepth: number,
 ): string | undefined {
   const hostPeerId = room.hostPeerId;
   if (!hostPeerId || !connectedPeerIds.has(hostPeerId)) {
     return undefined;
   }
 
-  const queue = [hostPeerId];
+  const queue: Array<{ peerId: string; depth: number }> = [
+    { peerId: hostPeerId, depth: 0 },
+  ];
   while (queue.length > 0) {
-    const peerId = queue.shift()!;
-    if (!connectedPeerIds.has(peerId)) {
+    const { peerId, depth } = queue.shift()!;
+    if (depth > maximumParentDepth || !connectedPeerIds.has(peerId)) {
       continue;
     }
     const children = childPeerIds(room, peerId);
-    const capacity = peerId === hostPeerId ? 2 : 1;
+    const capacity = downstreamCapacity(room, peerId);
     if (children.length < capacity) {
       return peerId;
     }
-    queue.push(...children);
+    for (const childPeerId of children) {
+      queue.push({ peerId: childPeerId, depth: depth + 1 });
+    }
   }
   return undefined;
+}
+
+function findReassignmentParent(
+  room: RelayRoom,
+  connectedPeerIds: ReadonlySet<string>,
+  excludedParentPeerIds: ReadonlySet<string>,
+  subtreePeerIds: ReadonlySet<string>,
+  maximumParentDepth: number,
+): string | undefined {
+  const hostPeerId = room.hostPeerId;
+  if (!hostPeerId || !connectedPeerIds.has(hostPeerId)) {
+    return undefined;
+  }
+
+  const queue: Array<{ peerId: string; depth: number }> = [
+    { peerId: hostPeerId, depth: 0 },
+  ];
+  while (queue.length > 0) {
+    const { peerId, depth } = queue.shift()!;
+    if (depth > maximumParentDepth || !connectedPeerIds.has(peerId)) {
+      continue;
+    }
+    const children = childPeerIds(room, peerId);
+    const capacity = downstreamCapacity(room, peerId);
+    if (
+      children.length < capacity &&
+      !excludedParentPeerIds.has(peerId) &&
+      !subtreePeerIds.has(peerId)
+    ) {
+      return peerId;
+    }
+    for (const childPeerId of children) {
+      queue.push({ peerId: childPeerId, depth: depth + 1 });
+    }
+  }
+  return undefined;
+}
+
+function downstreamCapacity(room: RelayRoom, peerId: string): number {
+  return room.hostPeerId === peerId
+    ? 2
+    : (room.viewers.get(peerId)?.downstreamEdges ?? 0);
+}
+
+function collectSubtreePeerIds(room: RelayRoom, rootPeerId: string): Set<string> {
+  const peerIds = new Set<string>();
+  const queue = [rootPeerId];
+  while (queue.length > 0) {
+    const peerId = queue.shift()!;
+    if (peerIds.has(peerId)) {
+      continue;
+    }
+    peerIds.add(peerId);
+    queue.push(...(room.viewers.get(peerId)?.childPeerIds ?? []));
+  }
+  return peerIds;
+}
+
+function maximumSubtreeDepth(room: RelayRoom, rootPeerId: string): number {
+  let maximumDepth = 0;
+  const queue: Array<{ peerId: string; depth: number }> = [
+    { peerId: rootPeerId, depth: 0 },
+  ];
+  while (queue.length > 0) {
+    const { peerId, depth } = queue.shift()!;
+    maximumDepth = Math.max(maximumDepth, depth);
+    for (const childPeerId of room.viewers.get(peerId)?.childPeerIds ?? []) {
+      queue.push({ peerId: childPeerId, depth: depth + 1 });
+    }
+  }
+  return maximumDepth;
+}
+
+function maximumDepthOutsideSubtree(
+  room: RelayRoom,
+  excludedPeerIds: ReadonlySet<string>,
+): number {
+  const hostPeerId = room.hostPeerId;
+  if (!hostPeerId) {
+    return 0;
+  }
+  let maximumDepth = 0;
+  const queue: Array<{ peerId: string; depth: number }> = [
+    { peerId: hostPeerId, depth: 0 },
+  ];
+  while (queue.length > 0) {
+    const { peerId, depth } = queue.shift()!;
+    maximumDepth = Math.max(maximumDepth, depth);
+    for (const childPeerId of childPeerIds(room, peerId)) {
+      if (!excludedPeerIds.has(childPeerId)) {
+        queue.push({ peerId: childPeerId, depth: depth + 1 });
+      }
+    }
+  }
+  return maximumDepth;
 }
 
 function childPeerIds(room: RelayRoom, peerId: string): string[] {
