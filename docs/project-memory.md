@@ -11,6 +11,7 @@ Last updated: 2026-08-19
 - Non-server nodes have at most two downstream edges; browser relays stay at one until resource gates pass. SFU normally feeds one or two roots that retain peer descendants; separately capped server edges may serve exceptional viewers that cannot attach behind a healthy root.
 - Two-tree packet/layer striping may reduce endpoint upload toward one stream bitrate, but needs a bounded multi-parent, loss, sync, churn, and latency experiment; it is not in the current full-stream chains.
 - Flagship native media encodes each active representation once and reuses it across direct, peer, and SFU transports; per-connection packetization, pacing, encryption, feedback, and upload remain independent. Healthy rooms have one shared `HIGH`; verified weak paths may add one shared on-demand `LOW`, never per-viewer encoders. Standard Web P2P simulcast and pinned LiveKit 1.13.5/JS 2.22.0 Dynacast are static no-go paths for that exact selection policy; SVC is next and has no software fallback.
+- Separate abuse control from watching: production Host admission protects room creation/Host role, while a default private capability grants Viewer access to one room; public-watch is explicit. Keep raw grants out of localStorage/cookies/query/logs/SQLite; retain no account, ACL, user, or session table.
 - Keep decisions, snapshots, research, code, `AGENTS.md`, and `.codex/` in Git; rewrite memory/status in place. Research current primary sources before material work and reject speculative machinery.
 - Migrate client, server, and deployment atomically. After a canary, delete superseded config/wire/parsers/tests; do not retain compatibility layers, dual writes, or a second architecture without a current consumer. Git history owns the old implementation.
 
@@ -29,7 +30,7 @@ Last updated: 2026-08-19
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
 - Candidate UI has local Viewer volume/mute, copyable room codes, and a favicon. Names/roster, endpoint details, and RTP loss remain pending; no wire, media, or routing effects.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 until stats and target hardware prove the need. Codec acceptance requires actual negotiation, power-efficient candidate evidence, interval encode cost, game FPS, CPU/GPU and sender count; Discord's native capture/hardware tuning is comparison evidence, not proof of server re-encoding or a reusable preset.
-- Keep room policy deployment-driven: public/password-only rooms are random and temporary; password plus SQLite enables sequential persistent rooms and reusable stopped links.
+- After the current media acceptance boundary, migrate access atomically under amended ADR-0002: `HOST_ADMISSION_PASSWORD`, `screener-v2`, default private fragment grants, optional public-watch, rotate/revoke, and one nullable SQLite digest column. Do not mix username/roster runtime into that PR.
 - Deferred architecture audit: `docs/maintenance.md`.
 
 ## Current Implementation
@@ -37,8 +38,8 @@ Last updated: 2026-08-19
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
 - Production `769de201f7cc` at `https://share.bonfire.icu` has equal entry actions, default-closed details, bounded clarity-first quality, live source/quality changes, pause, and sender warnings.
 - Production still uses one host `RTCPeerConnection` per viewer because peer assistance and LiveKit are unconfigured; above two viewers it still exceeds the target host-edge budget. Its real game-capture quality/pause cycle remains unverified.
-- Access uses optional `ACCESS_PASSWORD`, a 12-hour stateless HMAC HttpOnly Strict cookie, internal host token, role-bound signaling, Origin/payload checks, and no accounts/JWT/session map.
-- With `ROOM_DATABASE_PATH` and the password, SQLite stores room ID and host-token digest; links persist and room `1` survived deployment. Without it, rooms are temporary.
+- Current production/repository runtime still uses optional `ACCESS_PASSWORD`, a 12-hour stateless HMAC HttpOnly Strict cookie for both roles, internal Host token, role-bound signaling, Origin/payload checks, and no accounts/JWT/session map.
+- Current SQLite still stores only room ID and Host-token digest; room `1` survived deployment. The accepted Viewer-grant digest/schema v2 design is documentation-only and not deployed.
 - Production uses nginx, Node.js 24.19.0, and authenticated coturn 4.17.2 at `turn.bonfire.icu:3478`; public STUN, TURN/UDP, TURN/TCP, and relay-only traffic pass. TURN/TLS is off.
 - Candidate migration is process-wide: ordinary ICE is STUN-only; coturn uses `stun-only`/`no-tcp`/`no-tls` without deprecated `no-dtls`; LiveKit 1.13.5 explicitly disables TCP fallback, uses deployment STUN and separate UDP participant ICE. Old TURN parser/signer/refresh/UI/SNI artifacts are gone; old production is isolated rollback.
 - The default-off ADR-0005 controller has no production peer/SFU configuration. Enabling it requires non-empty exact `PEER_ASSISTED_ROOM_IDS`; missing/blank fails startup and unlisted rooms use current ordinary P2P. `screener-v1` is the single signaling literal; mismatch terminates once with a refresh prompt.

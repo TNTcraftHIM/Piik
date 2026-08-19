@@ -11,8 +11,8 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 ## Current Snapshot
 
 - Capture precedes room creation; live source/quality changes preserve peers and picture pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
-- Optional `ACCESS_PASSWORD` uses a stateless 12-hour HMAC HttpOnly Strict cookie; host auth stays internal and signaling role-bound.
-- Without `ROOM_DATABASE_PATH`, rooms are temporary. With it and the password, sequential links persist after stop; SQLite stores only room ID and host-token digest.
+- Current runtime still uses optional `ACCESS_PASSWORD` and one stateless 12-hour HMAC HttpOnly Strict cookie for both roles; Host auth stays internal and signaling role-bound.
+- Current SQLite still stores only room ID and Host-token digest. Amended ADR-0002 accepts a later atomic `HOST_ADMISSION_PASSWORD`/`screener-v2` migration with default room-scoped private Viewer grants, explicit public-watch, rotate/revoke, and one nullable digest column; no runtime is implemented.
 - PR #44 merged the default-off exact-room candidate code: ordinary ICE is process-wide STUN-only, LiveKit SFU/UDP feeds at most two roots, browser relays stay at one child, the host stays at two, and exhaustion fails boundedly. Old production/coturn remains rollback; HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and dormant without configuration. Mobile/iPad viewers are leaves and healthy edges stay sticky.
 - Production has memory-only video settings and manual readback. Automatic `HIGH`/`FALLBACK` plus one shared on-demand `LOW` is accepted but not deployed; local A+B and authenticated P2P Viewer C are read-only evidence. Browser audio is request/presence-only.
@@ -38,6 +38,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - Web P2P simulcast and pinned LiveKit 1.13.5/JS 2.22.0 Dynacast are static no-go: no receiver RID-selection/shared-encoder contract, and `HIGH` cumulatively enables `LOW`. No Chrome/resource-release claim follows; current SFU publishing is non-simulcast/Dynacast-off. SVC is next.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
+- Scoped Viewer access is designed but unimplemented. Tests owe role bounds, fragment clearing/no-leak, expiry/cross-room/rotate/revoke, v1 tab termination, and SQLite locked migration/restore. Human passwords/accounts stay out.
 
 ## Next Milestone
 
@@ -55,6 +56,9 @@ owns two-state policy. An isolated exact room later gates peer/SFU UDP and
 bounded failure before replacing the old release. Selected-edge TURN, if later
 justified, is a separate complete change rather than part of this canary.
 Candidate UI has volume, room-code copy and favicon; names/roster/diagnostics remain.
+After the current media acceptance boundary, implement amended ADR-0002 as one
+atomic access PR; do not combine it with username/roster runtime or preserve the
+old config, cookie, protocol, or SQLite parser.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
