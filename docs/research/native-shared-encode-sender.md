@@ -93,6 +93,55 @@ Audio, per-process WASAPI capture, WGC/DDA fallback, source selection, Electron,
 installers, updating, and cross-platform abstractions stay outside the first
 spike.
 
+## Deferred Mobile Sender Boundary
+
+This section records later capability work; it does not broaden ADR-0006's
+Windows scope or authorize mobile runtime code. Priority remains the current
+deployment and staged Windows fixed-`HIGH` gate. The first mobile candidate is a
+separate P2 Android 14/API 34+ spike only after those P1 gates complete.
+
+Android's official `MediaProjection` path captures the display into a `Surface`;
+selected-app-window capture starts with Android 14 QPR2. API 34 requires fresh
+consent for each session, one use of each projection token, and a foreground
+service declared as `mediaProjection`. Rotation or selected-content resizing requires
+`onCapturedContentResize()` handling; user stop, screen lock, another projection,
+or process death invalidates the session and requires bounded cleanup through
+`onStop()`. These OS consent and foreground indicators are part of the product
+experience and cannot be made invisible.
+
+The bounded Android data path is:
+
+```text
+MediaProjection Surface -> one hardware MediaCodec fixed-HIGH encoder
+  -> existing Host admission / room / WSS / standard WebRTC
+  -> one or two unmodified Web viewers
+```
+
+It adds no mobile-only topology, `LOW`, AV1, codec ladder, third downstream edge,
+or software fallback. `MediaCodecInfo.isHardwareAccelerated()` is metadata
+provided by the manufacturer that Android explicitly says cannot be tested for correctness,
+so it is only an admission signal. The spike must also prove the selected named
+encoder, supported fixed format, interval encode cost, CPU/GPU, temperature and
+throttling, power, queue bounds, actual bitrate/quality, and game impact on real
+devices. Missing or failed hardware evidence is no-go; the implementation must
+not silently select a software codec. Network changes reuse the existing
+per-edge WebRTC recovery contract rather than restarting capture or creating a
+new transport.
+
+iOS work remains later and separate. Apple's current ScreenCaptureKit
+documentation says the framework replaces ReplayKit for screen streaming and
+that a broadcast extension is no longer required, but the iOS sample requires
+iOS 27 and the current APIs are still beta. Screener therefore does not build a
+ReplayKit/Broadcast Upload Extension compatibility stack. After the final iOS
+27 SDK and stable OS ship, one narrow ScreenCaptureKit system-picker spike may
+feed a fixed-`HIGH` VideoToolbox encoder into the same one/two-Web-viewer
+contract. It must set
+`kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder` and verify
+`kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder`; otherwise it
+fails closed. Rotation, background execution, lock-screen behavior, network
+switching, thermal throttling, audio scope, and A/V sync remain explicit gates
+on real devices, not implied framework capabilities.
+
 ## Pion Validation Route
 
 Pion is the released-public-API validation route while the larger libwebrtc
@@ -273,6 +322,14 @@ evidence does not retain its policy.
 - [RFC 4588 RTP retransmission](https://www.rfc-editor.org/rfc/rfc4588.html)
 - [RFC 8888 congestion-control feedback](https://www.rfc-editor.org/rfc/rfc8888.html)
 - [Electron desktop capture](https://www.electronjs.org/docs/latest/api/desktop-capturer/)
+- [Android media projection](https://developer.android.com/media/grow/media-projection)
+- [Android media-projection foreground service](https://developer.android.com/develop/background-work/services/fgs/service-types#media-projection)
+- [Android `MediaCodecInfo`](https://developer.android.com/reference/android/media/MediaCodecInfo)
+- [Android `MediaCodecList`](https://developer.android.com/reference/android/media/MediaCodecList)
+- [Apple ScreenCaptureKit](https://developer.apple.com/documentation/ScreenCaptureKit)
+- [Apple iOS ScreenCaptureKit sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios)
+- [Apple required hardware encoder key](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)
+- [Apple hardware encoder readback](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_usinghardwareacceleratedvideoencoder)
 
 libwebrtc uses a BSD-style license and Pion uses MIT, but distribution still
 requires a full libwebrtc third-party notice review and an H.264 patent/licensing
