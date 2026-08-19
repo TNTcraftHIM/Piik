@@ -16,6 +16,7 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Without `ROOM_DATABASE_PATH`, rooms are random and temporary. With both the database path and site password, room IDs start at `1`, links persist, and stopping a share leaves viewers waiting. SQLite stores only room ID and host-token digest.
 - Direct ICE is preferred independently per media edge. Authenticated TURN/UDP and TURN/TCP are required production fallbacks; TURN/TLS is optional.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
+- Optional strict `PEER_ASSISTED_ROOM_IDS` isolates peer/SFU routing to exact rooms; unlisted rooms retain legacy P2P wire, signaling, quality rejection, and lifecycle. Empty or missing means all rooms when enabled. Production has not enabled it.
 - Complete fallback configuration adds a non-secret standby URL to peer-assisted authentication. Host and viewers import the SDK and make one token-free DNS/TLS warmup; no configuration means no field, import, request, participant, or media edge.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
 - Production uses one strict, memory-only video quality setting with bounded manual ceilings and sender readback. It also carries equal idle-stage share/join actions and default-closed technical details. Browser audio remains request/presence-only.
@@ -44,9 +45,9 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 
 ## Next Milestone
 
-First validate the deployed quality controls on real game capture. Before
-enabling experimental routes, validate standby gains across public transports,
-rollback, reconnect, edge counts, egress, and load.
+First validate the deployed quality controls on real game capture. Before any
+broad route enablement, use one exact-room canary and validate standby gains
+across public transports, rollback, reconnect, edge counts, egress, and load.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix.
@@ -62,7 +63,8 @@ separate experiments, not ways to relabel a failed browser route.
 
 Production enablement of peer assistance and automatic routing is No-Go until
 ADR-0004/0005 gates pass. Without LiveKit, two mobile leaves can occupy both
-host roots and leave later viewers without media; use only an isolated canary.
+host roots and leave later viewers without media; use only an exact-room
+allowlisted isolated canary.
 Native shared encode and multi-tree striping remain separate experiments.
 
 - Whole-system versus selected-game audio for the first release.

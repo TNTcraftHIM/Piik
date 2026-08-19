@@ -59,6 +59,15 @@ production release `769de201f7cc`, but the deployment has neither
 `PEER_ASSISTED_MEDIA` nor a LiveKit tuple, so its active path remains ordinary
 one-host-peer-per-viewer P2P/TURN.
 
+The repository also supports an optional strict `PEER_ASSISTED_ROOM_IDS`
+deployment allowlist. When non-empty, only exact listed room IDs enter the
+controller or receive optional LiveKit standby and grants. All other rooms
+retain the legacy P2P authentication shape and signaling/quality/lifecycle
+behavior. Missing or empty preserves the previous all-room behavior when
+`PEER_ASSISTED_MEDIA=true`; malformed or duplicate entries fail startup. The
+boundary is deployment-only and intentionally has no browser selector,
+percentage framework, or second router.
+
 The implementation keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
 issues short-lived room-, role-, peer-, and publication-generation-bound grants,
@@ -135,6 +144,9 @@ connection generation and assigned-edge authorization. The server
 derives the failed edge from the authenticated session, active revision, and
 connection ID instead of accepting a client-supplied parent or arbitrary reason.
 Late, duplicate, or stale revision messages have no effect.
+Non-allowlisted rooms receive the ordinary P2P snapshot with none of the hybrid
+fields above, even when the same process serves an allowlisted room and has a
+complete LiveKit tuple.
 
 ## Transition
 
@@ -272,6 +284,9 @@ encrypted from the SFU operator; the deployment and UI must not claim otherwise.
 - Existing descendants, source selection, quality profile, pause, audio, and
   persistent-room stop/restart semantics survive the transition.
 - No LiveKit configuration preserves the existing P2P/peer behavior and wire.
+- In one process, non-allowlisted rooms preserve the legacy P2P wire, directed
+  signaling, quality rejection, stop/reconnect/delete semantics, and remain
+  isolated from allowlisted peer/SFU state.
 - LiveKit UDP, TCP, and TURN fallback are independently verified before the SFU
   can be called a reliable final route.
 

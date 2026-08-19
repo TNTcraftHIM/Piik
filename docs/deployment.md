@@ -98,11 +98,23 @@ To make automatic SFU fallback capacity available, add the complete tuple:
 
 ```dotenv
 PEER_ASSISTED_MEDIA=true
+PEER_ASSISTED_ROOM_IDS=1
 LIVEKIT_URL=wss://share.example.com
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
 MAX_SFU_ROOTS_PER_ROOM=2
 ```
+
+`PEER_ASSISTED_ROOM_IDS` is the deployment canary boundary. A non-empty value
+is a comma-separated set of exact positive numeric room IDs, using the same
+1-to-12-digit syntax as room authentication. Duplicate IDs, empty entries,
+leading zeroes, and malformed IDs fail startup. A non-empty allowlist requires
+`PEER_ASSISTED_MEDIA=true`. Only listed rooms receive peer-assisted
+authentication, routing, room quality state, or optional LiveKit fallback;
+every other room keeps the legacy P2P wire and signaling behavior. Omitting the
+variable or leaving it empty deliberately preserves the earlier all-room
+behavior when peer assistance is enabled, so a canary deployment must set at
+least one exact ID. There is no browser control or percentage rollout.
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
 `ACCESS_PASSWORD` is optional: omit it or leave it empty for a public site. A
@@ -131,6 +143,15 @@ optional SDK and server path dormant. `LIVEKIT_URL` must be a plain `ws:` or
 2 and accepts only 1 or 2; it is ignored when LiveKit is not configured. These
 credentials authorize short-lived LiveKit room tokens and do not provide E2EE:
 the LiveKit operator can access ordinary SFU media.
+
+For the first canary, prefer an existing protected persistent room whose ID is
+stable across restarts. Set only that ID, restart the application, and verify
+that its authenticated message contains `mediaMode: "peer-assisted"` while a
+second non-allowlisted room contains none of `mediaMode`, `qualitySettings`,
+`routeRevision`, `routeAssignment`, or `sfuStandbyUrl`. Exercise join, offer and
+answer, stop, reconnect, and room deletion in both rooms. Roll back by setting
+`PEER_ASSISTED_MEDIA=false` and removing the allowlist and LiveKit tuple, then
+restart; no room database migration is involved.
 
 When `ACCESS_PASSWORD` is configured, both host and viewer routes first show the
 same login gate. Only `POST /api/session` accepts the password in an

@@ -15,6 +15,7 @@ describe("server configuration", () => {
     expect(config.turnUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
+    expect(config.peerAssistedRoomIds).toBeUndefined();
     expect(config.livekitFallback).toBeUndefined();
   });
 
@@ -194,6 +195,46 @@ describe("server configuration", () => {
     ).toThrow(
       "PEER_ASSISTED_MEDIA currently supports at most 8 viewers per room",
     );
+  });
+
+  it("parses an optional strict peer-assisted room allowlist", () => {
+    expect(
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: " 1,123456789012 ",
+      }).peerAssistedRoomIds,
+    ).toEqual(new Set(["1", "123456789012"]));
+    expect(
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: "  ",
+      }).peerAssistedRoomIds,
+    ).toBeUndefined();
+  });
+
+  it("requires peer-assisted media for a non-empty room allowlist", () => {
+    expect(() =>
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "false",
+        PEER_ASSISTED_ROOM_IDS: "1",
+      }),
+    ).toThrow("PEER_ASSISTED_ROOM_IDS requires PEER_ASSISTED_MEDIA=true");
+  });
+
+  it.each([
+    "0",
+    "01",
+    "1234567890123",
+    "room-1",
+    "1,,2",
+    "1,1",
+  ])("rejects an invalid peer-assisted room allowlist: %s", (roomIds) => {
+    expect(() =>
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: roomIds,
+      }),
+    ).toThrow("PEER_ASSISTED_ROOM_IDS");
   });
 
   it("allows an explicit loopback listen host", () => {

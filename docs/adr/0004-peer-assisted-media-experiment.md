@@ -44,6 +44,13 @@ cross-mode fallback as a product goal.
 The experiment is gated by `PEER_ASSISTED_MEDIA`, which defaults to `false`.
 Enabling it requires `MAX_VIEWERS_PER_ROOM` at or below eight; larger configured
 rooms fail configuration rather than silently running a different topology.
+An optional non-empty `PEER_ASSISTED_ROOM_IDS` deployment allowlist restricts
+the experiment to exact valid room IDs. Non-allowlisted rooms must use the
+legacy P2P authenticated wire, signaling, quality behavior, and lifecycle and
+must never enter `HybridMediaRouter`. Missing or empty retains the original
+all-room behavior when the experiment is enabled; isolated canaries therefore
+must provide at least one ID. Invalid, empty-list-entry, or duplicate values
+fail startup. This adds no UI, percentage rollout, or routing score.
 
 The signaling server assigns two sticky, balanced chains with a deterministic
 breadth-first walk. The host has capacity for at most two children and each
