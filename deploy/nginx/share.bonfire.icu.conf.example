@@ -37,8 +37,8 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Reject the retired unversioned LiveKit endpoint. Keep this exact location
-    # out of logs because old URLs may still contain a short-lived join token.
+    # Reject the unversioned fallback endpoint that pinned livekit-client@2.22.0
+    # can still try. Keep it out of logs because the URL may contain a join token.
     location = /rtc {
         access_log off;
         error_log /dev/null crit;
@@ -54,8 +54,8 @@ server {
         return 404;
     }
 
-    # Current LiveKit clients use v1 paths only. Set
-    # LIVEKIT_URL to wss://share.bonfire.icu.
+    # This integration accepts only the v1 path. Set LIVEKIT_URL to
+    # wss://share.bonfire.icu.
     location ^~ /rtc/v1 {
         # The WebSocket query contains a short-lived LiveKit join token. Do not
         # persist the request target in either access or error logs.
