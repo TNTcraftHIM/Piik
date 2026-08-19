@@ -57,6 +57,7 @@ export interface VideoSenderParameterValues {
   maxFramerate: number | null;
   scaleResolutionDownBy: number | null;
   degradationPreference: RTCDegradationPreference | null;
+  scalabilityMode: string | null;
 }
 
 export interface VideoSenderParameterReadback {
@@ -170,21 +171,37 @@ function requestedScaleResolutionDownBy(
 
 function readVideoSenderParameters(
   parameters: RTCRtpSendParameters,
+  includeAppliedScalabilityMode: boolean,
 ): VideoSenderParameterValues {
   const encoding = parameters.encodings[0];
+  const scalabilityMode = (
+    encoding as
+      | (RTCRtpEncodingParameters & { scalabilityMode?: unknown })
+      | undefined
+  )?.scalabilityMode;
   return {
     maxBitrate: encoding?.maxBitrate ?? null,
     maxFramerate: encoding?.maxFramerate ?? null,
     scaleResolutionDownBy: encoding?.scaleResolutionDownBy ?? null,
     degradationPreference: parameters.degradationPreference ?? null,
+    scalabilityMode:
+      includeAppliedScalabilityMode &&
+      parameters.encodings.length === 1 &&
+      typeof scalabilityMode === "string" &&
+      /^[A-Za-z0-9_-]{1,32}$/.test(scalabilityMode)
+        ? scalabilityMode
+        : null,
   };
 }
 
 function sameParameter(
   key: keyof VideoSenderParameterValues,
-  requested: number | RTCDegradationPreference | null,
-  applied: number | RTCDegradationPreference | null,
+  requested: number | string | null,
+  applied: number | string | null,
 ): boolean {
+  if (key === "scalabilityMode" && requested === null) {
+    return true;
+  }
   if (typeof requested === "number" && typeof applied === "number") {
     return key === "scaleResolutionDownBy"
       ? Math.abs(requested - applied) < 0.01
@@ -207,9 +224,9 @@ export async function configureVideoSender(
     requestedScaleResolutionDownBy(sender, profile);
   parameters.degradationPreference = profile.degradationPreference;
 
-  const requested = readVideoSenderParameters(parameters);
+  const requested = readVideoSenderParameters(parameters, false);
   await sender.setParameters(parameters);
-  const applied = readVideoSenderParameters(sender.getParameters());
+  const applied = readVideoSenderParameters(sender.getParameters(), true);
   const mismatches = (
     Object.keys(requested) as Array<keyof VideoSenderParameterValues>
   ).filter((key) => !sameParameter(key, requested[key], applied[key]));
@@ -222,6 +239,7 @@ const PARAMETER_LABELS = {
   maxFramerate: "帧率上限",
   scaleResolutionDownBy: "分辨率缩放",
   degradationPreference: "质量优先级",
+  scalabilityMode: "伸缩模式",
 } as const satisfies Record<keyof VideoSenderParameterValues, string>;
 
 export function senderParameterWarning(

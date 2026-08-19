@@ -200,6 +200,135 @@ function linkedRemoteInbound(
     : null;
 }
 
+interface CodecEvidence {
+  codec: string | null;
+  profile: string | null;
+  parameters: string | null;
+}
+
+type CodecParameterRule = {
+  profileKey: string | null;
+  parameterKeys: readonly string[];
+  validators: Readonly<Record<string, RegExp>>;
+};
+
+const CODEC_PARAMETER_RULES: Readonly<Record<string, CodecParameterRule>> = {
+  "video/h264": {
+    profileKey: "profile-level-id",
+    parameterKeys: ["packetization-mode", "level-asymmetry-allowed"],
+    validators: {
+      "profile-level-id": /^[0-9a-f]{6}$/i,
+      "packetization-mode": /^[0-2]$/,
+      "level-asymmetry-allowed": /^[01]$/,
+    },
+  },
+  "video/vp9": {
+    profileKey: "profile-id",
+    parameterKeys: ["max-fr", "max-fs"],
+    validators: {
+      "profile-id": /^[0-3]$/,
+      "max-fr": /^[1-9][0-9]{0,9}$/,
+      "max-fs": /^[1-9][0-9]{0,9}$/,
+    },
+  },
+  "video/vp8": {
+    profileKey: null,
+    parameterKeys: ["max-fr", "max-fs"],
+    validators: {
+      "max-fr": /^[1-9][0-9]{0,9}$/,
+      "max-fs": /^[1-9][0-9]{0,9}$/,
+    },
+  },
+  "video/av1": {
+    profileKey: "profile",
+    parameterKeys: ["level-idx", "tier"],
+    validators: {
+      profile: /^[0-2]$/,
+      "level-idx": /^(?:[0-9]|[12][0-9]|3[01])$/,
+      tier: /^[01]$/,
+    },
+  },
+};
+
+function linkedVideoCodec(
+  report: RTCStatsReport,
+  media: StatsRecord | null,
+  transport: StatsRecord | null,
+): StatsRecord | null {
+  const codec = getRecord(report, stringValue(media, "codecId"));
+  const mimeType = stringValue(codec, "mimeType");
+  return codec?.type === "codec" &&
+    transport !== null &&
+    stringValue(codec, "transportId") === transport.id &&
+    mimeType !== null &&
+    /^video\/[A-Za-z0-9.+-]{1,32}$/i.test(mimeType)
+    ? codec
+    : null;
+}
+
+function deriveCodecEvidence(codec: StatsRecord | null): CodecEvidence {
+  const mimeType = stringValue(codec, "mimeType");
+  if (!mimeType) {
+    return { codec: null, profile: null, parameters: null };
+  }
+  const rule = CODEC_PARAMETER_RULES[mimeType.toLowerCase()];
+  const fmtp = stringValue(codec, "sdpFmtpLine");
+  if (!rule || !fmtp || fmtp.length > 2_048) {
+    return { codec: mimeType, profile: null, parameters: null };
+  }
+
+  const segments = fmtp.split(";");
+  if (segments.length > 32) {
+    return { codec: mimeType, profile: null, parameters: null };
+  }
+  const values = new Map<string, string>();
+  const seenKeys = new Set<string>();
+  for (const segment of segments) {
+    const separator = segment.indexOf("=");
+    if (separator < 1) {
+      continue;
+    }
+    const key = segment.slice(0, separator).trim().toLowerCase();
+    const validator = rule.validators[key];
+    if (!validator) {
+      continue;
+    }
+    if (seenKeys.has(key)) {
+      values.delete(key);
+      continue;
+    }
+    seenKeys.add(key);
+    const value = segment.slice(separator + 1).trim().toLowerCase();
+    if (!validator.test(value)) {
+      continue;
+    }
+    values.set(key, value);
+  }
+
+  const profileValue = rule.profileKey
+    ? values.get(rule.profileKey)
+    : undefined;
+  const parameters = rule.parameterKeys
+    .flatMap((key) => {
+      const value = values.get(key);
+      return value ? [`${key}=${value}`] : [];
+    })
+    .join("; ");
+  return {
+    codec: mimeType,
+    profile:
+      rule.profileKey && profileValue
+        ? `${rule.profileKey}=${profileValue}`
+        : null,
+    parameters: parameters || null,
+  };
+}
+
+function scalabilityModeValue(media: StatsRecord | null): string | null {
+  const value = stringValue(media, "scalabilityMode");
+  return value && /^[A-Za-z0-9_-]{1,32}$/.test(value) ? value : null;
+}
+
 export async function collectConnectionMetrics(
   connection: RTCPeerConnection,
   direction: "send" | "receive",
@@ -351,7 +480,15 @@ export async function collectConnectionMetrics(
   previous.previousRetransmittedPackets = retransmittedPackets;
   previous.previousRetransmittedBytes = retransmittedBytes;
 
-  const codec = getRecord(report, stringValue(media, "codecId"));
+  const linkedCodec = linkedVideoCodec(report, media, transport);
+  const codecEvidence =
+    direction === "send"
+      ? deriveCodecEvidence(linkedCodec)
+      : {
+          codec: stringValue(linkedCodec, "mimeType"),
+          profile: null,
+          parameters: null,
+        };
   const width = numberValue(media, "frameWidth");
   const height = numberValue(media, "frameHeight");
   const iceProtocol =
@@ -401,7 +538,11 @@ export async function collectConnectionMetrics(
       freezeDurationDelta === null ? null : freezeDurationDelta * 1_000,
     intervalRetransmittedPackets,
     intervalRetransmittedBytes,
-    codec: stringValue(codec, "mimeType"),
+    codec: codecEvidence.codec,
+    codecProfile: codecEvidence.profile,
+    codecParameters: codecEvidence.parameters,
+    scalabilityMode:
+      direction === "send" ? scalabilityModeValue(media) : null,
     encoderImplementation: stringValue(media, "encoderImplementation"),
     powerEfficientEncoder: booleanValue(media, "powerEfficientEncoder"),
     intervalEncodeMs,

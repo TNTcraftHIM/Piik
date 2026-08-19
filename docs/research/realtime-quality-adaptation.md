@@ -131,14 +131,32 @@ device/network identifiers. Opaque server-issued path and connection-generation
 IDs provide authorization and correlation; a general remote stats stream or
 telemetry pipeline is unnecessary.
 
-The repository now implements only the first local A+B alignment foundation:
-same-tick capture settings plus one uniquely matched outbound RTP sample,
-explicit sample/media identity and adjacent deltas, `remoteId` linkage, and the
-selected path reached through that RTP stream's transport. Source replacement
-blocks sampling and invalidates in-flight generations. This is not the complete
-A+B contract: codec evidence is still MIME-only, derived codec
-profile/parameters and applicable `scalabilityMode` are absent, and there is no
-authenticated C report, two-state controller, or on-demand `LOW` runtime.
+The repository now implements the local host A+B foundation: same-tick capture
+settings plus one uniquely matched outbound RTP sample, explicit sample/media
+identity and adjacent deltas, `remoteId` linkage, and the selected path reached
+through that RTP stream's transport. Source replacement blocks sampling and
+invalidates in-flight generations.
+
+Codec evidence follows only that outbound RTP object's `codecId`, and the
+referenced `RTCCodecStats` must use the same transport. The local diagnostics
+expose nullable, bounded MIME plus a normalized profile token and an ASCII allowlist of
+format parameters: H.264 `profile-level-id`, `packetization-mode`, and
+`level-asymmetry-allowed`; VP9 `profile-id`, `max-fr`, and `max-fs`; VP8
+`max-fr` and `max-fs`; and AV1 `profile`, `level-idx`, and `tier`. Unknown,
+invalid, duplicated, oversized, or non-allowlisted fields such as H.264
+parameter sets are discarded. This diagnostic path does not expose or persist
+raw `sdpFmtpLine`, SDP, candidates, or complete stats, and it does not infer
+specification defaults. Profile tokens remain self-describing, for example
+H.264 `profile-level-id=42e01f`; they are not translated into quality,
+hardware, support, or capability conclusions.
+
+The same unique outbound object supplies nullable current configured
+`scalabilityMode`. Sender parameter readback exposes an applied mode only for
+one unambiguous encoding. Current quality settings do not request a mode, so
+the requested value remains null and a browser-reported default is not called
+a mismatch; multiple encodings remain unknown. This still does not implement
+an authenticated C report, two-state controller, or on-demand `LOW` runtime,
+and browser support remains subject to the controlled matrix.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -150,6 +168,18 @@ references its transport, and that transport's
 references its selected pair. Therefore an ambiguous RTP set or a broken or
 cross-transport reference remains unknown; an opaque stats ID is not a safe
 substitute for those relationships.
+
+The same specification defines [`codecId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcrtpstreamstats-codecid)
+as the RTP stream's reference to `RTCCodecStats`, whose `sdpFmtpLine` contains
+format-specific negotiated parameters, and defines outbound
+[`scalabilityMode`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-scalabilitymode)
+as present only when a mode is currently configured for that stream.
+WebRTC-SVC separately permits post-negotiation `getParameters()` to return a
+different configured mode from one explicitly requested. If no mode was
+provided, its absence must not be replaced with an implementation-dependent
+default. Chromium currently maps its configured per-stream mode into the
+outbound stats field; other browser implementations may omit any optional
+member, which remains null rather than a capability conclusion.
 
 ## Accepted Adaptation Direction
 
@@ -330,6 +360,11 @@ recovery, and that each supported sender cohort can start it reliably.
 - [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
 - [W3C WebCodecs](https://www.w3.org/TR/webcodecs/)
+- [RFC 6184 H.264 RTP payload format](https://www.rfc-editor.org/rfc/rfc6184.html)
+- [RFC 7741 VP8 RTP payload format](https://www.rfc-editor.org/rfc/rfc7741.html)
+- [RFC 9628 VP9 RTP payload format](https://www.rfc-editor.org/rfc/rfc9628.html)
+- [IANA AV1 media type and format parameters](https://www.iana.org/assignments/media-types/video/AV1)
+- [Chromium/libwebrtc video stats origins](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/stats.md)
 - [MDN `RTCRtpSender.setParameters()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
 - [Chromium `motion` to libwebrtc `kFluid` bridge](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc)
 - [libwebrtc `motion`/`kFluid` sender classification](https://webrtc.googlesource.com/src/+/3b1eab8a69cb5078befb021c5492d3f204a7d6a2/pc/rtp_sender.cc)

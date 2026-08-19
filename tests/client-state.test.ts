@@ -316,6 +316,8 @@ describe("WebRTC stats parsing", () => {
         transportId: "transport-a",
         mediaSourceId: "source-a",
         remoteId: "remote-inbound-a",
+        codecId: "codec-a",
+        scalabilityMode: "L2T3_KEY",
         bytesSent: 2_000,
         framesEncoded: 60,
       }),
@@ -325,6 +327,7 @@ describe("WebRTC stats parsing", () => {
         transportId: "transport-z",
         mediaSourceId: "source-z",
         remoteId: "remote-inbound-z",
+        codecId: "codec-z",
         bytesSent: 99_000,
         framesEncoded: 99,
       }),
@@ -345,6 +348,19 @@ describe("WebRTC stats parsing", () => {
         kind: "video",
         packetsLost: 999,
         jitter: 0.9,
+      }),
+      entry("codec-a", "codec", {
+        transportId: "transport-a",
+        mimeType: "video/H264",
+        sdpFmtpLine:
+          "profile-level-id=42E01F; packetization-mode=1; " +
+          "level-asymmetry-allowed=1; sprop-parameter-sets=do-not-expose; " +
+          "x-google-start-bitrate=99999",
+      }),
+      entry("codec-z", "codec", {
+        transportId: "transport-z",
+        mimeType: "video/VP9",
+        sdpFmtpLine: "profile-id=3; max-fr=15; max-fs=1200",
       }),
     ]);
     const connection = {
@@ -372,7 +388,14 @@ describe("WebRTC stats parsing", () => {
       packetsLost: 2,
       jitterMs: 4,
       rttMs: 20,
+      codec: "video/H264",
+      codecProfile: "profile-level-id=42e01f",
+      codecParameters:
+        "packetization-mode=1; level-asymmetry-allowed=1",
+      scalabilityMode: "L2T3_KEY",
     });
+    expect(JSON.stringify(metrics)).not.toContain("sprop-parameter-sets");
+    expect(JSON.stringify(metrics)).not.toContain("x-google-start-bitrate");
 
     report.get("transport-a")!.selectedCandidatePairId = "pair-z";
     const wrongTransportPair = await collectConnectionMetrics(
@@ -388,6 +411,21 @@ describe("WebRTC stats parsing", () => {
     });
 
     report.get("transport-a")!.selectedCandidatePairId = "pair-a";
+    report.get("codec-a")!.transportId = "transport-z";
+    const wrongTransportCodec = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+      { trackIdentifier: "capture-track-a" },
+    );
+    expect(wrongTransportCodec).toMatchObject({
+      rtpStatsId: "outbound-a",
+      codec: null,
+      codecProfile: null,
+      codecParameters: null,
+    });
+    report.get("codec-a")!.transportId = "transport-a";
+
     report.get("local-a")!.type = "remote-candidate";
     report.get("remote-candidate-a")!.type = "local-candidate";
     const malformedCandidateReferences = await collectConnectionMetrics(
@@ -416,6 +454,9 @@ describe("WebRTC stats parsing", () => {
       rtpStatsId: "outbound-a",
       selectedCandidatePairId: null,
       path: "unknown",
+      codec: null,
+      codecProfile: null,
+      codecParameters: null,
     });
     report.get("outbound-a")!.transportId = "transport-a";
 
@@ -440,8 +481,113 @@ describe("WebRTC stats parsing", () => {
       rtpStatsId: null,
       selectedCandidatePairId: null,
       packetsLost: null,
+      codec: null,
+      codecProfile: null,
+      codecParameters: null,
+      scalabilityMode: null,
     });
   });
+
+  it.each([
+    {
+      mimeType: "video/VP8",
+      fmtp: "max-fr=60; max-fs=3600",
+      profile: null,
+      parameters: "max-fr=60; max-fs=3600",
+    },
+    {
+      mimeType: "video/VP9",
+      fmtp: "profile-id=2; max-fr=60; max-fs=3600",
+      profile: "profile-id=2",
+      parameters: "max-fr=60; max-fs=3600",
+    },
+    {
+      mimeType: "video/AV1",
+      fmtp: "profile=1; level-idx=8; tier=0",
+      profile: "profile=1",
+      parameters: "level-idx=8; tier=0",
+    },
+    {
+      mimeType: "video/H264",
+      fmtp:
+        "profile-level-id=42e01f; profile-level-id=invalid; " +
+        "packetization-mode=1",
+      profile: null,
+      parameters: "packetization-mode=1",
+    },
+    {
+      mimeType: "video/H264",
+      fmtp: `profile-level-id=42e01f; ignored=${"x".repeat(2_048)}`,
+      profile: null,
+      parameters: null,
+    },
+    {
+      mimeType: "video/H264",
+      fmtp: [
+        "profile-level-id=42e01f",
+        ...Array.from({ length: 32 }, (_, index) => `ignored-${index}=1`),
+      ].join(";"),
+      profile: null,
+      parameters: null,
+    },
+    {
+      mimeType: "video/H265",
+      fmtp: "profile-id=1; tier-flag=0; level-id=93",
+      profile: null,
+      parameters: null,
+    },
+  ])(
+    "derives only allowlisted $mimeType format parameters",
+    async ({ mimeType, fmtp, profile, parameters }) => {
+      const report = new Map<string, unknown>([
+        [
+          "transport",
+          { id: "transport", type: "transport", timestamp: 1_000 },
+        ],
+        [
+          "outbound",
+          {
+            id: "outbound",
+            type: "outbound-rtp",
+            timestamp: 1_000,
+            kind: "video",
+            ssrc: 101,
+            transportId: "transport",
+            codecId: "codec",
+            bytesSent: 1_000,
+            framesEncoded: 30,
+          },
+        ],
+        [
+          "codec",
+          {
+            id: "codec",
+            type: "codec",
+            timestamp: 1_000,
+            transportId: "transport",
+            mimeType,
+            sdpFmtpLine: fmtp,
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+      const connection = {
+        getStats: async () => report,
+      } as unknown as RTCPeerConnection;
+
+      await expect(
+        collectConnectionMetrics(
+          connection,
+          "send",
+          createStatsAccumulator(),
+        ),
+      ).resolves.toMatchObject({
+        codec: mimeType,
+        codecProfile: profile,
+        codecParameters: parameters,
+        scalabilityMode: null,
+      });
+    },
+  );
 
   it("rebases sender retransmission deltas after counter rollback", async () => {
     const outbound = (

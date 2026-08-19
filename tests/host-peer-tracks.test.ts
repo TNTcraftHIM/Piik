@@ -222,6 +222,7 @@ function sendStatsReport({
         id: "codec",
         type: "codec",
         timestamp,
+        transportId: "transport",
         mimeType: "video/VP8",
       },
     ],
