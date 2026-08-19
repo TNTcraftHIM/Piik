@@ -16,6 +16,7 @@ import {
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
+import { RoomCode } from "../components/RoomCode";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
   PathBadge,
@@ -36,6 +37,12 @@ import {
 } from "../media/viewer-quality-evidence";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
+import {
+  applyViewerVolume,
+  DEFAULT_VIEWER_VOLUME_STATE,
+  setViewerVolume,
+  toggleViewerMuted,
+} from "../media/viewer-volume";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -70,7 +77,9 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
   const [relayChildEvidence, setRelayChildEvidence] =
     useState<ViewerQualityEvidence | null>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [playbackVolume, setPlaybackVolume] = useState(
+    DEFAULT_VIEWER_VOLUME_STATE,
+  );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
 
   const qualityLimitation = useMemo(
@@ -85,6 +94,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
+  const { muted, volumePercent } = playbackVolume;
 
   useEffect(() => {
     let active = true;
@@ -691,6 +701,14 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     }
   }, [remoteStream]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    applyViewerVolume(video, playbackVolume);
+  }, [muted, remoteStream, volumePercent]);
+
   async function playVideo(): Promise<void> {
     if (!videoRef.current) {
       return;
@@ -704,13 +722,24 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
   }
 
   function toggleMuted(): void {
-    const nextMuted = !muted;
-    setMuted(nextMuted);
+    const next = toggleViewerMuted(playbackVolume);
+    setPlaybackVolume(next);
     if (videoRef.current) {
-      videoRef.current.muted = nextMuted;
-      if (!nextMuted) {
-        void playVideo();
-      }
+      applyViewerVolume(videoRef.current, next);
+    }
+    if (!next.muted) {
+      void playVideo();
+    }
+  }
+
+  function changeVolume(nextPercent: number): void {
+    const next = setViewerVolume(playbackVolume, nextPercent);
+    setPlaybackVolume(next);
+    if (videoRef.current) {
+      applyViewerVolume(videoRef.current, next);
+    }
+    if (!next.muted) {
+      void playVideo();
     }
   }
 
@@ -753,8 +782,10 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       <main className="viewer-workspace">
         <div className="viewer-title-row">
           <div>
-            <h1>好友屏幕</h1>
-            <p className="section-meta">房间 {roomId}</p>
+            <div className="title-line">
+              <h1>好友屏幕</h1>
+              <RoomCode roomId={roomId} />
+            </div>
           </div>
           <div className="viewer-badges">
             <PeerStatusBadge state={peerSnapshot?.connectionState ?? "waiting"} />
@@ -795,15 +826,30 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             {statusText}
           </div>
           <div className="toolbar-actions">
-            <button
-              type="button"
-              className="icon-button"
-              title={muted ? "打开声音" : "静音"}
-              aria-label={muted ? "打开声音" : "静音"}
-              onClick={toggleMuted}
-            >
-              {muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
-            </button>
+            <div className="viewer-volume-control">
+              <button
+                type="button"
+                className="icon-button"
+                title={muted ? "打开声音" : "静音"}
+                aria-label={muted ? "打开声音" : "静音"}
+                onClick={toggleMuted}
+              >
+                {muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+              </button>
+              <input
+                id="viewer-volume"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={volumePercent}
+                title="播放音量"
+                aria-label="播放音量"
+                aria-valuetext={`${volumePercent}%${muted ? "，已静音" : ""}`}
+                onChange={(event) => changeVolume(Number(event.target.value))}
+              />
+              <output htmlFor="viewer-volume">{volumePercent}%</output>
+            </div>
             <button
               type="button"
               className="icon-button"

@@ -32,7 +32,7 @@
 html,
 body,
 #root {
-  min-width: 320px;
+  min-width: 0;
   min-height: 100%;
   margin: 0;
 }
@@ -181,6 +181,83 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+
+.title-line {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.room-code {
+  display: inline-flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  padding-left: 9px;
+  border: 1px solid #326645;
+  border-radius: 6px;
+  color: var(--green);
+  background: #14271b;
+}
+
+.room-code-label {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.room-code strong {
+  overflow: hidden;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-code-copy {
+  display: grid;
+  width: 31px;
+  height: 30px;
+  flex: 0 0 31px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid #326645;
+  color: var(--green);
+  background: transparent;
+  cursor: pointer;
+}
+
+.room-code-copy:hover {
+  color: var(--text);
+  background: var(--green-soft);
+}
+
+.room-code-copy.is-failed {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.room-code-copy:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px var(--green);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 h1,
@@ -846,8 +923,31 @@ h3 {
 
 .toolbar-actions {
   display: flex;
+  min-width: 0;
   flex: 0 0 auto;
   gap: 8px;
+  align-items: center;
+}
+
+.viewer-volume-control {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 40px minmax(76px, 120px) 42px;
+  gap: 8px;
+  align-items: center;
+}
+
+.viewer-volume-control input {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--green);
+}
+
+.viewer-volume-control output {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .viewer-stats {
@@ -935,6 +1035,24 @@ h3 {
   .viewer-badges {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .viewer-toolbar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .toolbar-status {
+    flex: 1 1 100%;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .viewer-volume-control {
+    flex: 1 1 auto;
+    grid-template-columns: 40px minmax(58px, 1fr) 38px;
   }
 
   .segmented-control {

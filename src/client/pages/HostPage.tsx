@@ -19,6 +19,7 @@ import {
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
+import { RoomCode } from "../components/RoomCode";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
   PathBadge,
@@ -1181,7 +1182,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         <section className="broadcast-area" aria-labelledby="broadcast-heading">
           <div className="section-heading">
             <div>
-              <h1 id="broadcast-heading">屏幕分享</h1>
+              <div className="title-line">
+                <h1 id="broadcast-heading">屏幕分享</h1>
+                {room && <RoomCode roomId={room.roomId} />}
+              </div>
               <p className="section-meta">
                 {phase === "live"
                   ? `${viewers.length}/${maxViewers ?? "-"} 人正在观看`
