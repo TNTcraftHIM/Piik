@@ -6,6 +6,9 @@ import (
 	"sync"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/cc"
+	"github.com/pion/interceptor/pkg/gcc"
+	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
@@ -20,6 +23,8 @@ type browserPeerLeg struct {
 	sender    *webrtc.RTPSender
 	rtp       *rtpRecorder
 	rtcp      *rtcpRecorder
+	loss      *primaryLossBoundary
+	estimator cc.BandwidthEstimator
 	connected chan struct{}
 	terminal  chan error
 	once      sync.Once
@@ -30,18 +35,68 @@ type browserPeerLeg struct {
 }
 
 func newBrowserPeerLeg(id int) (*browserPeerLeg, error) {
+	return newBrowserPeerLegWithOptions(id, browserPeerLegOptions{})
+}
+
+type browserPeerLegOptions struct {
+	primaryRetransmission bool
+	dropAttempt           int
+}
+
+func newBrowserPeerLegWithOptions(id int, options browserPeerLegOptions) (*browserPeerLeg, error) {
 	mediaEngine := &webrtc.MediaEngine{}
-	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
-		return nil, fmt.Errorf("register codecs: %w", err)
-	}
-
 	registry := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
-		return nil, fmt.Errorf("register interceptors: %w", err)
+	rtpMetrics := &rtpRecorder{}
+	var lossBoundary *primaryLossBoundary
+	var estimator cc.BandwidthEstimator
+	if options.primaryRetransmission {
+		if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+			RTPCodecCapability: webrtc.RTPCodecCapability{
+				MimeType:  webrtc.MimeTypeVP8,
+				ClockRate: 90000,
+			},
+			PayloadType: 96,
+		}, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, fmt.Errorf("register VP8 without RTX: %w", err)
+		}
+
+		lossBoundary = newPrimaryLossBoundary(options.dropAttempt, rtpMetrics)
+		registry.Add(&primaryLossBoundaryFactory{boundary: lossBoundary})
+		congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
+			return gcc.NewSendSideBWE(
+				gcc.SendSideBWEInitialBitrate(feedbackEncoderMaxBitrate),
+				gcc.SendSideBWEMinBitrate(feedbackEncoderMinBitrate),
+				gcc.SendSideBWEMaxBitrate(feedbackEncoderMaxBitrate),
+				gcc.SendSideBWEPacer(gcc.NewNoOpPacer()),
+			)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create stock congestion controller: %w", err)
+		}
+		congestionController.OnNewPeerConnection(func(_ string, created cc.BandwidthEstimator) {
+			estimator = created
+		})
+		registry.Add(congestionController)
+		if err = webrtc.ConfigureTWCCHeaderExtensionSender(mediaEngine, registry); err != nil {
+			return nil, fmt.Errorf("configure TWCC header extension: %w", err)
+		}
+		if err = webrtc.RegisterDefaultInterceptorsWithOptions(
+			mediaEngine,
+			registry,
+			webrtc.WithNackResponderOptions(nack.ResponderSize(feedbackNACKCachePackets)),
+		); err != nil {
+			return nil, fmt.Errorf("register bounded interceptors: %w", err)
+		}
+	} else {
+		if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+			return nil, fmt.Errorf("register codecs: %w", err)
+		}
+		if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
+			return nil, fmt.Errorf("register interceptors: %w", err)
+		}
+		registry.Add(&rtpRecorderFactory{recorder: rtpMetrics})
 	}
 
-	rtpMetrics := &rtpRecorder{}
-	registry.Add(&rtpRecorderFactory{recorder: rtpMetrics})
 	api := webrtc.NewAPI(
 		webrtc.WithMediaEngine(mediaEngine),
 		webrtc.WithInterceptorRegistry(registry),
@@ -69,13 +124,19 @@ func newBrowserPeerLeg(id int) (*browserPeerLeg, error) {
 		return nil, fmt.Errorf("add VP8 sample track: %w", err)
 	}
 
+	rtcpMetrics := &rtcpRecorder{}
+	if lossBoundary != nil {
+		rtcpMetrics.onNACK = lossBoundary.observeNACK
+	}
 	leg := &browserPeerLeg{
 		id:        id,
 		pc:        pc,
 		track:     track,
 		sender:    sender,
 		rtp:       rtpMetrics,
-		rtcp:      &rtcpRecorder{},
+		rtcp:      rtcpMetrics,
+		loss:      lossBoundary,
+		estimator: estimator,
 		connected: make(chan struct{}),
 		terminal:  make(chan error, 1),
 		state:     webrtc.PeerConnectionStateNew,
@@ -204,6 +265,7 @@ func (observer *rtpRecorderInterceptor) BindLocalStream(_ *interceptor.StreamInf
 type rtcpRecorder struct {
 	mu      sync.RWMutex
 	metrics RTCPMetrics
+	onNACK  func(uint16)
 }
 
 func (recorder *rtcpRecorder) record(packets []rtcp.Packet) {
@@ -211,13 +273,22 @@ func (recorder *rtcpRecorder) record(packets []rtcp.Packet) {
 	defer recorder.mu.Unlock()
 	for _, packet := range packets {
 		recorder.metrics.Packets++
-		switch packet.(type) {
+		switch typed := packet.(type) {
 		case *rtcp.ReceiverReport:
 			recorder.metrics.ReceiverReports++
 		case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
 			recorder.metrics.PictureLoss++
 		case *rtcp.TransportLayerNack:
 			recorder.metrics.NACK++
+			for _, pair := range typed.Nacks {
+				pair.Range(func(sequence uint16) bool {
+					recorder.metrics.NACKRequests++
+					if recorder.onNACK != nil {
+						recorder.onNACK(sequence)
+					}
+					return true
+				})
+			}
 		}
 	}
 }

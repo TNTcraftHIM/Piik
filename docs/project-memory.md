@@ -29,7 +29,7 @@ Last updated: 2026-08-19
 - Leave codec order at the browser default in the first PoC and record the negotiated codec, encoder implementation, and power efficiency. Prefer H.264 only after target-machine measurements show that it is the hardware-efficient path; retain VP8 compatibility.
 - Add an Electron or native Windows sender only after browser measurements identify capture, application-audio, or encode bottlenecks.
 - Keep one independent publisher-to-viewer connection in the Web PoC until a separately measured and reversible topology decision is accepted.
-- Keep native shared encode isolated from the product. The live bridge feeds 12 seconds of one Chrome WebCodecs VP8 encode into two Chrome sessions. Its feedback oracle retains pending-key-frame PLI/FIR merge, the minimum of two ready bitrate estimates, and independent 512-packet NACK/RTX caches, but stops because Interceptor v0.1.47 stock GCC rejects the RTX SSRC. Do not add a custom pacer or claim a browser loss gate.
+- Keep native shared encode isolated. Negotiated RTX still fails stock Pion GCC. A no-RTX primary-SSRC replay passed one bounded Chrome single-loss gate through stock GCC/`NewNoOpPacer`, but its statistics/compatibility costs block product use and custom congestion control remains forbidden.
 - Keep room policy deployment-driven and small. Public and password-only deployments use random temporary rooms. A deployment that configures both the whole-site password and a SQLite path gets sequential, non-expiring protected rooms; stopping a share leaves viewers waiting and does not destroy the room.
 
 ## Current Implementation
@@ -42,7 +42,7 @@ Last updated: 2026-08-19
 - The Web control plane is deployed at `https://share.bonfire.icu` behind nginx with Node.js 24.19.0, and `turn.bonfire.icu` runs authenticated coturn 4.17.2 on standard UDP/TCP 3478. HTTPS, WSS, room authentication, certificate renewal, public STUN, authenticated TURN/UDP and TURN/TCP allocations, and relay-only bidirectional data paths are verified. TURN/TLS is intentionally not enabled.
 - Automated checks pass 108 Vitest tests and both production builds. Release `5b2fb005f6f7` passed loopback and public HTTPS/access-gate deployment checks with zero automatic service restarts; nginx, coturn, and the existing blog remained healthy. Same-machine synthetic-media Chromium recovery and public relay-only DataChannel evidence remain from the earlier baseline. A real live quality/pause cycle, persistent-room stop/reuse browser cycle, real screen/game audio, heterogeneous media sessions, mobile lifecycle handling, and latency or quality targets remain unverified.
 - No infrastructure blocker remains for the current deployment. The live-control browser cycle and real-device media matrix are bounded in `docs/status.md`; neither justifies a native sender yet.
-- The native live bridge passed one encoder, 360 inputs/outputs, a capacity-eight queue, and two independent RTP/RTCP/ICE/DTLS browser paths. Its public-API feedback oracle passed isolated key-frame, bitrate, and per-leg NACK/RTX traces, then reproduced stock GCC's `unknown ssrc: 2001`. The verdict is `no-go-stock-pion-gcc-rtx`; no product or browser-loss claim was added.
+- The native live bridge passed one encoder, bounded queues, and two independent browser paths. Negotiated RTX reproduced stock GCC's `unknown ssrc: 2001`. A separate no-RTX single-loss oracle observed one exact NACK, primary-SSRC replay, fresh TWCC, sustained decode/presentation, and a clean second leg; this remains bounded evidence only.
 
 ## Provisional Quality Targets
 
@@ -59,7 +59,7 @@ Last updated: 2026-08-19
 - Whether the first release is open source, source-available, or proprietary; this affects whether GPL/AGPL projects can be reused rather than only studied.
 - Initial deployment regions and expected mainland China/Hong Kong/overseas network mix.
 - Whether Windows per-application audio is P0 or whether whole-system loopback is acceptable initially.
-- Whether the native shared-encode route remains worthwhile after the stock GCC+RTX blocker is fixed in a released dependency or a separate bounded public-API adapter is explicitly accepted, followed by real two-browser loss, live key-frame/bitrate, pacing, audio, TURN, and reconnect gates.
+- Whether no-RTX replay's distorted RTCP statistics and absent inbound retransmission counters are acceptable before broader native feedback, loss, audio, TURN, reconnect, and browser gates. Negotiated RTX still needs an upstream fix.
 - Whether voice chat is ever in scope or the product remains complementary to an existing voice application.
 
 ## Source Of Truth
@@ -71,6 +71,7 @@ Last updated: 2026-08-19
 - Realtime quality policy: `docs/research/realtime-quality-adaptation.md`
 - Native pre-encoded browser fanout: `docs/research/native-shared-encode-sender.md`
 - Native shared-encode feedback control: `docs/research/native-shared-feedback-control.md`
+- Native primary-SSRC retransmission: `docs/research/native-primary-ssrc-retransmission.md`
 - Topology decision: `docs/adr/0001-p2p-first-media-topology.md`
 - Persistent protected-room decision: `docs/adr/0002-persistent-protected-rooms.md`
 - Current phase and next step: `docs/status.md`

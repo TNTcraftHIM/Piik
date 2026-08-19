@@ -129,3 +129,21 @@ func TestFeedbackControlOracleRecordsStockGCCRTXNoGo(t *testing.T) {
 		t.Fatalf("stock GCC RTX trace = %+v", result.StockGCCRTX)
 	}
 }
+
+func TestPrimaryRetransmissionPassesStockGCCWithoutRTX(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result, err := runPrimaryRetransmissionTrace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RTXNegotiated || !result.PrimaryDelivered || !result.RetransmissionDelivered {
+		t.Fatalf("delivery trace = %+v", result)
+	}
+	if !result.SameRTPIdentity || !result.DistinctTransportSequence {
+		t.Fatalf("RTP/TWCC identity trace = %+v", result)
+	}
+	if result.Pacer != "gcc.NewNoOpPacer" || result.PacerQueue != "none" {
+		t.Fatalf("pacer trace = %+v", result)
+	}
+}

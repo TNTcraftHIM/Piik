@@ -3,7 +3,8 @@
 - Research date: 2026-08-19
 - Scope: two independent Pion sender legs sharing one encoded VP8 source
 - Status: deterministic policy traces pass; the stock Pion GCC plus negotiated
-  RTX composition is a no-go on the pinned releases
+  RTX composition remains a no-go on the pinned releases. A separate accepted
+  no-RTX experiment is recorded in `native-primary-ssrc-retransmission.md`.
 
 ## Decision Question
 
@@ -107,16 +108,16 @@ loss run after that deterministic failure would not test the required combined
 path, so the browser gate was deliberately not run.
 
 This spike does not add an RTX-aware pacer, reorder interceptors to bypass GCC,
-disable negotiated RTX, fall back to non-standard REMB, or fork Pion. Any of
-those changes would create a different experiment and would need its own
-packet-accounting, TWCC identity, pacing, memory, and browser-loss gates.
+disable negotiated RTX, fall back to non-standard REMB, or fork Pion. Those
+choices are different experiments with separate packet-accounting, TWCC,
+pacing, memory, and browser-loss gates.
 
-The route remains blocked until either:
-
-- a released Pion/Interceptor version fixes the RTX SSRC registration and a
-  fresh two-browser controlled-loss gate passes; or
-- a separate explicitly accepted spike proves a narrowly bounded public-API
-  adapter without bypassing RTX congestion accounting.
+The negotiated RTX route remains blocked until a released Pion/Interceptor
+version fixes the RTX SSRC registration and a fresh controlled-loss gate
+passes. A subsequently accepted, separate experiment omitted RTX negotiation
+and passed one bounded primary-SSRC retransmission gate; it does not repair or
+supersede this negotiated-RTX no-go. See
+[`native-primary-ssrc-retransmission.md`](./native-primary-ssrc-retransmission.md).
 
 Even after that, live PLI/FIR-to-WebCodecs control, live two-leg target changes,
 pacing, asymmetric sustained loss, TURN coexistence, reconnect isolation,

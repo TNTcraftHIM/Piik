@@ -253,6 +253,9 @@ const pc = new RTCPeerConnection();
 let renderedFrameCallbacks = 0;
 const renderedPixelHashes = [];
 const renderedPixelHashSet = new Set();
+let recoveryObserved = false;
+let framesDecodedAtRecovery = 0;
+let renderedCallbacksAtRecovery = 0;
 let trackSeenResolve;
 const trackSeen = new Promise((resolve) => { trackSeenResolve = resolve; });
 
@@ -355,6 +358,9 @@ async function collectMetrics() {
     renderedPixelHashes,
     decoderImplementation: inbound && inbound.decoderImplementation || "",
     powerEfficientDecoder: Boolean(inbound && inbound.powerEfficientDecoder),
+    hasRetransmittedPacketsReceived: Boolean(inbound && "retransmittedPacketsReceived" in inbound),
+    retransmittedPacketsReceived: inbound && inbound.retransmittedPacketsReceived || 0,
+    hasRtxSsrc: Boolean(inbound && "rtxSsrc" in inbound),
   };
 }
 
@@ -380,9 +386,24 @@ async function run() {
     if (state.error) {
       throw new Error(state.error);
     }
+    if (state.retransmissionRecovered && !recoveryObserved) {
+      const recoveryMetrics = await collectMetrics();
+      recoveryObserved = true;
+      framesDecodedAtRecovery = recoveryMetrics.framesDecoded;
+      renderedCallbacksAtRecovery = recoveryMetrics.renderedFrameCallbacks;
+    }
     if (state.complete) {
       await delay(500);
       const metrics = await collectMetrics();
+      metrics.recoveryObserved = recoveryObserved;
+      metrics.framesDecodedAtRecovery = framesDecodedAtRecovery;
+      metrics.framesDecodedAfterRecovery = recoveryObserved
+        ? metrics.framesDecoded - framesDecodedAtRecovery
+        : 0;
+      metrics.renderedCallbacksAtRecovery = renderedCallbacksAtRecovery;
+      metrics.renderedCallbacksAfterRecovery = recoveryObserved
+        ? metrics.renderedFrameCallbacks - renderedCallbacksAtRecovery
+        : 0;
       await request("/api/result", metrics);
       document.body.dataset.complete = "true";
       return;

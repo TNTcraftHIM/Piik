@@ -23,6 +23,7 @@ const liveChunkHeaderBytes = 17
 
 type liveBridgeRun struct {
 	ctx            context.Context
+	options        liveBridgeRunOptions
 	token          string
 	listener       net.Listener
 	server         *http.Server
@@ -74,11 +75,20 @@ type liveBridgeKeyFrameRequest struct {
 }
 
 type liveBridgeState struct {
-	Complete bool   `json:"complete"`
-	Error    string `json:"error,omitempty"`
+	Complete                bool   `json:"complete"`
+	RetransmissionRecovered bool   `json:"retransmissionRecovered"`
+	Error                   string `json:"error,omitempty"`
 }
 
 func newLiveBridgeRun(ctx context.Context) (*liveBridgeRun, error) {
+	return newLiveBridgeRunWithOptions(ctx, liveBridgeRunOptions{})
+}
+
+type liveBridgeRunOptions struct {
+	primaryRetransmission bool
+}
+
+func newLiveBridgeRunWithOptions(ctx context.Context, options liveBridgeRunOptions) (*liveBridgeRun, error) {
 	tokenBytes := make([]byte, liveBridgeTokenBytes)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return nil, fmt.Errorf("generate live bridge startup token: %w", err)
@@ -90,6 +100,7 @@ func newLiveBridgeRun(ctx context.Context) (*liveBridgeRun, error) {
 
 	run := &liveBridgeRun{
 		ctx:          ctx,
+		options:      options,
 		token:        hex.EncodeToString(tokenBytes),
 		listener:     listener,
 		queue:        newLiveSampleQueue(liveBridgeQueueCapacity),
@@ -494,6 +505,13 @@ func (run *liveBridgeRun) handleState(response http.ResponseWriter, request *htt
 	run.stateMu.RLock()
 	state := liveBridgeState{Complete: run.streamComplete, Error: run.streamFailure}
 	run.stateMu.RUnlock()
+	if request.URL.Query().Get("id") != "" {
+		if index, err := viewerIndex(request); err == nil {
+			if leg := run.leg(index); leg != nil && leg.loss != nil {
+				state.RetransmissionRecovered = leg.loss.isRecovered()
+			}
+		}
+	}
 	writeOracleJSON(response, state)
 }
 
@@ -561,7 +579,14 @@ func (run *liveBridgeRun) createLeg(index int) (*browserPeerLeg, error) {
 	if run.legs[index] != nil {
 		return nil, errors.New("offer already created")
 	}
-	leg, err := newBrowserPeerLeg(index)
+	peerOptions := browserPeerLegOptions{}
+	if run.options.primaryRetransmission {
+		peerOptions.primaryRetransmission = true
+		if index == 0 {
+			peerOptions.dropAttempt = primaryRetransmissionDropAttempt
+		}
+	}
+	leg, err := newBrowserPeerLegWithOptions(index, peerOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -694,6 +719,9 @@ func (run *liveBridgeRun) result(submission liveBridgeSubmission, fanout liveFan
 		nonEmptyDifferent(result.Downstream[0].AnswerFingerprint, result.Downstream[1].AnswerFingerprint)
 	result.EqualEdgePayloadBytes = result.Downstream[0].RTP.PayloadBytes != 0 &&
 		result.Downstream[0].RTP.PayloadBytes == result.Downstream[1].RTP.PayloadBytes
+	if run.options.primaryRetransmission {
+		result.PrimaryRetransmission = run.primaryRetransmissionMetrics()
+	}
 	return result
 }
 

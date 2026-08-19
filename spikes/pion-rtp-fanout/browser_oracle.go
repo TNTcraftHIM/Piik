@@ -83,32 +83,41 @@ type RTCPMetrics struct {
 	ReceiverReports uint64 `json:"receiverReports"`
 	PictureLoss     uint64 `json:"pictureLoss"`
 	NACK            uint64 `json:"nack"`
+	NACKRequests    uint64 `json:"nackRequests"`
 }
 
 // BrowserMetrics comes from the receiver's standard WebRTC stats and actual
 // video presentation callbacks.
 type BrowserMetrics struct {
-	UserAgent              string   `json:"userAgent"`
-	PeerConnectionState    string   `json:"peerConnectionState"`
-	ICEConnectionState     string   `json:"iceConnectionState"`
-	DTLSState              string   `json:"dtlsState"`
-	CandidatePairState     string   `json:"candidatePairState"`
-	LocalCandidateType     string   `json:"localCandidateType"`
-	RemoteCandidateType    string   `json:"remoteCandidateType"`
-	InboundSSRC            uint32   `json:"inboundSsrc"`
-	PacketsReceived        uint64   `json:"packetsReceived"`
-	BytesReceived          uint64   `json:"bytesReceived"`
-	FramesReceived         uint64   `json:"framesReceived"`
-	FramesDecoded          uint64   `json:"framesDecoded"`
-	FramesRendered         uint64   `json:"framesRendered"`
-	KeyFramesDecoded       uint64   `json:"keyFramesDecoded"`
-	FrameWidth             uint32   `json:"frameWidth"`
-	FrameHeight            uint32   `json:"frameHeight"`
-	RenderedFrameCallbacks uint64   `json:"renderedFrameCallbacks"`
-	RenderedPixelHashes    []uint32 `json:"renderedPixelHashes"`
-	DecoderImplementation  string   `json:"decoderImplementation"`
-	PowerEfficientDecoder  bool     `json:"powerEfficientDecoder"`
-	Error                  string   `json:"error,omitempty"`
+	UserAgent                       string   `json:"userAgent"`
+	PeerConnectionState             string   `json:"peerConnectionState"`
+	ICEConnectionState              string   `json:"iceConnectionState"`
+	DTLSState                       string   `json:"dtlsState"`
+	CandidatePairState              string   `json:"candidatePairState"`
+	LocalCandidateType              string   `json:"localCandidateType"`
+	RemoteCandidateType             string   `json:"remoteCandidateType"`
+	InboundSSRC                     uint32   `json:"inboundSsrc"`
+	PacketsReceived                 uint64   `json:"packetsReceived"`
+	BytesReceived                   uint64   `json:"bytesReceived"`
+	FramesReceived                  uint64   `json:"framesReceived"`
+	FramesDecoded                   uint64   `json:"framesDecoded"`
+	FramesRendered                  uint64   `json:"framesRendered"`
+	KeyFramesDecoded                uint64   `json:"keyFramesDecoded"`
+	FrameWidth                      uint32   `json:"frameWidth"`
+	FrameHeight                     uint32   `json:"frameHeight"`
+	RenderedFrameCallbacks          uint64   `json:"renderedFrameCallbacks"`
+	RenderedPixelHashes             []uint32 `json:"renderedPixelHashes"`
+	DecoderImplementation           string   `json:"decoderImplementation"`
+	PowerEfficientDecoder           bool     `json:"powerEfficientDecoder"`
+	HasRetransmittedPacketsReceived bool     `json:"hasRetransmittedPacketsReceived"`
+	RetransmittedPacketsReceived    uint64   `json:"retransmittedPacketsReceived"`
+	HasRTXSSRC                      bool     `json:"hasRtxSsrc"`
+	RecoveryObserved                bool     `json:"recoveryObserved"`
+	FramesDecodedAtRecovery         uint64   `json:"framesDecodedAtRecovery"`
+	FramesDecodedAfterRecovery      uint64   `json:"framesDecodedAfterRecovery"`
+	RenderedCallbacksAtRecovery     uint64   `json:"renderedCallbacksAtRecovery"`
+	RenderedCallbacksAfterRecovery  uint64   `json:"renderedCallbacksAfterRecovery"`
+	Error                           string   `json:"error,omitempty"`
 }
 
 type fixtureSubmission struct {

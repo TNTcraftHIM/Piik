@@ -36,19 +36,20 @@ type LiveBridgeOptions struct {
 // LiveBridgeResult records one continuous WebCodecs encoder feeding two
 // independent Pion transports through an authenticated loopback IPC bridge.
 type LiveBridgeResult struct {
-	Host                         LiveBridgeHostMetrics `json:"host"`
-	IPC                          LiveBridgeIPCMetrics  `json:"ipc"`
-	Queue                        LiveQueueMetrics      `json:"queue"`
-	SourceSamples                int                   `json:"sourceSamples"`
-	TransportSampleWrites        int                   `json:"transportSampleWrites"`
-	Downstream                   [2]BrowserDownstream  `json:"downstream"`
-	IndependentSSRC              bool                  `json:"independentSsrc"`
-	IndependentSequenceSpace     bool                  `json:"independentSequenceSpace"`
-	IndependentICECredentials    bool                  `json:"independentIceCredentials"`
-	IndependentDTLSFingerprints  bool                  `json:"independentDtlsFingerprints"`
-	EqualEdgePayloadBytes        bool                  `json:"equalEdgePayloadBytes"`
-	PhysicalHardwareEncodeProven bool                  `json:"physicalHardwareEncodeProven"`
-	HardStops                    []string              `json:"hardStops"`
+	Host                         LiveBridgeHostMetrics             `json:"host"`
+	IPC                          LiveBridgeIPCMetrics              `json:"ipc"`
+	Queue                        LiveQueueMetrics                  `json:"queue"`
+	SourceSamples                int                               `json:"sourceSamples"`
+	TransportSampleWrites        int                               `json:"transportSampleWrites"`
+	Downstream                   [2]BrowserDownstream              `json:"downstream"`
+	IndependentSSRC              bool                              `json:"independentSsrc"`
+	IndependentSequenceSpace     bool                              `json:"independentSequenceSpace"`
+	IndependentICECredentials    bool                              `json:"independentIceCredentials"`
+	IndependentDTLSFingerprints  bool                              `json:"independentDtlsFingerprints"`
+	EqualEdgePayloadBytes        bool                              `json:"equalEdgePayloadBytes"`
+	PhysicalHardwareEncodeProven bool                              `json:"physicalHardwareEncodeProven"`
+	PrimaryRetransmission        *PrimaryRetransmissionGateMetrics `json:"primaryRetransmission,omitempty"`
+	HardStops                    []string                          `json:"hardStops"`
 }
 
 // LiveBridgeHostMetrics are reported by the real Chrome host page. The
@@ -102,12 +103,18 @@ type liveFanoutMetrics struct {
 // RunLiveBridge performs the bounded live bridge experiment. It intentionally
 // has no integration point with Screener's product signaling or media router.
 func RunLiveBridge(ctx context.Context, options LiveBridgeOptions) (LiveBridgeResult, error) {
+	return runLiveBridge(ctx, options, liveBridgeRunOptions{})
+}
+
+func runLiveBridge(
+	ctx context.Context, options LiveBridgeOptions, runOptions liveBridgeRunOptions,
+) (LiveBridgeResult, error) {
 	browserPath, err := resolveBrowserPath(options.BrowserPath)
 	if err != nil {
 		return LiveBridgeResult{}, err
 	}
 
-	run, err := newLiveBridgeRun(ctx)
+	run, err := newLiveBridgeRunWithOptions(ctx, runOptions)
 	if err != nil {
 		return LiveBridgeResult{}, err
 	}

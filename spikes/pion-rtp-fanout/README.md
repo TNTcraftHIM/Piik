@@ -106,6 +106,37 @@ RTX, or connect to the product. See
 [`docs/research/native-shared-feedback-control.md`](../../docs/research/native-shared-feedback-control.md)
 for evidence, source links, and the stop line.
 
+## Primary-SSRC NACK Retransmission Gate
+
+The separately accepted alternative omits RFC 4588 RTX codec negotiation while
+retaining Generic NACK. It first proves deterministically that Pion's stock
+responder replays the primary SSRC and original RTP sequence through stock GCC
+and `gcc.NewNoOpPacer`, with a fresh TWCC transport sequence.
+
+```sh
+go test -run '^TestPrimary(RetransmissionPassesStockGCCWithoutRTX|LossBoundaryDropsOnlyTargetAndRecognizesReplay|RetransmissionPeerOffersNACKWithoutRTX)$' -count=1 .
+```
+
+The opt-in real-browser command then drops exactly one first-pass packet on
+viewer leg 1 while leg 2 remains clean:
+
+```sh
+go run ./cmd/primary-nack-retransmit
+```
+
+The one Windows/Chrome 151 run received one NACK and one same-SSRC replay for
+the dropped sequence, then sustained 278 more presentation callbacks. Both
+viewers decoded and presented 331 frames; the clean leg had no NACK or replay.
+The application queue peaked at one of eight, the NACK caches held 512 packets,
+and the stock NoOpPacer owned no queue. Set
+`SCREENER_RUN_PRIMARY_RETRANSMISSION=1` to opt into the same gate from Go tests.
+
+This is not RFC 4588 repair. Reusing an RTP sequence can distort RTCP statistics,
+and receivers cannot report retransmission-specific inbound stats without RTX.
+The candidate remains disconnected from the product. Full measurements and
+protocol sources are in
+[`docs/research/native-primary-ssrc-retransmission.md`](../../docs/research/native-primary-ssrc-retransmission.md).
+
 ## RTP Oracle Scope Boundaries
 
 This layered spike covers the Pion API, standard Chrome decode/render, and a
@@ -116,16 +147,17 @@ identity to two separate `PeerConnection` transports.
 It does **not** include or prove:
 
 - screen capture, physical video encoding, or A/V sync;
-- congestion-control fairness, RTCP feedback arbitration, retransmission,
-  pacing, loss recovery, latency, or sustained throughput;
+- congestion-control fairness, general RTCP feedback arbitration, broad loss
+  recovery, latency, or sustained throughput;
 - zero-copy transport, whole-process constant memory, or production readiness;
 - that this should replace the current P2P-first browser path.
 
 The browser oracles additionally do **not** prove physical or hardware shared
 encoding. The deterministic follow-up retains candidate PLI/FIR and bitrate
 merge policies and proves independent bounded NACK/RTX in isolation, but the
-stock Pion GCC+RTX composition is a no-go. Network pacing, live feedback,
-audio, and TURN/reconnect behavior remain hard stops before product use.
+stock Pion GCC+RTX composition is a no-go. The no-RTX follow-up proves only one
+same-SSRC retransmission under one controlled Chrome loss. General loss,
+live feedback, audio, and TURN/reconnect behavior remain hard stops.
 
 ## Decision Gate
 
@@ -133,8 +165,11 @@ audio, and TURN/reconnect behavior remain hard stops before product use.
   bridge sustain one Chrome VP8 encoder across two independent browser-
   decodable transports.
 - **Feedback-control gate stopped:** the stock v0.1.47 GCC pacer rejects the
-  negotiated RTX SSRC. Do not proceed to a browser loss gate or product path
-  until a released fix or a separately accepted bounded adapter exists.
+  negotiated RTX SSRC. That composition remains blocked.
+- **Bounded no-RTX gate passed:** a separately accepted primary-SSRC replay
+  passed one deterministic and one controlled Chrome loss run. It is a retained
+  candidate with explicit statistics and compatibility costs, not a product
+  integration decision or a general congestion-control result.
 - **No-go:** the behavior requires internal APIs, a Pion fork, duplicate
   application writes, or payload re-encoding. Stop the native relay path.
 
@@ -156,5 +191,9 @@ Primary sources accessed 2026-08-19:
 - <https://github.com/pion/webrtc/releases/tag/v4.2.18>
 - <https://github.com/pion/webrtc/blob/v4.2.18/go.mod>
 - <https://github.com/pion/webrtc/blob/v4.2.18/track_local_static.go>
+- <https://github.com/pion/webrtc/blob/v4.2.18/rtpsender_test.go>
+- <https://github.com/pion/interceptor/blob/v0.1.47/internal/rtpbuffer/packet_factory.go>
+- <https://www.w3.org/TR/webrtc-stats/>
+- <https://www.rfc-editor.org/rfc/rfc4588.html>
 - <https://github.com/pion/webrtc/blob/v4.2.18/LICENSE>
 - <https://github.com/coder/websocket/tree/v1.8.15>
