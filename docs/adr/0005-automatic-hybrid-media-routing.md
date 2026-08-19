@@ -371,7 +371,9 @@ record which boundary is actually configured and the UI must not claim E2EE.
 4. Implement server prepare/commit/abort and strict authorization.
 5. Integrate host/viewer first-frame switching while retaining relay children.
 6. Extend the tracked `1/3/5/8` benchmark with automatic fallback, peer/SFU UDP,
-   bounded UDP-blocked failure, source/profile/pause/stop, and server-egress measurements.
+   bounded UDP-blocked failure, source/profile/pause/stop, and server-egress
+   measurements; only after those pass, add the 20-viewer gate before changing
+   the room default. Any future selected-edge TURN has its own separate gate.
 
 ## Acceptance Gates
 

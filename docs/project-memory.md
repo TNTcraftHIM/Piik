@@ -4,7 +4,7 @@ Last updated: 2026-08-19
 
 ## Confirmed Intent
 
-- Build low-latency game screen sharing for one broadcaster and a small trusted group; public or large broadcasts belong on OBS/Twitch-class services.
+- Build low-latency game sharing for one broadcaster and trusted friends; public or large broadcasts belong on OBS/Twitch-class services.
 - Viewers join from normal desktop/mobile browsers. A later native sender may share encoding and improve capture/audio without changing the Web viewer requirement.
 - Use a small central service for access, rooms, signaling, deterministic topology, STUN, observability, and bounded SFU-root capacity; TURN is optional extreme-network transport.
 - Minimize server bandwidth. The accepted invisible ladder is direct/peer UDP, then SFU/UDP roots, then optional TURN for a selected exceptional edge, then bounded failure. TURN is transport, not topology.
@@ -27,7 +27,7 @@ Last updated: 2026-08-19
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP. Old production retains coturn TURN for rollback. The candidate uses self-hosted STUN-only ordinary ICE and separate LiveKit SFU/UDP, with no TURN/media-TCP wire.
 - Treat settings as ceilings and deployed degradation as unclassified. Use correlated Host A+B/Viewer C to compare exact `769de201f7cc` against current `main` for Host-only recovery, game FPS/load, preview cost, actual codec/encoder and one-variable rebuilds; then test standard simulcast/LiveKit/SVC before custom `LOW`. Never use UA or a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
-- Queue a Viewer-only `0-100%` volume slider after the current quality/SFU gates; it is page-local playback state, not a media, signaling, or persistence control.
+- Post-gate UI: local volume/mute, display name, transient roster, local-only candidate endpoints, and RTP loss rate; no accounts, database, telemetry, media, or routing effects.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 until stats and target hardware prove the need. Codec acceptance requires actual negotiation, power-efficient candidate evidence, interval encode cost, game FPS, CPU/GPU and sender count; Discord's native capture/hardware tuning is comparison evidence, not proof of server re-encoding or a reusable preset.
 - Keep room policy deployment-driven: public/password-only rooms are random and temporary; password plus SQLite enables sequential persistent rooms and reusable stopped links.
 - Deferred architecture audit: `docs/maintenance.md`.
@@ -63,7 +63,7 @@ These are measurement gates, not performance claims.
 
 ## Open Decisions
 
-- Sustainable viewer count by broadcaster and relay hardware, quality profile, network class, and media route; use instrumented 1/3/5/8 comparisons rather than a 1:8 claim.
+- Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
 - Whether measured restrictive-network demand justifies a future selected-edge TURN grant at all, and which UDP transport/port it would use. The current candidate does not retain dormant TURN or media-TCP configuration.
 - Exact mobile lifecycle behavior and whether Windows per-application audio is required for the first release.

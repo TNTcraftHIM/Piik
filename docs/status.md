@@ -58,12 +58,12 @@ sync, and voice-source leakage in parallel when it does not displace that P0;
 `maxBitrate` is not a quality fix. WebRTC/LiveKit owns congestion/layers; the app
 owns two-state policy. An isolated exact room later gates peer/SFU UDP and
 bounded failure before replacing the old release. Selected-edge TURN, if later
-justified, is a separate complete change rather than part of this canary. The
-Viewer-local volume slider is a later bounded UI batch and does not block these
-media gates.
+justified, is a separate complete change rather than part of this canary.
+Post-gate UI adds local volume/mute, names/roster, endpoint details, and RTP loss.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
-resource, quality, latency, recovery, and browser/mobile-leaf matrix.
+resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
+20-viewer gate must pass before the current default eight changes to target 20.
 
 Observed disconnects retain 5-second grace plus at most 3 seconds to a decodable
 picture; silent partitions add detection delay.
