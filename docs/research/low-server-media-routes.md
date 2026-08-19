@@ -54,12 +54,15 @@ is issued until the existing route controller actually selects SFU fallback.
 With no fallback configuration, the field, import, HEAD, and behavior are all
 absent.
 
-A bounded Chrome 151/LiveKit 1.13.5 same-leaf comparison reduced failure report
-to SFU active from 1.481 seconds to 200 ms and to a rendered frame from 2.257
-seconds to 319.7 ms. It retained the fixed direct -> peer -> SFU order, two
-allowlisted roots, and host media-edge peak two. This is localhost synthetic
-720p30 video evidence only; internet DNS/TLS reuse, RTT/loss, audio, transport
-fallback, and browser variance still require measurement.
+A bounded Chrome 151/LiveKit 1.13.5 localhost/headless/video-only same-leaf A/B
+reduced failure report to SFU active from 1.481 seconds to 200 ms and to a
+rendered frame from 2.257 seconds to 319.7 ms. It retained the fixed direct ->
+peer -> SFU order, two allowlisted roots, and host media-edge peak two. The
+standby had already downloaded/parsed the SDK and made its token-free network
+prewarm, without a participant or media edge, so the A/B does not isolate those
+effects. Its roughly 86% result must not be extrapolated to a public network;
+internet DNS/TLS reuse, RTT/loss, audio, transport fallback, and browser variance
+still require measurement.
 
 ## Traffic Conservation And The Impossible Triangle
 

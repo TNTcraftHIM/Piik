@@ -53,8 +53,9 @@ at peer assistance and bounded waiting/failure.
 ## Draft Implementation Status
 
 Draft PR #17 (`feat/automatic-hybrid-routing`) implements this controller on top
-of Draft PR #13. It passes CI but is not merged or deployed. Production remains
-on the ordinary one-host-peer-per-viewer path.
+of Draft PR #13. Draft PR #20 (`spike/hybrid-warm-fallback`) adds only the
+bounded standby prewarm described below. Both pass CI but are not merged or
+deployed. Production remains on the ordinary one-host-peer-per-viewer path.
 
 The Draft keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
@@ -190,11 +191,12 @@ client dynamically imports the SDK once, attempts each advertised URL once, and
 drops work made stale before import by a newer authenticated snapshot. Failure
 silently preserves the existing cold path; there is no timer or retry loop.
 
-One bounded before/after comparison used Chrome 151, LiveKit 1.13.5, headless
-synthetic 1280x720/30 video, three viewers, and localhost. The harness physically
-closed the same leaf's inbound peer edge, observed it resume under a second peer,
-then physically closed that new edge and reported its real connection ID and
-active revision. The resulting plan had two allowlisted SFU roots.
+One bounded cold/standby A/B comparison used Chrome 151, LiveKit 1.13.5,
+headless synthetic 1280x720/30 video, three viewers, and localhost. The harness
+physically closed the same leaf's inbound peer edge, observed it resume under a
+second peer, then physically closed that new edge and reported its real
+connection ID and active revision. The resulting plan had two allowlisted SFU
+roots.
 
 | Failure report to | Cold Draft PR #17 | Authenticated standby |
 | --- | ---: | ---: |
@@ -202,10 +204,14 @@ active revision. The resulting plan had two allowlisted SFU roots.
 | SFU active | 1,481 ms | 200 ms |
 | Same-leaf rendered frame | 2,257 ms | 319.7 ms |
 
-The same leaf decoded 31 SFU frames and produced 31 new frame callbacks before
-the after-run completed. Both roots and the host SFU transport were connected;
-25 ms sampling observed a host media-edge peak of two. This is a local go for
-retaining the optimization, not public-network performance evidence.
+The standby path had already downloaded and parsed the dynamically imported SDK
+and had called its token-free `HEAD`, so this A/B does not isolate SDK startup
+from DNS/TLS/HTTP preparation. It created no participant or media edge. The same
+leaf decoded 31 SFU frames and produced 31 new frame callbacks before the
+after-run completed. Both roots and the host SFU transport were connected; 25 ms
+sampling observed a host media-edge peak of two. This is a local go for retaining
+the optimization; the roughly 86% improvement must not be extrapolated to a
+public network.
 
 ## Triggers And Budgets
 
@@ -283,6 +289,10 @@ Negative:
 - Strict two-edge migration can include a bounded interruption.
 - LiveKit adds an optional operational dependency and can inspect ordinary SFU
   media.
+- A configured peer-assisted client downloads/parses the current build's roughly
+  137.5 kB gzip (531 kB minified) LiveKit chunk and sends one `HEAD` even if it
+  never needs SFU, shifting that small one-time client/static-egress cost earlier.
+  An unconfigured client pays neither cost.
 - A media liveness signal and versioned cross-client transition expand the
   state space and require real failure-injection tests.
 

@@ -10,9 +10,9 @@ rooms, sequential IDs, and reusable links.
 
 Production still creates one host peer connection per viewer. Draft PR #13 adds
 default-off two-chain peer assistance with per-hop re-encoding; ADR-0005 adds
-optional automatic SFU fallback in Draft PR #17. Corrected recovery passes
-the local sub-second gate with token-free standby prewarm; neither Draft nor the
-follow-up spike is merged or deployed.
+optional automatic SFU fallback in Draft PR #17. Corrected recovery passes the
+local sub-second gate with token-free standby prewarm in Draft PR #20; neither
+PR is merged or deployed.
 
 ## Current Snapshot
 
@@ -31,8 +31,8 @@ follow-up spike is merged or deployed.
 - Draft PR #13 now provides `npm run benchmark:peer-assisted`; the full check passes type checking, 13 Vitest files with 152 tests, and both production builds.
 - A short Chrome 151 synthetic `1/3/5/8` benchmark passed every topology check: host active edges peaked at two, relay edges at one, every viewer kept increasing decoded frames through the measurement window, and the slowest first decoded frame was about 1.05 seconds. Closing a first-level relay in the three-viewer run recovered in about 5.32 seconds without exceeding host fanout two.
 - A separate live-profile smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings while its leaf kept decoding.
-- Corrected Chrome 151/LiveKit 1.13.5 synthetic 720p30 same-leaf/two-root smoke measured the cold path at 1.481 seconds to active and 2.257 seconds to render. With authenticated standby, prepare arrived in 5 ms, active in 200 ms, and the same leaf rendered in 319.7 ms with 31 new decoded/frame-callback frames; 25 ms sampling kept host edge peak two.
-- Draft PR #17 passes CI, type checking, 19 Vitest files/253 tests, both production builds, dependency audit, and repository hygiene.
+- Corrected Chrome 151/LiveKit 1.13.5 localhost/headless/video-only same-leaf A/B measured the cold path at 1.481 seconds to active and 2.257 seconds to render. Standby prepare arrived in 5 ms, active in 200 ms, and the same leaf rendered in 319.7 ms with 31 new decoded/frame-callback frames; 25 ms sampling kept host edge peak two. The roughly 86% result combines early SDK download/parse with token-free DNS/TLS/HTTP prewarm, creates no participant/media edge, and does not predict public-network performance.
+- Draft PR #17 passes CI. Draft PR [#20](https://github.com/TNTcraftHIM/Screener/pull/20) passes CI, type checking, 20 Vitest files/259 tests, both production builds, dependency audit, and repository hygiene.
 - Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes CI for one Pion RTP write fanned to two transports. It has no encoder and proves neither physical encode nor browser E2E.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
 - Production HTTPS/WSS, access cookie, room/WebSocket authorization, certificate renewal, public STUN, and authenticated TURN/UDP and TURN/TCP relay-only bidirectional paths are verified. TURN/TLS is intentionally disabled.
