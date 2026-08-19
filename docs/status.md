@@ -67,11 +67,11 @@ no-RTX remains research-only.
 
 ## Blockers And Decisions
 
-Production enablement of peer assistance and automatic routing is No-Go until
-ADR-0004/0005 gates pass. Without LiveKit, two mobile leaves can occupy both
-host roots and leave later viewers without media; use only an exact-room
-allowlisted isolated canary.
-Native shared encode and multi-tree striping remain separate experiments.
+Peer assistance and automatic routing remain No-Go until ADR-0004/0005 pass.
+Without LiveKit, two mobile leaves can fill both host roots; use an isolated
+exact-room canary only.
+Native shared encode and striping remain separate experiments.
+Deferred architecture audit: `docs/maintenance.md`.
 
 - Whole-system versus selected-game audio for the first release.
 - Initial deployment region and network cohort.

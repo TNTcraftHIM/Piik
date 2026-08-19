@@ -27,7 +27,8 @@ Last updated: 2026-08-19
 - Prefer direct UDP, then TURN/UDP, with TURN/TCP as the required non-UDP fallback. Optional TURN/TLS uses TCP 5349 by default; TCP 443 needs a dedicated address or validated L4/SNI routing.
 - Treat video settings as ceilings. Production defaults clarity-first with bounded manual controls, but reported degradation is unclassified. Before ADR-0007 implementation, correlate same-tick capture settings and outbound deltas/identity, then add only the minimal authenticated viewer report needed for per-path `HIGH`/`FALLBACK`. Do not use UA for quality or build a composite score. Keep browser audio request/presence-only.
 - Do not add custom scene detection or dynamic-FPS control until WebRTC statistics and host resource measurements prove a material gap. Keep browser codec order until target hardware proves a more efficient common codec.
-- Keep room policy deployment-driven. Public and password-only deployments use random temporary rooms. A site password plus SQLite path enables sequential persistent rooms; stopping sharing leaves the room and viewer link available.
+- Keep room policy deployment-driven. Public/password-only deployments use random temporary rooms. A site password plus SQLite path enables sequential persistent rooms; stopping leaves the room and viewer link available.
+- Deferred architecture audit: `docs/maintenance.md`.
 
 ## Current Implementation
 
