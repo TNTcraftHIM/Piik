@@ -10,8 +10,6 @@ room-scoped Viewer access and the bounded SFU failure-stage diagnostic.
 Ordinary ICE is STUN-only process-wide; persistent room `1` alone enables the
 automatic peer/SFU-UDP controller with at most two SFU roots. The old
 `9610032fc5f5` release, v1 backup, and coturn relay remain rollback-only.
-Coherent low-risk milestones may deploy after narrow tests, independent review,
-one full gate, CI and rollback preflight; protocol/database changes stay atomic.
 
 ## Current Snapshot
 
@@ -20,6 +18,7 @@ one full gate, CI and rollback preflight; protocol/database changes stay atomic.
 - SQLite v2 keeps Host and nullable Viewer-grant digests in one checked `STRICT` row. The stopped migration retained four rooms and locked each old room private without minting a raw grant.
 - PR #44's exact-room STUN-only/SFU-UDP router is enabled only for production room `1`: host/SFU roots <=2, browser relay <=1, bounded failure. HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.
+- Viewer initial-connect: after an answer, a generation-bound 15s deadline enters ICE restart; success/replacement/disposal cancels it. Unit-tested, not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
 - A+B/P2P C remains read-only. Autonomous BWE is only `suspect`; confirmed fallback evacuates children and loses parent capacity. Root impact remains a default-on gate.
 

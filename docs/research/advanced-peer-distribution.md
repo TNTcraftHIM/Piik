@@ -245,7 +245,8 @@ Pinned LiveKit client 2.22.0 uses reconnect delays of 0, 300, 1,200, 2,700,
 and a four-second state reconciliation that requires three consecutive
 mismatches before a full reconnect. Jitsi Videobridge similarly defaults to a
 15-second first-transfer timeout and an eight-second inactivity limit. These are
-reference boundaries, not thresholds copied into Screener.
+reference boundaries, not universal prescriptions. Screener's separately owned
+15-second initial deadline remains a candidate pending mobile-network evidence.
 
 The accepted Screener order is therefore: soft visible wait while initial ICE
 is still making progress; one ICE restart on hard failure; one same-parent PC

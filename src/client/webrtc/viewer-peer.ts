@@ -11,6 +11,7 @@ import {
 
 const MAX_PENDING_CANDIDATES = 64;
 const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
+const INITIAL_CONNECTION_TIMEOUT_MS = 15_000;
 const AUTOMATIC_RECOVERY_TIMEOUT_MS = 3_000;
 type SignalCandidate = Extract<
   SignalPayload,
@@ -45,6 +46,7 @@ export class ViewerPeer {
   private statsTimer: number | null = null;
   private statsInFlightConnection: RTCPeerConnection | null = null;
   private disconnectTimer: number | null = null;
+  private initialConnectionTimer: number | null = null;
   private recoveryTimer: number | null = null;
   private offerRecoveryAttempts = 0;
   private automaticRecoveryRequests = 0;
@@ -119,6 +121,7 @@ export class ViewerPeer {
           throw new Error("Signaling is unavailable while sending the answer");
         }
         this.offerRecoveryAttempts = 0;
+        this.scheduleInitialConnectionDeadline(connection, connectionId);
       } else if (
         this.connection &&
         this.parentPeerId === parentPeerId &&
@@ -187,6 +190,7 @@ export class ViewerPeer {
       false,
     );
     if (sent) {
+      this.clearInitialConnectionTimer();
       this.automaticRecoveryRequests = Math.max(
         this.automaticRecoveryRequests,
         1,
@@ -295,6 +299,7 @@ export class ViewerPeer {
   private handleConnectionState(state: RTCPeerConnectionState): void {
     if (state === "connected") {
       this.clearDisconnectTimer();
+      this.clearInitialConnectionTimer();
       this.resetAutomaticRecovery();
       return;
     }
@@ -314,6 +319,7 @@ export class ViewerPeer {
   }
 
   private attemptAutomaticRecovery(): void {
+    this.clearInitialConnectionTimer();
     if (
       this.disposed ||
       this.recoveryTimer !== null ||
@@ -341,6 +347,32 @@ export class ViewerPeer {
     }
     this.automaticRecoveryRequests += 1;
     this.scheduleRecoveryDeadline();
+  }
+
+  private scheduleInitialConnectionDeadline(
+    connection: RTCPeerConnection,
+    connectionId: string,
+  ): void {
+    if (!this.isCurrentConnection(connection, connectionId)) {
+      return;
+    }
+    this.clearInitialConnectionTimer();
+    if (connection.connectionState === "connected") {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (this.initialConnectionTimer !== timer) {
+        return;
+      }
+      this.initialConnectionTimer = null;
+      if (
+        this.isCurrentConnection(connection, connectionId) &&
+        connection.connectionState !== "connected"
+      ) {
+        this.attemptAutomaticRecovery();
+      }
+    }, INITIAL_CONNECTION_TIMEOUT_MS);
+    this.initialConnectionTimer = timer;
   }
 
   private scheduleRecoveryDeadline(): void {
@@ -502,8 +534,16 @@ export class ViewerPeer {
     }
   }
 
+  private clearInitialConnectionTimer(): void {
+    if (this.initialConnectionTimer !== null) {
+      window.clearTimeout(this.initialConnectionTimer);
+      this.initialConnectionTimer = null;
+    }
+  }
+
   private disposeConnection(): void {
     this.clearDisconnectTimer();
+    this.clearInitialConnectionTimer();
     if (this.statsTimer !== null) {
       window.clearInterval(this.statsTimer);
       this.statsTimer = null;

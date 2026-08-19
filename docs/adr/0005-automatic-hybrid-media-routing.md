@@ -202,10 +202,13 @@ complete LiveKit tuple.
 2. A failed edge performs one ICE restart, one same-parent connection rebuild,
    and then one alternate eligible peer-parent attempt; it does not repeat an
    identical action three times. A short `disconnected` state first uses
-   generation-bound bytes/stats evidence. The target gives initial `connecting`
-   a visible soft wait followed by a separately measured hard window; that
-   initial deadline is not implemented yet and must not reuse the existing
-   three-second recovery constant without mobile-network evidence. When
+   generation-bound bytes/stats evidence. After the Viewer successfully sends
+   its answer, an initial `new` or `connecting` connection now has a separate,
+   conservative 15-second hard deadline. `connected`, disposal, or replacement
+   by a newer connection generation cancels it; expiry enters the existing
+   staged recovery at one ICE restart. It does not reuse or change the existing
+   three-second recovery deadline. The 15-second boundary is unit-tested
+   but remains subject to mobile-network measurement. When
    admission has no eligible peer path, or recovery is
    exhausted, select the SFU root plan without first advertising TURN to every
    peer edge. A future ordinary coturn transport, if a separate complete change
