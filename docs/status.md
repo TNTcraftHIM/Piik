@@ -49,6 +49,7 @@ connected to the Web product.
 - Staging runs Debian 12, nginx, Node.js 24.19.0, and coturn 4.17.2. Screener binds loopback behind nginx; the protected SQLite directory and database permissions survive a clean service restart. TURN/TLS is intentionally disabled.
 - Native browser oracle on Windows/Chrome 151: one WebCodecs fixture instance produced 120 VP8 chunks; the native coordinator read 120 source samples and made 240 track writes. Each browser decoded and presented 30 changing 320x180 frames. Native legs used different SSRCs and first sequences (`1000`, `30000`), each received RTCP receiver reports, and their ICE ufrags and DTLS fingerprints differed. This does not prove a physical hardware encode.
 - Native live bridge on Windows/Chrome 151: one encoder instance accepted and output 360 frames over 11.970 seconds; the loopback helper received all 360 VP8 chunks and 368314 source bytes, then made 720 independent track writes. Each viewer decoded 331 frames and fired 331 presentation callbacks with 27 changing hashes. The capacity-eight queue peaked at one with no drop; forced-overload unit tests verify drop-to-keyframe recovery. `hardwareAcceleration: "no-preference"` is only a hint and proves no physical hardware encode.
+- Native feedback oracle on Windows/Go 1.26.6 merged two-leg PLI/FIR, clamped the minimum of two ready bitrate estimates, and proved independent 512-packet NACK/RTX caches, including oldest-packet eviction on write 513. Stock `gcc.NewNoOpPacer` then rejected RTX as `unknown ssrc: 2001`, matching open Interceptor issue #406; the verdict is no-go and no browser loss run followed.
 
 ## Next Milestone
 
@@ -65,19 +66,20 @@ Execute and record the manual browser/network matrix:
 - live 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps changes without a second source prompt or peer rebuild, plus picture pause/resume while audio continues;
 - codec implementation, encode load, bitrate, frame rate, first picture, and glass-to-glass latency.
 
-Keep native fanout out of the product controller until separate bounded tests
-prove two-edge send-side BWE aggregation, viewer PLI/FIR coordination,
-asymmetric-loss NACK/RTX and pacing bounds, audio, mixed direct/TURN operation,
-and reconnect isolation. The live bridge closes only the continuous IPC,
-application-queue, and standard-browser decode/render gate.
+Keep native fanout out of the product controller. Require a released fix or a
+separately accepted bounded public-API adapter before another browser loss
+gate. Then prove live two-edge BWE, PLI/FIR, asymmetric NACK/RTX and pacing,
+audio, mixed direct/TURN, and reconnect isolation. The live bridge closes only
+the continuous IPC, application-queue, and browser decode/render gate.
 
 ## Current Blocker
 
 - No infrastructure blocker remains. The live-control browser cycle, room `1`
   browser lifecycle, and real-device media matrix remain unverified.
-- Native product integration is deliberately blocked by unimplemented BWE and
-  viewer-keyframe policy plus unverified loss recovery, audio, TURN, pacing,
-  and lifecycle.
+- Native product integration is deliberately blocked by the reproduced stock
+  Pion GCC+RTX SSRC failure. The retained key-frame and bitrate policies are
+  deterministic only; live loss recovery, pacing, audio, TURN, and lifecycle
+  remain unverified.
 
 ## Blocking Decisions
 

@@ -172,6 +172,12 @@ yet a product route: BWE aggregation, viewer PLI/FIR coordination,
 asymmetric-loss NACK/RTX and pacing, audio, TURN coexistence, and reconnect
 isolation remain mandatory gates.
 
+The follow-up [shared feedback-control oracle](./native-shared-feedback-control.md)
+retains deterministic PLI/FIR merge and minimum-of-two bitrate policies and
+proves two isolated 512-packet NACK/RTX responders. It stops the combined route
+as a no-go because Interceptor v0.1.47 stock GCC pacers do not register the
+negotiated RTX SSRC. No two-browser loss gate or product integration followed.
+
 ## Primary Sources And License Boundary
 
 Sources accessed 2026-08-19:

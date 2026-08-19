@@ -83,6 +83,29 @@ measurements are in the research note linked above.
 This experiment does not claim a physical or hardware encode, and remains
 disconnected from the product controller.
 
+## Shared Feedback-Control Oracle
+
+The next isolated command uses deterministic public-API traces instead of
+claiming another live-media capability:
+
+```sh
+go run ./cmd/shared-feedback-control
+```
+
+It verifies that two separately constructed Pion NACK responders keep
+transport-local RTX SSRCs and 512-packet caches, that PLI/FIR demands can merge
+behind one pending source key frame, and that one encoded representation must
+use the minimum of two ready leg estimates within fixed encoder bounds.
+
+The command then reproduces the blocking stock composition: Interceptor
+v0.1.47 `SendSideBWE` registers only the primary SSRC with
+`gcc.NewNoOpPacer`, so the negotiated RTX packet fails with
+`unknown ssrc: 2001`. The oracle intentionally reports
+`no-go-stock-pion-gcc-rtx`; it does not add a custom pacer, bypass GCC, disable
+RTX, or connect to the product. See
+[`docs/research/native-shared-feedback-control.md`](../../docs/research/native-shared-feedback-control.md)
+for evidence, source links, and the stop line.
+
 ## RTP Oracle Scope Boundaries
 
 This layered spike covers the Pion API, standard Chrome decode/render, and a
@@ -99,15 +122,19 @@ It does **not** include or prove:
 - that this should replace the current P2P-first browser path.
 
 The browser oracles additionally do **not** prove physical or hardware shared
-encoding. Send-side bandwidth estimation, viewer PLI/FIR aggregation, loss/RTX
-behavior, network pacing, audio, and TURN/reconnect behavior remain hard stops
-before product use.
+encoding. The deterministic follow-up retains candidate PLI/FIR and bitrate
+merge policies and proves independent bounded NACK/RTX in isolation, but the
+stock Pion GCC+RTX composition is a no-go. Network pacing, live feedback,
+audio, and TURN/reconnect behavior remain hard stops before product use.
 
 ## Decision Gate
 
-- **Go:** the released Pion API and authenticated loopback bridge sustain one
-  Chrome VP8 encoder across two independent browser-decodable transports.
-  Proceed only to another isolated transport-control experiment.
+- **Previous gate passed:** the released Pion API and authenticated loopback
+  bridge sustain one Chrome VP8 encoder across two independent browser-
+  decodable transports.
+- **Feedback-control gate stopped:** the stock v0.1.47 GCC pacer rejects the
+  negotiated RTX SSRC. Do not proceed to a browser loss gate or product path
+  until a released fix or a separately accepted bounded adapter exists.
 - **No-go:** the behavior requires internal APIs, a Pion fork, duplicate
   application writes, or payload re-encoding. Stop the native relay path.
 
