@@ -40,9 +40,9 @@ bitrate, and frame rate across all three profiles. This is a user observation,
 not yet an instrumented result. The highest-confidence explanation is the
 combination of one independent peer connection, sender, encoder pipeline, and
 upload copy per viewer with `balanced` adaptation: host CPU or uplink pressure
-can grow per edge, and the browser may then reduce both dimensions. The current
-peer-assisted and SFU drafts are not deployed, so relay re-encoding and LiveKit
-cannot explain that production observation.
+can grow per edge, and the browser may then reduce both dimensions. Peer/SFU
+code now ships in `769de201f7cc`, but its production configuration is absent;
+relay re-encoding and LiveKit therefore cannot explain that earlier observation.
 
 One controlled capture should classify the problem before changing constants:
 
@@ -107,9 +107,12 @@ resolution, frame rate, or bitrate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
 - The folded advanced panel accepts only 720p/1080p/1440p, integer 15-60 fps,
-  2-12 Mbps, and the three preferences. Audio stereo/bitrate is not exposed
-  because standard sender controls cannot reliably guarantee the negotiated
-  browser audio mode.
+  2-12 Mbps, and the three preferences. It exposes no audio quality controls.
+  Display capture does not standardize channel-count or sample-rate control;
+  the portable audio `maxBitrate` field is only a ceiling and cannot raise
+  quality; and stereo, DTX, and FEC require negotiated fmtp/codec behavior that
+  has no portable sender setter. The full boundary is recorded in
+  `docs/research/browser-screen-audio-quality.md`.
 - Every sender update derives from `getParameters()`, calls `setParameters()`,
   then reads requested/applied bitrate, frame rate, scale, and preference.
   Rejection or browser rewriting is visible rather than console-only.
@@ -141,6 +144,8 @@ CPU/GPU cost, public networks, or sustained behavior.
 - No copied x264 CRF/preset recipe in the browser path.
 - No forced codec order until target hardware measurements identify the actual
   power-efficient encoder.
+- No channel-count, sample-rate, Opus bitrate, stereo, DTX, or FEC control, and
+  no inference of actual stereo or sample rate from `opus/48000/2`.
 - No promise that all browsers honor `applyConstraints` or degradation
   preference identically.
 - No automatic composite quality score or periodic profile controller before

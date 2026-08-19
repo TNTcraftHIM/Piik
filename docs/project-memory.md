@@ -24,7 +24,7 @@ Last updated: 2026-08-19
 - Keep user-operated or central single-node SFU capacity optional. When configured, `main`'s #17 route controller may select it only as the final fallback; its fanout egress belongs to its operator and does not justify Redis or multi-node infrastructure. Closed PR #12's explicit whole-room SFU mode is superseded, not a current option.
 - Keep automatic routing default-off behind ADR-0005: discrete failures drive peer recovery and optional SFU fallback, host media uses break-before-make under two active edges, and a binary relay capability keeps mobile/iPad clients as leaves. Merged PR #20's token-free prewarm passes the local sub-second gate; public transport and load gates remain.
 - Prefer direct UDP, then TURN/UDP, with TURN/TCP as the required non-UDP fallback. Optional TURN/TLS uses TCP 5349 by default; TCP 443 needs a dedicated address or validated L4/SNI routing.
-- Treat every quality setting as a ceiling. Production now defaults clarity-first with bounded manual controls and sender readback, but reported degradation remains unclassified. Run the 1/2/3-viewer plus TURN matrix before changing ceilings or adding an automatic controller.
+- Treat video settings as ceilings. Production now defaults clarity-first with bounded manual controls and sender readback, but reported degradation remains unclassified. Keep browser audio request/presence-only: capture channels/rate are not portable controls, `maxBitrate` cannot raise quality, and Opus stereo/DTX/FEC lack portable setters. Run the 1/2/3-viewer plus TURN matrix before changing ceilings or adding an automatic controller.
 - Do not add custom scene detection or dynamic-FPS control until WebRTC statistics and host resource measurements prove a material gap. Keep browser codec order until target hardware proves a more efficient common codec.
 - Keep room policy deployment-driven. Public and password-only deployments use random temporary rooms. A site password plus SQLite path enables sequential persistent rooms; stopping sharing leaves the room and viewer link available.
 
@@ -69,6 +69,6 @@ These are measurement gates, not performance claims.
 
 - Documentation index and current phase: `docs/README.md` and `docs/status.md`
 - Requirements and design: `docs/需求理解.md` and `docs/方案设计.md`
-- Media research: `docs/research/webrtc-p2p-screen-sharing.md`, `docs/research/realtime-quality-adaptation.md`, `docs/research/peer-assisted-media.md`, `docs/research/low-server-media-routes.md`, `docs/research/advanced-peer-distribution.md`, and `docs/research/native-shared-encode-sender.md`
-- Architecture: ADR-0001, ADR-0002, proposed experiments ADR-0004/ADR-0005, and historical rejected/superseded ADR-0003
+- Media research: `docs/research/webrtc-p2p-screen-sharing.md`, `docs/research/realtime-quality-adaptation.md`, `docs/research/browser-screen-audio-quality.md`, `docs/research/peer-assisted-media.md`, `docs/research/low-server-media-routes.md`, `docs/research/advanced-peer-distribution.md`, and `docs/research/native-shared-encode-sender.md`
+- Architecture: ADR-0001/0002, proposed ADR-0004/0005, and rejected/superseded ADR-0003
 - Deployment and maintenance: `docs/deployment.md`, `docs/maintenance.md`, `AGENTS.md`, and `.codex/`

@@ -28,7 +28,7 @@ Use separate control and media planes:
 - Only pairs that cannot connect directly use authenticated TURN. Production requires STUN plus TURN over UDP and TCP; TURN/TLS is an optional restrictive-network enhancement, using its standard TCP port 5349 by default. Port 443 is optional and requires a dedicated public IP or a validated layer-4/SNI route when HTTPS already owns that address and port.
 - Candidate selection is independent per pair. A room may simultaneously contain direct and relayed viewers without moving working peers onto the server.
 - The deployed MVP broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise. A newer product target caps host media fanout at two; the current implementation does not satisfy that target above two viewers, and Proposed ADR-0004 owns the isolated experiment rather than silently changing this accepted baseline.
-- An SFU is not the default path for the normal product envelope. Closed PR #12's explicit whole-room mode is superseded by merged PR #17's default-off automatic fallback. When a deployment configures SFU capacity, ADR-0005 permits selecting it only after cheaper endpoint-carried routes fail; that experiment is not deployed or accepted for production.
+- An SFU is not the default path for the normal product envelope. Closed PR #12's explicit whole-room mode is superseded by merged PR #17's default-off automatic fallback. ADR-0005 permits selecting configured SFU capacity only after cheaper endpoint routes fail. The code ships in production but remains unconfigured, inactive, and unaccepted for production enablement.
 
 ## Consequences
 

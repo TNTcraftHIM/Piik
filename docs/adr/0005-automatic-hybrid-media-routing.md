@@ -51,14 +51,15 @@ LiveKit endpoint/key/secret tuple. There is no user-facing topology selector and
 no process-wide `MEDIA_MODE` union. Without the tuple, the same controller ends
 at peer assistance and bounded waiting/failure.
 
-## Draft Implementation Status
+## Implementation Status
 
-Draft PR #17 (`feat/automatic-hybrid-routing`) implements this controller on top
-of Draft PR #13. Draft PR #20 (`spike/hybrid-warm-fallback`) adds only the
-bounded standby prewarm described below. Both pass CI but are not merged or
-deployed. Production remains on the ordinary one-host-peer-per-viewer path.
+Merged PR #17 implements this controller on top of merged PR #13. Merged PR #20
+adds only the bounded standby prewarm described below. Their code ships in
+production release `769de201f7cc`, but the deployment has neither
+`PEER_ASSISTED_MEDIA` nor a LiveKit tuple, so its active path remains ordinary
+one-host-peer-per-viewer P2P/TURN.
 
-The Draft keeps the LiveKit dependency dormant unless the complete URL, API key,
+The implementation keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
 issues short-lived room-, role-, peer-, and publication-generation-bound grants,
 and only allowlisted branch roots may subscribe. The server first retries a
@@ -199,7 +200,7 @@ second peer, then physically closed that new edge and reported its real
 connection ID and active revision. The resulting plan had two allowlisted SFU
 roots.
 
-| Failure report to | Cold Draft PR #17 | Authenticated standby |
+| Failure report to | Cold route controller | Authenticated standby |
 | --- | ---: | ---: |
 | SFU prepare | not retained | 5 ms |
 | SFU active | 1,481 ms | 200 ms |

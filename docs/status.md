@@ -18,7 +18,7 @@ deployed binary still uses one host peer connection per viewer and P2P/TURN.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
 - Complete fallback configuration adds a non-secret standby URL to peer-assisted authentication. Host and viewers import the SDK and make one token-free DNS/TLS warmup; no configuration means no field, import, request, participant, or media edge.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
-- Production uses one strict, memory-only quality setting with bounded manual ceilings and sender readback. It also carries equal idle-stage share/join actions and default-closed technical details.
+- Production uses one strict, memory-only video quality setting with bounded manual ceilings and sender readback. It also carries equal idle-stage share/join actions and default-closed technical details. Browser audio remains request/presence-only.
 
 ## Verified Evidence
 

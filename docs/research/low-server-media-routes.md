@@ -31,8 +31,9 @@ The smallest current plan is:
 Any browser-spike failure other than isolated relay re-encoding closes that
 browser-relay route. It does not cancel the separate native sender plan. Closed
 PR #12's explicit whole-room SFU mode is superseded. ADR-0005 and merged PR #17
-own the default-off automatic cross-mode controller; it remains undeployed.
-Corrected localhost Chrome/LiveKit functional recovery passed, while public
+own the default-off automatic cross-mode controller. Its code is deployed but
+inactive because production has no peer-assist flag or LiveKit tuple. Corrected
+localhost Chrome/LiveKit functional recovery passed, while public
 transport, quality, load, and browser validation remain open.
 
 ## Token-Free SFU Standby Prewarm
