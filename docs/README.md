@@ -15,7 +15,7 @@
 - [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, standard readback limits, Opus negotiation boundaries, and the retained no-control decision.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): accepted P2P-first media topology and its consequences.
-- [ADR-0002](./adr/0002-persistent-protected-rooms.md): optional SQLite persistence, protected sequential room IDs, and room lifecycle.
+- [ADR-0002](./adr/0002-persistent-protected-rooms.md): Host admission, room-scoped private Viewer grants, explicit public-watch, rotation, and minimal SQLite persistence.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): proposed, experiment-only standard-WebRTC peer-assisted spike with hard fanout and failure gates.
 - [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted direct/peer UDP -> SFU-root -> optional exceptional-edge TURN direction, with the current default-off controller and migration gates.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
