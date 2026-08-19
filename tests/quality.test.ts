@@ -5,6 +5,7 @@ import {
   captureDisplay,
   configureVideoSender,
   QUALITY_PROFILES,
+  senderParameterWarning,
   setVideoPaused,
 } from "../src/client/media/quality.ts";
 
@@ -13,6 +14,7 @@ function createVideoStream() {
     contentHint: "",
     enabled: true,
     applyConstraints: vi.fn(async () => undefined),
+    getSettings: () => ({ width: 1920, height: 1080, frameRate: 60 }),
   } as unknown as MediaStreamTrack;
   const stream = {
     getTracks: () => [videoTrack],
@@ -47,36 +49,98 @@ describe("realtime quality controls", () => {
     expect(videoTrack.contentHint).toBe("motion");
   });
 
-  it("changes capture constraints without selecting the source again", async () => {
+  it("changes custom capture ceilings without selecting the source again", async () => {
     const { stream, videoTrack } = createVideoStream();
 
-    await applyCaptureProfile(stream, QUALITY_PROFILES["720p30"]);
+    await applyCaptureProfile(stream, {
+      resolution: "1440p",
+      maxFramerate: 45,
+      maxBitrate: 9_500_000,
+      degradationPreference: "balanced",
+    });
 
     expect(videoTrack.applyConstraints).toHaveBeenCalledWith({
-      width: { ideal: 1280, max: 1280 },
-      height: { ideal: 720, max: 720 },
-      frameRate: { ideal: 30, max: 30 },
+      width: { ideal: 2560, max: 2560 },
+      height: { ideal: 1440, max: 1440 },
+      frameRate: { ideal: 45, max: 45 },
     });
   });
 
-  it("sets the screen-share sender degradation preference", async () => {
-    const parameters = {
-      encodings: [],
-    } as unknown as RTCRtpSendParameters;
-    const setParameters = vi.fn(async () => undefined);
+  it("defaults every recommended profile to clarity-first degradation", () => {
+    expect(
+      Object.values(QUALITY_PROFILES).every(
+        (profile) =>
+          profile.degradationPreference === "maintain-resolution",
+      ),
+    ).toBe(true);
+  });
+
+  it("reads back every requested sender control after setParameters", async () => {
+    let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
+    const setParameters = vi.fn(async (parameters: RTCRtpSendParameters) => {
+      applied = parameters;
+    });
     const sender = {
-      getParameters: () => parameters,
+      track: {
+        getSettings: () => ({ width: 2560, height: 1440 }),
+      },
+      getParameters: () => applied,
       setParameters,
     } as unknown as RTCRtpSender;
 
-    await configureVideoSender(sender, QUALITY_PROFILES["1080p60"]);
+    const readback = await configureVideoSender(
+      sender,
+      QUALITY_PROFILES["1080p60"],
+    );
 
-    expect(parameters.encodings[0]).toMatchObject({
-      maxBitrate: 8_000_000,
-      maxFramerate: 60,
+    expect(readback).toEqual({
+      requested: {
+        maxBitrate: 8_000_000,
+        maxFramerate: 60,
+        scaleResolutionDownBy: 4 / 3,
+        degradationPreference: "maintain-resolution",
+      },
+      applied: {
+        maxBitrate: 8_000_000,
+        maxFramerate: 60,
+        scaleResolutionDownBy: 4 / 3,
+        degradationPreference: "maintain-resolution",
+      },
+      mismatches: [],
     });
-    expect(parameters.degradationPreference).toBe("balanced");
-    expect(setParameters).toHaveBeenCalledWith(parameters);
+    expect(senderParameterWarning(readback)).toBeNull();
+    expect(setParameters).toHaveBeenCalledOnce();
+  });
+
+  it("reports fields the browser does not retain", async () => {
+    const before = { encodings: [{}] } as RTCRtpSendParameters;
+    const after = {
+      encodings: [{ maxBitrate: 8_000_000 }],
+      degradationPreference: "balanced",
+    } as RTCRtpSendParameters;
+    const getParameters = vi
+      .fn<() => RTCRtpSendParameters>()
+      .mockReturnValueOnce(before)
+      .mockReturnValue(after);
+    const sender = {
+      track: { getSettings: () => ({ width: 1920, height: 1080 }) },
+      getParameters,
+      setParameters: vi.fn(async () => undefined),
+    } as unknown as RTCRtpSender;
+
+    const readback = await configureVideoSender(
+      sender,
+      QUALITY_PROFILES["1080p60"],
+    );
+
+    expect(readback.mismatches).toEqual([
+      "maxFramerate",
+      "scaleResolutionDownBy",
+      "degradationPreference",
+    ]);
+    expect(senderParameterWarning(readback)).toContain("帧率上限");
+    expect(senderParameterWarning(readback)).toContain("分辨率缩放");
+    expect(senderParameterWarning(readback)).toContain("质量优先级");
   });
 
   it("pauses only the video track and can resume it", () => {

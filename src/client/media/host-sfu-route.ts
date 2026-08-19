@@ -19,6 +19,7 @@ interface HostPublisherTransport {
   deactivate(): Promise<boolean>;
   replaceStream(stream: MediaStream): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
+  getQualityWarning?(): string | null;
   disconnect(): Promise<void>;
 }
 
@@ -215,6 +216,12 @@ export class HostSfuRoute {
     return this.active?.active
       ? this.active.publisher.updateProfile(profile).catch(() => false)
       : Promise.resolve(true);
+  }
+
+  getQualityWarning(): string | null {
+    return this.active?.active
+      ? (this.active.publisher.getQualityWarning?.() ?? null)
+      : null;
   }
 
   replaceStream(stream: MediaStream): Promise<boolean> {

@@ -1,47 +1,110 @@
-import type { QualityProfileId } from "../../shared/protocol";
+import {
+  DEFAULT_QUALITY_SETTINGS,
+  type DegradationPreference,
+  type QualityProfileId,
+  type QualityResolution,
+  type QualitySettings,
+} from "../../shared/protocol";
 
-export type { QualityProfileId } from "../../shared/protocol";
+export type {
+  DegradationPreference,
+  QualityProfileId,
+  QualityResolution,
+  QualitySettings,
+} from "../../shared/protocol";
+
+export type QualityProfile = QualitySettings;
 
 export const QUALITY_PROFILES = {
-  "1080p60": {
-    label: "1080p 60",
-    width: 1920,
-    height: 1080,
-    frameRate: 60,
-    maxBitrate: 8_000_000,
-  },
+  "1080p60": DEFAULT_QUALITY_SETTINGS,
   "1080p30": {
-    label: "1080p 30",
-    width: 1920,
-    height: 1080,
-    frameRate: 30,
+    resolution: "1080p",
+    maxFramerate: 30,
     maxBitrate: 5_000_000,
+    degradationPreference: "maintain-resolution",
   },
   "720p30": {
-    label: "720p 30",
-    width: 1280,
-    height: 720,
-    frameRate: 30,
+    resolution: "720p",
+    maxFramerate: 30,
     maxBitrate: 3_000_000,
+    degradationPreference: "maintain-resolution",
   },
+} as const satisfies Record<QualityProfileId, QualitySettings>;
+
+export const QUALITY_PROFILE_LABELS = {
+  "1080p60": "1080p 60",
+  "1080p30": "1080p 30",
+  "720p30": "720p 30",
+} as const satisfies Record<QualityProfileId, string>;
+
+export const QUALITY_RESOLUTIONS = {
+  "720p": { width: 1280, height: 720, label: "720p" },
+  "1080p": { width: 1920, height: 1080, label: "1080p" },
+  "1440p": { width: 2560, height: 1440, label: "1440p" },
 } as const satisfies Record<
-  QualityProfileId,
-  {
-    label: string;
-    width: number;
-    height: number;
-    frameRate: number;
-    maxBitrate: number;
-  }
+  QualityResolution,
+  { width: number; height: number; label: string }
 >;
 
-export type QualityProfile = (typeof QUALITY_PROFILES)[QualityProfileId];
+export const DEGRADATION_PREFERENCE_LABELS = {
+  "maintain-resolution": "清晰优先",
+  balanced: "平衡",
+  "maintain-framerate": "流畅优先",
+} as const satisfies Record<DegradationPreference, string>;
+
+export interface VideoSenderParameterValues {
+  maxBitrate: number | null;
+  maxFramerate: number | null;
+  scaleResolutionDownBy: number | null;
+  degradationPreference: RTCDegradationPreference | null;
+}
+
+export interface VideoSenderParameterReadback {
+  requested: VideoSenderParameterValues;
+  applied: VideoSenderParameterValues;
+  mismatches: Array<keyof VideoSenderParameterValues>;
+}
+
+export function qualitySettingsEqual(
+  left: QualitySettings,
+  right: QualitySettings,
+): boolean {
+  return (
+    left.resolution === right.resolution &&
+    left.maxFramerate === right.maxFramerate &&
+    left.maxBitrate === right.maxBitrate &&
+    left.degradationPreference === right.degradationPreference
+  );
+}
+
+export function matchingQualityProfileId(
+  settings: QualitySettings,
+): QualityProfileId | null {
+  for (const id of Object.keys(QUALITY_PROFILES) as QualityProfileId[]) {
+    if (qualitySettingsEqual(settings, QUALITY_PROFILES[id])) {
+      return id;
+    }
+  }
+  return null;
+}
+
+export function qualitySettingsLabel(settings: QualitySettings): string {
+  const profileId = matchingQualityProfileId(settings);
+  if (profileId) {
+    return QUALITY_PROFILE_LABELS[profileId];
+  }
+  return `${QUALITY_RESOLUTIONS[settings.resolution].label} ${settings.maxFramerate} · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${DEGRADATION_PREFERENCE_LABELS[settings.degradationPreference]}`;
+}
 
 function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
+  const resolution = QUALITY_RESOLUTIONS[profile.resolution];
   return {
-    width: { ideal: profile.width, max: profile.width },
-    height: { ideal: profile.height, max: profile.height },
-    frameRate: { ideal: profile.frameRate, max: profile.frameRate },
+    width: { ideal: resolution.width, max: resolution.width },
+    height: { ideal: resolution.height, max: resolution.height },
+    frameRate: {
+      ideal: profile.maxFramerate,
+      max: profile.maxFramerate,
+    },
   };
 }
 
@@ -86,16 +149,87 @@ export function setVideoPaused(stream: MediaStream, paused: boolean): boolean {
   return true;
 }
 
+function requestedScaleResolutionDownBy(
+  sender: RTCRtpSender,
+  profile: QualityProfile,
+): number {
+  const source =
+    sender.track && typeof sender.track.getSettings === "function"
+      ? sender.track.getSettings()
+      : undefined;
+  const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+  if (!source?.width || !source.height) {
+    return 1;
+  }
+  return Math.max(
+    1,
+    source.width / ceiling.width,
+    source.height / ceiling.height,
+  );
+}
+
+function readVideoSenderParameters(
+  parameters: RTCRtpSendParameters,
+): VideoSenderParameterValues {
+  const encoding = parameters.encodings[0];
+  return {
+    maxBitrate: encoding?.maxBitrate ?? null,
+    maxFramerate: encoding?.maxFramerate ?? null,
+    scaleResolutionDownBy: encoding?.scaleResolutionDownBy ?? null,
+    degradationPreference: parameters.degradationPreference ?? null,
+  };
+}
+
+function sameParameter(
+  key: keyof VideoSenderParameterValues,
+  requested: number | RTCDegradationPreference | null,
+  applied: number | RTCDegradationPreference | null,
+): boolean {
+  if (typeof requested === "number" && typeof applied === "number") {
+    return key === "scaleResolutionDownBy"
+      ? Math.abs(requested - applied) < 0.01
+      : requested === applied;
+  }
+  return requested === applied;
+}
+
 export async function configureVideoSender(
   sender: RTCRtpSender,
   profile: QualityProfile,
-): Promise<void> {
+): Promise<VideoSenderParameterReadback> {
   const parameters = sender.getParameters();
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
   }
-  parameters.encodings[0].maxBitrate = profile.maxBitrate;
-  parameters.encodings[0].maxFramerate = profile.frameRate;
-  parameters.degradationPreference = "balanced";
+  parameters.encodings[0]!.maxBitrate = profile.maxBitrate;
+  parameters.encodings[0]!.maxFramerate = profile.maxFramerate;
+  parameters.encodings[0]!.scaleResolutionDownBy =
+    requestedScaleResolutionDownBy(sender, profile);
+  parameters.degradationPreference = profile.degradationPreference;
+
+  const requested = readVideoSenderParameters(parameters);
   await sender.setParameters(parameters);
+  const applied = readVideoSenderParameters(sender.getParameters());
+  const mismatches = (
+    Object.keys(requested) as Array<keyof VideoSenderParameterValues>
+  ).filter((key) => !sameParameter(key, requested[key], applied[key]));
+
+  return { requested, applied, mismatches };
+}
+
+const PARAMETER_LABELS = {
+  maxBitrate: "码率上限",
+  maxFramerate: "帧率上限",
+  scaleResolutionDownBy: "分辨率缩放",
+  degradationPreference: "质量优先级",
+} as const satisfies Record<keyof VideoSenderParameterValues, string>;
+
+export function senderParameterWarning(
+  readback: VideoSenderParameterReadback,
+): string | null {
+  return readback.mismatches.length > 0
+    ? `浏览器未完整接受${readback.mismatches
+        .map((key) => PARAMETER_LABELS[key])
+        .join("、")}`
+    : null;
 }

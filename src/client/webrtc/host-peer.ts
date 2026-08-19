@@ -1,7 +1,10 @@
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import type { QualityProfile } from "../media/quality";
-import { configureVideoSender } from "../media/quality";
+import {
+  configureVideoSender,
+  senderParameterWarning,
+} from "../media/quality";
 import {
   EMPTY_METRICS,
   type PeerSnapshot,
@@ -32,6 +35,9 @@ export class HostPeer {
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
   private statsInFlight = false;
+  private senderWarning: string | null = null;
+  private limitationReason: string | null = null;
+  private limitationSamples = 0;
   private disposed = false;
   private negotiating = false;
   private senderMutationTail: Promise<void> = Promise.resolve();
@@ -56,6 +62,8 @@ export class HostPeer {
       iceConnectionState: this.connection.iceConnectionState,
       metrics: { ...EMPTY_METRICS },
       error: null,
+      senderParameters: null,
+      qualityWarning: null,
     };
     this.bindConnectionEvents();
   }
@@ -75,16 +83,12 @@ export class HostPeer {
       direction: "sendonly",
       streams: [this.stream],
     }).sender;
-    try {
-      await this.enqueueSenderMutation(async () => {
-        if (this.disposed || !this.videoSender) {
-          return;
-        }
-        await configureVideoSender(this.videoSender, this.desiredProfile);
-      });
-    } catch (error) {
-      console.warn("Browser rejected preferred sender parameters", error);
-    }
+    await this.enqueueSenderMutation(async () => {
+      if (this.disposed || !this.videoSender) {
+        return false;
+      }
+      return this.configureSender(this.videoSender);
+    });
     if (!(await this.createOffer(false)) || this.disposed) {
       return false;
     }
@@ -129,11 +133,7 @@ export class HostPeer {
       }
       this.stream = nextStream;
       this.statsAccumulator = createStatsAccumulator();
-      try {
-        await configureVideoSender(videoSender, this.desiredProfile);
-      } catch (error) {
-        console.warn("Browser rejected preferred sender parameters", error);
-      }
+      await this.configureSender(videoSender);
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();
       return true;
@@ -150,16 +150,15 @@ export class HostPeer {
       if (this.disposed || !videoSender) {
         return false;
       }
-      try {
-        await configureVideoSender(videoSender, this.desiredProfile);
-      } catch (error) {
-        this.setError(error, "调整画质失败");
+      if (!(await this.configureSender(videoSender))) {
         return false;
       }
       if (this.disposed) {
         return false;
       }
       this.statsAccumulator = createStatsAccumulator();
+      this.limitationReason = null;
+      this.limitationSamples = 0;
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();
       return true;
@@ -325,7 +324,13 @@ export class HostPeer {
       if (this.disposed || this.statsAccumulator !== statsAccumulator) {
         return;
       }
-      this.snapshot = { ...this.snapshot, metrics };
+      this.updateLimitationWarning(metrics.qualityLimitationReason);
+      this.snapshot = {
+        ...this.snapshot,
+        metrics,
+        qualityWarning:
+          this.senderWarning ?? this.persistentLimitationWarning(),
+      };
       this.emit();
     } catch {
       // Stats are observational and must never disrupt a healthy media path.
@@ -338,6 +343,73 @@ export class HostPeer {
     const message = error instanceof Error ? error.message : fallback;
     this.snapshot = { ...this.snapshot, error: message || fallback };
     this.emit();
+  }
+
+  private async configureSender(sender: RTCRtpSender): Promise<boolean> {
+    try {
+      const senderParameters = await configureVideoSender(
+        sender,
+        this.desiredProfile,
+      );
+      if (this.disposed) {
+        return false;
+      }
+      this.senderWarning = senderParameterWarning(senderParameters);
+      this.snapshot = {
+        ...this.snapshot,
+        senderParameters,
+        qualityWarning:
+          this.senderWarning ?? this.persistentLimitationWarning(),
+      };
+      this.emit();
+      return true;
+    } catch (error) {
+      if (this.disposed) {
+        return false;
+      }
+      this.senderWarning =
+        error instanceof Error && error.message
+          ? `应用发送参数失败：${error.message}`
+          : "应用发送参数失败";
+      this.snapshot = {
+        ...this.snapshot,
+        qualityWarning: this.senderWarning,
+      };
+      this.emit();
+      return false;
+    }
+  }
+
+  private updateLimitationWarning(reason: string | null): void {
+    if (!reason || reason === "none") {
+      this.limitationReason = null;
+      this.limitationSamples = 0;
+      return;
+    }
+    if (reason === this.limitationReason) {
+      this.limitationSamples += 1;
+      return;
+    }
+    this.limitationReason = reason;
+    this.limitationSamples = 1;
+  }
+
+  private persistentLimitationWarning(): string | null {
+    if (this.limitationSamples < 3) {
+      return null;
+    }
+    switch (this.limitationReason) {
+      case "bandwidth":
+        return "持续受带宽限制，浏览器正在降低画面质量";
+      case "cpu":
+        return "持续受编码性能限制，浏览器正在降低画面质量";
+      case "other":
+        return "浏览器持续报告其他画质限制";
+      default:
+        return this.limitationReason
+          ? `浏览器持续报告画质限制：${this.limitationReason}`
+          : null;
+    }
   }
 
   private emit(): void {

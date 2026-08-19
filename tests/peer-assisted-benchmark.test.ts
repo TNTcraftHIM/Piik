@@ -8,6 +8,13 @@ import {
   summarizeSamples,
 } from "../scripts/peer-assisted-benchmark";
 
+const lowQualitySettings = {
+  resolution: "720p",
+  maxFramerate: 30,
+  maxBitrate: 3_000_000,
+  degradationPreference: "maintain-resolution",
+} as const;
+
 function page(
   role: "host" | "viewer",
   label: string,
@@ -23,7 +30,8 @@ function page(
     authenticatedAtEpochMs: 1_000,
     authenticateSentAtEpochMs: 900,
     signalingConnected: true,
-    qualityProfileId: "720p30",
+    qualitySettings: lowQualitySettings,
+    senderParameterApplications: [],
     maxActiveOutboundMediaEdges: sendEdges,
     maxAssignedChildren: sendEdges,
     assignment: {
@@ -87,6 +95,23 @@ describe("peer-assisted benchmark configuration", () => {
     ).toThrow(/selected viewer count/);
   });
 
+  it("requires a relay-sized case for the optional quality control smoke", () => {
+    expect(() =>
+      parseBenchmarkConfig({
+        CHROME_PATH: "chrome",
+        BENCHMARK_VIEWERS: "1",
+        BENCHMARK_QUALITY_SMOKE: "1",
+      }),
+    ).toThrow(/at least 3/);
+    expect(
+      parseBenchmarkConfig({
+        CHROME_PATH: "chrome",
+        BENCHMARK_VIEWERS: "3",
+        BENCHMARK_QUALITY_SMOKE: "1",
+      }).qualityControlSmoke,
+    ).toBe(true);
+  });
+
   it("writes a report file by default and reserves '-' for stdout", () => {
     expect(parseBenchmarkConfig({ CHROME_PATH: "chrome" }).outputPath).toBe(
       "benchmark-results/peer-assisted.json",
@@ -131,7 +156,9 @@ describe("peer-assisted benchmark observations", () => {
     expect(summary.maxFirstDecodedAfterAuthenticateMs).toBe(600);
     expect(
       summary.finalTopology.every(
-        (entry) => entry.qualityProfileId === "720p30",
+        (entry) =>
+          JSON.stringify(entry.qualitySettings) ===
+          JSON.stringify(lowQualitySettings),
       ),
     ).toBe(true);
   });
@@ -180,6 +207,6 @@ describe("peer-assisted benchmark observations", () => {
     expect(source).toContain('"frameRate":30');
     expect(source).toContain("getDisplayMedia");
     expect(source).toContain("collectConnectionMetrics");
-    expect(source).toContain("set-quality-profile");
+    expect(source).toContain("set-quality-settings");
   });
 });

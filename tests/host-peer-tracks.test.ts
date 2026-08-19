@@ -12,6 +12,7 @@ class FakeSender {
   failNextSetParameters = false;
   deferNextSetParameters = false;
   readonly appliedMaxBitrates: Array<number | undefined> = [];
+  private parameters = { encodings: [{}] } as RTCRtpSendParameters;
   private releaseSetParameters: (() => void) | null = null;
   readonly setParameters = vi.fn(
     async (parameters: RTCRtpSendParameters) => {
@@ -26,6 +27,7 @@ class FakeSender {
         });
       }
       this.appliedMaxBitrates.push(parameters.encodings[0]?.maxBitrate);
+      this.parameters = parameters;
     },
   );
   readonly replaceTrack = vi.fn(async (track: MediaStreamTrack | null) => {
@@ -39,7 +41,7 @@ class FakeSender {
   constructor(public track: MediaStreamTrack | null) {}
 
   getParameters(): RTCRtpSendParameters {
-    return { encodings: [{}] } as RTCRtpSendParameters;
+    return this.parameters;
   }
 
   releaseDeferredSetParameters(): void {
@@ -331,7 +333,7 @@ describe("HostPeer source replacement", () => {
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });
@@ -362,27 +364,29 @@ describe("HostPeer source replacement", () => {
   });
 
   it("continues queued profile updates after initial configuration rejects", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      const peer = createPeer(
-        createStream(
-          createTrack("video", "video"),
-          createTrack("audio", "audio"),
-        ),
-      );
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(
+        createTrack("video", "video"),
+        createTrack("audio", "audio"),
+      ),
+      (snapshot) => updates.push(snapshot),
+    );
 
-      const starting = peer.start();
-      const videoSender = FakePeerConnection.latest!.senders[0]!;
-      videoSender.failNextSetParameters = true;
-      const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
+    const starting = peer.start();
+    const videoSender = FakePeerConnection.latest!.senders[0]!;
+    videoSender.failNextSetParameters = true;
+    const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
 
-      await expect(starting).resolves.toBe(true);
-      await expect(updating).resolves.toBe(true);
-      expect(videoSender.setParameters).toHaveBeenCalledTimes(2);
-      expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
-    } finally {
-      warn.mockRestore();
-    }
+    await expect(starting).resolves.toBe(true);
+    expect(
+      updates.some((snapshot) =>
+        snapshot.qualityWarning?.startsWith("应用发送参数失败"),
+      ),
+    ).toBe(true);
+    await expect(updating).resolves.toBe(true);
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(2);
+    expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
   });
 
   it("can retry the selected quality after a sender update fails", async () => {
@@ -406,7 +410,7 @@ describe("HostPeer source replacement", () => {
 
     expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
     expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });
@@ -482,6 +486,59 @@ describe("HostPeer source replacement", () => {
         ({ metrics }) => metrics.qualityLimitationReason === "cpu",
       ),
     ).toBe(false);
+  });
+
+  it("explains a sustained browser quality limitation without changing settings", async () => {
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      (snapshot) => updates.push(snapshot),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    const sender = connection.senders[0]!;
+    connection.statsReports.push(
+      sendStatsReport({
+        bytesSent: 1_000_000,
+        framesEncoded: 30,
+        timestamp: 1_000,
+        qualityLimitationReason: "bandwidth",
+      }),
+      sendStatsReport({
+        bytesSent: 1_500_000,
+        framesEncoded: 60,
+        timestamp: 2_000,
+        qualityLimitationReason: "bandwidth",
+      }),
+      sendStatsReport({
+        bytesSent: 2_000_000,
+        framesEncoded: 90,
+        timestamp: 3_000,
+        qualityLimitationReason: "bandwidth",
+      }),
+      sendStatsReport({
+        bytesSent: 2_500_000,
+        framesEncoded: 120,
+        timestamp: 4_000,
+        qualityLimitationReason: "none",
+      }),
+    );
+
+    const sample = async (): Promise<void> => {
+      const updateCount = updates.length;
+      statsCallbacks[0]!();
+      await vi.waitFor(() => expect(updates.length).toBeGreaterThan(updateCount));
+    };
+    await sample();
+    await sample();
+    expect(updates.at(-1)?.qualityWarning).toBeNull();
+    await sample();
+    expect(updates.at(-1)?.qualityWarning).toContain("持续受带宽限制");
+    expect(sender.setParameters).toHaveBeenCalledOnce();
+
+    await sample();
+    expect(updates.at(-1)?.qualityWarning).toBeNull();
+    expect(sender.setParameters).toHaveBeenCalledOnce();
   });
 
   it("rolls the first sender back when the second replacement fails", async () => {
@@ -770,6 +827,12 @@ describe("ViewerRelay downstream ownership", () => {
   });
 
   it("applies the latest profile to the current and future child", async () => {
+    const customSettings = {
+      resolution: "1440p",
+      maxFramerate: 45,
+      maxBitrate: 10_500_000,
+      degradationPreference: "balanced",
+    } as const;
     const relay = new ViewerRelay(
       { iceServers: [], expiresAt: null, relayAvailable: false },
       QUALITY_PROFILES["1080p60"],
@@ -785,12 +848,13 @@ describe("ViewerRelay downstream ownership", () => {
     const firstConnection = FakePeerConnection.latest!;
 
     await expect(
-      relay.updateProfile(QUALITY_PROFILES["720p30"]),
+      relay.updateProfile(customSettings),
     ).resolves.toBe(true);
     expect(
       firstConnection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+      degradationPreference: "balanced",
+      encodings: [{ maxBitrate: 10_500_000, maxFramerate: 45 }],
     });
 
     relay.setChild("second-profile-child");
@@ -804,7 +868,8 @@ describe("ViewerRelay downstream ownership", () => {
     expect(
       secondConnection.senders[0]?.setParameters.mock.calls[0]?.[0],
     ).toMatchObject({
-      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+      degradationPreference: "balanced",
+      encodings: [{ maxBitrate: 10_500_000, maxFramerate: 45 }],
     });
   });
 });

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  DEFAULT_QUALITY_PROFILE_ID,
+  DEFAULT_QUALITY_SETTINGS,
   type CreateRoomResponse,
   type IceConfig,
   type ServerMessage,
@@ -37,9 +37,16 @@ import { SignalingClient } from "../lib/signaling";
 import {
   applyCaptureProfile,
   captureDisplay,
+  DEGRADATION_PREFERENCE_LABELS,
+  matchingQualityProfileId,
   QUALITY_PROFILES,
+  QUALITY_PROFILE_LABELS,
+  QUALITY_RESOLUTIONS,
+  qualitySettingsLabel,
   setVideoPaused,
+  type DegradationPreference,
   type QualityProfileId,
+  type QualitySettings,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
 import type {
@@ -113,8 +120,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     () => new URLSearchParams(window.location.search).get("relay") === "1",
     [],
   );
-  const [qualityId, setQualityId] = useState<QualityProfileId>(
-    DEFAULT_QUALITY_PROFILE_ID,
+  const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
+    DEFAULT_QUALITY_SETTINGS,
+  );
+  const [advancedQuality, setAdvancedQuality] = useState<QualitySettings>(
+    DEFAULT_QUALITY_SETTINGS,
   );
   const shareGenerationRef = useRef<string | null>(null);
   const [phase, setPhase] = useState<HostPhase>("idle");
@@ -144,7 +154,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const activeGenerationRef = useRef<number | null>(null);
   const sourceSwitchRef = useRef<object | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
-  const qualityIdRef = useRef<QualityProfileId>(DEFAULT_QUALITY_PROFILE_ID);
+  const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
   const picturePausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
@@ -152,6 +162,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const viewers = useMemo(
     () => Array.from(peerSnapshots.values()),
     [peerSnapshots],
+  );
+  const selectedQualityProfileId = useMemo(
+    () => matchingQualityProfileId(qualitySettings),
+    [qualitySettings],
   );
 
   useEffect(() => {
@@ -194,7 +208,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let route: HostSfuRoute;
     route = new HostSfuRoute({
       getStream: () => streamRef.current,
-      getProfile: () => QUALITY_PROFILES[qualityIdRef.current],
+      getProfile: () => qualitySettingsRef.current,
       reconcileChildren: (childPeerIds) => {
         if (
           isCurrentGeneration(generation) &&
@@ -309,14 +323,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setSwitchingSource(false);
   }
 
-  function commitQuality(id: QualityProfileId): void {
-    qualityIdRef.current = id;
-    setQualityId(id);
+  function commitQuality(settings: QualitySettings): void {
+    qualitySettingsRef.current = settings;
+    setQualitySettings(settings);
+    setAdvancedQuality(settings);
   }
 
-  async function changeQuality(nextId: QualityProfileId): Promise<void> {
+  async function changeQuality(nextProfile: QualitySettings): Promise<void> {
     if (phase !== "live") {
-      commitQuality(nextId);
+      commitQuality(nextProfile);
       return;
     }
 
@@ -336,10 +351,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     qualityChangeRef.current = token;
     setChangingQuality(true);
     setNotice(null);
-    const profile = QUALITY_PROFILES[nextId];
 
     try {
-      await applyCaptureProfile(activeStream, profile);
+      await applyCaptureProfile(activeStream, nextProfile);
       if (
         !isCurrentGeneration(generation) ||
         qualityChangeRef.current !== token ||
@@ -348,29 +362,38 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         return;
       }
 
-      commitQuality(nextId);
+      commitQuality(nextProfile);
       setDetails(captureDetails(activeStream));
       if (peerAssistedRef.current) {
         signalRef.current?.send({
-          type: "set-quality-profile",
-          qualityProfileId: nextId,
+          type: "set-quality-settings",
+          qualitySettings: nextProfile,
         });
       }
+      const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
         Promise.all(
-          [...peersRef.current.values()].map((peer) => peer.updateProfile(profile)),
+          [...peersRef.current.values()].map((peer) =>
+            peer.updateProfile(nextProfile),
+          ),
         ),
-        hostSfuRouteRef.current?.updateProfile(profile) ?? Promise.resolve(true),
+        activeSfuRoute?.updateProfile(nextProfile) ??
+          Promise.resolve(true),
       ]);
       if (
         isCurrentGeneration(generation) &&
         qualityChangeRef.current === token
       ) {
         const failed = results.filter((updated) => !updated).length;
+        const sfuWarning =
+          hostSfuRouteRef.current === activeSfuRoute
+            ? (activeSfuRoute?.getQualityWarning() ?? null)
+            : null;
         setNotice(
-          failed > 0 || !sfuUpdated
-            ? "画质已切换，但部分观看连接未能应用新参数"
-            : `画质已切换为 ${profile.label}`,
+          sfuWarning ??
+            (failed > 0 || !sfuUpdated
+              ? "画质已切换，但部分观看连接未能应用新参数"
+              : `画质已切换为 ${qualitySettingsLabel(nextProfile)}`),
         );
       }
     } catch (error) {
@@ -442,7 +465,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       peerId,
       iceConfig,
       activeStream,
-      QUALITY_PROFILES[qualityIdRef.current],
+      qualitySettingsRef.current,
       {
         sendSignal: (targetPeerId, payload) =>
           isCurrentGeneration(generation) && signalRef.current === signal
@@ -565,8 +588,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       ) {
         peerAssistedRef.current = true;
         signalRef.current?.send({
-          type: "set-quality-profile",
-          qualityProfileId: qualityIdRef.current,
+          type: "set-quality-settings",
+          qualitySettings: qualitySettingsRef.current,
         });
         void ensureHostSfuRoute(generation).resyncAuthoritative(
           {
@@ -696,7 +719,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let captured: MediaStream;
     try {
       // This must remain the first awaited operation in the button gesture.
-      captured = await captureDisplay(QUALITY_PROFILES[qualityIdRef.current]);
+      captured = await captureDisplay(qualitySettingsRef.current);
     } catch (error) {
       if (!isCurrentGeneration(generation)) {
         return;
@@ -851,7 +874,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let captured: MediaStream;
     try {
       // Like initial capture, changing source must begin in this button gesture.
-      captured = await captureDisplay(QUALITY_PROFILES[qualityIdRef.current]);
+      captured = await captureDisplay(qualitySettingsRef.current);
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
@@ -1106,29 +1129,149 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           )}
 
           <div className="setup-controls">
-            <fieldset className="control-group">
-              <legend>画质</legend>
-              <div className="segmented-control">
-                {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
-                  (id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className={qualityId === id ? "is-selected" : undefined}
-                      aria-pressed={qualityId === id}
-                      disabled={
-                        phase === "starting" ||
-                        switchingSource ||
-                        changingQuality
+            <div className="quality-controls">
+              <fieldset className="control-group">
+                <legend>推荐画质</legend>
+                <div className="segmented-control">
+                  {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
+                    (id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={
+                          selectedQualityProfileId === id
+                            ? "is-selected"
+                            : undefined
+                        }
+                        aria-pressed={selectedQualityProfileId === id}
+                        disabled={
+                          phase === "starting" ||
+                          switchingSource ||
+                          changingQuality
+                        }
+                        onClick={() => void changeQuality(QUALITY_PROFILES[id])}
+                      >
+                        {QUALITY_PROFILE_LABELS[id]}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </fieldset>
+
+              <details className="advanced-quality">
+                <summary>高级视频设置</summary>
+                <div className="advanced-quality-grid">
+                  <label>
+                    <span>分辨率上限</span>
+                    <select
+                      value={advancedQuality.resolution}
+                      disabled={changingQuality}
+                      onChange={(event) =>
+                        setAdvancedQuality((current) => ({
+                          ...current,
+                          resolution: event.target
+                            .value as QualitySettings["resolution"],
+                        }))
                       }
-                      onClick={() => void changeQuality(id)}
                     >
-                      {QUALITY_PROFILES[id].label}
-                    </button>
-                  ),
-                )}
-              </div>
-            </fieldset>
+                      {Object.entries(QUALITY_RESOLUTIONS).map(
+                        ([resolution, option]) => (
+                          <option key={resolution} value={resolution}>
+                            {option.label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    <span>帧率上限</span>
+                    <div className="range-control">
+                      <input
+                        type="range"
+                        min="15"
+                        max="60"
+                        step="5"
+                        value={advancedQuality.maxFramerate}
+                        disabled={changingQuality}
+                        onChange={(event) =>
+                          setAdvancedQuality((current) => ({
+                            ...current,
+                            maxFramerate: Number(event.target.value),
+                          }))
+                        }
+                      />
+                      <output>{advancedQuality.maxFramerate} fps</output>
+                    </div>
+                  </label>
+                  <label>
+                    <span>视频码率上限</span>
+                    <div className="range-control">
+                      <input
+                        type="range"
+                        min="2000000"
+                        max="12000000"
+                        step="500000"
+                        value={advancedQuality.maxBitrate}
+                        disabled={changingQuality}
+                        onChange={(event) =>
+                          setAdvancedQuality((current) => ({
+                            ...current,
+                            maxBitrate: Number(event.target.value),
+                          }))
+                        }
+                      />
+                      <output>
+                        {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)} Mbps
+                      </output>
+                    </div>
+                  </label>
+                  <fieldset className="control-group quality-priority">
+                    <legend>质量优先级</legend>
+                    <div className="segmented-control">
+                      {(
+                        Object.keys(
+                          DEGRADATION_PREFERENCE_LABELS,
+                        ) as DegradationPreference[]
+                      ).map((preference) => (
+                        <button
+                          key={preference}
+                          type="button"
+                          className={
+                            advancedQuality.degradationPreference === preference
+                              ? "is-selected"
+                              : undefined
+                          }
+                          aria-pressed={
+                            advancedQuality.degradationPreference === preference
+                          }
+                          disabled={changingQuality}
+                          onClick={() =>
+                            setAdvancedQuality((current) => ({
+                              ...current,
+                              degradationPreference: preference,
+                            }))
+                          }
+                        >
+                          {DEGRADATION_PREFERENCE_LABELS[preference]}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={
+                      phase === "starting" ||
+                      switchingSource ||
+                      changingQuality
+                    }
+                    onClick={() => void changeQuality(advancedQuality)}
+                  >
+                    {changingQuality ? "正在应用" : "应用视频设置"}
+                  </button>
+                </div>
+              </details>
+            </div>
 
             {phase !== "live" && (
               <button
@@ -1190,8 +1333,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   </div>
                   <PathBadge path={viewer.metrics.path} />
                 </div>
-                <StatsGrid metrics={viewer.metrics} direction="send" />
+                <StatsGrid
+                  metrics={viewer.metrics}
+                  direction="send"
+                  senderParameters={viewer.senderParameters}
+                />
                 {viewer.error && <p className="inline-error">{viewer.error}</p>}
+                {viewer.qualityWarning && (
+                  <p className="inline-warning">{viewer.qualityWarning}</p>
+                )}
               </article>
             ))}
             {viewers.length === 0 && (

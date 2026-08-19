@@ -35,6 +35,8 @@ export interface PeerSnapshot {
   iceConnectionState: RTCIceConnectionState;
   metrics: ConnectionMetrics;
   error: string | null;
+  senderParameters?: import("./media/quality").VideoSenderParameterReadback | null;
+  qualityWarning?: string | null;
 }
 
 export const EMPTY_METRICS: ConnectionMetrics = {

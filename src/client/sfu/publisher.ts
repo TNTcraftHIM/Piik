@@ -7,7 +7,9 @@ import type {
 
 import {
   configureVideoSender,
+  senderParameterWarning,
   type QualityProfile,
+  type VideoSenderParameterReadback,
 } from "../media/quality";
 
 export interface SfuConnectionConfig {
@@ -40,6 +42,7 @@ export class SfuPublisher {
   private video: PublishedTrack | null = null;
   private audio: PublishedTrack | null = null;
   private profile: QualityProfile | null = null;
+  private qualityWarning: string | null = null;
   private state: PublisherState = "idle";
   private generation = 0;
   private operationTail: Promise<void> = Promise.resolve();
@@ -136,6 +139,7 @@ export class SfuPublisher {
         this.video = video;
         this.audio = audio;
         this.profile = profile;
+        this.qualityWarning = null;
         this.state = "active";
         return true;
       } catch (error) {
@@ -183,6 +187,7 @@ export class SfuPublisher {
       this.video = null;
       this.audio = null;
       this.profile = null;
+      this.qualityWarning = null;
       this.state = "prepared";
       return true;
     });
@@ -297,21 +302,27 @@ export class SfuPublisher {
       }
 
       try {
-        await configurePublishedVideo(video, profile);
+        const readback = await configurePublishedVideo(video, profile);
         if (!this.owns(room, generation)) {
           return false;
         }
         this.profile = profile;
+        this.qualityWarning = senderParameterWarning(readback);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
           return false;
         }
+        const failureWarning =
+          error instanceof Error && error.message
+            ? `应用 SFU 发送参数失败：${error.message}`
+            : "应用 SFU 发送参数失败";
         try {
           await configurePublishedVideo(video, previousProfile);
           if (!this.owns(room, generation)) {
             return false;
           }
+          this.qualityWarning = failureWarning;
           return false;
         } catch (rollbackError) {
           if (this.owns(room, generation)) {
@@ -321,6 +332,10 @@ export class SfuPublisher {
         }
       }
     });
+  }
+
+  getQualityWarning(): string | null {
+    return this.qualityWarning;
   }
 
   async disconnect(): Promise<void> {
@@ -378,6 +393,7 @@ export class SfuPublisher {
     this.video = null;
     this.audio = null;
     this.profile = null;
+    this.qualityWarning = null;
     return room;
   }
 
@@ -437,17 +453,18 @@ async function unpublishTrack(room: Room, published: PublishedTrack): Promise<vo
 async function configurePublishedVideo(
   published: PublishedTrack,
   profile: QualityProfile,
-): Promise<void> {
+): Promise<VideoSenderParameterReadback> {
   const videoTrack = published.publication.videoTrack;
   const sender = videoTrack?.sender;
   if (!sender) {
     throw new Error("SFU video publication has no RTP sender");
   }
-  await configureVideoSender(sender, profile);
+  const readback = await configureVideoSender(sender, profile);
   videoTrack.publishOptions = {
     ...videoTrack.publishOptions,
     ...videoPublishOptions(profile),
   };
+  return readback;
 }
 
 function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
@@ -455,9 +472,9 @@ function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
     simulcast: false,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,
-      maxFramerate: profile.frameRate,
+      maxFramerate: profile.maxFramerate,
     },
-    degradationPreference: "balanced",
+    degradationPreference: profile.degradationPreference,
   };
 }
 

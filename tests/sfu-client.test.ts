@@ -182,11 +182,10 @@ const connection = {
 };
 
 const qualityProfile = {
-  label: "1080p 60",
-  width: 1920,
-  height: 1080,
-  frameRate: 60,
+  resolution: "1080p",
+  maxFramerate: 60,
   maxBitrate: 8_000_000,
+  degradationPreference: "maintain-resolution",
 } as const;
 
 function track(kind: "video" | "audio", id: string): MediaStreamTrack {
@@ -254,7 +253,7 @@ describe("SfuPublisher", () => {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
       },
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
     });
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
@@ -275,11 +274,10 @@ describe("SfuPublisher", () => {
 
     await expect(
       publisher.updateProfile({
-        label: "720p 30",
-        width: 1280,
-        height: 720,
-        frameRate: 30,
+        resolution: "720p",
+        maxFramerate: 30,
         maxBitrate: 3_000_000,
+        degradationPreference: "balanced",
       }),
     ).resolves.toBe(true);
 
@@ -295,6 +293,57 @@ describe("SfuPublisher", () => {
       }),
     );
     expect(room.localParticipant.publishTrack).toHaveBeenCalledOnce();
+    expect(publisher.getQualityWarning()).toBeNull();
+  });
+
+  it("retains a visible warning when the SFU sender rewrites a parameter", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
+      .sender;
+    sender.setParameters.mockImplementationOnce(async (parameters) => {
+      sender.parameters = {
+        ...parameters,
+        encodings: parameters.encodings.map((encoding) => ({
+          ...encoding,
+          maxBitrate: 2_000_000,
+        })),
+      };
+    });
+
+    await expect(
+      publisher.updateProfile({
+        resolution: "1080p",
+        maxFramerate: 30,
+        maxBitrate: 5_000_000,
+        degradationPreference: "balanced",
+      }),
+    ).resolves.toBe(true);
+
+    expect(publisher.getQualityWarning()).toContain("码率上限");
+  });
+
+  it("retains a visible warning when SFU sender parameters are rejected", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
+      .sender;
+    sender.setParameters.mockRejectedValueOnce(new Error("unsupported"));
+
+    await expect(
+      publisher.updateProfile({
+        resolution: "720p",
+        maxFramerate: 30,
+        maxBitrate: 3_000_000,
+        degradationPreference: "balanced",
+      }),
+    ).resolves.toBe(false);
+
+    expect(publisher.getQualityWarning()).toBe(
+      "应用 SFU 发送参数失败：unsupported",
+    );
   });
 
   it("restores the previous video after a partially applied replacement fails", async () => {
