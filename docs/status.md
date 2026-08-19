@@ -22,7 +22,7 @@ none is deployed. Corrected route recovery works but misses its sub-second gate.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
 - Draft PR #21 uses one strict, memory-only quality setting for current/future relays and optional SFU; ordinary P2P wire stays unchanged. It defaults clarity-first and exposes bounded manual ceilings.
-- It builds on `main`'s equal idle-stage share/join actions and default-closed technical details; actionable warnings remain visible. It is not deployed.
+- It builds on `main`'s equal idle-stage share/join actions and default-closed technical details; SFU initial/update/replacement warnings remain visible. It is not deployed.
 
 ## Verified Evidence
 
@@ -32,7 +32,7 @@ none is deployed. Corrected route recovery works but misses its sub-second gate.
 - Chrome 151 with one host, three viewers, and synthetic 720p30 passed balanced and clarity propagation to every participant. Every baseline active video sender showed matching preference readback, peer-connection fingerprints stayed stable, and every viewer decoded and rendered new frames after each change; host fanout was two and relay fanout one.
 - That quality smoke was localhost, headless, and video-only. It proves control propagation and continuity, not visual quality, full-resolution performance, CPU/GPU load, TURN, public networks, or endurance.
 - Corrected Chrome 151/LiveKit 1.13.5 synthetic 720p30 smoke physically failed the same leaf through peer recovery/reparent and a two-root SFU route. Its frames resumed; 472 hook-assisted 25 ms samples saw host edge peak two. Failure report to active took 1.481 seconds and to new render 2.257 seconds.
-- The review revision passes repository hygiene, type checking, 20 Vitest files/264 tests, both production builds, and the Chrome control smoke above.
+- The review revision passes repository hygiene, type checking, 21 Vitest files/268 tests, both production builds, and the Chrome control smoke above.
 - Chrome 151 CDP checks at 320/375/390 CSS px keep the two idle-stage actions equal, on one row, 44 px high, and free of horizontal overflow. The Viewer waiting page also has no overflow; its details checkbox starts false, changes locally, and resets after navigation. These checks cover idle/waiting states, not live media.
 - Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes CI for one Pion RTP write fanned to two transports. It has no encoder and proves neither physical encode nor browser E2E.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.

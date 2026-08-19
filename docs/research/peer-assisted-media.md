@@ -217,6 +217,9 @@ successful track replacement, and live setting changes all configure the real
 `RTCRtpSender`, then retain requested/applied bitrate, frame rate, scale, and
 preference. Configuration rejection uses the existing rollback/fail-closed
 path rather than silently leaving the publication on unverified parameters.
+After initial activation or source replacement settles, the host reads and
+shows the route warning; a successful replacement rollback retains the original
+failure instead of clearing it with the restored sender readback.
 
 This only removes the previous fixed-1080p60 relay envelope. Browser constraints
 and RTP sender parameters remain targets, so achieved bitrate, frame rate,

@@ -441,6 +441,9 @@ describe("SfuPublisher", () => {
     expect(localTrack.currentTrack).toBe(previousVideo);
     expect(localTrack.sender.setParameters).toHaveBeenCalledTimes(3);
     expect(publisher.getSenderParameters()?.applied.maxBitrate).toBe(8_000_000);
+    expect(publisher.getQualityWarning()).toBe(
+      "切换 SFU 分享来源失败：replacement parameters rejected",
+    );
   });
 
   it("disconnects fail-closed when replacement rollback also fails", async () => {

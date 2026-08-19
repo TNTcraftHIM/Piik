@@ -268,6 +268,10 @@ export class SfuPublisher {
         if (!this.owns(room, generation)) {
           return false;
         }
+        const failureWarning =
+          error instanceof Error && error.message
+            ? `切换 SFU 分享来源失败：${error.message}`
+            : "切换 SFU 分享来源失败";
 
         // A rejected publish/unpublish may have changed server state without
         // returning enough ownership information to undo it safely.
@@ -298,7 +302,8 @@ export class SfuPublisher {
             if (!this.owns(room, generation)) {
               return false;
             }
-            this.retainSenderParameters(senderParameters);
+            this.senderParameters = senderParameters;
+            this.qualityWarning = failureWarning;
           }
           return false;
         } catch (rollbackError) {
