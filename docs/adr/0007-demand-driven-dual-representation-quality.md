@@ -107,9 +107,9 @@ but runtime encode/decode behavior is authoritative.
 ## Deferred Capability Spikes
 
 These spikes start only after the A+B/C evidence contract is trustworthy. They
-may proceed independently of ADR-0006 native-sender revalidation and must run
-before any custom dual-representation media implementation. They do not change
-the accepted two-state controller:
+run in order and stop at the first accepted path, may proceed independently of
+ADR-0006 native-sender revalidation, and precede any custom dual-representation
+media implementation. They do not change the accepted two-state controller:
 
 1. Negotiate exactly two `HIGH`/`LOW` simulcast encodings on one sender in its
    initial envelope, with `LOW` inactive. Verify requested/applied parameters,
@@ -130,22 +130,22 @@ the accepted two-state controller:
    on-demand-`LOW` requirement.
 3. Run a bounded SVC viability spike and compare the applied
    codec/`scalabilityMode` with Media Capabilities `powerEfficient` and the
-   game-performance matrix. This avoids prematurely building a custom second
-   representation; product adoption still requires a future strict-one-output
-   requirement. Reject silent software fallback.
+   game-performance matrix. If simulcast and LiveKit/Dynacast fail while this
+   path meets current on-demand selection and resource gates, adopt it and stop
+   before custom media. Reject silent software fallback.
 
 None may reuse PR #28's minimum-of-two target, bypass a per-edge stock WebRTC
 congestion controller, or expand the representation limit beyond two.
 
 ## SVC Boundary
 
-The bounded spike may measure SVC now, but adopt it only when a later accepted
-requirement demands one encoded output at all times. A path may then receive only the base layer or the base plus
-enhancement layers. Enable it only when the exact negotiated codec and
+SVC is the third standard candidate after simulcast and LiveKit/Dynacast. A path
+may receive only the base layer or the base plus enhancement layers. Adopt it
+when the earlier candidates fail and the exact negotiated codec and
 `scalabilityMode` are read back, a power-efficient/hardware path is positively
 established on the supported sender cohort, and game-performance and latency
-gates pass. Do not silently fall back to software SVC. Persistent SVC is not the
-default design.
+gates pass. Do not silently fall back to software SVC. It is not the preselected
+default; a strict-one-output requirement would strengthen, not create, its case.
 
 The WebRTC-SVC specification exposes `scalabilityMode` and permits the browser
 to return a different configured mode after negotiation. Media Capabilities can
