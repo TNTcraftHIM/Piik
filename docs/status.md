@@ -31,7 +31,7 @@ unconfigured, so production remains one host connection per viewer and P2P/TURN.
 ## Unverified Boundaries
 
 - Full-resolution 30-minute runs, relay CPU/GPU, controlled loss/RTT, and depth latency are unverified. Production `769de201f7cc` game sharing is reported low-FPS/high-load; latest `main`, preview cost, codec, and hardware encoding are not yet compared.
-- Android Chrome/iOS Safari leaves are unverified; runtime conservatively marks detected mobile/iPad clients as leaves.
+- Android Chrome/iOS Safari Viewer leaves remain unverified and conservatively leaf-only. Mobile Web Host is unsupported; native senders are planned only.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
 - Production `769de201f7cc` reportedly sustains bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not, and persistence across churn was also reported. This prioritizes, but does not prove, host sender/PC/GCC/capture generation.

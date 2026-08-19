@@ -23,6 +23,7 @@ Last updated: 2026-08-19
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
 - ADR-0006's fixed-`HIGH` canary reached host setup and one encoder output but retained no downstream checkpoint before the first-viewer timeout. It is no-go-unclassified; no native product code is accepted, and any revisit starts at its staged evidence gate.
+- Mobile Web Host is unsupported: current Android Chrome/Firefox and iOS Safari lack reliable `getDisplayMedia`; feature-detect and fail clearly, never by UA. Mobile Viewer stays leaf-only. After P1 Windows native/deploy, P2 may gate Android 14+ fixed-`HIGH`; iOS waits for stable iOS 27 ScreenCaptureKit without ReplayKit.
 - ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP. The candidate has no TURN consumer or credential wire; any future exceptional-edge grant is a complete separate change. PR #12 is superseded.
 - Keep the failure-only controller default-off until the isolated STUN/SFU exact-room gates pass. Preserve break-before-make, sticky healthy subtrees, mobile leaves, and PR #20 prewarm; public transport/load remains open.
 - Local reparenting is a later candidate: start with unassigned relay admission rescue; do not block current work.
