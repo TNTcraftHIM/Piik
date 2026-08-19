@@ -60,7 +60,7 @@
 - Apply Occam's razor: choose the simplest design that satisfies the verified requirement, and stop there. Avoid over-engineering for hypothetical scale or future features.
 - Keep changes scoped and preserve unrelated user work.
 - Prefer the smallest proven extension point; do not add speculative frameworks, hooks, or abstractions without a current consumer.
-- Add automated tests in proportion to behavioral risk. For realtime media changes, also document the manual network and browser matrix used.
+- Add automated tests in proportion to behavioral risk. Block the current phase on P0 security, privacy, irreversible data, authorization, generation, bounded-resource, and rollback failures, plus P1 failures of the milestone's core user path. Record or cover P2/P3 rare environments, diagnostic detail, and minor UI edges cheaply without turning them into canary blockers unless they can cause P0 harm. Use high-repeat race runs only for a reproduced concurrency failure. For realtime media changes, also document the manual network and browser matrix used.
 - Batch validation by risk and phase: run narrow checks while iterating, and run expensive full suites, browser matrices, endurance tests, or deployment checks only at an acceptance boundary or when a relevant change invalidates prior evidence. Documentation-only or unrelated changes do not invalidate media-path evidence.
 - Use comments for non-obvious rationale, invariants, protocol constraints, and workarounds; do not narrate obvious code.
 - Use WebRTC statistics and reproducible measurements for latency, bitrate, candidate type, packet loss, encode time, and quality limitations. Do not claim performance from assumptions alone.

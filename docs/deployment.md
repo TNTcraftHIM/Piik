@@ -14,10 +14,10 @@ current controller's automatic final media fallback. This capacity is dormant un
 the peer-assisted experiment, or required STUN discovery. It is configured with
 ICE/UDP only; the candidate has no ordinary TURN or media-TCP configuration.
 
-Production `769de201f7cc` is still the old TURN-required release. Keep it on a
-separate rollback instance while validating this candidate; do not reuse its
-environment or coturn relay config. Every new candidate deployment must run the
-direct, SFU/UDP, UDP-blocked failure, and mixed-network procedures below.
+Production `d6c8aa06dbd` runs this candidate for exact room `1` on the existing
+shared public IP. The unchanged `769de201f7cc` release, environment backup and
+coturn relay remain rollback-only. This is a bounded production smoke, not
+clean-port or broad-rollout acceptance; the media procedures below still apply.
 
 ## Topology and prerequisites
 
@@ -83,11 +83,11 @@ the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
 
 A shared-public-IP instance can test candidate behavior while the old TURN
-service stays live, but it cannot prove the clean-port boundary and must not
-approve migration. Prefer a separate VM/public IP for the full gate. Before
-starting, require candidate DNS/TLS, host and provider-firewall access,
-independent LiveKit secrets, verified UDP 7882 and resource state, and
-representative external networks and devices.
+service stays live, but it cannot prove the clean-port boundary or approve broad
+migration. The room-1 smoke uses this shape: nginx owns 443, LiveKit 1.13.5 owns
+UDP 7882, ordinary ICE is STUN-only, and LiveKit is fail-closed under a 192 MiB
+high/256 MiB hard cgroup limit with restart disabled. Prefer a separate VM/IP
+for the full gate and verify representative external networks and devices.
 
 Optional selected-edge TURN is not supported by this candidate. If later network
 evidence justifies it, configuration, generation-bound grants, client wire,

@@ -4,7 +4,11 @@ import type {
   ParticipantRouteAssignment,
   ServerMessage,
 } from "../../shared/protocol";
-import { SfuPublisher, type SfuConnectionConfig } from "../sfu/publisher";
+import {
+  SfuPublisher,
+  type SfuConnectionConfig,
+  type SfuPublisherFailureStage,
+} from "../sfu/publisher";
 import type {
   QualityProfile,
   VideoSenderParameterReadback,
@@ -23,6 +27,7 @@ interface HostPublisherTransport {
   replaceStream(stream: MediaStream): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
   getQualityWarning?(): string | null;
+  getFailureStage?(): SfuPublisherFailureStage | null;
   getSenderParameters?(): VideoSenderParameterReadback | null;
   disconnect(): Promise<void>;
 }
@@ -50,6 +55,7 @@ export class HostSfuRoute {
   private pending: HostPublisherSlot | null = null;
   private active: HostPublisherSlot | null = null;
   private recovery: { revision: number; refreshed: boolean } | null = null;
+  private lastFailureStage: SfuPublisherFailureStage | null = null;
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
   private resyncing = false;
@@ -68,6 +74,7 @@ export class HostSfuRoute {
     }
     if (previousRevision !== update.revision) {
       this.recovery = null;
+      this.lastFailureStage = null;
     }
     if (update.phase === "prepare") {
       if (
@@ -103,6 +110,7 @@ export class HostSfuRoute {
   async resyncAuthoritative(
     update: RouteUpdateInput,
   ): Promise<RouteUpdateResult> {
+    this.lastFailureStage = null;
     const result = this.accept(update, false);
     if (result !== "stale" || this.closed) {
       await this.transitionTail;
@@ -233,8 +241,11 @@ export class HostSfuRoute {
   }
 
   getQualityWarning(): string | null {
-    return this.active?.active
-      ? (this.active.publisher.getQualityWarning?.() ?? null)
+    if (this.active?.active) {
+      return this.active.publisher.getQualityWarning?.() ?? null;
+    }
+    return this.lastFailureStage
+      ? sfuFailureWarning(this.lastFailureStage)
       : null;
   }
 
@@ -452,6 +463,7 @@ export class HostSfuRoute {
     if (!this.route.markMediaActive(token)) {
       return;
     }
+    this.lastFailureStage = null;
     this.recovery = null;
     if (acknowledge) {
       this.ready(token.revision, "active");
@@ -484,6 +496,7 @@ export class HostSfuRoute {
       return;
     }
     const wasActive = this.active === slot;
+    this.lastFailureStage = slot.publisher.getFailureStage?.() ?? "transport";
     slot.failed = true;
     if (this.pending === slot) {
       this.pending = null;
@@ -544,4 +557,16 @@ async function disconnectPublisher(
   publisher: HostPublisherTransport,
 ): Promise<void> {
   await publisher.disconnect().catch(() => undefined);
+}
+
+function sfuFailureWarning(stage: SfuPublisherFailureStage): string {
+  const label: Record<SfuPublisherFailureStage, string> = {
+    connect: "连接",
+    source: "分享源",
+    "video-publish": "视频发布",
+    "sender-config": "视频参数配置",
+    "audio-publish": "音频发布",
+    transport: "传输",
+  };
+  return `SFU ${label[stage]}失败，已启动自动恢复`;
 }

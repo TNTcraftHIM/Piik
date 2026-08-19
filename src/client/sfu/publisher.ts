@@ -24,6 +24,14 @@ interface PublisherEvents {
   onDisconnected?: () => void;
 }
 
+export type SfuPublisherFailureStage =
+  | "connect"
+  | "source"
+  | "video-publish"
+  | "sender-config"
+  | "audio-publish"
+  | "transport";
+
 interface PublishedTrack {
   publication: LocalTrackPublication;
   rawTrack: MediaStreamTrack;
@@ -52,6 +60,7 @@ export class SfuPublisher {
   private profile: QualityProfile | null = null;
   private senderParameters: VideoSenderParameterReadback | null = null;
   private qualityWarning: string | null = null;
+  private failureStage: SfuPublisherFailureStage | null = null;
   private state: PublisherState = "idle";
   private generation = 0;
   private operationTail: Promise<void> = Promise.resolve();
@@ -65,6 +74,7 @@ export class SfuPublisher {
     }
 
     const generation = ++this.generation;
+    this.failureStage = null;
     this.state = "connecting";
 
     try {
@@ -79,6 +89,7 @@ export class SfuPublisher {
       room.on(sdk.RoomEvent.Disconnected, () => {
         if (this.owns(room, generation)) {
           const notify = this.state !== "connecting";
+          this.failureStage = "transport";
           this.invalidate();
           if (notify) {
             this.notifyTerminalDisconnect();
@@ -98,6 +109,7 @@ export class SfuPublisher {
       if (!this.ownsGeneration(generation)) {
         return false;
       }
+      this.failureStage = "connect";
       const room = this.invalidate();
       if (room) {
         await safeDisconnect(room);
@@ -113,15 +125,17 @@ export class SfuPublisher {
       if (!room) {
         return false;
       }
-      const sdk = this.sdk;
-      if (!sdk) {
-        throw new Error("SFU publisher SDK is unavailable");
-      }
-
-      const videoTrack = requiredVideoTrack(stream);
-      const audioTrack = stream.getAudioTracks()[0] ?? null;
-
+      let failureStage: SfuPublisherFailureStage = "source";
       try {
+        const sdk = this.sdk;
+        if (!sdk) {
+          throw new Error("SFU publisher SDK is unavailable");
+        }
+
+        const videoTrack = requiredVideoTrack(stream);
+        const audioTrack = stream.getAudioTracks()[0] ?? null;
+
+        failureStage = "video-publish";
         const video = await publishTrack(
           room,
           videoTrack,
@@ -131,6 +145,7 @@ export class SfuPublisher {
         if (!this.owns(room, generation)) {
           return false;
         }
+        failureStage = "sender-config";
         const videoConfiguration = await configurePublishedVideo(
           video,
           profile,
@@ -142,6 +157,7 @@ export class SfuPublisher {
 
         let audio: PublishedTrack | null = null;
         if (audioTrack) {
+          failureStage = "audio-publish";
           audio = await publishTrack(
             room,
             audioTrack,
@@ -157,10 +173,12 @@ export class SfuPublisher {
         this.audio = audio;
         this.profile = profile;
         this.retainSenderParameters(videoConfiguration);
+        this.failureStage = null;
         this.state = "active";
         return true;
       } catch (error) {
         if (this.owns(room, generation)) {
+          this.failureStage = failureStage;
           await this.failClosed(room, generation);
         }
         throw error;
@@ -394,6 +412,10 @@ export class SfuPublisher {
 
   getQualityWarning(): string | null {
     return this.qualityWarning;
+  }
+
+  getFailureStage(): SfuPublisherFailureStage | null {
+    return this.failureStage;
   }
 
   getSenderParameters(): VideoSenderParameterReadback | null {
