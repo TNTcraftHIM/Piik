@@ -11,7 +11,8 @@ rooms, sequential IDs, and reusable links.
 Production still creates one host peer connection per viewer. Draft PR #13 adds
 default-off two-chain peer assistance with per-hop re-encoding; ADR-0005 adds
 optional automatic SFU fallback in Draft PR #17. Corrected recovery passes
-functionally but misses its sub-second gate; neither Draft is merged or deployed.
+the local sub-second gate with token-free standby prewarm; neither Draft nor the
+follow-up spike is merged or deployed.
 
 ## Current Snapshot
 
@@ -20,6 +21,7 @@ functionally but misses its sub-second gate; neither Draft is merged or deployed
 - Without `ROOM_DATABASE_PATH`, rooms are random and temporary. With both the database path and site password, room IDs start at `1`, links persist, and stopping a share leaves viewers waiting. SQLite stores only room ID and host-token digest.
 - Direct ICE is preferred independently per media edge. Authenticated TURN/UDP and TURN/TCP are required production fallbacks; TURN/TLS is optional.
 - Hidden routing is `direct P2P -> peer-assisted -> optional SFU`. After bounded ICE recovery it tries peer reparenting before an allowlisted SFU root. Session-bound revisions prepare, commit break-before-make under two host edges, or abort. Active SFU gets one token refresh, then fails back for that share.
+- Complete fallback configuration adds a non-secret standby URL to peer-assisted authentication. Host and viewers import the SDK and make one token-free DNS/TLS warmup; no configuration means no field, import, request, participant, or media edge.
 - A viewer starts as a leaf each session and explicitly advertises relay capacity zero or one; the Web client reports detected mobile/iPad clients as zero and desktop-class browsers as one. Withdrawal stops future assignment without moving a healthy edge. Browser relays remain one-child; the host remains two-child.
 - Peer-assisted profile state is bounded, memory-only, absent from ordinary P2P wire, and applied to current and future relay children.
 
@@ -29,7 +31,7 @@ functionally but misses its sub-second gate; neither Draft is merged or deployed
 - Draft PR #13 now provides `npm run benchmark:peer-assisted`; the full check passes type checking, 13 Vitest files with 152 tests, and both production builds.
 - A short Chrome 151 synthetic `1/3/5/8` benchmark passed every topology check: host active edges peaked at two, relay edges at one, every viewer kept increasing decoded frames through the measurement window, and the slowest first decoded frame was about 1.05 seconds. Closing a first-level relay in the three-viewer run recovered in about 5.32 seconds without exceeding host fanout two.
 - A separate live-profile smoke kept the same relay peer, sender, and signaling generations through 8 Mbps/60, 5 Mbps/30, and 3 Mbps/30 ceilings while its leaf kept decoding.
-- Corrected Chrome 151/LiveKit 1.13.5 synthetic 720p30 smoke physically failed the same leaf through peer recovery/reparent and a two-root SFU route. Its frames resumed; 472 hook-assisted 25 ms samples saw host edge peak two. Failure report to active took 1.481 seconds and to new render 2.257 seconds.
+- Corrected Chrome 151/LiveKit 1.13.5 synthetic 720p30 same-leaf/two-root smoke measured the cold path at 1.481 seconds to active and 2.257 seconds to render. With authenticated standby, prepare arrived in 5 ms, active in 200 ms, and the same leaf rendered in 319.7 ms with 31 new decoded/frame-callback frames; 25 ms sampling kept host edge peak two.
 - Draft PR #17 passes CI, type checking, 19 Vitest files/253 tests, both production builds, dependency audit, and repository hygiene.
 - Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes CI for one Pion RTP write fanned to two transports. It has no encoder and proves neither physical encode nor browser E2E.
 - Local diagnostics use adjacent non-overlapping `getStats()` deltas; empty, changed-stream, and reset intervals rebase instead of publishing lifetime averages.
@@ -44,13 +46,12 @@ functionally but misses its sub-second gate; neither Draft is merged or deployed
 - Production users report severe resolution/bitrate/FPS degradation across all profiles. A controlled 1/2/3-viewer and TURN sample must distinguish capture, per-edge CPU, bandwidth/path, and receiver limits before changing ceilings or codecs; clarity-first versus `balanced` is the first bounded A/B.
 - Browser relays do not share encoding. Encoded objects, custom congestion control, multiple trees, and network coding remain separate measured candidates.
 - The long-term endpoint budget is at most two downstream edges for both the host and relay-capable viewers, with one compatible encoded output reused across both edges where a native media engine can prove it. The current browser spike remains host capacity two/viewer capacity one and performs a new encode at each relay. Packet/layer striping and multi-parent assembly are recorded, not implemented.
-- The corrected smoke is localhost/headless/video-only; public transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
+- The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 
 ## Next Milestone
 
-Finish ADR-0005 before UI polish: address the 2.257-second fallback, then
-validate public transports, rollback, reconnect, controls, edge counts, egress,
-and load.
+Finish ADR-0005 before UI polish: validate standby gains across public
+transports, rollback, reconnect, controls, edge counts, egress, and load.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix.

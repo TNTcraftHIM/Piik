@@ -763,6 +763,7 @@ describe("WebSocket signaling", () => {
       kind: "peer",
       peerId: hostAuth.peerId,
     });
+    expect("sfuStandbyUrl" in firstAuth).toBe(false);
     expect(secondAuth.routeAssignment.upstream).toEqual({
       kind: "peer",
       peerId: hostAuth.peerId,
@@ -806,6 +807,7 @@ describe("WebSocket signaling", () => {
     );
     expect("mediaMode" in hostAuth).toBe(false);
     expect("qualityProfileId" in hostAuth).toBe(false);
+    expect("sfuStandbyUrl" in hostAuth).toBe(false);
 
     const viewer = await openClient(harness.webSocketUrl);
     const viewerAuth = await authenticate(
@@ -816,6 +818,7 @@ describe("WebSocket signaling", () => {
     );
     expect("mediaMode" in viewerAuth).toBe(false);
     expect("qualityProfileId" in viewerAuth).toBe(false);
+    expect("sfuStandbyUrl" in viewerAuth).toBe(false);
     await host.inbox.next("peer-joined");
 
     host.socket.send(
@@ -932,6 +935,7 @@ describe("WebSocket signaling", () => {
         sfuPublicationGeneration: null,
       },
     });
+    expect("sfuStandbyUrl" in hostAuth).toBe(false);
 
     const firstViewer = await openClient(harness.webSocketUrl);
     const firstAuth = peerAssisted(
@@ -1122,6 +1126,7 @@ describe("WebSocket signaling", () => {
     const hostAuth = peerAssisted(
       await authenticate(host, harness.room, "host", "hybrid-host"),
     );
+    expect(hostAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
     const firstViewer = await openClient(harness.webSocketUrl);
     const firstAuth = peerAssisted(
       await authenticate(
@@ -1131,6 +1136,7 @@ describe("WebSocket signaling", () => {
         "hybrid-viewer-a",
       ),
     );
+    expect(firstAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
     const secondViewer = await openClient(harness.webSocketUrl);
     const secondAuth = peerAssisted(
       await authenticate(

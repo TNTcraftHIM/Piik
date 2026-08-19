@@ -388,6 +388,9 @@ export class SignalingServer {
         qualityProfileId:
           this.qualityProfileIdsByRoom.get(participant.roomId) ??
           DEFAULT_QUALITY_PROFILE_ID,
+        ...(this.options.sfuFallback
+          ? { sfuStandbyUrl: this.options.sfuFallback.url }
+          : {}),
       });
     } else {
       this.send(socket, authenticatedMessage);
