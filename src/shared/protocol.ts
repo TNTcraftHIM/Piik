@@ -18,6 +18,19 @@ const tokenSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 
+const liveKitWebSocketUrlSchema = z
+  .string()
+  .url()
+  .max(2048)
+  .refine((value) => {
+    try {
+      const protocol = new URL(value).protocol;
+      return protocol === "ws:" || protocol === "wss:";
+    } catch {
+      return false;
+    }
+  });
+
 export const roomCodeSchema = z
   .string()
   .min(1)
@@ -286,6 +299,7 @@ const authenticatedMessageSchema = z.union([
       routeRevision: mediaRouteRevisionSchema,
       routeAssignment: participantRouteAssignmentSchema,
       qualitySettings: qualitySettingsSchema,
+      sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
     })
     .strict(),
 ]);
@@ -337,7 +351,7 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("sfu-config"),
       revision: mediaRouteRevisionSchema,
-      url: z.string().url().max(2048),
+      url: liveKitWebSocketUrlSchema,
       token: z.string().min(1).max(MAX_SFU_TOKEN_LENGTH),
     })
     .strict(),

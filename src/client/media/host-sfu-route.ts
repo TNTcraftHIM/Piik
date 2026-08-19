@@ -91,11 +91,21 @@ export class HostSfuRoute {
     return result;
   }
 
+  async acceptAndWait(
+    update: RouteUpdateInput,
+    acknowledge = true,
+  ): Promise<RouteUpdateResult> {
+    const result = this.accept(update, acknowledge);
+    await this.transitionTail;
+    return result;
+  }
+
   async resyncAuthoritative(
     update: RouteUpdateInput,
   ): Promise<RouteUpdateResult> {
     const result = this.accept(update, false);
     if (result !== "stale" || this.closed) {
+      await this.transitionTail;
       return result;
     }
 

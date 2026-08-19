@@ -27,6 +27,7 @@ import { getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
+import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
 import type {
@@ -94,6 +95,16 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       Extract<ServerMessage, { type: "signal" }>
     > = [];
     const messageAuthority = new ViewerMessageAuthority();
+    let sfuStandbyPrewarmer: SfuStandbyPrewarmer | null = null;
+
+    function setSfuStandbyUrl(url: string | null | undefined): void {
+      if (!url) {
+        sfuStandbyPrewarmer?.setUrl(null);
+        return;
+      }
+      sfuStandbyPrewarmer ??= new SfuStandbyPrewarmer();
+      sfuStandbyPrewarmer.setUrl(url);
+    }
 
     const signal = new SignalingClient(
       {
@@ -110,6 +121,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         onProtocolError: (message) => {
           if (active) {
             messageAuthority.invalidate();
+            setSfuStandbyUrl(null);
             setStatusText(message);
           }
         },
@@ -118,6 +130,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             return;
           }
           messageAuthority.invalidate();
+          setSfuStandbyUrl(null);
           clearViewerSfuRoute();
           clearPeerState();
           setStatusText(message);
@@ -125,6 +138,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         onAccessRequired: () => {
           if (active) {
             messageAuthority.invalidate();
+            setSfuStandbyUrl(null);
             onAuthorizationRequired();
           }
         },
@@ -381,6 +395,9 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
+        setSfuStandbyUrl(
+          "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
+        );
         const nextPeerAssisted =
           "mediaMode" in message && message.mediaMode === "peer-assisted";
         if (!nextPeerAssisted && peerAssisted) {
@@ -533,6 +550,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         return;
       }
       if (message.type === "sharing-stopped") {
+        setSfuStandbyUrl(null);
         currentHostOnline = false;
         clearViewerSfuRoute();
         clearPeerState();
@@ -541,6 +559,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
         return;
       }
       if (message.type === "room-closed") {
+        setSfuStandbyUrl(null);
         clearViewerSfuRoute();
         clearPeerState();
         setStatusText(message.reason === "expired" ? "房间已过期" : "房间已关闭");
@@ -561,6 +580,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
             "ROOM_FULL",
           ].includes(message.code)
         ) {
+          setSfuStandbyUrl(null);
           clearViewerSfuRoute();
           clearPeerState();
         }
@@ -571,6 +591,7 @@ export function ViewerPage({ roomId, onAuthorizationRequired }: ViewerPageProps)
     signal.start();
     return () => {
       active = false;
+      sfuStandbyPrewarmer?.dispose();
       signal.stop();
       void viewerSfuRoute?.disconnect();
       viewerSfuRoute = null;

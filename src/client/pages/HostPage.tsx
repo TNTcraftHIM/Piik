@@ -51,6 +51,7 @@ import {
   type QualitySettings,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
+import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -60,6 +61,7 @@ import {
   limitMediaAssignment,
   MAX_HOST_MEDIA_CHILDREN,
 } from "../webrtc/media-assignment";
+import { sourceSwitchNotice } from "./host-page-notices";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
 
@@ -161,6 +163,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const picturePausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
+  const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
 
   const viewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -192,6 +195,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       peersRef.current.clear();
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
+      sfuStandbyPrewarmerRef.current?.dispose();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -236,7 +240,32 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function clearHostSfuRoute(): void {
     const route = hostSfuRouteRef.current;
     hostSfuRouteRef.current = null;
+    sfuStandbyPrewarmerRef.current?.setUrl(null);
     void route?.disconnect();
+  }
+
+  function setSfuStandbyUrl(url: string | null | undefined): void {
+    if (!url) {
+      sfuStandbyPrewarmerRef.current?.setUrl(null);
+      return;
+    }
+    sfuStandbyPrewarmerRef.current ??= new SfuStandbyPrewarmer();
+    sfuStandbyPrewarmerRef.current.setUrl(url);
+  }
+
+  function showHostSfuQualityWarning(
+    route: HostSfuRoute,
+    generation: number,
+  ): void {
+    if (
+      isCurrentGeneration(generation) &&
+      hostSfuRouteRef.current === route
+    ) {
+      const warning = route.getQualityWarning();
+      if (warning) {
+        setNotice(warning);
+      }
+    }
   }
 
   function disposeResources(notifyServer: boolean): void {
@@ -260,6 +289,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peersRef.current.clear();
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
+    sfuStandbyPrewarmerRef.current?.setUrl(null);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -595,6 +625,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      setSfuStandbyUrl(
+        "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
+      );
       setMaxViewers(message.maxViewers);
       if (
         "mediaMode" in message &&
@@ -605,13 +638,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           type: "set-quality-settings",
           qualitySettings: qualitySettingsRef.current,
         });
-        void ensureHostSfuRoute(generation).resyncAuthoritative(
-          {
+        const route = ensureHostSfuRoute(generation);
+        void route
+          .resyncAuthoritative({
             revision: message.routeRevision,
             phase: "active",
             assignment: message.routeAssignment,
-          },
-        );
+          })
+          .then(() => showHostSfuQualityWarning(route, generation));
         return;
       }
       peerAssistedRef.current = false;
@@ -626,13 +660,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "route-update") {
       if (peerAssistedRef.current) {
-        ensureHostSfuRoute(generation).accept(message);
+        const route = ensureHostSfuRoute(generation);
+        void route
+          .acceptAndWait(message)
+          .then(() => showHostSfuQualityWarning(route, generation));
       }
       return;
     }
     if (message.type === "sfu-config") {
       if (peerAssistedRef.current) {
-        void ensureHostSfuRoute(generation).acceptConfig(message);
+        const route = ensureHostSfuRoute(generation);
+        void route
+          .acceptConfig(message)
+          .then(() => showHostSfuQualityWarning(route, generation));
       }
       return;
     }
@@ -957,6 +997,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           failedPeerIds.push(peerId);
         }
       }
+      const sfuWarning =
+        activeSfuRoute && hostSfuRouteRef.current === activeSfuRoute
+          ? activeSfuRoute.getQualityWarning()
+          : null;
       if (
         !sfuReplaced &&
         activeSfuRoute &&
@@ -997,9 +1041,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         sourceSwitchRef.current === token
       ) {
         setNotice(
-          failedPeerIds.length > 0
-            ? "分享来源已切换，部分观看者正在重新连接"
-            : "分享来源已切换",
+          sourceSwitchNotice({
+            failedPeerCount: failedPeerIds.length,
+            sfuReplaced,
+            sfuWarning,
+          }),
         );
       }
     } finally {
