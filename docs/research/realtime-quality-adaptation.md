@@ -327,14 +327,60 @@ hardware encoder, game FPS/p1 low, CPU/GPU, interval encode cost, upload, and
 per-layer byte budgets. Before default enablement, a separate root-with-children
 gate must inject an autonomous downshift, observe `suspect`, evacuate after
 bounded confirmation, and limit temporary descendant impact; no confirmed
-`FALLBACK` root may retain children. Screener's current publisher remains `simulcast: false`,
-leaves Dynacast at default `false`, and does not call `setVideoQuality()`.
-Its subscriber also does not attach a `RemoteTrack`, so SDK `adaptiveStream` is
-not directly usable without changing that ownership; built-in SFU bandwidth
-adaptation does not depend on enabling that feature. If built-in selection fails
-the product gates, test explicit standard subscriber quality selection before
-manual sender activation/deactivation. This is a candidate rather than a
-current runtime claim, and no browser run belongs in this static SVC review.
+`FALLBACK` root may retain children. At `main` commit `13b8dad`, Screener's
+default-off publisher configures exactly two ordered `q`/`f` encodings, leaves
+Dynacast at `false`, disables backup-codec publication, and its subscriber sets
+a `HIGH` ceiling after subscribing. This is implemented configuration, not
+browser or performance evidence. The subscriber also does not attach a
+`RemoteTrack`, so SDK `adaptiveStream` is not directly usable without changing
+that ownership; built-in SFU bandwidth adaptation does not depend on enabling
+that feature. If built-in selection fails the product gates, test explicit
+standard subscriber quality selection before manual sender
+activation/deactivation.
+
+### Per-Flow Shaping Preflight
+
+The 2026-08-19 Windows preflight stopped before downloading LiveKit, writing a
+harness, or starting Chrome. Chrome 151 is available, and the official LiveKit
+1.13.5 release provides a checksummed Windows amd64 binary, so obtaining the
+pinned server is not the blocker. The workstation has no Docker installation,
+no installed WSL distribution, and no Linux `tc`; the current session is also
+not elevated. The existing peer-assisted benchmark starts neither LiveKit nor
+an SFU quality fixture.
+
+Windows policy-based QoS can match outbound traffic by application or IP
+tuple, but this setup has not proved that it can follow one ICE-generated,
+ephemeral subscriber downtrack across generation changes or apply an auditable
+limit to the local loopback media path. CDP `Network` throttling likewise has no
+accepted per-WebRTC-flow contract. Neither mechanism may be used as evidence
+that one SFU subscriber was weakened while another stayed healthy.
+
+Resume this gate only on an isolated Linux VM or equivalent host that can put
+the publisher, healthy leaf, and weak leaf in separate network namespaces with
+separate veth devices. Run the pinned application and LiveKit 1.13.5 without
+TURN or media TCP. Before media, prove only the namespace, route, and veth
+isolation and the availability of `tc`; the selected ICE tuple does not exist
+yet. Use `tbf` for a bounded rate and `netem` only when the case explicitly adds
+loss or delay.
+
+The sole browser run has three ordered phases. First establish both leaves
+without shaping, identify the selected LiveKit ICE/UDP tuples locally, record
+the healthy and weak veth baselines, and require `HIGH/HIGH`. Next attach the
+filter and qdisc to only the weak leaf's selected media tuple and direction.
+Require filter packet/byte growth, independent TBF overlimit/queue evidence and
+the expected weak-path throughput bound before accepting `HIGH/LOW`; a filter
+counter alone proves classification, not shaping. The healthy veth counters,
+inbound bitrate, dimensions, FPS, and decode progress must remain within the
+unshaped baseline envelope. Finally remove the weak qdisc and require recovery
+to `HIGH/HIGH` while the healthy leaf remains unchanged.
+
+Retain gate evidence for the publisher's ordered `q`/`f` encodings and
+per-layer bytes, both subscribers' actual dimensions, FPS, bytes, codec and
+decode progress, correlated A+B/C windows, Host upload and interval encode
+cost, and available system CPU/GPU/game proxies. A third layer, an affected
+healthy leaf, missing classification or shaping counters, or an
+application-issued `LOW` command fails the run. Root migration remains outside
+this zero-descendant-leaf gate.
 
 SVC is the third static no-go,
 `no-go-web-svc-cross-path-hardware-contract`. WebRTC-SVC configures an outgoing
@@ -554,6 +600,10 @@ is a separate optimization.
 - [LiveKit client 2.22.0 Dynacast layer control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
 - [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
 - [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
+- [LiveKit server 1.13.5 release assets and checksums](https://github.com/livekit/livekit/releases/tag/v1.13.5)
+- [Microsoft `New-NetQosPolicy`](https://learn.microsoft.com/en-us/powershell/module/netqos/new-netqospolicy)
+- [Linux network namespaces](https://man7.org/linux/man-pages/man7/network_namespaces.7.html)
+- [Linux `tc-tbf`](https://man7.org/linux/man-pages/man8/tc-tbf.8.html) and [`tc-netem`](https://man7.org/linux/man-pages/man8/tc-netem.8.html)
 - [Jitsi desktop degradation preference](https://github.com/jitsi/lib-jitsi-meet/blob/master/modules/RTC/TraceablePeerConnection.ts)
 - [Discord Go Live architecture](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
 - [Discord encoder-quality case study](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus)
