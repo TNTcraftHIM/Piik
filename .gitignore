@@ -14,6 +14,7 @@ node_modules/
 build/
 coverage/
 dist/
+benchmark-results/
 .cache/
 *.sqlite
 *.sqlite-journal
