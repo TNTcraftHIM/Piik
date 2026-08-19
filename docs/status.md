@@ -60,8 +60,9 @@ separate experiments, not ways to relabel a failed browser route.
 
 ## Blockers And Decisions
 
-Production enablement of peer assistance and automatic routing remains blocked
-on ADR-0004/0005 gates.
+Production enablement of peer assistance and automatic routing is No-Go until
+ADR-0004/0005 gates pass. Without LiveKit, two mobile leaves can occupy both
+host roots and leave later viewers without media; use only an isolated canary.
 Native shared encode and multi-tree striping remain separate experiments.
 
 - Whole-system versus selected-game audio for the first release.

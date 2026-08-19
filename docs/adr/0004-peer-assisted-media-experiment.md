@@ -112,10 +112,11 @@ viewing remains required.
 Test 1, 3, 5, and 8 viewers for 30 minutes across the three recommended ceiling
 combinations, plus any advanced combination proposed for production, with
 controlled per-edge RTT at or below 40 ms and loss at or below 1%. Current
-desktop Chrome and Edge form the relay cohort; current Android
-Chrome and iOS Safari join last as leaf checks. The protocol has no
-relay-capability bit, so controlled join order is the only enforcement and this
-spike is not safe for arbitrary-user deployment.
+desktop Chrome and Edge form the relay cohort; current Android Chrome and iOS
+Safari join last as leaf checks. ADR-0005 now adds a per-session binary relay
+capacity: detected mobile/iPad clients report zero and desktop-class browsers
+report one. That heuristic, background lifecycle, and voluntary relay policy
+remain unverified, so the spike is still unsafe for arbitrary-user deployment.
 
 The proposal advances only if every condition holds:
 

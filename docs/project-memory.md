@@ -17,7 +17,7 @@ Last updated: 2026-08-19
 ## Current Recommendation
 
 - Keep desktop Chrome/Edge and the responsive Web viewer as the baseline. Validate Android Chrome and iOS Safari as leaves.
-- Use direct host P2P for one or two viewers. `main` carries ADR-0004's default-off experiment for later viewers: two sticky deterministic chains, host capacity two, viewer capacity one, no proactive rebalance or composite score, and no more than eight viewers when `PEER_ASSISTED_MEDIA=true`.
+- Use direct host P2P for one or two viewers. Keep ADR-0004's two-chain experiment off on production: without LiveKit, two mobile/iPad leaves can consume both host roots and leave later viewers admitted without media. Test it only on an isolated instance until the full resource, quality, recovery, TURN, and browser/mobile gates pass.
 - Standard browser relays resend remote `MediaStreamTrack` values and therefore decode and re-encode at every hop. Browser WebRTC does not guarantee one shared encoder across peer connections; measure this cost rather than hiding it.
 - Keep the browser experiment bounded. Evaluate native RTP relay, encoded-object striping, SVC, or FEC only in separate measured spikes.
 - Plan a separate native-sender ADR for TeamSpeak-style shared encoding regardless of the browser relay result. One compatible encoded output may feed at most two standard WebRTC packetizers to reduce host encode work, but each edge still consumes upload bandwidth. This work is not part of the current Draft and cannot rescue another failed browser-relay gate.
