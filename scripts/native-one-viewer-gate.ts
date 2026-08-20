@@ -25,10 +25,12 @@ import {
   captureOneViewerIdentity,
   fetchJsonBefore,
   finalizeGate,
+  hasNoCriticalSenderErrors,
   isExactGateProfile,
   retainsFirstBridgeSend,
   retainsOneViewerIdentity,
   waitForSample,
+  verifyFinalSenderEvidence,
   withDeadline,
   type CleanupResult,
   type OneViewerIdentity,
@@ -68,6 +70,9 @@ interface SenderSnapshot {
   binarySendAttempts: number;
   binarySendSucceeded: number;
   binarySendFailed: number;
+  diagnosticsObserved: boolean;
+  postSendDiagnosticsObserved: boolean;
+  postSendDiagnosticsSequence: number;
   activeViewers: number;
   maxPeers: number;
   config: {
@@ -236,9 +241,16 @@ function senderStartObservation(snapshot: SenderSnapshot): Partial<SenderStartOb
     binarySendSucceeded: snapshot.binarySendSucceeded,
     binarySendFailed: snapshot.binarySendFailed,
     encoderInstances: snapshot.encoderInstances,
-    framesWritten: snapshot.media?.framesWritten ?? 0,
-    sourceRtpPacketsWritten: snapshot.media?.sourceRtpPacketsWritten ?? 0,
-    sourceRtpBytesWritten: snapshot.media?.sourceRtpBytesWritten ?? 0,
+    diagnosticsObserved: snapshot.diagnosticsObserved,
+    postSendDiagnosticsObserved: snapshot.postSendDiagnosticsObserved,
+    postSendDiagnosticsSequence: snapshot.postSendDiagnosticsSequence,
+    encoderErrors: snapshot.encoderErrors,
+    fatalEvents: snapshot.fatalEvents,
+    ...(snapshot.media === null ? {} : {
+      framesWritten: snapshot.media.framesWritten,
+      sourceRtpPacketsWritten: snapshot.media.sourceRtpPacketsWritten,
+      sourceRtpBytesWritten: snapshot.media.sourceRtpBytesWritten,
+    }),
   };
 }
 
@@ -282,6 +294,7 @@ async function main(): Promise<void> {
   let appPort: number | null = null;
   let debugPort: number | null = null;
   let nativePort: number | null = null;
+  let senderPage: PageHandle | null = null;
   let gateSucceeded = false;
   const senderLedger = new SenderStartLedger((record) => {
     if (!ledgerPath) return;
@@ -351,18 +364,19 @@ async function main(): Promise<void> {
     report.failedStage = "sender-start";
 
     await createPage(cdp, animatedSourceUrl());
-    const senderPage = await createPage(cdp, launchUrl, senderProbe());
-    await evaluate<void>(cdp, senderPage, `(() => {
+    const activeSenderPage = await createPage(cdp, launchUrl, senderProbe());
+    senderPage = activeSenderPage;
+    await evaluate<void>(cdp, activeSenderPage, `(() => {
       document.querySelector('#server-url').value = ${JSON.stringify(baseUrl)};
       document.querySelector('#password').value = ${JSON.stringify(accessKey)};
       document.querySelector('#start').click();
     })()`, Date.now() + 5_000);
     await waitForSenderStart(
-      async (deadline) => senderStartObservation(await senderSnapshot(cdp!, senderPage, deadline)),
+      async (deadline) => senderStartObservation(await senderSnapshot(cdp!, activeSenderPage, deadline)),
       senderLedger,
       { timeoutMs: 20_000 },
     );
-    const senderReady = await senderSnapshot(cdp, senderPage, Date.now() + 3_000);
+    const senderReady = await senderSnapshot(cdp, activeSenderPage, Date.now() + 3_000);
     const senderStartChecks = {
       oneEncoderObject: senderReady.encoderInstances === 1,
       currentBridge: retainsFirstBridgeSend(senderReady),
@@ -371,7 +385,7 @@ async function main(): Promise<void> {
     report.stages["sender-start"] = { ...senderLedger.snapshot(), ...senderStartChecks };
     requireChecks(senderStartChecks);
     report.failedStage = "node-host";
-    const inviteUrl = await evaluate<string>(cdp, senderPage,
+    const inviteUrl = await evaluate<string>(cdp, activeSenderPage,
       `document.querySelector('#invite-link').href`, Date.now() + 3_000);
     const invite = new URL(inviteUrl);
     const roomId = invite.pathname.match(/^\/r\/([1-9][0-9]{0,11})$/)?.[1] ?? "";
@@ -388,7 +402,7 @@ async function main(): Promise<void> {
     let identity: OneViewerIdentity | null = null;
     await waitForSample(async (deadline) => ({
       viewer: await viewerSnapshot(cdp!, viewerPage, deadline),
-      sender: await senderSnapshot(cdp!, senderPage, deadline),
+      sender: await senderSnapshot(cdp!, activeSenderPage, deadline),
     }), ({ viewer, sender }) => {
       identity = captureOneViewerIdentity(viewer.identity, senderIdentity(sender));
       const checks = {
@@ -427,14 +441,14 @@ async function main(): Promise<void> {
     const mediaBaselineDeadline = Date.now() + 3_000;
     const [beforeViewer, beforeSender] = await Promise.all([
       viewerSnapshot(cdp, viewerPage, mediaBaselineDeadline),
-      senderSnapshot(cdp, senderPage, mediaBaselineDeadline),
+      senderSnapshot(cdp, activeSenderPage, mediaBaselineDeadline),
     ]);
     if (!retainsOneViewerIdentity(identity, beforeViewer.identity, senderIdentity(beforeSender))) {
       throw new Error("Viewer generation changed before media sampling");
     }
     await waitForSample(async (deadline) => ({
       viewer: await viewerSnapshot(cdp!, viewerPage, deadline),
-      sender: await senderSnapshot(cdp!, senderPage, deadline),
+      sender: await senderSnapshot(cdp!, activeSenderPage, deadline),
     }), ({ viewer, sender }) => {
       const checks = {
         inboundPackets: viewer.packetsReceived > beforeViewer.packetsReceived,
@@ -466,18 +480,34 @@ async function main(): Promise<void> {
       };
       return Object.values(checks).every(Boolean);
     }, 10_000);
-    const finalSender = await senderSnapshot(cdp, senderPage, Date.now() + 3_000);
-    const finalChecks = { finalBridge: retainsFirstBridgeSend(finalSender) };
+    const finalSender = await senderSnapshot(cdp, activeSenderPage, Date.now() + 3_000);
+    const finalChecks = {
+      finalBridge: retainsFirstBridgeSend(finalSender),
+      finalCriticalErrors: hasNoCriticalSenderErrors(finalSender),
+    };
     report.stages["viewer-media"] = { ...report.stages["viewer-media"], ...finalChecks };
     requireChecks(finalChecks);
     gateSucceeded = true;
   } catch {
     // The bounded report retains only the first stage and sanitized counters.
   } finally {
+    let finalSenderEvidence = false;
+    const finalCdp = cdp;
+    const finalSenderPage = senderPage;
+    if (finalCdp && finalSenderPage) {
+      finalSenderEvidence = await verifyFinalSenderEvidence(
+        () => senderSnapshot(finalCdp, finalSenderPage, Date.now() + 1_000),
+        (snapshot) => {
+          senderLedger.record(senderStartObservation(snapshot));
+          return senderLedger.snapshot();
+        },
+      );
+    }
     report.stages["sender-start"] = {
       ...report.stages["sender-start"],
       ...senderLedger.snapshot(),
     };
+    gateSucceeded = gateSucceeded && finalSenderEvidence;
     await finalizeGate(report, gateSucceeded, () => cleanupRun({
       cdp, native, chrome, server, profile,
       ports: [appPort, debugPort, nativePort].filter((port): port is number => port !== null),
@@ -493,6 +523,8 @@ export function senderProbe(): string {
       ready: 0, configAccepted: 0,
       encoderInstances: 0, encoderOutputs: 0, encoderErrors: 0, fatalEvents: 0,
       bridgeGeneration: 0, binarySendAttempts: 0, binarySendSucceeded: 0, binarySendFailed: 0,
+      diagnosticsObserved: false, postSendDiagnosticsObserved: false,
+      postSendDiagnosticsSequence: 0,
       activeViewers: 0, maxPeers: 0, edgeGeneration: 0, activeEdgeSlot: null,
       config: null, media: null, peers: [] };
     const finite = (value) => Number.isFinite(value) ? value : 0;
@@ -523,11 +555,16 @@ export function senderProbe(): string {
           let message; try { message = JSON.parse(event.data); } catch { return; }
           if (message.kind === 'ready') state.ready += 1;
           if (message.kind === 'config-accepted') state.configAccepted += 1;
-          if (message.kind === 'fatal') state.fatalEvents += 1;
+          if (message.kind === 'fatal') mark('fatalEvents');
           if (message.kind === 'ready' || message.kind === 'viewer-count') {
             state.activeViewers = finite(message.activeViewers);
           }
           if (message.kind === 'diagnostics') {
+            state.diagnosticsObserved = true;
+            if (state.binarySendSucceeded > 0) {
+              state.postSendDiagnosticsObserved = true;
+              state.postSendDiagnosticsSequence = Math.min(2, state.postSendDiagnosticsSequence + 1);
+            }
             state.media = message.media ? {
               framesWritten: finite(message.media.framesWritten),
               sourceRtpPacketsWritten: finite(message.media.sourceRtpPacketsWritten),
@@ -581,7 +618,7 @@ export function senderProbe(): string {
           const init = args[0] || {};
           const wrapped = { ...init,
             output: (...values) => { state.encoderOutputs += 1; return init.output(...values); },
-            error: (...values) => { state.encoderErrors += 1; return init.error(...values); },
+            error: (...values) => { mark('encoderErrors'); return init.error(...values); },
           };
           const encoder = Reflect.construct(Target, [wrapped], Target);
           state.encoderInstances += 1;

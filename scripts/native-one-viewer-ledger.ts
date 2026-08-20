@@ -12,6 +12,11 @@ export interface SenderStartObservation {
   binarySendSucceeded: number;
   binarySendFailed: number;
   encoderInstances: number;
+  diagnosticsObserved: boolean;
+  postSendDiagnosticsObserved: boolean;
+  postSendDiagnosticsSequence: number;
+  encoderErrors: number;
+  fatalEvents: number;
   framesWritten: number;
   sourceRtpPacketsWritten: number;
   sourceRtpBytesWritten: number;
@@ -38,6 +43,11 @@ const initialObservation: SenderStartObservation = {
   binarySendSucceeded: 0,
   binarySendFailed: 0,
   encoderInstances: 0,
+  diagnosticsObserved: false,
+  postSendDiagnosticsObserved: false,
+  postSendDiagnosticsSequence: 0,
+  encoderErrors: 0,
+  fatalEvents: 0,
   framesWritten: 0,
   sourceRtpPacketsWritten: 0,
   sourceRtpBytesWritten: 0,
@@ -52,6 +62,8 @@ const booleanKeys = [
   "bridgeConnected",
   "fixedHighConfigured",
   "firstEncodedChunk",
+  "diagnosticsObserved",
+  "postSendDiagnosticsObserved",
 ] as const;
 
 const counterKeys = [
@@ -67,6 +79,7 @@ const counterKeys = [
 // The first positive value is enough for this stage and bounds the append-only
 // ledger to at most one record per field transition.
 const counterLimit = 1_000_000_000;
+const singleEventCounterKeys = ["encoderErrors", "fatalEvents"] as const;
 
 export class SenderStartLedger {
   private observation = { ...initialObservation };
@@ -84,6 +97,14 @@ export class SenderStartLedger {
       if (next[key] === 0 && typeof value === "number" && Number.isFinite(value) && value > 0) {
         next[key] = Math.min(Math.floor(value), counterLimit);
       }
+    }
+    for (const key of singleEventCounterKeys) {
+      if (typeof patch[key] === "number" && patch[key] > 0) next[key] = 1;
+    }
+    const diagnosticsSequence = patch.postSendDiagnosticsSequence;
+    if (typeof diagnosticsSequence === "number" && Number.isFinite(diagnosticsSequence) &&
+      diagnosticsSequence > next.postSendDiagnosticsSequence) {
+      next.postSendDiagnosticsSequence = Math.min(Math.floor(diagnosticsSequence), 2);
     }
     const bridgeGeneration = patch.bridgeGeneration;
     if (typeof bridgeGeneration === "number" && Number.isFinite(bridgeGeneration) &&
@@ -109,6 +130,7 @@ export function senderStartComplete(record: SenderStartObservation): boolean {
   return booleanKeys.every((key) => record[key]) && record.encoderInstances === 1 &&
     record.bridgeGeneration === 1 && record.binarySendAttempts > 0 &&
     record.binarySendSucceeded > 0 && record.binarySendFailed === 0 &&
+    record.postSendDiagnosticsSequence > 0 &&
     record.framesWritten > 0 && record.sourceRtpPacketsWritten > 0;
 }
 
