@@ -11,10 +11,15 @@ automatic rollback. SQLite v3 has four rooms including room `1`; the
 application/database stayed healthy, and current Screener, LiveKit, coturn, and
 nginx services each report `NRestarts=0`. Host display names remain
 source-only/not deployed.
-Ordinary ICE is STUN-only process-wide; persistent room `1` alone enables the
-automatic peer/SFU-UDP controller with at most two SFU roots. The old
+Ordinary ICE is STUN-only; source flag `PEER_ASSISTED_MEDIA=true` enables the
+bounded peer/SFU-UDP controller for every room (at most two roots). Room `1` is
+historical smoke only. The old
 `fdd14ba0d9b5` is the healthy v3 rollback target; older schema details are in
 `docs/deployment.md`. Native is no-go and not in production.
+
+## Execution Principle
+
+Flagship first; parallelize design/research/code/tests/audit. Ship minimum runnable + smoke + rollback; avoid duplicate matrices. Room `1` is historical; benchmark later; no hardware overclaim.
 
 ## Current Snapshot
 
@@ -22,8 +27,7 @@ automatic peer/SFU-UDP controller with at most two SFU roots. The old
 - Production access is `screener-v2`: Host admission, private grants/passwords, and public codes authorize Viewers. SQLite v3 retains four rooms and checked material; raw credentials are never stored.
 - The Host display-name change is source-only after the failed `61a87ae` activation; it did not alter the deployed wire or UI.
 - Source-only Native v2 uses memory-only rooms, 300s reclaim and `ROOM_TTL`; production does not run it.
-- PR #44's exact-room STUN-only/SFU-UDP router is enabled only for production room `1`: host/SFU roots <=2, browser relay <=1, bounded failure. HTTPS/WSS stays TLS/TCP.
-- Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.
+- PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
@@ -36,17 +40,17 @@ automatic peer/SFU-UDP controller with at most two SFU roots. The old
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Native loopbacks (Chrome 151) reached 1280x720 Viewers: VP8 30 sender/85 source RTP/877 inbound/299 decoded; H.264 opt-in 18/156/2,690/299 decoded/298 rendered, with no fatal/encoder errors. H.264 uses `42c01f` Annex-B; `prefer-hardware` is not hardware proof. Pion outbound snapshot timing remains; multi-viewer/FIFO/endurance/public/native proof is open, production stays VP8.
+- Native loopbacks (Chrome 151): VP8 299 decoded; H.264 opt-in 299 decoded/298 rendered at 1280x720, with no fatal/encoder errors. H.264 Annex-B; hardware preference is not proof. Pion timing and multi-viewer/FIFO/endurance/public/native proof remain open; production stays VP8.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
-- Source adds room-1 Host ingress + peer last-mile; Peer ICE STUN-only; 160 tests pass.
+- Source adds selected Host ingress + peer last-mile for every enabled room; Peer ICE STUN-only; focused routing/config tests pass.
 - The `61a87ae` Host-name artifact was rolled back after a stale restart-count assertion; `fdd14ba` is healthy and Host display-name remains source-only. Selected-edge TURN is disabled.
 
 ## Unverified Boundaries
 
-- Room 1 proved LiveKit participant entry but not a retained SFU Viewer frame, exact retry/failback transition, selected UDP pair, admission-rescue transition, edge cap, quality or resource deltas. Former game-share load/blur remains unclassified.
+- Room 1 proved LiveKit participant entry but not a retained SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas. Former game-share load/blur remains unclassified.
 - Android Chrome/iOS Safari Viewer leaves remain unverified and conservatively leaf-only. Mobile Web Host is unsupported; native senders are planned only.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
-- Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
+- Real audio and heterogeneous clients remain unverified. System capture can lose film audio or echo voice calls; Web has no process isolation. Diagnose A/B/C and sync; gate Windows 11 game audio; Windows 10 unresolved.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
 - ADR-0006 has one Viewer proof; two-edge/FIFO, physical hardware, endurance, public, packaged-native, and browser-diversity proof remain open.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
