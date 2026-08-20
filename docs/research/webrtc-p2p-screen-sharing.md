@@ -3,7 +3,7 @@
 - 调研日期：2026-08-18
 - 移动端采集能力复核：2026-08-19
 - 目标场景：一名玩家向少量熟人私密分享，观看者可用手机/桌面浏览器加入，低延迟，尽量不消耗媒体服务器带宽
-- 结论状态：本文记录已部署 PoC 的 P2P/coturn 基线。ADR-0005 与[低服务器成本媒体路由](./low-server-media-routes.md)已取代本文早期“每条 peer edge 必带 TURN”的旗舰建议；room `1` 已部署 peer/SFU controller smoke，ordinary ICE 仍为 STUN-only，selected-edge TURN 尚未实现
+- 结论状态：本文记录已部署 PoC 的 P2P/coturn 基线。ADR-0005 与[低服务器成本媒体路由](./low-server-media-routes.md)已取代本文早期“每条 peer edge 必带 TURN”的旗舰建议；生产后续移除了 room `1` 边界，ordinary ICE 仍为 STUN-only，selected-edge TURN 已配置但尚未完成真实媒体验收
 
 ## 结论
 
@@ -115,10 +115,10 @@ IETF 对 mesh/SFU 的拓扑说明见 [RFC 7667](https://www.rfc-editor.org/rfc/r
 
 当前生产基线：
 
-- 未命中 exact allowlist 的小范围观看者默认使用 STUN-only P2P，每人一条独立连接；room `1` 启用 bounded peer-assisted/SFU controller smoke。
+- 生产已移除 exact-room allowlist，所有房间由 bounded peer-assisted/SFU controller 自动路由；ordinary peer 仍使用 STUN-only ICE。
 - 当前 PoC 默认允许八名观看者，部署者可配置 1 至 16，超额连接会被明确拒绝。该数值只控制接入，不代表 1:8 已通过性能验收；必须收集可用上行、实际发送码率、`qualityLimitationReason`、编码耗时和发送队列来确定真实可持续人数。
-- 每条 ordinary peer 链路独立使用 STUN-only ICE；当前应用不向任何 peer connection 下发 TURN credential。
-- room `1` 在 peer recovery 与 alternate parent 耗尽后可准备最多两个 SFU/UDP roots；participant entry 已观察到，但 retained media 尚未验收。
+- 每条 ordinary peer 链路独立使用 STUN-only ICE；只有控制器选中的异常 edge 才会获得短期 TURN credential。
+- 所有房间在 peer recovery 与 alternate parent 耗尽后均可准备最多两个 SFU/UDP roots；首次 room `1` smoke 已观察到 participant entry，但 retained media 尚未验收。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
 产品目标要求分享端 fanout 永远不超过二。ADR-0004 的可删除实验验证第三名及后续 viewer 由客户端转发；ADR-0005 的自动 controller 已在 room `1` 受限部署，SFU 只服务必要 roots 并保留 peer descendants。retained SFU media、移动端矩阵和 broad rollout 仍未通过门槛；已关闭 PR #12 的显式整房 SFU 模式不再是当前方案。超过小房间上限时仍建议使用外部直播服务。观察项包括：

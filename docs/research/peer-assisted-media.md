@@ -3,8 +3,8 @@
 - Research date: 2026-08-19
 - Scope: one game-screen broadcaster, at most eight trusted viewers, host media fanout at most two
 - Status: historical evidence for the bounded ADR-0004 experiment; accepted
-  ADR-0005 now owns automatic peer/SFU routing, with only room `1` enabled as a
-  production smoke and retained SFU media still unverified
+  ADR-0005 now owns automatic peer/SFU routing. Production later removed the
+  room-`1` rollout boundary; retained SFU media remains unverified.
 
 ## Conclusion
 
@@ -28,9 +28,9 @@ The accepted flagship preference is `direct/peer UDP -> SFU-root fallback ->
 optional exceptional-edge TURN -> bounded failure`. Direct P2P remains the
 simplest path for one or two viewers. The experiment assigns the third and later
 viewers to peers automatically. ADR-0005 makes SFU capacity part of the flagship
-target while retaining peer descendants. Production currently enables only a
-room-`1` exact smoke; participant entry was observed, but retained SFU media and
-broad rollout remain unverified.
+target while retaining peer descendants. The first production rollout used a
+room-`1` exact smoke; participant entry was observed, but retained SFU media
+remained unverified. Production later removed that room boundary.
 
 ## What Browsers Can Share
 
@@ -286,16 +286,18 @@ Peer assistance distributes traffic; it does not eliminate it. Relay
 eligibility must therefore be visible and voluntary in any production design.
 The standalone ADR-0004 spike has no runtime capability flag and relies on
 controlled join order. The accepted ADR-0005 controller starts every viewer as
-a leaf, then accepts an explicit per-session capacity of zero or one; production
-scopes it to room `1` while broader rollout remains gated. Its Web client
+a leaf, then accepts an explicit per-session capacity of zero or one. The first
+production smoke scoped it to room `1`; current production no longer has that
+room boundary. Its Web client
 reports detected mobile/iPad clients as leaves and desktop-class browsers as
 one-child relays. That conservative heuristic is still unverified on the real
 mobile matrix and is not a substitute for a future voluntary relay policy.
 
 ## Bounded Spike And Gates
 
-The feature remains default-off in configuration through
-`PEER_ASSISTED_MEDIA=false`; production enables only the exact room-`1` smoke.
+This historical gate assumed default-off configuration through
+`PEER_ASSISTED_MEDIA=false`; current production enables the controller for all
+rooms.
 It cannot be enabled above eight viewers and uses the existing standard WebRTC
 screen stream, current desktop Chrome/Edge as relay nodes, current Android
 Chrome and iOS Safari as required
@@ -359,8 +361,9 @@ fallbacks.
 
 Passing these historical gates proved only that a second design phase was
 justified. ADR-0005 subsequently accepted the bounded controller and production
-now has a room-`1` smoke, but retained SFU media, voluntary relay policy, and
-broader audio/A-V verification remain open. The
+first ran a room-`1` smoke and later removed that rollout boundary, but retained
+SFU media, voluntary relay policy, and broader audio/A-V verification remain
+open. The
 native host shared-encode sender is a separate planned phase regardless of this
 experiment's result and is not implemented here.
 
