@@ -7,6 +7,7 @@ const config = {
   credentialTtlSeconds: 120,
 };
 const identity = {
+  edgeKind: "peer-selected" as const,
   roomId: "123456789012",
   shareGeneration: "share_generation_12345678",
   revision: 7,
@@ -35,6 +36,45 @@ describe("selected-edge TURN", () => {
       issueSelectedEdgeTurnCredential(
         config,
         { ...identity, shareGeneration: "share_generation_87654321" },
+        1_700_000_000_000,
+      ).iceServer.username,
+    ).not.toBe(grant.iceServer.username);
+  });
+
+  it("binds a Host-to-SFU ingress grant to its publication generation", () => {
+    const grant = issueSelectedEdgeTurnCredential(
+      config,
+      {
+        edgeKind: "host-sfu-ingress",
+        roomId: "1",
+        shareGeneration: "share_generation_12345678",
+        revision: 7,
+        hostPeerId: "host_peer_12345678",
+        hostSessionId: "host_session_12345678",
+        publicationGeneration: "publication_generation_12345678",
+        oldConnectionId: "publication_generation_12345678",
+        newConnectionId: "new_connection_12345678",
+      },
+      1_700_000_000_000,
+    );
+
+    expect(grant.iceServer.username).toMatch(
+      /^1700000120:[A-Za-z0-9_-]{32}$/,
+    );
+    expect(
+      issueSelectedEdgeTurnCredential(
+        config,
+        {
+          edgeKind: "host-sfu-ingress",
+          roomId: "1",
+          shareGeneration: "share_generation_12345678",
+          revision: 7,
+          hostPeerId: "host_peer_12345678",
+          hostSessionId: "host_session_12345678",
+          publicationGeneration: "publication_generation_87654321",
+          oldConnectionId: "publication_generation_87654321",
+          newConnectionId: "new_connection_12345678",
+        },
         1_700_000_000_000,
       ).iceServer.username,
     ).not.toBe(grant.iceServer.username);

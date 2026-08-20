@@ -314,6 +314,37 @@ describe("SfuPublisher", () => {
     expect(room.disconnect).toHaveBeenCalledWith(false);
   });
 
+  it("passes a controller-selected relay-only RTC configuration to LiveKit", async () => {
+    const iceServer = {
+      urls: ["turn:relay.example.test:3478?transport=udp"],
+      username: `1787076000:${"a".repeat(32)}`,
+      credential: "short-lived-credential",
+    };
+    const publisher = new SfuPublisher();
+
+    await expect(
+      publisher.connect({
+        ...connection,
+        rtcConfig: {
+          iceServers: [iceServer],
+          iceTransportPolicy: "relay",
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(livekit.state.rooms[0].connect).toHaveBeenCalledWith(
+      connection.url,
+      connection.token,
+      {
+        autoSubscribe: false,
+        rtcConfig: {
+          iceServers: [iceServer],
+          iceTransportPolicy: "relay",
+        },
+      },
+    );
+  });
+
   it("retains the bounded stage after connection setup fails", async () => {
     livekit.state.connectGate = Promise.reject(new Error("connect failed"));
     const publisher = new SfuPublisher();

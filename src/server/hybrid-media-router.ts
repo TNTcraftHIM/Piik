@@ -72,6 +72,19 @@ interface SelectedEdgeTurnAttempt {
   timer: NodeJS.Timeout;
 }
 
+interface SelectedSfuIngressAttempt {
+  roomId: string;
+  revision: number;
+  shareGeneration: string;
+  hostPeerId: string;
+  hostSessionId: string;
+  publicationGeneration: string;
+  oldConnectionId: string;
+  newConnectionId: string;
+  answered: boolean;
+  timer: NodeJS.Timeout;
+}
+
 interface QualityRouteIntentGuard {
   viewerSessionId: string;
   connectionId: string;
@@ -171,6 +184,10 @@ export class HybridMediaRouter {
     string,
     SelectedEdgeTurnAttempt
   >();
+  private readonly selectedSfuIngressAttempts = new Map<
+    string,
+    SelectedSfuIngressAttempt
+  >();
   private readonly relayCapacitySessionsByRoom = new Map<
     string,
     Map<string, string>
@@ -215,6 +232,10 @@ export class HybridMediaRouter {
       clearTimeout(attempt.timer);
     }
     this.selectedEdgeTurnAttempts.clear();
+    for (const attempt of this.selectedSfuIngressAttempts.values()) {
+      clearTimeout(attempt.timer);
+    }
+    this.selectedSfuIngressAttempts.clear();
     this.mediaRouteControllers.clear();
     this.failedParentPeerIdsByViewer.clear();
     this.viewerRouteIntentsByRoom.clear();
@@ -672,6 +693,14 @@ export class HybridMediaRouter {
         active.revision === message.revision &&
         active.assignments.has(participant.peerId)
       ) {
+        if (participant.role === "host") {
+          this.markSelectedSfuIngressAnswered(
+            participant.roomId,
+            participant.peerId,
+            participant.sessionId,
+            message.revision,
+          );
+        }
         return;
       }
       return;
@@ -734,6 +763,17 @@ export class HybridMediaRouter {
           "FORBIDDEN",
           "Participant does not own an active SFU route",
         );
+        return;
+      }
+      if (
+        hostOwnsGeneration &&
+        this.startSelectedSfuIngressTurn(
+          participant.roomId,
+          participant.peerId,
+          participant.sessionId,
+          active.revision,
+        )
+      ) {
         return;
       }
       if (
@@ -993,6 +1033,7 @@ export class HybridMediaRouter {
       credential = issueSelectedEdgeTurnCredential(
         config,
         {
+          edgeKind: "peer-selected",
           roomId,
           shareGeneration,
           revision: active.revision,
@@ -1042,6 +1083,7 @@ export class HybridMediaRouter {
     this.selectedEdgeTurnAttempts.set(key, attempt);
     const message: Extract<ServerMessage, { type: "selected-edge-turn" }> = {
       type: "selected-edge-turn",
+      edgeKind: "peer-selected",
       revision: attempt.revision,
       parentPeerId: attempt.parentPeerId,
       viewerPeerId,
@@ -1057,10 +1099,159 @@ export class HybridMediaRouter {
     return true;
   }
 
+  /**
+   * Restricted source-side fallback for the exact room-1 canary. This is a
+   * LiveKit publisher ICE override, not an ordinary peer candidate and not a
+   * participant-wide TURN grant.
+   */
+  private startSelectedSfuIngressTurn(
+    roomId: string,
+    hostPeerId: string,
+    hostSessionId: string,
+    revision: number,
+  ): boolean {
+    const config = this.options.selectedEdgeTurn;
+    const fallback = this.options.sfuFallback;
+    const controller = this.mediaRouteControllers.get(roomId);
+    const active = controller?.getActiveRoute();
+    const key = roomId;
+    if (
+      roomId !== "1" ||
+      !config ||
+      !fallback ||
+      !active ||
+      active.revision !== revision ||
+      this.selectedSfuIngressAttempts.has(key)
+    ) {
+      return false;
+    }
+    const publicationGeneration = active.sfu.publicationGeneration;
+    const assignment = active.assignments.get(hostPeerId);
+    const host = this.connectedPeer(roomId, hostPeerId);
+    const shareGeneration = this.options.getShareGeneration(roomId);
+    if (
+      !publicationGeneration ||
+      assignment?.sfuPublicationGeneration !== publicationGeneration ||
+      !host ||
+      host.sessionId !== hostSessionId ||
+      !shareGeneration
+    ) {
+      return false;
+    }
+
+    const oldConnectionId = publicationGeneration;
+    const newConnectionId = randomBytes(16).toString("base64url");
+    let credential;
+    try {
+      credential = issueSelectedEdgeTurnCredential(
+        config,
+        {
+          edgeKind: "host-sfu-ingress",
+          roomId,
+          shareGeneration,
+          revision,
+          hostPeerId,
+          hostSessionId,
+          publicationGeneration,
+          oldConnectionId,
+          newConnectionId,
+        },
+        this.options.now?.() ?? Date.now(),
+      );
+    } catch {
+      console.error("Selected-edge TURN credential issuance failed");
+      return false;
+    }
+
+    const timer = setTimeout(() => {
+      const current = this.selectedSfuIngressAttempts.get(key);
+      if (
+        !current ||
+        current.newConnectionId !== newConnectionId ||
+        current.answered
+      ) {
+        return;
+      }
+      this.selectedSfuIngressAttempts.delete(key);
+      this.sendError(
+        current.hostSessionId,
+        "PEER_NOT_FOUND",
+        "Selected SFU relay ingress timed out",
+      );
+    }, SELECTED_EDGE_TURN_ATTEMPT_TIMEOUT_MS);
+    timer.unref();
+    const attempt: SelectedSfuIngressAttempt = {
+      roomId,
+      revision,
+      shareGeneration,
+      hostPeerId,
+      hostSessionId,
+      publicationGeneration,
+      oldConnectionId,
+      newConnectionId,
+      answered: false,
+      timer,
+    };
+    this.selectedSfuIngressAttempts.set(key, attempt);
+    this.options.sendToSession(hostSessionId, {
+      type: "selected-edge-turn",
+      edgeKind: "host-sfu-ingress",
+      revision,
+      hostPeerId,
+      publicationGeneration,
+      oldConnectionId,
+      newConnectionId,
+      expiresAt: credential.expiresAt,
+      iceServer: credential.iceServer,
+    });
+    return true;
+  }
+
+  private markSelectedSfuIngressAnswered(
+    roomId: string,
+    hostPeerId: string,
+    hostSessionId: string,
+    revision: number,
+  ): void {
+    const attempt = this.selectedSfuIngressAttempts.get(roomId);
+    if (
+      !attempt ||
+      attempt.hostPeerId !== hostPeerId ||
+      attempt.hostSessionId !== hostSessionId ||
+      attempt.revision !== revision
+    ) {
+      return;
+    }
+    attempt.answered = true;
+    clearTimeout(attempt.timer);
+    this.selectedSfuIngressAttempts.delete(roomId);
+  }
+
   private finishSelectedEdgeTurnFailure(
     participant: AuthenticatedRouteParticipant,
     message: Extract<ClientMessage, { type: "route-failed" }>,
   ): boolean {
+    if (participant.role === "host" && message.connectionId !== null) {
+      const attempt = this.selectedSfuIngressAttempts.get(participant.roomId);
+      if (
+        !attempt ||
+        attempt.hostPeerId !== participant.peerId ||
+        attempt.hostSessionId !== participant.sessionId ||
+        attempt.revision !== message.revision ||
+        attempt.newConnectionId !== message.connectionId
+      ) {
+        return false;
+      }
+      clearTimeout(attempt.timer);
+      this.selectedSfuIngressAttempts.delete(participant.roomId);
+      this.sendError(
+        participant.sessionId,
+        "PEER_NOT_FOUND",
+        "Selected SFU relay ingress failed",
+      );
+      this.failBackToPeerBaseline(participant.roomId);
+      return true;
+    }
     if (participant.role !== "viewer" || message.connectionId === null) {
       return false;
     }
@@ -2051,6 +2242,12 @@ export class HybridMediaRouter {
         this.selectedEdgeTurnAttempts.delete(key);
       }
     }
+    for (const [key, attempt] of this.selectedSfuIngressAttempts) {
+      if (attempt.roomId === roomId && attempt.revision !== route.revision) {
+        clearTimeout(attempt.timer);
+        this.selectedSfuIngressAttempts.delete(key);
+      }
+    }
     this.clearRoomViewerQualityEvidenceStates(roomId);
     for (const [peerId, assignment] of route.assignments) {
       if (peerId === excludedPeerId) {
@@ -2192,6 +2389,11 @@ export class HybridMediaRouter {
         this.selectedEdgeTurnAttempts.delete(key);
       }
     }
+    const ingress = this.selectedSfuIngressAttempts.get(roomId);
+    if (ingress) {
+      clearTimeout(ingress.timer);
+      this.selectedSfuIngressAttempts.delete(roomId);
+    }
     this.consumedSfuRefreshesByRoom.delete(roomId);
     this.sfuDisabledRoomIds.delete(roomId);
     this.clearRoomViewerQualityEvidenceStates(roomId);
@@ -2210,6 +2412,11 @@ export class HybridMediaRouter {
         clearTimeout(attempt.timer);
         this.selectedEdgeTurnAttempts.delete(key);
       }
+    }
+    const ingress = this.selectedSfuIngressAttempts.get(roomId);
+    if (ingress?.hostPeerId === peerId) {
+      clearTimeout(ingress.timer);
+      this.selectedSfuIngressAttempts.delete(roomId);
     }
   }
 

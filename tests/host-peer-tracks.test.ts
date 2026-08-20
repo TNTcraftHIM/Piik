@@ -840,6 +840,7 @@ describe("ViewerRelay downstream ownership", () => {
 
     expect(relay.startSelectedEdgeTurn({
       type: "selected-edge-turn",
+      edgeKind: "peer-selected",
       revision: 7,
       parentPeerId: "selected-parent",
       viewerPeerId: "selected-child",

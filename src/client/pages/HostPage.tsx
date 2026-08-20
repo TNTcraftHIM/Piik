@@ -97,7 +97,10 @@ type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
 >;
-type SelectedEdgeTurn = Extract<ServerMessage, { type: "selected-edge-turn" }>;
+type SelectedEdgeTurn = Extract<
+  ServerMessage,
+  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
+>;
 
 interface CaptureDetails {
   resolution: string;
@@ -889,6 +892,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "selected-edge-turn") {
+      if (message.edgeKind === "host-sfu-ingress") {
+        if (
+          peerAssistedRef.current &&
+          message.hostPeerId === hostPeerIdRef.current &&
+          message.revision === activeRouteRevisionRef.current &&
+          Date.parse(message.expiresAt) > Date.now()
+        ) {
+          const route = ensureHostSfuRoute(generation);
+          route.startSelectedEdgeTurn(message);
+        }
+        return;
+      }
       const current = peersRef.current.get(message.viewerPeerId);
       const oldConnectionId =
         current?.connectionId ??

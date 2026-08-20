@@ -18,6 +18,8 @@ import {
 export interface SfuConnectionConfig {
   url: string;
   token: string;
+  /** Optional controller-selected ICE override for this one publisher PC. */
+  rtcConfig?: RTCConfiguration;
 }
 
 interface PublisherEvents {
@@ -97,7 +99,10 @@ export class SfuPublisher {
         }
       });
 
-      await room.connect(config.url, config.token, { autoSubscribe: false });
+      await room.connect(config.url, config.token, {
+        autoSubscribe: false,
+        ...(config.rtcConfig ? { rtcConfig: config.rtcConfig } : {}),
+      });
       if (!this.owns(room, generation)) {
         await safeDisconnect(room);
         return false;
