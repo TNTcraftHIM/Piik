@@ -57,6 +57,7 @@ Flagship first; parallelize design/research/code/tests/audit. Ship minimum runna
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 - Headful fragment-to-sessionStorage consumption, invitation rotation after migration, and request/log leak inspection remain production UX gates. Accounts stay out.
+- Structure debt: split `HybridMediaRouter`, `HostPage`, `SignalingServer`, and `ViewerPage` only at proven consumer boundaries, never by file length.
 
 ## Next Milestone
 
@@ -80,15 +81,12 @@ ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
 20-viewer gate must pass before the current default eight changes to target 20.
 
-ADR-0004 remains fail-closed; Native/striping experiments cannot relabel it.
-
 ## Blockers And Decisions
 
 ADR-0004/0005 remain No-Go for broad rollout. DNS/TLS, independent secrets,
 host/provider UDP 7882 and bounded services are deployed, but real external
 media/device evidence is absent. Shared IP remains smoke-only and cannot approve
 clean-port migration; the full gate still needs an isolated VM/IP.
-Deferred architecture audit: `docs/maintenance.md`.
 
 - Whole-system versus selected-game audio for the first release.
 - Initial deployment region and network cohort.
