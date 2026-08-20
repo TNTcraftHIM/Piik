@@ -28,7 +28,7 @@ const (
 	mediaConfigTimeout = 5 * time.Second
 )
 
-//go:embed ui/index.html ui/app.js ui/styles.css
+//go:embed ui/index.html ui/app.js ui/hardware-status.js ui/styles.css
 var uiFiles embed.FS
 
 type App struct {
@@ -133,6 +133,8 @@ func (app *App) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 		app.serveAsset(response, request, "ui/index.html", "text/html; charset=utf-8")
 	case "/app.js":
 		app.serveAsset(response, request, "ui/app.js", "text/javascript; charset=utf-8")
+	case "/hardware-status.js":
+		app.serveAsset(response, request, "ui/hardware-status.js", "text/javascript; charset=utf-8")
 	case "/styles.css":
 		app.serveAsset(response, request, "ui/styles.css", "text/css; charset=utf-8")
 	case "/api/start":
