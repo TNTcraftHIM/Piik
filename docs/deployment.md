@@ -4,23 +4,27 @@ Last verified against upstream documentation: 2026-08-20.
 
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
-behind Caddy or nginx; coturn runs in `stun-only` mode for address discovery;
-LiveKit supplies bounded SFU-root capacity. Normal media remains distributed
-through direct or peer edges whenever those paths work.
+behind Caddy or nginx; application ICE advertises only STUN by default; LiveKit
+supplies bounded SFU-root capacity. Normal media remains distributed through
+direct or peer edges whenever those paths work.
 
 A deployment may additionally provide one single-node LiveKit process as the
 current controller's automatic final media fallback. This capacity is dormant unless the complete
 `LIVEKIT_URL`/key/secret tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
 ICE/UDP only. Source also contains a separate default-off built-in Peer ICE
-TURN/UDP canary; production and the tracked coturn example remain STUN-only.
+TURN/UDP candidate. Its first production canary was no-go and fully rolled
+back; production advertises STUN-only ICE and the tracked coturn example remains
+`stun-only`. The shared host still retains its older authenticated-relay daemon
+configuration and firewall range, but the application advertises no credential.
 
-Production `d4bc421828c4` runs this candidate for exact room `1` on the existing
-shared public IP. Immediate rollback to `05f98d10ecd1` uses the current v2
+Production `31bee238bc1e` runs this candidate for exact room `1` on the existing
+shared public IP. Immediate rollback to `7fea60ef6f2` uses the current v2
 database and environment. Rolling back the admission-policy cutover requires
 `89e6d7649169` plus the environment backup recorded below; only deeper
-pre-access `9610032fc5f5` may restore matching v1 state. Coturn relay remains
-rollback-only. This is a bounded smoke, not broad-rollout acceptance.
+pre-access `9610032fc5f5` may restore matching v1 state. Application TURN
+issuance is disabled and the failed canary backup is inactive. This is a
+bounded smoke, not broad-rollout acceptance.
 
 ## Topology and prerequisites
 
@@ -31,7 +35,7 @@ self-hosted STUN listener owns UDP 3478.
 ```text
 browser -- HTTPS/WSS --> Caddy or nginx :443 --> Node.js :8787
 browser <------------ DTLS-SRTP P2P ------------> browser
-browser -- STUN binding/UDP --> coturn stun-only :3478
+browser -- STUN binding/UDP --> coturn :3478 (application advertises STUN only)
 browser <---------- DTLS-SRTP/UDP ----------> LiveKit :7882
 ```
 
@@ -57,11 +61,22 @@ copy-on-write reflink is acceptable only after an inode audit confirms that the
 old and new regular-file sets have zero shared inodes. Do not recursively change
 permissions until that check passes.
 
+Transport archives must preserve UTF-8 entry names. Prefer the POSIX release
+archive path and verify the extracted manifest before switching. A Windows ZIP
+used for the 2026-08-20 route-rescue release altered two non-runtime Chinese
+documentation names on Linux. Runtime artifacts were unaffected and the
+immutable upload remains evidence, but do not reuse that packaging method.
+
 In a strict-shell deployment, expected service states are data, not command
 failures. Do not call `systemctl is-active` bare under `set -e`/`ERR`: an
 intentionally stopped service returns a nonzero status and can trigger a false rollback. Read
 `ActiveState` with `systemctl show`, compare the returned string explicitly, and
 keep stop, symlink switch, start, health check, and rollback as separate steps.
+Preflight every inspection dependency before taking a backup or changing a
+service. If a host lacks the `sqlite3` CLI, use the pinned Node runtime's
+`node:sqlite` API or stop before the first write. After a start, poll health for
+a short bounded window instead of treating one request during startup as a
+failed release; retain the last failure while still enforcing the deadline.
 
 Run `npm start` under a service supervisor that injects the environment, restarts
 on failure, and applies bounded logs. For a simple untracked environment file,
@@ -114,6 +129,26 @@ credential is an App-authorized participant-session bearer and may be reused by
 its holder until expiry. Coturn cannot verify a room, route, edge, or connection
 generation. Never describe it as a cryptographic selected-edge restriction.
 HTTPS/WSS always remains TLS/TCP independently.
+
+The 2026-08-20 exact-room canary used source `a11a73dfa79d`, inactive release
+`/opt/screener/releases/a11a73dfa79d-r4`, artifact SHA-256
+`C954185869A3A15CCCE642AB72A4CF90770476C117D61182D7728280C30A036F`, and
+backup `/opt/screener/backups/turn-a11-20260820T065933Z`. The candidate
+switch completed at 14:59:33 +08. Local authenticated coturn allocation and
+application/deployment gates passed, but the real direct Host plus Pion Viewer
+did not establish its peer connection. The forced-relay test was therefore not
+run. Issuance was removed first, then coturn and its firewall rules returned to
+the pre-canary authenticated-relay baseline: TCP/UDP 3478 and UDP 49152-49251.
+Exact `7fea60ef6f2ad14a9ac1c23a89a523d91bbb97e4` was restored and advertises no
+TURN credential. The final lock-free check at 15:12:40 +08 found active
+services, zero allocations, and matching health, configuration, firewall, and
+SQLite state.
+No canary test process, browser profile, or transient firewall rule remained.
+The retained release is inactive. This is a canary no-go, not TURN deployment
+or media evidence. Two earlier attempts changed no durable state: one stopped
+before backup/write because `sqlite3` was absent, and one rolled back after a
+single health request landed in the normal startup window. The preflight and
+bounded-poll rules above are the retained fixes.
 
 ## Production application environment
 
@@ -219,8 +254,9 @@ answer, stop, reconnect, and room deletion in both rooms. With the optional
 tuple configured, only the capable Web session in the listed room receives a
 TURN group and expiry; the other room and Native-shaped clients remain
 STUN-only. Roll back by removing the complete Peer ICE TURN tuple before
-restoring coturn `stun-only`, or direct traffic to the unchanged old
-release. Do not treat disabling `PEER_ASSISTED_MEDIA` alone as rollback: remove
+restoring the exact recorded pre-canary coturn/firewall baseline, or direct
+traffic to the unchanged old release. Do not treat disabling
+`PEER_ASSISTED_MEDIA` alone as rollback: remove
 its dependent TURN tuple and exact-room allowlist together, and no removed old
 TURN wire is restored. After acceptance, retire or replace the
 temporary exact-room gate in a separate coherent change; never clear the value
@@ -353,6 +389,31 @@ or cgroup high/max/OOM events; host available memory was 373,469,184 bytes.
 No quality/reparent log or real-room trigger appeared, so this verifies the
 deployed code and containment, not reparenting behavior.
 
+Viewer presence plus deterministic relay-admission rescue switched from
+`2026-08-20T15:33:21.720345870+08:00` to health-ready at
+`2026-08-20T15:33:22.282829810+08:00`; its gate finished at
+`2026-08-20T15:33:23.051172737+08:00` on exact
+`31bee238bc1e901e823f34e50737e202dc4b04bf`. The 889,710-byte immutable upload
+is `/opt/screener/uploads/screener-31bee238bc1e-20260820T071907Z.zip` with
+SHA-256 `C759A33A50EC3E272F07BCC00F2043CA0042446078472CAFA66CBD406EC925D9`,
+and the active release is `/opt/screener/releases/31bee238bc1e`.
+The gate passed 28 test files/421 tests and both builds. Restart-to-health took
+560.607 ms; 20 ms probing observed 437.137 ms unavailable. External health,
+the asset hash, three neutral entry routes, SQLite integrity/version 2/four
+rooms including room `1`, and the exact revision passed. Screener, LiveKit,
+coturn, and nginx remained active with zero automatic restarts; only Screener
+had the one planned restart. Environment, nginx, LiveKit, coturn, firewall,
+listeners, exact-room/SFU caps, and disabled application TURN tuple were
+unchanged.
+At the `2026-08-20T15:39:07.082219441+08:00` audit, Screener used 38,031,360
+bytes with zero cgroup low/high/max/OOM events. The pre-cutover rollback is exact
+`7fea60ef6f2ad14a9ac1c23a89a523d91bbb97e4` with
+`/opt/screener/backups/31bee238bc1e-precutover-20260820T073321Z`.
+No temporary symlink, deployment process, browser profile, or held deployment
+lock remained; the immutable upload, active release, and backups are retained.
+No real room triggered admission rescue, so this verifies deployment and
+rollback readiness, not the new route transition or media quality.
+
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
 created persistent room receives ID `1`.
@@ -459,6 +520,14 @@ do not set `rtc.tcp_port` above zero, enable TCP fallback, or add TURN to make a
 canary pass silently.
 
 ## Self-hosted STUN
+
+This subsection describes the current temporary STUN-only deployment template,
+not the final TURN-required target or the current shared-host coturn state. That
+host retains an older authenticated-relay configuration and TCP/UDP 3478 plus
+UDP 49152-49251 firewall range, while Screener advertises no TURN credential and
+the final canary audit found zero allocations. Authenticated per-Viewer fallback
+remains required; its exact-room, default-off rollout stays blocked on the
+direct and forced-relay acceptance gates below.
 
 Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.example)
 to an untracked service-owned location and use the tracked

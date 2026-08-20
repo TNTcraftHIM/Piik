@@ -3,7 +3,8 @@
 - Research date: 2026-08-20
 - Scope: optional authenticated TURN on ordinary peer `RTCPeerConnection`
   values in one exact-room canary
-- Status: default-off source candidate implemented; no coturn rollout or deployment
+- Status: default-off source candidate implemented; first production canary
+  no-go and fully rolled back; production advertises STUN-only ICE
 
 ## Result
 
@@ -21,6 +22,33 @@ owning requirements and ADR now accept it only behind the existing exact-room
 allowlist and a complete default-off deployment tuple. It does not add another
 router state machine or broaden TURN to non-allowlisted rooms.
 
+## 2026-08-20 Production Canary Result
+
+The first exact-room canary used source `a11a73dfa79d`, immutable release
+`a11a73dfa79d-r4`, and artifact SHA-256
+`C954185869A3A15CCCE642AB72A4CF90770476C117D61182D7728280C30A036F`.
+The candidate switch completed at 2026-08-20 14:59:33 +08. A local coturn REST
+allocation passed without retaining or printing its credential, and the
+application health, artifact, route, admission, SQLite, service, and local TURN
+configuration gates passed.
+
+The real direct Host plus Pion Viewer acceptance path did not establish its
+peer connection. The stop line therefore prevented the forced-relay test: this
+run proves neither direct-with-TURN behavior nor selected TURN media. It is an
+implementation/acceptance no-go, not a rejection of authenticated per-viewer
+TURN fallback. No candidate, credential, address, or raw signaling value is
+retained in this record.
+
+Application issuance was disabled before coturn and its firewall rules returned
+to the recorded pre-canary authenticated-relay baseline: TCP/UDP 3478 plus UDP
+49152-49251. Exact production `7fea60ef6f2ad14a9ac1c23a89a523d91bbb97e4`
+was restored and advertises no TURN credential. At the final lock-free check at
+2026-08-20 15:12:40 +08, services were active,
+health/configuration/firewall/SQLite matched that baseline, and coturn reported
+zero allocations. The inactive candidate release and
+`/opt/screener/backups/turn-a11-20260820T065933Z` remain available for diagnosis
+and rollback evidence; neither is the active production version.
+
 ## Current-Code Boundary
 
 At `f806689896db9719509b0e0695d741daa6ecb364`:
@@ -37,8 +65,9 @@ At `f806689896db9719509b0e0695d741daa6ecb364`:
 - `TURN_URLS`, `TURN_SHARED_SECRET`, and
   `TURN_CREDENTIAL_TTL_SECONDS` are rejected removed configuration. They must
   not be reused for a new contract.
-- The tracked coturn service is `stun-only`, UDP-only, and has no auth secret,
-  allocation quota, or relay port range.
+- The tracked coturn example is `stun-only`, UDP-only, and has no auth secret,
+  allocation quota, or relay port range. It does not describe the shared host's
+  retained pre-canary authenticated-relay baseline.
 
 The built-in candidate therefore needs no new router state, route revision,
 assignment, parent/viewer synchronization, or connection-ID protocol.
@@ -198,7 +227,10 @@ deployment acceptance boundary follows this order:
 Rollback reverses the ownership:
 
 1. Disable application issuance first.
-2. Restore coturn `stun-only` and close the relay range.
+2. Restore the exact recorded pre-canary coturn/firewall baseline. On the
+   current shared host that is the old authenticated-relay config and range;
+   no application credential is advertised. A clean host using the tracked
+   example instead returns to `stun-only` and closes its canary range.
 
 Existing relay allocations are intentionally interrupted by this rollback.
 Healthy direct connections remain independent. TURN/UDP can work around NATs

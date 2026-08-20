@@ -199,10 +199,12 @@ and Native-shaped clients remain STUN-only. The tracked coturn example is UDP
 endpoint, and configures no external or embedded TURN. Candidate validation and rollback use isolated
 instances rather than a process-wide old-release compatibility branch. HTTPS/WSS remains TLS/TCP.
 Coturn 4.17.2 documents `stun-only` as ignoring TURN requests and provides
-`no-tcp` and `no-tls`; it marks `no-dtls` deprecated, so the tracked candidate
-does not use that switch. Coturn remains the production STUN owner without a
-TURN allocation surface; the application source slice alone does not change or
-deploy it.
+`no-tcp` and `no-tls`; it marks `no-dtls` deprecated, so the tracked temporary
+template does not use that switch. The shared production host instead retains its old
+authenticated-relay daemon and TCP/UDP 3478 plus UDP 49152-49251 rules. The
+application advertises no TURN credential, and the post-canary audit found zero
+allocations. This baseline is neither the accepted per-Viewer TURN rollout nor
+proof that relay media works.
 
 No public port is selected by this decision. LiveKit documents ICE/UDP mux as
 optional and its pinned sample recommends a multi-port UDP mux range at least
