@@ -8,6 +8,7 @@ import {
   fetchJsonBefore,
   finalizeGate,
   hasNoCriticalSenderErrors,
+  hasOneViewerPionProof,
   isExactGateProfile,
   retainsFirstBridgeSend,
   retainsOneViewerIdentity,
@@ -133,6 +134,19 @@ describe("native one-viewer gate invariants", () => {
 
   it("rejects a missing Pion slot", () => {
     expect(captureOneViewerIdentity(viewer, { ...sender, slot: 0 })).toBeNull();
+  });
+
+  it("accepts fresh or same-generation cumulative Pion evidence only with Viewer growth", () => {
+    const before = { viewerPackets: 10, viewerDecoded: 10, viewerRendered: 10,
+      pionPackets: 20, pionBytes: 2_000 };
+    const advanced = { viewerPackets: 11, viewerDecoded: 11, viewerRendered: 11,
+      pionPackets: 21, pionBytes: 2_100 };
+    expect(hasOneViewerPionProof(true, before, advanced)).toBe(true);
+    expect(hasOneViewerPionProof(true, before, { ...advanced,
+      pionPackets: before.pionPackets, pionBytes: before.pionBytes })).toBe(true);
+    expect(hasOneViewerPionProof(true, before, { ...before,
+      pionPackets: advanced.pionPackets, pionBytes: advanced.pionBytes })).toBe(false);
+    expect(hasOneViewerPionProof(false, before, advanced)).toBe(false);
   });
 
   it("records only the current local bridge binary-send outcome", () => {

@@ -32,6 +32,14 @@ export interface CriticalSenderEvidence {
   fatalEvents: number;
 }
 
+export interface OneViewerMediaCounters {
+  viewerPackets: number;
+  viewerDecoded: number;
+  viewerRendered: number;
+  pionPackets: number;
+  pionBytes: number;
+}
+
 export interface OneViewerIdentity {
   socketOrdinal: number;
   authGeneration: number;
@@ -94,6 +102,19 @@ export function retainsFirstBridgeSend(evidence: BridgeSendEvidence): boolean {
 
 export function hasNoCriticalSenderErrors(evidence: CriticalSenderEvidence): boolean {
   return evidence.encoderErrors === 0 && evidence.fatalEvents === 0;
+}
+
+export function hasOneViewerPionProof(
+  sameGeneration: boolean,
+  before: OneViewerMediaCounters,
+  current: OneViewerMediaCounters,
+): boolean {
+  const viewerAdvanced = current.viewerPackets > before.viewerPackets &&
+    current.viewerDecoded > before.viewerDecoded && current.viewerRendered > before.viewerRendered;
+  const pionAdvanced = current.pionPackets > before.pionPackets && current.pionBytes > before.pionBytes;
+  // Viewer growth proves the current window when the 2s Pion diagnostics snapshot has not advanced.
+  const pionAbsolute = current.pionPackets > 0 && current.pionBytes > 0;
+  return sameGeneration && viewerAdvanced && (pionAdvanced || pionAbsolute);
 }
 
 export async function verifyFinalSenderEvidence<T extends CriticalSenderEvidence>(

@@ -26,6 +26,7 @@ import {
   fetchJsonBefore,
   finalizeGate,
   hasNoCriticalSenderErrors,
+  hasOneViewerPionProof,
   isExactGateProfile,
   retainsFirstBridgeSend,
   retainsOneViewerIdentity,
@@ -542,6 +543,16 @@ async function main(): Promise<void> {
       viewer: await viewerSnapshot(cdp!, viewerPage, deadline),
       sender: await senderSnapshot(cdp!, activeSenderPage, deadline),
     }), ({ viewer, sender }) => {
+      const sameGeneration = retainsOneViewerIdentity(identity!, viewer.identity, senderIdentity(sender));
+      const pionOutbound = hasOneViewerPionProof(sameGeneration, {
+        viewerPackets: beforeViewer.packetsReceived, viewerDecoded: beforeViewer.framesDecoded,
+        viewerRendered: beforeViewer.renderedFrames, pionPackets: beforeSender.peers[0]?.packetsSent ?? 0,
+        pionBytes: beforeSender.peers[0]?.bytesSent ?? 0,
+      }, {
+        viewerPackets: viewer.packetsReceived, viewerDecoded: viewer.framesDecoded,
+        viewerRendered: viewer.renderedFrames, pionPackets: sender.peers[0]?.packetsSent ?? 0,
+        pionBytes: sender.peers[0]?.bytesSent ?? 0,
+      });
       const checks = {
         inboundPackets: viewer.packetsReceived > beforeViewer.packetsReceived,
         inboundBytes: viewer.bytesReceived > beforeViewer.bytesReceived,
@@ -549,9 +560,8 @@ async function main(): Promise<void> {
         videoReady: viewer.videoReadyState >= 2 && viewer.videoWidth > 0 && viewer.videoHeight > 0,
         playbackClock: viewer.videoCurrentTime > beforeViewer.videoCurrentTime,
         renderedFrames: viewer.renderedFrames > beforeViewer.renderedFrames,
-        pionOutbound: (sender.peers[0]?.packetsSent ?? 0) > 0 &&
-          (sender.peers[0]?.bytesSent ?? 0) > 0,
-        sameGeneration: retainsOneViewerIdentity(identity!, viewer.identity, senderIdentity(sender)),
+        pionOutbound,
+        sameGeneration,
         sameBridge: retainsExpectedBridge(sender, nativeWindow),
         criticalErrors: sender.fatalEvents === 0 && sender.encoderErrors === 0,
         ...(nativeWindow ? {
@@ -572,7 +582,9 @@ async function main(): Promise<void> {
         renderedDelta: viewer.renderedFrames - beforeViewer.renderedFrames,
         audioPacketDelta: viewer.audioPacketsReceived - beforeViewer.audioPacketsReceived,
         pionPacketDelta: (sender.peers[0]?.packetsSent ?? 0) - (beforeSender.peers[0]?.packetsSent ?? 0),
+        pionByteDelta: (sender.peers[0]?.bytesSent ?? 0) - (beforeSender.peers[0]?.bytesSent ?? 0),
         pionPacketsSent: sender.peers[0]?.packetsSent ?? 0,
+        pionBytesSent: sender.peers[0]?.bytesSent ?? 0,
         pcOrdinal: viewer.identity.pcOrdinal,
         pionSlot: sender.peers[0]?.slot ?? -1,
         pionEdgeGeneration: sender.peers[0]?.edgeGeneration ?? 0,
