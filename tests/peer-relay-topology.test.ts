@@ -92,6 +92,87 @@ describe("PeerRelayTopology", () => {
     );
   });
 
+  it("deterministically promotes an unassigned relay over the oldest zero-capacity host leaf", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "viewer-a", "viewer-b", "viewer-c");
+    topology.setHost("room", "host", peers);
+    for (const peerId of ["viewer-a", "viewer-b", "viewer-c"]) {
+      topology.addViewer("room", peerId, peers);
+    }
+
+    const changes = topology.setViewerRelayCapacity(
+      "room",
+      "viewer-c",
+      1,
+      peers,
+      { rescueUnassignedRelay: true },
+    );
+
+    expect(changes.map(({ peerId }) => peerId)).toEqual([
+      "host",
+      "viewer-a",
+      "viewer-c",
+    ]);
+    expect(topology.getAssignment("room", "host")).toEqual({
+      parentPeerId: null,
+      childPeerIds: ["viewer-b", "viewer-c"],
+    });
+    expect(topology.getAssignment("room", "viewer-c")).toEqual({
+      parentPeerId: "host",
+      childPeerIds: ["viewer-a"],
+    });
+    expect(topology.getAssignment("room", "viewer-a")).toEqual({
+      parentPeerId: "viewer-c",
+      childPeerIds: [],
+    });
+    expect(
+      expectValidTree(
+        topology,
+        "room",
+        "host",
+        ["viewer-a", "viewer-b", "viewer-c"],
+      ),
+    ).toBe(2);
+
+    const afterRescue = topology.getAssignments("room");
+    topology.setViewerRelayCapacity("room", "viewer-c", 0, peers);
+    expect(
+      topology.setViewerRelayCapacity(
+        "room",
+        "viewer-c",
+        1,
+        peers,
+        { rescueUnassignedRelay: true },
+      ),
+    ).toEqual([]);
+    expect(topology.getAssignments("room")).toEqual(afterRescue);
+  });
+
+  it("does not rescue admission through a host child that already owns a subtree", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "a", "b", "c", "d", "candidate");
+    topology.setHost("room", "host", peers);
+    topology.addViewer("room", "a", peers);
+    topology.addViewer("room", "b", peers);
+    topology.setViewerRelayCapacity("room", "a", 1, peers);
+    topology.setViewerRelayCapacity("room", "b", 1, peers);
+    topology.addViewer("room", "c", peers);
+    topology.addViewer("room", "d", peers);
+    topology.addViewer("room", "candidate", peers);
+    const before = topology.getAssignments("room");
+
+    expect(
+      topology.setViewerRelayCapacity(
+        "room",
+        "candidate",
+        1,
+        peers,
+        { rescueUnassignedRelay: true },
+      ),
+    ).toEqual([]);
+    expect(topology.getAssignments("room")).toEqual(before);
+  });
+
   it("does not migrate healthy edges when a relay withdraws capacity", () => {
     const topology = new PeerRelayTopology();
     const peers = connected("host", "viewer-a", "viewer-b", "viewer-c", "viewer-d");

@@ -17,6 +17,29 @@ export function limitMediaAssignment(
   };
 }
 
+export function reconcileBoundedMediaChildren(
+  currentPeerIds: Iterable<string>,
+  nextChildPeerIds: readonly string[],
+  maxChildren: number,
+  removeChild: (peerId: string) => void,
+  startChild: (peerId: string) => void,
+): void {
+  const nextPeerIds = new Set(
+    limitMediaAssignment(
+      { parentPeerId: null, childPeerIds: [...nextChildPeerIds] },
+      maxChildren,
+    ).childPeerIds,
+  );
+  for (const peerId of currentPeerIds) {
+    if (!nextPeerIds.has(peerId)) {
+      removeChild(peerId);
+    }
+  }
+  for (const peerId of nextPeerIds) {
+    startChild(peerId);
+  }
+}
+
 export function viewerSignalMessage(
   peerAssisted: boolean,
   targetPeerId: string,

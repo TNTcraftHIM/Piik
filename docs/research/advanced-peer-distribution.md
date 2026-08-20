@@ -3,9 +3,9 @@
 - Research date: 2026-08-19
 - Scope: at most eight trusted viewers, sub-second interactive media, endpoint
   downstream fanout at most two, and minimal central-server media egress
-- Status: candidate routes and bounded spike gates; only the Pion RTP
-  transport-fanout sub-oracle is implemented, with no advanced media route
-  integrated into Screener
+- Status: bounded C+B local reparenting is deployed for one exact room and the
+  deterministic admission-rescue slice is implemented source-only; advanced
+  encoded-media routes remain isolated candidates
 
 ## Terms
 
@@ -235,6 +235,16 @@ freeze share, 100-packet floor, three windows, five-second gap and 30-second
 cooldown are falsifiable candidate constants for production calibration, not
 standards-derived or claimed optimum values.
 
+The correlated pair can therefore attribute a problem only to the current
+parent-to-child edge generation. It cannot prove that the parent is globally
+bad: the remote-loss value is that child's RTCP report and
+`qualityLimitationReason` belongs to one outbound video stream. LiveKit's pinned
+server implementation deliberately reduces published-track and subscribed-
+downtrack quality to a participant-wide minimum; that aggregate is useful for
+conferencing UI but is not a directional P2P parent score. Screener consequently
+excludes only the failed parent for the affected Viewer-rooted subtree and
+releases the quality-owned exclusion after a successful move.
+
 With host degree two and the current browser-relay degree one, two balanced
 chains already minimize maximum depth at `ceil(N/2)`. A tree for `N` viewers
 still has `N` media edges, approximately `N*B` useful upload in aggregate, and
@@ -243,10 +253,10 @@ not reduce either bandwidth quantity. Reordering an already balanced healthy
 tree also cannot reduce depth; a move needs a discrete admission, path, TURN,
 relay-resource, recovery, or future native-capacity benefit.
 
-The admission-rescue slice is limited to its discrete capacity case. If a
-relay-capable viewer is unassigned because two zero-capacity roots, especially
-mobile leaves, occupy both host slots, insert that viewer above one
-deterministic childless root:
+The source admission-rescue slice is limited to its discrete capacity case. If
+a relay-capable viewer is unassigned because two zero-capacity roots,
+especially mobile leaves, occupy both host slots, it inserts that viewer above
+one deterministic childless root:
 
 ```text
 host -> new relay -> existing leaf
@@ -254,15 +264,25 @@ host -> other root
 ```
 
 This admits the waiting viewer while keeping host fanout two and browser relay
-fanout one. It must pass the existing depth, codec, authorization, and recovery
-gates; otherwise the controller proceeds to the ADR-0005 SFU-root fallback or
-visible wait.
+fanout one. The router permits it only on an active peer-only route with no SFU
+publication or pending prepare, when the connected candidate currently has no
+upstream or children, newly offers one relay slot, and has no failed-parent
+history. The host must have exactly two children and the chosen child must be a
+connected, childless, zero-capacity leaf. Existing server join order chooses the
+oldest eligible leaf. One synchronous topology snapshot changes the host,
+candidate, and leaf; one route revision replaces both upstream generations and
+clears their old connection IDs. The Host reconciler closes every stale child
+edge before starting replacement children, so its physical fanout does not
+temporarily exceed two.
 
-Eligibility is discrete: an active authenticated session, explicit relay
+Eligibility remains discrete: an active authenticated session, explicit relay
 capacity, compatible representation, a free downstream slot, acyclicity, and
-depth/edge budgets; a candidate already in the tree must also have healthy
-inbound media. For admission rescue, choose the eligible childless root by
-server join order; do not probe or rank alternate paths. Broader experiments
+depth/edge budgets. The implemented rescue never moves a candidate that already
+has an upstream, never handles a failed-path intent, and never selects a root by
+quality. An authenticated viewer can still lie about its relay capacity, so the
+exact-room canary and ordinary route-failure recovery remain required; the lie
+can cause at most this one local move before the candidate is no longer
+unassigned. Broader experiments
 may react to a hard media failure, a reviewed threshold-crossing event from
 correlated path evidence, or a proven native capacity change, but never a
 continuous optimizer. Do not use a weighted score, UA/device model, IP
@@ -379,6 +399,9 @@ Sources checked on 2026-08-20:
   [room defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts),
   and [state reconciliation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
   - pinned implementation behavior, not a universal timeout prescription.
+- [LiveKit server 1.13.5 participant quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/participant.go)
+  and [connection scorer](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/connectionquality/scorer.go)
+  - Apache-2.0; studied only, with no source copied.
 - [Jitsi Videobridge endpoint status defaults](https://github.com/jitsi/jitsi-videobridge/blob/master/jvb/src/main/resources/reference.conf)
   - first-transfer and inactivity reference values.
 - [SplitStream](https://www.microsoft.com/en-us/research/publication/splitstream-high-bandwidth-multicast-in-a-cooperative-environment/)

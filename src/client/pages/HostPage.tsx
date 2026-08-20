@@ -75,8 +75,8 @@ import type {
 } from "../types";
 import { HostPeer } from "../webrtc/host-peer";
 import {
-  limitMediaAssignment,
   MAX_HOST_MEDIA_CHILDREN,
+  reconcileBoundedMediaChildren,
 } from "../webrtc/media-assignment";
 import { sourceSwitchNotice } from "./host-page-notices";
 
@@ -757,23 +757,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     childPeerIds: string[],
     generation: number,
   ): void {
-    const assignment = limitMediaAssignment(
-      { parentPeerId: null, childPeerIds },
+    reconcileBoundedMediaChildren(
+      peersRef.current.keys(),
+      childPeerIds,
       MAX_HOST_MEDIA_CHILDREN,
+      removePeer,
+      (peerId) => {
+        void startPeer(peerId, generation).catch((error: unknown) => {
+          if (isCurrentGeneration(generation)) {
+            setNotice(readableError(error));
+          }
+        });
+      },
     );
-    const assignedChildren = new Set(assignment.childPeerIds);
-    for (const peerId of peersRef.current.keys()) {
-      if (!assignedChildren.has(peerId)) {
-        removePeer(peerId);
-      }
-    }
-    for (const peerId of assignedChildren) {
-      void startPeer(peerId, generation).catch((error: unknown) => {
-        if (isCurrentGeneration(generation)) {
-          setNotice(readableError(error));
-        }
-      });
-    }
   }
 
   function handleSignalMessage(

@@ -125,6 +125,18 @@ leaves and desktop-class browsers as one-child relays. The controller uses this
 binary capability only for future admission and recovery. Withdrawing capacity
 does not proactively migrate an otherwise healthy existing edge.
 
+The source now implements one narrow admission exception to sticky assignment.
+On an active peer-only route with no SFU publication or pending prepare, a
+connected, childless Viewer that has no upstream or failed-parent history and
+advertises one relay slot may replace the oldest connected, childless,
+zero-capacity Host child when both Host slots are full. That leaf becomes the
+new relay's only child. The synchronous change preserves Host fanout two,
+browser fanout one and the depth bound, advances one route revision, and clears
+both changed upstream connection generations. Host-side reconciliation closes
+the stale child edge before starting the replacement. No healthy routed
+candidate, quality score, timer, global parent penalty, or periodic rebalance is
+part of this admission rescue.
+
 The repository quality-reparent candidate adds one bounded parent-to-server
 evidence message and no second route owner. Signaling authenticates and
 forwards Viewer C under its existing session, connection, revision, parent,
@@ -152,7 +164,8 @@ The router may create the existing Viewer route intent;
 the subtree change, revision, generation, prepare, commit and rollback.
 
 Targeted tests cover the revision controller, protocol authorization, relay
-capacity, ordered client transitions, stale asynchronous work, server-restart
+capacity and deterministic admission rescue, ordered break-before-make client
+transitions, stale asynchronous work, server-restart
 resynchronization, one-shot credential recovery, peer failback, and optional
 standby warming. The corrected cold Chrome 151/LiveKit 1.13.5 localhost run took
 1.481 seconds from failure report to active and 2.257 seconds to a new rendered

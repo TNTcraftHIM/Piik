@@ -24,7 +24,7 @@ also contains a no-go Native v2 candidate, but production does not run it.
 - Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
-- Room `1` quality reparenting needs three C+B hard-bad pairs, reuses peer/SFU/failure and has one room cooldown; single-side reports do nothing. Thresholds need calibration.
+- Room `1` C+B reparenting remains uncalibrated; source-only admission rescue promotes an unassigned relay over one zero-capacity Host leaf without scores or periodic optimization.
 - Source-only roster; Native wire/media unchanged.
 
 ## Verified Evidence
