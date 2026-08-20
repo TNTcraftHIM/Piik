@@ -2,9 +2,9 @@
 
 - Research date: 2026-08-19
 - Scope: one game-screen broadcaster, at most eight trusted viewers, host media fanout at most two
-- Status: evidence for the bounded ADR-0004 experiment; the stacked ADR-0005
-  Draft adds binary relay capability and automatic optional-SFU routing but is
-  not a production topology decision
+- Status: historical evidence for the bounded ADR-0004 experiment; accepted
+  ADR-0005 now owns automatic peer/SFU routing, with only room `1` enabled as a
+  production smoke and retained SFU media still unverified
 
 ## Conclusion
 
@@ -18,7 +18,8 @@ experiment uses only standard WebRTC media:
 3. the signaling server assigns two balanced chains deterministically.
 
 This path reuses WebRTC capture, codec negotiation, RTP, NACK/PLI/RTX, congestion
-control, jitter buffering, ICE, STUN, TURN, DTLS-SRTP, and browser rendering. Its
+control, jitter buffering, ICE, STUN, DTLS-SRTP, and browser rendering. A later
+controller-selected exceptional edge may also use TURN. Its
 cost is unavoidable in ordinary browsers: every relay decodes and re-encodes
 the screen stream. The first spike measures whether that cost is acceptable; it
 does not hide it or claim shared encoding.
@@ -27,8 +28,9 @@ The accepted flagship preference is `direct/peer UDP -> SFU-root fallback ->
 optional exceptional-edge TURN -> bounded failure`. Direct P2P remains the
 simplest path for one or two viewers. The experiment assigns the third and later
 viewers to peers automatically. ADR-0005 makes SFU capacity part of the flagship
-target while retaining peer descendants; its current default-off controller is
-still failure-only and unconfigured in production.
+target while retaining peer descendants. Production currently enables only a
+room-`1` exact smoke; participant entry was observed, but retained SFU media and
+broad rollout remain unverified.
 
 ## What Browsers Can Share
 
@@ -158,8 +160,8 @@ Sources:
 
 The signaling server remains the topology authority. The experiment uses two
 sticky, balanced chains selected by one breadth-first walk. Here, one media edge
-means one downstream `RTCPeerConnection` carrying the shared stream; selecting
-TURN for that connection does not change the edge count.
+means one downstream `RTCPeerConnection` carrying the shared stream; a later
+controller-selected TURN rebuild does not change the edge count.
 
 - the host has capacity for at most two children and every viewer for at most
   one;
@@ -180,13 +182,14 @@ than something hidden by a scheduler. The controlled relay cohort uses
 foreground desktop Chrome/Edge; mobile leaf checks join after their intended
 parent so the spike does not pretend to solve background mobile relay policy.
 
-Per-edge ICE remains independent. An edge may be direct or may use authenticated
-TURN, so peer assistance reduces normal server media traffic but cannot promise
-zero server traffic in restrictive networks.
+Per-edge ICE remains independent. Ordinary peer edges are STUN-only; after
+direct/peer UDP and SFU/UDP fail, a controller-selected exceptional edge may use
+authenticated TURN. Peer assistance therefore reduces normal server media
+traffic but cannot promise zero server traffic in restrictive networks.
 
 ## Implemented Bounded Quality Coordination
 
-The current Draft coordinates one strict `QualitySettings` object across the
+The current implementation coordinates one strict `QualitySettings` object across the
 peer-assisted tree without adaptation logic. It accepts only 720p/1080p/1440p,
 integer 15-60 fps, integer 2-12 Mbps, and the three standard degradation
 preferences; missing, extra, or out-of-range fields fail schema validation.
@@ -282,22 +285,25 @@ slot:
 Peer assistance distributes traffic; it does not eliminate it. Relay
 eligibility must therefore be visible and voluntary in any production design.
 The standalone ADR-0004 spike has no runtime capability flag and relies on
-controlled join order. The accepted ADR-0005 direction's current default-off controller starts every viewer as a leaf,
-then accepts an explicit per-session capacity of zero or one; its Web client
+controlled join order. The accepted ADR-0005 controller starts every viewer as
+a leaf, then accepts an explicit per-session capacity of zero or one; production
+scopes it to room `1` while broader rollout remains gated. Its Web client
 reports detected mobile/iPad clients as leaves and desktop-class browsers as
 one-child relays. That conservative heuristic is still unverified on the real
 mobile matrix and is not a substitute for a future voluntary relay policy.
 
 ## Bounded Spike And Gates
 
-The experiment is disabled by default through `PEER_ASSISTED_MEDIA=false` and
-cannot be enabled above eight viewers. It uses the existing standard WebRTC
+The feature remains default-off in configuration through
+`PEER_ASSISTED_MEDIA=false`; production enables only the exact room-`1` smoke.
+It cannot be enabled above eight viewers and uses the existing standard WebRTC
 screen stream, current desktop Chrome/Edge as relay nodes, current Android
 Chrome and iOS Safari as required
 leaf checks, one child per viewer, and at most eight viewers. It may carry the
 existing screen-audio track when the browser provides one. SVC/simulcast,
 custom encoded transport, FEC changes, multi-tree striping, transcoding,
-background mobile relay, and automatic SFU migration are excluded.
+background mobile relay, and the later ADR-0005 SFU controller are outside this
+historical browser-relay gate.
 
 Run 1, 3, 5, and 8 viewers for 30 minutes across the three recommended ceiling
 combinations, plus any advanced combination proposed for production, under
@@ -351,9 +357,10 @@ per-edge upload, and cannot rescue other failed browser-relay gates. A rejected
 relay experiment keeps standard P2P plus explicit user-operated or central SFU
 fallbacks.
 
-Passing these gates proves only that a second design phase is justified. It
-does not accept peer-assisted media for production. Production adoption would
-need a new ADR, voluntary relay policy, and broader audio/A-V verification. The
+Passing these historical gates proved only that a second design phase was
+justified. ADR-0005 subsequently accepted the bounded controller and production
+now has a room-`1` smoke, but retained SFU media, voluntary relay policy, and
+broader audio/A-V verification remain open. The
 native host shared-encode sender is a separate planned phase regardless of this
 experiment's result and is not implemented here.
 

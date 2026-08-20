@@ -11,31 +11,30 @@ prohibited silent migration was an incorrect interpretation and is superseded
 by this decision. Simplicity constrains the controller and user experience; it
 does not require users to choose a media topology.
 
-The ordered preference remains:
+The ordered preference is:
 
-1. a direct-selected P2P edge, with standard ICE allowed to select authenticated
-   TURN/UDP inside that same peer connection only in an explicit canary;
+1. a direct-selected P2P/peer UDP edge using STUN-only ICE;
 2. peer-assisted forwarding through an alternate eligible parent;
 3. an SFU virtual parent supplied by the flagship deployment; and
-4. bounded waiting or failure when no route can satisfy the budgets.
+4. optional authenticated TURN for one controller-selected exceptional edge; and
+5. bounded waiting or failure when no route can satisfy the budgets.
 
-STUN is required. A complete default-off Peer ICE TURN tuple lets only capable
-Web sessions in exact allowlisted rooms create peer connections with STUN plus
-short-lived authenticated TURN/UDP and `iceTransportPolicy: "all"`. Standard
-ICE type priority prefers direct candidates and can nominate relay without an
-application route transition. Non-allowlisted rooms and clients without the
-capability remain STUN-only. After peer recovery and alternate-parent options
-are exhausted, the controller assigns one or two SFU roots. HTTPS/WSS remains
-TLS/TCP and is outside this media policy. Every non-server endpoint has at most two active
+STUN is required and ordinary peer connections remain STUN-only. After peer
+recovery and alternate-parent options are exhausted, the controller assigns one
+or two SFU roots. Only after the SFU/UDP path also fails may the same controller
+authorize one short-lived TURN attempt for the current exceptional edge. TURN
+credentials are not participant-wide ICE configuration and are never added to
+ordinary peer connections by default. HTTPS/WSS remains TLS/TCP and is outside
+this media policy. Every non-server endpoint has at most two active
 downstream media edges; its upstream receive edge does not consume that upload
 budget. The current browser relay remains stricter at one child until its
 re-encode and resource gates pass.
 
 TURN and SFU occupy different layers. A selected TURN candidate continuously
-relays media for that ICE edge; it is not a handshake helper or a topology
-decision. LiveKit TURN cannot rescue an unavailable SFU. Independent coturn may
-transport an authorized participant's ordinary peer connection around a NAT
-failure without changing the assigned peer topology. An SFU is a virtual topology parent and may feed only one
+relays media for its authorized ICE edge; it is not a handshake helper or a
+topology decision. LiveKit TURN cannot rescue an unavailable SFU. Independent
+coturn may transport only the controller-selected peer edge after the SFU/UDP
+attempt has failed. An SFU is a virtual topology parent and may feed only one
 or two necessary roots; after media reaches a reliable root, the existing
 bounded peer subtree remains the preferred distribution path. A
 zero-descendant SFU root is allowed only when no relay root satisfies
@@ -71,22 +70,23 @@ The flagship deployment target supplies SFU capacity with a complete LiveKit
 endpoint/key/secret tuple. There is no user-facing topology selector and no
 process-wide `MEDIA_MODE` union. A deployment without that tuple ends at peer
 assistance and bounded waiting/failure and is not the final flagship route
-configuration. Optional Peer ICE TURN is a separate exact-room deployment
-tuple and is never a topology choice.
+configuration. Optional selected-edge TURN is a separate default-off deployment
+tuple and remains a controller-owned transport attempt, never a topology choice.
 
 ## Implementation Status
 
 Merged PR #17 implements this controller on top of merged PR #13, and PR #20
 adds the bounded standby prewarm below. Production enables them only for
 persistent room `1`; other rooms stay ordinary P2P, and production remains
-STUN-only. The current source adds a default-off Peer ICE TURN canary but does
-not deploy it or modify coturn.
+STUN-only. The current source still contains the rejected default-off built-in
+TURN canary, but it is not deployed and must be removed or replaced before any
+future TURN canary.
 
 The current runtime removes the old all-room coturn contract. Production
-requires STUN and authenticated ICE snapshots contain only STUN servers. Source
-now has a capability-gated optional TURN group plus expiry in `iceConfig`, and
-strict `refresh-ice`/`ice-config` messages. They have no effect unless the new
-complete tuple and exact-room allowlist both match. The tracked
+requires STUN and authenticated ICE snapshots contain only STUN servers in
+production. The participant-wide TURN group, capability, and refresh messages
+in source belong only to the rejected candidate and are not the accepted target.
+The tracked
 LiveKit sample explicitly sets `tcp_port: 0`, disables TCP fallback, supplies
 the deployment-owned STUN server, and configures no TURN service. The SFU controller still
 activates only after a peer edge exhausts recovery. Public participant entry has
@@ -96,8 +96,8 @@ permanent compatibility branch or advertised current transport.
 
 The repository also requires a strict, non-empty `PEER_ASSISTED_ROOM_IDS`
 deployment allowlist whenever `PEER_ASSISTED_MEDIA=true`. Only exact listed room
-IDs enter the controller or receive optional LiveKit standby, grants, or Peer
-ICE TURN configuration. All other rooms retain the current ordinary P2P
+IDs enter the controller or receive optional LiveKit standby, grants, or a
+future selected-edge TURN attempt. All other rooms retain the current ordinary P2P
 authentication shape, STUN-only ICE, and signaling/quality/lifecycle behavior. Missing, blank, malformed, or duplicate
 entries fail startup; there is no configuration state that enables all rooms. The boundary is a
 temporary deployment-only validation gate with no browser selector, percentage
@@ -111,12 +111,13 @@ descendants is still a root under the same authorization and total cap. The
 server currently retries a failed edge through the deterministic peer topology;
 only an exhausted peer route can request an SFU branch root. The target keeps
 healthy routes sticky but may select SFU directly when admission has no eligible
-peer path. Optional Peer ICE TURN is not controller-selected: a capable Web
-participant in the exact canary receives a short-lived participant-session
-bearer and every bounded peer PC uses the same `all` configuration. Coturn
-validates HMAC and expiry, not room, edge, parent, revision, or connection
-generation, and the holder may reuse the bearer until expiry. LiveKit
-publisher/subscriber ICE remains a separate participant-wide domain.
+peer path. Optional TURN is controller-selected only after that SFU/UDP attempt
+fails. The authorization must bind the current room/share generation, viewer and
+parent sessions, route revision, and replaced/new connection identities; stale,
+replayed, participant-wide, or unselected attempts fail closed. Coturn still
+validates only HMAC and expiry, so application generation checks, short TTL,
+one-use state, fanout, and quotas bound the bearer. LiveKit publisher/subscriber
+ICE remains a separate participant-wide domain.
 
 Every viewer starts with zero relay capacity for each authenticated session. A
 peer-assisted Web client explicitly advertises either zero or one downstream
@@ -217,23 +218,21 @@ Minimal protocol additions:
 - `route-ready { revision, phase: "prepare" | "active" }`;
 - `route-failed { revision, phase, connectionId }`; and
 - `refresh-sfu { revision }`;
-- optional Web authentication capability `peerIceTurn: true`;
-- `refresh-ice {}` from the current capable authenticated session; and
-- `ice-config { iceConfig }` with the replacement short-lived config.
+- a future controller-selected TURN grant for exactly one current edge; and
+- a matching parent/child rebuild bound to the old and new connection identity.
 
-Native v2 does not advertise the optional capability and therefore retains its
-strict STUN-only authenticated shape; the server never sends it `ice-config`.
-Pinned LiveKit embedded TURN remains participant-wide ICE configuration for a
-LiveKit publisher or subscriber and is not the ordinary Peer ICE bearer.
+Native v2 retains its strict STUN-only authenticated shape. Pinned LiveKit
+embedded TURN remains participant-wide ICE configuration for a LiveKit
+publisher or subscriber and is not the selected peer-edge grant.
 
-The ordinary authenticated `iceConfig` contains `iceServers` populated from
-`STUN_URLS`. Only an opted-in exact-room Web session receives one additional
-TURN group and `turnCredentialsExpiresAt`. Its signaling client is the sole
-refresh-timer owner, requests two minutes early, and updates existing PCs with
-`setConfiguration()` without proactively restarting them. The server reuses
-the current in-memory session grant until that window, then rotates it. A
-signaling reconnect obtains a new participant-session bearer. No credential is
-placed in URL, log, browser persistence, room data, or SQLite.
+The ordinary authenticated `iceConfig` contains only `iceServers` populated
+from `STUN_URLS`. The rejected built-in candidate still exists in source behind
+a complete default-off tuple, but its first production canary failed before the
+forced-relay phase and it is not an accepted deployment path. The replacement
+selected-edge slice must remove participant-wide issuance and refresh state;
+only its controller-selected rebuild may receive a short-lived relay-only
+configuration. No credential may enter a URL, log, browser persistence, room
+data, or SQLite.
 
 Authentication carries the current participant assignment and room revision,
 plus the non-secret standby URL when fallback is configured. It never carries a
@@ -260,12 +259,10 @@ complete LiveKit tuple.
    by a newer connection generation cancels it; expiry enters the existing
    staged recovery at one ICE restart. It does not reuse or change the existing
    three-second recovery deadline. The 15-second boundary is unit-tested
-   but remains subject to mobile-network measurement. In an enabled exact-room
-   canary, the peer connection has already gathered
-   direct and relay candidates and standard ICE may select relay during these
-   attempts. When admission has no eligible peer path, or recovery is exhausted,
-   select the SFU root plan. Stock LiveKit participant ICE remains a distinct
-   domain.
+   but remains subject to mobile-network measurement. The peer connection is
+   STUN-only throughout these attempts. When admission has no eligible peer path,
+   or recovery is exhausted, select the SFU root plan. Stock LiveKit participant
+   ICE remains a distinct domain.
 3. The server computes revision `R+1` without mutating the active topology. It
    sends a prepare plan only to the host and required fallback roots.
 4. When fallback is configured, host and viewer clients have already made one
@@ -292,10 +289,11 @@ complete LiveKit tuple.
    route. A failure after commit creates a new rollback/failure revision; stale
    acknowledgements cannot revive the abandoned plan.
 
-8. An active SFU transport may request one fresh short-lived grant. If that
-   retry fails, or token issuance itself fails, the server creates a newer peer
-   baseline revision and disables SFU for the rest of the current share. Stop or
-   a new sharing generation clears that one-shot circuit breaker.
+8. An active SFU transport may request one fresh short-lived grant. Current code
+   creates a newer peer baseline and disables SFU if that retry or token issuance
+   fails. The accepted replacement inserts one selected-edge TURN attempt before
+   terminal failure; it is not implemented yet. Stop or a new sharing generation
+   clears the one-shot circuit breaker.
 
 Production logs on 2026-08-20 observed two root participants for about 4.6
 seconds and two short Host participants (about 0.46 and 0.27 seconds), all ending
@@ -405,39 +403,37 @@ Sub-second failure recovery is a target after failure detection. The current
 plane needs a small 100-200 ms liveness/queue signal or an equivalent native
 transport event. This signal must be measured before its interval is fixed.
 
-## Built-In Peer ICE TURN And SFU Migration
+## Selected-Edge TURN After SFU
 
-The accepted product direction supersedes the earlier dual-TURN shadow
-candidate as the preferred central comparison. Healthy direct/peer UDP stays
-distributed. When no such path can satisfy admission or recovery, one SFU
-publication feeds one or two roots, which keep their bounded peer descendants.
-Production still ends in bounded failure and has no TURN config. Current source
-adds the default-off exact-room built-in Peer ICE tuple and wire described
-above. It is participant-session bearer issuance, not assignment-level coturn
-enforcement. LiveKit participant-wide embedded/external TURN is likewise not
-configured by current production and remains a separate ICE domain.
+Healthy direct/peer UDP stays distributed. When no such path can satisfy
+admission or recovery, one SFU publication feeds one or two roots, which keep
+their bounded peer descendants. Only an edge that also cannot use SFU/UDP may
+receive a controller-selected authenticated TURN attempt. Production currently
+ends in bounded failure and has no application TURN config. The default-off
+built-in participant-wide candidate in source is rejected after its first
+direct acceptance failed; it must not be enabled or treated as the target.
+LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
 The bounded cost model, privacy-safe ICE fields, and exact-room A/B sequence
 live in [Low-Server-Cost Media Routes](../research/low-server-media-routes.md).
-For the normal-root baseline with no exceptional server-fed viewer, one equal
-representation of bitrate `B` and `R` roots gives TURN seed host upload `R*B`
-and central ingress plus egress `2R*B`; one SFU publisher gives host upload `B`
-and central ingress plus egress `(R+1)*B`. Mixed representations use measured
-`B_pub` and `sum(B_i)`. If `E` separately admitted exceptional viewers receive
-bitrate `B_exc,j`, SFU egress adds `sum(B_exc,j)`; every TURN leg additionally
-adds its own ingress and egress. Every host NIC, TURN ingress/egress, SFU
-ingress/egress, root NIC, and exception NIC hop remains real traffic.
+For one SFU publisher at bitrate `B_pub` and `R` roots at measured bitrates
+`B_i`, host upload is `B_pub` and central ingress plus egress is
+`B_pub + sum(B_i)`. If `E` separately admitted exceptional viewers receive
+bitrate `B_exc,j`, SFU egress adds `sum(B_exc,j)`. Each selected TURN edge adds
+its own measured ingress and egress; it is never multiplied across ordinary
+peer PCs. Every host NIC, TURN ingress/egress, SFU ingress/egress, root NIC, and
+exception NIC hop remains real traffic.
 
 Migration is gated, not optional design debate. Production has entered a
 shared-IP exact-room smoke while the old release remains a separate rollback
-instance. Room `1` must still verify direct-selected peer, relay-selected peer,
-SFU/UDP, and bounded failure with all UDP blocked; the current process never
-restores the old all-room TURN wire. The matrix covers CGNAT, double NAT, mobile hotspot,
+instance. Room `1` must still verify direct/peer UDP, SFU/UDP, one explicitly
+selected relay edge, and bounded failure with all transports exhausted; the
+current process never restores the old all-room TURN wire. The matrix covers CGNAT, double NAT, mobile hotspot,
 ordinary home networks, root departure, reconnect, SFU unavailable, and rollback. It records
 CPU seconds/GiB, NIC bytes/pps, RSS, host upload, p95/p99 forwarding latency,
 loss/recovery, final quality, host edges at most two, SFU roots at most two, and
-unchanged healthy subtrees. Non-allowlisted and capability-absent sessions stay
-STUN-only; only after that gate may the controller broaden beyond room `1`.
+unchanged healthy subtrees. Every ordinary connection stays STUN-only; only
+after that gate may the controller broaden beyond room `1`.
 
 A peer root re-publishing its received stream to the SFU while also feeding
 peer descendants remains a separate bounded candidate. The current browser
@@ -469,8 +465,9 @@ record which boundary is actually configured and the UI must not claim E2EE.
 5. Integrate host/viewer first-frame switching while retaining relay children.
 6. Extend the tracked `1/3/5/8` benchmark with automatic fallback, peer/SFU UDP,
    bounded UDP-blocked failure, source/profile/pause/stop, and server-egress
-   measurements; separately measure idle TURN allocation/RSS/ports and selected
-   relay bandwidth. Only after those pass, add the 20-viewer gate before changing
+   measurements. After the SFU path passes, add one selected-edge TURN attempt
+   and measure allocation/RSS/ports and relay bandwidth. Only after those pass,
+   add the 20-viewer gate before changing
    the room default.
 
 ## Acceptance Gates
@@ -494,8 +491,8 @@ record which boundary is actually configured and the UI must not claim E2EE.
 - In one process, non-allowlisted rooms preserve ordinary P2P route fields,
   directed signaling, quality rejection, stop/reconnect/delete semantics, and
   remain isolated from allowlisted peer/SFU state and receive STUN-only ICE.
-  Capability-absent clients, including Native v2, also remain STUN-only. Only a
-  capable session in an allowlisted room may receive TURN credentials and expiry.
+  Native v2 and every ordinary peer PC also remain STUN-only. Only a current
+  controller-selected exceptional edge may receive a short-lived TURN grant.
 - LiveKit/SFU UDP must pass CGNAT, double-NAT, hotspot, home-network, loss,
   rollback, and SFU-unavailable gates. Blocked UDP fails clearly within a
   bounded window even when TURN/UDP is enabled. Media TCP remains a separate
@@ -508,9 +505,9 @@ Positive:
 - Users do not select or understand a topology.
 - Host fanout remains bounded while server media egress is paid only for
   fallback roots and separately admitted exceptional viewers.
-- The ordinary peer path remains direct-first under standard ICE; current
-  production has no TURN media cost, and source confines the optional relay
-  candidate to an exact-room capability gate.
+- The ordinary peer path remains direct-first and STUN-only; current production
+  has no TURN media cost, and a future relay attempt is confined to one
+  controller-selected exceptional edge after SFU/UDP.
 - Revisioned prepare/commit isolates stale asynchronous results without a
   continuous optimizer.
 
@@ -525,9 +522,8 @@ Negative:
   An unconfigured client pays neither cost.
 - A media liveness signal and versioned cross-client transition expand the
   state space and require real failure-injection tests.
-- Enabling built-in Peer ICE TURN creates unselected allocations for configured
-  peer connections; relay ports, coturn memory, refresh traffic, quotas, and any
-  selected media bandwidth must be measured on the 1-GiB host.
+- A selected TURN edge adds relay ports, coturn memory, refresh traffic, and
+  two media NIC legs; quotas and the 1-GiB host budget must be measured.
 
 ## Relationship To Existing ADRs
 

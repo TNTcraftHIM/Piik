@@ -28,13 +28,13 @@ and is not part of production.
 
 ## Verified Evidence
 
-- `31bee238` passed 28 files/421 tests and both builds. Restart-to-health was 560.607 ms; probing observed 437.137 ms unavailable. Health/assets/neutral routes and SQLite v2/four rooms/room `1` passed; config/listeners/firewall and the disabled application TURN tuple were unchanged. No real room triggered admission rescue.
+- `31bee238` passed 28 files/421 tests and both builds. Health returned in 560.607 ms; observed downtime was 437.137 ms. Health/assets/routes, SQLite v2/four rooms/room `1`, and unchanged config/network gates passed. No real room triggered admission rescue.
 - At 15:39:07 Screener used 38,031,360 bytes with zero cgroup events. All four services were active with zero automatic restarts; only Screener had the planned restart.
 - Chrome 151 synthetic `1/3/5/8` and 720p30 quality-change runs kept 2/1 fanout and decoding; slowest first frame was 1.05 seconds and one relay close recovered in 5.32 seconds. This is control evidence only.
 - A mobile-network room-1 run produced two root participants for about 4.6 seconds and two short Host participants (about 0.46/0.27 seconds), all client-requested leaves, with zero service restarts and no retained track. This is consistent with the code's one fresh-grant retry and Peer failback, but logs cannot prove those transitions. The deployed Host now shows only the local failure stage.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
-- TURN source tests pass, but the `a11a73d` canary is no-go: local allocation passed; direct Host/Pion Viewer failed before forced relay. Rollback restored `7fea60e`, STUN-only client ICE, the old coturn baseline, and zero allocations.
+- The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Native stays no-go at WebCodecs -> Go RTP. MF proved RTX H.264 hardware (360/360, p95 11.575 ms); `42c01f` misses Pion's default fmtp, so Viewer interop is unproven.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 
@@ -45,7 +45,7 @@ and is not part of production.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
-- ADR-0006 stays no-go: its runtime gap is WebCodecs output -> Go frame/RTP; the unrun bridge-generation probe rechecks signal/media/final. Viewer, two-edge/FIFO, and Native TURN remain unverified.
+- ADR-0006 stays no-go at WebCodecs output -> Go frame/RTP. Viewer and two-edge/FIFO remain unverified.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
@@ -63,9 +63,9 @@ Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
 evacuation. Native needs separate authorization; its next run gates Go RTP on
 the first bridge send.
 Audio A/B/C may proceed without displacing P0.
-Peer ICE TURN remains default-off after its first canary failed the direct
-acceptance path. Diagnose that first breakpoint before another bounded direct,
-then forced-relay canary; the requirement itself remains accepted.
+Ordinary Peer ICE stays STUN-only. Remove participant-wide issuance; after
+SFU/UDP fails, bind one selected parent/child rebuild to current generations and
+run one forced-relay canary. Do not repeat the built-in direct canary.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
