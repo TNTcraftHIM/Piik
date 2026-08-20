@@ -12,9 +12,10 @@ A deployment may additionally provide one single-node LiveKit process as the
 current controller's automatic final media fallback. This capacity is dormant unless the complete
 `LIVEKIT_URL`/key/secret tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
-ICE/UDP only. Source still contains a rejected default-off built-in Peer ICE
-TURN/UDP candidate. Its first production canary was no-go and fully rolled
-back; it must not be configured. Production advertises STUN-only ICE and the tracked coturn example remains
+ICE/UDP only. Source no longer contains the rejected participant-wide Peer ICE TURN
+candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank, and
+selected-edge TURN is not implemented or deployed. Production advertises
+STUN-only ICE and the tracked coturn example remains
 `stun-only`. The shared host still retains its older authenticated-relay daemon
 configuration and firewall range, but the application advertises no credential.
 
@@ -22,9 +23,9 @@ Production `31bee238bc1e` runs this candidate for exact room `1` on the existing
 shared public IP. Immediate rollback to `7fea60ef6f2` uses the current v2
 database and environment. Rolling back the admission-policy cutover requires
 `89e6d7649169` plus the environment backup recorded below; only deeper
-pre-access `9610032fc5f5` may restore matching v1 state. Application TURN
-issuance is disabled and the failed canary backup is inactive. This is a
-bounded smoke, not broad-rollout acceptance.
+pre-access `9610032fc5f5` may restore matching v1 state. The production
+application TURN tuple is absent and the failed canary backup is inactive. This
+is a bounded smoke, not broad-rollout acceptance.
 
 ## Topology and prerequisites
 
@@ -188,10 +189,11 @@ LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
 MAX_SFU_ROOTS_PER_ROOM=2
 ```
 
-Do not configure the rejected `PEER_ICE_TURN_*` participant-wide tuple. A future
-selected-edge release must introduce a distinct complete default-off tuple in
-the same coherent change as its controller consumer, strict schema and rollback
-tests; deployment documentation will name it only after that change lands. It
+The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
+stale key, even blank, fails startup. A future selected-edge release must
+introduce a distinct complete default-off tuple in the same coherent change as
+its controller consumer, strict schema and rollback tests; deployment
+documentation will name it only after that change lands. It
 must accept one explicit TURN/UDP URI, use an independent secret and bounded TTL,
 and issue credentials only for a current one-use route attempt. Credentials
 never enter URLs, logs, browser persistence, room rows, or SQLite.
@@ -415,9 +417,9 @@ compatibility.
 
 The rejected candidate names `PEER_ICE_TURN_URLS`,
 `PEER_ICE_TURN_SHARED_SECRET`, and
-`PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS` must remain absent from production. They
-are not aliases for the future selected-edge tuple; partial presence must fail
-closed until the source removal/migration lands.
+`PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS` must remain absent from production and
+now fail startup even when blank. They are not aliases for the future
+selected-edge tuple, which is not implemented or deployed.
 
 ## HTTPS and WSS ingress
 

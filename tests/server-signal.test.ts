@@ -19,10 +19,7 @@ import {
   createScreenerServer,
   type ScreenerServer,
 } from "../src/server/app.ts";
-import type {
-  PeerIceTurnConfig,
-  ServerConfig,
-} from "../src/server/config.ts";
+import type { ServerConfig } from "../src/server/config.ts";
 import { RoomDatabase } from "../src/server/room-database.ts";
 import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
 import { SignalingServer } from "../src/server/signaling.ts";
@@ -170,7 +167,6 @@ async function startHarness(
     persistent?: boolean;
     provisionalHostClaimSeconds?: number;
     peerAssistedMedia?: boolean;
-    peerIceTurn?: PeerIceTurnConfig;
     stunUrls?: readonly string[];
     now?: () => number;
   } = {},
@@ -178,7 +174,6 @@ async function startHarness(
   const config = testConfig();
   config.hostAdmissionPassword = overrides.hostAdmissionPassword;
   config.peerAssistedMedia = overrides.peerAssistedMedia ?? false;
-  config.peerIceTurn = overrides.peerIceTurn;
   config.stunUrls = overrides.stunUrls ?? [];
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
@@ -439,7 +434,6 @@ async function authenticate(
   relayCapacity: 0 | 1 | null = 1,
   shareGeneration?: string,
   presence: { displayName?: string; viewerPresence?: true } = {},
-  peerIceTurnCapable = false,
 ) {
   client.socket.send(
     JSON.stringify(
@@ -453,9 +447,6 @@ async function authenticate(
             clientId,
             ...(shareGeneration ? { shareGeneration } : {}),
             ...(presence.viewerPresence ? { viewerPresence: true } : {}),
-            ...(peerIceTurnCapable
-              ? { capabilities: { peerIceTurn: true } }
-              : {}),
           }
         : {
             type: "authenticate",
@@ -466,9 +457,6 @@ async function authenticate(
             ...(room.viewerGrant ? { viewerGrant: room.viewerGrant } : {}),
             ...(presence.displayName
               ? { displayName: presence.displayName }
-              : {}),
-            ...(peerIceTurnCapable
-              ? { capabilities: { peerIceTurn: true } }
               : {}),
           },
     ),
@@ -1581,137 +1569,6 @@ describe("WebSocket signaling", () => {
     );
     expect((await viewer.inbox.next("error")).code).toBe("FORBIDDEN");
     await viewer.inbox.expectNone(30);
-  });
-
-  it("scopes Peer ICE TURN to capable sessions in the exact room and refreshes once per window", async () => {
-    let nowMs = Date.parse("2026-08-20T12:00:00.000Z");
-    const harness = await startHarness({
-      peerAssistedMedia: true,
-      stunUrls: ["stun:stun.example.test:3478"],
-      peerIceTurn: {
-        urls: ["turn:relay.example.test:3478?transport=udp"],
-        sharedSecret: "turn-test-secret-that-is-at-least-32-bytes",
-        credentialTtlSeconds: 300,
-      },
-      now: () => nowMs,
-    });
-
-    const host = await openClient(harness.webSocketUrl);
-    const hostAuth = peerAssisted(
-      await authenticate(
-        host,
-        harness.room,
-        "host",
-        "peer-turn-host",
-        1,
-        undefined,
-        {},
-        true,
-      ),
-    );
-    const firstTurn = hostAuth.iceConfig.iceServers.find(
-      (server) => "username" in server,
-    );
-    expect(firstTurn).toBeDefined();
-    expect(hostAuth.iceConfig.turnCredentialsExpiresAt).toBe(
-      "2026-08-20T12:05:00.000Z",
-    );
-
-    host.socket.send(JSON.stringify({ type: "refresh-ice" }));
-    const reused = await host.inbox.next("ice-config");
-    expect(reused.iceConfig).toEqual(hostAuth.iceConfig);
-    host.socket.send(JSON.stringify({ type: "refresh-ice" }));
-    expect(await host.inbox.next("error")).toMatchObject({
-      code: "FORBIDDEN",
-      message: "Peer ICE refresh is rate limited",
-    });
-
-    nowMs += 180_000;
-    host.socket.send(JSON.stringify({ type: "refresh-ice" }));
-    const rotated = await host.inbox.next("ice-config");
-    expect(rotated.iceConfig.turnCredentialsExpiresAt).toBe(
-      "2026-08-20T12:08:00.000Z",
-    );
-    expect(
-      rotated.iceConfig.iceServers.find((server) => "username" in server),
-    ).not.toEqual(firstTurn);
-
-    const legacyViewer = await openClient(harness.webSocketUrl);
-    const legacyAuth = await authenticate(
-      legacyViewer,
-      harness.room,
-      "viewer",
-      "native-shaped-viewer",
-    );
-    expect(
-      legacyAuth.iceConfig.iceServers.some((server) => "username" in server),
-    ).toBe(false);
-    expect(legacyAuth.iceConfig.turnCredentialsExpiresAt).toBeUndefined();
-    legacyViewer.socket.send(JSON.stringify({ type: "refresh-ice" }));
-    expect((await legacyViewer.inbox.next("error")).code).toBe("FORBIDDEN");
-
-    const ordinaryRoom = harness.roomStore.createRoom();
-    const ordinaryHost = await openClient(harness.webSocketUrl);
-    const ordinaryAuth = await authenticate(
-      ordinaryHost,
-      ordinaryRoom,
-      "host",
-      "ordinary-capable-host",
-      1,
-      undefined,
-      {},
-      true,
-    );
-    expect(
-      ordinaryAuth.iceConfig.iceServers.some((server) => "username" in server),
-    ).toBe(false);
-    ordinaryHost.socket.send(JSON.stringify({ type: "refresh-ice" }));
-    expect((await ordinaryHost.inbox.next("error")).code).toBe("FORBIDDEN");
-  });
-
-  it("issues a new participant-session bearer after session replacement", async () => {
-    const harness = await startHarness({
-      peerAssistedMedia: true,
-      peerIceTurn: {
-        urls: ["turn:relay.example.test:3478?transport=udp"],
-        sharedSecret: "turn-test-secret-that-is-at-least-32-bytes",
-        credentialTtlSeconds: 300,
-      },
-      now: () => Date.parse("2026-08-20T12:00:00.000Z"),
-    });
-    const first = await openClient(harness.webSocketUrl);
-    const firstAuth = await authenticate(
-      first,
-      harness.room,
-      "viewer",
-      "replaceable-turn-viewer",
-      1,
-      undefined,
-      {},
-      true,
-    );
-    const replaced = new Promise<number>((resolve) => {
-      first.socket.once("close", (code) => resolve(code));
-    });
-
-    const second = await openClient(harness.webSocketUrl);
-    const secondAuth = await authenticate(
-      second,
-      harness.room,
-      "viewer",
-      "replaceable-turn-viewer",
-      1,
-      undefined,
-      {},
-      true,
-    );
-
-    expect(await replaced).toBe(4001);
-    expect(
-      secondAuth.iceConfig.iceServers.find((server) => "username" in server),
-    ).not.toEqual(
-      firstAuth.iceConfig.iceServers.find((server) => "username" in server),
-    );
   });
 
   it("isolates the routing allowlist while ordinary ICE stays STUN-only", async () => {

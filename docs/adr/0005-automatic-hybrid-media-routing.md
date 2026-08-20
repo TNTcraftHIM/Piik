@@ -78,16 +78,15 @@ tuple and remains a controller-owned transport attempt, never a topology choice.
 Merged PR #17 implements this controller on top of merged PR #13, and PR #20
 adds the bounded standby prewarm below. Production enables them only for
 persistent room `1`; other rooms stay ordinary P2P, and production remains
-STUN-only. The current source still contains the rejected default-off built-in
-TURN canary, but it is not deployed and must be removed or replaced before any
-future TURN canary.
+STUN-only. The current source no longer contains the rejected participant-wide
+TURN config, issuer, capability, refresh wire, or client propagation. Stale
+`PEER_ICE_TURN_*` keys fail startup even when blank. Selected-edge TURN remains
+unimplemented and undeployed.
 
 The current runtime removes the old all-room coturn contract. Production
 requires STUN and authenticated ICE snapshots contain only STUN servers in
-production. The participant-wide TURN group, capability, and refresh messages
-in source belong only to the rejected candidate and are not the accepted target.
-The tracked
-LiveKit sample explicitly sets `tcp_port: 0`, disables TCP fallback, supplies
+production. The tracked LiveKit sample explicitly sets `tcp_port: 0`, disables
+TCP fallback, supplies
 the deployment-owned STUN server, and configures no TURN service. The SFU controller still
 activates only after a peer edge exhausts recovery. Public participant entry has
 been observed, but retained media and route admission remain unverified. The old
@@ -226,13 +225,12 @@ embedded TURN remains participant-wide ICE configuration for a LiveKit
 publisher or subscriber and is not the selected peer-edge grant.
 
 The ordinary authenticated `iceConfig` contains only `iceServers` populated
-from `STUN_URLS`. The rejected built-in candidate still exists in source behind
-a complete default-off tuple, but its first production canary failed before the
-forced-relay phase and it is not an accepted deployment path. The replacement
-selected-edge slice must remove participant-wide issuance and refresh state;
-only its controller-selected rebuild may receive a short-lived relay-only
-configuration. No credential may enter a URL, log, browser persistence, room
-data, or SQLite.
+from `STUN_URLS`. The rejected participant-wide tuple, issuer, capability,
+refresh messages, and client propagation are removed, and stale
+`PEER_ICE_TURN_*` keys fail startup. A future selected-edge slice must add its
+controller consumer and one-use rebuild atomically; only that selected rebuild
+may receive a short-lived relay-only configuration. No credential may enter a
+URL, log, browser persistence, room data, or SQLite.
 
 Authentication carries the current participant assignment and room revision,
 plus the non-secret standby URL when fallback is configured. It never carries a
@@ -409,9 +407,10 @@ Healthy direct/peer UDP stays distributed. When no such path can satisfy
 admission or recovery, one SFU publication feeds one or two roots, which keep
 their bounded peer descendants. Only an edge that also cannot use SFU/UDP may
 receive a controller-selected authenticated TURN attempt. Production currently
-ends in bounded failure and has no application TURN config. The default-off
-built-in participant-wide candidate in source is rejected after its first
-direct acceptance failed; it must not be enabled or treated as the target.
+ends in bounded failure and has no application TURN config. Source also has no
+participant-wide TURN path: the rejected candidate is removed and its stale
+environment keys fail startup. Selected-edge config, wire, and rebuild remain
+unimplemented and undeployed.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
 The bounded cost model, privacy-safe ICE fields, and exact-room A/B sequence

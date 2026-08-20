@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SignalPayload } from "../src/shared/protocol.ts";
+import type { IceConfig, SignalPayload } from "../src/shared/protocol.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
 import { ViewerPeer } from "../src/client/webrtc/viewer-peer.ts";
 
@@ -138,9 +138,10 @@ function createPeer(
   signals: SignalPayload[],
   snapshots: PeerSnapshot[],
   signalPeers: string[] = [],
+  iceConfig: IceConfig = { iceServers: [] },
 ): ViewerPeer {
   return new ViewerPeer(
-    { iceServers: [] },
+    iceConfig,
     {
       sendSignal: (peerId, payload) => {
         signalPeers.push(peerId);
@@ -193,36 +194,34 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
-  it("keeps standard ICE direct-first while refreshing future gathering", async () => {
-    const peer = createPeer([], []);
-    await peer.acceptSignal("host", offer("turn-config"));
+  it("applies STUN-only ICE configuration at creation and update", async () => {
+    const peer = createPeer([], [], [], {
+      iceServers: [{ urls: ["stun:stun-a.example.test:3478"] }],
+    });
+    await peer.acceptSignal("host", offer("stun-config"));
     const connection = FakePeerConnection.instances[0]!;
 
-    expect(connection.configurations).toEqual([
-      { iceServers: [], iceTransportPolicy: "all" },
-    ]);
     peer.updateIceConfig({
-      iceServers: [
-        {
-          urls: ["turn:relay.test:3478?transport=udp"],
-          username: `1787076000:${"a".repeat(32)}`,
-          credential: "temporary-credential",
-        },
-      ],
-      turnCredentialsExpiresAt: "2026-08-20T12:00:00.000Z",
+      iceServers: [{ urls: ["stun:stun-b.example.test:3478"] }],
     });
 
+    expect(connection.configurations).toEqual([
+      { iceServers: [{ urls: ["stun:stun-a.example.test:3478"] }] },
+      { iceServers: [{ urls: ["stun:stun-b.example.test:3478"] }] },
+    ]);
     expect(connection.setConfiguration).toHaveBeenCalledOnce();
-    expect(connection.configurations[1]).toEqual({
-      iceServers: [
-        {
-          urls: ["turn:relay.test:3478?transport=udp"],
-          username: `1787076000:${"a".repeat(32)}`,
-          credential: "temporary-credential",
-        },
-      ],
-      iceTransportPolicy: "all",
-    });
+    for (const configuration of connection.configurations) {
+      expect(
+        configuration.iceServers?.every(
+          (server) =>
+            !Reflect.has(server, "username") &&
+            !Reflect.has(server, "credential") &&
+            (typeof server.urls === "string"
+              ? server.urls.startsWith("stun:")
+              : server.urls.every((url) => url.startsWith("stun:"))),
+        ),
+      ).toBe(true);
+    }
   });
 
   it("restarts ICE when an answered initial connection stays stuck", async () => {

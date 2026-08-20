@@ -63,9 +63,12 @@ Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
 evacuation. Native needs separate authorization; its next run gates Go RTP on
 the first bridge send.
 Audio A/B/C may proceed without displacing P0.
-Ordinary Peer ICE stays STUN-only. Remove participant-wide issuance; after
-SFU/UDP fails, bind one selected parent/child rebuild to current generations and
-run one forced-relay canary. Do not repeat the built-in direct canary.
+Ordinary Peer ICE stays STUN-only. Participant-wide TURN code and wire are
+removed; stale `PEER_ICE_TURN_*` keys fail startup even when blank. Selected-edge
+TURN remains unimplemented and undeployed. After SFU/UDP fails, the next
+independent slice must bind one selected parent/child rebuild to current
+generations before one forced-relay canary. Do not repeat the built-in direct
+canary.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate

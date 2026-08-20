@@ -51,24 +51,6 @@ func TestMarshalHostSignalShapes(t *testing.T) {
 	}
 }
 
-func TestMarshalNativeAuthenticationDoesNotOptIntoWebPeerICETURN(t *testing.T) {
-	encoded, err := json.Marshal(authenticateMessage{
-		Type:            "authenticate",
-		Protocol:        signalingProtocol,
-		RoomID:          "1",
-		Role:            "host",
-		Token:           strings.Repeat("a", 32),
-		ClientID:        "native-client",
-		ShareGeneration: "native-generation",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(encoded), "capabilities") || strings.Contains(string(encoded), "peerIceTurn") {
-		t.Fatalf("native authentication opted into Web-only Peer ICE TURN: %s", encoded)
-	}
-}
-
 func TestDecodeOrdinaryHostAuthentication(t *testing.T) {
 	message, err := decodeServerMessage([]byte(validHostAuthenticated))
 	if err != nil {
@@ -118,10 +100,10 @@ func TestDecodeOrdinaryHostAuthenticationRejectsInvalidVariants(t *testing.T) {
 	}
 }
 
-func TestDecodeServerMessageRejectsWebOnlyICERefresh(t *testing.T) {
+func TestDecodeServerMessageRejectsRemovedICERefresh(t *testing.T) {
 	payload := []byte(`{"type":"ice-config","iceConfig":{"iceServers":[]}}`)
 	if _, err := decodeServerMessage(payload); err == nil {
-		t.Fatal("Web-only ICE refresh message was accepted")
+		t.Fatal("removed ICE refresh message was accepted")
 	}
 }
 

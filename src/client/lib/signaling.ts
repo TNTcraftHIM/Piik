@@ -36,8 +36,6 @@ const INVALID_MESSAGE_CLOSE_CODE = 1008;
 const VIEWER_ACCESS_REVOKED_CLOSE_CODE = 4004;
 const PROTOCOL_REFRESH_MESSAGE = "页面版本已更新，请刷新后重试";
 const TERMINAL_SEND_TIMEOUT_MS = 15_000;
-const PEER_ICE_TURN_REFRESH_LEAD_MS = 2 * 60 * 1_000;
-const PEER_ICE_TURN_REFRESH_MIN_DELAY_MS = 30_000;
 
 export function shouldReconnectSignaling(code: number): boolean {
   return (
@@ -61,7 +59,6 @@ export class SignalingClient {
   private reconnectTimer: number | null = null;
   private authenticationTimer: number | null = null;
   private terminalTimer: number | null = null;
-  private iceRefreshTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
 
   constructor(
@@ -144,7 +141,6 @@ export class SignalingClient {
         type: "authenticate",
         protocol: SIGNALING_PROTOCOL,
         ...this.identity,
-        capabilities: { peerIceTurn: true },
       };
       socket.send(JSON.stringify(authenticate));
       this.authenticationTimer = window.setTimeout(() => {
@@ -198,9 +194,6 @@ export class SignalingClient {
         }
         this.events.onStatus("connected");
       }
-      if (message.type === "authenticated" || message.type === "ice-config") {
-        this.scheduleIceRefresh(message.iceConfig.turnCredentialsExpiresAt);
-      }
       this.events.onMessage(message);
     });
 
@@ -211,7 +204,6 @@ export class SignalingClient {
       this.socket = null;
       this.authenticated = false;
       this.clearAuthenticationTimer();
-      this.clearIceRefreshTimer();
       if (!this.stopped && shouldReconnectSignaling(event.code)) {
         this.scheduleReconnect();
       } else if (!this.stopped) {
@@ -249,28 +241,6 @@ export class SignalingClient {
     this.events.onTerminated(PROTOCOL_REFRESH_MESSAGE);
   }
 
-  private scheduleIceRefresh(expiresAt: string | undefined): void {
-    this.clearIceRefreshTimer();
-    if (!expiresAt) {
-      return;
-    }
-    const refreshAtMs = Date.parse(expiresAt) - PEER_ICE_TURN_REFRESH_LEAD_MS;
-    this.iceRefreshTimer = window.setTimeout(
-      () => {
-        this.iceRefreshTimer = null;
-        this.send({ type: "refresh-ice" });
-      },
-      Math.max(PEER_ICE_TURN_REFRESH_MIN_DELAY_MS, refreshAtMs - Date.now()),
-    );
-  }
-
-  private clearIceRefreshTimer(): void {
-    if (this.iceRefreshTimer !== null) {
-      window.clearTimeout(this.iceRefreshTimer);
-      this.iceRefreshTimer = null;
-    }
-  }
-
   private clearAuthenticationTimer(): void {
     if (this.authenticationTimer !== null) {
       window.clearTimeout(this.authenticationTimer);
@@ -280,7 +250,6 @@ export class SignalingClient {
 
   private clearTimers(): void {
     this.clearAuthenticationTimer();
-    this.clearIceRefreshTimer();
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
