@@ -4,11 +4,11 @@ Last updated: 2026-08-21
 
 ## Phase
 
-`https://share.bonfire.icu` currently serves exact `cf149df2411798cd632cc92a562b0a35146e0c1b`.
-The 893,953-byte artifact has SHA-256
-`80918716aefdbb958289b06b6f31551b78dbbaf7fb0f16980eb38d127e158e14`.
-The 2026-08-20T17:48:29.425Z cutover held the lock 9,256.904 ms and reached
-local health 562.657 ms after stop.
+`https://share.bonfire.icu` currently serves exact `c27df2235ecc0be17816f642ca49028e30380a34`.
+The 912,999-byte artifact has SHA-256
+`1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`.
+The 2026-08-20T19:03:10.569Z cutover held the lock 662 ms; local health
+returned 552 ms after stop and 543 ms after the symlink switch.
 SQLite v3 passed integrity checks with five rooms including room `1`; the
 application/database stayed healthy. Screener, LiveKit, coturn, and nginx are
 active/running with `NRestarts=0`, and local/public health are 200.
@@ -45,8 +45,8 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native Win11 audio is source-only/default-off. Smoke isolated target 4018x; one Viewer got 495 Opus packets. Packaging, game sync, Win10, and other routes remain open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
-- `61a87ae` Host names, `d1a4fd4` window-audio hint, and `cf149df` all-room routing are active; the stale restart assertion is historical only.
-- Final gates preserved service/config baselines, asset/routes/admission checks, and the DB v3/5-room checksum. Selected-edge is configured, but no real TURN or SFU session ran.
+- Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
+- The `c27df22` gate preserved env/DB hashes, SQLite v3/five rooms/room `1`, services, and local/public health plus route/asset 200s. No TURN/SFU session ran.
 
 ## Unverified Boundaries
 
