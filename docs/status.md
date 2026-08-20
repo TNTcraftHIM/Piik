@@ -5,19 +5,16 @@ Last updated: 2026-08-20
 ## Phase
 
 `https://share.bonfire.icu` currently serves `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612`
-with health 200 after an automatic rollback from the attempted
-`61a87ae47e38abc943cef47b3d7318bb51bf86d6` Host display-name deployment. The
-ephemeral wrapper reached `RELEASE_PREPARED` but omitted the `mv` from its
-prepared stage into `release`; systemd reported `status=200/CHDIR`. The
-application and database were not the failure cause. SQLite v3 still has four
-rooms including room `1`; Screener `NRestarts=31` records the failed activation
-sequence, while LiveKit, coturn, and nginx remained at zero. Host display names
-remain source-only and are not deployed.
+with health 200 after the sole Host display-name cutover at `2026-08-20T16:09Z`.
+Prepare/release and health passed; a stale `NRestarts=31` assertion triggered
+automatic rollback. SQLite v3 has four rooms including room `1`; the
+application/database stayed healthy, and current Screener, LiveKit, coturn, and
+nginx services each report `NRestarts=0`. Host display names remain
+source-only/not deployed.
 Ordinary ICE is STUN-only process-wide; persistent room `1` alone enables the
 automatic peer/SFU-UDP controller with at most two SFU roots. The old
-`fdd14ba0d9b5` is the current healthy rollback target with the v3 DB/env;
-older schema rollback boundaries are in `docs/deployment.md`. Native remains
-no-go and is not part of production.
+`fdd14ba0d9b5` is the healthy v3 rollback target; older schema details are in
+`docs/deployment.md`. Native is no-go and not in production.
 
 ## Current Snapshot
 
@@ -42,7 +39,7 @@ no-go and is not part of production.
 - Native VP8 loopback (Chrome 151) reached one Viewer: 30 sender frames, 85 source RTP packets, 877 inbound packets, 299 decoded/rendered at 1280x720, no fatal. Pion outbound delta missed a 2s refresh; hardware/multi-viewer/FIFO/endurance/public/native proof remains open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Selected-edge typecheck and 131 focused control tests pass; no TURN allocation/media evidence exists.
-- Prepared artifact `screener-61a87ae47e38abc943cef47b3d7318bb51bf86d6-20260820T143538Z.tar.gz` (883597 bytes, SHA-256 `d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`) was never activated; rollback left `fdd14ba` healthy and selected-edge TURN disabled.
+- Prepared artifact `screener-61a87ae47e38abc943cef47b3d7318bb51bf86d6-20260820T143538Z.tar.gz` (883597 bytes, SHA-256 `d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`) was the sole Host-name cutover candidate. Its prepare-to-release and health gates passed before the stale restart-count assertion caused automatic rollback; `fdd14ba` is healthy with all four service restart counts at 0, and Host display-name remains source-only. Selected-edge TURN is disabled.
 
 ## Unverified Boundaries
 
