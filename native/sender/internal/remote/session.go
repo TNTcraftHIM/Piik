@@ -42,18 +42,20 @@ var (
 )
 
 type Event struct {
-	Kind           string            `json:"kind"`
-	Message        string            `json:"message,omitempty"`
-	ActiveViewers  int               `json:"activeViewers,omitempty"`
-	WaitingViewers int               `json:"waitingViewers,omitempty"`
-	Media          *media.Metrics    `json:"media,omitempty"`
-	Peers          []PeerDiagnostics `json:"peers,omitempty"`
+	Kind           string              `json:"kind"`
+	Message        string              `json:"message,omitempty"`
+	ActiveViewers  int                 `json:"activeViewers,omitempty"`
+	WaitingViewers int                 `json:"waitingViewers,omitempty"`
+	Media          *media.Metrics      `json:"media,omitempty"`
+	Audio          *media.AudioMetrics `json:"audio,omitempty"`
+	Peers          []PeerDiagnostics   `json:"peers,omitempty"`
 }
 
 type StartOptions struct {
 	BaseURL               *url.URL
 	HostAdmissionPassword string
 	Codec                 media.Codec
+	EnableAudio           bool
 	OnEvent               func(Event)
 }
 
@@ -82,6 +84,7 @@ type Session struct {
 	peers            map[string]*peer
 	admission        *viewerAdmission
 	fanout           *media.Fanout
+	audioFanout      *media.AudioFanout
 	codec            media.Codec
 	peerAPI          *webrtc.API
 	codecPreferences []webrtc.RTPCodecParameters
@@ -185,6 +188,13 @@ func Start(parent context.Context, options StartOptions) (*Session, Room, error)
 		cancel()
 		return nil, Room{}, err
 	}
+	if options.EnableAudio {
+		session.audioFanout, err = media.NewAudioFanout(func(fatalErr error) { session.fail(fatalErr) })
+		if err != nil {
+			session.close()
+			return nil, Room{}, err
+		}
+	}
 	session.peerAPI, session.codecPreferences, err = newPeerAPI(codec)
 	if err != nil {
 		session.close()
@@ -228,17 +238,37 @@ func (session *Session) resetSignalingConnection() {
 	}
 }
 
-func (session *Session) WriteFrame(frame media.Frame) error {
-	if err := session.fanout.Push(frame); err != nil {
-		session.fail(fmt.Errorf("write encoded frame: %w", err))
-		return err
+func (session *Session) WriteMedia(packet media.Packet) error {
+	switch packet.Kind {
+	case media.KindVideo:
+		frame, err := packet.VideoFrame()
+		if err == nil {
+			err = session.fanout.Push(frame)
+		}
+		if err != nil {
+			session.fail(fmt.Errorf("write encoded video: %w", err))
+			return err
+		}
+		return nil
+	case media.KindOpus:
+		if session.audioFanout == nil {
+			return errors.New("encoded audio was not enabled for this session")
+		}
+		if err := session.audioFanout.Push(packet); err != nil {
+			session.fail(fmt.Errorf("write encoded audio: %w", err))
+			return err
+		}
+		return nil
+	default:
+		return errors.New("local sender supplied an unsupported encoded media kind")
 	}
-	return nil
 }
 
 func (session *Session) Codec() media.Codec {
 	return session.codec
 }
+
+func (session *Session) AudioEnabled() bool { return session.audioFanout != nil }
 
 func (session *Session) Stop() {
 	session.close()
@@ -587,7 +617,12 @@ func (session *Session) diagnosticsLoop() {
 				return diagnostics[left].Slot < diagnostics[right].Slot
 			})
 			metrics := session.fanout.Snapshot()
-			session.emit(Event{Kind: "diagnostics", Media: &metrics, Peers: diagnostics})
+			var audio *media.AudioMetrics
+			if session.audioFanout != nil {
+				value := session.audioFanout.Snapshot()
+				audio = &value
+			}
+			session.emit(Event{Kind: "diagnostics", Media: &metrics, Audio: audio, Peers: diagnostics})
 		}
 	}
 }
@@ -664,6 +699,9 @@ func (session *Session) close() {
 		session.peers = make(map[string]*peer)
 		session.mu.Unlock()
 		session.fanout.Close()
+		if session.audioFanout != nil {
+			session.audioFanout.Close()
+		}
 		for _, peer := range peers {
 			peer.close()
 		}

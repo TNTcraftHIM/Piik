@@ -208,6 +208,24 @@ known target tone/visual marker and independent voice/notification markers;
 SFU/TURN, a second Viewer, endurance, and native WGC video replacement remain
 later gates.
 
+### Retained P1 Result (2026-08-21)
+
+The source-complete Windows helper emits process-tree-only 48 kHz stereo s16 in
+20-ms chunks. Chrome 151 encodes the chunks once with `AudioEncoder`/Opus, and
+Go packetizes the same encoded stream once into a shared Pion track. The UI
+receives an opaque memory-only target ID. PID and the enumeration-time process
+creation token are revalidated locally and never enter public signaling, a URL,
+storage, or diagnostics.
+
+One bounded run played 440 Hz in the selected target and 880 Hz in an
+independent process. Across 100 chunks, amplitudes were 0.240225 and 0.0000598
+(4017.8x); no system-mix fallback was used. One direct Viewer then received one
+audio track and 495 inbound Opus packets while video decoded/rendered 296
+frames. There was no fatal or encoder error. The sole failed assertion was the
+existing generic Pion two-second outbound snapshot, which also missed fresh
+deltas in earlier video loopbacks. This is functional evidence, not packaging,
+real-game sync, second-Viewer, SFU/TURN, or endurance evidence.
+
 Run one bounded matrix rather than a full route Cartesian product: exact
 production and current `main` on Windows Chrome/Edge for tab/window/monitor,
 audio selected/unselected, and a simultaneous voice call; then the native

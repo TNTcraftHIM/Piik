@@ -16,6 +16,7 @@ import (
 
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/media"
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/remote"
+	"github.com/TNTcraftHIM/Screener/native/sender/internal/windowaudio"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -59,12 +60,16 @@ type App struct {
 	configTimeout  time.Duration
 	activeViewers  int
 	waitingViewers int
+	audioProvider  windowaudio.Provider
+	audioTargets   map[string]windowaudio.Target
+	audioTarget    *windowaudio.Target
 }
 
 type startRequest struct {
-	ServerURL string `json:"serverUrl"`
-	Password  string `json:"password"`
-	Codec     string `json:"codec,omitempty"`
+	ServerURL     string `json:"serverUrl"`
+	Password      string `json:"password"`
+	Codec         string `json:"codec,omitempty"`
+	AudioTargetID string `json:"audioTargetId,omitempty"`
 }
 
 type encoderConfig struct {
@@ -75,6 +80,12 @@ type encoderConfig struct {
 	FPS              int    `json:"fps"`
 	Bitrate          int    `json:"bitrate"`
 	EncoderInstances int    `json:"encoderInstances"`
+	Audio            bool   `json:"audio"`
+}
+
+type localAudioTarget struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 func New() (*App, error) {
@@ -88,6 +99,8 @@ func New() (*App, error) {
 		attachTimeout: mediaAttachTimeout,
 		configTimeout: mediaConfigTimeout,
 		codec:         media.CodecVP8,
+		audioProvider: windowaudio.NewProvider(),
+		audioTargets:  make(map[string]windowaudio.Target),
 	}, nil
 }
 
@@ -144,6 +157,8 @@ func (app *App) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 		app.handleStart(response, request)
 	case "/api/stop":
 		app.handleStop(response, request)
+	case "/api/audio-targets":
+		app.handleAudioTargets(response, request)
 	case "/media":
 		app.handleMedia(response, request)
 	default:
@@ -188,6 +203,16 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	app.mu.Lock()
+	var audioTarget *windowaudio.Target
+	if input.AudioTargetID != "" {
+		selected, ok := app.audioTargets[input.AudioTargetID]
+		if !ok {
+			app.mu.Unlock()
+			writeJSON(response, http.StatusBadRequest, map[string]string{"error": "selected audio target is no longer available"})
+			return
+		}
+		audioTarget = &selected
+	}
 	if app.starting || app.session != nil {
 		app.mu.Unlock()
 		writeJSON(response, http.StatusConflict, map[string]string{"error": "A sharing session is already active"})
@@ -205,6 +230,7 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 		BaseURL:               baseURL,
 		HostAdmissionPassword: strings.TrimSpace(input.Password),
 		Codec:                 codec,
+		EnableAudio:           audioTarget != nil,
 		OnEvent:               func(event remote.Event) { app.emit(generation, event) },
 	})
 	app.mu.Lock()
@@ -219,6 +245,7 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 		app.sessionCancel = startCancel
 		app.room = room
 		app.codec = codec
+		app.audioTarget = audioTarget
 		app.attachTimer = time.AfterFunc(app.attachTimeout, func() {
 			app.mu.Lock()
 			expired := app.generation == generation && app.session == session && app.mediaConn == nil
@@ -254,6 +281,35 @@ func (app *App) handleStop(response http.ResponseWriter, request *http.Request) 
 	response.WriteHeader(http.StatusNoContent)
 }
 
+func (app *App) handleAudioTargets(response http.ResponseWriter, request *http.Request) {
+	if !app.authorizeAPI(response, request, http.MethodPost) {
+		return
+	}
+	targets, err := app.audioProvider.List(request.Context())
+	if err != nil {
+		writeJSON(response, http.StatusOK, map[string]any{
+			"supported": false, "targets": []localAudioTarget{},
+			"reason": "Windows 11 process audio helper is unavailable",
+		})
+		return
+	}
+	localTargets := make([]localAudioTarget, 0, len(targets))
+	resolved := make(map[string]windowaudio.Target, len(targets))
+	for _, target := range targets {
+		id, tokenErr := newOpaqueToken()
+		if tokenErr != nil {
+			writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "create local audio target identity failed"})
+			return
+		}
+		resolved[id] = target
+		localTargets = append(localTargets, localAudioTarget{ID: id, Title: target.Title})
+	}
+	app.mu.Lock()
+	app.audioTargets = resolved
+	app.mu.Unlock()
+	writeJSON(response, http.StatusOK, map[string]any{"supported": true, "targets": localTargets})
+}
+
 func (app *App) handleMedia(response http.ResponseWriter, request *http.Request) {
 	if !exactRequest(request, app.expectedHost, app.origin) || request.Method != http.MethodGet {
 		http.Error(response, "forbidden", http.StatusForbidden)
@@ -285,7 +341,7 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 		app.releaseMediaClaim(generation, claimID, nil)
 		return
 	}
-	connection.SetReadLimit(media.MaxFrameBytes + media.FrameHeaderBytes)
+	connection.SetReadLimit(media.MaxMediaPayload + media.EnvelopeHeaderBytes)
 	app.mu.Lock()
 	if app.generation != generation || app.session != session || app.mediaClaimID != claimID {
 		app.mu.Unlock()
@@ -332,7 +388,8 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	var config encoderConfig
-	if err = decodeLocalPayload(payload, &config); err != nil || !validEncoderConfigForCodec(config, session.Codec()) {
+	if err = decodeLocalPayload(payload, &config); err != nil ||
+		!validEncoderConfigForCodec(config, session.Codec()) || config.Audio != session.AudioEnabled() {
 		session.Fail(errors.New("local encoder configuration is invalid"))
 		_ = connection.Close(websocket.StatusPolicyViolation, "invalid encoder config")
 		return
@@ -341,6 +398,39 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 		session.Fail(fmt.Errorf("acknowledge local encoder configuration: %w", err))
 		return
 	}
+	app.mu.Lock()
+	target := app.audioTarget
+	app.mu.Unlock()
+	captureContext, cancelCapture := context.WithCancel(app.ctx)
+	audioDone := make(chan struct{})
+	if target != nil {
+		_ = app.writeLocal(connection, map[string]string{"kind": "audio-state", "state": "starting"})
+		go func(selected windowaudio.Target) {
+			defer close(audioDone)
+			captureErr := app.audioProvider.Capture(captureContext, selected, func(chunk windowaudio.PCMChunk) error {
+				envelope, encodeErr := media.EncodePacket(media.Packet{
+					Kind: media.KindPCM, Timestamp100ns: chunk.Timestamp100ns,
+					Duration100ns: chunk.Duration100ns, Data: chunk.Data,
+				})
+				if encodeErr != nil {
+					return encodeErr
+				}
+				return app.writeLocalBinary(connection, envelope)
+			})
+			if captureErr != nil && captureContext.Err() == nil {
+				_ = app.writeLocal(connection, map[string]string{
+					"kind": "audio-state", "state": "unavailable",
+					"message": "Target audio stopped; system audio was not substituted",
+				})
+			}
+		}(*target)
+	} else {
+		close(audioDone)
+	}
+	defer func() {
+		cancelCapture()
+		<-audioDone
+	}()
 	for {
 		messageType, payload, err = connection.Read(app.ctx)
 		if err != nil {
@@ -354,13 +444,18 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 			_ = connection.Close(websocket.StatusUnsupportedData, "binary frames required")
 			return
 		}
-		frame, decodeErr := media.DecodeFrame(payload)
+		packet, decodeErr := media.DecodePacket(payload)
 		if decodeErr != nil {
-			session.Fail(fmt.Errorf("decode local encoded frame: %w", decodeErr))
-			_ = connection.Close(websocket.StatusPolicyViolation, "invalid encoded frame")
+			session.Fail(fmt.Errorf("decode local encoded media: %w", decodeErr))
+			_ = connection.Close(websocket.StatusPolicyViolation, "invalid encoded media")
 			return
 		}
-		if err = session.WriteFrame(frame); err != nil {
+		if packet.Kind != media.KindVideo && packet.Kind != media.KindOpus {
+			session.Fail(errors.New("local media bridge received an invalid encoded media kind"))
+			_ = connection.Close(websocket.StatusPolicyViolation, "encoded media required")
+			return
+		}
+		if err = session.WriteMedia(packet); err != nil {
 			return
 		}
 	}
@@ -426,6 +521,14 @@ func (app *App) writeLocal(connection *websocket.Conn, value any) error {
 	return wsjson.Write(ctx, connection, value)
 }
 
+func (app *App) writeLocalBinary(connection *websocket.Conn, payload []byte) error {
+	app.writeMu.Lock()
+	defer app.writeMu.Unlock()
+	ctx, cancel := context.WithTimeout(app.ctx, localWriteTimeout)
+	defer cancel()
+	return connection.Write(ctx, websocket.MessageBinary, payload)
+}
+
 func (app *App) releaseMediaClaim(generation, claimID uint64, connection *websocket.Conn) {
 	app.mu.Lock()
 	defer app.mu.Unlock()
@@ -465,6 +568,7 @@ func (app *App) stopActiveGeneration(expectedGeneration uint64) {
 	}
 	app.room = remote.Room{}
 	app.codec = media.CodecVP8
+	app.audioTarget = nil
 	app.activeViewers = 0
 	app.waitingViewers = 0
 	app.mu.Unlock()

@@ -1,7 +1,6 @@
 package media
 
 import (
-	"encoding/binary"
 	"errors"
 	"runtime"
 	"sync"
@@ -207,14 +206,19 @@ func TestFanoutCloseDropsBacklogWithoutLateWritesOrFatal(t *testing.T) {
 	}
 }
 
-func TestDecodeFrame(t *testing.T) {
-	payload := make([]byte, FrameHeaderBytes+3)
-	payload[0] = 1
-	binary.BigEndian.PutUint64(payload[1:9], 123)
-	binary.BigEndian.PutUint64(payload[9:17], 33_333)
-	copy(payload[17:], []byte{1, 2, 3})
-
-	frame, err := DecodeFrame(payload)
+func TestTypedEnvelopePreservesVideoTimeline(t *testing.T) {
+	payload, err := EncodePacket(Packet{
+		Kind: KindVideo, KeyFrame: true, Timestamp100ns: 1_230,
+		Duration100ns: 333_330, Data: []byte{1, 2, 3},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := DecodePacket(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := packet.VideoFrame()
 	if err != nil {
 		t.Fatal(err)
 	}

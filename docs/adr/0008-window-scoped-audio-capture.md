@@ -2,8 +2,8 @@
 
 Date: 2026-08-21
 
-Status: Accepted for the browser hint; native Windows implementation is a
-planned P1 input.
+Status: Accepted. The browser hint and opt-in Native Windows P1 slice are
+source-complete; Native remains unpackaged, default-off, and undeployed.
 
 ## Context
 
@@ -35,8 +35,9 @@ Windows 11 desktop (build 22000 or newer) and is not a Windows 10 fallback.
 3. The native sender's next audio slice is an explicit opt-in
    `window-process-audio` mode on Windows 11. The local capture session owns
    one selected target PID/process tree, one WGC/DXGI video source, and one
-   WASAPI loopback audio source. Process IDs, titles, paths, device identity,
-   and PCM stay local; they do not enter signaling, URLs, logs, or storage.
+   WASAPI loopback audio source. Process IDs, creation tokens, titles, paths,
+   device identity, and PCM stay local; they do not enter signaling, URLs,
+   logs, or storage.
 4. If the target process exits, produces no render stream, or the loopback
    activation is denied, the sender reports `audio unavailable` or `audio
    silent` and stops/asks the user. It never widens to whole-system audio.
@@ -48,7 +49,7 @@ Windows 11 desktop (build 22000 or newer) and is not a Windows 10 fallback.
 This is an interface boundary, not a new framework or a current wire change:
 
 ```text
-NativeCaptureTarget { pid: uint32, includeProcessTree: true }
+NativeCaptureTarget { pid: uint32, creationTime: uint64, includeProcessTree: true }
 NativeCaptureSession.start(target)
   -> VideoFrames(WGC/DXGI) + AudioPcm(WASAPI process loopback)
   -> existing native sender timeline/encoder/fanout
@@ -66,7 +67,8 @@ The first product-wiring slice is deliberately smaller than the complete
 native capture boundary. It adds an explicit Windows 11
 `window-process-audio` input while leaving the current Web video capture and
 codec path unchanged. A small Windows helper resolves the selected target PID
-locally and sends timestamped PCM through the authenticated loopback bridge.
+and creation time locally, revalidates both immediately before activation, and
+sends timestamped PCM through the authenticated loopback bridge.
 The existing Chrome/Edge sender UI uses `AudioEncoder` with `codec: "opus"`,
 48 kHz, two channels, and 20 ms frames, then returns the encoded Opus packets to
 the existing Go sender. This reuses the current browser prerequisite and avoids
@@ -84,8 +86,8 @@ QPC origin when native video replaces the Web source.
 Expected implementation size is about **500--800 new LOC**, excluding the
 browser/Windows SDK and existing video/MF fixture code: Windows loopback
 capture and local IPC (250--400), Go audio envelope/timeline/track (150--250),
-and UI lifecycle/status plus focused tests (100--150). This is a planned P1
-input, not current product behavior or a deployment switch.
+and UI lifecycle/status plus focused tests (100--150). The landed slice keeps
+that boundary and is not a deployment switch.
 
 The two source clocks are both converted from 100-ns QPC: WGC
 `SystemRelativeTime` and WASAPI `IAudioCaptureClient::GetBuffer`'s
@@ -101,7 +103,8 @@ or `AUDCLNT_E_SERVICE_NOT_RUNNING`, protected-content silence, and a missing
 render stream produce `audio unavailable` or `audio silent`. There is no retry
 to whole-system loopback. No administrator privilege is required, but the
 helper must run in the interactive user's session and honor Windows consent and
-privacy settings. PID, title, path, device identity, and PCM remain local.
+privacy settings. PID, creation token, title, path, device identity, and PCM
+remain local.
 
 The first smoke is one direct Viewer: a test window emits a known tone and
 visual marker, while an independent voice process and notification emit
@@ -109,7 +112,9 @@ different markers. Require an Opus inbound track and rendered video/audio,
 monotonic QPC timestamps, and a bounded A/V offset; verify the unrelated
 markers are absent and that target exit/silence stops or asks without widening
 capture. SFU/TURN, second Viewer, endurance, and the native WGC video swap are
-follow-up gates.
+follow-up gates. On 2026-08-21, 100 20-ms chunks isolated a 440 Hz target from
+an independent 880 Hz process by 4017.8x. Chrome 151 then received one audio
+track and 495 inbound Opus packets while video decoded/rendered 296 frames.
 
 ## Consequences
 
@@ -122,10 +127,7 @@ follow-up gates.
 
 ## Follow-Up TODO
 
-- Add the Windows-only WGC + WASAPI process-loopback fixture beside the existing
-  Media Foundation H.264 fixture, then land the bounded audio-only P1 slice.
-- Feed its timestamped PCM/video pair into the existing native sender only
-  after the isolation and sync checks pass; native WGC video replacement stays
-  a separate follow-up.
-- Retain a short matrix result in `docs/research/`; do not enable the mode by
-  default or deploy it from this ADR alone.
+- Package the helper beside the sender and keep explicit target selection
+  default-off.
+- Keep native WGC video, a second Viewer, SFU/TURN, endurance, and real-game
+  A/V sync as separate follow-ups.
