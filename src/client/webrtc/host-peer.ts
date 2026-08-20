@@ -245,6 +245,10 @@ export class HostPeer {
     return this.connection.connectionState === "connected";
   }
 
+  getSnapshot(): PeerSnapshot {
+    return { ...this.snapshot, metrics: { ...this.snapshot.metrics } };
+  }
+
   updateIceConfig(iceConfig: IceConfig): void {
     if (this.disposed) {
       return;

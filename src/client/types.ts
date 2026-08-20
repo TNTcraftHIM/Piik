@@ -30,6 +30,7 @@ export interface ConnectionMetrics {
   frameHeight: number | null;
   resolution: string | null;
   packetsLost: number | null;
+  intervalPacketsSent: number | null;
   intervalPacketsReceived: number | null;
   intervalPacketsLost: number | null;
   jitterMs: number | null;
@@ -86,6 +87,7 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   frameHeight: null,
   resolution: null,
   packetsLost: null,
+  intervalPacketsSent: null,
   intervalPacketsReceived: null,
   intervalPacketsLost: null,
   jitterMs: null,

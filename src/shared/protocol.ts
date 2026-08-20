@@ -10,6 +10,7 @@ export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
+export const MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
 
@@ -325,6 +326,45 @@ export type ViewerQualityEvidenceMessage = z.infer<
   typeof viewerQualityEvidenceMessageSchema
 >;
 
+const parentEdgeQualityProofSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("sending"),
+      packetsSentDelta: z.number().int().min(1).max(1_000_000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sender-limited"),
+      packetsSentDelta: z.number().int().min(1).max(1_000_000),
+      reason: z.enum(["cpu", "bandwidth"]),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("remote-loss"),
+      packetsSentDelta: z.number().int().min(1).max(1_000_000),
+      remotePacketsLostDelta: z.number().int().min(1).max(1_000_000),
+    })
+    .strict(),
+]);
+export type ParentEdgeQualityProof = z.infer<
+  typeof parentEdgeQualityProofSchema
+>;
+
+export const parentEdgeQualityEvidenceMessageSchema = z
+  .object({
+    type: z.literal("parent-edge-quality-evidence"),
+    viewerPeerId: opaqueIdSchema,
+    guard: viewerQualityEvidenceGuardSchema,
+    viewerSequence: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    proof: parentEdgeQualityProofSchema,
+  })
+  .strict();
+export type ParentEdgeQualityEvidenceMessage = z.infer<
+  typeof parentEdgeQualityEvidenceMessageSchema
+>;
+
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
@@ -400,6 +440,7 @@ export const clientMessageSchema = z.union([
     })
     .strict(),
   viewerQualityEvidenceMessageSchema,
+  parentEdgeQualityEvidenceMessageSchema,
   z
     .object({
       type: z.literal("set-viewer-access"),

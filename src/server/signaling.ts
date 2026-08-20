@@ -6,10 +6,12 @@ import WebSocket, { WebSocketServer } from "ws";
 
 import {
   DEFAULT_QUALITY_SETTINGS,
+  MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SIGNAL_BYTES,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   SIGNALING_PROTOCOL,
   VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
+  VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   decodeClientMessage,
   type ClientMessage,
   type QualitySettings,
@@ -58,6 +60,7 @@ interface ViewerQualityEvidenceGate {
   routeRevision: number;
   sequence: number;
   acceptedAtMs: number;
+  parentEvidenceAccepted: boolean;
 }
 
 export interface SignalingOptions {
@@ -149,6 +152,7 @@ export class SignalingServer {
           ),
         deleteConnectionId: (roomId, viewerPeerId) =>
           this.deleteViewerConnectionId(roomId, viewerPeerId),
+        now: this.now,
       });
     }
 
@@ -284,8 +288,12 @@ export class SignalingServer {
       return;
     }
     if (
-      message.type === "viewer-quality-evidence" &&
-      Buffer.byteLength(encoded, "utf8") > MAX_VIEWER_QUALITY_EVIDENCE_BYTES
+      ((message.type === "viewer-quality-evidence" &&
+        Buffer.byteLength(encoded, "utf8") >
+          MAX_VIEWER_QUALITY_EVIDENCE_BYTES) ||
+        (message.type === "parent-edge-quality-evidence" &&
+          Buffer.byteLength(encoded, "utf8") >
+            MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES))
     ) {
       this.rejectInvalidMessage(socket);
       return;
@@ -619,6 +627,9 @@ export class SignalingServer {
       case "viewer-quality-evidence":
         this.handleViewerQualityEvidence(socket, authenticated, message);
         return;
+      case "parent-edge-quality-evidence":
+        this.handleParentEdgeQualityEvidence(socket, authenticated, message);
+        return;
       case "set-viewer-access":
         if (authenticated.role !== "host") {
           this.sendError(
@@ -832,6 +843,73 @@ export class SignalingServer {
       routeRevision,
       sequence: message.sequence,
       acceptedAtMs: now,
+      parentEvidenceAccepted: false,
+    });
+    if (this.isPeerAssistedRoom(source.roomId)) {
+      this.hybridMediaRouter!.handleViewerQualityEvidence({
+        roomId: source.roomId,
+        viewerSessionId: viewerState.sessionId,
+        parentSessionId: parent.sessionId,
+        evidence: forwarded,
+      });
+    }
+  }
+
+  private handleParentEdgeQualityEvidence(
+    socket: WebSocket,
+    source: AuthenticatedSession,
+    message: Extract<
+      ClientMessage,
+      { type: "parent-edge-quality-evidence" }
+    >,
+  ): void {
+    if (!this.isPeerAssistedRoom(source.roomId)) {
+      return;
+    }
+    const sourceState = this.socketStates.get(socket);
+    if (!sourceState || sourceState.authenticated !== source) {
+      return;
+    }
+    const viewer = this.options.roomStore.getConnectedViewer(
+      source.roomId,
+      message.viewerPeerId,
+    );
+    const gate = this.viewerQualityEvidenceGates.get(
+      viewerConnectionKey(source.roomId, message.viewerPeerId),
+    );
+    const edge = this.hybridMediaRouter?.resolveActivePeerEdge(
+      source.roomId,
+      message.viewerPeerId,
+    );
+    const connectionId = this.connectionIdsByViewer.get(
+      viewerConnectionKey(source.roomId, message.viewerPeerId),
+    );
+    const now = this.now();
+    if (
+      !viewer ||
+      !gate ||
+      gate.parentEvidenceAccepted ||
+      source.peerId !== gate.parentPeerId ||
+      sourceState.sessionId !== gate.parentSessionId ||
+      viewer.sessionId !== gate.viewerSessionId ||
+      connectionId !== gate.connectionId ||
+      edge?.parentPeerId !== source.peerId ||
+      edge.revision !== gate.routeRevision ||
+      message.guard.connectionId !== gate.connectionId ||
+      message.guard.routeRevision !== gate.routeRevision ||
+      message.viewerSequence !== gate.sequence ||
+      now < gate.acceptedAtMs ||
+      now - gate.acceptedAtMs > VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
+    ) {
+      return;
+    }
+
+    gate.parentEvidenceAccepted = true;
+    this.hybridMediaRouter!.handleParentEdgeQualityEvidence({
+      roomId: source.roomId,
+      viewerSessionId: viewer.sessionId,
+      parentSessionId: sourceState.sessionId,
+      evidence: message,
     });
   }
 
@@ -1026,7 +1104,10 @@ export class SignalingServer {
       return;
     }
     if (this.isPeerAssistedRoom(disconnected.roomId)) {
-      this.hybridMediaRouter!.disconnectParticipant(disconnected.roomId);
+      this.hybridMediaRouter!.disconnectParticipant(
+        disconnected.roomId,
+        disconnected.peerId,
+      );
     }
     if (disconnected.role === "host") {
       for (const viewer of this.options.roomStore.getConnectedViewers(

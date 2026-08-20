@@ -117,6 +117,32 @@ leaves and desktop-class browsers as one-child relays. The controller uses this
 binary capability only for future admission and recovery. Withdrawing capacity
 does not proactively migrate an otherwise healthy existing edge.
 
+The repository quality-reparent candidate adds one bounded parent-to-server
+evidence message and no second route owner. Signaling authenticates and
+forwards Viewer C under its existing session, connection, revision, parent,
+sequence, two-second rate and 2 KiB guards. The current parent then answers only
+from its current outbound `HostPeer` sample: a positive `packetsSent` delta is
+required. Its existing proof union carries `sending` for current liveness,
+`sender-limited` only for an exact `qualityLimitationReason` of `cpu` or
+`bandwidth`, or `remote-loss` only when the same interval has at least 100 sent
+packets and RTCP-reported remote loss divided by sent packets is at least 30%.
+`sending` is diagnostic and cannot advance a bad streak. The 2 KiB answer
+echoes the exact C sequence; signaling
+accepts it once, within five seconds, from the current parent session and same
+child generation. A parent consumes a stats sample only once per child and
+current connection, using the existing finite monotonic stats timestamp; its
+DOMHighResTimeStamp-derived window is rounded before the one-to-five-second
+bound is checked. Viewer C may wait pending, but the router advances the streak
+only when that C has a hard receive predicate and B independently reports one
+of the two hard sender predicates. Both inputs are WebRTC stats gathered by
+stock browsers at separate endpoints; parent remote loss originates in RTCP.
+This is cross-endpoint corroboration, not cryptographic independence or defense
+against colluding authenticated participants. Raw stats, addresses, candidates,
+SDP, URLs and a composite score remain out of wire.
+The router may create the existing Viewer route intent;
+`PeerRelayTopology.reassignViewer` and `MediaRouteController` continue to own
+the subtree change, revision, generation, prepare, commit and rollback.
+
 Targeted tests cover the revision controller, protocol authorization, relay
 capacity, ordered client transitions, stale asynchronous work, server-restart
 resynchronization, one-shot credential recovery, peer failback, and optional
@@ -259,8 +285,10 @@ it never uploads the raw error, endpoint, token, candidate, or address.
 
 An activated SFU-root route is sticky until a discrete route event requires a
 change or the current share stops. A new sharing generation starts from the
-cheapest available UDP route. The first target does not continuously rebalance
-healthy media, avoiding oscillation without adding a score or optimizer.
+cheapest available UDP route. The controller does not continuously rebalance
+healthy media. The bounded quality candidate changes only the Viewer-rooted
+subtree whose current parent-to-child edge produced three consecutive hard-bad
+windows; it does not withdraw that parent's global relay capacity.
 
 The authenticated standby is not a transport: it has no grant and never joins a
 room. During route prepare the current implementation warms only an unpublishing/unsubscribed
@@ -307,11 +335,38 @@ The first controller reacts only to discrete events:
 - no eligible peer slot or the accepted maximum depth;
 - exhausted ICE/rebuild for an assigned edge;
 - relay participant departure;
-- unsupported route capability; or
-- a hard bounded-send-queue overflow on a future encoded-object route.
+- unsupported route capability;
+- a hard bounded-send-queue overflow on a future encoded-object route; or
+- three consecutive, current-identity correlated Viewer C/parent B windows in
+  which C has a hard receive predicate (freeze duration at least 50% of the
+  sample window, positive received RTP with zero decoded frames, or at least
+  100 received-plus-lost packets with loss at least 30%) and B independently
+  reports `cpu`/`bandwidth` sender limitation or at least 100 sent packets with
+  RTCP-reported remote loss divided by sent packets at least 30%.
 
-It does not combine RTT, CPU, bitrate, geography, or a synthetic health score.
-Measurements may add a new explicit trigger only through a reviewed change.
+It does not combine RTT, bitrate, geography, or a synthetic health score; the
+exact sender-limitation enum is a predicate, not an encoder score. Either side
+alone is diagnostic-only. C may be stored before B arrives, but only the hard
+pair advances the streak. Healthy or ambiguous correlated windows clear it. A Viewer or parent session,
+connection ID, route revision or parent identity change also resets it, as does
+an evidence gap over five seconds. A successful peer reassignment or started
+SFU prepare creates one 30-second room migration budget. Viewer/session churn
+cannot bypass that budget; removal, disconnect, authorization or generation
+change clears per-edge evidence and intent state, while room stop/delete clears
+the room budget. A quality-created intent retains its Viewer/parent sessions,
+connection, revision and parent guard through every drain, peer change, SFU
+prepare and commit boundary. Pending SFU work also retains the exact originating
+intent identity: missing, replaced or changed guards abort before grants or
+commit, while a genuine `route-failed` may explicitly take over that same
+intent as the ordinary failure owner. Stale work and successful peer migration
+release only the quality-owned temporary parent exclusion; a real
+`route-failed` exclusion remains owned by the failure path. The W3C stats
+definitions establish the counter meanings and their WebRTC 1.0 example uses
+30% loss as a likely culprit; they do not
+prescribe Screener's route policy. Therefore 50%, 100 packets, three windows,
+five seconds and 30 seconds are conservative candidate constants pending
+production calibration, not claimed optimums. Measurements may change them
+only through a reviewed change.
 ADR-0007's `HIGH`/`FALLBACK` quality state is separate and does not become a
 topology trigger or a room-wide health score.
 

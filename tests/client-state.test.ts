@@ -867,6 +867,8 @@ describe("WebRTC stats parsing", () => {
       timestamp: number,
       retransmittedPacketsSent: number,
       retransmittedBytesSent: number,
+      packetsSent: number,
+      packetsLost: number,
     ) =>
       new Map<string, unknown>([
         [
@@ -877,18 +879,30 @@ describe("WebRTC stats parsing", () => {
             timestamp,
             kind: "video",
             ssrc: 101,
+            remoteId: "remote-inbound",
             bytesSent: timestamp * 10,
             framesEncoded: timestamp / 10,
+            packetsSent,
             retransmittedPacketsSent,
             retransmittedBytesSent,
           },
         ],
+        [
+          "remote-inbound",
+          {
+            id: "remote-inbound",
+            type: "remote-inbound-rtp",
+            timestamp,
+            kind: "video",
+            packetsLost,
+          },
+        ],
       ]) as unknown as RTCStatsReport;
     const reports = [
-      outbound(1_000, 2, 200),
-      outbound(2_000, 5, 800),
-      outbound(3_000, 1, 100),
-      outbound(4_000, 4, 700),
+      outbound(1_000, 2, 200, 100, 1),
+      outbound(2_000, 5, 800, 400, 3),
+      outbound(3_000, 1, 100, 50, 1),
+      outbound(4_000, 4, 700, 350, 4),
     ];
     const connection = {
       getStats: async () => reports.shift()!,
@@ -903,14 +917,20 @@ describe("WebRTC stats parsing", () => {
 
     expect(first.intervalRetransmittedPackets).toBeNull();
     expect(stable).toMatchObject({
+      intervalPacketsSent: 300,
+      intervalPacketsLost: 2,
       intervalRetransmittedPackets: 3,
       intervalRetransmittedBytes: 600,
     });
     expect(reset).toMatchObject({
+      intervalPacketsSent: null,
+      intervalPacketsLost: null,
       intervalRetransmittedPackets: null,
       intervalRetransmittedBytes: null,
     });
     expect(afterReset).toMatchObject({
+      intervalPacketsSent: 300,
+      intervalPacketsLost: 3,
       intervalRetransmittedPackets: 3,
       intervalRetransmittedBytes: 600,
     });

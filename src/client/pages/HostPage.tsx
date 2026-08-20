@@ -61,6 +61,9 @@ import {
   type QualitySettings,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
+import {
+  ParentEdgeQualityEvidenceReporter,
+} from "../media/parent-edge-quality-evidence";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import { metricsFromQualityEvidence } from "../media/viewer-quality-evidence";
 import type {
@@ -203,6 +206,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const viewerQualityEvidenceTimersRef = useRef(
     new Map<string, number>(),
   );
+  const parentEdgeQualityEvidenceReporterRef = useRef(
+    new ParentEdgeQualityEvidenceReporter(),
+  );
   const peerAssistedRef = useRef(false);
   const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
@@ -248,6 +254,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       );
       viewerQualityEvidenceTimersRef.current.clear();
       viewerQualityEvidenceRef.current.clear();
+      parentEdgeQualityEvidenceReporterRef.current.reset();
       activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
@@ -361,6 +368,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     );
     viewerQualityEvidenceTimersRef.current.clear();
     viewerQualityEvidenceRef.current = new Map();
+    parentEdgeQualityEvidenceReporterRef.current.reset();
     setViewerQualityEvidence(new Map());
     activeRouteRevisionRef.current = 0;
     setSignalStatus("offline");
@@ -435,6 +443,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       evidence.guard.routeRevision !== activeRouteRevisionRef.current
     ) {
       return;
+    }
+    const parentEvidence = parentEdgeQualityEvidenceReporterRef.current.offer(
+      evidence,
+      peer.getSnapshot(),
+    );
+    if (peerAssistedRef.current && parentEvidence) {
+      signalRef.current?.send(parentEvidence);
     }
     const next = new Map(viewerQualityEvidenceRef.current);
     next.set(evidence.viewerPeerId, evidence);
@@ -594,6 +609,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   function removePeer(peerId: string): void {
     clearViewerQualityEvidence(peerId);
+    parentEdgeQualityEvidenceReporterRef.current.forget(peerId);
     peersRef.current.get(peerId)?.dispose();
     peersRef.current.delete(peerId);
     setPeerSnapshots((current) => {

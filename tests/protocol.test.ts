@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_MEDIA_ROUTE_REVISION,
+  MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
@@ -48,6 +49,14 @@ const qualityEvidence = {
     codecParameters:
       "packetization-mode=1; level-asymmetry-allowed=1",
   },
+} as const;
+
+const parentEdgeQualityEvidence = {
+  type: "parent-edge-quality-evidence",
+  viewerPeerId: "viewer_12345678",
+  guard: qualityEvidence.guard,
+  viewerSequence: qualityEvidence.sequence,
+  proof: { kind: "sending", packetsSentDelta: 1_500 },
 } as const;
 
 describe("client signaling protocol", () => {
@@ -377,6 +386,63 @@ describe("client signaling protocol", () => {
         metrics: {
           ...qualityEvidence.metrics,
           decoderImplementation: "device-specific-decoder",
+        },
+      },
+    ]) {
+      expect(clientMessageSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it("accepts only strict, bounded parent edge quality proof", () => {
+    expect(
+      clientMessageSchema.safeParse(parentEdgeQualityEvidence).success,
+    ).toBe(true);
+    expect(
+      Buffer.byteLength(JSON.stringify(parentEdgeQualityEvidence), "utf8"),
+    ).toBeLessThanOrEqual(MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES);
+    for (const reason of ["cpu", "bandwidth"] as const) {
+      expect(
+        clientMessageSchema.safeParse({
+          ...parentEdgeQualityEvidence,
+          proof: {
+            kind: "sender-limited",
+            packetsSentDelta: 1_500,
+            reason,
+          },
+        }).success,
+      ).toBe(true);
+    }
+
+    for (const invalid of [
+      { ...parentEdgeQualityEvidence, roomId },
+      { ...parentEdgeQualityEvidence, viewerSequence: -1 },
+      {
+        ...parentEdgeQualityEvidence,
+        proof: { kind: "sending", packetsSentDelta: 0 },
+      },
+      {
+        ...parentEdgeQualityEvidence,
+        proof: {
+          kind: "remote-loss",
+          packetsSentDelta: 1_500,
+          remotePacketsLostDelta: null,
+        },
+      },
+      {
+        ...parentEdgeQualityEvidence,
+        proof: {
+          kind: "sender-limited",
+          packetsSentDelta: 1_500,
+          reason: "other",
+        },
+      },
+      {
+        ...parentEdgeQualityEvidence,
+        proof: {
+          kind: "sender-limited",
+          packetsSentDelta: 1_500,
+          reason: "cpu",
+          score: 1,
         },
       },
     ]) {

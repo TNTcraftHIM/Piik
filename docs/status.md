@@ -21,7 +21,7 @@ The v1 DB/old env pair is only for the deeper pre-access `9610032` rollback.
 - Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
-- A+B/P2P C remains read-only. Autonomous BWE is only `suspect`; confirmed fallback evacuates children and loses parent capacity. Root impact remains a default-on gate.
+- Exact-room quality reparenting is candidate-only: three C+B hard-bad pairs reuse peer/SFU/failure and one room cooldown; single-side reports do nothing. Thresholds need game/mobile calibration.
 
 ## Verified Evidence
 

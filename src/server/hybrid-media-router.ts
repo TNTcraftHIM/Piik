@@ -4,6 +4,7 @@ import {
   MAX_MEDIA_ROUTE_REVISION,
   type ClientMessage,
   type MediaAssignment,
+  type ParentEdgeQualityProof,
   type ParticipantRouteAssignment,
   type RelayDownstreamEdges,
   type Role,
@@ -24,9 +25,20 @@ import type { RoomStore } from "./room-store.js";
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
 
 const DEFAULT_SFU_PREPARE_TIMEOUT_MS = 5_000;
+const VIEWER_QUALITY_BAD_WINDOWS_TO_REASSIGN = 3;
+const VIEWER_QUALITY_EVIDENCE_GAP_MS = 5_000;
+const VIEWER_QUALITY_REASSIGN_COOLDOWN_MS = 30_000;
+const VIEWER_QUALITY_FREEZE_RATIO = 0.5;
+const VIEWER_QUALITY_MIN_LOSS_PACKETS = 100;
+const VIEWER_QUALITY_HIGH_LOSS_RATIO = 0.3;
 interface PendingRoutePreparation {
   revision: number;
   intentPeerId: string;
+  routeIntent: ViewerRouteIntent;
+  qualityIntent: {
+    guard: QualityRouteIntentGuard;
+    takenOverByRouteFailure: boolean;
+  } | null;
   expectedSessionIds: ReadonlyMap<string, string>;
   grantsIssued: boolean;
   timer: NodeJS.Timeout;
@@ -37,6 +49,47 @@ interface ViewerRouteIntent {
   sessionId: string;
   sfuAttempts: number;
   unavailableReported: boolean;
+  qualityGuard?: QualityRouteIntentGuard;
+}
+
+interface QualityRouteIntentGuard {
+  viewerSessionId: string;
+  connectionId: string;
+  routeRevision: number;
+  parentPeerId: string;
+  parentSessionId: string;
+  exclusionOwnedByQuality: boolean;
+}
+
+interface ViewerQualityEvidenceState {
+  viewerSessionId: string;
+  parentPeerId: string;
+  parentSessionId: string;
+  connectionId: string;
+  routeRevision: number;
+  lastCorrelatedAtMs: number | null;
+  badWindowCount: number;
+  pendingViewerEvidence: {
+    acceptedAtMs: number;
+    evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>;
+  } | null;
+}
+
+interface ForwardedViewerQualityEvidence {
+  roomId: string;
+  viewerSessionId: string;
+  parentSessionId: string;
+  evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>;
+}
+
+interface ForwardedParentEdgeQualityEvidence {
+  roomId: string;
+  viewerSessionId: string;
+  parentSessionId: string;
+  evidence: Extract<
+    ClientMessage,
+    { type: "parent-edge-quality-evidence" }
+  >;
 }
 
 type SfuPrepareResult = "started" | "busy" | "unavailable";
@@ -54,6 +107,7 @@ export interface HybridMediaRouterOptions {
   sendToSession: (sessionId: string, message: ServerMessage) => void;
   getConnectionId: (roomId: string, viewerPeerId: string) => string | undefined;
   deleteConnectionId: (roomId: string, viewerPeerId: string) => void;
+  now?: () => number;
 }
 
 export interface HybridAuthenticationState {
@@ -95,6 +149,14 @@ export class HybridMediaRouter {
     Map<string, string>
   >();
   private readonly sfuDisabledRoomIds = new Set<string>();
+  private readonly viewerQualityEvidenceStates = new Map<
+    string,
+    ViewerQualityEvidenceState
+  >();
+  private readonly roomQualityMigrationCooldownUntilMs = new Map<
+    string,
+    number
+  >();
 
   constructor(private readonly options: HybridMediaRouterOptions) {
     const fallback = options.sfuFallback;
@@ -125,13 +187,17 @@ export class HybridMediaRouter {
     this.consumedSfuRefreshesByRoom.clear();
     this.relayCapacitySessionsByRoom.clear();
     this.sfuDisabledRoomIds.clear();
+    this.viewerQualityEvidenceStates.clear();
+    this.roomQualityMigrationCooldownUntilMs.clear();
   }
 
   connectParticipant(input: AuthenticatedRouteParticipant): HybridAuthenticationState {
+    this.clearRoomViewerQualityEvidenceStates(input.roomId);
     this.clearSfuRefreshesForPeer(input.roomId, input.peerId);
     if (input.role === "viewer") {
+      const connectionKey = viewerConnectionKey(input.roomId, input.peerId);
       this.failedParentPeerIdsByViewer.delete(
-        viewerConnectionKey(input.roomId, input.peerId),
+        connectionKey,
       );
       this.viewerRouteIntentsByRoom.get(input.roomId)?.delete(input.peerId);
       this.relayCapacitySessionsByRoom.get(input.roomId)?.delete(input.peerId);
@@ -236,6 +302,179 @@ export class HybridMediaRouter {
       revision: active.revision,
       parentPeerId: child.upstream.peerId,
     };
+  }
+
+  handleViewerQualityEvidence(input: ForwardedViewerQualityEvidence): void {
+    const { evidence, roomId, viewerSessionId, parentSessionId } = input;
+    const { viewerPeerId, parentPeerId } = evidence;
+    const viewer = this.options.roomStore.getConnectedViewer(
+      roomId,
+      viewerPeerId,
+    );
+    const parent = this.connectedPeer(roomId, parentPeerId);
+    const edge = this.resolveActivePeerEdge(roomId, viewerPeerId);
+    if (
+      viewer?.sessionId !== viewerSessionId ||
+      parent?.sessionId !== parentSessionId ||
+      edge?.parentPeerId !== parentPeerId ||
+      edge.revision !== evidence.guard.routeRevision ||
+      this.options.getConnectionId(roomId, viewerPeerId) !==
+        evidence.guard.connectionId
+    ) {
+      return;
+    }
+
+    const connectionKey = viewerConnectionKey(roomId, viewerPeerId);
+    const existingIntent = this.viewerRouteIntentsByRoom
+      .get(roomId)
+      ?.get(viewerPeerId);
+    if (
+      existingIntent?.qualityGuard &&
+      !this.qualityIntentIsCurrent(roomId, viewerPeerId, existingIntent)
+    ) {
+      this.discardQualityIntent(roomId, viewerPeerId, existingIntent);
+    }
+    const now = this.options.now?.() ?? Date.now();
+    if (!Number.isFinite(now)) {
+      return;
+    }
+    const previous = this.viewerQualityEvidenceStates.get(connectionKey);
+    const sameIdentity =
+      previous?.viewerSessionId === viewerSessionId &&
+      previous.parentPeerId === parentPeerId &&
+      previous.parentSessionId === parentSessionId &&
+      previous.connectionId === evidence.guard.connectionId &&
+      previous.routeRevision === evidence.guard.routeRevision;
+    const canContinueStreak =
+      sameIdentity &&
+      previous !== undefined &&
+      previous.pendingViewerEvidence === null &&
+      previous.lastCorrelatedAtMs !== null &&
+      now - previous.lastCorrelatedAtMs <= VIEWER_QUALITY_EVIDENCE_GAP_MS;
+    this.viewerQualityEvidenceStates.set(connectionKey, {
+      viewerSessionId,
+      parentPeerId,
+      parentSessionId,
+      connectionId: evidence.guard.connectionId,
+      routeRevision: evidence.guard.routeRevision,
+      lastCorrelatedAtMs: canContinueStreak
+        ? previous.lastCorrelatedAtMs
+        : null,
+      badWindowCount: canContinueStreak ? previous.badWindowCount : 0,
+      pendingViewerEvidence: { acceptedAtMs: now, evidence },
+    });
+  }
+
+  handleParentEdgeQualityEvidence(
+    input: ForwardedParentEdgeQualityEvidence,
+  ): void {
+    const { evidence, roomId, viewerSessionId, parentSessionId } = input;
+    const viewerPeerId = evidence.viewerPeerId;
+    const viewer = this.options.roomStore.getConnectedViewer(
+      roomId,
+      viewerPeerId,
+    );
+    const edge = this.resolveActivePeerEdge(roomId, viewerPeerId);
+    const parent = edge
+      ? this.connectedPeer(roomId, edge.parentPeerId)
+      : undefined;
+    if (
+      viewer?.sessionId !== viewerSessionId ||
+      parent?.sessionId !== parentSessionId ||
+      edge?.revision !== evidence.guard.routeRevision ||
+      this.options.getConnectionId(roomId, viewerPeerId) !==
+        evidence.guard.connectionId
+    ) {
+      return;
+    }
+
+    const connectionKey = viewerConnectionKey(roomId, viewerPeerId);
+    const state = this.viewerQualityEvidenceStates.get(connectionKey);
+    const pending = state?.pendingViewerEvidence;
+    if (
+      !state ||
+      !pending ||
+      state.viewerSessionId !== viewerSessionId ||
+      state.parentPeerId !== edge.parentPeerId ||
+      state.parentSessionId !== parentSessionId ||
+      state.connectionId !== evidence.guard.connectionId ||
+      state.routeRevision !== evidence.guard.routeRevision ||
+      pending.evidence.sequence !== evidence.viewerSequence
+    ) {
+      return;
+    }
+    state.pendingViewerEvidence = null;
+
+    const now = this.options.now?.() ?? Date.now();
+    if (
+      !Number.isFinite(now) ||
+      now < pending.acceptedAtMs ||
+      now - pending.acceptedAtMs > VIEWER_QUALITY_EVIDENCE_GAP_MS
+    ) {
+      state.badWindowCount = 0;
+      state.lastCorrelatedAtMs = null;
+      return;
+    }
+    const cooldownUntil = this.roomQualityMigrationCooldownUntilMs.get(roomId);
+    if (cooldownUntil !== undefined && now < cooldownUntil) {
+      state.badWindowCount = 0;
+      state.lastCorrelatedAtMs = now;
+      return;
+    }
+    if (cooldownUntil !== undefined) {
+      this.roomQualityMigrationCooldownUntilMs.delete(roomId);
+    }
+    const existingIntent = this.viewerRouteIntentsByRoom
+      .get(roomId)
+      ?.get(viewerPeerId);
+    const failedParents = this.failedParentPeerIdsByViewer.get(connectionKey);
+    if (existingIntent || failedParents?.has(edge.parentPeerId)) {
+      state.badWindowCount = 0;
+      state.lastCorrelatedAtMs = now;
+      return;
+    }
+
+    const hardBad =
+      isHardBadViewerQualityWindow(pending.evidence) &&
+      isHardBadParentEdgeQualityProof(evidence.proof);
+    state.badWindowCount = hardBad
+      ? state.lastCorrelatedAtMs !== null &&
+        now - state.lastCorrelatedAtMs <= VIEWER_QUALITY_EVIDENCE_GAP_MS
+        ? state.badWindowCount + 1
+        : 1
+      : 0;
+    state.lastCorrelatedAtMs = now;
+    if (state.badWindowCount < VIEWER_QUALITY_BAD_WINDOWS_TO_REASSIGN) {
+      return;
+    }
+
+    let roomIntents = this.viewerRouteIntentsByRoom.get(roomId);
+    if (!roomIntents) {
+      roomIntents = new Map();
+      this.viewerRouteIntentsByRoom.set(roomId, roomIntents);
+    }
+    let excludedParents = this.failedParentPeerIdsByViewer.get(connectionKey);
+    if (!excludedParents) {
+      excludedParents = new Set();
+      this.failedParentPeerIdsByViewer.set(connectionKey, excludedParents);
+    }
+    excludedParents.add(edge.parentPeerId);
+    roomIntents.set(viewerPeerId, {
+      failedParentPeerId: edge.parentPeerId,
+      sessionId: viewerSessionId,
+      sfuAttempts: 0,
+      unavailableReported: false,
+      qualityGuard: {
+        viewerSessionId,
+        connectionId: evidence.guard.connectionId,
+        routeRevision: evidence.guard.routeRevision,
+        parentPeerId: edge.parentPeerId,
+        parentSessionId,
+        exclusionOwnedByQuality: true,
+      },
+    });
+    this.viewerQualityEvidenceStates.delete(connectionKey);
+    this.drainViewerRouteIntents(roomId);
   }
 
   setViewerRelayCapacity(
@@ -410,6 +649,24 @@ export class HybridMediaRouter {
       this.failedParentPeerIdsByViewer.set(connectionKey, failedParents);
     }
     if (failedParents.has(assignment.upstream.peerId)) {
+      const existingIntent = this.viewerRouteIntentsByRoom
+        .get(participant.roomId)
+        ?.get(participant.peerId);
+      if (
+        existingIntent?.qualityGuard?.parentPeerId ===
+        assignment.upstream.peerId
+      ) {
+        const pending = this.pendingRoutePreparations.get(participant.roomId);
+        if (
+          pending?.intentPeerId === participant.peerId &&
+          pending.routeIntent === existingIntent &&
+          pending.qualityIntent
+        ) {
+          pending.qualityIntent.takenOverByRouteFailure = true;
+        }
+        existingIntent.qualityGuard.exclusionOwnedByQuality = false;
+        existingIntent.qualityGuard = undefined;
+      }
       return;
     }
     failedParents.add(assignment.upstream.peerId);
@@ -441,7 +698,8 @@ export class HybridMediaRouter {
     );
   }
 
-  disconnectParticipant(roomId: string): void {
+  disconnectParticipant(roomId: string, peerId: string): void {
+    this.clearViewerQualityStateForParticipant(roomId, peerId);
     const pending = this.pendingRoutePreparations.get(roomId);
     if (!pending || this.pendingSessionsAreCurrent(roomId, pending)) {
       return;
@@ -450,6 +708,7 @@ export class HybridMediaRouter {
   }
 
   removeViewer(roomId: string, peerId: string): void {
+    this.clearViewerQualityStateForParticipant(roomId, peerId);
     this.abortPendingRouteForTopologyChange(roomId);
     const changes = this.peerRelayTopology.removeViewer(
       roomId,
@@ -618,6 +877,13 @@ export class HybridMediaRouter {
 
   private drainViewerRouteIntents(roomId: string): void {
     this.enqueueUnassignedViewerIntents(roomId);
+    const pending = this.pendingRoutePreparations.get(roomId);
+    if (pending) {
+      if (this.abortStalePendingQualityIntent(roomId, pending)) {
+        return;
+      }
+      return;
+    }
     if (this.pendingRoutePreparations.has(roomId)) {
       return;
     }
@@ -627,6 +893,13 @@ export class HybridMediaRouter {
     }
 
     for (const [viewerPeerId, intent] of [...intents]) {
+      if (
+        intent.qualityGuard &&
+        !this.qualityIntentIsCurrent(roomId, viewerPeerId, intent)
+      ) {
+        this.discardQualityIntent(roomId, viewerPeerId, intent);
+        continue;
+      }
       const viewer = this.options.roomStore.getConnectedViewer(
         roomId,
         viewerPeerId,
@@ -636,7 +909,11 @@ export class HybridMediaRouter {
         ?.getActiveRoute()
         .assignments.get(viewerPeerId);
       if (viewer?.sessionId !== intent.sessionId || !assignment) {
-        intents.delete(viewerPeerId);
+        if (intent.qualityGuard) {
+          this.discardQualityIntent(roomId, viewerPeerId, intent);
+        } else {
+          intents.delete(viewerPeerId);
+        }
         continue;
       }
       if (intent.failedParentPeerId === null) {
@@ -661,6 +938,13 @@ export class HybridMediaRouter {
         ) {
           excludedParents.add(hostPeerId);
         }
+        if (
+          intent.qualityGuard &&
+          !this.qualityIntentIsCurrent(roomId, viewerPeerId, intent)
+        ) {
+          this.discardQualityIntent(roomId, viewerPeerId, intent);
+          continue;
+        }
         const changes = this.peerRelayTopology.reassignViewer(
           roomId,
           viewerPeerId,
@@ -669,6 +953,15 @@ export class HybridMediaRouter {
           MAX_PEER_RELAY_DEPTH,
         );
         if (changes) {
+          if (intent.qualityGuard) {
+            this.startRoomQualityMigrationCooldown(roomId);
+            this.releaseQualityOwnedParentExclusion(
+              roomId,
+              viewerPeerId,
+              intent,
+              intent.qualityGuard,
+            );
+          }
           intents.delete(viewerPeerId);
           this.clearChangedConnectionIds(roomId, changes);
           this.reconcileMediaRoute(roomId);
@@ -687,7 +980,18 @@ export class HybridMediaRouter {
           viewerConnectionKey(roomId, viewerPeerId),
         );
         if (!failedParents?.has(intent.failedParentPeerId)) {
-          intents.delete(viewerPeerId);
+          if (intent.qualityGuard) {
+            this.discardQualityIntent(roomId, viewerPeerId, intent);
+          } else {
+            intents.delete(viewerPeerId);
+          }
+          continue;
+        }
+        if (
+          intent.qualityGuard &&
+          !this.qualityIntentIsCurrent(roomId, viewerPeerId, intent)
+        ) {
+          this.discardQualityIntent(roomId, viewerPeerId, intent);
           continue;
         }
         const changes = this.peerRelayTopology.reassignViewer(
@@ -698,6 +1002,15 @@ export class HybridMediaRouter {
           MAX_PEER_RELAY_DEPTH,
         );
         if (changes) {
+          if (intent.qualityGuard) {
+            this.startRoomQualityMigrationCooldown(roomId);
+            this.releaseQualityOwnedParentExclusion(
+              roomId,
+              viewerPeerId,
+              intent,
+              intent.qualityGuard,
+            );
+          }
           intents.delete(viewerPeerId);
           this.clearChangedConnectionIds(roomId, changes);
           this.reconcileMediaRoute(roomId);
@@ -711,12 +1024,23 @@ export class HybridMediaRouter {
         this.options.sfuFallback &&
         !this.sfuDisabledRoomIds.has(roomId)
       ) {
+        if (
+          intent.qualityGuard &&
+          !this.qualityIntentIsCurrent(roomId, viewerPeerId, intent)
+        ) {
+          this.discardQualityIntent(roomId, viewerPeerId, intent);
+          continue;
+        }
         const result = this.prepareSfuFallback(
           roomId,
           viewerPeerId,
           intent.sessionId,
+          intent,
         );
         if (result === "started") {
+          if (intent.qualityGuard) {
+            this.startRoomQualityMigrationCooldown(roomId);
+          }
           intent.sfuAttempts += 1;
           return;
         }
@@ -740,10 +1064,83 @@ export class HybridMediaRouter {
     }
   }
 
+  private qualityIntentIsCurrent(
+    roomId: string,
+    viewerPeerId: string,
+    intent: ViewerRouteIntent,
+  ): boolean {
+    const guard = intent.qualityGuard;
+    if (!guard) {
+      return true;
+    }
+    const edge = this.resolveActivePeerEdge(roomId, viewerPeerId);
+    return (
+      this.options.roomStore.getConnectedViewer(roomId, viewerPeerId)
+        ?.sessionId === guard.viewerSessionId &&
+      this.connectedPeer(roomId, guard.parentPeerId)?.sessionId ===
+        guard.parentSessionId &&
+      edge?.parentPeerId === guard.parentPeerId &&
+      edge.revision === guard.routeRevision &&
+      this.options.getConnectionId(roomId, viewerPeerId) === guard.connectionId
+    );
+  }
+
+  private discardQualityIntent(
+    roomId: string,
+    viewerPeerId: string,
+    intent: ViewerRouteIntent,
+  ): void {
+    const guard = intent.qualityGuard;
+    const intents = this.viewerRouteIntentsByRoom.get(roomId);
+    if (!guard || intents?.get(viewerPeerId) !== intent) {
+      return;
+    }
+    intents.delete(viewerPeerId);
+    if (intents.size === 0) {
+      this.viewerRouteIntentsByRoom.delete(roomId);
+    }
+    this.releaseQualityOwnedParentExclusion(
+      roomId,
+      viewerPeerId,
+      intent,
+      guard,
+    );
+    this.viewerQualityEvidenceStates.delete(
+      viewerConnectionKey(roomId, viewerPeerId),
+    );
+  }
+
+  private releaseQualityOwnedParentExclusion(
+    roomId: string,
+    viewerPeerId: string,
+    excludedIntent: ViewerRouteIntent,
+    guard: QualityRouteIntentGuard,
+  ): void {
+    if (!guard.exclusionOwnedByQuality) {
+      return;
+    }
+    const currentIntent = this.viewerRouteIntentsByRoom
+      .get(roomId)
+      ?.get(viewerPeerId);
+    if (
+      currentIntent !== excludedIntent &&
+      currentIntent?.failedParentPeerId === guard.parentPeerId
+    ) {
+      return;
+    }
+    const connectionKey = viewerConnectionKey(roomId, viewerPeerId);
+    const failedParents = this.failedParentPeerIdsByViewer.get(connectionKey);
+    failedParents?.delete(guard.parentPeerId);
+    if (failedParents?.size === 0) {
+      this.failedParentPeerIdsByViewer.delete(connectionKey);
+    }
+  }
+
   private prepareSfuFallback(
     roomId: string,
     failedPeerId: string,
     sourceSessionId: string,
+    routeIntent: ViewerRouteIntent,
   ): SfuPrepareResult {
     const fallback = this.options.sfuFallback;
     const controller = this.mediaRouteControllers.get(roomId);
@@ -896,6 +1293,13 @@ export class HybridMediaRouter {
     this.pendingRoutePreparations.set(roomId, {
       revision,
       intentPeerId: failedPeerId,
+      routeIntent,
+      qualityIntent: routeIntent.qualityGuard
+        ? {
+            guard: { ...routeIntent.qualityGuard },
+            takenOverByRouteFailure: false,
+          }
+        : null,
       expectedSessionIds,
       grantsIssued: false,
       timer,
@@ -953,6 +1357,9 @@ export class HybridMediaRouter {
         this.abortPendingRoute(roomId);
         return;
       }
+      if (this.abortStalePendingQualityIntent(roomId, pending)) {
+        return;
+      }
       for (const { peerId, sessionId, token } of grants) {
         const assignment = pendingRoute.route.assignments.get(peerId);
         if (!assignment) {
@@ -999,6 +1406,9 @@ export class HybridMediaRouter {
       }
       return;
     }
+    if (this.abortStalePendingQualityIntent(roomId, pending)) {
+      return;
+    }
     const before = controller.getActiveRoute();
     if (!controller.commit(revision)) {
       return;
@@ -1040,14 +1450,14 @@ export class HybridMediaRouter {
     excludedPeerId?: string,
   ): void {
     const pending = this.pendingRoutePreparations.get(roomId);
-    const intent = pending
+    const currentIntent = pending
       ? this.viewerRouteIntentsByRoom
           .get(roomId)
           ?.get(pending.intentPeerId)
       : undefined;
-    if (intent) {
-      intent.sfuAttempts = 0;
-      intent.unavailableReported = false;
+    if (pending && currentIntent === pending.routeIntent) {
+      pending.routeIntent.sfuAttempts = 0;
+      pending.routeIntent.unavailableReported = false;
     }
     this.abortPendingRoute(roomId, excludedPeerId, false);
   }
@@ -1062,6 +1472,69 @@ export class HybridMediaRouter {
       }
     }
     return true;
+  }
+
+  private abortStalePendingQualityIntent(
+    roomId: string,
+    pending: PendingRoutePreparation,
+  ): boolean {
+    if (this.pendingQualityIntentIsCurrent(roomId, pending)) {
+      return false;
+    }
+    this.abortPendingRoute(roomId, undefined, false);
+    const qualityIntent = pending.qualityIntent;
+    if (qualityIntent && !qualityIntent.takenOverByRouteFailure) {
+      const currentIntent = this.viewerRouteIntentsByRoom
+        .get(roomId)
+        ?.get(pending.intentPeerId);
+      if (
+        currentIntent === pending.routeIntent &&
+        currentIntent.qualityGuard
+      ) {
+        this.discardQualityIntent(
+          roomId,
+          pending.intentPeerId,
+          currentIntent,
+        );
+      } else {
+        this.releaseQualityOwnedParentExclusion(
+          roomId,
+          pending.intentPeerId,
+          pending.routeIntent,
+          qualityIntent.guard,
+        );
+      }
+    }
+    this.drainViewerRouteIntents(roomId);
+    return true;
+  }
+
+  private pendingQualityIntentIsCurrent(
+    roomId: string,
+    pending: PendingRoutePreparation,
+  ): boolean {
+    const qualityIntent = pending.qualityIntent;
+    if (!qualityIntent) {
+      return true;
+    }
+    const currentIntent = this.viewerRouteIntentsByRoom
+      .get(roomId)
+      ?.get(pending.intentPeerId);
+    if (currentIntent !== pending.routeIntent) {
+      return false;
+    }
+    if (qualityIntent.takenOverByRouteFailure) {
+      return (
+        currentIntent.qualityGuard === undefined &&
+        currentIntent.failedParentPeerId === qualityIntent.guard.parentPeerId
+      );
+    }
+    const currentGuard = currentIntent.qualityGuard;
+    return (
+      currentGuard !== undefined &&
+      sameQualityRouteIntentGuard(currentGuard, qualityIntent.guard) &&
+      this.qualityIntentIsCurrent(roomId, pending.intentPeerId, currentIntent)
+    );
   }
 
   private async sendFreshSfuConfig(
@@ -1247,6 +1720,7 @@ export class HybridMediaRouter {
     route: RoomMediaRoute,
     excludedPeerId?: string,
   ): void {
+    this.clearRoomViewerQualityEvidenceStates(roomId);
     for (const [peerId, assignment] of route.assignments) {
       if (peerId === excludedPeerId) {
         continue;
@@ -1382,6 +1856,8 @@ export class HybridMediaRouter {
     this.viewerRouteIntentsByRoom.delete(roomId);
     this.consumedSfuRefreshesByRoom.delete(roomId);
     this.sfuDisabledRoomIds.delete(roomId);
+    this.clearRoomViewerQualityEvidenceStates(roomId);
+    this.roomQualityMigrationCooldownUntilMs.delete(roomId);
   }
 
   private clearSfuRefreshesForPeer(roomId: string, peerId: string): void {
@@ -1397,6 +1873,48 @@ export class HybridMediaRouter {
     }
     if (consumed.size === 0) {
       this.consumedSfuRefreshesByRoom.delete(roomId);
+    }
+  }
+
+  private startRoomQualityMigrationCooldown(roomId: string): void {
+    const now = this.options.now?.() ?? Date.now();
+    if (!Number.isFinite(now)) {
+      return;
+    }
+    this.roomQualityMigrationCooldownUntilMs.set(
+      roomId,
+      now + VIEWER_QUALITY_REASSIGN_COOLDOWN_MS,
+    );
+  }
+
+  private clearViewerQualityStateForParticipant(
+    roomId: string,
+    peerId: string,
+  ): void {
+    const intents = this.viewerRouteIntentsByRoom.get(roomId);
+    for (const [viewerPeerId, intent] of [...(intents ?? [])]) {
+      if (
+        intent.qualityGuard &&
+        (viewerPeerId === peerId || intent.qualityGuard.parentPeerId === peerId)
+      ) {
+        this.discardQualityIntent(roomId, viewerPeerId, intent);
+      }
+    }
+    const connectionKey = viewerConnectionKey(roomId, peerId);
+    this.viewerQualityEvidenceStates.delete(connectionKey);
+    for (const [key, state] of this.viewerQualityEvidenceStates) {
+      if (key.startsWith(`${roomId}:`) && state.parentPeerId === peerId) {
+        this.viewerQualityEvidenceStates.delete(key);
+      }
+    }
+  }
+
+  private clearRoomViewerQualityEvidenceStates(roomId: string): void {
+    const prefix = `${roomId}:`;
+    for (const key of this.viewerQualityEvidenceStates.keys()) {
+      if (key.startsWith(prefix)) {
+        this.viewerQualityEvidenceStates.delete(key);
+      }
     }
   }
 
@@ -1442,6 +1960,20 @@ export class HybridMediaRouter {
 
 function viewerConnectionKey(roomId: string, peerId: string): string {
   return `${roomId}:${peerId}`;
+}
+
+function sameQualityRouteIntentGuard(
+  left: QualityRouteIntentGuard,
+  right: QualityRouteIntentGuard,
+): boolean {
+  return (
+    left.viewerSessionId === right.viewerSessionId &&
+    left.connectionId === right.connectionId &&
+    left.routeRevision === right.routeRevision &&
+    left.parentPeerId === right.parentPeerId &&
+    left.parentSessionId === right.parentSessionId &&
+    left.exclusionOwnedByQuality === right.exclusionOwnedByQuality
+  );
 }
 
 function sfuRefreshKey(
@@ -1619,5 +2151,53 @@ function sameUpstream(
     (left.upstream.kind !== "peer" ||
       (right.upstream.kind === "peer" &&
         left.upstream.peerId === right.upstream.peerId))
+  );
+}
+
+function isHardBadViewerQualityWindow(
+  evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>,
+): boolean {
+  const metrics = evidence.metrics;
+  const freezeRatio =
+    metrics.freezeDurationMsDelta === null
+      ? null
+      : metrics.freezeDurationMsDelta / evidence.windowMs;
+  if (freezeRatio !== null && freezeRatio >= VIEWER_QUALITY_FREEZE_RATIO) {
+    return true;
+  }
+  if (
+    metrics.packetsReceivedDelta !== null &&
+    metrics.packetsReceivedDelta > 0 &&
+    metrics.framesDecodedDelta === 0
+  ) {
+    return true;
+  }
+  if (
+    metrics.packetsReceivedDelta === null ||
+    metrics.packetsLostDelta === null
+  ) {
+    return false;
+  }
+  const totalPackets =
+    metrics.packetsReceivedDelta + metrics.packetsLostDelta;
+  return (
+    totalPackets >= VIEWER_QUALITY_MIN_LOSS_PACKETS &&
+    metrics.packetsLostDelta / totalPackets >= VIEWER_QUALITY_HIGH_LOSS_RATIO
+  );
+}
+
+function isHardBadParentEdgeQualityProof(
+  proof: ParentEdgeQualityProof,
+): boolean {
+  if (proof.kind === "sender-limited") {
+    return true;
+  }
+  if (proof.kind !== "remote-loss") {
+    return false;
+  }
+  return (
+    proof.packetsSentDelta >= VIEWER_QUALITY_MIN_LOSS_PACKETS &&
+    proof.remotePacketsLostDelta / proof.packetsSentDelta >=
+      VIEWER_QUALITY_HIGH_LOSS_RATIO
   );
 }

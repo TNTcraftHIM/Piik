@@ -168,14 +168,72 @@ is isolated behind a small adapter.
 
 ## Candidate 6: Bounded Capability-Aware Local Reparenting
 
-This is a later topology candidate, not part of ADR-0004 or the current
-implementation milestone. Narada and Overcast demonstrate measurement-driven
-overlay improvement, but neither supplies a maintained WebRTC RTP/RTCP routing
-library. BitTorrent/WebTorrent and P2P Media Loader use chunk-pull swarms and
+This remains a bounded topology candidate outside ADR-0004. Narada and Overcast
+demonstrate measurement-driven overlay improvement, but neither supplies a
+maintained WebRTC RTP/RTCP routing library. BitTorrent/WebTorrent and P2P Media
+Loader use chunk-pull swarms and
 playout buffers, while SplitStream requires striped multi-tree media.
 Their exploration and hysteresis ideas are useful, but none is a drop-in route
 controller for sub-second screen sharing. A mature SFU is the directly reusable
 low-latency alternative, with central egress rather than audience forwarding.
+
+The first quality-driven slice reuses the authenticated Viewer C window and
+existing route intent, plus one strict parent-to-server B message. Signaling
+binds C to room, Viewer session, connection ID, active revision, parent
+peer/session, sequence, two-second rate and 2 KiB size, then forwards the same
+sanitized object. The current parent answers that exact sequence within five
+seconds only when its current outbound sample has a positive `packetsSent`
+delta. The existing discriminated proof is `sending` for diagnostic liveness,
+`sender-limited` only for an exact `qualityLimitationReason` of `cpu` or
+`bandwidth`, or `remote-loss` when that interval has at least 100 sent packets
+and RTCP-reported remote loss divided by sent packets is at least 30%; it never
+carries a null placeholder. One current connection cannot reuse the same
+`sampleTimestampMs` for multiple C sequences; fractional stats windows are
+rounded before applying the protocol bounds. The
+server accepts one B from the bound parent session and generation. The router
+may retain C while awaiting B, but advances only when the correlated pair has a
+hard C receive predicate and a hard B sender predicate. `sending`, either
+report alone, and healthy or ambiguous pairs reset or do not advance the
+streak.
+It holds at most one pending/streak state per connected Viewer and one room
+cooldown, with no timer, weighted score or global parent-capacity decision.
+
+The conservative Viewer C hard predicates are: freeze duration at least half
+of the one-to-five-second window; positive received-packet delta with zero
+decoded frames; or at least 100 received-plus-lost packets with loss at least
+30%. Parent B must independently report the exact `cpu`/`bandwidth` sender
+limitation or at least 100 sent packets with remote loss divided by sent packets
+at least 30%. Three consecutive dual-hard-bad windows are required. A healthy
+or incomplete correlated window, any Viewer/parent session, connection, route
+revision or parent change, or a gap over five seconds clears the streak. A
+successful peer move or started SFU prepare spends a 30-second room migration
+budget, so a new public Viewer identity cannot bypass it. Per-edge state clears
+on authentication/generation change, disconnect/removal and route replacement;
+room stop/delete also clears the cooldown.
+
+An SFU preparation created by quality retains the exact originating intent and
+its full Viewer/parent session, connection and revision guard until grants and
+commit finish. Missing, replaced or changed intent state aborts and releases
+only its quality-owned parent exclusion. A real `route-failed` can take over
+that same intent without losing its exclusion; a successful peer move releases
+the quality-only exclusion so a later real failure after reattachment remains
+actionable.
+
+W3C defines outbound `packetsSent` as the local cumulative RTP packet count.
+`remote-inbound-rtp.packetsLost` is remote receiver data delivered by RTCP and
+the corresponding stats object does not exist until that RTCP first arrives;
+absence is therefore not zero. W3C's video-only `qualityLimitationReason` stays
+an exact local sender predicate rather than an encoder score. Parent B and
+Viewer C are gathered by stock browsers at separate endpoints, but RTCP remote
+loss is receiver-originated and neither report is cryptographically independent
+or resistant to colluding authenticated participants. W3C also defines
+Viewer-side
+`packetsReceived`, `packetsLost`, `framesDecoded`, `freezeCount` and
+`totalFreezesDuration`; its WebRTC 1.0 diagnostic example treats loss over 30%
+as a likely culprit. It does not define route-migration thresholds. The 50%
+freeze share, 100-packet floor, three windows, five-second gap and 30-second
+cooldown are falsifiable candidate constants for production calibration, not
+standards-derived or claimed optimum values.
 
 With host degree two and the current browser-relay degree one, two balanced
 chains already minimize maximum depth at `ceil(N/2)`. A tree for `N` viewers
@@ -185,9 +243,10 @@ not reduce either bandwidth quantity. Reordering an already balanced healthy
 tree also cannot reduce depth; a move needs a discrete admission, path, TURN,
 relay-resource, recovery, or future native-capacity benefit.
 
-The initial spike is limited to admission rescue. If a relay-capable viewer is
-unassigned because two zero-capacity roots, especially mobile leaves, occupy
-both host slots, insert that viewer above one deterministic childless root:
+The admission-rescue slice is limited to its discrete capacity case. If a
+relay-capable viewer is unassigned because two zero-capacity roots, especially
+mobile leaves, occupy both host slots, insert that viewer above one
+deterministic childless root:
 
 ```text
 host -> new relay -> existing leaf
@@ -230,9 +289,11 @@ reference runs must not migrate; each move must record one discrete benefit,
 avoid reversal during cooldown, and restore the prior deterministic route on
 rollback. Reject this candidate if it needs all-pairs probing, a continuous
 optimizer, temporary fanout above budget, self-reported geography or device
-quality, or cannot beat the unchanged route. Start and stop the initial spike
-at admission rescue. Later measured work owns quality-driven moves and
-healthy TURN-to-direct optimization.
+quality, or cannot beat the unchanged route. The earlier admission-rescue case
+remains valid, while this quality slice moves only the affected Viewer-rooted
+subtree and excludes only its current failed parent through the existing
+peer-first, then SFU, then explicit-failure path. Healthy TURN-to-direct
+optimization remains future work.
 
 ## Staged Connection Recovery Evidence
 
