@@ -15,7 +15,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 
 ## Current Snapshot
 
-- Capture precedes room creation; source/quality changes preserve peers and pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
+- Capture precedes room creation; source/quality changes preserve peers, while pause disables audio/video tracks together and keeps connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
 - Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and the site-access cookie are deployed atomically; raw credentials are never stored.
 - Web Hosts can set their local/session display name, and the current release advertises it through the existing presence wire. The name is not an account identity.
 - Native v2 remains source-only (memory rooms, 300s reclaim); production does not run it.

@@ -7,12 +7,14 @@ import {
   LockKeyhole,
   MonitorUp,
   Pause,
+  Pencil,
   Play,
   RefreshCw,
   Save,
   Square,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -73,7 +75,7 @@ import {
   QUALITY_PROFILE_LABELS,
   QUALITY_RESOLUTIONS,
   qualitySettingsLabel,
-  setVideoPaused,
+  setMediaPaused,
   type DegradationPreference,
   type QualityProfileId,
   type QualitySettings,
@@ -219,6 +221,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [displayName, setDisplayName] = useState(() => readDisplayName());
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
     Map<string, ViewerQualityEvidence>
   >(() => new Map());
@@ -226,7 +229,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [copied, setCopied] = useState(false);
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
-  const [picturePaused, setPicturePaused] = useState(false);
+  const [sharingPaused, setSharingPaused] = useState(false);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -255,7 +258,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const sourceSwitchRef = useRef<object | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
-  const picturePausedRef = useRef(false);
+  const sharingPausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
@@ -449,8 +452,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setSignalStatus("offline");
     setSwitchingSource(false);
     setChangingQuality(false);
-    picturePausedRef.current = false;
-    setPicturePaused(false);
+    sharingPausedRef.current = false;
+    setSharingPaused(false);
   }
 
   function forgetRoom(): void {
@@ -667,19 +670,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
   }
 
-  function togglePicturePause(): void {
+  function toggleSharingPause(): void {
     const activeStream = streamRef.current;
     if (phase !== "live" || !activeStream) {
       return;
     }
-    const nextPaused = !picturePausedRef.current;
-    if (!setVideoPaused(activeStream, nextPaused)) {
-      setNotice("当前分享没有可暂停的视频轨道");
+    const nextPaused = !sharingPausedRef.current;
+    if (!setMediaPaused(activeStream, nextPaused)) {
+      setNotice("当前分享没有可暂停的媒体轨道");
       return;
     }
-    picturePausedRef.current = nextPaused;
-    setPicturePaused(nextPaused);
-    setNotice(nextPaused ? "画面已暂停，音频不受影响" : "画面已恢复");
+    sharingPausedRef.current = nextPaused;
+    setSharingPaused(nextPaused);
+    setNotice(nextPaused ? "音视频分享已暂停" : "音视频分享已恢复");
   }
 
   function removePeer(peerId: string): void {
@@ -1278,7 +1281,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
 
     retiringStreamRef.current = previousStream;
-    setVideoPaused(captured, picturePausedRef.current);
+    setMediaPaused(captured, sharingPausedRef.current);
     streamRef.current = captured;
     setStream(captured);
     setDetails(captureDetails(captured));
@@ -1446,6 +1449,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDisplayName(saved);
     setDisplayNameDraft(saved);
     setDisplayNameError(null);
+    setEditingDisplayName(false);
     if (!signalRef.current?.setDisplayName(saved)) {
       setNotice("开始分享并连接后才能修改显示名");
     }
@@ -1499,14 +1503,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     className="button button-secondary"
                     type="button"
                     disabled={switchingSource || changingQuality}
-                    onClick={togglePicturePause}
+                    onClick={toggleSharingPause}
                   >
-                    {picturePaused ? (
+                    {sharingPaused ? (
                       <Play size={16} fill="currentColor" aria-hidden="true" />
                     ) : (
                       <Pause size={16} fill="currentColor" aria-hidden="true" />
                     )}
-                    {picturePaused ? "恢复画面" : "暂停画面"}
+                    {sharingPaused ? "恢复分享" : "暂停分享"}
                   </button>
                 )}
                 {phase === "live" && (
@@ -1539,34 +1543,75 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           </div>
 
           <form
-            className="viewer-name-control host-name-control"
+            className={`viewer-name-control host-name-control${
+              editingDisplayName ? " is-editing" : ""
+            }`}
             onSubmit={(event) => {
               event.preventDefault();
               commitDisplayName();
             }}
           >
-            <label htmlFor="host-display-name">显示名</label>
-            <input
-              id="host-display-name"
-              type="text"
-              value={displayNameDraft}
-              maxLength={96}
-              autoComplete="nickname"
-              aria-invalid={displayNameError ? "true" : undefined}
-              onChange={(event) => {
-                setDisplayNameDraft(event.target.value);
-                setDisplayNameError(null);
-              }}
-            />
-            <button
-              type="submit"
-              className="icon-button"
-              title="保存显示名"
-              aria-label="保存显示名"
-              disabled={displayNameDraft === displayName}
+            <label
+              htmlFor={editingDisplayName ? "host-display-name" : undefined}
             >
-              <Save size={17} />
-            </button>
+              显示名
+            </label>
+            {editingDisplayName ? (
+              <>
+                <input
+                  id="host-display-name"
+                  type="text"
+                  value={displayNameDraft}
+                  maxLength={96}
+                  autoComplete="nickname"
+                  autoFocus
+                  aria-invalid={displayNameError ? "true" : undefined}
+                  onChange={(event) => {
+                    setDisplayNameDraft(event.target.value);
+                    setDisplayNameError(null);
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="icon-button"
+                  title="保存显示名"
+                  aria-label="保存显示名"
+                  disabled={displayNameDraft === displayName}
+                >
+                  <Save size={17} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="取消编辑"
+                  aria-label="取消编辑显示名"
+                  onClick={() => {
+                    setDisplayNameDraft(displayName);
+                    setDisplayNameError(null);
+                    setEditingDisplayName(false);
+                  }}
+                >
+                  <X size={17} />
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="viewer-name-value">{displayName}</span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="编辑显示名"
+                  aria-label="编辑显示名"
+                  onClick={() => {
+                    setDisplayNameDraft(displayName);
+                    setDisplayNameError(null);
+                    setEditingDisplayName(true);
+                  }}
+                >
+                  <Pencil size={17} />
+                </button>
+              </>
+            )}
             {displayNameError && (
               <span className="viewer-name-error" role="alert">
                 {displayNameError}
@@ -1616,12 +1661,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <MonitorUp size={36} strokeWidth={1.5} aria-hidden="true" />
               </div>
             )}
-            {(phase === "starting" || switchingSource || picturePaused) && (
+            {(phase === "starting" || switchingSource || sharingPaused) && (
               <div className="stage-overlay" role="status">
                 {switchingSource
                   ? "正在切换来源"
-                  : picturePaused
-                    ? "画面已暂停"
+                  : sharingPaused
+                    ? "音视频分享已暂停"
                     : "正在连接"}
               </div>
             )}
