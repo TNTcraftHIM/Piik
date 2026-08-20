@@ -228,7 +228,7 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 ### 最小访问模型
 
-旧 production 的 `ACCESS_PASSWORD`、同一 Host/Viewer cookie gate 和 code-only Viewer 是已部署事实，不再是接受的目标；仓库 access candidate 已把“谁可以建立/发布房间”和“谁可以看这一间房”分开。production 必配的 `HOST_ADMISSION_PASSWORD` 无状态 cookie 只允许建房及尝试 Host role，房间 Host token 仍独立验证；默认 private-link 使用一个 room-scoped Viewer bearer grant，public-watch 才接受 code-only Viewer。原研究结论不要求人类房间密码；后续已接受的最小扩展增加可选的逐房间 Viewer 密码作为 code-only 私密入口，但仍不引入账号、JWT、服务端 session Map 或逐人 ACL。WebSocket upgrade 不知道未来 role，因此只能保留 Origin/容量门并记录 Host cookie 状态；首条 Host 鉴权再同时要求该状态和 Host token，Viewer 只走 room policy。RFC 6455 明确允许服务端用 handshake `Origin` 作接纳判断，但这不是 Viewer 授权本身。
+当前 access boundary 使用 production 必配的 `SITE_ACCESS_PASSWORD` 无状态 cookie 保护建房、Host role 和所有 code-only Viewer 入口；合法未过期的 exact-room fragment grant 可直接观看。没有 grant 时，服务端先要求 site access，再检查 public-watch 或 private room password；房间码只定位，cookie 也不替代私密房间授权。WebSocket upgrade 仍只做 Origin/容量检查并记录 cookie 状态，首条 `authenticate` 完成上述 role/room 授权。该边界不引入账号、JWT、服务端 session Map 或逐人 ACL。
 
 RFC 3986 的规范事实是 fragment 在 URI dereference 前由 user agent 分离；WHATWG WebSockets 进一步规定含 fragment 的 constructor URL 必须抛 `SyntaxError`。因此把 256-bit room grant 放在 `/r/{code}#v=...`，再由页面在首个 WSS application message 发送，可以使它不进入 HTTP 或 WebSocket request-target。RFC 6750 对 OAuth bearer query 的警告并不直接规定本产品，但它提供了适用的安全类比：URI query 高概率被日志记录，不应承载此 grant。W3C Referrer Policy 的算法会从 referrer URL 移除 fragment，production 的 `no-referrer` header 再禁止整个 header；这是传输边界，不是“不会泄漏”的保证。
 
@@ -278,7 +278,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - WebRTC 使用 DTLS-SRTP。TURN 只能看到加密后的媒体包，但仍能看到地址、房间时序和流量元数据。
 - P2P 会让房间内双方得知网络地址。熟人首版可以接受，陌生人房间不能默认接受。
 - TURN 必须使用短期凭据、速率限制、每用户/房间配额和出口告警，不能提供匿名公共 relay。
-- Host admission password 只控制建房/Host role，不能作为私密观看凭据；private-link 接受 room-scoped grant 或可选逐房间 Viewer 密码，public-watch 的 room code 则明确不提供隐私。这些入口都不改变媒体 fanout/egress 上限。
+- site access password 只控制建房/Host role，不能作为私密观看凭据；private-link 接受 room-scoped grant 或可选逐房间 Viewer 密码，public-watch 的 room code 则明确不提供隐私。这些入口都不改变媒体 fanout/egress 上限。
 - raw Viewer grant 与 Host token 等同访问凭据：只保存摘要，禁止日志/遥测/错误/Referrer/SQLite 明文。显示名、room-scoped peer 后缀和 IP 诊断均不参与授权。
 - 如果未来使用 SFU 且要求服务器看不到内容，再评估 SFrame/WebRTC Encoded Transform 和群组密钥管理。
 

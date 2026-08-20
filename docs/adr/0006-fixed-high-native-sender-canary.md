@@ -39,7 +39,7 @@ merged as product code from this state.
 ## 2026-08-20 Current-Wire Checkpoint
 
 A clean local delivery candidate now targets only `screener-v2`: it exchanges
-`HOST_ADMISSION_PASSWORD` for the bounded HttpOnly Host-admission cookie, uses
+`SITE_ACCESS_PASSWORD` for the bounded HttpOnly site-access cookie, uses
 that cookie to create an explicit `private-link` room, carries it on the Host
 WebSocket upgrade, and strictly decodes the current ordinary authenticated and
 read-only Viewer-evidence shapes. There is no v1 parser, translator, raw-grant
@@ -64,7 +64,7 @@ after a bounded 20-second Sender-start interval without observing the combined
 Sender-ready and Go source-RTP condition.
 
 The timeout path failed to preserve its final Sender DOM/counter sample. It
-therefore cannot distinguish capture selection, Host admission/create, WSS
+therefore cannot distinguish capture selection, site access/create, WSS
 authentication, local bridge, first encoded output, or Go ingest as the first
 runtime break. None is a proven product failure. No retry, timeout adjustment,
 Viewer, second Viewer, or FIFO run followed. A separately authorized rerun must
@@ -87,7 +87,7 @@ cleanup failure.
 
 One separately authorized second run then used that frozen gate with the same
 bounded local topology. Its retained ledger proves `getDisplayMedia` request and
-resolution, Host admission and room creation, Host WSS authentication, local
+resolution, site access and room creation, Host WSS authentication, local
 bridge readiness and fixed-`HIGH` config acceptance, exactly one encoder object,
 and entry into the first WebCodecs output callback. It serialized zero media
 counters without retaining whether any diagnostics arrived, so those values do

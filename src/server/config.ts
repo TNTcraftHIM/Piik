@@ -7,8 +7,8 @@ import {
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
-const MIN_HOST_ADMISSION_PASSWORD_BYTES = 8;
-const MAX_HOST_ADMISSION_PASSWORD_BYTES = 128;
+const MIN_SITE_ACCESS_PASSWORD_BYTES = 8;
+const MAX_SITE_ACCESS_PASSWORD_BYTES = 128;
 const MIN_LIVEKIT_API_SECRET_BYTES = 32;
 const MIN_SELECTED_EDGE_TURN_SECRET_BYTES = 32;
 const MAX_SELECTED_EDGE_TURN_SECRET_BYTES = 128;
@@ -27,6 +27,7 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
   "PEER_ICE_TURN_SHARED_SECRET",
   "PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS",
   "PEER_ASSISTED_ROOM_IDS",
+  "HOST_ADMISSION_PASSWORD",
 ] as const;
 
 export interface LiveKitFallbackConfig {
@@ -48,7 +49,7 @@ export interface ServerConfig {
   listenHost: string;
   publicBaseUrl: URL;
   allowedOrigins: ReadonlySet<string>;
-  hostAdmissionPassword?: string;
+  siteAccessPassword?: string;
   roomDatabasePath?: string;
   roomTtlMs: number;
   maxRooms: number;
@@ -269,7 +270,9 @@ export function loadConfig(
   for (const name of REMOVED_ENVIRONMENT_VARIABLES) {
     if (Object.prototype.hasOwnProperty.call(environment, name)) {
       throw new Error(
-        name === "PEER_ASSISTED_ROOM_IDS"
+        name === "HOST_ADMISSION_PASSWORD"
+          ? `${name} is no longer supported; use SITE_ACCESS_PASSWORD`
+          : name === "PEER_ASSISTED_ROOM_IDS"
           ? `${name} is no longer supported; peer-assisted media applies to every room when enabled`
           : `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
       );
@@ -277,7 +280,7 @@ export function loadConfig(
   }
   if (Object.prototype.hasOwnProperty.call(environment, "ACCESS_PASSWORD")) {
     throw new Error(
-      "ACCESS_PASSWORD is no longer supported; use HOST_ADMISSION_PASSWORD",
+      "ACCESS_PASSWORD is no longer supported; use SITE_ACCESS_PASSWORD",
     );
   }
 
@@ -312,10 +315,10 @@ export function loadConfig(
     throw new Error("PUBLIC_BASE_URL must use https in production");
   }
 
-  const hostAdmissionPassword =
-    environment.HOST_ADMISSION_PASSWORD === ""
+  const siteAccessPassword =
+    environment.SITE_ACCESS_PASSWORD === ""
       ? undefined
-      : environment.HOST_ADMISSION_PASSWORD;
+      : environment.SITE_ACCESS_PASSWORD;
   const roomDatabasePath =
     environment.ROOM_DATABASE_PATH?.trim() || undefined;
   const stunUrls = parseStunUrlList(environment.STUN_URLS);
@@ -343,33 +346,33 @@ export function loadConfig(
     );
   }
   const configuredSecrets = [
-    hostAdmissionPassword,
+    siteAccessPassword,
     livekitFallback?.apiKey,
     livekitFallback?.apiSecret,
     selectedEdgeTurn?.sharedSecret,
   ].filter((secret): secret is string => secret !== undefined);
   if (new Set(configuredSecrets).size !== configuredSecrets.length) {
     throw new Error(
-      "HOST_ADMISSION_PASSWORD, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, and SELECTED_EDGE_TURN_SHARED_SECRET must use independent values",
+      "SITE_ACCESS_PASSWORD, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, and SELECTED_EDGE_TURN_SHARED_SECRET must use independent values",
     );
   }
   if (
-    hostAdmissionPassword &&
-    (!VISIBLE_ASCII_PATTERN.test(hostAdmissionPassword) ||
-      Buffer.byteLength(hostAdmissionPassword) <
-        MIN_HOST_ADMISSION_PASSWORD_BYTES ||
-      Buffer.byteLength(hostAdmissionPassword) >
-        MAX_HOST_ADMISSION_PASSWORD_BYTES)
+    siteAccessPassword &&
+    (!VISIBLE_ASCII_PATTERN.test(siteAccessPassword) ||
+      Buffer.byteLength(siteAccessPassword) <
+        MIN_SITE_ACCESS_PASSWORD_BYTES ||
+      Buffer.byteLength(siteAccessPassword) >
+        MAX_SITE_ACCESS_PASSWORD_BYTES)
   ) {
     throw new Error(
-      "HOST_ADMISSION_PASSWORD must contain 8 to 128 visible ASCII bytes",
+      "SITE_ACCESS_PASSWORD must contain 8 to 128 visible ASCII bytes",
     );
   }
-  if (nodeEnv === "production" && !hostAdmissionPassword) {
-    throw new Error("HOST_ADMISSION_PASSWORD is required in production");
+  if (nodeEnv === "production" && !siteAccessPassword) {
+    throw new Error("SITE_ACCESS_PASSWORD is required in production");
   }
-  if (roomDatabasePath && !hostAdmissionPassword) {
-    throw new Error("ROOM_DATABASE_PATH requires HOST_ADMISSION_PASSWORD");
+  if (roomDatabasePath && !siteAccessPassword) {
+    throw new Error("ROOM_DATABASE_PATH requires SITE_ACCESS_PASSWORD");
   }
   if (nodeEnv === "production" && roomDatabasePath === ":memory:") {
     throw new Error("ROOM_DATABASE_PATH must be file-backed in production");
@@ -392,7 +395,7 @@ export function loadConfig(
       environment.ALLOWED_ORIGINS,
       publicBaseUrl.origin,
     ),
-    hostAdmissionPassword,
+    siteAccessPassword,
     roomDatabasePath,
     roomTtlMs:
       parsePositiveInteger(environment.ROOM_TTL_SECONDS, 14_400, "ROOM_TTL_SECONDS") *

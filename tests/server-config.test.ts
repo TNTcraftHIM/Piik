@@ -176,7 +176,7 @@ describe("server configuration", () => {
 
   it.each([
     {
-      HOST_ADMISSION_PASSWORD: "x".repeat(32),
+      SITE_ACCESS_PASSWORD: "x".repeat(32),
       PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
@@ -247,14 +247,14 @@ describe("server configuration", () => {
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        HOST_ADMISSION_PASSWORD: "host-password-12",
+        SITE_ACCESS_PASSWORD: "host-password-12",
       }),
     ).toThrow("STUN is required in production");
 
     const config = loadConfig({
       NODE_ENV: "production",
       PUBLIC_BASE_URL: "https://share.test",
-      HOST_ADMISSION_PASSWORD: "easy-key",
+      SITE_ACCESS_PASSWORD: "easy-key",
       STUN_URLS: "stun:stun.test:3478",
     });
     expect(config.stunUrls).toEqual(["stun:stun.test:3478"]);
@@ -264,7 +264,7 @@ describe("server configuration", () => {
     const config = loadConfig({
       NODE_ENV: "production",
       PUBLIC_BASE_URL: "https://share.test",
-      HOST_ADMISSION_PASSWORD: "host-password-12",
+      SITE_ACCESS_PASSWORD: "host-password-12",
       STUN_URLS: "stun:stun.test:3478",
       PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: "wss://livekit.test",
@@ -347,30 +347,30 @@ describe("server configuration", () => {
     ).toThrow("STUN_URLS must contain at most 8 URLs");
   });
 
-  it("requires and accepts a bounded production Host admission password", () => {
+  it("requires and accepts a bounded production site access password", () => {
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
         STUN_URLS: "stun:stun.test:3478",
       }),
-    ).toThrow("HOST_ADMISSION_PASSWORD is required in production");
+    ).toThrow("SITE_ACCESS_PASSWORD is required in production");
     const config = loadConfig({
       NODE_ENV: "production",
       PUBLIC_BASE_URL: "https://share.test",
-      HOST_ADMISSION_PASSWORD: "easy-key",
+      SITE_ACCESS_PASSWORD: "easy-key",
       STUN_URLS: "stun:stun.test:3478",
     });
-    expect(config.hostAdmissionPassword).toBe("easy-key");
+    expect(config.siteAccessPassword).toBe("easy-key");
   });
 
-  it("requires Host admission protection for a persistent room database", () => {
+  it("requires site access protection for a persistent room database", () => {
     expect(() => loadConfig({ ROOM_DATABASE_PATH: "rooms.sqlite" })).toThrow(
-      "ROOM_DATABASE_PATH requires HOST_ADMISSION_PASSWORD",
+      "ROOM_DATABASE_PATH requires SITE_ACCESS_PASSWORD",
     );
 
     const config = loadConfig({
-      HOST_ADMISSION_PASSWORD: "host-password-12",
+      SITE_ACCESS_PASSWORD: "host-password-12",
       ROOM_DATABASE_PATH: "rooms.sqlite",
     });
     expect(config.roomDatabasePath).toBe("rooms.sqlite");
@@ -381,7 +381,7 @@ describe("server configuration", () => {
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
-        HOST_ADMISSION_PASSWORD: "host-password-12",
+        SITE_ACCESS_PASSWORD: "host-password-12",
         ROOM_DATABASE_PATH: ":memory:",
         STUN_URLS: "stun:stun.test:3478",
       }),
@@ -389,12 +389,12 @@ describe("server configuration", () => {
   });
 
   it.each(["x".repeat(7), "密码密码密码密码", "contains spaces", "x".repeat(129)])(
-    "rejects a Host admission password outside the visible ASCII boundary",
-    (hostAdmissionPassword) => {
+    "rejects a site access password outside the visible ASCII boundary",
+    (siteAccessPassword) => {
       expect(() =>
-        loadConfig({ HOST_ADMISSION_PASSWORD: hostAdmissionPassword }),
+        loadConfig({ SITE_ACCESS_PASSWORD: siteAccessPassword }),
       ).toThrow(
-        "HOST_ADMISSION_PASSWORD must contain 8 to 128 visible ASCII bytes",
+        "SITE_ACCESS_PASSWORD must contain 8 to 128 visible ASCII bytes",
       );
     },
   );
@@ -403,7 +403,18 @@ describe("server configuration", () => {
     "rejects the removed ACCESS_PASSWORD configuration",
     (accessPassword) => {
       expect(() => loadConfig({ ACCESS_PASSWORD: accessPassword })).toThrow(
-        "ACCESS_PASSWORD is no longer supported; use HOST_ADMISSION_PASSWORD",
+        "ACCESS_PASSWORD is no longer supported; use SITE_ACCESS_PASSWORD",
+      );
+    },
+  );
+
+  it.each([undefined, "", "legacy-password"])(
+    "rejects the removed HOST_ADMISSION_PASSWORD configuration",
+    (removedPassword) => {
+      expect(() =>
+        loadConfig({ HOST_ADMISSION_PASSWORD: removedPassword }),
+      ).toThrow(
+        "HOST_ADMISSION_PASSWORD is no longer supported; use SITE_ACCESS_PASSWORD",
       );
     },
   );

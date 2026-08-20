@@ -217,9 +217,9 @@ class ObservedRoomStore extends RoomStore {
 function observeNodeStages(server: ScreenerServer, ledger: SenderStartLedger): void {
   server.httpServer.prependListener("request", (request, response) => {
     const path = new URL(request.url ?? "/", "http://gate.invalid").pathname;
-    if (request.method === "POST" && path === "/api/host-admission") {
+    if (request.method === "POST" && path === "/api/site-access") {
       response.once("finish", () => {
-        if (response.statusCode === 200) ledger.record({ hostAdmissionAccepted: true });
+        if (response.statusCode === 200) ledger.record({ siteAccessAccepted: true });
       });
     } else if (request.method === "POST" && path === "/api/rooms") {
       response.once("finish", () => {
@@ -321,7 +321,7 @@ async function main(): Promise<void> {
       LISTEN_HOST: "127.0.0.1",
       PUBLIC_BASE_URL: baseUrl,
       ALLOWED_ORIGINS: baseUrl,
-      HOST_ADMISSION_PASSWORD: accessKey,
+      SITE_ACCESS_PASSWORD: accessKey,
       ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "false",
       STUN_URLS: "",

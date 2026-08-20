@@ -28,7 +28,7 @@ const (
 	maxRemoteResponse     = 64 << 10
 	remoteRequestTimeout  = 10 * time.Second
 	signalWriteTimeout    = 5 * time.Second
-	hostAdmissionTTL      = 12 * time.Hour
+	siteAccessTTL         = 12 * time.Hour
 	nativeHostClaimTTL    = 5 * time.Minute
 	privateViewerGrantTTL = 7 * 24 * time.Hour
 	privateViewerPolicy   = "private-link"
@@ -53,7 +53,7 @@ type Event struct {
 
 type StartOptions struct {
 	BaseURL               *url.URL
-	HostAdmissionPassword string
+	SiteAccessPassword     string
 	Codec                 media.Codec
 	EnableAudio           bool
 	OnEvent               func(Event)
@@ -106,7 +106,7 @@ type createRoomResponse struct {
 	ExpiresAt            json.RawMessage `json:"expiresAt"`
 }
 
-type hostAdmissionStatus struct {
+type siteAccessStatus struct {
 	Required      *bool `json:"required"`
 	Authenticated *bool `json:"authenticated"`
 }
@@ -146,7 +146,7 @@ func Start(parent context.Context, options StartOptions) (*Session, Room, error)
 			return http.ErrUseLastResponse
 		},
 	}
-	if err = authenticateHTTP(parent, httpClient, options.BaseURL, options.HostAdmissionPassword); err != nil {
+	if err = authenticateHTTP(parent, httpClient, options.BaseURL, options.SiteAccessPassword); err != nil {
 		return nil, Room{}, err
 	}
 	created, err := createRoom(parent, httpClient, options.BaseURL)
@@ -712,17 +712,17 @@ func (session *Session) close() {
 }
 
 func authenticateHTTP(ctx context.Context, client *http.Client, base *url.URL, password string) error {
-	endpoint := base.ResolveReference(&url.URL{Path: "/api/host-admission"})
+	endpoint := base.ResolveReference(&url.URL{Path: "/api/site-access"})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), nil)
 	if err != nil {
-		return errors.New("prepare host admission request failed")
+		return errors.New("prepare site access request failed")
 	}
 	request.Header.Set("Origin", remoteOrigin(base))
 	request.Header.Set("Accept", "application/json")
 	if password != "" {
 		request.Header.Set("Authorization", "Bearer "+password)
 	}
-	var status hostAdmissionStatus
+	var status siteAccessStatus
 	response, err := doJSON(client, request, &status)
 	if err != nil {
 		return fmt.Errorf("authenticate with the Screener site: %w", err)
@@ -736,7 +736,7 @@ func authenticateHTTP(ctx context.Context, client *http.Client, base *url.URL, p
 	if !*status.Authenticated {
 		return errors.New("the Screener site did not authenticate this sender")
 	}
-	if err = validateHostAdmissionCookie(response, client.Jar, base, *status.Required); err != nil {
+	if err = validateSiteAccessCookie(response, client.Jar, base, *status.Required); err != nil {
 		return fmt.Errorf("authenticate with the Screener site: %w", err)
 	}
 	return nil
@@ -798,35 +798,35 @@ func remoteOrigin(base *url.URL) string {
 	return (&url.URL{Scheme: base.Scheme, Host: base.Host}).String()
 }
 
-func validateHostAdmissionCookie(response *http.Response, jar http.CookieJar, base *url.URL, required bool) error {
+func validateSiteAccessCookie(response *http.Response, jar http.CookieJar, base *url.URL, required bool) error {
 	setCookies := response.Header.Values("Set-Cookie")
 	if !required {
 		if len(setCookies) != 0 {
-			return errors.New("unexpected host admission cookie")
+			return errors.New("unexpected site access cookie")
 		}
 		return nil
 	}
 	if len(setCookies) != 1 {
-		return errors.New("host admission cookie is missing or ambiguous")
+		return errors.New("site access cookie is missing or ambiguous")
 	}
 	cookies := response.Cookies()
 	if len(cookies) != 1 {
-		return errors.New("host admission cookie is invalid")
+		return errors.New("site access cookie is invalid")
 	}
 	cookie := cookies[0]
-	expectedName := "screener-host-admission"
+	expectedName := "screener-site-access"
 	if base.Scheme == "https" {
-		expectedName = "__Host-screener-host-admission"
+		expectedName = "__Host-screener-site-access"
 	}
 	if cookie.Name != expectedName || !admissionCookiePattern.MatchString(cookie.Value) ||
-		cookie.Path != "/" || cookie.Domain != "" || cookie.MaxAge != int(hostAdmissionTTL/time.Second) ||
+		cookie.Path != "/" || cookie.Domain != "" || cookie.MaxAge != int(siteAccessTTL/time.Second) ||
 		!cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Secure != (base.Scheme == "https") ||
 		cookie.Quoted || cookie.Partitioned || cookie.RawExpires != "" || !cookie.Expires.IsZero() || len(cookie.Unparsed) != 0 {
-		return errors.New("host admission cookie is invalid")
+		return errors.New("site access cookie is invalid")
 	}
 	stored := jar.Cookies(base)
 	if len(stored) != 1 || stored[0].Name != cookie.Name || stored[0].Value != cookie.Value {
-		return errors.New("host admission cookie was not retained")
+		return errors.New("site access cookie was not retained")
 	}
 	return nil
 }

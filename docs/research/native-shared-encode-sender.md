@@ -152,7 +152,7 @@ The bounded Android data path is:
 
 ```text
 MediaProjection Surface -> one hardware MediaCodec fixed-HIGH encoder
-  -> existing Host admission / room / WSS / standard WebRTC
+  -> existing site access / room / WSS / standard WebRTC
   -> one or two unmodified Web viewers
 ```
 
@@ -205,7 +205,7 @@ audio or automatic `LOW`. This is a proposed test boundary, not current product
 behavior or hardware-encoder evidence.
 
 The 2026-08-20 local delivery checkpoint rebases that candidate onto the sole
-current access contract: `screener-v2`, Host-admission Cookie authentication,
+current access contract: `screener-v2`, site-access Cookie authentication,
 explicit `private-link` creation, fragment-only Viewer grants returned to the
 local Host, and STUN-only ordinary ICE. Native creation alone requests a fixed
 300-second provisional room. It remains random and memory-only even with SQLite
@@ -263,7 +263,7 @@ rechecked 2026-08-20.
 
 One separately authorized second current-wire run used the frozen gate once and
 did not retry or adjust a threshold. Its append-and-flush ledger reached sequence
-7 and retained positive booleans for capture request/resolution, Host admission,
+7 and retained positive booleans for capture request/resolution, site access,
 private room creation, Host WSS authentication, bridge readiness, fixed VP8
 1280x720@30/3 Mbps config acceptance, one encoder object, and entry into the
 first WebCodecs output callback. The ledger serialized zero media counters but

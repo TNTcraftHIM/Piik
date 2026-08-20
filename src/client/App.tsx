@@ -2,9 +2,9 @@ import { KeyRound, LoaderCircle } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ApiError,
-  authenticateHost,
-  getHostAdmission,
-  type HostAdmissionStatus,
+  authenticateSiteAccess,
+  getSiteAccess,
+  type SiteAccessStatus,
 } from "./lib/api";
 import { readViewerRoute } from "./lib/session";
 import { HostPage } from "./pages/HostPage";
@@ -21,7 +21,7 @@ type AccessState =
   | { kind: "required"; error: string | null }
   | { kind: "unavailable"; message: string };
 
-function stateFromStatus(status: HostAdmissionStatus): AccessState {
+function stateFromStatus(status: SiteAccessStatus): AccessState {
   return !status.required || status.authenticated
     ? { kind: "ready" }
     : { kind: "required", error: null };
@@ -35,25 +35,33 @@ function readableError(error: unknown): string {
 
 export function App() {
   if (viewerRoute) {
-    return <ViewerPage {...viewerRoute} />;
+    return viewerRoute.viewerGrant ? (
+      <ViewerPage {...viewerRoute} />
+    ) : (
+      <SiteAccessGate surface="viewer" />
+    );
   }
   if (isHostRoute) {
-    return <HostAdmissionGate surface="host" />;
+    return <SiteAccessGate surface="host" />;
   }
   if (isJoinRoute) {
-    return <HostAdmissionGate surface="join" />;
+    return <SiteAccessGate surface="join" />;
   }
   return <UnavailableRoute />;
 }
 
-function HostAdmissionGate({ surface }: { surface: "host" | "join" }) {
+function SiteAccessGate({
+  surface,
+}: {
+  surface: "host" | "join" | "viewer";
+}) {
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void getHostAdmission().then(
+    void getSiteAccess().then(
       (status) => active && setAccess(stateFromStatus(status)),
       (error: unknown) =>
         active &&
@@ -67,7 +75,7 @@ function HostAdmissionGate({ surface }: { surface: "host" | "join" }) {
   async function retry(): Promise<void> {
     setAccess({ kind: "checking" });
     try {
-      setAccess(stateFromStatus(await getHostAdmission()));
+      setAccess(stateFromStatus(await getSiteAccess()));
     } catch (error) {
       setAccess({ kind: "unavailable", message: readableError(error) });
     }
@@ -84,7 +92,9 @@ function HostAdmissionGate({ surface }: { surface: "host" | "join" }) {
 
     setSubmitting(true);
     try {
-      setAccess(stateFromStatus(await authenticateHost(submittedPassword)));
+      setAccess(
+        stateFromStatus(await authenticateSiteAccess(submittedPassword)),
+      );
     } catch (error) {
       setAccess({
         kind: "required",
@@ -99,6 +109,9 @@ function HostAdmissionGate({ surface }: { surface: "host" | "join" }) {
   }
 
   if (access.kind === "ready") {
+    if (surface === "viewer" && viewerRoute) {
+      return <ViewerPage {...viewerRoute} />;
+    }
     if (surface === "join") {
       return <JoinPage />;
     }

@@ -3,7 +3,7 @@ map $http_upgrade $screener_connection_upgrade {
     '' close;
 }
 
-limit_req_zone $binary_remote_addr zone=screener_host_admission:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=screener_site_access:10m rate=5r/m;
 
 server {
     listen 80;
@@ -84,8 +84,8 @@ server {
         return 404;
     }
 
-    location = /api/host-admission {
-        limit_req zone=screener_host_admission burst=5 nodelay;
+    location = /api/site-access {
+        limit_req zone=screener_site_access burst=5 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:8787;
         proxy_http_version 1.1;
