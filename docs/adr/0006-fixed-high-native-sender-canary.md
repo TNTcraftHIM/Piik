@@ -100,14 +100,23 @@ This remains `no-go-unclassified`. The frozen probe counted the first encoded
 chunk before invoking the product output callback and did not record whether the
 generation-bound local bridge attempted, returned from, or threw during its
 binary send. Static inspection finds matching 17-byte big-endian frame contracts
-on the Web and Go sides, but cannot convert that into runtime evidence. The proven
-break interval is therefore after WebCodecs output callback entry and before Go
-frame/source-RTP accounting, not a proven product bridge defect. The current
-unrun gate now records only bounded attempt/synchronous-return/synchronous-throw
-counters for the first local bridge generation and rechecks that identity at
-Viewer signal, Viewer media, and final success. Pure tests reject late
-replacement. A further run requires separate authorization. There is still no
-Viewer, two-viewer, FIFO, or physical/hardware-encoder proof.
+on the Web and Go sides. A focused integration now configures the real `/media`
+handler, sends one same-contract binary frame, and observes positive Go frame and
+source-RTP accounting. That proves the current envelope can enter the current Go
+fanout in a controlled test, not that the retained browser executed its send.
+
+The handler no longer returns silently for every post-config bridge read error:
+while the app context is active, any close other than normal or going-away emits
+one `fatal` with the fixed sanitized message `local media bridge read failed`.
+Focused tests prove the abnormal classification without its underlying close
+reason and prove normal close and app shutdown do not misreport. This is a real
+P1 bridge-read failure fix, but it does not classify the retained zero counters
+or prove a framing defect. The current unrun gate still records only bounded
+attempt/synchronous-return/synchronous-throw counters for the first local bridge
+generation and rechecks that identity at Viewer signal, Viewer media, and final
+success. Pure tests reject late replacement. No Chrome rerun occurred; another
+run requires separate authorization. There is still no Viewer, two-viewer, FIFO,
+or physical/hardware-encoder proof.
 
 ## Staged Revalidation
 

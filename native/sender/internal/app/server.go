@@ -332,6 +332,9 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 	for {
 		messageType, payload, err = connection.Read(app.ctx)
 		if err != nil {
+			if failure := postConfigMediaReadFailure(app.ctx, err); failure != nil {
+				session.Fail(failure)
+			}
 			return
 		}
 		if messageType != websocket.MessageBinary {
@@ -348,6 +351,18 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 		if err = session.WriteFrame(frame); err != nil {
 			return
 		}
+	}
+}
+
+func postConfigMediaReadFailure(appContext context.Context, err error) error {
+	if err == nil || appContext.Err() != nil {
+		return nil
+	}
+	switch websocket.CloseStatus(err) {
+	case websocket.StatusNormalClosure, websocket.StatusGoingAway:
+		return nil
+	default:
+		return errors.New("local media bridge read failed")
 	}
 }
 
