@@ -119,6 +119,9 @@ interface ViewerSnapshot {
   videoHeight: number;
   videoCurrentTime: number;
   renderedFrames: number;
+  audioTrackCount: number;
+  audioPacketsReceived: number;
+  audioBytesReceived: number;
 }
 
 class CdpConnection {
@@ -274,6 +277,7 @@ async function main(): Promise<void> {
   const chromePath = requiredEnvironmentPath("SCREENER_NATIVE_GATE_CHROME");
   const goPath = process.env.SCREENER_NATIVE_GATE_GO?.trim() || "go";
   const gateCodec = process.env.SCREENER_NATIVE_GATE_CODEC?.trim() === "h264" ? "h264" : "vp8";
+  const audioTargetTitle = process.env.SCREENER_NATIVE_GATE_AUDIO_TARGET_TITLE?.trim() || "";
   const accessKey = randomBytes(9).toString("base64url");
   const report: GateReport = {
     schemaVersion: 1,
@@ -283,7 +287,9 @@ async function main(): Promise<void> {
     limitations: [
       "The source is a real animated Chrome tab captured through getDisplayMedia, not a game workload.",
       "This run proves one WebCodecs object, not one physical or hardware encoder.",
-      "The loopback run does not prove public STUN, restrictive networks, TURN, audio, packaging, or endurance.",
+      audioTargetTitle
+        ? "The loopback run does not prove public STUN, restrictive networks, TURN, packaging, or endurance."
+        : "The loopback run does not prove public STUN, restrictive networks, TURN, audio, packaging, or endurance.",
     ],
   };
   let server: ScreenerServer | null = null;
@@ -366,10 +372,22 @@ async function main(): Promise<void> {
     await createPage(cdp, animatedSourceUrl());
     const activeSenderPage = await createPage(cdp, launchUrl, senderProbe());
     senderPage = activeSenderPage;
+    let audioTargetId = "";
+    if (audioTargetTitle) {
+      await waitForSample(
+        (deadline) => evaluate<string>(cdp!, activeSenderPage,
+          `([...document.querySelector('#audio-target').options].find((option) => option.text.includes(${JSON.stringify(audioTargetTitle)}))?.value || '')`, deadline),
+        Boolean,
+        5_000,
+      );
+      audioTargetId = await evaluate<string>(cdp, activeSenderPage,
+        `([...document.querySelector('#audio-target').options].find((option) => option.text.includes(${JSON.stringify(audioTargetTitle)}))?.value || '')`, Date.now() + 2_000);
+    }
     await evaluate<void>(cdp, activeSenderPage, `(() => {
       document.querySelector('#server-url').value = ${JSON.stringify(baseUrl)};
       document.querySelector('#password').value = ${JSON.stringify(accessKey)};
       document.querySelector('#codec').value = ${JSON.stringify(gateCodec)};
+      document.querySelector('#audio-target').value = ${JSON.stringify(audioTargetId)};
       document.querySelector('#start').click();
     })()`, Date.now() + 5_000);
     await waitForSenderStart(
@@ -464,6 +482,10 @@ async function main(): Promise<void> {
         sameBridge: retainsFirstBridgeSend(sender),
         oneEncoderObject: sender.encoderInstances === 1,
         criticalErrors: sender.fatalEvents === 0 && sender.encoderErrors === 0,
+        ...(audioTargetTitle ? {
+          audioTrack: viewer.audioTrackCount === 1,
+          audioInbound: viewer.audioPacketsReceived > beforeViewer.audioPacketsReceived,
+        } : {}),
       };
       report.stages["viewer-media"] = {
         ...checks,
@@ -471,6 +493,7 @@ async function main(): Promise<void> {
         byteDelta: viewer.bytesReceived - beforeViewer.bytesReceived,
         decodedDelta: viewer.framesDecoded - beforeViewer.framesDecoded,
         renderedDelta: viewer.renderedFrames - beforeViewer.renderedFrames,
+        audioPacketDelta: viewer.audioPacketsReceived - beforeViewer.audioPacketsReceived,
         pionPacketDelta: (sender.peers[0]?.packetsSent ?? 0) - (beforeSender.peers[0]?.packetsSent ?? 0),
         pcOrdinal: viewer.identity.pcOrdinal,
         pionSlot: sender.peers[0]?.slot ?? -1,
@@ -648,6 +671,7 @@ function viewerProbe(): string {
       consistent: true, pendingOffer: null,
       pcs: [], boundPcOrdinal: 0, boundConnectionOrdinal: 0, boundSocketOrdinal: 0,
       boundAuthGeneration: 0, trackCount: 0, trackOrdinal: 0, trackPcOrdinal: 0,
+      audioTrackCount: 0,
       renderedFrames: 0, observedVideo: null };
     const connectionOrdinal = (value) => {
       let index = state.connectionIds.indexOf(value);
@@ -733,6 +757,7 @@ function viewerProbe(): string {
         state.pcs.push(this);
         this.__gatePcOrdinal = state.pcs.length;
         this.addEventListener('track', (event) => {
+          if (event.track?.kind === 'audio') { state.audioTrackCount += 1; return; }
           if (event.track?.kind !== 'video') return;
           state.trackCount += 1; state.trackOrdinal = state.trackCount;
           state.trackPcOrdinal = this.__gatePcOrdinal;
@@ -762,6 +787,7 @@ function viewerProbe(): string {
       }
       const pc = state.pcs[state.boundPcOrdinal - 1];
       let packetsReceived = 0, bytesReceived = 0, framesDecoded = 0;
+      let audioPacketsReceived = 0, audioBytesReceived = 0;
       if (pc) {
         const stats = await pc.getStats();
         stats.forEach((entry) => {
@@ -769,6 +795,10 @@ function viewerProbe(): string {
             packetsReceived += finite(entry.packetsReceived);
             bytesReceived += finite(entry.bytesReceived);
             framesDecoded += finite(entry.framesDecoded);
+          }
+          if (entry.type === 'inbound-rtp' && entry.kind === 'audio' && entry.isRemote !== true) {
+            audioPacketsReceived += finite(entry.packetsReceived);
+            audioBytesReceived += finite(entry.bytesReceived);
           }
         });
       }
@@ -787,7 +817,8 @@ function viewerProbe(): string {
         iceConnectionState: pc?.iceConnectionState || 'none', packetsReceived, bytesReceived, framesDecoded,
         videoReadyState: finite(video?.readyState), videoWidth: finite(video?.videoWidth),
         videoHeight: finite(video?.videoHeight), videoCurrentTime: finite(video?.currentTime),
-        renderedFrames: state.renderedFrames };
+        renderedFrames: state.renderedFrames, audioTrackCount: state.audioTrackCount,
+        audioPacketsReceived, audioBytesReceived };
     }
     const finite = (value) => Number.isFinite(value) ? value : 0;
     Object.defineProperty(globalThis, '__NATIVE_VIEWER_GATE__', {

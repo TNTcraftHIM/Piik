@@ -2,12 +2,10 @@ package media
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
@@ -15,10 +13,8 @@ import (
 )
 
 const (
-	FrameHeaderBytes = 17
-	MaxFrameBytes    = 1 << 20
-	queueCapacity    = 8
-	videoClockRate   = 90_000
+	queueCapacity  = 8
+	videoClockRate = 90_000
 )
 
 // Codec selects the encoded representation carried by the native bridge.
@@ -135,7 +131,7 @@ func (fanout *Fanout) Track() *webrtc.TrackLocalStaticRTP {
 }
 
 func (fanout *Fanout) Push(frame Frame) error {
-	if len(frame.Data) == 0 || len(frame.Data) > MaxFrameBytes || frame.DurationMicros == 0 {
+	if len(frame.Data) == 0 || len(frame.Data) > MaxMediaPayload || frame.DurationMicros == 0 {
 		return errors.New("encoded frame violates the bounded media contract")
 	}
 	result, err := fanout.queue.Push(frame)
@@ -282,26 +278,4 @@ func microsToSamples(micros uint64) (uint32, error) {
 		return 0, errors.New("encoded frame timestamp gap is too large")
 	}
 	return uint32(samples), nil
-}
-
-func DecodeFrame(payload []byte) (Frame, error) {
-	if len(payload) <= FrameHeaderBytes || len(payload)-FrameHeaderBytes > MaxFrameBytes {
-		return Frame{}, errors.New("encoded frame is empty, truncated, or too large")
-	}
-	frame := Frame{
-		TimestampMicros: binary.BigEndian.Uint64(payload[1:9]),
-		DurationMicros:  binary.BigEndian.Uint64(payload[9:17]),
-		Data:            append([]byte(nil), payload[FrameHeaderBytes:]...),
-	}
-	switch payload[0] {
-	case 1:
-		frame.KeyFrame = true
-	case 2:
-	default:
-		return Frame{}, errors.New("encoded frame type is invalid")
-	}
-	if frame.DurationMicros == 0 || frame.DurationMicros > uint64(time.Second/time.Microsecond) {
-		return Frame{}, errors.New("encoded frame duration is invalid")
-	}
-	return frame, nil
 }

@@ -42,6 +42,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Chrome 151 loopbacks decoded VP8 299 and H.264 opt-in 299/298 rendered at 1280x720 without fatal/encoder errors. Hardware attribution, Pion timing, multi-viewer/endurance/public/native proof remain open; production stays VP8.
+- Native Win11 audio is source-only/default-off. Smoke isolated target 4018x; one Viewer got 495 Opus packets. Packaging, game sync, Win10, and other routes remain open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
 - `61a87ae` Host names, `d1a4fd4` window-audio hint, and `cf149df` all-room routing are active; the stale restart assertion is historical only.
@@ -52,7 +53,6 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - The final deployment proves process/config health, not a retained SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas; game-share load/blur remains unclassified.
 - Android Chrome/iOS Safari Viewer leaves remain unverified and conservatively leaf-only. Mobile Web Host is unsupported; native senders are planned only.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
-- Real audio and heterogeneous clients remain unverified. System capture can lose film audio or echo voice calls; Web has no process isolation. Diagnose A/B/C and sync; gate Windows 11 game audio; Windows 10 unresolved.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
 - ADR-0006 has one Viewer proof; two-edge/FIFO, physical hardware, endurance, public, packaged-native, and browser-diversity proof remain open.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
@@ -74,7 +74,7 @@ evacuation. Native source accepts increasing capture timestamps shorter than
 duration; VP8 and explicit H.264 Viewer decode/render are recorded. Hardware
 preference is not physical proof. Next prove fresh Pion
 outbound diagnostics before viewer 2/FIFO/hardware/endurance/deploy.
-Audio A/B/C may proceed without displacing P0.
+Package Native audio and test one real-game A/V pair later without displacing P0.
 Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. The
 selected-edge tuple is configured in production, but Host ingress still needs one
 forced-relay canary before any media-success claim. Retained performance/resource

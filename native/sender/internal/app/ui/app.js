@@ -12,6 +12,10 @@ const FRAME_DURATION = Math.round(1_000_000 / FPS);
 const MAX_ENCODER_QUEUE = 2;
 const MAX_SOCKET_BUFFER = 512 * 1024;
 const MAX_FRAME_BYTES = 1 << 20;
+const ENVELOPE_HEADER_BYTES = 20;
+const MEDIA_KIND_VIDEO = 1;
+const MEDIA_KIND_PCM = 2;
+const MEDIA_KIND_OPUS = 3;
 
 const fragment = new URLSearchParams(location.hash.slice(1));
 const processToken = fragment.get("token") || "";
@@ -21,6 +25,8 @@ const elements = {
   serverURL: document.querySelector("#server-url"),
   password: document.querySelector("#password"),
   codec: document.querySelector("#codec"),
+  audioTarget: document.querySelector("#audio-target"),
+  refreshAudio: document.querySelector("#refresh-audio"),
   start: document.querySelector("#start"),
   stop: document.querySelector("#stop"),
   preview: document.querySelector("#preview"),
@@ -36,11 +42,14 @@ const elements = {
   bridgeDiagnostic: document.querySelector("#bridge-diagnostic"),
   helperDiagnostic: document.querySelector("#helper-diagnostic"),
   edgeDiagnostic: document.querySelector("#edge-diagnostic"),
+  audioStatus: document.querySelector("#audio-status"),
 };
 
 let stream = null;
 let processorReader = null;
 let encoder = null;
+let audioEncoder = null;
+let silentAudioChunks = 0;
 let mediaSocket = null;
 let sharing = false;
 let stopping = false;
@@ -71,6 +80,8 @@ elements.copy.addEventListener("click", async () => {
     showError("无法复制链接，请直接打开邀请链接");
   }
 });
+elements.refreshAudio.addEventListener("click", () => void loadAudioTargets());
+if (processToken) void loadAudioTargets();
 
 async function startSharing() {
   if (sharing || stopping || startInFlight) return;
@@ -83,6 +94,13 @@ async function startSharing() {
   elements.start.disabled = true;
   const generation = ++startGeneration;
   const codec = selectedCodec();
+  const audioTargetId = elements.audioTarget.value;
+  if (audioTargetId && (!("AudioEncoder" in window) || !("AudioData" in window))) {
+    showError("当前浏览器缺少 WebCodecs Opus 编码支持，请关闭目标进程音频或使用当前版 Chrome / Edge");
+    startInFlight = false;
+    elements.start.disabled = false;
+    return;
+  }
   setStatus("选择屏幕");
   try {
     const capturedStream = await navigator.mediaDevices.getDisplayMedia({
@@ -111,6 +129,7 @@ async function startSharing() {
       serverUrl: elements.serverURL.value,
       password: elements.password.value,
       codec,
+      audioTargetId,
     });
     assertCurrentStart(generation);
     if (pendingStartGeneration === generation) pendingStartGeneration = 0;
@@ -120,7 +139,8 @@ async function startSharing() {
     elements.inviteLink.textContent = room.inviteUrl;
     elements.invite.hidden = false;
 
-    await connectMediaSocket(generation, codec);
+    if (audioTargetId) await startAudioEncoder(generation);
+    await connectMediaSocket(generation, codec, Boolean(audioTargetId));
     assertCurrentStart(generation);
     const activeEncoder = await startEncoder(generation, codec);
     assertCurrentStart(generation);
@@ -139,7 +159,7 @@ async function startSharing() {
   }
 }
 
-async function connectMediaSocket(generation, codec) {
+async function connectMediaSocket(generation, codec, audio) {
   const url = new URL("/media", location.href);
   url.protocol = "ws:";
   const socket = new WebSocket(url, [`screener.token.${processToken}`]);
@@ -166,6 +186,7 @@ async function connectMediaSocket(generation, codec) {
     fps: FPS,
     bitrate: BITRATE,
     encoderInstances: 1,
+    audio,
   }));
   await accepted;
   assertCurrentStart(generation, socket);
@@ -275,12 +296,13 @@ function sendEncodedChunk(generation, activeEncoder, chunk) {
     }
     const data = new Uint8Array(chunk.byteLength);
     chunk.copyTo(data);
-    const message = new ArrayBuffer(17 + data.byteLength);
-    const view = new DataView(message);
-    view.setUint8(0, chunk.type === "key" ? 1 : 2);
-    view.setBigUint64(1, BigInt(Math.max(0, chunk.timestamp)), false);
-    view.setBigUint64(9, BigInt(chunk.duration || FRAME_DURATION), false);
-    new Uint8Array(message, 17).set(data);
+    const message = mediaEnvelope(
+      MEDIA_KIND_VIDEO,
+      chunk.type === "key" ? 1 : 0,
+      BigInt(Math.max(0, chunk.timestamp)) * 10n,
+      BigInt(chunk.duration || FRAME_DURATION) * 10n,
+      data,
+    );
     mediaSocket.send(message);
     metrics.encoderOutputs += 1;
     metrics.encodedBytes += data.byteLength;
@@ -293,6 +315,10 @@ function sendEncodedChunk(generation, activeEncoder, chunk) {
 
 function handleLocalEvent(generation, socket, event) {
   if (generation !== startGeneration || socket !== mediaSocket) return;
+  if (event.data instanceof ArrayBuffer) {
+    handlePCM(generation, event.data);
+    return;
+  }
   if (typeof event.data !== "string") return;
   const message = parseLocalMessage(event.data);
   if (!message) return;
@@ -305,6 +331,11 @@ function handleLocalEvent(generation, socket, event) {
     updateDiagnostics();
   }
   if (message.kind === "warning" && message.message) showError(message.message);
+  if (message.kind === "audio-state") {
+    elements.audioStatus.textContent = message.state === "unavailable"
+      ? "不可用（未回退系统声音）"
+      : "正在连接目标进程";
+  }
   if (message.kind === "fatal") {
     void failSharing(generation, message.message || "分享会话已失败并停止");
   }
@@ -347,6 +378,12 @@ async function stopSharing(expectedGeneration = startGeneration) {
       rememberError(error);
     }
     encoder = null;
+    try {
+      if (audioEncoder && audioEncoder.state !== "closed") audioEncoder.close();
+    } catch (error) {
+      rememberError(error);
+    }
+    audioEncoder = null;
     const socket = mediaSocket;
     mediaSocket = null;
     try {
@@ -365,6 +402,7 @@ async function stopSharing(expectedGeneration = startGeneration) {
   } finally {
     frameNumber = 0;
     forceKeyFrame = true;
+    silentAudioChunks = 0;
     captureSettings = null;
     nativeDiagnostics = null;
     metrics = emptyMetrics();
@@ -379,6 +417,7 @@ async function stopSharing(expectedGeneration = startGeneration) {
     elements.start.disabled = startInFlight;
     showViewerCounts(0, 0);
     setStatus("未开始");
+    elements.audioStatus.textContent = "关闭";
     stopping = false;
   }
 }
@@ -444,6 +483,100 @@ async function localRequest(path, body) {
   }
   if (!response.ok) throw new Error(result.error || `本地发送端返回 HTTP ${response.status}`);
   return result;
+}
+
+async function loadAudioTargets() {
+  elements.refreshAudio.disabled = true;
+  const previous = elements.audioTarget.value;
+  try {
+    const result = await localRequest("/api/audio-targets");
+    elements.audioTarget.replaceChildren(new Option("关闭", ""));
+    for (const target of Array.isArray(result.targets) ? result.targets : []) {
+      if (target?.id && target?.title) elements.audioTarget.add(new Option(target.title, target.id));
+    }
+    if ([...elements.audioTarget.options].some((option) => option.value === previous)) {
+      elements.audioTarget.value = previous;
+    }
+    elements.audioTarget.disabled = !result.supported;
+    elements.audioStatus.textContent = result.supported ? "关闭" : "Windows 11 helper 不可用";
+  } catch (error) {
+    elements.audioTarget.disabled = true;
+    elements.audioStatus.textContent = readableError(error, "窗口列表不可用");
+  } finally {
+    elements.refreshAudio.disabled = false;
+  }
+}
+
+async function startAudioEncoder(generation) {
+  const config = { codec: "opus", sampleRate: 48_000, numberOfChannels: 2, bitrate: 128_000 };
+  const support = await AudioEncoder.isConfigSupported(config);
+  assertCurrentStart(generation);
+  if (!support.supported) throw new Error("当前浏览器不支持 WebCodecs Opus 编码");
+  let active;
+  active = new AudioEncoder({
+    output: (chunk) => sendEncodedAudio(generation, active, chunk),
+    error: (error) => void failSharing(generation, `音频编码器失败：${error.message}`),
+  });
+  audioEncoder = active;
+  active.configure(support.config);
+  elements.audioStatus.textContent = "等待目标进程音频";
+}
+
+function handlePCM(generation, message) {
+  if (generation !== startGeneration || !audioEncoder || audioEncoder.state !== "configured") return;
+  if (audioEncoder.encodeQueueSize >= 4) return;
+  try {
+    const view = new DataView(message);
+    if (message.byteLength <= ENVELOPE_HEADER_BYTES || view.getUint8(0) !== 1 ||
+      view.getUint8(1) !== MEDIA_KIND_PCM || view.getUint8(2) !== 0 || view.getUint8(3) !== 0) {
+      throw new Error("本地 PCM envelope 无效");
+    }
+    const data = new Uint8Array(message, ENVELOPE_HEADER_BYTES);
+    if (data.byteLength % 4 !== 0) throw new Error("本地 PCM 帧长度无效");
+    let audible = false;
+    for (const byte of data) if (byte !== 0) { audible = true; break; }
+    silentAudioChunks = audible ? 0 : silentAudioChunks + 1;
+    elements.audioStatus.textContent = silentAudioChunks >= 100
+      ? "目标进程当前无声（未回退系统声音）"
+      : "目标进程树音频";
+    const audio = new AudioData({
+      format: "s16", sampleRate: 48_000, numberOfChannels: 2,
+      numberOfFrames: data.byteLength / 4,
+      timestamp: Number(view.getBigUint64(4, false) / 10n), data,
+    });
+    audioEncoder.encode(audio);
+    audio.close();
+  } catch (error) {
+    void failSharing(generation, readableError(error, "处理目标进程音频失败"));
+  }
+}
+
+function sendEncodedAudio(generation, activeEncoder, chunk) {
+  if (generation !== startGeneration || stopping || audioEncoder !== activeEncoder ||
+    !mediaSocket || mediaSocket.readyState !== WebSocket.OPEN) return;
+  if (chunk.byteLength < 1 || chunk.byteLength > 64 * 1024 ||
+    mediaSocket.bufferedAmount > MAX_SOCKET_BUFFER) {
+    void failSharing(generation, "本地音频桥接超过安全上限");
+    return;
+  }
+  const data = new Uint8Array(chunk.byteLength);
+  chunk.copyTo(data);
+  mediaSocket.send(mediaEnvelope(
+    MEDIA_KIND_OPUS, 0, BigInt(Math.max(0, chunk.timestamp)) * 10n,
+    BigInt(chunk.duration || 20_000) * 10n, data,
+  ));
+}
+
+function mediaEnvelope(kind, flags, timestamp100ns, duration100ns, data) {
+  const message = new ArrayBuffer(ENVELOPE_HEADER_BYTES + data.byteLength);
+  const view = new DataView(message);
+  view.setUint8(0, 1);
+  view.setUint8(1, kind);
+  view.setUint8(2, flags);
+  view.setBigUint64(4, timestamp100ns, false);
+  view.setBigUint64(12, duration100ns, false);
+  new Uint8Array(message, ENVELOPE_HEADER_BYTES).set(data);
+  return message;
 }
 
 function showViewerCounts(activeValue, waitingValue) {

@@ -97,20 +97,37 @@ func newPeer(session *Session, peerID string, slot int, configuration webrtc.Con
 			}
 		}
 	})
-	sender, err := connection.AddTrack(session.fanout.Track())
+	videoSender, err := connection.AddTrack(session.fanout.Track())
 	if err != nil {
 		_ = connection.Close()
 		return nil, errors.New("bind shared encoded track failed")
 	}
+	var audioSender *webrtc.RTPSender
+	if session.audioFanout != nil {
+		audioSender, err = connection.AddTrack(session.audioFanout.Track())
+		if err != nil {
+			_ = connection.Close()
+			return nil, errors.New("bind shared Opus track failed")
+		}
+	}
 	if session.codec == media.CodecH264 {
-		transceivers := connection.GetTransceivers()
-		if len(transceivers) != 1 || len(session.codecPreferences) == 0 ||
-			transceivers[0].SetCodecPreferences(session.codecPreferences) != nil {
+		var videoTransceiver *webrtc.RTPTransceiver
+		for _, transceiver := range connection.GetTransceivers() {
+			if transceiver.Kind() == webrtc.RTPCodecTypeVideo {
+				videoTransceiver = transceiver
+				break
+			}
+		}
+		if videoTransceiver == nil || len(session.codecPreferences) == 0 ||
+			videoTransceiver.SetCodecPreferences(session.codecPreferences) != nil {
 			_ = connection.Close()
 			return nil, errors.New("configure H.264 codec preferences failed")
 		}
 	}
-	go peer.readRTCP(sender)
+	go peer.readRTCP(videoSender)
+	if audioSender != nil {
+		go peer.readRTCP(audioSender)
+	}
 	return peer, nil
 }
 

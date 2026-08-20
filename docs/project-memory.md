@@ -30,7 +30,7 @@ Last updated: 2026-08-21
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
-- System capture can cause film-audio loss/self-echo; Web cannot isolate processes. Diagnose A/B/C and sync; Windows 11 native game-tree audio is a candidate, Windows 10 unresolved. See `docs/research/browser-screen-audio-quality.md`.
+- Web capture cannot isolate process audio. ADR-0008 Windows 11 native audio is opt-in/source-only: opaque local selection, no system-mix fallback or exposed PID, and one shared Opus track; one direct Viewer received 495 packets. Packaging, game A/V sync, other routes, and Windows 10 remain open.
 - Viewer-local names and the opt-in Web participant roster remain control-plane-only. Web Host names are deployed in the current release and stay socket/localStorage-only; Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.

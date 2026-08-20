@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/media"
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/remote"
+	"github.com/TNTcraftHIM/Screener/native/sender/internal/windowaudio"
 	"github.com/coder/websocket"
 )
 
@@ -59,6 +59,49 @@ func TestDecodeLocalPayloadIsStrictAndSingleValued(t *testing.T) {
 		if err := decodeLocalPayload(payload, &encoderConfig{}); err == nil {
 			t.Fatalf("invalid local config was accepted: %s", payload)
 		}
+	}
+}
+
+func TestAudioTargetListingKeepsProcessIdentityBehindAnOpaqueLocalID(t *testing.T) {
+	application, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.audioProvider = fakeAudioProvider{targets: []windowaudio.Target{{
+		PID: 424_242, CreationTime: 987_654_321, Title: "Game Window",
+	}}}
+	if _, err = application.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+
+	request, err := http.NewRequest(http.MethodPost, application.origin+"/api/audio-targets", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Origin", application.origin)
+	request.Header.Set(processTokenHeader, application.token)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var result struct {
+		Supported bool               `json:"supported"`
+		Targets   []localAudioTarget `json:"targets"`
+	}
+	if json.NewDecoder(response.Body).Decode(&result) != nil || !result.Supported || len(result.Targets) != 1 {
+		t.Fatalf("audio target response = %+v", result)
+	}
+	if result.Targets[0].ID == "" || result.Targets[0].Title != "Game Window" ||
+		strings.Contains(result.Targets[0].ID, "424242") || strings.Contains(result.Targets[0].ID, "987654321") {
+		t.Fatalf("audio target was not locally anonymized: %+v", result.Targets[0])
+	}
+	application.mu.Lock()
+	resolved := application.audioTargets[result.Targets[0].ID]
+	application.mu.Unlock()
+	if resolved.PID != 424_242 || resolved.CreationTime != 987_654_321 {
+		t.Fatal("opaque target did not resolve in process memory")
 	}
 }
 
@@ -193,19 +236,26 @@ func TestConfiguredMediaFramesWithCaptureJitterReachFanout(t *testing.T) {
 	application, events, terminal := startObservedTestApplication(t)
 	connection := openConfiguredMedia(t, application)
 
-	payload := make([]byte, media.FrameHeaderBytes+4)
-	payload[0] = 1
-	binary.BigEndian.PutUint64(payload[1:9], 1_000_000)
-	binary.BigEndian.PutUint64(payload[9:17], 33_333)
-	copy(payload[media.FrameHeaderBytes:], []byte{0x10, 0x00, 0x00, 0x00})
+	payload, err := media.EncodePacket(media.Packet{
+		Kind: media.KindVideo, KeyFrame: true, Timestamp100ns: 10_000_000,
+		Duration100ns: 333_330, Data: []byte{0x10, 0x00, 0x00, 0x00},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	writeContext, cancelWrite := context.WithTimeout(context.Background(), time.Second)
-	err := connection.Write(writeContext, websocket.MessageBinary, payload)
+	err = connection.Write(writeContext, websocket.MessageBinary, payload)
 	cancelWrite()
 	if err != nil {
 		t.Fatalf("write encoded frame: %v", err)
 	}
-	payload[0] = 2
-	binary.BigEndian.PutUint64(payload[1:9], 1_033_000)
+	payload, err = media.EncodePacket(media.Packet{
+		Kind: media.KindVideo, Timestamp100ns: 10_330_000,
+		Duration100ns: 333_330, Data: []byte{0x10, 0x00, 0x00, 0x00},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	writeContext, cancelWrite = context.WithTimeout(context.Background(), time.Second)
 	err = connection.Write(writeContext, websocket.MessageBinary, payload)
 	cancelWrite()
@@ -637,4 +687,14 @@ func appRoomResponse(origin string) map[string]any {
 		"inviteUrl":    origin + "/r/1#v=" + grant,
 		"viewerPolicy": "private-link", "viewerGrantExpiresAt": expiresAt.Format(time.RFC3339), "expiresAt": expiresAt.Format(time.RFC3339),
 	}
+}
+
+type fakeAudioProvider struct{ targets []windowaudio.Target }
+
+func (provider fakeAudioProvider) List(context.Context) ([]windowaudio.Target, error) {
+	return provider.targets, nil
+}
+
+func (fakeAudioProvider) Capture(context.Context, windowaudio.Target, func(windowaudio.PCMChunk) error) error {
+	return nil
 }
