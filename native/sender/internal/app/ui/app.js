@@ -193,6 +193,7 @@ async function connectMediaSocket(generation, codec, audio) {
 }
 
 async function startEncoder(generation, codec) {
+  metrics.codec = codec;
   const preferred = {
     codec: codec === "h264" ? "avc1.42c01f" : "vp8",
     width: WIDTH,
@@ -218,7 +219,9 @@ async function startEncoder(generation, codec) {
     metrics.hardwarePreference = HARDWARE_STATUS.PREFERENCE_ACCEPTED;
   }
   metrics.hardwareEvidence = HARDWARE_STATUS.UNVERIFIED;
-  if (!support.supported) throw new Error("此设备不支持 VP8 720p30 编码");
+  if (!support.supported) {
+    throw new Error(`此设备不支持 ${codecLabel(codec)} 720p30 编码`);
+  }
   let activeEncoder;
   activeEncoder = new VideoEncoder({
     output: (chunk) => sendEncodedChunk(generation, activeEncoder, chunk),
@@ -592,7 +595,7 @@ function updateDiagnostics() {
   const height = captureSettings?.height ?? "未知";
   const rate = captureSettings?.frameRate ?? "未知";
   elements.captureDiagnostic.textContent = `${width} × ${height} · ${rate} FPS`;
-  elements.encoderDiagnostic.textContent = `VP8 · 3 Mbps 上限 · 单对象 · 硬件偏好 ${hardwarePreferenceLabel(metrics.hardwarePreference)} · 硬件证据 ${hardwareEvidenceLabel(metrics.hardwareEvidence)}`;
+  elements.encoderDiagnostic.textContent = `${codecLabel(metrics.codec)} · 3 Mbps 上限 · 单对象 · 硬件偏好 ${hardwarePreferenceLabel(metrics.hardwarePreference)} · 硬件证据 ${hardwareEvidenceLabel(metrics.hardwareEvidence)}`;
   elements.bridgeDiagnostic.textContent = `读取 ${metrics.framesRead} · 提交 ${metrics.framesSubmitted} · 输出 ${metrics.encoderOutputs} · 编码队列丢弃 ${metrics.encoderQueueDrops} · 编码队列峰值 ${metrics.encoderQueuePeak} 帧 · socket 峰值 ${metrics.socketBufferedPeak} B`;
   const helper = nativeDiagnostics?.media;
   const queue = helper?.queue;
@@ -647,6 +650,7 @@ function selectedCodec() {
 
 function emptyMetrics() {
   return {
+    codec: "vp8",
     framesRead: 0,
     framesSubmitted: 0,
     encoderOutputs: 0,
@@ -657,6 +661,10 @@ function emptyMetrics() {
     hardwarePreference: HARDWARE_STATUS.UNREQUESTED,
     hardwareEvidence: HARDWARE_STATUS.UNVERIFIED,
   };
+}
+
+function codecLabel(codec) {
+  return codec === "h264" ? "H.264" : "VP8";
 }
 
 function hardwarePreferenceLabel(value) {
