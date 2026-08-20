@@ -314,6 +314,14 @@ h3 {
   background: #050706;
 }
 
+.local-preview-action {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  background: rgba(5, 7, 6, 0.78);
+}
+
 .stage-placeholder,
 .stage-overlay {
   position: absolute;

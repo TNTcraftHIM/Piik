@@ -5,6 +5,7 @@ import {
   Hash,
   KeyRound,
   LockKeyhole,
+  Maximize2,
   MonitorUp,
   Pause,
   Pencil,
@@ -311,6 +312,32 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
     }
+  }, [stream]);
+
+  useEffect(() => {
+    const syncPreviewPlayback = () => {
+      const video = videoRef.current;
+      if (!video) {
+        return;
+      }
+      if (document.visibilityState !== "visible" || !document.hasFocus()) {
+        video.pause();
+        return;
+      }
+      if (streamRef.current) {
+        void video.play().catch(() => undefined);
+      }
+    };
+
+    document.addEventListener("visibilitychange", syncPreviewPlayback);
+    window.addEventListener("blur", syncPreviewPlayback);
+    window.addEventListener("focus", syncPreviewPlayback);
+    syncPreviewPlayback();
+    return () => {
+      document.removeEventListener("visibilitychange", syncPreviewPlayback);
+      window.removeEventListener("blur", syncPreviewPlayback);
+      window.removeEventListener("focus", syncPreviewPlayback);
+    };
   }, [stream]);
 
   useEffect(
@@ -683,6 +710,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     sharingPausedRef.current = nextPaused;
     setSharingPaused(nextPaused);
     setNotice(nextPaused ? "音视频分享已暂停" : "音视频分享已恢复");
+  }
+
+  async function enterPreviewFullscreen(): Promise<void> {
+    const video = videoRef.current as
+      | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+      | null;
+    if (!video) {
+      return;
+    }
+    try {
+      if (video.requestFullscreen) {
+        await video.requestFullscreen();
+      } else {
+        video.webkitEnterFullscreen?.();
+      }
+    } catch {
+      setNotice("当前浏览器无法放大本地预览");
+    }
   }
 
   function removePeer(peerId: string): void {
@@ -1625,7 +1670,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             aria-label="分享或加入房间"
           >
             {stream ? (
-              <video ref={videoRef} autoPlay muted playsInline />
+              <>
+                <video ref={videoRef} autoPlay muted playsInline />
+                <button
+                  className="icon-button local-preview-action"
+                  type="button"
+                  title="放大本地预览"
+                  aria-label="放大本地预览"
+                  onClick={() => void enterPreviewFullscreen()}
+                >
+                  <Maximize2 size={18} aria-hidden="true" />
+                </button>
+              </>
             ) : phase === "idle" ||
               phase === "ended" ||
               phase === "error" ? (
