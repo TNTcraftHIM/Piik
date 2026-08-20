@@ -4,12 +4,13 @@ Last updated: 2026-08-20
 
 ## Phase
 
-`https://share.bonfire.icu` runs `bbe4654a7a9b10b1bdcc839665932020b7f31e8b`
-since 2026-08-20 03:06 +08 as a shared-IP production smoke. It includes
-room-scoped Viewer access and the bounded SFU failure-stage diagnostic.
+`https://share.bonfire.icu` runs `89e6d7649169e43276a604c36fe681ebbed384dc`
+since 2026-08-20 09:40 +08 as a shared-IP production smoke. It includes
+room-scoped Viewer access, bounded SFU diagnostics, and initial-connect recovery.
 Ordinary ICE is STUN-only process-wide; persistent room `1` alone enables the
 automatic peer/SFU-UDP controller with at most two SFU roots. The old
-`9610032fc5f5` release, v1 backup, and coturn relay remain rollback-only.
+`bbe4654a7a9b` is the immediate code rollback and keeps the current v2 DB/env.
+The v1 DB/old env pair is only for the deeper pre-access `9610032` rollback.
 
 ## Current Snapshot
 
@@ -18,13 +19,13 @@ automatic peer/SFU-UDP controller with at most two SFU roots. The old
 - SQLite v2 keeps Host and nullable Viewer-grant digests in one checked `STRICT` row. The stopped migration retained four rooms and locked each old room private without minting a raw grant.
 - PR #44's exact-room STUN-only/SFU-UDP router is enabled only for production room `1`: host/SFU roots <=2, browser relay <=1, bounded failure. HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.
-- Viewer initial-connect: after an answer, a generation-bound 15s deadline enters ICE restart; success/replacement/disposal cancels it. Unit-tested, not mobile-verified.
+- After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
 - A+B/P2P C remains read-only. Autonomous BWE is only `suspect`; confirmed fallback evacuates children and loses parent capacity. Root impact remains a default-on gate.
 
 ## Verified Evidence
 
-- `bbe4654` passed 365 tests/builds and an atomic v1-to-v2 production migration. Local/public health, `index-uCv4ooZJ.js`, nginx, Host admission, and cookie-free private Viewer denial pass; room `1` remains. LiveKit was not restarted; unversioned `/rtc` paths and unauthenticated `/rtc/v1` return 404 outside the SPA.
+- `89e6d76` passed 369 tests/builds and a code-only atomic switch. Health recovered in 1.09s; `index-2HASsWrj.js`, DB v2/four rooms/room `1`, access env, nginx and LiveKit remain healthy. Its artifact SHA-256 is `39B62039FCFB05281F78FCF85C964C520E2BB2FE5661ADA4758D598A7DF6CEC1`; new and rollback releases share zero regular-file inodes.
 - A rejected artifact reused hard-linked dependencies; its permission change made rollback unreadable for 3m11s and restart attempts peaked at 52. Restoring ownership recovered `9610032`; the successful artifact has zero shared regular-file inodes. Immutable releases now forbid this reuse.
 - On the 960 MiB host, idle LiveKit peaked near 16 MiB with no cgroup high/max/OOM event under `MemoryHigh=192M`, `MemoryMax=256M`, swap disabled and restart disabled. This is containment/idle evidence, not media capacity.
 - Chrome 151 synthetic `1/3/5/8` and 720p30 quality-change runs kept 2/1 fanout and decoding; slowest first frame was 1.05 seconds and one relay close recovered in 5.32 seconds. This is control evidence only.
