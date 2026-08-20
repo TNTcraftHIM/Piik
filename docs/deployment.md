@@ -20,15 +20,16 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `cf149df2411798cd632cc92a562b0a35146e0c1b`
+Production currently runs exact `c27df2235ecc0be17816f642ca49028e30380a34`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. The 893,953-byte artifact has SHA-256
-`80918716aefdbb958289b06b6f31551b78dbbaf7fb0f16980eb38d127e158e14`.
-The 2026-08-20T17:48:29Z UTC cutover held the deployment lock for 9,256.904 ms;
-local health returned 562.657 ms after service stop (509.983 ms after the
-symlink switch). Screener, LiveKit, coturn, and nginx are active/running with
+integrity. The 912,999-byte artifact has SHA-256
+`1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`.
+The 2026-08-20T19:03:10Z UTC cutover held the deployment lock for 662 ms;
+local health returned 552 ms after service stop (543 ms after the symlink
+switch). Screener, LiveKit, coturn, and nginx are active/running with
 `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
-service owner/mode preserved. The prior `fdd14ba` remains the rollback target.
+service owner/mode preserved. Exact `cf149df2411798cd632cc92a562b0a35146e0c1b`
+is the immediate rollback target.
 The selected-edge UDP tuple is configured with TTL 120, but no real TURN/SFU
 media canary was triggered; this remains a bounded configuration smoke, not
 broad-rollout media acceptance.
@@ -113,7 +114,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the `cf149df` release with one
+selected-edge TURN config/wire is deployed in the current `c27df22` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
@@ -450,6 +451,21 @@ available in the repository, but no packaged native sender was deployed; VP8
 remains the Web default. The prior stale `NRestarts=31` rollback is historical
 evidence only, and the final wrapper records restart counts without asserting
 an obsolete baseline.
+
+The subsequent flagship cutover used exact source
+`c27df2235ecc0be17816f642ca49028e30380a34` and immutable artifact
+`screener-c27df2235ecc0be17816f642ca49028e30380a34-20260820T190108Z-git.tar.gz`
+(912,999 bytes, SHA-256
+`1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`).
+The one lock-held cutover ran from 2026-08-20T19:03:10.569Z to
+19:03:11.232Z: 662 ms total, 552 ms from service stop to local health, and
+543 ms from symlink switch to local health. The environment and SQLite
+checksums were unchanged; SQLite v3 retained five rooms including room `1`
+with owner/mode `screener:screener`/0600. Local/public health, the built asset,
+root, and room route returned 200, all four services remained active/running,
+and exact `cf149df2411798cd632cc92a562b0a35146e0c1b` became the rollback release.
+No browser, TURN, SFU, or media canary was run, so this is deployment/config
+evidence only.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
