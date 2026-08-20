@@ -180,6 +180,34 @@ classifiable error; the sender reports silence or unknown and never bypasses
 protection. PID, path, window title, device identity, and raw audio remain local
 and are not retained or uploaded.
 
+### P1 Audio-Only Wiring Slice
+
+The first native implementation is intentionally an audio-only input and is
+estimated at 500--800 new lines. It keeps the current Web video capture and
+codec path, while a Windows 11 helper supplies process-tree PCM through the
+existing authenticated local bridge. Chrome/Edge's already-required WebCodecs
+surface encodes that PCM with `AudioEncoder` (`opus`, 48 kHz, two channels,
+20 ms), so the helper does not add a native Opus dependency or a second package
+toolchain. The Go sender packetizes the returned Opus access units once into a
+shared `audio/opus` RTP track before adding it to each native PeerConnection.
+
+The local envelope carries only media kind, flags, QPC-derived timestamp,
+duration, and bounded payload; no PID or source label crosses the bridge. WGC
+video remains a fixture/next adapter in this slice. Its
+`SystemRelativeTime`, like WASAPI `GetBuffer`'s `pu64QPCPosition`, is a 100-ns
+QPC value and is retained as the future A/V synchronization origin. Audio
+timestamps are converted to the 48 kHz RTP clock and remain monotonic; packet
+duration comes from the captured frame count rather than arrival time.
+
+This is an opt-in P1 candidate, not a default or production switch. Windows 10,
+picker/activation denial, an exited or inaccessible target, no render stream,
+protected-content silence, and WASAPI device/service errors report
+`unavailable`/`silent` and stop or ask. The implementation never widens to
+whole-system loopback. The first acceptance smoke is one direct Viewer with a
+known target tone/visual marker and independent voice/notification markers;
+SFU/TURN, a second Viewer, endurance, and native WGC video replacement remain
+later gates.
+
 Run one bounded matrix rather than a full route Cartesian product: exact
 production and current `main` on Windows Chrome/Edge for tab/window/monitor,
 audio selected/unselected, and a simultaneous voice call; then the native
@@ -241,6 +269,7 @@ Add a user-facing audio setting only when all of these are true:
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C Web Audio](https://www.w3.org/TR/webaudio-1.1/)
+- [W3C WebCodecs Opus registration](https://www.w3.org/TR/webcodecs-opus-codec-registration/)
 - [RFC 7587: RTP Payload Format for Opus](https://www.rfc-editor.org/rfc/rfc7587.html)
 - [RFC 7874: WebRTC Audio Codec and Processing Requirements](https://www.rfc-editor.org/rfc/rfc7874.html)
 - [MDN `getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
@@ -251,7 +280,10 @@ Add a user-facing audio setting only when all of these are true:
 - [Chrome 141 window-audio release note](https://developer.chrome.com/release-notes/141)
 - [Chromium media-capture architecture index](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/media/capture/)
 - [Microsoft Application Loopback sample](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
+- [Microsoft `ActivateAudioInterfaceAsync`](https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-activateaudiointerfaceasync)
 - [Windows process-loopback parameters](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+- [Microsoft Windows Graphics Capture](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)
+- [Microsoft `IAudioCaptureClient::GetBuffer`](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudiocaptureclient-getbuffer)
 - [Windows 10 release information](https://learn.microsoft.com/en-us/windows/release-health/release-information)
 - [Microsoft WASAPI loopback recording](https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording)
 - [Android capture video and audio playback](https://developer.android.com/media/platform/av-capture)
