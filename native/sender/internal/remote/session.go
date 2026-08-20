@@ -52,11 +52,11 @@ type Event struct {
 }
 
 type StartOptions struct {
-	BaseURL               *url.URL
-	SiteAccessPassword     string
-	Codec                 media.Codec
-	EnableAudio           bool
-	OnEvent               func(Event)
+	BaseURL            *url.URL
+	SiteAccessPassword string
+	Codec              media.Codec
+	EnableAudio        bool
+	OnEvent            func(Event)
 }
 
 type Room struct {
@@ -83,6 +83,10 @@ type Session struct {
 	ice              iceConfig
 	peers            map[string]*peer
 	admission        *viewerAdmission
+	peerAssisted     bool
+	routeRevision    int64
+	routePhase       string
+	routeFailures    [2]string
 	fanout           *media.Fanout
 	audioFanout      *media.AudioFanout
 	codec            media.Codec
@@ -334,10 +338,25 @@ func (session *Session) connect(ctx context.Context) error {
 	}
 	session.mu.Lock()
 	session.ice = message.IceConfig
-	session.admission = newViewerAdmission(message.MaxViewers)
+	session.peerAssisted = message.PeerAssisted
+	if message.PeerAssisted {
+		session.routeRevision = message.RouteRevision
+		session.routePhase = "active"
+	} else {
+		session.admission = newViewerAdmission(message.MaxViewers)
+	}
 	session.mu.Unlock()
-	// viewerPeerIds is a reconciliation roster and can include offline grace
-	// members. Only ordered peer-joined messages allocate native media edges.
+	if message.PeerAssisted {
+		if err = session.reconcileAuthoritativeChildren(message.MediaAssignment.ChildPeerIDs); err != nil {
+			return err
+		}
+		publicationGeneration, _ := decodeNullableOpaqueID(message.RouteAssignment.SFUPublicationGeneration)
+		if publicationGeneration != "" {
+			if err = session.failUnsupportedRoute(message.RouteRevision, "active", nil); err != nil {
+				return err
+			}
+		}
+	}
 	session.emitViewerCounts()
 	session.emit(Event{Kind: "remote-ready"})
 	return nil
@@ -392,8 +411,14 @@ func (session *Session) completeTerminal(err error) {
 func (session *Session) handle(message serverMessage) error {
 	switch message.Type {
 	case "peer-joined":
+		if session.peerAssisted {
+			return nil
+		}
 		return session.addViewer(message.PeerID)
 	case "peer-left":
+		if session.peerAssisted {
+			return nil
+		}
 		return session.removeViewer(message.PeerID)
 	case "signal":
 		peer := session.peer(message.FromPeerID)
@@ -413,11 +438,29 @@ func (session *Session) handle(message serverMessage) error {
 		} else if err := peer.restartICE(); err != nil {
 			return fmt.Errorf("restart viewer ICE: %w", err)
 		}
+	case "media-assignment":
+		if !session.peerAssisted {
+			return errors.New("peer-assisted assignment arrived in ordinary media mode")
+		}
+		return session.reconcileAuthoritativeChildren(message.MediaAssignment.ChildPeerIDs)
+	case "route-update":
+		return session.handleRouteUpdate(message)
+	case "sfu-config":
+		return session.handleUnsupportedRouteMessage(message, nil)
+	case "selected-edge-turn":
+		if message.EdgeKind == "host-sfu-ingress" {
+			connectionID := message.NewConnectionID
+			return session.handleUnsupportedRouteMessage(message, &connectionID)
+		}
+		return nil
 	case "viewer-quality-evidence":
 		// Fixed-HIGH observes no viewer feedback; accepting this current-wire
 		// message must not turn it into a room-wide quality controller.
 		return nil
 	case "error":
+		if session.peerAssisted && message.Code == "PEER_NOT_FOUND" {
+			return nil
+		}
 		return fmt.Errorf("remote signaling error %s", message.Code)
 	case "room-closed":
 		return fmt.Errorf("remote room closed: %s", message.Reason)
@@ -513,7 +556,12 @@ func (session *Session) removeViewer(peerID string) error {
 
 func (session *Session) rebuildPeer(peerID string) error {
 	session.mu.Lock()
-	if session.admission == nil || !session.admission.IsActive(peerID) {
+	if session.peerAssisted {
+		if session.peers[peerID] == nil {
+			session.mu.Unlock()
+			return nil
+		}
+	} else if session.admission == nil || !session.admission.IsActive(peerID) {
 		session.mu.Unlock()
 		return nil
 	}
@@ -524,12 +572,88 @@ func (session *Session) rebuildPeer(peerID string) error {
 		old.close()
 	}
 	if err := session.activatePeer(peerID); err != nil {
-		session.mu.Lock()
-		session.admission.AbortActivation(peerID)
-		session.mu.Unlock()
+		if !session.peerAssisted {
+			session.mu.Lock()
+			session.admission.AbortActivation(peerID)
+			session.mu.Unlock()
+		}
 		return err
 	}
 	return nil
+}
+
+func (session *Session) reconcileAuthoritativeChildren(peerIDs []string) error {
+	desired := make(map[string]struct{}, len(peerIDs))
+	for _, peerID := range peerIDs {
+		desired[peerID] = struct{}{}
+	}
+
+	session.mu.Lock()
+	retired := make([]*peer, 0, len(session.peers))
+	for peerID, activePeer := range session.peers {
+		if _, keep := desired[peerID]; !keep {
+			delete(session.peers, peerID)
+			retired = append(retired, activePeer)
+		}
+	}
+	missing := make([]string, 0, len(peerIDs))
+	for _, peerID := range peerIDs {
+		if session.peers[peerID] == nil {
+			missing = append(missing, peerID)
+		}
+	}
+	session.mu.Unlock()
+	for _, activePeer := range retired {
+		activePeer.close()
+	}
+	for _, peerID := range missing {
+		if err := session.activatePeer(peerID); err != nil {
+			return fmt.Errorf("activate authoritative viewer: %w", err)
+		}
+	}
+	session.emitViewerCounts()
+	return nil
+}
+
+func (session *Session) handleRouteUpdate(message serverMessage) error {
+	if !session.peerAssisted {
+		return errors.New("route update arrived in ordinary media mode")
+	}
+	if message.RouteRevision < session.routeRevision {
+		return nil
+	}
+	session.routeRevision = message.RouteRevision
+	session.routePhase = message.RoutePhase
+	publicationGeneration, _ := decodeNullableOpaqueID(message.RouteAssignment.SFUPublicationGeneration)
+	if publicationGeneration != "" {
+		return session.failUnsupportedRoute(message.RouteRevision, message.RoutePhase, nil)
+	}
+	if message.RoutePhase == "active" {
+		if err := session.reconcileAuthoritativeChildren(message.RouteAssignment.ChildPeerIDs); err != nil {
+			return err
+		}
+	}
+	return session.send(map[string]any{"type": "route-ready", "revision": message.RouteRevision, "phase": message.RoutePhase})
+}
+
+func (session *Session) handleUnsupportedRouteMessage(message serverMessage, connectionID *string) error {
+	if !session.peerAssisted || message.RouteRevision != session.routeRevision {
+		return nil
+	}
+	return session.failUnsupportedRoute(message.RouteRevision, session.routePhase, connectionID)
+}
+
+func (session *Session) failUnsupportedRoute(revision int64, phase string, connectionID *string) error {
+	key := fmt.Sprintf("%d/%s", revision, phase)
+	reported := &session.routeFailures[0]
+	if connectionID != nil {
+		reported = &session.routeFailures[1]
+	}
+	if *reported == key {
+		return nil
+	}
+	*reported = key
+	return session.send(map[string]any{"type": "route-failed", "revision": revision, "phase": phase, "connectionId": connectionID})
 }
 
 func (session *Session) peer(peerID string) *peer {
@@ -588,7 +712,9 @@ func (session *Session) emit(event Event) {
 func (session *Session) emitViewerCounts() {
 	session.mu.Lock()
 	active, waiting := 0, 0
-	if session.admission != nil {
+	if session.peerAssisted {
+		active = len(session.peers)
+	} else if session.admission != nil {
 		active, waiting = session.admission.Counts()
 	}
 	session.mu.Unlock()

@@ -18,7 +18,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Capture precedes room creation; source/quality changes preserve peers, while pause disables audio/video tracks together and keeps connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
 - Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and the site-access cookie are deployed atomically; raw credentials are never stored.
 - Web Hosts can set their local/session display name, and the current release advertises it through the existing presence wire. The name is not an account identity.
-- Native v2 remains source-only (memory rooms, 300s reclaim); production does not run it.
+- Native v2 remains source-only (memory rooms, 300s reclaim); its Host now follows authenticated peer-assisted direct-child assignments with a two-edge cap and bounded SFU/selected-ingress failure, but production does not run it.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
@@ -33,6 +33,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Chrome 151 loopbacks decoded VP8 299 and H.264 opt-in 299/298 rendered at 1280x720 without fatal/encoder errors. Hardware attribution, Pion timing, multi-viewer/endurance/public/native proof remain open; production stays VP8.
 - Native Win11 audio is source-only/default-off. Target isolation was 4018x; one Viewer got 495 Opus packets. Package build passes; download, game sync, Win10, and other routes are open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
+- Native peer-assisted wire/session focused tests pass: authoritative direct children reconcile at no more than two, presence cannot create a third edge, stale revisions do not rebuild, and unsupported SFU/selected ingress fails once per current revision.
 - Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
 - Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
 - The `5e4a367` gate preserved the SQLite hash, v3/five rooms/room `1`, selected-edge/SFU/ordinary-ICE settings, services, and local/public health plus route/asset 200s. Site access returned the unauthenticated status and the retired endpoint returned 404; no TURN/SFU session ran. Exact `c27df2235ecc0be17816f642ca49028e30380a34` is the rollback release.

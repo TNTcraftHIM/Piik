@@ -53,7 +53,7 @@ Last updated: 2026-08-21
 - Chrome 151 synthetic topology/quality runs kept fanout 2/1 and decoding; one relay close recovered in 5.32 seconds. Control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
-- Web Host name/presence and window-audio hint are deployed without changing the Native wire. Native H.264 source and Windows x64 evaluation packaging are present, but no Native release/deployment exists; VP8 remains the Web/production default. See `docs/research/native-h264-opt-in-path.md`.
+- Web Host name/presence and window-audio hint are deployed. Native source accepts authenticated peer-assisted direct-child assignments, ignores presence as an edge authority, and reports unsupported SFU/selected ingress as bounded route failure; it does not implement LiveKit or TURN media. Native H.264 source and Windows x64 evaluation packaging are present, but no Native release/deployment exists; VP8 remains the Web/production default. See `docs/research/native-h264-opt-in-path.md`.
 
 ## Provisional Quality Targets
 
