@@ -138,8 +138,25 @@ only to report positive source gaps. Focused tests retain dropped-frame timing,
 non-increasing rejection, and sub-sample progress; the real `/media` handler also
 accepts two frames at 1,000,000 and 1,033,000 microseconds when the first reports
 33,333 microseconds. This proves the source path no longer raises that fatal, not
-that it caused the retained browser failure. No post-fix Chrome smoke ran, so
-ADR-0006 remains product-gate no-go.
+that it caused the retained browser failure.
+
+## 2026-08-20 One-Viewer Loopback Revalidation
+
+A bounded Chrome 151 run with fixed VP8 1280x720@30 and peer assistance disabled
+closed the base sender-to-Viewer path once. Sender/Go recorded 30 written frames,
+85 source RTP packets, and zero fatal or encoder errors. The Viewer authenticated,
+completed offer/answer/ICE, received 877 packets, and advanced from 0 to 299
+decoded and rendered frames at 1280x720. The probe was corrected to tolerate
+pre-offer trickle candidates and a development-only pre-offer control-socket
+replacement while retaining fail-closed checks after an active offer/PC.
+
+The run still ended negative at the gate's Pion outbound assertion because the
+two-second Go diagnostics snapshot did not refresh during the media sample
+(`pionPacketDelta=0`). This is a residual observation-timing gap; inbound packet,
+decode, render, source-RTP, and no-fatal evidence are retained. The result is
+therefore a one-Viewer functional loopback proof, not a broad Native acceptance:
+two edges, FIFO, hardware, endurance, public-network, audio, and packaged-native
+boundaries remain no-go.
 
 ## Staged Revalidation
 
