@@ -1,16 +1,20 @@
 package icu.bonfire.screener.sender
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.ResultReceiver
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.Spinner
 import android.widget.TextView
 
 class MainActivity : Activity() {
@@ -18,10 +22,13 @@ class MainActivity : Activity() {
     private lateinit var sitePassword: EditText
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
+    private lateinit var audioTarget: Spinner
     private lateinit var statusText: TextView
     private lateinit var inviteText: TextView
     private var pendingServer = ""
     private var pendingPassword = ""
+    private var pendingAudioUid: Int? = null
+    private var pendingAudioName: String? = null
 
     private val receiver = object : ResultReceiver(Handler(Looper.getMainLooper())) {
         override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
@@ -48,10 +55,17 @@ class MainActivity : Activity() {
         sitePassword = findViewById(R.id.site_password)
         startButton = findViewById(R.id.start_button)
         stopButton = findViewById(R.id.stop_button)
+        audioTarget = findViewById(R.id.audio_target)
         statusText = findViewById(R.id.status_text)
         inviteText = findViewById(R.id.invite_text)
 
-        startButton.setOnClickListener { requestProjection() }
+        audioTarget.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            loadAudioTargets(),
+        ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+
+        startButton.setOnClickListener { prepareProjection() }
         stopButton.setOnClickListener {
             startService(Intent(this, ProjectionService::class.java).setAction(ProjectionService.ACTION_STOP))
             clearInvite()
@@ -59,16 +73,44 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun requestProjection() {
+    private fun prepareProjection() {
         pendingServer = serverUrl.text.toString().trim().trimEnd('/')
         pendingPassword = sitePassword.text.toString()
+        val target = audioTarget.selectedItem as AudioTarget
+        pendingAudioUid = target.uid
+        pendingAudioName = target.packageName?.let { target.label }
         clearInvite()
         if (!pendingServer.startsWith("https://")) {
             statusText.text = "An HTTPS server URL is required"
             return
         }
+        if (
+            pendingAudioUid != null &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_AUDIO)
+            return
+        }
+        requestProjection()
+    }
+
+    private fun requestProjection() {
         val manager = getSystemService(MediaProjectionManager::class.java)
         startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_PROJECTION)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_AUDIO) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            requestProjection()
+        } else {
+            statusText.text = "Playback audio permission was denied"
+        }
     }
 
     @Deprecated("The platform projection picker still returns through this callback")
@@ -88,10 +130,28 @@ class MainActivity : Activity() {
             putExtra(ProjectionService.EXTRA_SITE_PASSWORD, pendingPassword)
             putExtra(ProjectionService.EXTRA_PERMISSION_DATA, data)
             putExtra(ProjectionService.EXTRA_RECEIVER, receiver)
+            pendingAudioUid?.let { putExtra(ProjectionService.EXTRA_AUDIO_TARGET_UID, it) }
+            pendingAudioName?.let { putExtra(ProjectionService.EXTRA_AUDIO_TARGET_NAME, it) }
         }
         startForegroundService(service)
         sitePassword.text.clear()
         pendingPassword = ""
+    }
+
+    private fun loadAudioTargets(): List<AudioTarget> {
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val targets = packageManager.queryIntentActivities(
+            launcher,
+            PackageManager.ResolveInfoFlags.of(0L),
+        ).mapNotNull { resolved ->
+            val app = resolved.activityInfo?.applicationInfo ?: return@mapNotNull null
+            if (app.uid == applicationInfo.uid) return@mapNotNull null
+            val packages = packageManager.getPackagesForUid(app.uid)?.distinct()
+            if (packages?.singleOrNull() != app.packageName) return@mapNotNull null
+            val label = app.loadLabel(packageManager).toString().trim().ifEmpty { app.packageName }
+            AudioTarget(label, app.packageName, app.uid)
+        }.distinctBy { it.uid }.sortedBy { it.label.lowercase() }
+        return listOf(AudioTarget("Off (video only)", null, null)) + targets
     }
 
     private fun clearInvite() {
@@ -101,5 +161,10 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_PROJECTION = 40
+        private const val REQUEST_AUDIO = 41
+    }
+
+    private data class AudioTarget(val label: String, val packageName: String?, val uid: Int?) {
+        override fun toString(): String = packageName?.let { "$label ($it)" } ?: label
     }
 }

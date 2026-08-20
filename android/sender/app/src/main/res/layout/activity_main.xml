@@ -39,6 +39,26 @@
             android:maxLines="1"
             android:saveEnabled="false" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Playback audio target (optional)"
+            android:textColor="#34443E"
+            android:textSize="14sp" />
+
+        <Spinner
+            android:id="@+id/audio_target"
+            android:layout_width="match_parent"
+            android:layout_height="52dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Audio is requested from this app separately and may differ from the system screen choice. Apps that block playback capture remain silent."
+            android:textColor="#5A6863"
+            android:textSize="13sp" />
+
         <Button
             android:id="@+id/start_button"
             android:layout_width="match_parent"

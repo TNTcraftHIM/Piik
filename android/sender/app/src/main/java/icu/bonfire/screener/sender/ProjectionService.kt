@@ -1,17 +1,20 @@
 package icu.bonfire.screener.sender
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Bundle
 import android.os.IBinder
 import android.os.ResultReceiver
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 class ProjectionService : Service() {
@@ -38,42 +41,75 @@ class ProjectionService : Service() {
             return START_NOT_STICKY
         }
         receiver = intent.getParcelableExtra(EXTRA_RECEIVER, ResultReceiver::class.java)
+        val server = intent.getStringExtra(EXTRA_SERVER_URL)
+        val password = intent.getStringExtra(EXTRA_SITE_PASSWORD)
+        val permission = intent.getParcelableExtra(EXTRA_PERMISSION_DATA, Intent::class.java)
+        val audioTargetUid = if (intent.hasExtra(EXTRA_AUDIO_TARGET_UID)) {
+            intent.getIntExtra(EXTRA_AUDIO_TARGET_UID, -1).takeIf { it >= 0 }
+        } else {
+            null
+        }
+        val audioTargetName = intent.getStringExtra(EXTRA_AUDIO_TARGET_NAME)?.take(80)
+        if (server == null || password == null || permission == null) {
+            finish("Screen sharing could not start")
+            return START_NOT_STICKY
+        }
+        if (
+            audioTargetUid != null &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        ) {
+            finish("Playback audio permission is required")
+            return START_NOT_STICKY
+        }
         startForeground(
             NOTIFICATION_ID,
             notification("Starting screen sharing"),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
         )
-        val server = intent.getStringExtra(EXTRA_SERVER_URL)
-        val password = intent.getStringExtra(EXTRA_SITE_PASSWORD)
-        val permission = intent.getParcelableExtra(EXTRA_PERMISSION_DATA, Intent::class.java)
-        if (server == null || password == null || permission == null) {
-            finish("Screen sharing could not start")
-            return START_NOT_STICKY
-        }
         sendResult(RESULT_ACTIVE, "Starting")
         schedule {
             try {
-                val engine = CaptureEngine.create(applicationContext, permission) {
-                    finish("The system stopped screen sharing")
-                }
+                val audioUnavailable = AtomicBoolean()
+                val engine = CaptureEngine.create(
+                    applicationContext,
+                    permission,
+                    audioTargetUid,
+                    onProjectionStopped = { finish("The system stopped screen sharing") },
+                    onAudioUnavailable = {
+                        audioUnavailable.set(true)
+                        if (state.get() != State.STOPPING) {
+                            sendResult(RESULT_ACTIVE, "Playback audio unavailable; video remains active")
+                        }
+                    },
+                )
                 if (state.get() != State.STARTING) {
                     engine.close()
                     return@schedule
                 }
                 capture = engine
-                val remote = RemoteSession(server, password, engine.factory, engine.track, worker, object : RemoteSession.Events {
-                    override fun onRoom(inviteUrl: String) {
-                        if (state.get() == State.STOPPING) return
-                        sendResult(RESULT_ACTIVE, "Room ready; hardware codec requested", inviteUrl)
-                        getSystemService(NotificationManager::class.java)
-                            .notify(NOTIFICATION_ID, notification("Screen sharing is ready"))
-                    }
+                val remote = RemoteSession(
+                    server, password, engine.factory, engine.track, engine.audioTrack, worker,
+                    object : RemoteSession.Events {
+                        override fun onRoom(inviteUrl: String) {
+                            if (state.get() == State.STOPPING) return
+                            val audio = when {
+                                engine.audioTrack != null && !audioUnavailable.get() -> audioTargetName?.let {
+                                    "; playback requested: $it"
+                                } ?: "; playback requested"
+                                audioTargetUid != null -> "; playback audio unavailable"
+                                else -> ""
+                            }
+                            sendResult(RESULT_ACTIVE, "Room ready; hardware codec requested$audio", inviteUrl)
+                            getSystemService(NotificationManager::class.java)
+                                .notify(NOTIFICATION_ID, notification("Screen sharing is ready"))
+                        }
 
-                    override fun onStatus(message: String) {
-                        if (state.get() != State.STOPPING) sendResult(RESULT_ACTIVE, message)
-                    }
-                    override fun onFatal(message: String) = finish(message)
-                })
+                        override fun onStatus(message: String) {
+                            if (state.get() != State.STOPPING) sendResult(RESULT_ACTIVE, message)
+                        }
+                        override fun onFatal(message: String) = finish(message)
+                    },
+                )
                 session = remote
                 if (!state.compareAndSet(State.STARTING, State.RUNNING)) return@schedule
                 remote.start()
@@ -152,6 +188,8 @@ class ProjectionService : Service() {
         const val EXTRA_SITE_PASSWORD = "sitePassword"
         const val EXTRA_PERMISSION_DATA = "projectionPermission"
         const val EXTRA_RECEIVER = "receiver"
+        const val EXTRA_AUDIO_TARGET_UID = "audioTargetUid"
+        const val EXTRA_AUDIO_TARGET_NAME = "audioTargetName"
         const val RESULT_STATUS = "status"
         const val RESULT_INVITE = "invite"
         const val RESULT_STOPPED = 0
