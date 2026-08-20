@@ -21,8 +21,9 @@ configuration and firewall range, but the application advertises no credential.
 
 Production currently runs `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612` for exact
 room `1` on the existing shared public IP, with health 200 and SQLite v3. The
-preceding `fdd14ba` deployment completed successfully and remains the rollback
-target. Rolling back the admission-policy cutover requires
+current Screener, LiveKit, coturn, and nginx services each report
+`NRestarts=0`. The preceding `fdd14ba` deployment completed successfully and
+remains the rollback target. Rolling back the admission-policy cutover requires
 `89e6d7649169` plus the environment backup recorded below; only deeper
 pre-access `9610032fc5f5` may restore matching v1 state. The production
 application TURN tuple is absent and the failed canary backup is inactive. This
@@ -405,18 +406,18 @@ lock remained; the immutable upload, active release, and backups are retained.
 No real room triggered admission rescue, so this verifies deployment and
 rollback readiness, not the new route transition or media quality.
 
-The subsequent Host display-name candidate used exact source
+The sole Host display-name cutover attempt used exact source
 `61a87ae47e38abc943cef47b3d7318bb51bf86d6` and artifact
 `screener-61a87ae47e38abc943cef47b3d7318bb51bf86d6-20260820T143538Z.tar.gz`
 (883597 bytes, SHA-256
-`d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`). The
-ephemeral deployment wrapper reached `RELEASE_PREPARED` but omitted the
-`mv` from the prepared stage into `release`; systemd then reported
-`status=200/CHDIR`. The application and database were not the cause. Automatic
-rollback left `fdd14ba0d9b5` active and healthy, with SQLite v3 retaining four
-rooms including room `1`; Screener `NRestarts=31`, while LiveKit, coturn, and
-nginx were 0. Host display-name remains source-only/not deployed. No
-selected-edge TURN enablement occurred.
+`d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`). It ran at
+`2026-08-20T16:09Z`; the prepare-to-release switch and health gate passed, but a
+post-cutover assertion compared against stale `NRestarts=31` data and triggered
+automatic rollback. The application and database were not the cause. Rollback
+left `fdd14ba0d9b5` active and healthy, with SQLite v3 retaining four rooms
+including room `1`; the current Screener, LiveKit, coturn, and nginx services
+each report `NRestarts=0`. Host display-name remains source-only/not deployed.
+No selected-edge TURN enablement occurred.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
