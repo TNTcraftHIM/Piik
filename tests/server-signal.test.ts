@@ -162,7 +162,7 @@ async function startHarness(
     maxViewersPerRoom?: number;
     maxSignalConnections?: number;
     maxUnauthenticatedSignalConnections?: number;
-    hostAdmissionPassword?: string;
+    siteAccessPassword?: string;
     persistent?: boolean;
     provisionalHostClaimSeconds?: number;
     peerAssistedMedia?: boolean;
@@ -171,7 +171,7 @@ async function startHarness(
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
-  config.hostAdmissionPassword = overrides.hostAdmissionPassword;
+  config.siteAccessPassword = overrides.siteAccessPassword;
   config.peerAssistedMedia = overrides.peerAssistedMedia ?? false;
   config.stunUrls = overrides.stunUrls ?? [];
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
@@ -328,7 +328,7 @@ async function startSfuHarness(options: {
       stunUrls: options.stunUrls ?? [],
     },
     allowedOrigins: new Set([allowedOrigin]),
-    hostAdmissionAtUpgrade: () => true,
+    siteAccessAtUpgrade: () => true,
     publicBaseUrl: new URL("https://share.example.test"),
     now: options.now,
     authenticationTimeoutMs: 500,
@@ -1240,9 +1240,9 @@ describe("WebSocket signaling", () => {
     await host.inbox.expectNone(30);
   });
 
-  it("protects Host admission without gating authorized Viewers", async () => {
-    const hostAdmissionPassword = "protected-instance-password";
-    const harness = await startHarness({ hostAdmissionPassword });
+  it("requires site access for code-only Viewers while accepting room grants", async () => {
+    const siteAccessPassword = "protected-instance-password";
+    const harness = await startHarness({ siteAccessPassword });
 
     const viewer = await openClient(harness.webSocketUrl);
     await expect(
@@ -1264,10 +1264,10 @@ describe("WebSocket signaling", () => {
       code: "AUTH_REQUIRED",
     });
 
-    const login = await fetch(`${harness.baseUrl}/api/host-admission`, {
+    const login = await fetch(`${harness.baseUrl}/api/site-access`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${hostAdmissionPassword}`,
+        Authorization: `Bearer ${siteAccessPassword}`,
         Origin: allowedOrigin,
       },
     });
@@ -1287,6 +1287,88 @@ describe("WebSocket signaling", () => {
     await expect(viewerWithHostCookie.inbox.next("error")).resolves.toMatchObject({
       code: "INVALID_TOKEN",
     });
+
+    const publicRoom = harness.roomStore.createRoom("public-watch");
+    const publicWithoutSiteAccess = await openClient(harness.webSocketUrl);
+    publicWithoutSiteAccess.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: publicRoom.roomId,
+        role: "viewer",
+        clientId: "public-viewer-without-site-access",
+      }),
+    );
+    await expect(
+      publicWithoutSiteAccess.inbox.next("error"),
+    ).resolves.toMatchObject({ code: "INVALID_TOKEN" });
+
+    const publicWithForgedGrant = await openClient(harness.webSocketUrl);
+    publicWithForgedGrant.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: publicRoom.roomId,
+        role: "viewer",
+        clientId: "public-viewer-with-forged-grant",
+        viewerGrant: `g1.${publicRoom.roomId}.1893456000.${"x".repeat(43)}`,
+      }),
+    );
+    await expect(
+      publicWithForgedGrant.inbox.next("error"),
+    ).resolves.toMatchObject({ code: "INVALID_TOKEN" });
+
+    const publicWithSiteAccess = await openClient(harness.webSocketUrl, cookie);
+    await expect(
+      authenticate(
+        publicWithSiteAccess,
+        publicRoom,
+        "viewer",
+        "public-viewer-with-site-access",
+      ),
+    ).resolves.toMatchObject({ role: "viewer" });
+
+    const passwordRoom = harness.roomStore.createRoom("private-link");
+    harness.roomStore.connectParticipant({
+      roomId: passwordRoom.roomId,
+      role: "host",
+      token: passwordRoom.hostToken,
+      clientId: "password-room-setup",
+      sessionId: "password-room-setup-session",
+    });
+    await harness.roomStore.setViewerPassword(
+      passwordRoom.roomId,
+      "room-password",
+      "password-room-setup-session",
+    );
+
+    const passwordWithoutSiteAccess = await openClient(harness.webSocketUrl);
+    passwordWithoutSiteAccess.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: passwordRoom.roomId,
+        role: "viewer",
+        clientId: "password-viewer-without-site-access",
+        viewerPassword: "room-password",
+      }),
+    );
+    await expect(
+      passwordWithoutSiteAccess.inbox.next("error"),
+    ).resolves.toMatchObject({ code: "INVALID_TOKEN" });
+
+    const passwordWithSiteAccess = await openClient(harness.webSocketUrl, cookie);
+    await expect(
+      authenticate(
+        passwordWithSiteAccess,
+        passwordRoom,
+        "viewer",
+        "password-viewer-with-site-access",
+        1,
+        undefined,
+        { viewerPassword: "room-password" },
+      ),
+    ).resolves.toMatchObject({ role: "viewer" });
 
     const host = await openClient(harness.webSocketUrl, cookie);
     await expect(

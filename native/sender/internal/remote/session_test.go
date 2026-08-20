@@ -20,8 +20,8 @@ import (
 	"github.com/coder/websocket"
 )
 
-func TestStartUsesHostAdmissionCookieAndPrivateV2Room(t *testing.T) {
-	const password = "host-admission-password"
+func TestStartUsesSiteAccessCookieAndPrivateV2Room(t *testing.T) {
+	const password = "site-access-password"
 	harness := newRemoteHarnessWithPassword(t, []string{}, password)
 	defer harness.Close()
 	baseURL, err := url.Parse(harness.URL())
@@ -30,7 +30,7 @@ func TestStartUsesHostAdmissionCookieAndPrivateV2Room(t *testing.T) {
 	}
 	session, room, err := Start(context.Background(), StartOptions{
 		BaseURL:               baseURL,
-		HostAdmissionPassword: password,
+		SiteAccessPassword: password,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -40,13 +40,13 @@ func TestStartUsesHostAdmissionCookieAndPrivateV2Room(t *testing.T) {
 	admission := <-harness.admission
 	if admission.Method != http.MethodPost || admission.Authorization != "Bearer "+password ||
 		admission.Origin != harness.URL() || admission.Body != "" {
-		t.Fatalf("host admission request = %+v", admission)
+		t.Fatalf("site access request = %+v", admission)
 	}
 	creation := <-harness.roomCreation
 	if creation.Method != http.MethodPost || creation.Authorization != "" || creation.Origin != harness.URL() ||
 		creation.ContentType != "application/json" ||
 		creation.Body != `{"viewerPolicy":"private-link","hostClaimTtlSeconds":300}` ||
-		!strings.HasPrefix(creation.Cookie, "screener-host-admission=v1.") {
+		!strings.HasPrefix(creation.Cookie, "screener-site-access=v1.") {
 		t.Fatalf("room creation request = %+v", creation)
 	}
 	if signalCookie := <-harness.signalCookie; signalCookie != creation.Cookie {
@@ -65,7 +65,7 @@ func TestStartRetriesTheSameProvisionalRoomOnce(t *testing.T) {
 	var authentications [][]byte
 	mux := http.NewServeMux()
 	var server *httptest.Server
-	mux.HandleFunc("/api/host-admission", func(response http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/api/site-access", func(response http.ResponseWriter, request *http.Request) {
 		writeHarnessJSON(response, map[string]any{"required": false, "authenticated": true})
 	})
 	mux.HandleFunc("/api/rooms", func(response http.ResponseWriter, request *http.Request) {
@@ -128,7 +128,7 @@ func TestStartRetriesTheSameProvisionalRoomOnce(t *testing.T) {
 	}
 }
 
-func TestHostAdmissionFailuresAreBoundedAndDoNotLeakSecrets(t *testing.T) {
+func TestSiteAccessFailuresAreBoundedAndDoNotLeakSecrets(t *testing.T) {
 	const password = "never-report-this-password"
 	const grant = "g1.1.1893456000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	tests := []struct {
@@ -146,17 +146,17 @@ func TestHostAdmissionFailuresAreBoundedAndDoNotLeakSecrets(t *testing.T) {
 		{name: "unknown-field", status: http.StatusOK, body: `{"required":false,"authenticated":true,"url":"https://private.test/path"}`},
 		{
 			name: "quoted-cookie", status: http.StatusOK, body: `{"required":true,"authenticated":true}`,
-			setCookie: `screener-host-admission="v1.1893456000.` + strings.Repeat("a", 43) + `"; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict`,
+			setCookie: `screener-site-access="v1.1893456000.` + strings.Repeat("a", 43) + `"; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict`,
 		},
 		{
 			name: "partitioned-cookie", status: http.StatusOK, body: `{"required":true,"authenticated":true}`,
-			setCookie: `screener-host-admission=v1.1893456000.` + strings.Repeat("a", 43) + `; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict; Partitioned`,
+			setCookie: `screener-site-access=v1.1893456000.` + strings.Repeat("a", 43) + `; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict; Partitioned`,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-				if request.URL.Path != "/api/host-admission" {
+				if request.URL.Path != "/api/site-access" {
 					http.NotFound(response, request)
 					return
 				}
@@ -173,14 +173,14 @@ func TestHostAdmissionFailuresAreBoundedAndDoNotLeakSecrets(t *testing.T) {
 			}
 			_, _, startErr := Start(context.Background(), StartOptions{
 				BaseURL:               baseURL,
-				HostAdmissionPassword: password,
+				SiteAccessPassword: password,
 			})
 			if startErr == nil {
-				t.Fatal("invalid host admission response was accepted")
+				t.Fatal("invalid site access response was accepted")
 			}
 			reported := startErr.Error()
 			if strings.Contains(reported, password) || strings.Contains(reported, grant) || strings.Contains(reported, server.URL) {
-				t.Fatalf("host admission error leaked untrusted data: %q", reported)
+				t.Fatalf("site access error leaked untrusted data: %q", reported)
 			}
 		})
 	}
@@ -219,7 +219,7 @@ func TestCreateRoomFailuresAreStrictAndDoNotLeakGrant(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			mux := http.NewServeMux()
 			var server *httptest.Server
-			mux.HandleFunc("/api/host-admission", func(response http.ResponseWriter, request *http.Request) {
+			mux.HandleFunc("/api/site-access", func(response http.ResponseWriter, request *http.Request) {
 				writeHarnessJSON(response, map[string]any{"required": false, "authenticated": true})
 			})
 			mux.HandleFunc("/api/rooms", func(response http.ResponseWriter, request *http.Request) {
@@ -577,7 +577,7 @@ func newRemoteHarnessWithPassword(t *testing.T, roster []string, password string
 		signalCookie:    make(chan string, 1),
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/host-admission", func(response http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/api/site-access", func(response http.ResponseWriter, request *http.Request) {
 		body, _ := io.ReadAll(request.Body)
 		harness.admission <- capturedRequest{
 			Method:        request.Method,
@@ -594,7 +594,7 @@ func newRemoteHarnessWithPassword(t *testing.T, roster []string, password string
 			writeHarnessJSON(response, map[string]string{"error": "secret must never be reflected"})
 			return
 		}
-		response.Header().Set("Set-Cookie", "screener-host-admission=v1.1893456000."+strings.Repeat("a", 43)+"; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict")
+		response.Header().Set("Set-Cookie", "screener-site-access=v1.1893456000."+strings.Repeat("a", 43)+"; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict")
 		writeHarnessJSON(response, map[string]any{"required": true, "authenticated": true})
 	})
 	mux.HandleFunc("/api/rooms", func(response http.ResponseWriter, request *http.Request) {

@@ -10,7 +10,7 @@ server.
    directory.
 2. Run `screener-sender.exe`. It opens a loopback-only UI in the default
    browser; current Chrome or Edge is required.
-3. Enter the Screener server and Host admission password, choose VP8 (default)
+3. Enter the Screener server and site access password, choose VP8 (default)
    or experimental H.264, then choose the screen or window to share.
 4. Process audio is off by default. To enable it, select the exact target in
    the audio list and select the same target in the browser picker.

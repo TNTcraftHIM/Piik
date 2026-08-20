@@ -15,7 +15,7 @@ describe("native one-viewer sender-start ledger", () => {
       { getDisplayMediaRequested: true },
       {
         getDisplayMediaResolved: true,
-        hostAdmissionAccepted: true,
+        siteAccessAccepted: true,
         roomCreated: true,
       },
       {
@@ -53,7 +53,7 @@ describe("native one-viewer sender-start ledger", () => {
       sequence: 3,
       getDisplayMediaRequested: true,
       getDisplayMediaResolved: true,
-      hostAdmissionAccepted: true,
+      siteAccessAccepted: true,
       roomCreated: true,
       hostWssAuthenticated: true,
       bridgeConnected: true,
@@ -82,7 +82,7 @@ describe("native one-viewer sender-start ledger", () => {
     ledger.record({
       getDisplayMediaRequested: true,
       getDisplayMediaResolved: true,
-      hostAdmissionAccepted: true,
+      siteAccessAccepted: true,
       roomCreated: true,
       hostWssAuthenticated: true,
       bridgeConnected: true,

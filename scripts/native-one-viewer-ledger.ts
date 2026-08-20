@@ -1,7 +1,7 @@
 export interface SenderStartObservation {
   getDisplayMediaRequested: boolean;
   getDisplayMediaResolved: boolean;
-  hostAdmissionAccepted: boolean;
+  siteAccessAccepted: boolean;
   roomCreated: boolean;
   hostWssAuthenticated: boolean;
   bridgeConnected: boolean;
@@ -32,7 +32,7 @@ type LedgerSink = (record: Readonly<SenderStartLedgerRecord>) => void;
 const initialObservation: SenderStartObservation = {
   getDisplayMediaRequested: false,
   getDisplayMediaResolved: false,
-  hostAdmissionAccepted: false,
+  siteAccessAccepted: false,
   roomCreated: false,
   hostWssAuthenticated: false,
   bridgeConnected: false,
@@ -56,7 +56,7 @@ const initialObservation: SenderStartObservation = {
 const booleanKeys = [
   "getDisplayMediaRequested",
   "getDisplayMediaResolved",
-  "hostAdmissionAccepted",
+  "siteAccessAccepted",
   "roomCreated",
   "hostWssAuthenticated",
   "bridgeConnected",

@@ -13,7 +13,7 @@ import {
 import type { ServerConfig } from "../src/server/config.ts";
 
 const allowedOrigin = "http://allowed.test";
-const hostAdmissionPassword = "instance-access-password";
+const siteAccessPassword = "instance-access-password";
 let runningServer: ScreenerServer | undefined;
 const temporaryDirectories: string[] = [];
 
@@ -38,7 +38,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     listenHost: "127.0.0.1",
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
-    hostAdmissionPassword,
+    siteAccessPassword,
     roomTtlMs: 14_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,
@@ -52,7 +52,7 @@ async function start(
   config = testConfig(),
   options: Pick<
     CreateServerOptions,
-    "now" | "hostAdmissionTtlSeconds" | "sfuTokenIssuer"
+    "now" | "siteAccessTtlSeconds" | "sfuTokenIssuer"
   > = {},
 ): Promise<string> {
   runningServer = await createScreenerServer({
@@ -73,10 +73,10 @@ function cookiePair(response: Response): string {
 }
 
 async function login(baseUrl: string): Promise<Response> {
-  return fetch(`${baseUrl}/api/host-admission`, {
+  return fetch(`${baseUrl}/api/site-access`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${hostAdmissionPassword}`,
+      Authorization: `Bearer ${siteAccessPassword}`,
       Origin: allowedOrigin,
     },
   });
@@ -102,10 +102,10 @@ async function createRoom(
   });
 }
 
-describe("Host admission", () => {
+describe("site access", () => {
   it("reports status and issues a stateless 12-hour cookie", async () => {
     const baseUrl = await start();
-    const initial = await fetch(`${baseUrl}/api/host-admission`);
+    const initial = await fetch(`${baseUrl}/api/site-access`);
 
     expect(initial.status).toBe(200);
     expect(initial.headers.get("cache-control")).toBe("no-store");
@@ -114,7 +114,7 @@ describe("Host admission", () => {
       authenticated: false,
     });
 
-    const denied = await fetch(`${baseUrl}/api/host-admission`, {
+    const denied = await fetch(`${baseUrl}/api/site-access`, {
       method: "POST",
       headers: {
         Authorization: "Bearer wrong-password",
@@ -127,15 +127,15 @@ describe("Host admission", () => {
     const authenticated = await login(baseUrl);
     const setCookie = authenticated.headers.get("set-cookie") ?? "";
     expect(authenticated.status).toBe(200);
-    expect(setCookie).toContain("screener-host-admission=v1.");
+    expect(setCookie).toContain("screener-site-access=v1.");
     expect(setCookie).toContain("Path=/");
     expect(setCookie).toContain("Max-Age=43200");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
     expect(setCookie).not.toContain("Secure");
-    expect(setCookie).not.toContain(hostAdmissionPassword);
+    expect(setCookie).not.toContain(siteAccessPassword);
 
-    const status = await fetch(`${baseUrl}/api/host-admission`, {
+    const status = await fetch(`${baseUrl}/api/site-access`, {
       headers: { Cookie: cookiePair(authenticated) },
     });
     expect(await status.json()).toEqual({
@@ -149,7 +149,7 @@ describe("Host admission", () => {
     const response = await login(baseUrl);
     const setCookie = response.headers.get("set-cookie") ?? "";
 
-    expect(setCookie).toContain("__Host-screener-host-admission=");
+    expect(setCookie).toContain("__Host-screener-site-access=");
     expect(setCookie).toContain("Secure");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
@@ -160,12 +160,12 @@ describe("Host admission", () => {
   it("requires an allowed Origin and an empty login body", async () => {
     const baseUrl = await start();
     const authorization = {
-      Authorization: `Bearer ${hostAdmissionPassword}`,
+      Authorization: `Bearer ${siteAccessPassword}`,
     };
 
     expect(
       (
-        await fetch(`${baseUrl}/api/host-admission`, {
+        await fetch(`${baseUrl}/api/site-access`, {
           method: "POST",
           headers: authorization,
         })
@@ -173,7 +173,7 @@ describe("Host admission", () => {
     ).toBe(403);
     expect(
       (
-        await fetch(`${baseUrl}/api/host-admission`, {
+        await fetch(`${baseUrl}/api/site-access`, {
           method: "POST",
           headers: { ...authorization, Origin: "https://foreign.test" },
         })
@@ -181,7 +181,7 @@ describe("Host admission", () => {
     ).toBe(403);
     expect(
       (
-        await fetch(`${baseUrl}/api/host-admission`, {
+        await fetch(`${baseUrl}/api/site-access`, {
           method: "POST",
           headers: { ...authorization, Origin: `${allowedOrigin}/path` },
         })
@@ -189,7 +189,7 @@ describe("Host admission", () => {
     ).toBe(403);
     expect(
       (
-        await fetch(`${baseUrl}/api/host-admission`, {
+        await fetch(`${baseUrl}/api/site-access`, {
           method: "POST",
           headers: { ...authorization, Origin: allowedOrigin },
           body: "{}",
@@ -202,18 +202,18 @@ describe("Host admission", () => {
     let now = 1_000;
     const baseUrl = await start(testConfig(), {
       now: () => now,
-      hostAdmissionTtlSeconds: 1,
+      siteAccessTtlSeconds: 1,
     });
     const authenticated = await login(baseUrl);
     const cookie = cookiePair(authenticated);
 
-    const modified = await fetch(`${baseUrl}/api/host-admission`, {
+    const modified = await fetch(`${baseUrl}/api/site-access`, {
       headers: { Cookie: `${cookie}x` },
     });
     expect((await modified.json()).authenticated).toBe(false);
 
     now = 2_000;
-    const expired = await fetch(`${baseUrl}/api/host-admission`, {
+    const expired = await fetch(`${baseUrl}/api/site-access`, {
       headers: { Cookie: cookie },
     });
     expect(await expired.json()).toEqual({
@@ -224,15 +224,15 @@ describe("Host admission", () => {
 
   it("is immediately authenticated when the access password is empty", async () => {
     const baseUrl = await start(
-      testConfig({ hostAdmissionPassword: undefined }),
+      testConfig({ siteAccessPassword: undefined }),
     );
-    const status = await fetch(`${baseUrl}/api/host-admission`);
+    const status = await fetch(`${baseUrl}/api/site-access`);
 
     expect(await status.json()).toEqual({
       required: false,
       authenticated: true,
     });
-    const post = await fetch(`${baseUrl}/api/host-admission`, {
+    const post = await fetch(`${baseUrl}/api/site-access`, {
       method: "POST",
       headers: { Origin: allowedOrigin },
     });
@@ -251,7 +251,7 @@ describe("room HTTP API", () => {
     const bearerBypass = await fetch(`${baseUrl}/api/rooms`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${hostAdmissionPassword}`,
+        Authorization: `Bearer ${siteAccessPassword}`,
         "Content-Type": "application/json",
         Origin: allowedOrigin,
       },
@@ -300,9 +300,9 @@ describe("room HTTP API", () => {
     );
   });
 
-  it("allows explicit public-watch creation without Host admission in local mode", async () => {
+  it("allows explicit public-watch creation without site access in local mode", async () => {
     const baseUrl = await start(
-      testConfig({ hostAdmissionPassword: undefined }),
+      testConfig({ siteAccessPassword: undefined }),
     );
     const response = await createRoom(baseUrl, undefined, "public-watch");
     expect(response.status).toBe(201);
@@ -344,7 +344,7 @@ describe("room HTTP API", () => {
 
   it("rejects malformed room requests and foreign browser origins", async () => {
     const baseUrl = await start(
-      testConfig({ hostAdmissionPassword: undefined }),
+      testConfig({ siteAccessPassword: undefined }),
     );
     const withBody = await fetch(`${baseUrl}/api/rooms`, {
       method: "POST",
@@ -366,7 +366,7 @@ describe("room HTTP API", () => {
 
   it("returns service unavailable at the global room bound", async () => {
     const baseUrl = await start(
-      testConfig({ hostAdmissionPassword: undefined, maxRooms: 1 }),
+      testConfig({ siteAccessPassword: undefined, maxRooms: 1 }),
     );
     const create = () => createRoom(baseUrl);
 

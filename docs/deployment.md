@@ -179,7 +179,7 @@ LISTEN_HOST=127.0.0.1
 PORT=8787
 PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
-HOST_ADMISSION_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
+SITE_ACCESS_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
 ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
@@ -217,12 +217,13 @@ issued only to a current controller-selected edge. There is no browser control,
 percentage rollout, or second router.
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
-`HOST_ADMISSION_PASSWORD` is required in production and must contain 8 through
+`SITE_ACCESS_PASSWORD` is required in production and must contain 8 through
 128 visible ASCII bytes (`0x21` through `0x7e`). It must not be reused for
-LiveKit, TLS, TURN, or another service. It authorizes room creation and Host
-role only; it is not a Viewer password. Local development and tests may omit it.
-Supplying the removed `ACCESS_PASSWORD` key, even blank, fails startup.
-`ROOM_DATABASE_PATH` is optional but requires `HOST_ADMISSION_PASSWORD`.
+LiveKit, TLS, TURN, or another service. It authorizes room creation, Host role,
+and code-only Viewer attempts; it does not replace a private room grant or
+password. Local development and tests may omit it. Supplying a removed access
+key, even blank, fails startup.
+`ROOM_DATABASE_PATH` is optional but requires `SITE_ACCESS_PASSWORD`.
 Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
@@ -233,7 +234,7 @@ complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the
 optional SDK and server path dormant. `LIVEKIT_URL` must be a plain `ws:` or
 `wss:` origin with no `/rtc` suffix; production requires `wss:`.
 `LIVEKIT_API_SECRET` must contain at least 32 bytes and must not reuse
-`HOST_ADMISSION_PASSWORD`. `MAX_SFU_ROOTS_PER_ROOM` defaults to
+`SITE_ACCESS_PASSWORD`. `MAX_SFU_ROOTS_PER_ROOM` defaults to
 2 and accepts only 1 or 2; it is ignored when LiveKit is not configured. These
 credentials authorize short-lived LiveKit room tokens and do not provide E2EE:
 the LiveKit operator can access ordinary SFU media.
@@ -255,7 +256,7 @@ TURN wire is restored. During migration, remove the retired room-ID variable in
 the same coherent change; the process flag explicitly enables the all-room
 controller.
 
-Only `POST /api/host-admission` accepts the Host admission secret in an
+Only `POST /api/site-access` accepts the site access secret in an
 `Authorization: Bearer` header from an exact allowed Origin. Success returns a
 12-hour stateless HMAC-SHA256 cookie with `HttpOnly`, `SameSite=Strict`,
 `Path=/`, bounded `Max-Age`, and, under production HTTPS, `Secure` plus an
@@ -265,18 +266,21 @@ is no account database, JWT, session map, or logout endpoint.
 nginx limits this exact endpoint per source at `5r/m` with `burst=5 nodelay` and
 returns 429 when exhausted. The limiter uses nginx shared memory; do not add the
 secret, Authorization header, request body, or a new source-address field to
-logs. `POST /api/rooms` accepts only the Host-admission cookie and strict JSON
+logs. `POST /api/rooms` accepts only the site-access cookie and strict JSON
 with an explicit Viewer policy; a Bearer header is not an alternate creation
 path. `/signal` still admits a cookie-free browser after Origin and capacity
-checks, records the cookie state at upgrade, and requires it only when the first
-v2 message requests Host role. Viewer role never uses this deployment secret.
+checks and records the cookie state at upgrade. Host requires it with the room
+Host token. A Viewer may omit it only when presenting a valid, unexpired grant
+for that exact room; otherwise the server rejects before evaluating public-watch
+or a room password.
 
 Private rooms are the default. Their invitation is
 `/r/{code}#v={room-scoped-grant}`; the fragment does not enter HTTP or WebSocket
 request targets. The page validates it, writes it only to that room's
 `sessionStorage`, and immediately replaces the visible URL with `/r/{code}`.
-An independent tab without the fragment fails closed. `public-watch` must be an
-explicit Host choice and accepts the numeric room code alone. Neither policy
+An independent tab without the fragment must first pass site access. A private
+room then requires its room password, while explicit `public-watch` accepts the
+numeric room code. Neither policy
 lets a Viewer create a room or authenticate as Host.
 
 Room allocation has two deliberately small policies:
@@ -332,7 +336,7 @@ Production completed this migration at 2026-08-20 03:06 +08 on exact
 `3C09AF81BCE68B51DD9E36E1C253A880D8D6F24BB498A090CF815AB196C392AA`.
 A stopped, read-only-verified v1 backup retained all four rooms;
 the v2 integrity/schema and locked-private digest checks passed, including room
-`1`. Host admission and a cookie-free private Viewer denial also passed. An
+`1`. site access and a cookie-free private Viewer denial also passed. An
 earlier artifact attempt was rolled back after hard-linked dependencies let a
 permission change make the rollback release unreadable for 3m11s; the final release has an
 independent dependency tree and zero shared regular-file inodes.
@@ -439,7 +443,7 @@ TURN/UDP URL with a 120-second TTL. Ordinary peer ICE remained STUN-only; the
 coturn, nginx, LiveKit, firewall, and listener baselines were preserved, while
 the application environment changed only for the selected tuple and retained
 root ownership and mode 0600. Local/public health, the built asset, three neutral
-routes, and the anonymous Host-admission boolean passed. SQLite v3 integrity,
+routes, and the anonymous site-access boolean passed. SQLite v3 integrity,
 owner/mode, checksum, five-room count, and room `1` were unchanged.
 Screener, LiveKit, coturn, and nginx were active/running with
 `NRestarts=0` at the final audit. The selected-edge tuple was not exercised
@@ -529,7 +533,7 @@ Keep the proxy's access-log retention bounded and access controlled. Requests to
 `/r/{code}` put the room code in the path, so access logs can contain room codes
 as well as network metadata. They must not be treated as public artifacts. For
 a private room, the grant remains in the fragment and is not part of that
-request target; for public-watch, the current code is intentionally sufficient.
+request target. A public-watch code still requires prior site access.
 
 For a process-level liveness probe, send `GET /healthz`. A running process
 returns HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`; other

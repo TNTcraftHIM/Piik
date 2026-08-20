@@ -1,19 +1,18 @@
 # ADR-0002: Persistent Rooms And Scoped Viewer Access
 
-- Status: Accepted; grant boundary deployed, room-password extension source-only
+- Status: Accepted; room access deployed, site-access ordering source-only
 - Date: 2026-08-19
 
 ## Context
 
-The trusted-friends workflow needs two different boundaries. Creating and
-publishing a room can consume meaningful endpoint or central-media resources,
-so the deployment owner must control Host admission. Watching should remain a
-normal-browser, link-first action and should not reveal the deployment's Host
-password to every invited friend.
+The trusted-friends workflow uses a site-access boundary and a room-access
+boundary. Creating or publishing and navigating by room code require site
+access. A room-scoped fragment grant remains the link-first path and does not
+require sharing the site password with invited friends.
 
 The superseded runtime used one optional `ACCESS_PASSWORD`, one stateless cookie,
 and the same WebSocket upgrade gate for both roles. The deployed replacement now
-separates Host admission from default private fragment grants and explicit
+separates site access from default private fragment grants and explicit
 public-watch. The accepted source-only extension adds optional room-password
 entry without reopening the old site-wide Viewer gate. Persistent sequential IDs
 make a room-scoped boundary especially important.
@@ -22,35 +21,38 @@ Accounts, a user database, per-person ACLs, password recovery, and a server
 session table would exceed the product need. A room-scoped bearer capability
 remains the lowest-friction invitation, while an optional low-policy room
 password lets a trusted friend enter from a numeric room code without weakening
-Host admission. Media topology remains independent and is governed by
+site access. Media topology remains independent and is governed by
 ADR-0001/0005.
 
 ## Decision
 
-Separate Host admission from Viewer authorization in one atomic release:
+Keep site access and room authorization as two ordered checks:
 
-- Replace `ACCESS_PASSWORD` with `HOST_ADMISSION_PASSWORD`. Production startup
+- Replace `ACCESS_PASSWORD` with `SITE_ACCESS_PASSWORD`. Production startup
   requires it; local development and tests may explicitly disable it. It accepts
   8 through 128 visible ASCII bytes, must be independent from other deployment
   secrets, and issues a 12-hour stateless
   HMAC `HttpOnly`, `SameSite=Strict`, `Path=/` cookie (`Secure` and `__Host-` in
-  HTTPS production). It authorizes only room creation and an attempted Host
-  role. The room's independent Host token is still required to publish.
+  HTTPS production). It authorizes room creation and an attempted Host role,
+  and permits code-only Viewer attempts. The room's independent Host token is
+  still required to publish.
 - The atomic deployment change applies nginx per-source `limit_req` at `5r/m`,
-  `burst=5 nodelay` to `/api/host-admission`. It uses nginx shared memory and
+  `burst=5 nodelay` to `/api/site-access`. It uses nginx shared memory and
   introduces no IP persistence/log field. Throttling returns generic 429;
   allowed failures use constant-time comparison and generic 401. Node gains no
   IP-keyed identity/LRU/session store; existing connection caps remain.
 - Remove the old environment variable, `/api/session`, old cookie name, and old
   client gate in the same release. Supplying `ACCESS_PASSWORD` is a startup
-  error. The replacement endpoint is `/api/host-admission`; `POST /api/rooms`
+  error. The replacement endpoint is `/api/site-access`; `POST /api/rooms`
   accepts only its cookie, not a Bearer shortcut.
 - A WebSocket upgrade cannot know the future role. `/signal` therefore admits a
-  browser without a Host cookie after the existing exact Origin, empty-query,
+  browser without a site-access cookie after the existing exact Origin, empty-query,
   total-capacity, and unauthenticated-capacity checks. The server records whether
-  the upgrade carried a valid Host-admission cookie. The first Host
+  the upgrade carried a valid site-access cookie. The first Host
   `authenticate` must pass both that recorded state and the room Host token. A
-  Viewer ignores Host admission and is checked only against the room policy.
+  Viewer may bypass site access only with a valid, unexpired grant for that
+  exact room; otherwise site access is required before any room lookup policy
+  or password verification can authorize it.
 - Move the single wire literal from `screener-v1` to `screener-v2`. There is no
   negotiation, v1 parser, dual write, or translator. A v1 first message receives
   the universal fatal refresh outcome before room lookup and does not reconnect.
@@ -66,16 +68,17 @@ Every room has one of two Viewer policies:
   the immediate removal operation. Seven days is a configuration-free first
   release bound: reusable across short friend sessions, but not a permanent
   capability attached to a persistent sequential room.
-- `public-watch` is an explicit Host choice. A room code alone can acquire only
-  the Viewer role. It creates no room directory and remains bounded by existing
+- `public-watch` is an explicit Host choice. Site access plus a room code can
+  acquire only the Viewer role. It creates no room directory and remains bounded by existing
   per-room Viewer, global connection, unauthenticated connection, route, and
   central-egress limits. Sequential public room IDs deliberately provide no
   privacy and must be labelled accordingly.
 
 A private room may also have one optional Viewer password. An existing valid
-fragment grant still enters directly. A code-only Viewer sees a neutral password
-form and, on success, authenticates only that current Viewer session in that
-room. The Host can set, replace, or remove it. The input accepts 1 through 64
+fragment grant still enters directly. A code-only Viewer passes neutral site
+access before seeing the neutral room-password form and, on success,
+authenticates only that current Viewer session in that room. The Host can set,
+replace, or remove it. The input accepts 1 through 64
 visible ASCII characters without composition rules; this is a convenience
 boundary for trusted friends, not an account credential or recovery system.
 
@@ -136,7 +139,7 @@ healthy media.
 ## Persistence And Migration
 
 `ROOM_DATABASE_PATH` remains optional and now requires
-`HOST_ADMISSION_PASSWORD`. Without it, rooms use random numeric IDs and
+`SITE_ACCESS_PASSWORD`. Without it, rooms use random numeric IDs and
 `ROOM_TTL_SECONDS`. With it, SQLite allocates persistent decimal IDs using
 `INTEGER PRIMARY KEY AUTOINCREMENT`.
 
@@ -156,7 +159,7 @@ viewer_password_material BLOB NULL
 For the grant, `NULL` means public-watch and 32 bytes mean private-link. Password
 material is either `NULL` or one 48-byte BLOB containing a 16-byte salt followed
 by a 32-byte scrypt verifier, so salt/verifier cannot be half-written. SQLite
-stores no raw Host-admission or room password, Host token, Viewer grant, cookie,
+stores no raw site-access or room password, Host token, Viewer grant, cookie,
 display name, participant,
 `clientId`, `peerId`, IP address, SDP, ICE candidate, media, or TURN credential.
 There is no user, invitation, or session table.
@@ -209,18 +212,20 @@ SQLite or participates in authorization, routing, or quality decisions.
   Room-scoped `sessionStorage` is enough for the required refresh/reconnect.
 - Plaintext SQLite grants, per-Viewer grants, ACLs, accounts, JWTs, or a session
   table: unnecessary credential exposure/state without a current consumer.
-- Letting a Host cookie satisfy private Viewer admission: collapses the two
-  authorization scopes and makes room privacy depend on deployment trust.
+- Letting a site-access cookie satisfy private Viewer admission: collapses the
+  two authorization scopes. It permits the room attempt but never replaces a
+  private room grant or password.
 - Keeping v1 compatibility: risks ambiguous old-tab behavior and leaves a
   second security model in product code; Git history and database backup own
   rollback.
 
 ## Acceptance Gates
 
-- The auth matrix proves production Host admission, Viewer-without-Host-cookie,
+- The auth matrix proves production site access, grant-without-site-cookie,
   8-byte minimum/independent secret, ingress rate limit, exact-room/role grant
   scope, correct/wrong/replaced/removed room passwords, non-enumerating failures,
-  public code-only entry, and v2 Native wire isolation.
+  public code-only rejection before site access, public entry after site access,
+  and v2 Native wire isolation.
 - Leak tests cover HTTP/WS targets, Referrer, browser storage, SQLite, application
   and proxy logs, and errors; fragment consumption immediately clears the URL.
 - Rotation/revoke/public-to-private proves commit-before-disconnect, complete
@@ -233,11 +238,10 @@ SQLite or participates in authorization, routing, or quality decisions.
 ## Implementation Status
 
 The deployed 2026-08-20 boundary implements the single-version v2 runtime,
-private/public room policy, fragment consumption, Host admission, and
-commit-first grant teardown on SQLite v2. The current source-only candidate adds
-the optional room password, capability-isolated Web Host controls, asynchronous
-session rechecks, and the v1/v2-to-v3 single-BLOB migration. Focused automated
-tests cover password set/change/remove, grant continuity, public code-only entry,
-Native wire isolation, protocol bounds, and both migration origins. Password
-deployment, browser UX/leak inspection, production-copy migration rehearsal,
-and post-feature target-machine KDF benchmarking remain acceptance work.
+private/public room policy, fragment consumption, room passwords and
+commit-first grant teardown on SQLite v3. The current source-only candidate adds
+the ordered site-access check for every code-only Viewer and atomically renames
+the environment, HTTP endpoint, cookie, Web/Native consumers and nginx limiter.
+Focused tests cover valid grant direct entry, public/password denial without
+site access, public/password entry with site access, config fail-fast and the
+Native wire contract. Deployment and production request/log inspection remain.

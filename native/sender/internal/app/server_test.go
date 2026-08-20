@@ -602,7 +602,7 @@ func newAppRemoteServer(t *testing.T, terminal chan<- []byte) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
-	mux.HandleFunc("/api/host-admission", func(response http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/api/site-access", func(response http.ResponseWriter, request *http.Request) {
 		_ = json.NewEncoder(response).Encode(map[string]any{"required": false, "authenticated": true})
 	})
 	mux.HandleFunc("/api/rooms", func(response http.ResponseWriter, request *http.Request) {
@@ -654,7 +654,7 @@ func newDelayedAppRemoteServer(
 	t.Helper()
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
-	mux.HandleFunc("/api/host-admission", func(response http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/api/site-access", func(response http.ResponseWriter, request *http.Request) {
 		_ = json.NewEncoder(response).Encode(map[string]any{"required": false, "authenticated": true})
 	})
 	mux.HandleFunc("/api/rooms", func(response http.ResponseWriter, request *http.Request) {

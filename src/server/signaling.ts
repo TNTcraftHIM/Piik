@@ -54,7 +54,7 @@ interface SocketState {
   sessionId: string;
   alive: boolean;
   authenticationTimer: NodeJS.Timeout;
-  hostAdmissionAuthenticated: boolean;
+  siteAccessAuthenticated: boolean;
   revoked?: boolean;
   authenticating?: boolean;
   viewerPasswordUpdatePending?: boolean;
@@ -80,7 +80,7 @@ export interface SignalingOptions {
   selectedEdgeTurn?: SelectedEdgeTurnConfig;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
-  hostAdmissionAtUpgrade: (request: IncomingMessage) => boolean;
+  siteAccessAtUpgrade: (request: IncomingMessage) => boolean;
   publicBaseUrl: URL;
   now?: () => number;
   authenticationTimeoutMs?: number;
@@ -191,7 +191,7 @@ export class SignalingServer {
     };
     options.server.on("upgrade", this.upgradeHandler);
     this.webSocketServer.on("connection", (socket, request) =>
-      this.accept(socket, options.hostAdmissionAtUpgrade(request)),
+      this.accept(socket, options.siteAccessAtUpgrade(request)),
     );
 
     this.heartbeatTimer = setInterval(
@@ -227,7 +227,7 @@ export class SignalingServer {
     });
   }
 
-  private accept(socket: WebSocket, hostAdmissionAuthenticated: boolean): void {
+  private accept(socket: WebSocket, siteAccessAuthenticated: boolean): void {
     if (!this.hasConnectionCapacity()) {
       socket.terminate();
       return;
@@ -244,7 +244,7 @@ export class SignalingServer {
       sessionId,
       alive: true,
       authenticationTimer,
-      hostAdmissionAuthenticated,
+      siteAccessAuthenticated,
     };
     this.socketStates.set(socket, state);
     this.socketsBySessionId.set(sessionId, socket);
@@ -346,8 +346,25 @@ export class SignalingServer {
     state: SocketState,
     message: Extract<ClientMessage, { type: "authenticate" }>,
   ): Promise<void> {
-    if (message.role === "host" && !state.hostAdmissionAuthenticated) {
-      this.sendError(socket, "AUTH_REQUIRED", "Host admission is required");
+    if (message.role === "host" && !state.siteAccessAuthenticated) {
+      this.sendError(socket, "AUTH_REQUIRED", "Site access is required");
+      socket.close(4003, "Authentication failed");
+      return;
+    }
+    if (
+      message.role === "viewer" &&
+      !state.siteAccessAuthenticated &&
+      (!message.viewerGrant ||
+        !this.options.roomStore.viewerGrantMayEnter(
+          message.roomId,
+          message.viewerGrant,
+        ))
+    ) {
+      this.sendError(
+        socket,
+        "INVALID_TOKEN",
+        authenticationErrorMessage("INVALID_TOKEN"),
+      );
       socket.close(4003, "Authentication failed");
       return;
     }

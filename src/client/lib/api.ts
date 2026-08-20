@@ -4,7 +4,7 @@ import {
   type ViewerAccessPolicy,
 } from "../../shared/protocol";
 
-export interface HostAdmissionStatus {
+export interface SiteAccessStatus {
   required: boolean;
   authenticated: boolean;
 }
@@ -46,7 +46,7 @@ async function responseBody(response: Response): Promise<unknown> {
   }
 }
 
-function parseHostAdmissionStatus(value: unknown): HostAdmissionStatus {
+function parseSiteAccessStatus(value: unknown): SiteAccessStatus {
   if (!value || typeof value !== "object") {
     throw new ApiError("验证服务返回的数据格式不正确", 502);
   }
@@ -63,8 +63,8 @@ function parseHostAdmissionStatus(value: unknown): HostAdmissionStatus {
   };
 }
 
-export async function getHostAdmission(): Promise<HostAdmissionStatus> {
-  const response = await fetch("/api/host-admission", {
+export async function getSiteAccess(): Promise<SiteAccessStatus> {
+  const response = await fetch("/api/site-access", {
     headers: { Accept: "application/json" },
   });
   const body = await responseBody(response);
@@ -76,13 +76,13 @@ export async function getHostAdmission(): Promise<HostAdmissionStatus> {
       response.status,
     );
   }
-  return parseHostAdmissionStatus(body);
+  return parseSiteAccessStatus(body);
 }
 
-export async function authenticateHost(
+export async function authenticateSiteAccess(
   password: string,
-): Promise<HostAdmissionStatus> {
-  const response = await fetch("/api/host-admission", {
+): Promise<SiteAccessStatus> {
+  const response = await fetch("/api/site-access", {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -98,7 +98,7 @@ export async function authenticateHost(
       response.status,
     );
   }
-  return parseHostAdmissionStatus(body);
+  return parseSiteAccessStatus(body);
 }
 
 export async function createRoom(

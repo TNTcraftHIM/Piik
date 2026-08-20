@@ -8,7 +8,7 @@ import {
   createRoomRequestSchema,
   type CreateRoomResponse,
 } from "../shared/protocol.js";
-import { HostAdmission } from "./access-session.js";
+import { SiteAccess } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import { RoomDatabase } from "./room-database.js";
@@ -27,7 +27,7 @@ export interface CreateServerOptions {
   cleanupIntervalMs?: number;
   maxSignalConnections?: number;
   maxUnauthenticatedSignalConnections?: number;
-  hostAdmissionTtlSeconds?: number;
+  siteAccessTtlSeconds?: number;
   sfuTokenIssuer?: SfuTokenIssuer;
 }
 
@@ -71,13 +71,13 @@ export async function createScreenerServer(
         : undefined,
       now,
     });
-  const hostAdmission = new HostAdmission({
-    password: config.hostAdmissionPassword,
+  const siteAccess = new SiteAccess({
+    password: config.siteAccessPassword,
     secure:
       config.nodeEnv === "production" &&
       config.publicBaseUrl.protocol === "https:",
     now,
-    ttlSeconds: options.hostAdmissionTtlSeconds,
+    ttlSeconds: options.siteAccessTtlSeconds,
   });
   const iceOptions = {
     stunUrls: config.stunUrls,
@@ -91,7 +91,7 @@ export async function createScreenerServer(
       response,
       config,
       roomStore,
-      hostAdmission,
+      siteAccess,
       () => frontendHandler,
     ).catch((error: unknown) => {
       console.error("HTTP request failed", {
@@ -115,8 +115,8 @@ export async function createScreenerServer(
     ...(config.selectedEdgeTurn ? { selectedEdgeTurn: config.selectedEdgeTurn } : {}),
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
-    hostAdmissionAtUpgrade: (request) =>
-      hostAdmission.isAuthenticated(request.headers.cookie),
+    siteAccessAtUpgrade: (request) =>
+      siteAccess.isAuthenticated(request.headers.cookie),
     publicBaseUrl: config.publicBaseUrl,
     now,
     authenticationTimeoutMs: options.authenticationTimeoutMs,
@@ -212,7 +212,7 @@ async function handleRequest(
   response: ServerResponse,
   config: ServerConfig,
   roomStore: RoomStore,
-  hostAdmission: HostAdmission,
+  siteAccess: SiteAccess,
   getFrontendHandler: () => FrontendHandler | undefined,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", config.publicBaseUrl);
@@ -227,8 +227,8 @@ async function handleRequest(
     return;
   }
 
-  if (url.pathname === "/api/host-admission") {
-    handleHostAdmissionRequest(request, response, config, hostAdmission);
+  if (url.pathname === "/api/site-access") {
+    handleSiteAccessRequest(request, response, config, siteAccess);
     return;
   }
 
@@ -252,7 +252,7 @@ async function handleRequest(
     if (
       !isRoomCreationAuthorized(
         request,
-        hostAdmission,
+        siteAccess,
       )
     ) {
       sendJson(response, 401, { error: "Unauthorized" });
@@ -315,17 +315,17 @@ async function handleRequest(
   sendJson(response, 404, { error: "Not found" });
 }
 
-function handleHostAdmissionRequest(
+function handleSiteAccessRequest(
   request: IncomingMessage,
   response: ServerResponse,
   config: ServerConfig,
-  hostAdmission: HostAdmission,
+  siteAccess: SiteAccess,
 ): void {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("X-Content-Type-Options", "nosniff");
 
   if (request.method === "GET") {
-    sendJson(response, 200, hostAdmissionStatus(request, hostAdmission));
+    sendJson(response, 200, siteAccessStatus(request, siteAccess));
     return;
   }
 
@@ -349,27 +349,27 @@ function handleHostAdmissionRequest(
     return;
   }
 
-  if (!hostAdmission.required) {
+  if (!siteAccess.required) {
     sendJson(response, 200, { required: false, authenticated: true });
     return;
   }
-  if (!isBearerAuthorized(request, hostAdmission)) {
+  if (!isBearerAuthorized(request, siteAccess)) {
     response.setHeader("WWW-Authenticate", "Bearer");
     sendJson(response, 401, { error: "Unauthorized" });
     return;
   }
 
-  response.setHeader("Set-Cookie", hostAdmission.createCookie()!);
+  response.setHeader("Set-Cookie", siteAccess.createCookie()!);
   sendJson(response, 200, { required: true, authenticated: true });
 }
 
-function hostAdmissionStatus(
+function siteAccessStatus(
   request: IncomingMessage,
-  hostAdmission: HostAdmission,
+  siteAccess: SiteAccess,
 ): { required: boolean; authenticated: boolean } {
   return {
-    required: hostAdmission.required,
-    authenticated: hostAdmission.isAuthenticated(request.headers.cookie),
+    required: siteAccess.required,
+    authenticated: siteAccess.isAuthenticated(request.headers.cookie),
   };
 }
 
@@ -400,24 +400,24 @@ function isStrictlyAllowedRequestOrigin(
 
 function isRoomCreationAuthorized(
   request: IncomingMessage,
-  hostAdmission: HostAdmission,
+  siteAccess: SiteAccess,
 ): boolean {
-  if (!hostAdmission.required) {
+  if (!siteAccess.required) {
     return true;
   }
-  return hostAdmission.isAuthenticated(request.headers.cookie);
+  return siteAccess.isAuthenticated(request.headers.cookie);
 }
 
 function isBearerAuthorized(
   request: IncomingMessage,
-  hostAdmission: HostAdmission,
+  siteAccess: SiteAccess,
 ): boolean {
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith("Bearer ")) {
     return false;
   }
   const provided = authorization.slice("Bearer ".length);
-  return provided.length > 0 && hostAdmission.passwordMatches(provided);
+  return provided.length > 0 && siteAccess.passwordMatches(provided);
 }
 
 async function readJsonBody(

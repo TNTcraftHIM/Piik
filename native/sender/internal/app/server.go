@@ -228,7 +228,7 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 
 	session, room, err := remote.Start(startContext, remote.StartOptions{
 		BaseURL:               baseURL,
-		HostAdmissionPassword: strings.TrimSpace(input.Password),
+		SiteAccessPassword: strings.TrimSpace(input.Password),
 		Codec:                 codec,
 		EnableAudio:           audioTarget != nil,
 		OnEvent:               func(event remote.Event) { app.emit(generation, event) },

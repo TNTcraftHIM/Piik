@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
-  authenticateHost,
+  authenticateSiteAccess,
   createRoom,
-  getHostAdmission,
+  getSiteAccess,
 } from "../src/client/lib/api.ts";
 import {
   readDisplayName,
@@ -325,8 +325,8 @@ describe("client session identity", () => {
   });
 });
 
-describe("Host admission API", () => {
-  it("checks and authenticates Host admission without a request body", async () => {
+describe("site access API", () => {
+  it("checks and authenticates site access without a request body", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -343,17 +343,17 @@ describe("Host admission API", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getHostAdmission()).resolves.toEqual({
+    await expect(getSiteAccess()).resolves.toEqual({
       required: true,
       authenticated: false,
     });
-    await expect(authenticateHost("  instance-password  ")).resolves.toEqual({
+    await expect(authenticateSiteAccess("  instance-password  ")).resolves.toEqual({
       required: true,
       authenticated: true,
     });
 
     expect(fetchMock.mock.calls[0]).toEqual([
-      "/api/host-admission",
+      "/api/site-access",
       { headers: { Accept: "application/json" } },
     ]);
     const post = fetchMock.mock.calls[1][1];
@@ -375,7 +375,7 @@ describe("Host admission API", () => {
       ),
     );
 
-    await expect(authenticateHost("wrong-password")).rejects.toMatchObject({
+    await expect(authenticateSiteAccess("wrong-password")).rejects.toMatchObject({
       status: 401,
       message: "访问密码不正确，请重试",
     });
@@ -567,7 +567,7 @@ describe("client signaling recovery policy", () => {
         value: JSON.stringify({
           type: "error",
           code: "AUTH_REQUIRED",
-          message: "Host admission is required",
+          message: "Site access is required",
         }),
       },
     });
@@ -577,7 +577,7 @@ describe("client signaling recovery policy", () => {
     expect(onMessage).toHaveBeenCalledWith({
       type: "error",
       code: "AUTH_REQUIRED",
-      message: "Host admission is required",
+      message: "Site access is required",
     });
     expect(statuses.at(-1)).toBe("offline");
     expect(sockets).toHaveLength(1);

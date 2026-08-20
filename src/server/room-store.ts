@@ -312,6 +312,18 @@ export class RoomStore {
     return this.connectViewer(room, input);
   }
 
+  viewerGrantMayEnter(roomId: string, grant: string | undefined): boolean {
+    try {
+      const room = this.getAvailableRoom(roomId);
+      return room.viewerGrantDigest !== null && this.viewerMayEnter(room, grant);
+    } catch (error) {
+      if (error instanceof RoomStoreError) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   async connectViewerWithPassword(
     input: ConnectViewerWithPasswordInput,
     mayConnect: () => boolean = () => true,

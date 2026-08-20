@@ -4,20 +4,10 @@ Last updated: 2026-08-21
 
 ## Phase
 
-`https://share.bonfire.icu` currently serves exact `c27df2235ecc0be17816f642ca49028e30380a34`.
-The 912,999-byte artifact has SHA-256
-`1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`.
-The 2026-08-20T19:03:10.569Z cutover held the lock 662 ms; local health
-returned 552 ms after stop and 543 ms after the symlink switch.
-SQLite v3 passed integrity checks with five rooms including room `1`; the
-application/database stayed healthy. Screener, LiveKit, coturn, and nginx are
-active/running with `NRestarts=0`, and local/public health are 200.
-Ordinary ICE remains STUN-only; `PEER_ASSISTED_MEDIA=true` enables the
-bounded peer/SFU-UDP controller for every room (at most two roots), while the
-selected-edge UDP tuple is configured with TTL 120. Room `1` is historical
-smoke only. No real TURN/SFU media canary has run. Web Host names/audio hint are
-deployed. Native H.264 and Windows x64 evaluation packaging are source-only;
-there is no Native release/deployment, and Web defaults VP8.
+`https://share.bonfire.icu` serves exact `c27df2235ecc0be17816f642ca49028e30380a34`; the 912,999-byte artifact SHA-256 is `1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`.
+The cutover held the lock 662 ms and returned local health 552 ms after stop. SQLite v3 has five rooms; Screener, LiveKit, coturn and nginx are healthy with zero restarts.
+Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke and no real TURN/SFU media canary has run.
+Web Host names/audio hint are deployed. Native H.264 and Windows x64 packaging are source-only; Web defaults VP8.
 
 ## Execution Principle
 
@@ -26,7 +16,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 ## Current Snapshot
 
 - Capture precedes room creation; source/quality changes preserve peers and pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
-- Production access is `screener-v2`: Host admission, private grants/passwords, and public codes authorize Viewers. SQLite v3 retains five rooms and checked material; raw credentials are never stored.
+- Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. The source fix and atomic `SITE_ACCESS_PASSWORD`/`/api/site-access`/site-access-cookie rename are not deployed; raw credentials are never stored.
 - Web Hosts can set their local/session display name, and the current release advertises it through the existing presence wire. The name is not an account identity.
 - Native v2 remains source-only (memory rooms, 300s reclaim); production does not run it.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
@@ -62,26 +52,11 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 
 ## Next Milestone
 
-Repeat room 1 and use the bounded SFU stage to fix only the
-identified connect/source/video-publish/sender-config/audio/transport layer,
-then retain selected UDP, a decoded/rendered frame, edge caps and resource deltas.
-The recovery target uses one ICE restart, one same-parent rebuild, one alternate peer, then
-SFU; it never runs three identical retries or abandons progressing P2P early.
-
-Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
-evacuation. Native source accepts increasing capture timestamps shorter than
-duration; VP8 and H.264 Viewer decode/render are recorded. Preference is not
-proof. Package one-Viewer VP8/H.264/Opus first; WGC/MF hardware then
-Viewer2/FIFO are functional slices. The 2s Pion sample is later diagnostic
-cleanup. Test real-game A/V later without displacing P0.
-Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. The
-selected-edge tuple is configured in production, but Host ingress still needs one
-forced-relay canary before any media-success claim. Retained performance/resource
-benchmarks follow functional landing.
-
-ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
-resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
-20-viewer gate must pass before the current default eight changes to target 20.
+Repeat room `1` and fix only the identified SFU connect/source/publish/audio/transport layer; retain selected UDP, a rendered frame, edge caps and resource deltas.
+Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then SFU. Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root evacuation.
+Package one-Viewer VP8/H.264/Opus first; WGC/MF hardware then Viewer2/FIFO are functional slices. Real-game A/V and resource benchmarks follow functional landing.
+Ordinary Peer ICE stays STUN-only. Selected-edge Host ingress still needs one forced-relay canary before a media-success claim.
+ADR-0004 still needs the 30-minute `1/3/5/8` matrix; a separate 20-viewer gate must pass before changing the default eight.
 
 ## Blockers And Decisions
 
