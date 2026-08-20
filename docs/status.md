@@ -4,18 +4,21 @@ Last updated: 2026-08-21
 
 ## Phase
 
-`https://share.bonfire.icu` currently serves `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612`
-with health 200 after the sole Host display-name cutover at `2026-08-20T16:09Z`.
-Prepare/release and health passed; a stale `NRestarts=31` assertion triggered
-automatic rollback. SQLite v3 has four rooms including room `1`; the
-application/database stayed healthy, and current Screener, LiveKit, coturn, and
-nginx services each report `NRestarts=0`. Host display names remain
-source-only/not deployed.
-Ordinary ICE is STUN-only; source flag `PEER_ASSISTED_MEDIA=true` enables the
-bounded peer/SFU-UDP controller for every room (at most two roots). Room `1` is
-historical smoke only. The old
-`fdd14ba0d9b5` is the healthy v3 rollback target; older schema details are in
-`docs/deployment.md`. Native is no-go and not in production.
+`https://share.bonfire.icu` currently serves exact `cf149df2411798cd632cc92a562b0a35146e0c1b`.
+The 893,953-byte artifact has SHA-256
+`80918716aefdbb958289b06b6f31551b78dbbaf7fb0f16980eb38d127e158e14`.
+The 2026-08-20T17:48:29.425Z cutover held the lock 9,256.904 ms and reached
+local health 562.657 ms after stop.
+SQLite v3 passed integrity checks with five rooms including room `1`; the
+application/database stayed healthy. Screener, LiveKit, coturn, and nginx are
+active/running with `NRestarts=0`, and local/public health are 200.
+Ordinary ICE remains STUN-only; `PEER_ASSISTED_MEDIA=true` enables the
+bounded peer/SFU-UDP controller for every room (at most two roots), while the
+selected-edge UDP tuple is configured with TTL 120. Room `1` is historical
+smoke only. No real TURN/SFU media canary has run. Web Host names and the
+best-effort window-scoped audio request hint are deployed; Native H.264 source is
+available but no packaged native sender is deployed, and VP8 remains the Web
+default.
 
 ## Execution Principle
 
@@ -24,30 +27,29 @@ Flagship first; parallelize design/research/code/tests/audit. Ship minimum runna
 ## Current Snapshot
 
 - Capture precedes room creation; source/quality changes preserve peers and pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
-- Production access is `screener-v2`: Host admission, private grants/passwords, and public codes authorize Viewers. SQLite v3 retains four rooms and checked material; raw credentials are never stored.
-- The Host display-name change is source-only after the failed `61a87ae` activation; it did not alter the deployed wire or UI.
-- Source-only Native v2 uses memory-only rooms, 300s reclaim and `ROOM_TTL`; production does not run it.
+- Production access is `screener-v2`: Host admission, private grants/passwords, and public codes authorize Viewers. SQLite v3 retains five rooms and checked material; raw credentials are never stored.
+- Web Hosts can set their local/session display name, and the current release advertises it through the existing presence wire. The name is not an account identity.
+- Native v2 remains source-only (memory rooms, 300s reclaim); production does not run it.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
-- Web opt-in roster code includes Host self-name, but the Host display-name change is source-only/not deployed; Native wire/media remains unchanged.
+- Web roster includes Host self-name and requests window-scoped display audio where supported; both are hints, and Native wire/media is unchanged.
 
 ## Verified Evidence
 
-- Historical `31bee238` deployment passed 28 files/421 tests and both builds; no real admission rescue was triggered.
 - Chrome 151 synthetic `1/3/5/8` and 720p30 quality-change runs kept 2/1 fanout and decoding; slowest first frame was 1.05 seconds and one relay close recovered in 5.32 seconds. This is control evidence only.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
-- SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Native loopbacks (Chrome 151): VP8 299 decoded; H.264 opt-in 299 decoded/298 rendered at 1280x720, with no fatal/encoder errors. H.264 Annex-B; hardware preference is not proof. Pion timing and multi-viewer/FIFO/endurance/public/native proof remain open; production stays VP8.
+- Chrome 151 loopbacks decoded VP8 299 and H.264 opt-in 299/298 rendered at 1280x720 without fatal/encoder errors. Hardware attribution, Pion timing, multi-viewer/endurance/public/native proof remain open; production stays VP8.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
-- Source adds selected Host ingress + peer last-mile for every enabled room; Peer ICE STUN-only; focused routing/config tests pass.
-- The `61a87ae` Host-name artifact was rolled back after a stale restart-count assertion; `fdd14ba` is healthy and Host display-name remains source-only. Selected-edge TURN is disabled.
+- Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
+- `61a87ae` Host names, `d1a4fd4` window-audio hint, and `cf149df` all-room routing are active; the stale restart assertion is historical only.
+- Final gates preserved service/config baselines, asset/routes/admission checks, and the DB v3/5-room checksum. Selected-edge is configured, but no real TURN or SFU session ran.
 
 ## Unverified Boundaries
 
-- Room 1 proved LiveKit participant entry but not a retained SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas. Former game-share load/blur remains unclassified.
+- The final deployment proves process/config health, not a retained SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas; game-share load/blur remains unclassified.
 - Android Chrome/iOS Safari Viewer leaves remain unverified and conservatively leaf-only. Mobile Web Host is unsupported; native senders are planned only.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. System capture can lose film audio or echo voice calls; Web has no process isolation. Diagnose A/B/C and sync; gate Windows 11 game audio; Windows 10 unresolved.
@@ -73,9 +75,10 @@ duration; VP8 and explicit H.264 Viewer decode/render are recorded. Hardware
 preference is not physical proof. Next prove fresh Pion
 outbound diagnostics before viewer 2/FIFO/hardware/endurance/deploy.
 Audio A/B/C may proceed without displacing P0.
-Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. Selected-edge
-is source-complete/default-off/undeployed; Host ingress still needs one forced-relay
-canary before activation. Retained performance/resource benchmarks follow landing.
+Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. The
+selected-edge tuple is configured in production, but Host ingress still needs one
+forced-relay canary before any media-success claim. Retained performance/resource
+benchmarks follow functional landing.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
