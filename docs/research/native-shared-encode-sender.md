@@ -296,17 +296,39 @@ post-config close, normal close, and app shutdown. All Go tests, vet, Windows
 amd64 no-CGO build, TypeScript typecheck, and the relevant bridge probe/ledger
 tests pass.
 
-The retained first break interval is still after WebCodecs output callback entry
-and before Go frame/source-RTP accounting. This fix does not prove the retained
-zero counters came from a read error or framing defect. The current unrun probe
-still binds the first actual local media WebSocket as gate-local generation 1
-and records only bounded binary-send attempt, synchronous-return, and
-synchronous-throw counters. A second bridge generation saturates at 2, stops
+One authorized post-fix run then used exact source
+`86386b75d01919b213f5725467e495cdd0aa9a54` and the unchanged tracked gate
+exactly once. Its fixed VP8 1280x720@30, 3 Mbps, one-Viewer boundary used Chrome
+151, one in-memory loopback room, and no peer assistance. Preflight had passed
+the 411-test Node suite, typecheck, both builds, all Go tests, vet, a Windows
+gate build, and the 11 focused ledger/generation/cleanup tests.
+
+The append-and-flush ledger reached sequence 6. It retained capture request and
+resolution, Host admission, private room creation, Host WSS authentication,
+bridge readiness, fixed-`HIGH` config acceptance, first WebCodecs output, one
+encoder object, bridge generation 1, and the first observed binary `super.send()`
+returning synchronously; it retained no observed synchronous throw. The ledger
+does not count later sends. Go still reported
+zero frames, source-RTP packets, and source-RTP bytes. The gate therefore failed
+at `sender-start` and did not create a Viewer. It did not run Viewer signaling,
+SDP/ICE, Pion bound-edge output, decode/render, H.264, a second Viewer, FIFO, or
+production. No retry or threshold change followed.
+
+Cleanup completed before final failure: Chrome and Native exited, Node and all
+task ports closed, and the exact task profile was audited and removed. The
+pre-existing historical task-profile count did not increase. The result remains
+`no-go-unclassified`: it narrows the retained interval to after the first
+product binary `send()` returned and before Go frame accounting, but does not
+prove Go read or decode. The fixed bridge fatal is not retained by this failure
+ledger, so no underlying close or raw cause may be inferred. A separate minimal
+diagnostic or fix slice must classify this interval before another Chrome run.
+
+The frozen probe continues to bind the first actual local media WebSocket as
+gate-local generation 1. A second bridge generation saturates at 2, stops
 accumulating the first generation's counters, and fails the Viewer signal,
-Viewer media, and final-success checks even after Sender-start passed. A pure
-in-memory test covers success, throw, and late replacement without retaining a
-URL, payload, token, SDP, IP address, or raw error. No subsequent Chrome run was
-authorized or occurred.
+Viewer media, and final-success checks. Pure tests cover success, throw, and
+late replacement without retaining a URL, payload, token, SDP, candidate, IP
+address, or raw error.
 
 Chromium documents the tab-capture auto-selection switch as a test-only aid,
 and Chrome requires a non-default user-data directory for remote debugging from

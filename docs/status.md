@@ -35,7 +35,7 @@ and is not part of production.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Native stays no-go: retained Chrome reached WebCodecs output but Go stayed zero. A real `/media` test accepts the 17-byte frame into Go frame/RTP; unexpected post-config reads emit a fixed sanitized fatal. No Chrome rerun occurred, so retained send/framing cause and MF H.264-to-Pion/Viewer interop remain unproven.
+- Native remains no-go after one post-fix gate: fixed VP8, one encoder and one generation-1 binary send returned, but Go frame/RTP stayed zero; no Viewer was created. Cleanup passed; no retry followed. The fixed bridge fatal was not retained, so the send-to-Go interval and MF H.264 Viewer interop remain unproven.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 
 ## Unverified Boundaries
@@ -60,8 +60,8 @@ The recovery target uses one ICE restart, one same-parent rebuild, one alternate
 SFU; it never runs three identical retries or abandons progressing P2P early.
 
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
-evacuation. Native needs separate authorization; its next Chrome run must retain
-the first product binary-send outcome before Go RTP.
+evacuation. Native is stopped after browser send return but zero Go frame/RTP;
+classify that interval in a separate fix slice before any new run.
 Audio A/B/C may proceed without displacing P0.
 Ordinary Peer ICE stays STUN-only. Participant-wide TURN source and wire are
 removed; stale `PEER_ICE_TURN_*` keys fail startup even blank. Selected-edge TURN
