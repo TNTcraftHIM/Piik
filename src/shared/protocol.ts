@@ -114,7 +114,6 @@ export const viewerPasswordSchema = z
   .min(MIN_VIEWER_PASSWORD_LENGTH)
   .max(MAX_VIEWER_PASSWORD_LENGTH)
   .regex(/^[\x21-\x7e]+$/);
-export type ViewerPassword = z.infer<typeof viewerPasswordSchema>;
 
 export const viewerAccessPolicySchema = z.enum([
   "private-link",
@@ -150,7 +149,6 @@ export const qualityProfileIdSchema = z.enum([
   "720p30",
 ]);
 export type QualityProfileId = z.infer<typeof qualityProfileIdSchema>;
-export const DEFAULT_QUALITY_PROFILE_ID: QualityProfileId = "1080p60";
 
 export const qualityResolutionSchema = z.enum(["720p", "1080p", "1440p"]);
 export type QualityResolution = z.infer<typeof qualityResolutionSchema>;
@@ -446,9 +444,6 @@ export const viewerQualityEvidenceMessageSchema = z
   .refine(freezeFitsEvidenceWindow, {
     message: "Viewer freeze duration exceeds its evidence window",
   });
-export type ViewerQualityEvidenceMessage = z.infer<
-  typeof viewerQualityEvidenceMessageSchema
->;
 
 const parentEdgeQualityProofSchema = z.discriminatedUnion("kind", [
   z
@@ -485,9 +480,6 @@ export const parentEdgeQualityEvidenceMessageSchema = z
     proof: parentEdgeQualityProofSchema,
   })
   .strict();
-export type ParentEdgeQualityEvidenceMessage = z.infer<
-  typeof parentEdgeQualityEvidenceMessageSchema
->;
 
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
@@ -824,7 +816,6 @@ export const createRoomRequestSchema = z
     hostClaimTtlSeconds: z.literal(MAX_HOST_CLAIM_TTL_SECONDS).optional(),
   })
   .strict();
-export type CreateRoomRequest = z.infer<typeof createRoomRequestSchema>;
 
 export function decodeClientMessage(value: string): ClientMessage {
   return clientMessageSchema.parse(JSON.parse(value));

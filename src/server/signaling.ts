@@ -458,7 +458,7 @@ export class SignalingServer {
     };
     let hybridState;
     try {
-      hybridState = this.isPeerAssistedRoom(participant.roomId)
+      hybridState = this.isHybridMediaEnabled()
         ? this.hybridMediaRouter!.connectParticipant(routeParticipant)
         : undefined;
     } catch {
@@ -538,14 +538,14 @@ export class SignalingServer {
     if (participant.role === "host") {
       for (const viewer of connectedViewers) {
         this.sendToSession(viewer.sessionId, { type: "host-status", online: true });
-        if (!this.isPeerAssistedRoom(participant.roomId)) {
+        if (!this.isHybridMediaEnabled()) {
           this.send(socket, { type: "peer-joined", peerId: viewer.peerId });
         }
       }
       return;
     }
 
-    if (this.isPeerAssistedRoom(participant.roomId)) {
+    if (this.isHybridMediaEnabled()) {
       return;
     }
 
@@ -576,7 +576,7 @@ export class SignalingServer {
           this.sendError(socket, "FORBIDDEN", "Only viewers may request an ICE restart");
           return;
         }
-        if (this.isPeerAssistedRoom(authenticated.roomId)) {
+        if (this.isHybridMediaEnabled()) {
           this.routePeerAssistedRestart(socket, authenticated, message);
           return;
         }
@@ -593,7 +593,7 @@ export class SignalingServer {
         return;
       case "set-quality-settings":
         if (
-          !this.isPeerAssistedRoom(authenticated.roomId) ||
+          !this.isHybridMediaEnabled() ||
           authenticated.role !== "host"
         ) {
           this.sendError(
@@ -618,7 +618,7 @@ export class SignalingServer {
         return;
       case "relay-capacity":
         if (
-          !this.isPeerAssistedRoom(authenticated.roomId) ||
+          !this.isHybridMediaEnabled() ||
           authenticated.role !== "viewer"
         ) {
           this.sendError(
@@ -637,7 +637,7 @@ export class SignalingServer {
         );
         return;
       case "route-ready":
-        if (!this.isPeerAssistedRoom(authenticated.roomId)) {
+        if (!this.isHybridMediaEnabled()) {
           this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
           return;
         }
@@ -650,7 +650,7 @@ export class SignalingServer {
         );
         return;
       case "route-failed":
-        if (!this.isPeerAssistedRoom(authenticated.roomId)) {
+        if (!this.isHybridMediaEnabled()) {
           this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
           return;
         }
@@ -665,7 +665,7 @@ export class SignalingServer {
       case "refresh-sfu":
         if (
           !this.options.sfuFallback ||
-          !this.isPeerAssistedRoom(authenticated.roomId)
+          !this.isHybridMediaEnabled()
         ) {
           this.sendError(socket, "FORBIDDEN", "SFU fallback is not enabled");
           return;
@@ -816,7 +816,7 @@ export class SignalingServer {
           });
         }
 
-        if (this.isPeerAssistedRoom(authenticated.roomId)) {
+        if (this.isHybridMediaEnabled()) {
           for (const viewer of update.revokedViewers) {
             this.hybridMediaRouter!.removeViewer(
               authenticated.roomId,
@@ -918,7 +918,7 @@ export class SignalingServer {
 
     let routeRevision = 0;
     let parent: ConnectedPeer | undefined;
-    if (this.isPeerAssistedRoom(source.roomId)) {
+    if (this.isHybridMediaEnabled()) {
       const edge = this.hybridMediaRouter?.resolveActivePeerEdge(
         source.roomId,
         source.peerId,
@@ -987,7 +987,7 @@ export class SignalingServer {
       acceptedAtMs: now,
       parentEvidenceAccepted: false,
     });
-    if (this.isPeerAssistedRoom(source.roomId)) {
+    if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.handleViewerQualityEvidence({
         roomId: source.roomId,
         viewerSessionId: viewerState.sessionId,
@@ -1005,7 +1005,7 @@ export class SignalingServer {
       { type: "parent-edge-quality-evidence" }
     >,
   ): void {
-    if (!this.isPeerAssistedRoom(source.roomId)) {
+    if (!this.isHybridMediaEnabled()) {
       return;
     }
     const sourceState = this.socketStates.get(socket);
@@ -1060,7 +1060,7 @@ export class SignalingServer {
     source: AuthenticatedSession,
     message: Extract<ClientMessage, { type: "signal" }>,
   ): void {
-    if (this.isPeerAssistedRoom(source.roomId)) {
+    if (this.isHybridMediaEnabled()) {
       this.routePeerAssistedSignal(sourceSocket, source, message);
       return;
     }
@@ -1264,7 +1264,7 @@ export class SignalingServer {
     if (!disconnected) {
       return;
     }
-    if (this.isPeerAssistedRoom(disconnected.roomId)) {
+    if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.disconnectParticipant(
         disconnected.roomId,
         disconnected.peerId,
@@ -1295,7 +1295,7 @@ export class SignalingServer {
           disconnected.roomId,
           disconnected.peerId,
         );
-        if (this.isPeerAssistedRoom(disconnected.roomId)) {
+        if (this.isHybridMediaEnabled()) {
           this.hybridMediaRouter!.removeViewer(
             disconnected.roomId,
             disconnected.peerId,
@@ -1317,7 +1317,7 @@ export class SignalingServer {
 
   private stopSharing(roomId: string): void {
     this.clearRoomConnectionIds(roomId);
-    if (this.isPeerAssistedRoom(roomId)) {
+    if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.stopRoom(roomId);
     }
     for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
@@ -1333,7 +1333,7 @@ export class SignalingServer {
     }
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
-    if (this.isPeerAssistedRoom(roomId)) {
+    if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.deleteRoom(roomId);
     }
     this.qualitySettingsByRoom.delete(roomId);
@@ -1352,7 +1352,7 @@ export class SignalingServer {
     for (const expired of this.options.roomStore.expireRooms(this.now())) {
       this.clearRoomGraceTimers(expired.roomId);
       this.clearRoomConnectionIds(expired.roomId);
-      if (this.isPeerAssistedRoom(expired.roomId)) {
+      if (this.isHybridMediaEnabled()) {
         this.hybridMediaRouter!.deleteRoom(expired.roomId);
       }
       this.qualitySettingsByRoom.delete(expired.roomId);
@@ -1406,10 +1406,7 @@ export class SignalingServer {
     }
   }
 
-  private isPeerAssistedRoom(roomId: string): boolean {
-    // The controller owns independent per-room state; the process flag is the
-    // only rollout switch. Keep the room argument at call sites for clarity.
-    void roomId;
+  private isHybridMediaEnabled(): boolean {
     return this.hybridMediaRouter !== undefined;
   }
 
@@ -1487,7 +1484,7 @@ export class SignalingServer {
         role: "viewer",
         peerId: viewer.peerId,
         displayName: viewerState.displayName,
-        mediaTopology: this.isPeerAssistedRoom(roomId)
+        mediaTopology: this.isHybridMediaEnabled()
           ? this.hybridMediaRouter!.getViewerMediaTopology(
               roomId,
               viewer.peerId,
