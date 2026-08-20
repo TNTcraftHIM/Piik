@@ -280,18 +280,33 @@ encoded-output observation before it calls the product output callback, and that
 run did not retain whether the current local media WebSocket attempted, returned
 from, or threw during the binary frame send. Static source comparison shows a
 matching binary message type, 17-byte big-endian header, one-MiB payload limit,
-and VP8 frame decode on both sides. It also confirms that Pion's unbound static RTP track
-returns no error. Those facts do not prove which runtime operation followed the
-callback. The retained first break interval is after WebCodecs output callback
-entry and before Go frame/source-RTP accounting. There is no uniquely proven
-product bug. The current unrun probe now binds the first actual local media
-WebSocket as gate-local generation 1 and records only bounded binary-send
-attempt, synchronous-return, and synchronous-throw counters. A second bridge
-generation saturates at 2, stops accumulating the first generation's counters,
-and fails the Viewer signal, Viewer media, and final-success checks even after
-Sender-start passed. A pure in-memory test covers success, throw, and late
-replacement without retaining a URL, payload, token, SDP, IP address, or raw
-error. No subsequent browser/media run is authorized or has occurred.
+and VP8 frame decode on both sides. A focused test now drives the real local
+`/media` WebSocket through ready, fixed config acceptance, one same-contract
+binary frame, decode, fanout, and positive `framesWritten` plus source-RTP packet
+accounting. Pion's unbound static RTP track also returns no error. This proves
+the current envelope is consumable by the current Go handler; it does not prove
+that the retained browser called or returned from the product send.
+
+The concrete P1 defect at this boundary was silent handling of every unexpected
+post-config WebSocket read error. The handler now emits one `fatal` with fixed
+message `local media bridge read failed` only while the app context is active
+and the close status is neither normal nor going-away. It never includes the
+underlying error or close reason. Focused real-WebSocket tests cover an abnormal
+post-config close, normal close, and app shutdown. All Go tests, vet, Windows
+amd64 no-CGO build, TypeScript typecheck, and the relevant bridge probe/ledger
+tests pass.
+
+The retained first break interval is still after WebCodecs output callback entry
+and before Go frame/source-RTP accounting. This fix does not prove the retained
+zero counters came from a read error or framing defect. The current unrun probe
+still binds the first actual local media WebSocket as gate-local generation 1
+and records only bounded binary-send attempt, synchronous-return, and
+synchronous-throw counters. A second bridge generation saturates at 2, stops
+accumulating the first generation's counters, and fails the Viewer signal,
+Viewer media, and final-success checks even after Sender-start passed. A pure
+in-memory test covers success, throw, and late replacement without retaining a
+URL, payload, token, SDP, IP address, or raw error. No subsequent Chrome run was
+authorized or occurred.
 
 Chromium documents the tab-capture auto-selection switch as a test-only aid,
 and Chrome requires a non-default user-data directory for remote debugging from

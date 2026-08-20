@@ -3,13 +3,17 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/native/sender/internal/media"
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/remote"
 	"github.com/coder/websocket"
 )
@@ -172,6 +176,109 @@ func TestAcceptedMediaWithoutConfigFailsWithinTheHandshakeDeadline(t *testing.T)
 	assertAbandonRoom(t, remoteDone)
 }
 
+func TestConfiguredMediaBinaryFrameReachesFanout(t *testing.T) {
+	application, events, terminal := startObservedTestApplication(t)
+	connection := openConfiguredMedia(t, application)
+
+	payload := make([]byte, media.FrameHeaderBytes+4)
+	payload[0] = 1
+	binary.BigEndian.PutUint64(payload[1:9], 1_000_000)
+	binary.BigEndian.PutUint64(payload[9:17], 33_333)
+	copy(payload[media.FrameHeaderBytes:], []byte{0x10, 0x00, 0x00, 0x00})
+	writeContext, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+	err := connection.Write(writeContext, websocket.MessageBinary, payload)
+	cancelWrite()
+	if err != nil {
+		t.Fatalf("write encoded frame: %v", err)
+	}
+
+	diagnostics := awaitRemoteEvent(t, events, "diagnostics", 5*time.Second)
+	if diagnostics.Media == nil || diagnostics.Media.FramesWritten == 0 ||
+		diagnostics.Media.SourceRTPPacketsWritten == 0 {
+		t.Fatalf("binary frame did not reach fanout: %+v", diagnostics.Media)
+	}
+	if err = connection.Close(websocket.StatusNormalClosure, "test complete"); err != nil {
+		t.Fatalf("close configured media: %v", err)
+	}
+	waitForSessionStop(t, application)
+	assertAbandonRoom(t, terminal)
+	assertNoFatalEvents(t, events)
+}
+
+func TestAbnormalPostConfigMediaReadUsesFixedFailure(t *testing.T) {
+	application, events, terminal := startObservedTestApplication(t)
+	connection := openConfiguredMedia(t, application)
+	const privateReason = "transport detail that must not escape"
+
+	if err := connection.Close(websocket.StatusPolicyViolation, privateReason); err != nil {
+		t.Fatalf("close configured media abnormally: %v", err)
+	}
+	fatal := awaitRemoteEvent(t, events, "fatal", 2*time.Second)
+	if fatal.Message != "local media bridge read failed" {
+		t.Fatalf("fatal message = %q", fatal.Message)
+	}
+	if strings.Contains(fatal.Message, privateReason) {
+		t.Fatalf("fatal message exposed the WebSocket close reason: %q", fatal.Message)
+	}
+	waitForSessionStop(t, application)
+	assertAbandonRoom(t, terminal)
+}
+
+func TestApplicationShutdownDoesNotReportMediaReadFailure(t *testing.T) {
+	application, events, terminal := startObservedTestApplication(t)
+	connection := openConfiguredMedia(t, application)
+
+	closed := make(chan struct{})
+	go func() {
+		application.Close()
+		close(closed)
+	}()
+	readContext, cancelRead := context.WithTimeout(context.Background(), time.Second)
+	_, _, err := connection.Read(readContext)
+	cancelRead()
+	if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+		t.Fatalf("application close status = %v, err = %v", websocket.CloseStatus(err), err)
+	}
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("application shutdown did not complete")
+	}
+	assertAbandonRoom(t, terminal)
+	assertNoFatalEvents(t, events)
+}
+
+func TestPostConfigMediaReadFailureClassification(t *testing.T) {
+	canceledContext, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		err     error
+		wantErr bool
+	}{
+		{name: "transport-error", ctx: context.Background(), err: errors.New("private transport detail"), wantErr: true},
+		{name: "policy-close", ctx: context.Background(), err: websocket.CloseError{Code: websocket.StatusPolicyViolation, Reason: "private close detail"}, wantErr: true},
+		{name: "normal-close", ctx: context.Background(), err: websocket.CloseError{Code: websocket.StatusNormalClosure}},
+		{name: "going-away", ctx: context.Background(), err: websocket.CloseError{Code: websocket.StatusGoingAway}},
+		{name: "application-shutdown", ctx: canceledContext, err: errors.New("private shutdown detail")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			failure := postConfigMediaReadFailure(test.ctx, test.err)
+			if test.wantErr {
+				if failure == nil || failure.Error() != "local media bridge read failed" {
+					t.Fatalf("failure = %v", failure)
+				}
+				return
+			}
+			if failure != nil {
+				t.Fatalf("failure = %v", failure)
+			}
+		})
+	}
+}
+
 func TestStopDuringDelayedStartCannotResurrectTheSession(t *testing.T) {
 	authReceived := make(chan struct{})
 	releaseAuthentication := make(chan struct{})
@@ -241,6 +348,135 @@ func startTestApplication(t *testing.T, remoteURL string, attachTimeout, configT
 		t.Fatalf("start status = %d", status)
 	}
 	return application
+}
+
+func startObservedTestApplication(t *testing.T) (*App, <-chan remote.Event, <-chan []byte) {
+	t.Helper()
+	terminal := make(chan []byte, 1)
+	remoteServer := newAppRemoteServer(t, terminal)
+	t.Cleanup(remoteServer.Close)
+
+	application, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = application.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(application.Close)
+
+	baseURL, err := normalizeRemoteBase(remoteServer.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionContext, sessionCancel := context.WithCancel(application.ctx)
+	events := make(chan remote.Event, 32)
+	session, room, err := remote.Start(sessionContext, remote.StartOptions{
+		BaseURL: baseURL,
+		OnEvent: func(event remote.Event) {
+			events <- event
+		},
+	})
+	if err != nil {
+		sessionCancel()
+		t.Fatal(err)
+	}
+	application.mu.Lock()
+	application.generation++
+	application.session = session
+	application.sessionCancel = sessionCancel
+	application.room = room
+	application.mu.Unlock()
+	return application, events, terminal
+}
+
+func openConfiguredMedia(t *testing.T, application *App) *websocket.Conn {
+	t.Helper()
+	connection, _, err := websocket.Dial(context.Background(), application.origin+"/media", &websocket.DialOptions{
+		HTTPHeader:   http.Header{"Origin": []string{application.origin}},
+		Subprotocols: []string{"screener.token." + application.token},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.CloseNow() })
+	readLocalKind(t, connection, "ready")
+	config := []byte(`{"kind":"config","codec":"vp8","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1}`)
+	writeContext, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+	err = connection.Write(writeContext, websocket.MessageText, config)
+	cancelWrite()
+	if err != nil {
+		t.Fatalf("write encoder config: %v", err)
+	}
+	readLocalKind(t, connection, "config-accepted")
+	return connection
+}
+
+func readLocalKind(t *testing.T, connection *websocket.Conn, want string) {
+	t.Helper()
+	readContext, cancelRead := context.WithTimeout(context.Background(), time.Second)
+	defer cancelRead()
+	messageType, payload, err := connection.Read(readContext)
+	if err != nil {
+		t.Fatalf("read local %s event: %v", want, err)
+	}
+	if messageType != websocket.MessageText {
+		t.Fatalf("local %s event was not text", want)
+	}
+	var event struct {
+		Kind string `json:"kind"`
+	}
+	if err = json.Unmarshal(payload, &event); err != nil {
+		t.Fatalf("decode local %s event: %v", want, err)
+	}
+	if event.Kind != want {
+		t.Fatalf("local event kind = %q, want %q", event.Kind, want)
+	}
+}
+
+func awaitRemoteEvent(t *testing.T, events <-chan remote.Event, kind string, timeout time.Duration) remote.Event {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-events:
+			if event.Kind == kind {
+				return event
+			}
+		case <-timer.C:
+			t.Fatalf("remote %s event was not emitted", kind)
+		}
+	}
+}
+
+func waitForSessionStop(t *testing.T, application *App) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		application.mu.Lock()
+		stopped := application.session == nil
+		application.mu.Unlock()
+		if stopped {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("media session did not stop")
+}
+
+func assertNoFatalEvents(t *testing.T, events <-chan remote.Event) {
+	t.Helper()
+	for {
+		select {
+		case event := <-events:
+			if event.Kind == "fatal" {
+				t.Fatalf("unexpected fatal event: %q", event.Message)
+			}
+		default:
+			return
+		}
+	}
 }
 
 func stopTestApplication(t *testing.T, application *App) {

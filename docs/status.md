@@ -35,7 +35,7 @@ and is not part of production.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Native stays no-go at WebCodecs -> Go RTP. MF proved RTX H.264 hardware (360/360, p95 11.575 ms); `42c01f` misses Pion's default fmtp, so Viewer interop is unproven.
+- Native stays no-go: retained Chrome reached WebCodecs output but Go stayed zero. A real `/media` test accepts the 17-byte frame into Go frame/RTP; unexpected post-config reads emit a fixed sanitized fatal. No Chrome rerun occurred, so retained send/framing cause and MF H.264-to-Pion/Viewer interop remain unproven.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 
 ## Unverified Boundaries
@@ -45,7 +45,7 @@ and is not part of production.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
-- ADR-0006 stays no-go at WebCodecs output -> Go frame/RTP. Viewer and two-edge/FIFO remain unverified.
+- ADR-0006 still has no Viewer, two-edge, or FIFO proof.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
@@ -60,15 +60,14 @@ The recovery target uses one ICE restart, one same-parent rebuild, one alternate
 SFU; it never runs three identical retries or abandons progressing P2P early.
 
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
-evacuation. Native needs separate authorization; its next run gates Go RTP on
-the first bridge send.
+evacuation. Native needs separate authorization; its next Chrome run must retain
+the first product binary-send outcome before Go RTP.
 Audio A/B/C may proceed without displacing P0.
-Ordinary Peer ICE stays STUN-only. Participant-wide TURN code and wire are
-removed; stale `PEER_ICE_TURN_*` keys fail startup even when blank. Selected-edge
-TURN remains unimplemented and undeployed. After SFU/UDP fails, the next
-independent slice must bind one selected parent/child rebuild to current
-generations before one forced-relay canary. Do not repeat the built-in direct
-canary.
+Ordinary Peer ICE stays STUN-only. Participant-wide TURN source and wire are
+removed; stale `PEER_ICE_TURN_*` keys fail startup even blank. Selected-edge TURN
+is unimplemented and undeployed. After SFU/UDP, bind one selected parent/child
+rebuild to current generations before one forced-relay canary; do not repeat the
+built-in direct canary.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate
