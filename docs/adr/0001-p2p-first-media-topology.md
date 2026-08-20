@@ -10,8 +10,9 @@ peer-assisted media, and an enabled SFU fallback is a standing requirement and
 is governed by ADR-0005.
 
 Historical ADR-0003's explicit whole-room SFU mode is rejected/superseded.
-ADR-0004's bounded peer topology and ADR-0005's default-off automatic controller
-now run only in the exact-room production smoke. ADR-0005 accepts the target
+ADR-0004's bounded peer topology and ADR-0005's automatic controller are
+process-enabled for all normal rooms when configured; room `1` is only the
+historical production smoke. ADR-0005 accepts the target
 direct/peer UDP -> SFU-root UDP -> optional authenticated selected-edge TURN
 ladder. Ordinary peer ICE remains STUN-only; the selected-edge config/wire is
 not implemented or deployed and still requires isolated acceptance gates.

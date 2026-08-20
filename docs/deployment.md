@@ -112,10 +112,11 @@ exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
 selected-edge TURN config/wire is source-only and not yet deployed.
 
-`PEER_ASSISTED_ROOM_IDS` remains the topology/SFU canary boundary. Listed and
-unlisted ordinary peer connections both get STUN-only ICE; only the selected-edge
-source path may grant TURN to the controller's then-current
-edge. Run candidate rooms on an isolated instance/hostname and keep
+`PEER_ASSISTED_MEDIA=true` is the process-wide topology/SFU switch. Every normal
+room gets its own bounded controller state; ordinary peer connections remain
+STUN-only and only the selected-edge source path may grant TURN to the
+controller's then-current edge. Run candidate releases on an isolated
+instance/hostname and keep
 the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
 
@@ -185,7 +186,6 @@ To make automatic SFU fallback capacity available, add the complete tuple:
 
 ```dotenv
 PEER_ASSISTED_MEDIA=true
-PEER_ASSISTED_ROOM_IDS=1
 LIVEKIT_URL=wss://share.example.com
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
@@ -197,22 +197,17 @@ stale key, even blank, fails startup. The source candidate uses the complete
 `SELECTED_EDGE_TURN_URLS`, `SELECTED_EDGE_TURN_SHARED_SECRET`, and
 `SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS` default-off tuple with one explicit
 TURN/UDP URI, an independent secret and bounded TTL. Enable it only after the
-exact-room peer/SFU tuple and bounded coturn service are ready; roll back by
+all-room peer/SFU tuple and bounded coturn service are ready; roll back by
 removing the application tuple before changing coturn or firewall state. Credentials
 never enter URLs, logs, browser persistence, room rows, or SQLite.
 
-`PEER_ASSISTED_ROOM_IDS` is the required deployment canary boundary whenever
-`PEER_ASSISTED_MEDIA=true`. Its non-empty value
-is a comma-separated set of exact positive numeric room IDs, using the same
-1-to-12-digit syntax as room authentication. Duplicate IDs, empty entries,
-leading zeroes, and malformed IDs fail startup. A non-empty allowlist requires
-`PEER_ASSISTED_MEDIA=true`. Only listed rooms receive peer-assisted
-authentication, routing, room quality state, or optional LiveKit fallback;
-every other room keeps ordinary P2P route fields and signaling behavior. The
-selected-edge TURN attempt is confined to a current controller edge in a
-listed room; every ordinary peer connection remains STUN-only. Omitting or blanking the variable fails startup rather
-than enabling every room. There is no browser control, percentage rollout, or
-all-room fail-open.
+`PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
+that a stale room-1 deployment cannot silently retain the old scope. With
+`PEER_ASSISTED_MEDIA=true`, every normal room receives peer-assisted routing,
+optional LiveKit fallback, and the same per-room root/fanout/failure guards.
+Every ordinary peer connection remains STUN-only; selected-edge TURN is still
+issued only to a current controller-selected edge. There is no browser control,
+percentage rollout, or second router.
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
 `HOST_ADMISSION_PASSWORD` is required in production and must contain 8 through
@@ -237,12 +232,11 @@ credentials authorize short-lived LiveKit room tokens and do not provide E2EE:
 the LiveKit operator can access ordinary SFU media.
 
 For the first candidate canary, use an isolated instance and a protected
-persistent room whose ID is stable across restarts. Set only that ID, restart
-the application, and verify
-that its authenticated message contains `mediaMode: "peer-assisted"` while a
-second non-allowlisted room contains none of `mediaMode`, `qualitySettings`,
-`routeRevision`, `routeAssignment`, or `sfuStandbyUrl`. Exercise join, offer and
-answer, stop, reconnect, and room deletion in both rooms. Ordinary Web and
+persistent room whose ID is stable across restarts. Restart the application and
+verify that both that room and a second normal room contain
+`mediaMode: "peer-assisted"`, with independent route revisions and no shared
+room state. Exercise join, offer and answer, stop, reconnect, and room deletion
+in both rooms. Ordinary Web and
 Native-shaped clients remain STUN-only. With the selected-edge tuple, only
 the current controller-selected edge may receive a one-use grant; all other
 sessions and connections remain STUN-only. Roll back by disabling application
@@ -250,9 +244,9 @@ issuance before restoring the exact recorded pre-canary coturn/firewall baseline
 traffic to the unchanged old release. Do not treat disabling
 `PEER_ASSISTED_MEDIA` alone as TURN rollback: disable the selected-edge tuple
 independently, and no removed old
-TURN wire is restored. After acceptance, retire or replace the
-temporary exact-room gate in a separate coherent change; never clear the value
-to trigger an implicit all-room rollout.
+TURN wire is restored. During migration, remove the retired room-ID variable in
+the same coherent change; the process flag explicitly enables the all-room
+controller.
 
 Only `POST /api/host-admission` accepts the Host admission secret in an
 `Authorization: Bearer` header from an exact allowed Origin. Success returns a
@@ -572,7 +566,7 @@ Run these checks from real external networks before calling the deployment usabl
    are closed externally.
 2. Create a normal Screener room on two different networks. Confirm media flows
    and the selected-pair stats report a non-relay path when direct ICE succeeds.
-3. On an exact allowlisted room, exhaust a peer route and verify the host plus at
+3. On a normal room, exhaust a peer route and verify the host plus at
    most two necessary roots select LiveKit UDP 7882. Peer descendants stay on
    ordinary direct UDP and host/relay downstream caps remain two/one.
 4. Block all UDP on one test client. Verify bounded ICE recovery ends in a clear

@@ -1,7 +1,6 @@
 import {
   MAX_ICE_SERVER_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
-  roomCodeSchema,
   stunUrlSchema,
   turnUrlSchema,
 } from "../shared/protocol.js";
@@ -20,13 +19,14 @@ const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const DEFAULT_MAX_SFU_ROOTS_PER_ROOM = 2;
 const MAX_SFU_ROOTS_PER_ROOM = 2;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
-const REMOVED_TURN_ENVIRONMENT_VARIABLES = [
+const REMOVED_ENVIRONMENT_VARIABLES = [
   "TURN_URLS",
   "TURN_SHARED_SECRET",
   "TURN_CREDENTIAL_TTL_SECONDS",
   "PEER_ICE_TURN_URLS",
   "PEER_ICE_TURN_SHARED_SECRET",
   "PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS",
+  "PEER_ASSISTED_ROOM_IDS",
 ] as const;
 
 export interface LiveKitFallbackConfig {
@@ -54,7 +54,6 @@ export interface ServerConfig {
   maxRooms: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
-  peerAssistedRoomIds?: ReadonlySet<string>;
   livekitFallback?: LiveKitFallbackConfig;
   selectedEdgeTurn?: SelectedEdgeTurnConfig;
   stunUrls: readonly string[];
@@ -256,32 +255,6 @@ function parseOrigins(value: string | undefined, fallback: string): Set<string> 
   return new Set((origins.length > 0 ? origins : [fallback]).map(toOrigin));
 }
 
-function parsePeerAssistedRoomIds(
-  value: string | undefined,
-): ReadonlySet<string> | undefined {
-  if (value === undefined || value.trim() === "") {
-    return undefined;
-  }
-
-  const roomIds = new Set<string>();
-  for (const entry of value.split(",")) {
-    const roomId = entry.trim();
-    if (!roomId) {
-      throw new Error("PEER_ASSISTED_ROOM_IDS contains an empty room ID");
-    }
-    if (!roomCodeSchema.safeParse(roomId).success) {
-      throw new Error(
-        "PEER_ASSISTED_ROOM_IDS must contain comma-separated valid room IDs",
-      );
-    }
-    if (roomIds.has(roomId)) {
-      throw new Error(`PEER_ASSISTED_ROOM_IDS contains duplicate room ID ${roomId}`);
-    }
-    roomIds.add(roomId);
-  }
-  return roomIds;
-}
-
 function toOrigin(value: string): string {
   const url = new URL(value);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -293,10 +266,12 @@ function toOrigin(value: string): string {
 export function loadConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ServerConfig {
-  for (const name of REMOVED_TURN_ENVIRONMENT_VARIABLES) {
+  for (const name of REMOVED_ENVIRONMENT_VARIABLES) {
     if (Object.prototype.hasOwnProperty.call(environment, name)) {
       throw new Error(
-        `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
+        name === "PEER_ASSISTED_ROOM_IDS"
+          ? `${name} is no longer supported; peer-assisted media applies to every room when enabled`
+          : `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
       );
     }
   }
@@ -356,22 +331,9 @@ export function loadConfig(
     false,
     "PEER_ASSISTED_MEDIA",
   );
-  const peerAssistedRoomIds = parsePeerAssistedRoomIds(
-    environment.PEER_ASSISTED_ROOM_IDS,
-  );
   const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
   const selectedEdgeTurn = parseSelectedEdgeTurn(environment);
 
-  if (peerAssistedRoomIds && !peerAssistedMedia) {
-    throw new Error(
-      "PEER_ASSISTED_ROOM_IDS requires PEER_ASSISTED_MEDIA=true",
-    );
-  }
-  if (peerAssistedMedia && !peerAssistedRoomIds) {
-    throw new Error(
-      "PEER_ASSISTED_MEDIA=true requires non-empty PEER_ASSISTED_ROOM_IDS",
-    );
-  }
   if (livekitFallback && !peerAssistedMedia) {
     throw new Error("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
   }
@@ -438,7 +400,6 @@ export function loadConfig(
     maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
     maxViewersPerRoom,
     peerAssistedMedia,
-    peerAssistedRoomIds,
     livekitFallback,
     selectedEdgeTurn,
     stunUrls,

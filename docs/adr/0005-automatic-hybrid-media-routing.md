@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted Direction - Default-Off Migration Unverified
+- Status: Accepted Direction - All-Room Controller, Media Evidence Unverified
 - Date: 2026-08-19
 
 ## Context
@@ -76,16 +76,17 @@ tuple and remains a controller-owned transport attempt, never a topology choice.
 ## Implementation Status
 
 Merged PR #17 implements this controller on top of merged PR #13, and PR #20
-adds the bounded standby prewarm below. Production enables them only for
-persistent room `1`; other rooms stay ordinary P2P, and production remains
+adds the bounded standby prewarm below. The process flag enables the controller
+for every normal room; room `1` is retained only as a historical smoke fixture,
+and production remains
 STUN-only. The current source no longer contains the rejected participant-wide
 TURN config, issuer, capability, refresh wire, or client propagation. Stale
 `PEER_ICE_TURN_*` keys fail startup even when blank. The source candidate now
 implements a complete default-off selected-edge tuple and one post-SFU
 relay-only rebuild; it remains undeployed and lacks real TURN/media evidence.
 The wire has two explicit edge kinds: `peer-selected` for the last-mile failed
-peer edge and `host-sfu-ingress` for an exact-room-`1` restricted Host-to-SFU
-retry. Ordinary Peer ICE remains STUN-only.
+peer edge and `host-sfu-ingress` for a restricted Host-to-SFU retry. Ordinary
+Peer ICE remains STUN-only.
 
 The current runtime removes the old all-room coturn contract. Production
 requires STUN and authenticated ICE snapshots contain only STUN servers in
@@ -97,19 +98,17 @@ been observed, but retained media and route admission remain unverified. The old
 `769de201f7cc` release and coturn relay are isolated rollback resources, not a
 permanent compatibility branch or advertised current transport.
 
-The repository also requires a strict, non-empty `PEER_ASSISTED_ROOM_IDS`
-deployment allowlist whenever `PEER_ASSISTED_MEDIA=true`. Only exact listed room
-IDs enter the controller or receive optional LiveKit standby, grants, or a
-selected-edge TURN attempt. All other rooms retain the current ordinary P2P
-authentication shape, STUN-only ICE, and signaling/quality/lifecycle behavior. Missing, blank, malformed, or duplicate
-entries fail startup; there is no configuration state that enables all rooms. The boundary is a
-temporary deployment-only validation gate with no browser selector, percentage
-framework, or second router.
+`PEER_ASSISTED_MEDIA=true` is now the only rollout switch. It enables the
+controller, LiveKit standby, grants, and selected-edge attempts for every normal
+room, while each room keeps independent route state and the existing root/fanout
+limits. `PEER_ASSISTED_ROOM_IDS` is retired and fails startup if supplied during
+migration; room `1` is a historical smoke fixture, not a feature gate. A process
+with the flag disabled remains ordinary P2P.
 
 The implementation keeps the LiveKit dependency dormant unless the complete URL, API key,
 and API secret tuple is present together with `PEER_ASSISTED_MEDIA=true`. It
 issues short-lived room-, role-, peer-, and publication-generation-bound grants,
-and only allowlisted branch roots may subscribe. A necessary viewer with no
+and only selected branch roots may subscribe. A necessary viewer with no
 descendants is still a root under the same authorization and total cap. The
 server currently retries a failed edge through the deterministic peer topology;
 only an exhausted peer route can request an SFU branch root. The target keeps
@@ -245,9 +244,10 @@ connection generation and assigned-edge authorization. The server
 derives the failed edge from the authenticated session, active revision, and
 connection ID instead of accepting a client-supplied parent or arbitrary reason.
 Late, duplicate, or stale revision messages have no effect.
-Non-allowlisted rooms receive the ordinary P2P snapshot with none of the hybrid
-fields above, even when the same process serves an allowlisted room and has a
-complete LiveKit tuple.
+When the process flag is enabled, every normal room receives the hybrid snapshot
+and its own controller state. A process with the flag disabled receives the
+ordinary P2P snapshot. The distinction is process configuration, never a room
+ID allowlist.
 
 ## Transition
 
@@ -284,7 +284,7 @@ complete LiveKit tuple.
    publish until the replaced direct edge and any old SFU generation are
    inactive.
 
-6. Allowlisted fallback roots explicitly subscribe. On their first new video
+6. Selected fallback roots explicitly subscribe. On their first new video
    track, they atomically replace their upstream stream, acknowledge active,
    and feed the existing downstream relay without rebuilding descendants.
 7. A prepare timeout increments the revision and restores the unchanged active
@@ -295,8 +295,8 @@ complete LiveKit tuple.
    failure, or the initial SFU prepare, is exhausted, the router grants at most
    one relay-only rebuild of that Viewer's original failed peer edge. An active
    Host-to-SFU route may instead receive one `host-sfu-ingress` relay-only grant
-   when the explicit restricted-source decision applies to exact room `1`; the
-   grant is bound to the host session and publication generation. Failure is
+   when the explicit restricted-source decision applies; the grant is bound to
+   the host session and publication generation. Failure is
    terminal for that attempt; stop, session replacement, topology revision or a
    new sharing generation clears it, then the existing bounded peer failback
    remains available.
@@ -338,7 +338,7 @@ One bounded cold/standby A/B comparison used Chrome 151, LiveKit 1.13.5,
 headless synthetic 1280x720/30 video, three viewers, and localhost. The harness
 physically closed the same leaf's inbound peer edge, observed it resume under a
 second peer, then physically closed that new edge and reported its real
-connection ID and active revision. The resulting plan had two allowlisted SFU
+connection ID and active revision. The resulting plan had two selected SFU
 roots.
 
 | Failure report to | Cold route controller | Authenticated standby |
@@ -420,13 +420,13 @@ participant-wide TURN path: the rejected candidate is removed and its stale
 environment keys fail startup. The default-off selected-edge source candidate uses
 a short coturn REST bearer and one server-generated connection identity per explicit
 edge kind. `peer-selected` binds the failed parent/Viewer pair; `host-sfu-ingress`
-binds exact room `1`, the host session, the SFU publication generation, and the
+binds the room, host session, SFU publication generation, and the
 old/new connection identities. The Host client applies that grant only to a
 relay-only LiveKit publisher `RTCConfiguration`. It is undeployed and has no real
 relay-media evidence.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
-The bounded cost model, privacy-safe ICE fields, and exact-room A/B sequence
+The bounded cost model and privacy-safe ICE fields
 live in [Low-Server-Cost Media Routes](../research/low-server-media-routes.md).
 For one SFU publisher at bitrate `B_pub` and `R` roots at measured bitrates
 `B_i`, host upload is `B_pub` and central ingress plus egress is
@@ -437,15 +437,15 @@ peer PCs. Every host NIC, TURN ingress/egress, SFU ingress/egress, root NIC, and
 exception NIC hop remains real traffic.
 
 Migration is gated, not optional design debate. Production has entered a
-shared-IP exact-room smoke while the old release remains a separate rollback
-instance. Room `1` must still verify direct/peer UDP, SFU/UDP, one explicitly
-selected relay edge, and bounded failure with all transports exhausted; the
-current process never restores the old all-room TURN wire. The matrix covers CGNAT, double NAT, mobile hotspot,
+historical shared-IP room-`1` smoke while the old release remains a separate
+rollback instance. The same direct/peer UDP, SFU/UDP, selected relay edge, and
+bounded failure gates apply to every room in the flagship process; the current
+process never restores the old all-room TURN wire. The matrix covers CGNAT, double NAT, mobile hotspot,
 ordinary home networks, root departure, reconnect, SFU unavailable, and rollback. It records
 CPU seconds/GiB, NIC bytes/pps, RSS, host upload, p95/p99 forwarding latency,
 loss/recovery, final quality, host edges at most two, SFU roots at most two, and
-unchanged healthy subtrees. Every ordinary connection stays STUN-only; only
-after that gate may the controller broaden beyond room `1`.
+unchanged healthy subtrees. Every ordinary connection stays STUN-only; room
+scope does not change that rule.
 
 A peer root re-publishing its received stream to the SFU while also feeding
 peer descendants remains a separate bounded candidate. The current browser
@@ -462,8 +462,8 @@ the current fallback-root identities, including any zero-descendant roots.
 Ordinary SFU WebRTC transport encryption terminates at the SFU, so its operator
 can access media. LiveKit supports application E2EE in which its server cannot
 access media content, but signaling/API data remains visible and Screener has
-not implemented the required key distribution. The exact-room comparison must
-record which boundary is actually configured and the UI must not claim E2EE.
+not implemented the required key distribution. The comparison must record which
+boundary is actually configured and the UI must not claim E2EE.
 
 ## Implementation Order
 
@@ -500,10 +500,11 @@ record which boundary is actually configured and the UI must not claim E2EE.
   persistent-room stop/restart semantics survive the transition.
 - No LiveKit configuration preserves the existing P2P/peer behavior and wire,
   but is not the final flagship deployment target.
-- In one process, non-allowlisted rooms preserve ordinary P2P route fields,
-  directed signaling, quality rejection, stop/reconnect/delete semantics, and
-  remain isolated from allowlisted peer/SFU state and receive STUN-only ICE.
-  Native v2 and every ordinary peer PC also remain STUN-only. Only a current
+- In a process with the controller flag disabled, ordinary rooms preserve the
+  ordinary P2P route fields, directed signaling, quality rejection,
+  stop/reconnect/delete semantics, and STUN-only ICE. With the flag enabled,
+  every room gets isolated per-room peer/SFU state under the same limits. Native
+  v2 and every ordinary peer PC remain STUN-only; only a current
   controller-selected exceptional edge may receive a short-lived TURN grant.
 - LiveKit/SFU UDP must pass CGNAT, double-NAT, hotspot, home-network, loss,
   rollback, and SFU-unavailable gates. Blocked UDP fails clearly within a
@@ -540,7 +541,8 @@ Negative:
 ## Relationship To Existing ADRs
 
 - This decision corrects the automatic-migration interpretation in ADR-0001;
-  production now runs its exact-room smoke while broad rollout remains gated.
+  room `1` is historical smoke evidence, while the source controller is
+  process-enabled for all normal rooms.
 - ADR-0004 remains the bounded full-stream browser-relay experiment.
 - This decision and merged PR #17 supersede ADR-0003/closed PR #12's
   process-wide explicit media mode with default-off automatic hybrid fallback.

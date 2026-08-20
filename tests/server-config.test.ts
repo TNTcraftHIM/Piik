@@ -12,7 +12,6 @@ describe("server configuration", () => {
     expect(config.stunUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
-    expect(config.peerAssistedRoomIds).toBeUndefined();
     expect(config.livekitFallback).toBeUndefined();
     expect(config.selectedEdgeTurn).toBeUndefined();
   });
@@ -20,7 +19,6 @@ describe("server configuration", () => {
   it("enables selected-edge TURN only from its complete post-SFU tuple", () => {
     const base = {
       PEER_ASSISTED_MEDIA: "true",
-      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
@@ -52,7 +50,6 @@ describe("server configuration", () => {
     expect(() =>
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
-        PEER_ASSISTED_ROOM_IDS: "1",
         LIVEKIT_URL: "wss://livekit.test",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
@@ -66,7 +63,6 @@ describe("server configuration", () => {
   it("enables LiveKit fallback only for a complete credential tuple", () => {
     const config = loadConfig({
       PEER_ASSISTED_MEDIA: "true",
-      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: " ws://livekit.test:7880 ",
       LIVEKIT_API_KEY: " test-key ",
       LIVEKIT_API_SECRET: ` ${"s".repeat(32)} `,
@@ -85,7 +81,6 @@ describe("server configuration", () => {
     (maxSfuRootsPerRoom) => {
       const config = loadConfig({
         PEER_ASSISTED_MEDIA: "true",
-        PEER_ASSISTED_ROOM_IDS: "1",
         LIVEKIT_URL: "wss://livekit.test",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
@@ -152,7 +147,6 @@ describe("server configuration", () => {
         PUBLIC_BASE_URL: "https://share.test",
         STUN_URLS: "stun:stun.test:3478",
         PEER_ASSISTED_MEDIA: "true",
-        PEER_ASSISTED_ROOM_IDS: "1",
         LIVEKIT_URL: "ws://livekit.test:7880",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
@@ -184,14 +178,12 @@ describe("server configuration", () => {
     {
       HOST_ADMISSION_PASSWORD: "x".repeat(32),
       PEER_ASSISTED_MEDIA: "true",
-      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "x".repeat(32),
     },
     {
       PEER_ASSISTED_MEDIA: "true",
-      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "x".repeat(32),
       LIVEKIT_API_SECRET: "x".repeat(32),
@@ -206,7 +198,6 @@ describe("server configuration", () => {
     expect(
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
-        PEER_ASSISTED_ROOM_IDS: "1",
       }).peerAssistedMedia,
     ).toBe(true);
     expect(loadConfig({ PEER_ASSISTED_MEDIA: "false" }).peerAssistedMedia).toBe(
@@ -218,7 +209,6 @@ describe("server configuration", () => {
     expect(() =>
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
-        PEER_ASSISTED_ROOM_IDS: "1",
         MAX_VIEWERS_PER_ROOM: "9",
       }),
     ).toThrow(
@@ -226,47 +216,14 @@ describe("server configuration", () => {
     );
   });
 
-  it("requires and parses a strict peer-assisted room allowlist", () => {
-    expect(
-      loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
-        PEER_ASSISTED_ROOM_IDS: " 1,123456789012 ",
-      }).peerAssistedRoomIds,
-    ).toEqual(new Set(["1", "123456789012"]));
-    for (const peerAssistedRoomIds of [undefined, "  "]) {
-      expect(() =>
-        loadConfig({
-          PEER_ASSISTED_MEDIA: "true",
-          ...(peerAssistedRoomIds === undefined
-            ? {}
-            : { PEER_ASSISTED_ROOM_IDS: peerAssistedRoomIds }),
-        }),
-      ).toThrow(
-        "PEER_ASSISTED_MEDIA=true requires non-empty PEER_ASSISTED_ROOM_IDS",
-      );
-    }
-  });
-
-  it("requires peer-assisted media for a non-empty room allowlist", () => {
+  it("enables the hybrid controller for every room when selected", () => {
+    expect(loadConfig({ PEER_ASSISTED_MEDIA: "true" }).peerAssistedMedia).toBe(
+      true,
+    );
     expect(() =>
-      loadConfig({
-        PEER_ASSISTED_MEDIA: "false",
-        PEER_ASSISTED_ROOM_IDS: "1",
-      }),
-    ).toThrow("PEER_ASSISTED_ROOM_IDS requires PEER_ASSISTED_MEDIA=true");
+      loadConfig({ PEER_ASSISTED_ROOM_IDS: "1" }),
+    ).toThrow("PEER_ASSISTED_ROOM_IDS is no longer supported");
   });
-
-  it.each(["0", "01", "1234567890123", "room-1", "1,,2", "1,1"])(
-    "rejects an invalid peer-assisted room allowlist: %s",
-    (roomIds) => {
-      expect(() =>
-        loadConfig({
-          PEER_ASSISTED_MEDIA: "true",
-          PEER_ASSISTED_ROOM_IDS: roomIds,
-        }),
-      ).toThrow("PEER_ASSISTED_ROOM_IDS");
-    },
-  );
 
   it("allows an explicit loopback listen host", () => {
     expect(loadConfig({ LISTEN_HOST: " 127.0.0.1 " }).listenHost).toBe(
@@ -310,7 +267,6 @@ describe("server configuration", () => {
       HOST_ADMISSION_PASSWORD: "host-password-12",
       STUN_URLS: "stun:stun.test:3478",
       PEER_ASSISTED_MEDIA: "true",
-      PEER_ASSISTED_ROOM_IDS: "1",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),

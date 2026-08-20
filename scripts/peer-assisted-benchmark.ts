@@ -14,7 +14,6 @@ import {
 import { loadConfig } from "../src/server/config";
 import {
   RoomStore,
-  type RoomStoreOptions,
 } from "../src/server/room-store";
 import {
   QUALITY_PROFILES,
@@ -27,21 +26,6 @@ import {
 const PROFILE_SETTINGS = QUALITY_PROFILES;
 type ProfileId = QualityProfileId;
 type PageRole = "host" | "viewer";
-
-class BenchmarkRoomStore extends RoomStore {
-  constructor(
-    options: RoomStoreOptions,
-    private readonly exactPeerRooms: Set<string>,
-  ) {
-    super(options);
-  }
-
-  override createRoom() {
-    const room = super.createRoom();
-    this.exactPeerRooms.add(room.roomId);
-    return room;
-  }
-}
 
 export interface BenchmarkConfig {
   chromePath: string;
@@ -2162,7 +2146,6 @@ export async function main(): Promise<number> {
     const debugPort = await reservePort();
     const baseUrl = `http://127.0.0.1:${appPort}`;
     profileDirectory = await mkdtemp(join(tmpdir(), "screener-peer-benchmark-"));
-    const exactPeerRooms = new Set(["1"]);
     const serverConfig = loadConfig({
       NODE_ENV: "development",
       PORT: String(appPort),
@@ -2171,21 +2154,16 @@ export async function main(): Promise<number> {
       ALLOWED_ORIGINS: baseUrl,
       ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "true",
-      PEER_ASSISTED_ROOM_IDS: "1",
       MAX_VIEWERS_PER_ROOM: String(Math.max(...config.viewerCounts)),
       STUN_URLS: "",
     });
-    serverConfig.peerAssistedRoomIds = exactPeerRooms;
     server = await createScreenerServer({
       config: serverConfig,
-      roomStore: new BenchmarkRoomStore(
-        {
-          ttlMs: serverConfig.roomTtlMs,
-          maxRooms: serverConfig.maxRooms,
-          maxViewersPerRoom: serverConfig.maxViewersPerRoom,
-        },
-        exactPeerRooms,
-      ),
+      roomStore: new RoomStore({
+        ttlMs: serverConfig.roomTtlMs,
+        maxRooms: serverConfig.maxRooms,
+        maxViewersPerRoom: serverConfig.maxViewersPerRoom,
+      }),
     });
     await server.listen(appPort, "127.0.0.1");
 

@@ -76,7 +76,6 @@ export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
   peerAssistedMedia: boolean;
-  peerAssistedRoomIds?: ReadonlySet<string>;
   sfuFallback?: SfuFallbackOptions;
   selectedEdgeTurn?: SelectedEdgeTurnConfig;
   ice: IceConfigOptions;
@@ -141,15 +140,6 @@ export class SignalingServer {
     }
     if (options.sfuFallback && !options.peerAssistedMedia) {
       throw new Error("SFU fallback requires peer-assisted media");
-    }
-    if (options.peerAssistedRoomIds && !options.peerAssistedMedia) {
-      throw new Error("Peer-assisted room IDs require peer-assisted media");
-    }
-    if (
-      options.peerAssistedMedia &&
-      (!options.peerAssistedRoomIds || options.peerAssistedRoomIds.size === 0)
-    ) {
-      throw new Error("Peer-assisted media requires exact room IDs");
     }
     if (options.peerAssistedMedia) {
       this.hybridMediaRouter = new HybridMediaRouter({
@@ -1417,10 +1407,10 @@ export class SignalingServer {
   }
 
   private isPeerAssistedRoom(roomId: string): boolean {
-    if (!this.hybridMediaRouter) {
-      return false;
-    }
-    return this.options.peerAssistedRoomIds?.has(roomId) ?? false;
+    // The controller owns independent per-room state; the process flag is the
+    // only rollout switch. Keep the room argument at call sites for clarity.
+    void roomId;
+    return this.hybridMediaRouter !== undefined;
   }
 
   private hasConnectionCapacity(): boolean {

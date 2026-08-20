@@ -318,7 +318,6 @@ async function main(): Promise<void> {
       HOST_ADMISSION_PASSWORD: accessKey,
       ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "false",
-      PEER_ASSISTED_ROOM_IDS: "",
       STUN_URLS: "",
     });
     const roomStore = new ObservedRoomStore({

@@ -90,7 +90,7 @@
 - host 下游活跃媒体边不超过两个；
 - 普通桌面或移动浏览器 Viewer 无需安装应用；
 - break-before-make、安全授权、重连、回滚和陈旧消息隔离语义；
-- 功能默认关闭，并保留 exact-room allowlist 灰度边界。
+- 轻量实例可关闭 controller；旗舰部署以 `PEER_ASSISTED_MEDIA=true` 对所有正常房间启用，room `1` 仅是历史 smoke，已不再保留 exact-room allowlist 灰度边界。
 
 实现期间只运行覆盖当前改动的窄测；完整候选形成后统一运行一次 full check。除非媒体行为或证据采集逻辑改变，不重跑昂贵浏览器/网络矩阵。实现 PR 必须原位同步 status、project memory 和相关 ADR，删除失效描述，不新增过程流水账文档。
 

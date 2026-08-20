@@ -138,7 +138,6 @@ interface SignalHarness {
   roomStore: RoomStore;
   room: CreatedRoom;
   database?: RoomDatabase;
-  peerAssistedRoomIds?: Set<string>;
 }
 
 function testConfig(): ServerConfig {
@@ -189,10 +188,6 @@ async function startHarness(
     "private-link",
     overrides.provisionalHostClaimSeconds,
   );
-  const peerAssistedRoomIds = config.peerAssistedMedia
-    ? new Set([room.roomId])
-    : undefined;
-  config.peerAssistedRoomIds = peerAssistedRoomIds;
   runningServer = await createScreenerServer({
     config,
     roomStore,
@@ -213,7 +208,6 @@ async function startHarness(
     roomStore,
     room,
     database,
-    peerAssistedRoomIds,
   };
 }
 
@@ -302,7 +296,6 @@ async function startSfuHarness(options: {
     maxViewersPerRoom: 8,
   });
   const room = roomStore.createRoom();
-  const peerAssistedRoomIds = new Set([room.roomId]);
   const httpServer = createServer((_request, response) => {
     response.statusCode = 404;
     response.end();
@@ -311,7 +304,6 @@ async function startSfuHarness(options: {
     server: httpServer,
     roomStore,
     peerAssistedMedia: true,
-    peerAssistedRoomIds,
     sfuFallback: {
       url: "wss://sfu.example.test",
       tokenIssuer: options.tokenIssuer,
@@ -369,7 +361,6 @@ async function startSfuHarness(options: {
     webSocketUrl: `ws://127.0.0.1:${port}/signal`,
     roomStore,
     room,
-    peerAssistedRoomIds,
   };
 }
 
@@ -1909,7 +1900,7 @@ describe("WebSocket signaling", () => {
     await viewer.inbox.expectNone(30);
   });
 
-  it("isolates the routing allowlist while ordinary ICE stays STUN-only", async () => {
+  it("enables hybrid routing for every room while ordinary ICE stays STUN-only", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { issueToken: async () => "unused-test-token" },
       stunUrls: ["stun:stun.example.test:3478"],
@@ -1931,28 +1922,16 @@ describe("WebSocket signaling", () => {
     });
 
     const ordinaryHost = await openClient(harness.webSocketUrl);
-    const ordinaryHostAuth = await authenticate(
-      ordinaryHost,
-      ordinaryRoom,
-      "host",
-      "ordinary-host",
+    const ordinaryHostAuth = peerAssisted(
+      await authenticate(
+        ordinaryHost,
+        ordinaryRoom,
+        "host",
+        "ordinary-host",
+      ),
     );
-    expect(Object.keys(ordinaryHostAuth).sort()).toEqual(
-      [
-        "connectionId",
-        "hostOnline",
-        "iceConfig",
-        "maxViewers",
-        "peerId",
-        "protocol",
-        "role",
-        "roomExpiresAt",
-        "type",
-        "viewerAuthorizationGeneration",
-        "viewerPeerIds",
-        "viewerPolicy",
-      ].sort(),
-    );
+    expect(ordinaryHostAuth.mediaMode).toBe("peer-assisted");
+    expect(ordinaryHostAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
     expect(ordinaryHostAuth.iceConfig).toEqual(hybridHostAuth.iceConfig);
     expect(
       ordinaryHostAuth.iceConfig.iceServers.every(
@@ -1961,74 +1940,24 @@ describe("WebSocket signaling", () => {
     ).toBe(true);
 
     const ordinaryViewer = await openClient(harness.webSocketUrl);
-    const ordinaryViewerAuth = await authenticate(
-      ordinaryViewer,
-      ordinaryRoom,
-      "viewer",
-      "ordinary-viewer",
+    const ordinaryViewerAuth = peerAssisted(
+      await authenticate(
+        ordinaryViewer,
+        ordinaryRoom,
+        "viewer",
+        "ordinary-viewer",
+      ),
     );
-    expect(Object.keys(ordinaryViewerAuth).sort()).toEqual(
-      Object.keys(ordinaryHostAuth).sort(),
-    );
-    expect(await ordinaryHost.inbox.next("peer-joined")).toEqual({
-      type: "peer-joined",
-      peerId: ordinaryViewerAuth.peerId,
-    });
+    expect(ordinaryViewerAuth.mediaMode).toBe("peer-assisted");
+    expect(ordinaryViewerAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
+    expect(ordinaryViewerAuth.iceConfig).toEqual(hybridHostAuth.iceConfig);
 
-    ordinaryHost.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: ordinaryViewerAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId: "ordinary-room-connection",
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    expect(await ordinaryViewer.inbox.next("signal")).toMatchObject({
-      fromPeerId: ordinaryHostAuth.peerId,
-      payload: { connectionId: "ordinary-room-connection" },
-    });
-    ordinaryViewer.socket.send(
-      JSON.stringify({
-        type: "signal",
-        payload: {
-          kind: "description",
-          connectionId: "ordinary-room-connection",
-          description: { type: "answer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    expect(await ordinaryHost.inbox.next("signal")).toMatchObject({
-      fromPeerId: ordinaryViewerAuth.peerId,
-      payload: { connectionId: "ordinary-room-connection" },
-    });
-
-    ordinaryHost.socket.send(
-      JSON.stringify({
-        type: "set-quality-settings",
-        qualitySettings: balancedQualitySettings,
-      }),
-    );
-    expect((await ordinaryHost.inbox.next("error")).code).toBe("FORBIDDEN");
-    ordinaryViewer.socket.send(
-      JSON.stringify({ type: "relay-capacity", downstreamEdges: 1 }),
-    );
-    expect((await ordinaryViewer.inbox.next("error")).code).toBe("FORBIDDEN");
-    ordinaryViewer.socket.send(
-      JSON.stringify({ type: "refresh-sfu", revision: 0 }),
-    );
-    expect((await ordinaryViewer.inbox.next("error")).code).toBe("FORBIDDEN");
-
+    await closeClient(hybridHost);
+    await closeClient(ordinaryHost);
     await closeClient(ordinaryViewer);
-    expect(await ordinaryHost.inbox.next("peer-left", 500)).toEqual({
-      type: "peer-left",
-      peerId: ordinaryViewerAuth.peerId,
-    });
   });
 
-  it("keeps allowlisted and ordinary room lifecycles independent", async () => {
+  it("keeps all-room hybrid lifecycles independent", async () => {
     const harness = await startHarness({
       peerAssistedMedia: true,
       viewerDisconnectGraceMs: 500,
@@ -2058,15 +1987,22 @@ describe("WebSocket signaling", () => {
     await hybridViewer.inbox.next("quality-settings");
 
     const ordinaryHost = await openClient(harness.webSocketUrl);
-    await authenticate(ordinaryHost, ordinaryRoom, "host", "lifecycle-ordinary-host");
-    const ordinaryViewer = await openClient(harness.webSocketUrl);
-    const ordinaryViewerAuth = await authenticate(
-      ordinaryViewer,
+    await authenticate(
+      ordinaryHost,
       ordinaryRoom,
-      "viewer",
-      "lifecycle-ordinary-viewer",
+      "host",
+      "lifecycle-ordinary-host",
     );
-    await ordinaryHost.inbox.next("peer-joined");
+    const ordinaryViewer = await openClient(harness.webSocketUrl);
+    const ordinaryViewerAuth = peerAssisted(
+      await authenticate(
+        ordinaryViewer,
+        ordinaryRoom,
+        "viewer",
+        "lifecycle-ordinary-viewer",
+      ),
+    );
+    await ordinaryHost.inbox.next("media-assignment");
 
     const hybridHostClosed = new Promise<number>((resolve) =>
       hybridHost.socket.once("close", (code) => resolve(code)),
@@ -2100,16 +2036,20 @@ describe("WebSocket signaling", () => {
       qualitySettings: lowQualitySettings,
     });
     const resumedOrdinaryViewer = await openClient(harness.webSocketUrl);
-    const resumedOrdinaryViewerAuth = await authenticate(
-      resumedOrdinaryViewer,
-      ordinaryRoom,
-      "viewer",
-      "lifecycle-ordinary-viewer",
+    const resumedOrdinaryViewerAuth = peerAssisted(
+      await authenticate(
+        resumedOrdinaryViewer,
+        ordinaryRoom,
+        "viewer",
+        "lifecycle-ordinary-viewer",
+      ),
     );
     expect(resumedOrdinaryViewerAuth.peerId).toBe(ordinaryViewerAuth.peerId);
     expect(resumedOrdinaryViewerAuth.connectionId).toBeNull();
-    expect("mediaMode" in resumedOrdinaryViewerAuth).toBe(false);
-    expect("qualitySettings" in resumedOrdinaryViewerAuth).toBe(false);
+    expect(resumedOrdinaryViewerAuth.mediaMode).toBe("peer-assisted");
+    expect(resumedOrdinaryViewerAuth.qualitySettings).toEqual(
+      defaultQualitySettings,
+    );
 
     const resumedHybridHost = await openClient(harness.webSocketUrl);
     const resumedHybridHostAuth = peerAssisted(
@@ -2125,36 +2065,17 @@ describe("WebSocket signaling", () => {
       qualitySettings: lowQualitySettings,
     });
     const resumedOrdinaryHost = await openClient(harness.webSocketUrl);
-    const resumedOrdinaryHostAuth = await authenticate(
+    await authenticate(
       resumedOrdinaryHost,
       ordinaryRoom,
       "host",
       "lifecycle-ordinary-host",
     );
-    expect(await resumedOrdinaryHost.inbox.next("peer-joined")).toMatchObject({
-      peerId: resumedOrdinaryViewerAuth.peerId,
-    });
-
     resumedHybridHost.socket.send(JSON.stringify({ type: "abandon-room" }));
     await resumedHybridHost.inbox.next("room-closed");
     await resumedHybridViewer.inbox.next("room-closed");
     expect(harness.roomStore.size).toBe(1);
 
-    resumedOrdinaryHost.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: resumedOrdinaryViewerAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId: "ordinary-after-hybrid-delete",
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    expect(await resumedOrdinaryViewer.inbox.next("signal")).toMatchObject({
-      fromPeerId: resumedOrdinaryHostAuth.peerId,
-      payload: { connectionId: "ordinary-after-hybrid-delete" },
-    });
     resumedOrdinaryHost.socket.send(JSON.stringify({ type: "abandon-room" }));
     await resumedOrdinaryHost.inbox.next("room-closed");
     await resumedOrdinaryViewer.inbox.next("room-closed");
@@ -3392,7 +3313,6 @@ describe("WebSocket signaling", () => {
   it("assigns a bounded peer relay tree and authorizes only direct media edges", async () => {
     const harness = await startHarness({ peerAssistedMedia: true });
     const secondRoom = harness.roomStore.createRoom();
-    harness.peerAssistedRoomIds!.add(secondRoom.roomId);
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = peerAssisted(
       await authenticate(host, harness.room, "host", "relay-host"),
@@ -4662,7 +4582,6 @@ describe("WebSocket signaling", () => {
     });
 
     const replacementRoom = harness.roomStore.createRoom();
-    harness.peerAssistedRoomIds!.add(replacementRoom.roomId);
     const replacing = await prepareFallbackForTwoViewers(
       harness.webSocketUrl,
       replacementRoom,
@@ -4733,7 +4652,6 @@ describe("WebSocket signaling", () => {
     expect(replacementRoot.socket.readyState).toBe(WebSocket.OPEN);
 
     const prepareFailureRoom = harness.roomStore.createRoom();
-    harness.peerAssistedRoomIds!.add(prepareFailureRoom.roomId);
     const prepareFailure = await prepareFallbackForTwoViewers(
       harness.webSocketUrl,
       prepareFailureRoom,

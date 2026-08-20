@@ -20,33 +20,37 @@ Last updated: 2026-08-21
 ## Current Recommendation
 
 - Keep desktop Chrome/Edge and the responsive Web viewer as the baseline. Validate Android Chrome and iOS Safari as leaves.
-- Use direct host P2P for one or two viewers. Keep ADR-0004 off broadly; use an isolated exact-room candidate until resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile gates pass.
+- Use direct host P2P for one or two viewers, then the bounded controller for every room when `PEER_ASSISTED_MEDIA=true`. Room `1` is historical smoke, not a runtime gate; resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile evidence remain separate.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- ADR-0006 remains no-go. Native has explicit H.264 opt-in beside default VP8: Chrome 151 loopback reached 299 decoded/298 rendered frames (18 sender, 156 source RTP, 2,690 inbound) at 1280x720 with zero encoder/fatal errors. The gate retains a Pion snapshot-timing residual. `prefer-hardware` is only a request; physical attribution, multi-viewer, endurance, public-network, and packaged-native proof remain open.
+- ADR-0006 remains no-go. Native H.264 opt-in loopback (Chrome 151, 1280x720) rendered 298/299 with zero fatal/encoder errors; VP8 remains default. Pion timing, hardware attribution, multi-viewer/endurance/public/packaged proof remain open.
 - Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
-- ADR-0005 accepts direct/peer UDP, bounded SFU roots, then optional selected-edge TURN. Source has a default-off, undeployed one-shot rebuild after SFU; participant-wide TURN remains rejected and production stays STUN-only.
-- Keep the controller exact-room only: room `1` is the STUN/SFU smoke. Preserve sticky progressing P2P, mobile leaves and break-before-make. Recovery spends one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries; active SFU gets one fresh grant before Peer failback.
+- ADR-0005 accepts direct/peer UDP, bounded SFU roots, then optional selected-edge TURN. Source has a default-off, undeployed one-shot rebuild after SFU; participant-wide TURN remains rejected and ordinary peer ICE stays STUN-only.
+- The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, mobile leaves and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
-- Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
+- System capture can cause film-audio loss/self-echo; Web cannot isolate processes. Diagnose A/B/C and sync; Windows 11 native game-tree audio is a candidate, Windows 10 unresolved. See `docs/research/browser-screen-audio-quality.md`.
 - Viewer-local names and the opt-in Web participant roster remain control-plane-only. The Web Host name change is source-only after its failed activation; names stay socket/localStorage-only, and Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access and the v3 room-password migration are deployed; Host display-name remains source-only. Names/presence remain session-only without account or roster tables.
 - Deferred architecture audit: `docs/maintenance.md`.
 
+## Current Execution Principle
+
+- Prioritize flagship/mainline; parallelize design, research, implementation, tests, and audit. Land the smallest runnable change with one smoke and rollback; avoid duplicate matrices. Room `1` is not a feature boundary; reuse mature designs without overstating hardware; benchmark after functional landing.
+
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production currently serves `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612` at `https://share.bonfire.icu` after the single Host display-name cutover attempt at `2026-08-20T16:09Z` was automatically rolled back. The prepare-to-release switch and health gate passed; a post-cutover assertion used stale `NRestarts=31` data and triggered the rollback. Health is 200 and SQLite v3 retains four rooms including room `1`. Room `1` alone enables peer/SFU routing, C+B local reparenting, and admission rescue; unlisted rooms remain ordinary P2P. The preceding `31bee238` release remains historical rollback evidence.
+- Production serves `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612` at `https://share.bonfire.icu` after the `2026-08-20T16:09Z` Host display-name cutover rolled back on stale `NRestarts=31` data. Health is 200; SQLite v3 retains four rooms including room `1`. That rollback still has the historical room-1 gate; source removes it for the next release. `31bee238` is historical rollback evidence.
 - The current Screener, LiveKit, coturn, and nginx services each report `NRestarts=0`. The Host display-name artifact was not retained as an active release, so Host names remain source-only/not deployed; selected-edge TURN remains disabled.
 - Production ICE is STUN-only; stale `PEER_ICE_TURN_*` keys fail startup even blank. Source has a default-off coturn REST rebuild for the original failed Host/ViewerRelay edge after Viewer-root SFU exhaustion; it is undeployed/unverified and production advertises no TURN credential.
 - Production requires an independent `HOST_ADMISSION_PASSWORD` only for creation/Host role. Default private fragment grants, room passwords, and explicit public-watch authorize Viewers; four anonymous Chrome routes stayed neutral until authorization. There are no accounts/JWT/session rows; SQLite v3 still contains all four rooms, including room `1`.
-- Production uses nginx, Node.js 24.19.0, coturn 4.17.2, and pinned LiveKit 1.13.5 on UDP 7882 with TCP fallback disabled. The application TURN tuple is absent; coturn retains the old authenticated-relay config and TCP/UDP 3478 plus UDP 49152-49251 rules but receives no advertised credential. Current service state is health 200 with all four service restart counts at 0.
-- ADR-0005 is configured with exact `PEER_ASSISTED_ROOM_IDS=1`; unlisted rooms use ordinary P2P. `screener-v2` is the only deployed signaling literal; there is no v1 parser or translator.
+- Production uses nginx, Node.js 24.19.0, coturn 4.17.2, and LiveKit 1.13.5 on UDP 7882 (TCP fallback off). No application TURN tuple is advertised; coturn retains the old authenticated-relay ports. Services are healthy with zero restarts.
+- ADR-0005 source rejects `PEER_ASSISTED_ROOM_IDS`; `PEER_ASSISTED_MEDIA=true` enables every room, while ordinary peer ICE stays STUN-only. A stale room-ID variable fails startup. `screener-v2` is the only deployed signaling literal; there is no v1 parser or translator.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
-- Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
+- Chrome 151 synthetic topology/quality runs kept fanout 2/1 and decoding; one relay close recovered in 5.32 seconds. Control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
 - Source-only Web Host name/presence leaves Native wire/media unchanged and separates Viewer roster from Host diagnostics; the Host-name artifact was not activated.
