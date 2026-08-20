@@ -70,20 +70,20 @@ The flagship deployment target supplies SFU capacity with a complete LiveKit
 endpoint/key/secret tuple. There is no user-facing topology selector and no
 process-wide `MEDIA_MODE` union. A deployment without that tuple ends at peer
 assistance and bounded waiting/failure and is not the final flagship route
-configuration. Optional selected-edge TURN is a separate default-off deployment
-tuple and remains a controller-owned transport attempt, never a topology choice.
+configuration. Optional selected-edge TURN is a separate deployment tuple and
+remains a controller-owned transport attempt, never a topology choice.
 
 ## Implementation Status
 
 Merged PR #17 implements this controller on top of merged PR #13, and PR #20
 adds the bounded standby prewarm below. The process flag enables the controller
 for every normal room; room `1` is retained only as a historical smoke fixture,
-and production remains
-STUN-only. The current source no longer contains the rejected participant-wide
+and production ordinary peer connections remain STUN-only. The current source
+no longer contains the rejected participant-wide
 TURN config, issuer, capability, refresh wire, or client propagation. Stale
 `PEER_ICE_TURN_*` keys fail startup even when blank. The source candidate now
-implements a complete default-off selected-edge tuple and one post-SFU
-relay-only rebuild; it remains undeployed and lacks real TURN/media evidence.
+implements a complete selected-edge tuple and one post-SFU relay-only rebuild;
+production configures it, but real TURN/media evidence remains open.
 The wire has two explicit edge kinds: `peer-selected` for the last-mile failed
 peer edge and `host-sfu-ingress` for a restricted Host-to-SFU retry. Ordinary
 Peer ICE remains STUN-only.
@@ -415,15 +415,16 @@ Healthy direct/peer UDP stays distributed. When no such path can satisfy
 admission or recovery, one SFU publication feeds one or two roots, which keep
 their bounded peer descendants. Only an edge that also cannot use SFU/UDP may
 receive a controller-selected authenticated TURN attempt. Production currently
-ends in bounded failure and has no application TURN config. Source has no
+configures that selected-edge attempt but still ends in bounded failure if it
+cannot connect. Source has no
 participant-wide TURN path: the rejected candidate is removed and its stale
-environment keys fail startup. The default-off selected-edge source candidate uses
+environment keys fail startup. The selected-edge implementation uses
 a short coturn REST bearer and one server-generated connection identity per explicit
 edge kind. `peer-selected` binds the failed parent/Viewer pair; `host-sfu-ingress`
 binds the room, host session, SFU publication generation, and the
 old/new connection identities. The Host client applies that grant only to a
-relay-only LiveKit publisher `RTCConfiguration`. It is undeployed and has no real
-relay-media evidence.
+relay-only LiveKit publisher `RTCConfiguration`. It is configured in production
+but has no real relay-media evidence.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
 The bounded cost model and privacy-safe ICE fields

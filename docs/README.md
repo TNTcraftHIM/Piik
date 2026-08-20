@@ -21,7 +21,7 @@
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): accepted P2P-first media topology and its consequences.
 - [ADR-0002](./adr/0002-persistent-protected-rooms.md): Host admission, room-scoped private Viewer grants, explicit public-watch, rotation, and minimal SQLite persistence.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): proposed, experiment-only standard-WebRTC peer-assisted spike with hard fanout and failure gates.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted direct/peer UDP -> SFU-root -> optional exceptional-edge TURN direction, with the room-`1` exact smoke and broader migration gates.
+- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted direct/peer UDP -> SFU-root -> optional exceptional-edge TURN direction, including the historical room-`1` smoke and broader migration gates.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
 - [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted path-isolated `HIGH + at most one LOW` policy, optional idle-layer stop, evidence contract, and SVC boundary.
 - [ADR-0008](./adr/0008-window-scoped-audio-capture.md): browser window-audio hint and the Windows WASAPI process-loopback boundary.

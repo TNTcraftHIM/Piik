@@ -54,7 +54,7 @@ export function PeerStatusBadge({
 export function PathBadge({ path }: { path: MediaPath }) {
   if (path === "direct") {
     return (
-      <span className="path-badge path-direct" title="媒体未经过 TURN 中继">
+      <span className="path-badge path-direct" title="ICE 直连成功">
         <Wifi size={14} aria-hidden="true" />
         ICE 直连
       </span>
@@ -84,7 +84,7 @@ export function TopologyBadge({
   const values: Record<ViewerMediaTopology, BadgeProps> = {
     "host-direct": { tone: "good", label: "Host 直连" },
     "peer-relay": { tone: "warning", label: "Peer 中转" },
-    sfu: { tone: "warning", label: "SFU" },
+    sfu: { tone: "warning", label: "SFU fallback" },
     pending: { tone: "neutral", label: "连接中" },
   };
   return <Badge {...values[topology]} />;

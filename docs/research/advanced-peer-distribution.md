@@ -312,7 +312,7 @@ optimizer, temporary fanout above budget, self-reported geography or device
 quality, or cannot beat the unchanged route. The earlier admission-rescue case
 remains valid, while this quality slice moves only the affected Viewer-rooted
 subtree and excludes only its current failed parent through the existing
-peer-first, then SFU path. The default-off source candidate's selected-edge TURN attempt follows SFU
+peer-first, then SFU path. The configured selected-edge TURN attempt follows SFU
 failure; healthy paths never enter relay optimization.
 
 ## Staged Connection Recovery Evidence

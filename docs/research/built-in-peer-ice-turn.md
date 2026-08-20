@@ -26,8 +26,8 @@ the durable findings that still apply are summarized below.
 The current source no longer contains the rejected participant-wide config,
 issuer, authentication capability, refresh wire, or client propagation. Supplying any
 stale `PEER_ICE_TURN_*` key, even blank, fails startup. The replacement
-selected-edge config, wire, and rebuild now exist as a default-off source
-candidate; they remain undeployed and lack real relay-media evidence.
+selected-edge config, wire, and rebuild now exist and are configured in
+production. They remain controller-selected and lack real relay-media evidence.
 
 ## Production Canary
 

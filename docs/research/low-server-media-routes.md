@@ -5,16 +5,17 @@
   media fanout at most two
 - Status: ADR-0005 accepts STUN-only direct/peer UDP, bounded SFU/UDP roots,
   then optional authenticated TURN/UDP for one controller-selected exceptional
-  edge; production remains STUN-only, and public transport behavior plus every
-  non-browser data plane is unverified
+  edge. Production enables the controller for all rooms and has a configured
+  selected-edge TURN tuple; ordinary peer connections remain STUN-only, while
+  real SFU/TURN media behavior remains unverified.
 
 ## Current Route Ladder
 
 The smallest current plan is:
 
 1. Use direct host P2P for one or two viewers.
-2. For later viewers, test the fixed two-chain browser relay in ADR-0004. It is
-   disabled by default with `PEER_ASSISTED_MEDIA=false`, is limited to at most
+2. For later viewers, use the fixed two-chain browser relay in ADR-0004. It is
+   controlled by `PEER_ASSISTED_MEDIA`, is limited to at most
    eight viewers, and decodes and re-encodes at every relay.
 3. Plan a separate native shared-encode sender regardless of the browser relay
    result. It reduces duplicate host encoding while retaining at most two
@@ -24,7 +25,7 @@ The smallest current plan is:
 4. Only if browser relay re-encoding is the isolated failure should another
    experiment add opt-in native volunteer encoded-RTP relays.
 5. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
-   optional capacity. The current default-off ADR-0005 controller uses that capacity
+   optional capacity. The ADR-0005 controller uses that capacity
    automatically only after deterministic peer recovery is exhausted. The SFU
    is a virtual parent for only one or two necessary roots; those roots continue
    bounded peer descendants. A necessary viewer may be a zero-descendant root
@@ -34,9 +35,9 @@ The smallest current plan is:
 Any browser-spike failure other than isolated relay re-encoding closes that
 browser-relay route. It does not cancel the separate native sender plan. Closed
 PR #12's explicit whole-room SFU mode is superseded. ADR-0005 and merged PR #17
-own the automatic cross-mode controller. Production enables it only for room `1`
-with a complete LiveKit tuple; participant entry was observed, but retained
-media was not. Corrected localhost Chrome/LiveKit functional recovery passed, while public
+own the automatic cross-mode controller. Production first enabled it only for
+room `1` and later removed that rollout boundary. Participant entry was
+observed, but retained media was not. Corrected localhost Chrome/LiveKit functional recovery passed, while public
 transport, quality, load, and browser validation remain open.
 
 ## Token-Free SFU Standby Prewarm
@@ -190,11 +191,12 @@ SFU, not ordinary peer PCs. Selected-edge coturn uses independent configuration
 and credentials. LiveKit TURN cannot rescue an unavailable SFU; the application
 controller selects whether independent coturn may rebuild one failed peer edge.
 
-Production and ordinary peer ICE remain STUN-only. The participant-wide TURN
+Ordinary peer ICE remains STUN-only. The participant-wide TURN
 config, capability and refresh wire are removed; any stale `PEER_ICE_TURN_*`
-key, including an empty value, fails startup. Selected-edge TURN is source-complete,
-default-off and undeployed. Every ordinary room, Web peer and Native-shaped
-client remains STUN-only. The tracked coturn example is UDP
+key, including an empty value, fails startup. Selected-edge TURN is deployed as
+a configured, controller-issued exceptional transport; its real media path is
+not yet canary-proven. Every ordinary Web peer and Native-shaped client remains
+STUN-only. The tracked coturn example is UDP
 `stun-only`; the LiveKit example exposes only ICE/UDP mux 7882, explicitly sets
 `tcp_port: 0` and `allow_tcp_fallback: false`, supplies the self-hosted STUN
 endpoint, and configures no external or embedded TURN. Candidate validation and rollback use isolated
