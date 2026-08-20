@@ -1,4 +1,5 @@
 import {
+  KeyRound,
   LoaderCircle,
   Maximize2,
   Play,
@@ -11,7 +12,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
+  MAX_VIEWER_PASSWORD_LENGTH,
   VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
+  viewerPasswordSchema,
   type IceConfig,
   type MediaAssignment,
   type ServerMessage,
@@ -94,6 +97,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [displayName, setDisplayName] = useState(() => readDisplayName());
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
+  const [viewerPasswordError, setViewerPasswordError] = useState<string | null>(
+    null,
+  );
+  const [viewerPasswordAttempt, setViewerPasswordAttempt] = useState<{
+    password: string;
+    sequence: number;
+  } | null>(null);
 
   const qualityLimitation = useMemo(
     () =>
@@ -156,6 +167,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         role: "viewer",
         clientId: getStableClientId("viewer", roomId),
         ...(viewerGrant ? { viewerGrant } : {}),
+        ...(!viewerGrant && viewerPasswordAttempt
+          ? { viewerPassword: viewerPasswordAttempt.password }
+          : {}),
         displayName: displayNameRef.current,
       },
       {
@@ -540,6 +554,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         selectedEdgeTurn = null;
         viewerAuthenticated = true;
         setAccessState("ready");
+        setViewerPasswordDraft("");
+        setViewerPasswordError(null);
         clearRelayChildEvidence();
         currentPeerId = message.peerId;
         viewerAuthorizationGeneration =
@@ -801,6 +817,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         if (message.code === "INVALID_TOKEN") {
           clearViewerGrant(roomId);
+          if (!viewerGrant && viewerPasswordAttempt) {
+            setViewerPasswordError("访问验证失败，请重试");
+          }
           setStatusText("邀请无效或已失效");
           return;
         }
@@ -833,7 +852,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       viewerRelay?.dispose();
       viewerRelay = null;
     };
-  }, [roomId, viewerGrant]);
+  }, [roomId, viewerGrant, viewerPasswordAttempt]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -930,6 +949,22 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     signalRef.current?.setViewerDisplayName(saved);
   }
 
+  function submitViewerPassword(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (!viewerPasswordSchema.safeParse(viewerPasswordDraft).success) {
+      setViewerPasswordError(
+        `请输入 1-${MAX_VIEWER_PASSWORD_LENGTH} 个可见字符`,
+      );
+      return;
+    }
+    setViewerPasswordError(null);
+    setAccessState("checking");
+    setViewerPasswordAttempt((current) => ({
+      password: viewerPasswordDraft,
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
+  }
+
   if (accessState !== "ready") {
     return (
       <div className="app-shell">
@@ -939,10 +974,42 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <LoaderCircle size={20} className="spin" aria-hidden="true" />
               正在验证
             </div>
-          ) : (
+          ) : viewerGrant ? (
             <section className="access-panel">
               <h1>无法访问</h1>
             </section>
+          ) : (
+            <form className="access-panel" onSubmit={submitViewerPassword}>
+              <div>
+                <h1>访问验证</h1>
+                <p className="section-meta">请输入访问密码</p>
+              </div>
+              <label className="token-field">
+                <span>访问密码</span>
+                <span className="input-with-icon">
+                  <KeyRound size={16} aria-hidden="true" />
+                  <input
+                    type="password"
+                    value={viewerPasswordDraft}
+                    maxLength={MAX_VIEWER_PASSWORD_LENGTH}
+                    autoComplete="current-password"
+                    autoFocus
+                    onChange={(event) => {
+                      setViewerPasswordDraft(event.target.value);
+                      setViewerPasswordError(null);
+                    }}
+                  />
+                </span>
+              </label>
+              {viewerPasswordError && (
+                <p className="access-error" role="alert">
+                  {viewerPasswordError}
+                </p>
+              )}
+              <button className="button button-primary" type="submit">
+                进入
+              </button>
+            </form>
           )}
         </main>
       </div>

@@ -1,6 +1,6 @@
 # ADR-0002: Persistent Rooms And Scoped Viewer Access
 
-- Status: Accepted; runtime candidate implemented, deployment pending
+- Status: Accepted; grant boundary deployed, room-password extension source-only
 - Date: 2026-08-19
 
 ## Context
@@ -11,18 +11,19 @@ so the deployment owner must control Host admission. Watching should remain a
 normal-browser, link-first action and should not reveal the deployment's Host
 password to every invited friend.
 
-The superseded runtime and current production deployment use one optional
-`ACCESS_PASSWORD`, one stateless cookie,
-and the same WebSocket upgrade gate for both roles. A Viewer then authenticates
-with only a numeric room code. This is simple but conflates deployment admission
-with room privacy: sharing the site password grants broader access than a Viewer
-needs, while disabling it makes a random room code the only weak capability.
-Persistent sequential IDs make that problem more visible.
+The superseded runtime used one optional `ACCESS_PASSWORD`, one stateless cookie,
+and the same WebSocket upgrade gate for both roles. The deployed replacement now
+separates Host admission from default private fragment grants and explicit
+public-watch. The accepted source-only extension adds optional room-password
+entry without reopening the old site-wide Viewer gate. Persistent sequential IDs
+make a room-scoped boundary especially important.
 
-Accounts, a user database, per-person ACLs, human room passwords, and a server
-session table would exceed the product need. A single room-scoped bearer
-capability provides the intended delegation with less user and operational
-state. Media topology remains independent and is governed by ADR-0001/0005.
+Accounts, a user database, per-person ACLs, password recovery, and a server
+session table would exceed the product need. A room-scoped bearer capability
+remains the lowest-friction invitation, while an optional low-policy room
+password lets a trusted friend enter from a numeric room code without weakening
+Host admission. Media topology remains independent and is governed by
+ADR-0001/0005.
 
 ## Decision
 
@@ -71,6 +72,32 @@ Every room has one of two Viewer policies:
   central-egress limits. Sequential public room IDs deliberately provide no
   privacy and must be labelled accordingly.
 
+A private room may also have one optional Viewer password. An existing valid
+fragment grant still enters directly. A code-only Viewer sees a neutral password
+form and, on success, authenticates only that current Viewer session in that
+room. The Host can set, replace, or remove it. The input accepts 1 through 64
+visible ASCII characters without composition rules; this is a convenience
+boundary for trusted friends, not an account credential or recovery system.
+
+Plaintext room passwords exist only transiently in the current page state,
+WebSocket authentication message, and KDF call memory. They never enter a URL,
+cookie, browser persistent storage, log, error, or SQLite. The server uses Node's
+asynchronous scrypt with fixed `N=16384,r=8,p=1`, a random 16-byte salt, a
+32-byte verifier, two active KDF slots, and at most 16 waiters. A full queue fails
+boundedly; a waiter rechecks its Viewer socket or Host session before starting
+KDF and skips stale work. A target-machine benchmark
+may tune those parameters after the feature is deployed; it does not block the
+functional default. Unknown rooms, absent/wrong passwords, and a full room after
+a correct password share generic rejection. Completion rechecks current room
+material and socket/Host session so stale asynchronous work cannot authorize or
+commit.
+
+The wire remains `screener-v2`. Only a Web Host that advertises
+`viewerPasswordSettings: true` may set/remove the password and receive
+`viewer-password-updated`; Native v2 does not advertise the capability and sees
+no new message type. Viewer `authenticate` may carry the current password
+attempt. The generic `authenticated` message does not gain a password field.
+
 Private invitations use `/r/{roomId}#v={grant}`. RFC 3986 separates a fragment
 before dereference, and the WebSocket API rejects fragment-bearing URLs, so the
 client never appends it to HTTP or `/signal`. On first load the client strictly
@@ -99,7 +126,9 @@ every current Viewer socket. Closing signaling alone is insufficient because a
 healthy P2P edge can keep playing without it. Rotation and public-to-private each
 return one new grant. Revoke stores a fresh random locked-private digest for
 which no grant was generated and returns no grant until a later rotation.
-The old grant or code-only session then cannot reconnect. A persistence failure
+The old grant or code-only session then cannot reconnect; a separately configured
+room password remains an available future entry after current Viewers are
+disconnected. A persistence failure
 leaves the old digest, existing sockets, and topology unchanged. Switching from
 private to public only broadens future Viewer admission and does not move
 healthy media.
@@ -111,7 +140,8 @@ healthy media.
 `ROOM_TTL_SECONDS`. With it, SQLite allocates persistent decimal IDs using
 `INTEGER PRIMARY KEY AUTOINCREMENT`.
 
-Schema v2 keeps one `rooms` table and one additional field:
+Schema v3 keeps one `rooms` table and adds one nullable password-material field
+to the deployed v2 shape:
 
 ```text
 id                       INTEGER PRIMARY KEY AUTOINCREMENT
@@ -119,17 +149,23 @@ host_token_digest        BLOB NOT NULL
   CHECK (length(host_token_digest) = 32)
 viewer_grant_digest      BLOB NULL
   CHECK (viewer_grant_digest IS NULL OR length(viewer_grant_digest) = 32)
+viewer_password_material BLOB NULL
+  CHECK (viewer_password_material IS NULL OR length(viewer_password_material) = 48)
 ```
 
-`NULL` means public-watch; 32 bytes mean private-link. SQLite stores no raw
-password, Host token, Viewer grant, cookie, display name, participant,
+For the grant, `NULL` means public-watch and 32 bytes mean private-link. Password
+material is either `NULL` or one 48-byte BLOB containing a 16-byte salt followed
+by a 32-byte scrypt verifier, so salt/verifier cannot be half-written. SQLite
+stores no raw Host-admission or room password, Host token, Viewer grant, cookie,
+display name, participant,
 `clientId`, `peerId`, IP address, SDP, ICE candidate, media, or TURN credential.
 There is no user, invitation, or session table.
 
-Schema v1 migrates inside one `BEGIN IMMEDIATE` transaction. It adds the nullable
-checked `BLOB` column, assigns every existing row a fresh random 32-byte
-locked-private digest for which no grant is generated, and advances
-`user_version`. Existing Host
+Schema v1 or v2 migrates to v3 inside one `BEGIN IMMEDIATE` transaction. V1 first
+adds the nullable checked grant `BLOB` and assigns every existing row a fresh
+random 32-byte locked-private digest for which no grant is generated. Both v1
+and v2 then add the checked nullable password-material column, default it to
+`NULL`, and advance `user_version`. Existing Host
 tokens still reclaim their rooms, after which the Host rotates once to obtain a
 new invitation. Old code-only links fail closed. Deployment takes a v1 backup before migration; a
 rollback to the old binary stops the service and restores that backup rather
@@ -146,8 +182,8 @@ SQLite or participates in authorization, routing, or quality decisions.
   room-creation and Host capability.
 - One digest scopes leaked Viewer authority to one room and one role; rotation
   provides a clear recovery operation.
-- Public watching remains explicit, and persistent state grows by one nullable
-  digest column rather than a new subsystem.
+- Public watching remains explicit. Optional password entry adds one nullable
+  fixed-size material column, not an account or authentication subsystem.
 - A capability link is a bearer credential. Anyone who obtains it can join
   before expiry and remain until disconnect or room-wide rotation/revoke;
   targeted per-person revocation is unavailable.
@@ -155,7 +191,7 @@ SQLite or participates in authorization, routing, or quality decisions.
   Closing the only Host tab loses its raw copy; the Host must rotate to produce
   another link, although room ownership remains recoverable from its Host token.
 - Rotation/revoke deliberately disconnects all Viewers and rebuilds their routes.
-- SQLite v2 is not readable by the old runtime, so rollback requires the
+- SQLite v3 is not readable by the old runtime, so rollback requires the
   pre-migration backup.
 - Public-watch consumes bounded Viewer/media capacity and offers no privacy.
 
@@ -163,8 +199,9 @@ SQLite or participates in authorization, routing, or quality decisions.
 
 - One password for Host and Viewer: over-grants every invited Viewer and couples
   deployment abuse control to room privacy.
-- Human per-room passwords: adds input, password handling, and recovery without
-  improving the link-sharing workflow over a high-entropy capability.
+- A room password as the only private mechanism: loses the direct fragment-grant
+  workflow and encourages password reuse. The password is an optional parallel
+  Viewer entry, while the grant remains the default invitation.
 - Query/path grant: request targets are commonly logged; RFC 6750 likewise warns
   against bearer tokens in URI queries. A fragment plus first WS message keeps
   it out of ordinary HTTP and proxy request logs.
@@ -182,23 +219,25 @@ SQLite or participates in authorization, routing, or quality decisions.
 
 - The auth matrix proves production Host admission, Viewer-without-Host-cookie,
   8-byte minimum/independent secret, ingress rate limit, exact-room/role grant
-  scope, non-enumerating failures, and public-watch caps.
+  scope, correct/wrong/replaced/removed room passwords, non-enumerating failures,
+  public code-only entry, and v2 Native wire isolation.
 - Leak tests cover HTTP/WS targets, Referrer, browser storage, SQLite, application
   and proxy logs, and errors; fragment consumption immediately clears the URL.
 - Rotation/revoke/public-to-private proves commit-before-disconnect, complete
   grace/route cleanup, old receive/send media teardown, one-time grant semantics,
   old reconnect rejection, locked revoke, and no change after persistence failure.
-- A production-copy v1 `STRICT` database migrates transactionally to checked,
-  locked-private v2; malformed non-null values fail closed, rollback restores its
-  backup, and v1 tabs terminate without compatibility code.
+- Production-copy v1/v2 `STRICT` databases migrate transactionally to checked v3
+  with locked-private v1 grants and nullable single-BLOB password material;
+  malformed non-null values fail closed and rollback restores the backup.
 
 ## Implementation Status
 
-The 2026-08-20 repository candidate implements the single-version v2 runtime,
-same-row SQLite migration, private/public room policy, fragment consumption,
-Host admission, and commit-first generation teardown. Focused automated tests
-cover protocol bounds, exact-room grants, persistent-write failure, active
-peer/SFU edge retirement, old-generation socket rejection, and v1 migration
-rollback. The tracked nginx limiter and backup/restore procedure are present.
-Production ingress loading, browser storage/request/log leak inspection, a
-production-copy migration rehearsal, and deployment remain acceptance work.
+The deployed 2026-08-20 boundary implements the single-version v2 runtime,
+private/public room policy, fragment consumption, Host admission, and
+commit-first grant teardown on SQLite v2. The current source-only candidate adds
+the optional room password, capability-isolated Web Host controls, asynchronous
+session rechecks, and the v1/v2-to-v3 single-BLOB migration. Focused automated
+tests cover password set/change/remove, grant continuity, public code-only entry,
+Native wire isolation, protocol bounds, and both migration origins. Password
+deployment, browser UX/leak inspection, production-copy migration rehearsal,
+and post-feature target-machine KDF benchmarking remain acceptance work.

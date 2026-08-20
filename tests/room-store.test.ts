@@ -22,6 +22,13 @@ function expectRoomError(action: () => unknown, code: RoomStoreError["code"]): v
   }
 }
 
+async function expectRoomErrorAsync(
+  action: () => Promise<unknown>,
+  code: RoomStoreError["code"],
+): Promise<void> {
+  await expect(action()).rejects.toMatchObject({ code });
+}
+
 function viewerGrant(room: { viewerGrant: string | null }): string {
   if (!room.viewerGrant) {
     throw new Error("Expected a private room Viewer grant");
@@ -499,6 +506,210 @@ describe("RoomStore", () => {
     ).toMatchObject({ viewerPolicy: "public-watch" });
   });
 
+  it("accepts, changes, and removes a private room password", async () => {
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 5,
+    });
+    const room = store.createRoom();
+    const host = store.connectParticipant({
+      roomId: room.roomId,
+      role: "host",
+      token: room.hostToken,
+      clientId: "password-host",
+      sessionId: "password-host-session",
+    });
+    expect(host.viewerPasswordEnabled).toBe(false);
+
+    await expect(
+      store.setViewerPassword(
+        room.roomId,
+        "easy-password",
+        "password-host-session",
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      store.connectViewerWithPassword({
+        roomId: room.roomId,
+        password: "easy-password",
+        clientId: "password-viewer-1",
+        sessionId: "password-viewer-session-1",
+      }),
+    ).resolves.toMatchObject({ role: "viewer", viewerPasswordEnabled: true });
+    await expectRoomErrorAsync(
+      () =>
+        store.connectViewerWithPassword({
+          roomId: room.roomId,
+          password: "wrong-password",
+          clientId: "wrong-password-viewer",
+          sessionId: "wrong-password-session",
+        }),
+      "INVALID_TOKEN",
+    );
+
+    await store.setViewerPassword(
+      room.roomId,
+      "new-password",
+      "password-host-session",
+    );
+    await expectRoomErrorAsync(
+      () =>
+        store.connectViewerWithPassword({
+          roomId: room.roomId,
+          password: "easy-password",
+          clientId: "old-password-viewer",
+          sessionId: "old-password-session",
+        }),
+      "INVALID_TOKEN",
+    );
+    await expect(
+      store.connectViewerWithPassword({
+        roomId: room.roomId,
+        password: "new-password",
+        clientId: "password-viewer-2",
+        sessionId: "password-viewer-session-2",
+      }),
+    ).resolves.toMatchObject({ role: "viewer" });
+
+    await expect(
+      store.setViewerPassword(room.roomId, null, "password-host-session"),
+    ).resolves.toBe(false);
+    await expectRoomErrorAsync(
+      () =>
+        store.connectViewerWithPassword({
+          roomId: room.roomId,
+          password: "new-password",
+          clientId: "removed-password-viewer",
+          sessionId: "removed-password-session",
+        }),
+      "INVALID_TOKEN",
+    );
+    expect(
+      store.connectParticipant({
+        roomId: room.roomId,
+        role: "viewer",
+        viewerGrant: viewerGrant(room),
+        clientId: "grant-still-works",
+        sessionId: "grant-still-works-session",
+      }).role,
+    ).toBe("viewer");
+  });
+
+  it("bounds pending password derivations and skips stale waiters", async () => {
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 3,
+    });
+    let mayStartCalls = 0;
+    const attempts = Array.from({ length: 40 }, (_, index) =>
+      store.connectViewerWithPassword(
+        {
+          roomId: "999999",
+          password: "bounded-password",
+          clientId: `bounded-client-${index}`,
+          sessionId: `bounded-session-${index}`,
+        },
+        () => {
+          mayStartCalls += 1;
+          return index < 2;
+        },
+      ),
+    );
+
+    const results = await Promise.allSettled(attempts);
+    expect(mayStartCalls).toBe(18);
+    expect(
+      results.every(
+        (result) =>
+          result.status === "rejected" &&
+          result.reason instanceof RoomStoreError &&
+          result.reason.code === "INVALID_TOKEN",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not reveal a full private room after a correct password", async () => {
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 1,
+    });
+    const room = store.createRoom();
+    store.connectParticipant({
+      roomId: room.roomId,
+      role: "host",
+      token: room.hostToken,
+      clientId: "full-password-host",
+      sessionId: "full-password-host-session",
+    });
+    await store.setViewerPassword(
+      room.roomId,
+      "full-password",
+      "full-password-host-session",
+    );
+    store.connectParticipant({
+      roomId: room.roomId,
+      role: "viewer",
+      viewerGrant: viewerGrant(room),
+      clientId: "full-room-viewer",
+      sessionId: "full-room-viewer-session",
+    });
+
+    await expectRoomErrorAsync(
+      () =>
+        store.connectViewerWithPassword({
+          roomId: room.roomId,
+          password: "full-password",
+          clientId: "full-password-viewer",
+          sessionId: "full-password-viewer-session",
+        }),
+      "INVALID_TOKEN",
+    );
+  });
+
+  it("does not commit a password after the Host session is replaced", async () => {
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: 3,
+    });
+    const room = store.createRoom();
+    store.connectParticipant({
+      roomId: room.roomId,
+      role: "host",
+      token: room.hostToken,
+      clientId: "same-host",
+      sessionId: "old-host-session",
+    });
+
+    const pending = store.setViewerPassword(
+      room.roomId,
+      "stale-password",
+      "old-host-session",
+    );
+    store.connectParticipant({
+      roomId: room.roomId,
+      role: "host",
+      token: room.hostToken,
+      clientId: "same-host",
+      sessionId: "new-host-session",
+    });
+
+    await expect(pending).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+    await expectRoomErrorAsync(
+      () =>
+        store.connectViewerWithPassword({
+          roomId: room.roomId,
+          password: "stale-password",
+          clientId: "stale-password-viewer",
+          sessionId: "stale-password-viewer-session",
+        }),
+      "INVALID_TOKEN",
+    );
+  });
+
   it("treats public-to-private as a strong Viewer authorization rotation", () => {
     const store = new RoomStore({
       ttlMs: 10_000,
@@ -726,6 +937,31 @@ describe("RoomStore", () => {
         true,
       );
       expect(rooms[0].viewerGrantDigest).not.toEqual(rooms[1].viewerGrantDigest);
+      expect(rooms.every((room) => room.viewerPasswordMaterial === null)).toBe(
+        true,
+      );
+      database.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates v2 rooms to a nullable checked password material column", () => {
+    const directory = mkdtempSync(join(tmpdir(), "screener-room-v2-migration-"));
+    const databasePath = join(directory, "rooms.sqlite");
+    try {
+      createV2Database(databasePath);
+      const database = new RoomDatabase(databasePath);
+      expect(database.loadRooms()).toMatchObject([
+        { roomId: "1", viewerPasswordMaterial: null },
+      ]);
+      database.updateViewerPassword("1", Buffer.alloc(48, 7));
+      expect(database.loadRooms()[0].viewerPasswordMaterial).toEqual(
+        Buffer.alloc(48, 7),
+      );
+      expect(() =>
+        database.updateViewerPassword("1", Buffer.alloc(47)),
+      ).toThrow("Viewer password material must contain 48 bytes");
       database.close();
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -797,5 +1033,24 @@ function createV1Database(path: string, roomCount: number): void {
   for (let index = 0; index < roomCount; index += 1) {
     insert.run(Buffer.alloc(32, index + 1));
   }
+  database.close();
+}
+
+function createV2Database(path: string): void {
+  const database = new DatabaseSync(path);
+  database.exec(`
+    CREATE TABLE rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      host_token_digest BLOB NOT NULL CHECK (length(host_token_digest) = 32),
+      viewer_grant_digest BLOB NULL
+        CHECK (viewer_grant_digest IS NULL OR length(viewer_grant_digest) = 32)
+    ) STRICT;
+    PRAGMA user_version = 2;
+  `);
+  database
+    .prepare(
+      "INSERT INTO rooms (host_token_digest, viewer_grant_digest) VALUES (?, ?)",
+    )
+    .run(Buffer.alloc(32, 1), Buffer.alloc(32, 2));
   database.close();
 }

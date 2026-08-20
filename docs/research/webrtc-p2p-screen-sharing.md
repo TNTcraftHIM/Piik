@@ -228,11 +228,11 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 ### 最小访问模型
 
-旧 production 的 `ACCESS_PASSWORD`、同一 Host/Viewer cookie gate 和 code-only Viewer 是已部署事实，不再是接受的目标；仓库 access candidate 已把“谁可以建立/发布房间”和“谁可以看这一间房”分开。production 必配的 `HOST_ADMISSION_PASSWORD` 无状态 cookie 只允许建房及尝试 Host role，房间 Host token 仍独立验证；默认 private-link 使用一个 room-scoped Viewer bearer grant，public-watch 才接受 code-only Viewer。它们不需要账号、JWT、服务端 session Map、逐人 ACL 或人类房间密码。WebSocket upgrade 不知道未来 role，因此只能保留 Origin/容量门并记录 Host cookie 状态；首条 Host 鉴权再同时要求该状态和 Host token，Viewer 只走 room policy。RFC 6455 明确允许服务端用 handshake `Origin` 作接纳判断，但这不是 Viewer 授权本身。
+旧 production 的 `ACCESS_PASSWORD`、同一 Host/Viewer cookie gate 和 code-only Viewer 是已部署事实，不再是接受的目标；仓库 access candidate 已把“谁可以建立/发布房间”和“谁可以看这一间房”分开。production 必配的 `HOST_ADMISSION_PASSWORD` 无状态 cookie 只允许建房及尝试 Host role，房间 Host token 仍独立验证；默认 private-link 使用一个 room-scoped Viewer bearer grant，public-watch 才接受 code-only Viewer。原研究结论不要求人类房间密码；后续已接受的最小扩展增加可选的逐房间 Viewer 密码作为 code-only 私密入口，但仍不引入账号、JWT、服务端 session Map 或逐人 ACL。WebSocket upgrade 不知道未来 role，因此只能保留 Origin/容量门并记录 Host cookie 状态；首条 Host 鉴权再同时要求该状态和 Host token，Viewer 只走 room policy。RFC 6455 明确允许服务端用 handshake `Origin` 作接纳判断，但这不是 Viewer 授权本身。
 
 RFC 3986 的规范事实是 fragment 在 URI dereference 前由 user agent 分离；WHATWG WebSockets 进一步规定含 fragment 的 constructor URL 必须抛 `SyntaxError`。因此把 256-bit room grant 放在 `/r/{code}#v=...`，再由页面在首个 WSS application message 发送，可以使它不进入 HTTP 或 WebSocket request-target。RFC 6750 对 OAuth bearer query 的警告并不直接规定本产品，但它提供了适用的安全类比：URI query 高概率被日志记录，不应承载此 grant。W3C Referrer Policy 的算法会从 referrer URL 移除 fragment，production 的 `no-referrer` header 再禁止整个 header；这是传输边界，不是“不会泄漏”的保证。
 
-W3C TAG 的 capability URL 指南指出 URL 仍会出现在地址栏、历史、扩展、同步服务、截图和转发路径中，建议高熵、到期与可撤销。目标因此使用 Node.js `randomBytes(32)` 的加密强随机量、完整 grant 的 SHA-256 摘要、有限期限，以及 Host rotate 或 locked revoke。浏览器首次严格解析后只写 room-scoped `sessionStorage`，立即 `history.replaceState` 到 canonical URL；刷新和页面内 WSS reconnect 可复用。HTML 标准明确新 auxiliary browsing context 可以复制同源 opener 的 session storage；这是已持有 bearer 的本地浏览器上下文转交边界，不是服务器扩大 room/role 权限，因此不增加导航状态机。独立且无 fragment/room key 的访问仍 fail closed。raw grant 不进入 `localStorage`、cookie、query、Referrer、SQLite、应用/代理日志或错误。OWASP 日志指南也明确把 access token、session identifier 和密码列为通常不应直接记录的数据。Fragment 降低服务端泄漏面，但 possession 仍等于该房间 Viewer 权限。
+W3C TAG 的 capability URL 指南指出 URL 仍会出现在地址栏、历史、扩展、同步服务、截图和转发路径中，建议高熵、到期与可撤销。目标因此使用 Node.js `randomBytes(32)` 的加密强随机量、完整 grant 的 SHA-256 摘要、有限期限，以及 Host rotate 或 locked revoke。浏览器首次严格解析后只写 room-scoped `sessionStorage`，立即 `history.replaceState` 到 canonical URL；刷新和页面内 WSS reconnect 可复用。HTML 标准明确新 auxiliary browsing context 可以复制同源 opener 的 session storage；这是已持有 bearer 的本地浏览器上下文转交边界，不是服务器扩大 room/role 权限，因此不增加导航状态机。独立且无 fragment/room key 的访问只进入中性密码路径，没有正确房间密码仍 fail closed。raw grant 不进入 `localStorage`、cookie、query、Referrer、SQLite、应用/代理日志或错误。OWASP 日志指南也明确把 access token、session identifier 和密码列为通常不应直接记录的数据。Fragment 降低服务端泄漏面，但 possession 仍等于该房间 Viewer 权限。
 
 持久化只在现有 `rooms` row 增加 nullable `viewer_grant_digest`；`NULL` 表示 public-watch，非空值以 `CHECK` 约束为 32-byte BLOB。SQLite `STRICT` table 只接受规定的类型名，因此不能声明 `BLOB(32)`；括号长度也不是 SQLite 的长度约束。官方迁移指南支持在 transaction 中完成 schema/data 变更，目标用一个 `BEGIN IMMEDIATE` 给每个 schema v1 旧行写入未生成对应 grant 的 fresh random locked-private digest，再更新 `user_version`。这是项目设计推论，不是 SQLite 自动提供的权限语义。上线前备份 v1；旧 binary 回滚恢复备份，不在 runtime 保留双 schema。
 
@@ -278,7 +278,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - WebRTC 使用 DTLS-SRTP。TURN 只能看到加密后的媒体包，但仍能看到地址、房间时序和流量元数据。
 - P2P 会让房间内双方得知网络地址。熟人首版可以接受，陌生人房间不能默认接受。
 - TURN 必须使用短期凭据、速率限制、每用户/房间配额和出口告警，不能提供匿名公共 relay。
-- Host admission password 只控制建房/Host role，不能作为私密观看凭据；private-link 依赖 room-scoped grant，public-watch 的 room code 则明确不提供隐私。两者都不改变媒体 fanout/egress 上限。
+- Host admission password 只控制建房/Host role，不能作为私密观看凭据；private-link 接受 room-scoped grant 或可选逐房间 Viewer 密码，public-watch 的 room code 则明确不提供隐私。这些入口都不改变媒体 fanout/egress 上限。
 - raw Viewer grant 与 Host token 等同访问凭据：只保存摘要，禁止日志/遥测/错误/Referrer/SQLite 明文。显示名、room-scoped peer 后缀和 IP 诊断均不参与授权。
 - 如果未来使用 SFU 且要求服务器看不到内容，再评估 SFrame/WebRTC Encoded Transform 和群组密钥管理。
 

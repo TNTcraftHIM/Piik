@@ -16,8 +16,8 @@ and is not part of production.
 ## Current Snapshot
 
 - Capture precedes room creation; source/quality changes preserve peers and pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
-- Production requires `HOST_ADMISSION_PASSWORD` only for creation/Host role and uses `screener-v2`, default private fragment grants, explicit public-watch, and generation-bound rotate/revoke. Viewers never need the Host secret; there is no account/session table or old parser.
-- SQLite v2 keeps Host and nullable Viewer-grant digests in one checked `STRICT` row. The stopped migration retained four rooms and locked each old room private without minting a raw grant.
+- Production access remains `screener-v2`: Host secret gates creation/Host; private grants and public codes authorize Viewers. The source-only, undeployed candidate adds private room-code + password entry without changing grant/public entry.
+- Production SQLite v2 retains four rooms and checked grant digests. Candidate v3 atomically adds a nullable checked 48-byte salt+scrypt-verifier BLOB; never plaintext.
 - Source-only Native v2 uses memory-only rooms, 300s reclaim and `ROOM_TTL`; production does not run it.
 - PR #44's exact-room STUN-only/SFU-UDP router is enabled only for production room `1`: host/SFU roots <=2, browser relay <=1, bounded failure. HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.

@@ -3,18 +3,22 @@ import {
   Copy,
   Globe2,
   Hash,
+  KeyRound,
   LockKeyhole,
   MonitorUp,
   Pause,
   Play,
   RefreshCw,
   Square,
+  Trash2,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
+  MAX_VIEWER_PASSWORD_LENGTH,
   VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
+  viewerPasswordSchema,
   type CreateRoomResponse,
   type IceConfig,
   type ServerMessage,
@@ -185,6 +189,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [newRoomViewerPolicy, setNewRoomViewerPolicy] =
     useState<ViewerAccessPolicy>("private-link");
   const [viewerAccessUpdating, setViewerAccessUpdating] = useState(false);
+  const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(false);
+  const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
+  const [viewerPasswordUpdating, setViewerPasswordUpdating] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
@@ -205,6 +212,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
+  const viewerPasswordActionRef = useRef<"set" | "remove" | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
   const retiredConnectionsRef = useRef(new Map<string, string>());
@@ -888,6 +896,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       );
       return;
     }
+    if (message.type === "viewer-password-updated") {
+      const action = viewerPasswordActionRef.current;
+      viewerPasswordActionRef.current = null;
+      setViewerPasswordEnabled(message.enabled);
+      setViewerPasswordUpdating(false);
+      setViewerPasswordDraft("");
+      if (action) {
+        setNotice(
+          action === "remove" ? "访问密码已移除" : "访问密码已更新",
+        );
+      }
+      return;
+    }
     if (message.type === "viewer-presence") {
       setViewerPresence(message.viewers);
       return;
@@ -975,6 +996,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "error") {
       setViewerAccessUpdating(false);
+      setViewerPasswordUpdating(false);
+      viewerPasswordActionRef.current = null;
       if (["INVALID_TOKEN", "ROOM_EXPIRED"].includes(message.code)) {
         forgetRoom();
         endSharing("房间已失效，再次点击将创建新房", false);
@@ -1068,6 +1091,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           clientId: getStableClientId("host", activeRoom.roomId),
           shareGeneration,
           viewerPresence: true,
+          viewerPasswordSettings: true,
         },
         {
           onStatus: (status) => {
@@ -1319,6 +1343,30 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     setViewerAccessUpdating(true);
+    setNotice(null);
+  }
+
+  function changeViewerPassword(password: string | null): void {
+    if (
+      password !== null &&
+      !viewerPasswordSchema.safeParse(password).success
+    ) {
+      setNotice(
+        `访问密码只需 1-${MAX_VIEWER_PASSWORD_LENGTH} 个可见字符`,
+      );
+      return;
+    }
+    if (
+      viewerPasswordUpdating ||
+      phase !== "live" ||
+      !signalRef.current?.send({ type: "set-viewer-password", password })
+    ) {
+      setNotice("开始分享并连接后才能修改访问密码");
+      return;
+    }
+    viewerPasswordActionRef.current = password === null ? "remove" : "set";
+    setViewerPasswordUpdating(true);
+    setViewerPasswordDraft("");
     setNotice(null);
   }
 
@@ -1717,6 +1765,61 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   </>
                 )}
               </div>
+              {room.viewerPolicy === "private-link" && (
+                <form
+                  className="viewer-password-control"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    changeViewerPassword(viewerPasswordDraft);
+                  }}
+                >
+                  <label htmlFor="viewer-password">访问密码</label>
+                  <span className="input-with-icon">
+                    <KeyRound size={16} aria-hidden="true" />
+                    <input
+                      id="viewer-password"
+                      type="password"
+                      value={viewerPasswordDraft}
+                      maxLength={MAX_VIEWER_PASSWORD_LENGTH}
+                      autoComplete="new-password"
+                      placeholder={
+                        viewerPasswordEnabled ? "输入新密码" : "设置密码"
+                      }
+                      disabled={viewerPasswordUpdating || phase !== "live"}
+                      onChange={(event) =>
+                        setViewerPasswordDraft(event.target.value)
+                      }
+                    />
+                  </span>
+                  <button
+                    className="icon-button"
+                    type="submit"
+                    title={viewerPasswordEnabled ? "更改访问密码" : "设置访问密码"}
+                    aria-label={
+                      viewerPasswordEnabled ? "更改访问密码" : "设置访问密码"
+                    }
+                    disabled={
+                      viewerPasswordUpdating ||
+                      phase !== "live" ||
+                      viewerPasswordDraft.length === 0
+                    }
+                  >
+                    <Check size={18} />
+                  </button>
+                  {viewerPasswordEnabled && (
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title="移除访问密码"
+                      aria-label="移除访问密码"
+                      disabled={viewerPasswordUpdating || phase !== "live"}
+                      onClick={() => changeViewerPassword(null)}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </form>
+              )}
             </div>
           )}
         </section>

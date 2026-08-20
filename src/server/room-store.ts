@@ -1,10 +1,16 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  scrypt,
+  timingSafeEqual,
+} from "node:crypto";
 
 import {
   MAX_HOST_CLAIM_TTL_SECONDS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   ROOM_CODE_LENGTH,
   viewerGrantSchema,
+  viewerPasswordSchema,
   type Role,
   type ViewerAccessPolicy,
 } from "../shared/protocol.js";
@@ -18,6 +24,21 @@ export type RoomStoreErrorCode =
   | "ROOM_LIMIT";
 
 const PERSISTENT_VIEWER_GRANT_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
+const VIEWER_PASSWORD_SALT_BYTES = 16;
+const VIEWER_PASSWORD_VERIFIER_BYTES = 32;
+const VIEWER_PASSWORD_MATERIAL_BYTES =
+  VIEWER_PASSWORD_SALT_BYTES + VIEWER_PASSWORD_VERIFIER_BYTES;
+const VIEWER_PASSWORD_KDF_CONCURRENCY = 2;
+const VIEWER_PASSWORD_KDF_PENDING_LIMIT = 16;
+const VIEWER_PASSWORD_SCRYPT_OPTIONS = {
+  N: 16_384,
+  r: 8,
+  p: 1,
+  maxmem: 32 * 1024 * 1024,
+} as const;
+const DUMMY_VIEWER_PASSWORD_MATERIAL = Buffer.alloc(
+  VIEWER_PASSWORD_MATERIAL_BYTES,
+);
 
 export class RoomStoreError extends Error {
   constructor(public readonly code: RoomStoreErrorCode) {
@@ -36,6 +57,7 @@ interface Room {
   roomId: string;
   hostTokenDigest: Buffer;
   viewerGrantDigest: Buffer | null;
+  viewerPasswordMaterial: Buffer | null;
   viewerAuthorizationGeneration: string;
   expiresAtMs: number | null;
   provisionalHostExpiresAtMs: number | null;
@@ -68,6 +90,13 @@ export type ConnectParticipantInput =
       sessionId: string;
     };
 
+export interface ConnectViewerWithPasswordInput {
+  roomId: string;
+  password: string;
+  clientId: string;
+  sessionId: string;
+}
+
 export interface ConnectedParticipant {
   roomId: string;
   role: Role;
@@ -77,6 +106,7 @@ export interface ConnectedParticipant {
   replacedSessionId?: string;
   viewerPeerIds: readonly string[];
   viewerPolicy: ViewerAccessPolicy;
+  viewerPasswordEnabled: boolean;
   viewerAuthorizationGeneration: string;
 }
 
@@ -157,6 +187,10 @@ export class RoomStore {
             storedRoom.viewerGrantDigest === null
               ? null
               : Buffer.from(storedRoom.viewerGrantDigest),
+          viewerPasswordMaterial:
+            storedRoom.viewerPasswordMaterial === null
+              ? null
+              : Buffer.from(storedRoom.viewerPasswordMaterial),
           viewerAuthorizationGeneration: this.newAuthorizationGeneration(),
           expiresAtMs: null,
           provisionalHostExpiresAtMs: null,
@@ -238,6 +272,7 @@ export class RoomStore {
       roomId,
       hostTokenDigest,
       viewerGrantDigest,
+      viewerPasswordMaterial: null,
       viewerAuthorizationGeneration,
       expiresAtMs,
       provisionalHostExpiresAtMs,
@@ -275,6 +310,129 @@ export class RoomStore {
       throw new RoomStoreError("INVALID_TOKEN");
     }
     return this.connectViewer(room, input);
+  }
+
+  async connectViewerWithPassword(
+    input: ConnectViewerWithPasswordInput,
+    mayConnect: () => boolean = () => true,
+  ): Promise<ConnectedParticipant> {
+    if (!viewerPasswordSchema.safeParse(input.password).success) {
+      throw new RoomStoreError("INVALID_TOKEN");
+    }
+
+    let room: Room | undefined;
+    try {
+      room = this.getAvailableRoom(input.roomId);
+    } catch (error) {
+      if (!(error instanceof RoomStoreError)) {
+        throw error;
+      }
+    }
+    if (room?.viewerGrantDigest === null) {
+      if (!mayConnect()) {
+        throw new RoomStoreError("INVALID_TOKEN");
+      }
+      return this.connectViewer(room, { ...input, role: "viewer" });
+    }
+
+    const expectedMaterial = Buffer.from(
+      room?.viewerPasswordMaterial ?? DUMMY_VIEWER_PASSWORD_MATERIAL,
+    );
+    const expectedSalt = expectedMaterial.subarray(
+      0,
+      VIEWER_PASSWORD_SALT_BYTES,
+    );
+    const expectedVerifier = expectedMaterial.subarray(
+      VIEWER_PASSWORD_SALT_BYTES,
+    );
+    const derived = await deriveViewerPassword(
+      input.password,
+      expectedSalt,
+      mayConnect,
+    );
+    if (derived === null) {
+      throw new RoomStoreError("INVALID_TOKEN");
+    }
+    const matches = timingSafeEqual(derived, expectedVerifier);
+
+    let currentRoom: Room;
+    try {
+      currentRoom = this.getAvailableRoom(input.roomId);
+    } catch (error) {
+      if (error instanceof RoomStoreError) {
+        throw new RoomStoreError("INVALID_TOKEN");
+      }
+      throw error;
+    }
+    if (currentRoom.viewerGrantDigest === null) {
+      if (!mayConnect()) {
+        throw new RoomStoreError("INVALID_TOKEN");
+      }
+      return this.connectViewer(currentRoom, { ...input, role: "viewer" });
+    }
+    if (
+      !room ||
+      currentRoom !== room ||
+      !matches ||
+      !sameBytes(currentRoom.viewerPasswordMaterial, expectedMaterial) ||
+      !mayConnect()
+    ) {
+      throw new RoomStoreError("INVALID_TOKEN");
+    }
+    try {
+      return this.connectViewer(currentRoom, { ...input, role: "viewer" });
+    } catch (error) {
+      if (error instanceof RoomStoreError && error.code === "ROOM_FULL") {
+        throw new RoomStoreError("INVALID_TOKEN");
+      }
+      throw error;
+    }
+  }
+
+  async setViewerPassword(
+    roomId: string,
+    password: string | null,
+    hostSessionId: string,
+  ): Promise<boolean> {
+    const room = this.getAvailableRoom(roomId);
+    if (room.host?.sessionId !== hostSessionId) {
+      throw new RoomStoreError("INVALID_TOKEN");
+    }
+
+    let nextPasswordMaterial: Buffer | null = null;
+    if (password !== null) {
+      if (!viewerPasswordSchema.safeParse(password).success) {
+        throw new RoomStoreError("INVALID_TOKEN");
+      }
+      const salt = this.random(VIEWER_PASSWORD_SALT_BYTES);
+      if (salt.byteLength !== VIEWER_PASSWORD_SALT_BYTES) {
+        throw new Error("Viewer password salt source must return 16 bytes");
+      }
+      const verifier = await deriveViewerPassword(password, salt, () => {
+        const currentRoom = this.rooms.get(roomId);
+        return (
+          currentRoom === room &&
+          currentRoom.host?.sessionId === hostSessionId
+        );
+      });
+      if (verifier === null) {
+        throw new RoomStoreError("INVALID_TOKEN");
+      }
+      nextPasswordMaterial = Buffer.concat([salt, verifier]);
+    }
+
+    const currentRoom = this.getAvailableRoom(roomId);
+    if (
+      currentRoom !== room ||
+      currentRoom.host?.sessionId !== hostSessionId
+    ) {
+      throw new RoomStoreError("INVALID_TOKEN");
+    }
+    if (currentRoom.expiresAtMs === null) {
+      this.options.database?.updateViewerPassword(roomId, nextPasswordMaterial);
+    }
+    currentRoom.viewerPasswordMaterial = nextPasswordMaterial;
+    return nextPasswordMaterial !== null;
   }
 
   setViewerAccess(
@@ -483,6 +641,7 @@ export class RoomStore {
       // Disconnected viewers remain room members until their grace period ends.
       viewerPeerIds: [...room.viewers.values()].map((viewer) => viewer.peerId),
       viewerPolicy: viewerPolicy(room),
+      viewerPasswordEnabled: room.viewerPasswordMaterial !== null,
       viewerAuthorizationGeneration: room.viewerAuthorizationGeneration,
     };
   }
@@ -516,6 +675,7 @@ export class RoomStore {
         replacedSessionId === input.sessionId ? undefined : replacedSessionId,
       viewerPeerIds: [],
       viewerPolicy: viewerPolicy(room),
+      viewerPasswordEnabled: room.viewerPasswordMaterial !== null,
       viewerAuthorizationGeneration: room.viewerAuthorizationGeneration,
     };
   }
@@ -657,6 +817,81 @@ function digest(value: string): Buffer {
 function verifyDigest(value: string, expectedDigest: Buffer): boolean {
   return timingSafeEqual(digest(value), expectedDigest);
 }
+
+function sameBytes(value: Buffer | null, expected: Buffer): boolean {
+  return value !== null && timingSafeEqual(value, expected);
+}
+
+function deriveViewerPassword(
+  password: string,
+  salt: Buffer,
+  mayStart: () => boolean = () => true,
+): Promise<Buffer | null> {
+  return viewerPasswordKdfGate.run(
+    () =>
+      new Promise<Buffer>((resolve, reject) => {
+        scrypt(
+          password,
+          salt,
+          VIEWER_PASSWORD_VERIFIER_BYTES,
+          VIEWER_PASSWORD_SCRYPT_OPTIONS,
+          (error, derivedKey) => (error ? reject(error) : resolve(derivedKey)),
+        );
+      }),
+    mayStart,
+  );
+}
+
+class AsyncGate {
+  private active = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(
+    private readonly limit: number,
+    private readonly pendingLimit: number,
+  ) {}
+
+  async run<T>(
+    task: () => Promise<T>,
+    mayStart: () => boolean,
+  ): Promise<T | null> {
+    if (!(await this.acquire())) {
+      return null;
+    }
+    try {
+      return mayStart() ? await task() : null;
+    } finally {
+      this.release();
+    }
+  }
+
+  private acquire(): Promise<boolean> {
+    if (this.active >= this.limit) {
+      if (this.waiters.length >= this.pendingLimit) {
+        return Promise.resolve(false);
+      }
+      return new Promise<boolean>((resolve) =>
+        this.waiters.push(() => resolve(true)),
+      );
+    }
+    this.active += 1;
+    return Promise.resolve(true);
+  }
+
+  private release(): void {
+    const next = this.waiters.shift();
+    if (next) {
+      next();
+      return;
+    }
+    this.active -= 1;
+  }
+}
+
+const viewerPasswordKdfGate = new AsyncGate(
+  VIEWER_PASSWORD_KDF_CONCURRENCY,
+  VIEWER_PASSWORD_KDF_PENDING_LIMIT,
+);
 
 function viewerPolicy(room: Room): ViewerAccessPolicy {
   return room.viewerGrantDigest === null ? "public-watch" : "private-link";

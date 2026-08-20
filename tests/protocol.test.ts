@@ -8,6 +8,7 @@ import {
   MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
+  MAX_VIEWER_PASSWORD_LENGTH,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   SIGNALING_PROTOCOL,
   clientMessageSchema,
@@ -16,6 +17,7 @@ import {
   normalizeDisplayName,
   participantRouteAssignmentSchema,
   serverMessageSchema,
+  viewerPasswordSchema,
 } from "../src/shared/protocol.js";
 
 const token = "a".repeat(43);
@@ -222,6 +224,53 @@ describe("client signaling protocol", () => {
         action: "private-link",
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts simple bounded Viewer passwords and the Web Host capability", () => {
+    expect(viewerPasswordSchema.safeParse("x").success).toBe(true);
+    expect(viewerPasswordSchema.safeParse("simple-password").success).toBe(true);
+    for (const invalid of [
+      "",
+      "contains space",
+      "line\nbreak",
+      "x".repeat(MAX_VIEWER_PASSWORD_LENGTH + 1),
+    ]) {
+      expect(viewerPasswordSchema.safeParse(invalid).success).toBe(false);
+    }
+
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+        viewerPassword: "easy-password",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId,
+        role: "host",
+        token,
+        clientId: "client_12345678",
+        viewerPasswordSettings: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-viewer-password",
+        password: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-password-updated",
+        enabled: true,
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects unknown fields and malformed tokens", () => {
