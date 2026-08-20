@@ -427,6 +427,26 @@ relay-only LiveKit publisher `RTCConfiguration`. It is configured in production
 but has no real relay-media evidence.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
+### Deferred Gap-Fill And Optimization
+
+These items are not current runtime behavior:
+
+- If the Host cannot reach LiveKit over UDP during the initial pending SFU
+  prepare, the current active-route `host-sfu-ingress` retry cannot rescue that
+  prepare. A later gap-fill may authorize exactly one generation-bound,
+  relay-only retry for that pending publication.
+- A room in which the Host and every possible root are restricted may require
+  several server-fed exceptional edges. Any such extension requires a per-room
+  selected-relay and central-egress admission cap; it must wait or fail at that
+  cap rather than become unbounded server fanout. TURN/TCP and TURN/TLS remain
+  separate transport decisions.
+- ICE restart and connection rebuild already recover failed edges after Wi-Fi,
+  cellular, or similar network changes. A healthy fallback path remains sticky:
+  the current controller does not proactively move it back when a new Viewer
+  offers a better peer route or the old network recovers. Any later preference
+  migration must be triggered by a discrete event, observe cooldown, and move
+  only the affected Viewer-rooted subtree.
+
 The bounded cost model and privacy-safe ICE fields
 live in [Low-Server-Cost Media Routes](../research/low-server-media-routes.md).
 For one SFU publisher at bitrate `B_pub` and `R` roots at measured bitrates
