@@ -17,6 +17,7 @@ The v1 DB/old env pair is only for the deeper pre-access `9610032` rollback.
 - Capture precedes room creation; live source/quality changes preserve peers and picture pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
 - Production requires `HOST_ADMISSION_PASSWORD` only for creation/Host role and uses `screener-v2`, default private fragment grants, explicit public-watch, and generation-bound rotate/revoke. Viewers never need the Host secret; there is no account/session table or old parser.
 - SQLite v2 keeps Host and nullable Viewer-grant digests in one checked `STRICT` row. The stopped migration retained four rooms and locked each old room private without minting a raw grant.
+- Native v2 rooms are memory-only, reclaim 300s after Host disconnect, obey `ROOM_TTL`, and leave SQLite/Web unchanged.
 - PR #44's exact-room STUN-only/SFU-UDP router is enabled only for production room `1`: host/SFU roots <=2, browser relay <=1, bounded failure. HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
@@ -43,7 +44,7 @@ The v1 DB/old env pair is only for the deeper pre-access `9610032` rollback.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
-- Browser relays re-encode. ADR-0006 is no-go-unclassified: downstream checkpoints and two-edge/FIFO/TURN gates are absent. Spikes prove one WebCodecs object, not hardware; GCC+RTX is no-go and no-RTX weakens stats.
+- ADR-0006 stays no-go: its v2 memory-only candidate passed static checks only; render, two-edge/FIFO and later TURN remain unverified.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
@@ -58,8 +59,8 @@ The recovery target uses one ICE restart, one same-parent rebuild, one alternate
 SFU; it never runs three identical retries or abandons progressing P2P early.
 
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
-evacuation. In parallel, migrate the native staged gate to v2;
-username/roster stays separate. Audio A/B/C may run without displacing P0.
+evacuation. Native v2 remains no-go pending an authorized runtime gate; Audio
+A/B/C may proceed without displacing P0.
 TURN remains a future selected-edge change, not this canary.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,

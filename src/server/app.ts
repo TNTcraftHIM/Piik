@@ -274,7 +274,10 @@ async function handleRequest(
     }
 
     try {
-      const room = roomStore.createRoom(parsedRequest.data.viewerPolicy);
+      const room = roomStore.createRoom(
+        parsedRequest.data.viewerPolicy,
+        parsedRequest.data.hostClaimTtlSeconds,
+      );
       const inviteUrl = new URL(`/r/${room.roomId}`, config.publicBaseUrl);
       if (room.viewerGrant) {
         inviteUrl.hash = `v=${room.viewerGrant}`;

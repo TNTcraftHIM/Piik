@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screener Sender</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand"><span class="brand-mark">S</span>Screener Sender</div>
+      <span id="status" class="status">未开始</span>
+    </header>
+    <main>
+      <section class="stage" aria-labelledby="share-title">
+        <div class="stage-heading">
+          <div>
+            <h1 id="share-title">屏幕分享</h1>
+            <p id="viewer-count">0 位已分配/连接中</p>
+          </div>
+          <button id="stop" class="button secondary" type="button" hidden>结束分享</button>
+        </div>
+        <div class="preview-shell">
+          <video id="preview" autoplay muted playsinline></video>
+          <div id="empty-state" class="empty-state">选择屏幕后，邀请链接会显示在这里</div>
+        </div>
+        <div id="invite" class="invite" hidden>
+          <a id="invite-link" target="_blank" rel="noopener noreferrer"></a>
+          <button id="copy" class="icon-button" type="button" title="复制邀请链接" aria-label="复制邀请链接">⧉</button>
+        </div>
+      </section>
+      <aside class="controls">
+        <label>
+          <span>服务器</span>
+          <input id="server-url" type="url" value="https://share.bonfire.icu" autocomplete="url" required />
+        </label>
+        <label>
+          <span>访问密码</span>
+          <input id="password" type="password" autocomplete="current-password" />
+        </label>
+        <button id="start" class="button primary" type="button">开始分享</button>
+        <p class="notice">当前 canary 仅发送画面，不含音频。</p>
+        <p id="error" class="error" role="alert"></p>
+        <details>
+          <summary>技术信息</summary>
+          <dl>
+            <div><dt>画面</dt><dd>1280 × 720 · 30 FPS</dd></div>
+            <div><dt>采集实况</dt><dd id="capture-diagnostic">未知</dd></div>
+            <div><dt>编码</dt><dd id="encoder-diagnostic">VP8 · 3 Mbps 上限 · 单对象</dd></div>
+            <div><dt>本地桥接</dt><dd id="bridge-diagnostic">尚无数据</dd></div>
+            <div><dt>Helper</dt><dd id="helper-diagnostic">尚无数据</dd></div>
+            <div><dt>出边</dt><dd id="edge-diagnostic">无活动媒体边</dd></div>
+            <div><dt>音频</dt><dd>当前 canary 未启用，电影与视频音质仍待验收</dd></div>
+          </dl>
+        </details>
+      </aside>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

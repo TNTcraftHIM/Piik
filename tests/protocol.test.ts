@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_HOST_CLAIM_TTL_SECONDS,
   MAX_MEDIA_ROUTE_REVISION,
   MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   SIGNALING_PROTOCOL,
   clientMessageSchema,
+  createRoomRequestSchema,
   decodeClientMessage,
   participantRouteAssignmentSchema,
   serverMessageSchema,
@@ -51,6 +53,29 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
+  it("accepts only the fixed provisional Host lease", () => {
+    expect(
+      createRoomRequestSchema.parse({ viewerPolicy: "private-link" }),
+    ).toEqual({ viewerPolicy: "private-link" });
+    expect(
+      createRoomRequestSchema.parse({
+        viewerPolicy: "private-link",
+        hostClaimTtlSeconds: MAX_HOST_CLAIM_TTL_SECONDS,
+      }),
+    ).toEqual({
+      viewerPolicy: "private-link",
+      hostClaimTtlSeconds: MAX_HOST_CLAIM_TTL_SECONDS,
+    });
+    for (const hostClaimTtlSeconds of [0, 1, 299, 301, 1.5]) {
+      expect(
+        createRoomRequestSchema.safeParse({
+          viewerPolicy: "private-link",
+          hostClaimTtlSeconds,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("rejects the removed all-room ICE refresh request", () => {
     expect(clientMessageSchema.safeParse({ type: "refresh-ice" }).success).toBe(
       false,

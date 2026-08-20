@@ -17,7 +17,7 @@ Any renewed product-wiring canary stays deliberately narrow:
 - one fixed VP8 `HIGH` representation at 1280x720, 30 fps, and a 3 Mbps ceiling;
 - one WebCodecs encoder object feeding at most two independent Pion WebRTC legs;
 - the current strict ordinary-P2P signaling wire and unmodified browser viewers;
-- independent ICE/TURN, RTP/RTCP, congestion, and lifecycle state per leg;
+- independent STUN-backed ICE, RTP/RTCP, congestion, and lifecycle state per leg;
 - read-only feedback, with PLI/FIR limited to requesting a shared keyframe; and
 - bounded local queues, fail-closed critical errors, and sanitized local-only
   diagnostics.
@@ -36,6 +36,26 @@ failure. No viewer-1 acceptance means there is no two-viewer, third-viewer
 FIFO, or direct/TURN proof. The attempted native branch must not be opened or
 merged as product code from this state.
 
+## 2026-08-20 Current-Wire Checkpoint
+
+A clean local delivery candidate now targets only `screener-v2`: it exchanges
+`HOST_ADMISSION_PASSWORD` for the bounded HttpOnly Host-admission cookie, uses
+that cookie to create an explicit `private-link` room, carries it on the Host
+WebSocket upgrade, and strictly decodes the current ordinary authenticated and
+read-only Viewer-evidence shapes. There is no v1 parser, translator, raw-grant
+persistence, or Bearer room-creation shortcut. Its fixed 300-second provisional
+request always creates a random transient room in memory, even when SQLite is
+configured. A connected current Host suppresses that reclaim deadline; only its
+generation-matched disconnect resets the five-minute window, while the ordinary
+transient `ROOM_TTL_SECONDS` cap always remains. A pre-auth connection or
+authentication failure gets one retry with the same room/token/client generation
+and never another room POST. Server restart drops the room; SQLite stays at v2
+and ordinary Web rooms are unchanged. No claim-confirm message, durable native token, or recovery
+subsystem is added. Focused Go/TypeScript tests and static checks pass. The unused
+generic probe framework is deliberately not retained.
+No runtime/browser revalidation has run, so the product gate remains no-go and
+this local branch is not a product availability claim.
+
 ## Staged Revalidation
 
 A new run requires separate authorization and must stop at the first failed
@@ -52,8 +72,9 @@ stage while retaining a bounded final-negative snapshot:
 5. Add viewer 3, prove no third edge and a host-side waiting observation while
    the viewer keeps its existing waiting state, then close viewer 1 and prove
    FIFO promotion plus decoding/rendering.
-6. If the isolated environment has valid TURN configuration, prove one direct
-   and one forced-TURN leg; otherwise record the gap once without retrying.
+6. Keep this candidate STUN-only. If a selected-edge TURN contract is later
+   accepted, prove it in a separate bounded gate rather than widening ordinary
+   native ICE or blocking the direct-path canary.
 
 Only after these stages pass may separate performance, quality, loss,
 reconnect, browser, audio/A-V-sync, packaging, and license gates begin. Do not

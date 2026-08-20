@@ -23,7 +23,7 @@ Last updated: 2026-08-20
 - Use direct host P2P for one or two viewers. Keep ADR-0004 off broadly; use an isolated exact-room candidate until resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile gates pass.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- ADR-0006 fixed-`HIGH` is no-go-unclassified after timing out before Viewer evidence; any revisit starts at its staged gate.
+- ADR-0006 stays no-go. Its v2 room is memory-only, capped by `ROOM_TTL` and rearmed 300s after Host disconnect; SQLite/Web unchanged. Pre-auth retries once in-room without another POST.
 - Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
 - ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP. The candidate has no TURN consumer or credential wire; any future exceptional-edge grant is a complete separate change. PR #12 is superseded.
 - Keep the controller exact-room only: room `1` is the STUN/SFU smoke. Preserve sticky progressing P2P, mobile leaves and break-before-make. Recovery spends one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries; active SFU gets one fresh grant before Peer failback.
