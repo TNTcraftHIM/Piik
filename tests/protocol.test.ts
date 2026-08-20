@@ -88,13 +88,10 @@ describe("client signaling protocol", () => {
     }
   });
 
-  it("accepts the capability-gated ICE refresh request", () => {
+  it("rejects the removed all-room ICE refresh request", () => {
     expect(clientMessageSchema.safeParse({ type: "refresh-ice" }).success).toBe(
-      true,
+      false,
     );
-    expect(
-      clientMessageSchema.safeParse({ type: "refresh-ice", roomId }).success,
-    ).toBe(false);
   });
 
   it("accepts a bounded authentication message", () => {
@@ -122,25 +119,13 @@ describe("client signaling protocol", () => {
       ),
     ).toMatchObject({ viewerGrant });
     expect(
-      decodeClientMessage(
-        JSON.stringify({
-          type: "authenticate",
-          protocol: SIGNALING_PROTOCOL,
-          roomId,
-          role: "viewer",
-          clientId: "client_12345678",
-          capabilities: { peerIceTurn: true },
-        }),
-      ),
-    ).toMatchObject({ capabilities: { peerIceTurn: true } });
-    expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
         protocol: SIGNALING_PROTOCOL,
         roomId,
         role: "viewer",
         clientId: "client_12345678",
-        capabilities: { peerIceTurn: false },
+        capabilities: { peerIceTurn: true },
       }).success,
     ).toBe(false);
     expect(
@@ -615,22 +600,13 @@ describe("client signaling protocol", () => {
 });
 
 describe("server signaling protocol", () => {
-  it("accepts only authenticated UDP TURN credentials paired with expiry", () => {
+  it("rejects the removed all-room TURN credential wire", () => {
     expect(
       serverMessageSchema.safeParse({
         type: "ice-config",
-        iceConfig: {
-          iceServers: [
-            {
-              urls: "turn:relay.example.test:3478?transport=udp",
-              username: `1787076000:${"a".repeat(32)}`,
-              credential: "credential",
-            },
-          ],
-          turnCredentialsExpiresAt: "2026-08-20T12:00:00.000Z",
-        },
+        iceConfig: { iceServers: [] },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),

@@ -4,6 +4,7 @@ import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer } from "../src/client/webrtc/host-peer.ts";
 import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
+import type { IceConfig } from "../src/shared/protocol.ts";
 
 const statsCallbacks: Array<() => void> = [];
 
@@ -269,10 +270,11 @@ function createStream(
 function createPeer(
   stream: MediaStream,
   onUpdate: (snapshot: PeerSnapshot) => void = () => undefined,
+  iceConfig: IceConfig = { iceServers: [] },
 ): HostPeer {
   return new HostPeer(
     "viewer-peer",
-    { iceServers: [] },
+    iceConfig,
     stream,
     QUALITY_PROFILES["720p30"],
     {
@@ -305,35 +307,35 @@ afterEach(() => {
 });
 
 describe("HostPeer source replacement", () => {
-  it("keeps standard ICE direct-first while refreshing future gathering", () => {
-    const peer = createPeer(createStream(createTrack("video", "video"), null));
+  it("applies STUN-only ICE configuration at creation and update", () => {
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      () => undefined,
+      { iceServers: [{ urls: ["stun:stun-a.example.test:3478"] }] },
+    );
     const connection = FakePeerConnection.latest!;
 
-    expect(connection.configurations).toEqual([
-      { iceServers: [], iceTransportPolicy: "all" },
-    ]);
     peer.updateIceConfig({
-      iceServers: [
-        {
-          urls: ["turn:relay.test:3478?transport=udp"],
-          username: `1787076000:${"a".repeat(32)}`,
-          credential: "temporary-credential",
-        },
-      ],
-      turnCredentialsExpiresAt: "2026-08-20T12:00:00.000Z",
+      iceServers: [{ urls: ["stun:stun-b.example.test:3478"] }],
     });
 
+    expect(connection.configurations).toEqual([
+      { iceServers: [{ urls: ["stun:stun-a.example.test:3478"] }] },
+      { iceServers: [{ urls: ["stun:stun-b.example.test:3478"] }] },
+    ]);
     expect(connection.setConfiguration).toHaveBeenCalledOnce();
-    expect(connection.configurations[1]).toEqual({
-      iceServers: [
-        {
-          urls: ["turn:relay.test:3478?transport=udp"],
-          username: `1787076000:${"a".repeat(32)}`,
-          credential: "temporary-credential",
-        },
-      ],
-      iceTransportPolicy: "all",
-    });
+    for (const configuration of connection.configurations) {
+      expect(
+        configuration.iceServers?.every(
+          (server) =>
+            !Reflect.has(server, "username") &&
+            !Reflect.has(server, "credential") &&
+            (typeof server.urls === "string"
+              ? server.urls.startsWith("stun:")
+              : server.urls.every((url) => url.startsWith("stun:"))),
+        ),
+      ).toBe(true);
+    }
   });
 
   it("reserves send-only video and audio senders and replaces both tracks", async () => {

@@ -23,6 +23,11 @@ This supersedes this document's former recommendation to place STUN plus TURN on
 every capable exact-room Web peer connection. Git history retains that analysis;
 the durable findings that still apply are summarized below.
 
+The current source no longer contains the rejected participant-wide config,
+issuer, authentication capability, refresh wire, or client propagation. Supplying any
+stale `PEER_ICE_TURN_*` key, even blank, fails startup. Selected-edge TURN config,
+wire, and rebuild remain unimplemented and undeployed.
+
 ## Production Canary
 
 The first exact-room canary used source `a11a73dfa79d`, immutable release

@@ -190,10 +190,11 @@ SFU, not ordinary peer PCs. Selected-edge coturn uses independent configuration
 and credentials. LiveKit TURN cannot rescue an unavailable SFU; the application
 controller selects whether independent coturn may rebuild one failed peer edge.
 
-Production remains STUN-only. Current source still contains the rejected
-default-off `PEER_ICE_TURN_*` participant-wide candidate; it must not be
-configured and will be removed or replaced with its selected-edge consumer.
-Every ordinary room, Web peer and Native-shaped client remains STUN-only. The tracked coturn example is UDP
+Production and current source remain STUN-only. The participant-wide TURN
+config, capability and refresh wire are removed; any stale `PEER_ICE_TURN_*`
+key, including an empty value, fails startup. Selected-edge TURN remains
+unimplemented and undeployed. Every ordinary room, Web peer and Native-shaped
+client remains STUN-only. The tracked coturn example is UDP
 `stun-only`; the LiveKit example exposes only ICE/UDP mux 7882, explicitly sets
 `tcp_port: 0` and `allow_tcp_fallback: false`, supplies the self-hosted STUN
 endpoint, and configures no external or embedded TURN. Candidate validation and rollback use isolated

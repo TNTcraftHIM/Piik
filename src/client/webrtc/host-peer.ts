@@ -86,7 +86,6 @@ export class HostPeer {
   ) {
     this.connection = new RTCPeerConnection({
       iceServers: iceConfig.iceServers,
-      iceTransportPolicy: "all",
     });
     this.snapshot = {
       peerId,
@@ -257,7 +256,6 @@ export class HostPeer {
     try {
       this.connection.setConfiguration({
         iceServers: iceConfig.iceServers,
-        iceTransportPolicy: "all",
       });
     } catch (error) {
       this.setError(error, "更新 ICE 配置失败");

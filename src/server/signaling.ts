@@ -30,19 +30,12 @@ import {
   type SfuFallbackOptions,
 } from "./hybrid-media-router.js";
 import { createIceConfig, type IceConfigOptions } from "./ice.js";
-import type { PeerIceTurnConfig } from "./config.js";
-import {
-  issuePeerIceTurnGrant,
-  type PeerIceTurnGrant,
-} from "./peer-ice-turn.js";
 
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
 
 const MAX_BUFFERED_SIGNAL_BYTES = 256 * 1024;
 const DEFAULT_MAX_SIGNAL_CONNECTIONS = 2_048;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS = 256;
-const PEER_ICE_TURN_REFRESH_LEAD_MS = 2 * 60 * 1_000;
-const PEER_ICE_TURN_REFRESH_MIN_INTERVAL_MS = 5_000;
 
 interface AuthenticatedSession {
   roomId: string;
@@ -52,7 +45,6 @@ interface AuthenticatedSession {
   shareGeneration: string | null;
   displayName: string | null;
   viewerPresence: boolean;
-  peerIceTurnCapable: boolean;
 }
 
 interface SocketState {
@@ -62,8 +54,6 @@ interface SocketState {
   hostAdmissionAuthenticated: boolean;
   revoked?: boolean;
   authenticated?: AuthenticatedSession;
-  peerIceTurnGrant?: PeerIceTurnGrant;
-  lastPeerIceTurnRefreshAtMs?: number;
 }
 
 interface ViewerQualityEvidenceGate {
@@ -83,7 +73,6 @@ export interface SignalingOptions {
   peerAssistedMedia: boolean;
   peerAssistedRoomIds?: ReadonlySet<string>;
   sfuFallback?: SfuFallbackOptions;
-  peerIceTurn?: PeerIceTurnConfig;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
   hostAdmissionAtUpgrade: (request: IncomingMessage) => boolean;
@@ -146,9 +135,6 @@ export class SignalingServer {
     }
     if (options.sfuFallback && !options.peerAssistedMedia) {
       throw new Error("SFU fallback requires peer-assisted media");
-    }
-    if (options.peerIceTurn && !options.peerAssistedMedia) {
-      throw new Error("Peer ICE TURN requires peer-assisted media");
     }
     if (options.peerAssistedRoomIds && !options.peerAssistedMedia) {
       throw new Error("Peer-assisted room IDs require peer-assisted media");
@@ -424,7 +410,6 @@ export class SignalingServer {
           ? (message.displayName ?? DEFAULT_VIEWER_DISPLAY_NAME)
           : null,
       viewerPresence: false,
-      peerIceTurnCapable: message.capabilities?.peerIceTurn === true,
     };
     if (participant.role === "viewer") {
       this.viewerQualityEvidenceGates.delete(
@@ -470,7 +455,7 @@ export class SignalingServer {
       hostOnline: participant.hostOnline,
       connectionId,
       viewerPeerIds: [...participant.viewerPeerIds],
-      iceConfig: this.iceConfig(state),
+      iceConfig: this.iceConfig(),
       viewerPolicy: participant.viewerPolicy,
       viewerAuthorizationGeneration:
         participant.viewerAuthorizationGeneration,
@@ -654,32 +639,6 @@ export class SignalingServer {
           message.revision,
         );
         return;
-      case "refresh-ice": {
-        const state = this.socketStates.get(socket);
-        if (
-          !state ||
-          state.authenticated !== authenticated ||
-          !this.isPeerIceTurnEligible(authenticated)
-        ) {
-          this.sendError(socket, "FORBIDDEN", "Peer ICE refresh is not enabled");
-          return;
-        }
-        const nowMs = this.now();
-        if (
-          state.lastPeerIceTurnRefreshAtMs !== undefined &&
-          nowMs - state.lastPeerIceTurnRefreshAtMs <
-            PEER_ICE_TURN_REFRESH_MIN_INTERVAL_MS
-        ) {
-          this.sendError(socket, "FORBIDDEN", "Peer ICE refresh is rate limited");
-          return;
-        }
-        state.lastPeerIceTurnRefreshAtMs = nowMs;
-        this.send(socket, {
-          type: "ice-config",
-          iceConfig: this.iceConfig(state),
-        });
-        return;
-      }
       case "viewer-quality-evidence":
         this.handleViewerQualityEvidence(socket, authenticated, message);
         return;
@@ -1329,38 +1288,8 @@ export class SignalingServer {
     );
   }
 
-  private iceConfig(state: SocketState) {
-    const authenticated = state.authenticated;
-    if (!authenticated || !this.isPeerIceTurnEligible(authenticated)) {
-      return createIceConfig(this.options.ice);
-    }
-
-    const nowMs = this.now();
-    let grant = state.peerIceTurnGrant;
-    if (!grant || nowMs >= grant.expiresAtMs - PEER_ICE_TURN_REFRESH_LEAD_MS) {
-      grant = issuePeerIceTurnGrant(
-        this.options.peerIceTurn!,
-        {
-          roomId: authenticated.roomId,
-          role: authenticated.role,
-          peerId: authenticated.peerId,
-          sessionId: state.sessionId,
-        },
-        nowMs,
-      );
-      state.peerIceTurnGrant = grant;
-    }
-    return createIceConfig(this.options.ice, grant);
-  }
-
-  private isPeerIceTurnEligible(
-    authenticated: AuthenticatedSession,
-  ): boolean {
-    return Boolean(
-      this.options.peerIceTurn &&
-        authenticated.peerIceTurnCapable &&
-        this.isPeerAssistedRoom(authenticated.roomId),
-    );
+  private iceConfig() {
+    return createIceConfig(this.options.ice);
   }
 
   private viewerInviteUrl(roomId: string, viewerGrant: string | null): string {

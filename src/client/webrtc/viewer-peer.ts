@@ -174,7 +174,6 @@ export class ViewerPeer {
     try {
       this.connection.setConfiguration({
         iceServers: iceConfig.iceServers,
-        iceTransportPolicy: "all",
       });
     } catch (error) {
       this.setError(error, "更新 ICE 配置失败");
@@ -238,7 +237,6 @@ export class ViewerPeer {
 
     const connection = new RTCPeerConnection({
       iceServers: this.currentIceConfig.iceServers,
-      iceTransportPolicy: "all",
     });
     this.connection = connection;
     this.snapshot = {
