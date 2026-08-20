@@ -13,12 +13,61 @@ export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
+export const MAX_DISPLAY_NAME_CODE_POINTS = 24;
+export const DEFAULT_VIEWER_DISPLAY_NAME = "访客";
+
+const FORBIDDEN_DISPLAY_NAME_CHARACTERS =
+  /[\p{Cc}\p{Zl}\p{Zp}\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/u;
+
+export function normalizeDisplayName(value: string): string | null {
+  if (FORBIDDEN_DISPLAY_NAME_CHARACTERS.test(value)) {
+    return null;
+  }
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+      return null;
+    }
+  }
+
+  const normalized = value.normalize("NFC").trim().replace(/\p{Zs}+/gu, " ");
+  const codePointCount = Array.from(normalized).length;
+  return codePointCount >= 1 && codePointCount <= MAX_DISPLAY_NAME_CODE_POINTS
+    ? normalized
+    : null;
+}
+
+export const displayNameSchema = z
+  .string()
+  .min(1)
+  .max(MAX_DISPLAY_NAME_CODE_POINTS * 4)
+  .refine((value) => normalizeDisplayName(value) === value, {
+    message: "Display name must be canonical",
+  });
+export type DisplayName = z.infer<typeof displayNameSchema>;
+
+export const viewerMediaTopologySchema = z.enum([
+  "host-direct",
+  "peer-relay",
+  "sfu",
+  "pending",
+]);
+export type ViewerMediaTopology = z.infer<typeof viewerMediaTopologySchema>;
 
 const opaqueIdSchema = z
   .string()
   .min(8)
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
+
+export const viewerPresenceEntrySchema = z
+  .object({
+    peerId: opaqueIdSchema,
+    displayName: displayNameSchema,
+    mediaTopology: viewerMediaTopologySchema,
+  })
+  .strict();
+export type ViewerPresenceEntry = z.infer<typeof viewerPresenceEntrySchema>;
 
 const tokenSchema = z
   .string()
@@ -375,6 +424,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       token: tokenSchema,
       clientId: opaqueIdSchema,
       shareGeneration: opaqueIdSchema.optional(),
+      viewerPresence: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -385,6 +435,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       role: z.literal("viewer"),
       clientId: opaqueIdSchema,
       viewerGrant: viewerGrantSchema.optional(),
+      displayName: displayNameSchema.optional(),
     })
     .strict(),
 ]);
@@ -441,6 +492,12 @@ export const clientMessageSchema = z.union([
     .strict(),
   viewerQualityEvidenceMessageSchema,
   parentEdgeQualityEvidenceMessageSchema,
+  z
+    .object({
+      type: z.literal("set-display-name"),
+      displayName: displayNameSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("set-viewer-access"),
@@ -574,6 +631,28 @@ export const serverMessageSchema = z.union([
       online: z.boolean(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("viewer-presence"),
+      viewers: z
+        .array(viewerPresenceEntrySchema)
+        .max(MAX_VIEWERS_PER_ROOM_LIMIT),
+    })
+    .strict()
+    .superRefine((message, context) => {
+      const peerIds = new Set<string>();
+      for (const viewer of message.viewers) {
+        if (peerIds.has(viewer.peerId)) {
+          context.addIssue({
+            code: "custom",
+            message: "Viewer presence peer IDs must be unique",
+            path: ["viewers"],
+          });
+          return;
+        }
+        peerIds.add(viewer.peerId);
+      }
+    }),
   z
     .object({
       type: z.literal("viewer-access-updated"),

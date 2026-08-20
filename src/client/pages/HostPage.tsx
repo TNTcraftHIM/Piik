@@ -19,6 +19,7 @@ import {
   type IceConfig,
   type ServerMessage,
   type ViewerAccessPolicy,
+  type ViewerPresenceEntry,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
@@ -28,6 +29,7 @@ import {
   PathBadge,
   PeerStatusBadge,
   SignalStatusBadge,
+  TopologyBadge,
   WarningBanner,
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
@@ -46,6 +48,7 @@ import {
   writeHostRoom,
 } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
+import { labelViewerPresence } from "../lib/viewer-presence";
 import {
   applyCaptureProfile,
   captureDisplay,
@@ -185,6 +188,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
   );
+  const [viewerPresence, setViewerPresence] = useState<ViewerPresenceEntry[]>(
+    [],
+  );
   const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
     Map<string, ViewerQualityEvidence>
   >(() => new Map());
@@ -221,17 +227,28 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
 
-  const viewers = useMemo(
+  const mediaViewers = useMemo(
     () => Array.from(peerSnapshots.values()),
     [peerSnapshots],
+  );
+  const viewers = useMemo(
+    () => labelViewerPresence(viewerPresence),
+    [viewerPresence],
+  );
+  const hostDirectViewerCount = useMemo(
+    () =>
+      viewerPresence.filter(
+        (viewer) => viewer.mediaTopology === "host-direct",
+      ).length,
+    [viewerPresence],
   );
   const selectedQualityProfileId = useMemo(
     () => matchingQualityProfileId(qualitySettings),
     [qualitySettings],
   );
   const qualityLimitation = useMemo(
-    () => qualityLimitationSummary(viewers),
-    [viewers],
+    () => qualityLimitationSummary(mediaViewers),
+    [mediaViewers],
   );
 
   useEffect(() => {
@@ -363,6 +380,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDetails(null);
     setMaxViewers(null);
     setPeerSnapshots(new Map());
+    setViewerPresence([]);
     viewerQualityEvidenceTimersRef.current.forEach((timer) =>
       window.clearTimeout(timer),
     );
@@ -836,6 +854,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       );
       return;
     }
+    if (message.type === "viewer-presence") {
+      setViewerPresence(message.viewers);
+      return;
+    }
     if (message.type === "route-update") {
       if (peerAssistedRef.current) {
         if (
@@ -1011,6 +1033,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           token: activeRoom.hostToken,
           clientId: getStableClientId("host", activeRoom.roomId),
           shareGeneration,
+          viewerPresence: true,
         },
         {
           onStatus: (status) => {
@@ -1294,7 +1317,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </div>
               <p className="section-meta">
                 {phase === "live"
-                  ? `${viewers.length}/${maxViewers ?? "-"} 人正在观看`
+                  ? `${viewers.length}/${maxViewers ?? "-"} 人在线 · ${hostDirectViewerCount} 条 Host 直连`
                   : phase === "starting"
                     ? "正在连接"
                     : phase === "ended" && room
@@ -1668,46 +1691,57 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <div className="viewer-panel-heading">
             <div>
               <h2 id="viewer-heading">观看者</h2>
-              <span>{viewers.length}/{maxViewers ?? "-"}</span>
+              <span>
+                在线 {viewers.length}/{maxViewers ?? "-"} · Host 直连{" "}
+                {hostDirectViewerCount}
+              </span>
             </div>
             <Users size={18} aria-hidden="true" />
           </div>
 
           <div className="viewer-list">
-            {viewers.map((viewer, index) => (
-              <article className="viewer-item" key={viewer.peerId}>
-                <div className="viewer-item-heading">
-                  <div>
-                    <h3>朋友 {index + 1}</h3>
-                    <PeerStatusBadge state={viewer.connectionState} />
+            {viewers.map((viewer) => {
+              const snapshot = peerSnapshots.get(viewer.peerId);
+              const qualityEvidence = viewerQualityEvidence.get(viewer.peerId);
+              return (
+                <article className="viewer-item" key={viewer.peerId}>
+                  <div className="viewer-item-heading">
+                    <div>
+                      <h3 title={viewer.label}>{viewer.label}</h3>
+                      {snapshot && (
+                        <PeerStatusBadge state={snapshot.connectionState} />
+                      )}
+                    </div>
+                    <TopologyBadge topology={viewer.mediaTopology} />
                   </div>
-                  {showConnectionDetails && (
-                    <PathBadge path={viewer.metrics.path} />
+                  {showConnectionDetails && snapshot && (
+                    <>
+                      <div className="viewer-transport-heading">
+                        <span>Host 本机传输</span>
+                        <PathBadge path={snapshot.metrics.path} />
+                      </div>
+                      <StatsGrid
+                        metrics={snapshot.metrics}
+                        direction="send"
+                        senderParameters={snapshot.senderParameters}
+                      />
+                    </>
                   )}
-                </div>
-                {showConnectionDetails && (
-                  <>
-                    <StatsGrid
-                      metrics={viewer.metrics}
-                      direction="send"
-                      senderParameters={viewer.senderParameters}
-                    />
-                    {viewerQualityEvidence.get(viewer.peerId) && (
-                      <>
-                        <p className="section-meta">观看端接收</p>
-                        <StatsGrid
-                          metrics={metricsFromQualityEvidence(
-                            viewerQualityEvidence.get(viewer.peerId)!,
-                          )}
-                          direction="receive"
-                        />
-                      </>
-                    )}
-                  </>
-                )}
-                {viewer.error && <p className="inline-error">{viewer.error}</p>}
-              </article>
-            ))}
+                  {showConnectionDetails && qualityEvidence && (
+                    <>
+                      <p className="section-meta">观看端接收</p>
+                      <StatsGrid
+                        metrics={metricsFromQualityEvidence(qualityEvidence)}
+                        direction="receive"
+                      />
+                    </>
+                  )}
+                  {snapshot?.error && (
+                    <p className="inline-error">{snapshot.error}</p>
+                  )}
+                </article>
+              );
+            })}
             {viewers.length === 0 && (
               <div className="empty-viewers">
                 <Users size={24} strokeWidth={1.5} aria-hidden="true" />

@@ -31,9 +31,9 @@ Last updated: 2026-08-20
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
-- Candidate UI has local Viewer volume/mute, copyable room codes, and a favicon. Names/roster, endpoint details, and RTP loss remain pending; no wire, media, or routing effects.
+- Candidate UI includes Viewer-local names and an opt-in Web Host online roster without changing media fanout. Host names, Viewer-side roster, endpoint details, and RTP loss remain pending.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
-- ADR-0002 access is deployed: `HOST_ADMISSION_PASSWORD`, `screener-v2`, private grants/public-watch, rotate/revoke, and one nullable digest. No username/roster runtime.
+- ADR-0002 access is deployed. Candidate names/presence are session-only and add no account, member, session, or roster table.
 - Deferred architecture audit: `docs/maintenance.md`.
 
 ## Current Implementation
@@ -51,7 +51,8 @@ Last updated: 2026-08-20
 - Source `main` at `f5d48ed` includes a memory-only Native v2 candidate, but production predates it and has no Native runtime gate. Render, hardware, two-edge/FIFO and TURN evidence remain absent.
 - Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
-- Generation-bound C+B needs three hard-bad windows; parent samples are one-use per connection. Pending SFU binds intent/guard. Stale/successful peer work releases quality exclusion; real failure may take it over. No metadata/topology classification.
+- Generation-bound C+B needs three hard-bad windows; parent samples are one-use per connection. Pending SFU binds intent/guard. Stale/successful peer work releases quality exclusion; real failure may take it over. It uploads no raw endpoint metadata and computes no score.
+- The undeployed Web-only name/presence candidate leaves Native wire unchanged and keeps online Viewer sessions separate from Host media diagnostics; focused checks pass.
 
 ## Provisional Quality Targets
 

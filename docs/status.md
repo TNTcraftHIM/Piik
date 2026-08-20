@@ -25,6 +25,7 @@ also contains a no-go Native v2 candidate, but production does not run it.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
 - Room `1` quality reparenting needs three C+B hard-bad pairs, reuses peer/SFU/failure and has one room cooldown; single-side reports do nothing. Thresholds need calibration.
+- Source-only roster; Native wire/media unchanged.
 
 ## Verified Evidence
 

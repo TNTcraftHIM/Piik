@@ -433,6 +433,7 @@ async function authenticate(
   clientId: string,
   relayCapacity: 0 | 1 | null = 1,
   shareGeneration?: string,
+  presence: { displayName?: string; viewerPresence?: true } = {},
 ) {
   client.socket.send(
     JSON.stringify(
@@ -445,6 +446,7 @@ async function authenticate(
             token: room.hostToken,
             clientId,
             ...(shareGeneration ? { shareGeneration } : {}),
+            ...(presence.viewerPresence ? { viewerPresence: true } : {}),
           }
         : {
             type: "authenticate",
@@ -453,6 +455,9 @@ async function authenticate(
             role,
             clientId,
             ...(room.viewerGrant ? { viewerGrant: room.viewerGrant } : {}),
+            ...(presence.displayName
+              ? { displayName: presence.displayName }
+              : {}),
           },
     ),
   );
@@ -491,6 +496,21 @@ async function nextActiveRouteAfter(
       return message;
     }
   }
+}
+
+async function nextViewerPresenceMatching(
+  client: TestClient,
+  predicate: (
+    message: Extract<ServerMessage, { type: "viewer-presence" }>,
+  ) => boolean,
+) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const message = await client.inbox.next("viewer-presence");
+    if (predicate(message)) {
+      return message;
+    }
+  }
+  throw new Error("Viewer presence did not reach the expected state");
 }
 
 async function nextPreparedRoute(client: TestClient) {
@@ -704,6 +724,188 @@ async function closeClient(client: TestClient): Promise<void> {
 }
 
 describe("WebSocket signaling", () => {
+  it("keeps the exact Native Host wire unchanged without a presence opt-in", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "native-compatible-host");
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "native-compatible-viewer",
+      1,
+      undefined,
+      { displayName: "移动观众" },
+    );
+
+    await host.inbox.next("peer-joined");
+    await host.inbox.expectNone(40);
+  });
+
+  it("reports every online Viewer without expanding the Host media fanout", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(
+      host,
+      harness.room,
+      "host",
+      "presence-host",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([]);
+
+    const viewerNames = ["阿明", "阿青", undefined] as const;
+    const viewers: TestClient[] = [];
+    for (const [index, displayName] of viewerNames.entries()) {
+      const viewer = await openClient(harness.webSocketUrl);
+      viewers.push(viewer);
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        `presence-viewer-${index}`,
+        1,
+        undefined,
+        displayName ? { displayName } : {},
+      );
+    }
+
+    const full = await nextViewerPresenceMatching(
+      host,
+      (message) =>
+        message.viewers.length === 3 &&
+        message.viewers.some(
+          (viewer) => viewer.mediaTopology === "peer-relay",
+        ),
+    );
+    expect(full.viewers.map((viewer) => viewer.displayName)).toEqual([
+      "阿明",
+      "阿青",
+      "访客",
+    ]);
+    expect(
+      full.viewers.filter(
+        (viewer) => viewer.mediaTopology === "host-direct",
+      ),
+    ).toHaveLength(2);
+
+    viewers[2].socket.send(
+      JSON.stringify({ type: "set-display-name", displayName: "后来改名" }),
+    );
+    const renamed = await nextViewerPresenceMatching(host, (message) =>
+      message.viewers.some((viewer) => viewer.displayName === "后来改名"),
+    );
+    expect(renamed.viewers).toHaveLength(3);
+
+    await closeClient(viewers[2]);
+    const afterDisconnect = await nextViewerPresenceMatching(
+      host,
+      (message) => message.viewers.length === 2,
+    );
+    expect(afterDisconnect.viewers.map((viewer) => viewer.displayName)).toEqual([
+      "阿明",
+      "阿青",
+    ]);
+  });
+
+  it("publishes one empty Viewer roster after ordinary rotate and revoke", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(
+      host,
+      harness.room,
+      "host",
+      "ordinary-access-presence-host",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([]);
+
+    const firstViewer = await openClient(harness.webSocketUrl);
+    const firstViewerAuth = await authenticate(
+      firstViewer,
+      harness.room,
+      "viewer",
+      "ordinary-access-presence-viewer-1",
+      1,
+      undefined,
+      { displayName: "第一位" },
+    );
+    expect((await host.inbox.next("peer-joined")).peerId).toBe(
+      firstViewerAuth.peerId,
+    );
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([
+      {
+        peerId: firstViewerAuth.peerId,
+        displayName: "第一位",
+        mediaTopology: "host-direct",
+      },
+    ]);
+
+    const firstClosed = new Promise<number>((resolve) =>
+      firstViewer.socket.once("close", (code) => resolve(code)),
+    );
+    host.socket.send(
+      JSON.stringify({ type: "set-viewer-access", action: "rotate" }),
+    );
+    expect(await firstViewer.inbox.next("viewer-access-revoked")).toMatchObject({
+      viewerAuthorizationGeneration:
+        firstViewerAuth.viewerAuthorizationGeneration,
+    });
+    expect(await firstClosed).toBe(4004);
+    expect((await host.inbox.next("peer-left")).peerId).toBe(
+      firstViewerAuth.peerId,
+    );
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([]);
+    const rotated = await host.inbox.next("viewer-access-updated");
+    await host.inbox.expectNone(30);
+
+    const rotatedGrant = new URLSearchParams(
+      new URL(rotated.inviteUrl!).hash.slice(1),
+    ).get("v");
+    expect(rotatedGrant).toBeTruthy();
+    const rotatedRoom = {
+      ...harness.room,
+      viewerGrant: rotatedGrant,
+    } satisfies CreatedRoom;
+    const secondViewer = await openClient(harness.webSocketUrl);
+    const secondViewerAuth = await authenticate(
+      secondViewer,
+      rotatedRoom,
+      "viewer",
+      "ordinary-access-presence-viewer-2",
+      1,
+      undefined,
+      { displayName: "第二位" },
+    );
+    expect((await host.inbox.next("peer-joined")).peerId).toBe(
+      secondViewerAuth.peerId,
+    );
+    expect((await host.inbox.next("viewer-presence")).viewers).toHaveLength(1);
+
+    const secondClosed = new Promise<number>((resolve) =>
+      secondViewer.socket.once("close", (code) => resolve(code)),
+    );
+    host.socket.send(
+      JSON.stringify({ type: "set-viewer-access", action: "revoke" }),
+    );
+    await secondViewer.inbox.next("viewer-access-revoked");
+    expect(await secondClosed).toBe(4004);
+    expect((await host.inbox.next("peer-left")).peerId).toBe(
+      secondViewerAuth.peerId,
+    );
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([]);
+    expect(await host.inbox.next("viewer-access-updated")).toMatchObject({
+      viewerPolicy: "private-link",
+      inviteUrl: null,
+    });
+    await host.inbox.expectNone(30);
+  });
+
   it("protects Host admission without gating authorized Viewers", async () => {
     const hostAdmissionPassword = "protected-instance-password";
     const harness = await startHarness({ hostAdmissionPassword });
@@ -4447,18 +4649,37 @@ describe("WebSocket signaling", () => {
     expect(reconnectedAuth.hostOnline).toBe(false);
   });
 
-  it("atomically replaces the same client socket without leave churn", async () => {
+  it("replaces the same client presence once without leave churn", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 40 });
     const host = await openClient(harness.webSocketUrl);
-    await authenticate(host, harness.room, "host", "host-client-stable");
+    await authenticate(
+      host,
+      harness.room,
+      "host",
+      "host-client-stable",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([]);
     const original = await openClient(harness.webSocketUrl);
     const originalAuth = await authenticate(
       original,
       harness.room,
       "viewer",
       "viewer-client-stable",
+      1,
+      undefined,
+      { displayName: "旧会话" },
     );
     await host.inbox.next("peer-joined");
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([
+      {
+        peerId: originalAuth.peerId,
+        displayName: "旧会话",
+        mediaTopology: "host-direct",
+      },
+    ]);
 
     const originalClosed = new Promise<number>((resolve) =>
       original.socket.once("close", (code) => resolve(code)),
@@ -4469,11 +4690,21 @@ describe("WebSocket signaling", () => {
       harness.room,
       "viewer",
       "viewer-client-stable",
+      1,
+      undefined,
+      { displayName: "新会话" },
     );
 
     expect(replacementAuth.peerId).toBe(originalAuth.peerId);
     expect(await originalClosed).toBe(4001);
     expect((await host.inbox.next("peer-joined")).peerId).toBe(originalAuth.peerId);
+    expect((await host.inbox.next("viewer-presence")).viewers).toEqual([
+      {
+        peerId: originalAuth.peerId,
+        displayName: "新会话",
+        mediaTopology: "host-direct",
+      },
+    ]);
     await host.inbox.expectNone(70);
   });
 
@@ -4640,18 +4871,37 @@ describe("WebSocket signaling", () => {
     await secondHost.inbox.expectNone(30);
   });
 
-  it("keeps a grace-period viewer in the host roster and announces its return", async () => {
+  it("keeps media identity through grace while presence returns once", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 500 });
     const firstHost = await openClient(harness.webSocketUrl);
-    await authenticate(firstHost, harness.room, "host", "host-client-grace-roster");
+    await authenticate(
+      firstHost,
+      harness.room,
+      "host",
+      "host-client-grace-roster",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    expect((await firstHost.inbox.next("viewer-presence")).viewers).toEqual([]);
     const firstViewer = await openClient(harness.webSocketUrl);
     const firstViewerAuth = await authenticate(
       firstViewer,
       harness.room,
       "viewer",
       "viewer-client-grace-roster",
+      1,
+      undefined,
+      { displayName: "短线重连" },
     );
     await firstHost.inbox.next("peer-joined");
+    expect((await firstHost.inbox.next("viewer-presence")).viewers).toEqual([
+      {
+        peerId: firstViewerAuth.peerId,
+        displayName: "短线重连",
+        mediaTopology: "host-direct",
+      },
+    ]);
     firstHost.socket.send(
       JSON.stringify({
         type: "signal",
@@ -4666,6 +4916,7 @@ describe("WebSocket signaling", () => {
     await firstViewer.inbox.next("signal");
 
     await closeClient(firstViewer);
+    expect((await firstHost.inbox.next("viewer-presence")).viewers).toEqual([]);
     await closeClient(firstHost);
 
     const secondHost = await openClient(harness.webSocketUrl);
@@ -4674,8 +4925,12 @@ describe("WebSocket signaling", () => {
       harness.room,
       "host",
       "host-client-grace-roster",
+      1,
+      undefined,
+      { viewerPresence: true },
     );
     expect(secondHostAuth.viewerPeerIds).toEqual([firstViewerAuth.peerId]);
+    expect((await secondHost.inbox.next("viewer-presence")).viewers).toEqual([]);
     await secondHost.inbox.expectNone(30);
 
     const secondViewer = await openClient(harness.webSocketUrl);
@@ -4684,12 +4939,23 @@ describe("WebSocket signaling", () => {
       harness.room,
       "viewer",
       "viewer-client-grace-roster",
+      1,
+      undefined,
+      { displayName: "短线重连" },
     );
     expect(secondViewerAuth.peerId).toBe(firstViewerAuth.peerId);
     expect(secondViewerAuth.connectionId).toBe("connection-during-grace");
     expect((await secondHost.inbox.next("peer-joined")).peerId).toBe(
       firstViewerAuth.peerId,
     );
+    expect((await secondHost.inbox.next("viewer-presence")).viewers).toEqual([
+      {
+        peerId: firstViewerAuth.peerId,
+        displayName: "短线重连",
+        mediaTopology: "host-direct",
+      },
+    ]);
+    await secondHost.inbox.expectNone(30);
 
     secondViewer.socket.send(
       JSON.stringify({
