@@ -122,12 +122,24 @@ software fallback fails the gate.
 
 Discord's published Go Live material is a useful architecture comparison, not
 a preset to copy. It describes native OS/driver-integrated capture and encoding,
-GPU hardware encoding, WebRTC transport, and product-specific rate-control
-tuning. It also documents a feedback loop that could lock 60 fps output down to
-30 fps. This supports measuring the complete capture/encoder/congestion loop;
-it does not show that Discord servers re-encode each viewer stream or that AV1
-is universally cheaper. No equivalent first-party implementation evidence was
-found for KOOK or Oopz, so they are not used as design facts.
+GPU hardware encoding, WebRTC transport, and one codec that the sender and all
+current viewers can decode. Discord lists VP8 and H.264 as its broad baseline,
+with HEVC and AV1 on selected platforms; its RTC worker routes the sender's
+stream rather than requiring one browser PeerConnection per viewer. This is
+evidence for a common publication, not proof of one physical encoder object.
+Discord also documents a feedback loop that could lock 60 fps output down to
+30 fps, accidental keyframes as often as once per second, and the resulting
+quality gains from a stable encoder lifetime, explicit keyframe cadence, and
+rate-control headroom. These findings support measuring the complete
+capture/encoder/congestion loop; they do not make AV1 universally cheaper.
+
+A read-only inspection of the locally installed Oopz 0.87.425 package is
+consistent with a native, hardware-first common publication: its Viewer bundle
+selects H.264, the package exposes a hardware-acceleration status, and the
+inspection found one screen-track publication. It does not prove the runtime
+codec/GPU choice or one physical encoder. Components, retained hashes, and the
+privacy boundary are owned by
+[Native shared-encode sender](./native-shared-encode-sender.md).
 
 ## Evidence Before Adaptation
 
@@ -607,3 +619,7 @@ is a separate optimization.
 - [Jitsi desktop degradation preference](https://github.com/jitsi/lib-jitsi-meet/blob/master/modules/RTC/TraceablePeerConnection.ts)
 - [Discord Go Live architecture](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
 - [Discord encoder-quality case study](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus)
+- [NVIDIA NVENC application note](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvenc-application-note/index.html)
+- [Agora Windows screen sharing](https://doc.shengwang.cn/doc/rtc/windows/basic-features/screen-share)
+- [Agora Windows encoding preference](https://doc.shengwang.cn/api-ref/rtc/windows/API/enum_encodingpreference)
+- [Oopz help center](https://help.oopz.cn/)
