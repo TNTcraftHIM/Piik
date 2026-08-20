@@ -15,7 +15,7 @@ npm ci
 npm run dev
 ```
 
-Production requires an independent 16-128 byte visible-ASCII `HOST_ADMISSION_PASSWORD`. It authorizes room creation and Host role only; invited Viewers never need it. Local development and tests may leave it empty. Private rooms use an expiring room-scoped fragment grant, while explicit public-watch rooms accept only the numeric room code.
+Production requires an independent 8-128 byte visible-ASCII `HOST_ADMISSION_PASSWORD`. It is a simple deployment access key for room creation and Host role, not an account password; invited Viewers never need it. Local development and tests may leave it empty. Private rooms use an expiring room-scoped fragment grant, while explicit public-watch rooms accept only the numeric room code.
 
 Open `http://localhost:8787`. The server listens on `0.0.0.0` by default so a
 phone on the same LAN can load `http://<computer-lan-ip>:8787`. To generate an

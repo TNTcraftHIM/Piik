@@ -7,7 +7,7 @@ import {
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
-const MIN_HOST_ADMISSION_PASSWORD_BYTES = 16;
+const MIN_HOST_ADMISSION_PASSWORD_BYTES = 8;
 const MAX_HOST_ADMISSION_PASSWORD_BYTES = 128;
 const MIN_LIVEKIT_API_SECRET_BYTES = 32;
 const MAX_PEER_ASSISTED_VIEWERS = 8;
@@ -329,7 +329,7 @@ export function loadConfig(
         MAX_HOST_ADMISSION_PASSWORD_BYTES)
   ) {
     throw new Error(
-      "HOST_ADMISSION_PASSWORD must contain 16 to 128 visible ASCII bytes",
+      "HOST_ADMISSION_PASSWORD must contain 8 to 128 visible ASCII bytes",
     );
   }
   if (nodeEnv === "production" && !hostAdmissionPassword) {

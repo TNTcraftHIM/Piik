@@ -37,13 +37,16 @@ export function App() {
   if (viewerRoute) {
     return <ViewerPage {...viewerRoute} />;
   }
-  if (isJoinRoute || !isHostRoute) {
-    return <JoinPage />;
+  if (isHostRoute) {
+    return <HostAdmissionGate surface="host" />;
   }
-  return <HostAdmissionGate />;
+  if (isJoinRoute) {
+    return <HostAdmissionGate surface="join" />;
+  }
+  return <UnavailableRoute />;
 }
 
-function HostAdmissionGate() {
+function HostAdmissionGate({ surface }: { surface: "host" | "join" }) {
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -96,6 +99,9 @@ function HostAdmissionGate() {
   }
 
   if (access.kind === "ready") {
+    if (surface === "join") {
+      return <JoinPage />;
+    }
     return (
       <HostPage
         onAuthorizationRequired={() =>
@@ -130,11 +136,11 @@ function HostAdmissionGate() {
         ) : (
           <form className="access-panel" onSubmit={(event) => void submit(event)}>
             <div>
-              <h1>分享权限</h1>
-              <p className="section-meta">请输入分享准入密码</p>
+              <h1>访问验证</h1>
+              <p className="section-meta">请输入访问口令</p>
             </div>
             <label className="token-field">
-              <span>分享准入密码</span>
+              <span>访问口令</span>
               <span className="input-with-icon">
                 <KeyRound size={16} aria-hidden="true" />
                 <input
@@ -161,6 +167,18 @@ function HostAdmissionGate() {
             </button>
           </form>
         )}
+      </main>
+    </div>
+  );
+}
+
+function UnavailableRoute() {
+  return (
+    <div className="app-shell">
+      <main className="access-workspace access-workspace-full">
+        <section className="access-panel">
+          <h1>无法访问</h1>
+        </section>
       </main>
     </div>
   );
