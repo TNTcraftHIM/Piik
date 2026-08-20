@@ -329,9 +329,27 @@ closed. Focused timeline tests cover shorter-than-duration jitter, dropped
 source time, non-increasing input, and a positive delta below one 90 kHz sample.
 A real `/media` handler test carries the two jittered frames through decode and
 fanout with two frames written and positive source RTP. All Native Go packages
-pass. These checks prove that specific fatal path is removed; without a post-fix
-Chrome smoke they do not classify the retained run or prove Viewer delivery.
+pass. These checks prove that specific fatal path is removed; the later bounded
+loopback smoke below supplies one Viewer delivery proof but does not classify the
+retained fatal run or establish broader Native acceptance.
 The WebCodecs and pinned Pion packetizer sources were rechecked 2026-08-20.
+
+A bounded follow-up smoke on 2026-08-20 then exercised the complete one-viewer
+loopback path with Chrome 151, fixed VP8 1280x720@30, and peer assistance off.
+The Sender reached 30 written frames and 85 source RTP packets with zero fatal or
+encoder errors. The Viewer authenticated, completed offer/answer/ICE, received
+877 packets (842,346 bytes), and advanced from 0 to 299 decoded and rendered
+frames at 1280x720. The gate stopped only because its Pion outbound check sampled
+the same two-second diagnostics snapshot before it refreshed (`pionPacketDelta=0`);
+that residual probe timing does not invalidate the independent inbound/decode/
+render counters, but it leaves a fresh Pion outbound delta unretained.
+
+The gate probe now treats trickled candidates before the first offer, and a
+development-only pre-offer control-socket replacement, as one logical generation;
+after an active offer/PeerConnection, socket or connection changes still fail
+closed. This is test-harness evidence, not a runtime protocol relaxation. No
+second Viewer, FIFO, hardware, endurance, public-network, or packaged-native run
+followed.
 
 The frozen probe continues to bind the first actual local media WebSocket as
 gate-local generation 1. A second bridge generation saturates at 2, stops
@@ -361,8 +379,8 @@ The earlier authorized 2026-08-19 local product gate is
 | Viewer page | The page and probe loaded, but the 30-second combined decoded-and-rendered condition timed out. |
 | Downstream lifecycle | Viewer auth, `peer-joined`, SDP/candidates, PC states, source RTP/edge packets, inbound RTP, video readiness, and console state were not retained. |
 
-The first missing evidence checkpoint is viewer authentication, not a proven
-authentication failure. The harness discarded each false sample; its reused
+For that retained run, the first missing evidence checkpoint was viewer
+authentication, not a proven authentication failure. The harness discarded each false sample; its reused
 `progress()` path can omit a connection after a swallowed `getStats()` error;
 and render evidence had no readiness/current-time/video-dimension fallback.
 The timeout therefore cannot locate the runtime break or rule out a probe-only

@@ -35,7 +35,7 @@ and is not part of production.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Native remains no-go: the retained VP8 run reached one encoder and generation-1 binary send, then no diagnostics, a fatal marker and initial media zeros; no Viewer. Source removes a deterministic timestamp-overlap fatal and passes timeline/`/media` tests, but the retained category and post-fix Chrome/Viewer proof are absent.
+- Native VP8 loopback (Chrome 151) reached one Viewer: 30 sender frames, 85 source RTP packets, 877 inbound packets, 299 decoded/rendered at 1280x720, no fatal. Pion outbound delta missed a 2s refresh; hardware/multi-viewer/FIFO/endurance/public/native proof remains open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Selected-edge typecheck and 131 focused control tests pass; no TURN allocation/media evidence exists.
 
@@ -46,7 +46,7 @@ and is not part of production.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
-- ADR-0006 still has no Viewer, two-edge, or FIFO proof.
+- ADR-0006 has one Viewer decode/render proof; two-edge/FIFO/hardware/endurance/public remain open.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
@@ -62,8 +62,8 @@ SFU; it never runs three identical retries or abandons progressing P2P early.
 
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
 evacuation. Native source accepts increasing capture timestamps shorter than
-duration, but has no post-fix browser evidence. The next authorized run must
-prove stage-1 bridge ingress/source RTP before a Viewer.
+duration; one VP8 Viewer decode/render run is recorded. Next prove fresh Pion
+outbound diagnostics before viewer 2/FIFO/hardware/endurance/deploy.
 Audio A/B/C may proceed without displacing P0.
 Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. Selected-edge
 is source-complete/default-off/undeployed. Next run one isolated forced-relay

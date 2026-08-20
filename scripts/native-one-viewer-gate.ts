@@ -640,8 +640,11 @@ function viewerProbe(): string {
   return `(() => {
     const state = { signaling: { authenticateSent: 0, authenticatedReceived: 0,
       offersReceived: 0, answersSent: 0, candidatesReceived: 0, candidatesSent: 0 },
-      socketCount: 0, authenticateSocketOrdinal: 0, authSocketOrdinal: 0, authGeneration: 0,
-      connectionIds: [], activeConnectionId: null, consistent: true, pendingOffer: null,
+      socketCount: 0, socketSequence: 0, logicalSocketCount: 0,
+      authenticateSocketOrdinal: 0, authSocketOrdinal: 0, logicalAuthSocketOrdinal: 0,
+      authGeneration: 0,
+      connectionIds: [], activeConnectionId: null, preOfferConnectionId: null,
+      consistent: true, pendingOffer: null,
       pcs: [], boundPcOrdinal: 0, boundConnectionOrdinal: 0, boundSocketOrdinal: 0,
       boundAuthGeneration: 0, trackCount: 0, trackOrdinal: 0, trackPcOrdinal: 0,
       renderedFrames: 0, observedVideo: null };
@@ -657,7 +660,18 @@ function viewerProbe(): string {
         state.signaling.authenticateSent += 1; state.authenticateSocketOrdinal = socketOrdinal; return;
       }
       if (direction === 'in' && message.type === 'authenticated') {
-        state.signaling.authenticatedReceived += 1; state.authGeneration += 1;
+        state.signaling.authenticatedReceived += 1;
+        const activeMediaStarted = state.activeConnectionId !== null || state.boundPcOrdinal > 0;
+        if (state.authGeneration === 0) {
+          state.authGeneration = 1;
+          state.logicalSocketCount = 1;
+          state.logicalAuthSocketOrdinal = 1;
+        } else if (activeMediaStarted) {
+          state.authGeneration += 1;
+          state.logicalSocketCount += 1;
+          state.logicalAuthSocketOrdinal = state.logicalSocketCount;
+          state.consistent = false;
+        }
         state.authSocketOrdinal = socketOrdinal;
         if (state.authenticateSocketOrdinal !== socketOrdinal) state.consistent = false;
         return;
@@ -668,12 +682,23 @@ function viewerProbe(): string {
         state.consistent = false; return;
       }
       const ordinal = connectionOrdinal(rawConnectionId);
-      if (state.activeConnectionId === null && direction === 'in' &&
-          message.payload.kind === 'description' && message.payload.description?.type === 'offer') {
-        state.activeConnectionId = rawConnectionId;
+      const inboundOffer = direction === 'in' && message.payload.kind === 'description' &&
+        message.payload.description?.type === 'offer';
+      if (state.activeConnectionId === null) {
+        if (inboundOffer) {
+          if (state.preOfferConnectionId !== null && state.preOfferConnectionId !== rawConnectionId) {
+            state.consistent = false;
+          }
+          state.activeConnectionId = rawConnectionId;
+        } else if (state.preOfferConnectionId === null) {
+          // Pion may trickle a candidate before the offer write reaches the Viewer.
+          state.preOfferConnectionId = rawConnectionId;
+        } else if (state.preOfferConnectionId !== rawConnectionId) {
+          state.consistent = false;
+        }
       }
       if (state.activeConnectionId !== rawConnectionId) state.consistent = false;
-      if (direction === 'in' && message.payload.kind === 'description' && message.payload.description?.type === 'offer') {
+      if (inboundOffer) {
         state.signaling.offersReceived += 1;
         state.pendingOffer = { rawConnectionId, ordinal, socketOrdinal, authGeneration: state.authGeneration };
       }
@@ -691,7 +716,7 @@ function viewerProbe(): string {
         super(...args);
         this.__gateSignal = new URL(String(args[0]), location.href).pathname === '/signal';
         if (this.__gateSignal) {
-          this.__gateSocketOrdinal = ++state.socketCount;
+          this.__gateSocketOrdinal = ++state.socketSequence;
           this.addEventListener('message', (event) => inspect(event.data, 'in', this.__gateSocketOrdinal));
         }
       }
@@ -748,7 +773,8 @@ function viewerProbe(): string {
       }
       const activeOrdinal = state.activeConnectionId === null ? 0 :
         state.connectionIds.indexOf(state.activeConnectionId) + 1;
-      const identity = { socketCount: state.socketCount, socketOrdinal: state.authSocketOrdinal,
+      const identity = { socketCount: state.logicalSocketCount,
+        socketOrdinal: state.logicalAuthSocketOrdinal,
         authGeneration: state.authGeneration, connectionCount: state.connectionIds.length,
         connectionOrdinal: activeOrdinal, pcCount: state.pcs.length, pcOrdinal: state.boundPcOrdinal,
         trackCount: state.trackCount, trackOrdinal: state.trackOrdinal,
