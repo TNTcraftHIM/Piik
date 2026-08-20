@@ -4,8 +4,8 @@ Last updated: 2026-08-21
 
 ## Phase
 
-`https://share.bonfire.icu` serves exact `c27df2235ecc0be17816f642ca49028e30380a34`; the 912,999-byte artifact SHA-256 is `1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`.
-The cutover held the lock 662 ms and returned local health 552 ms after stop. SQLite v3 has five rooms; Screener, LiveKit, coturn and nginx are healthy with zero restarts.
+`https://share.bonfire.icu` serves exact `5e4a3679076a9ea2fe7a41fadf4be65a439db450`; the 909,974-byte artifact SHA-256 is `e484773c7dc381e657da18720e842c3ae90ad727320a650abcb1098428c74774`.
+The cutover held the lock 9,474 ms and returned local health 676 ms after stop. SQLite v3 has five rooms; Screener, LiveKit, coturn and nginx are healthy with zero restarts.
 Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke and no real TURN/SFU media canary has run.
 Web Host names/audio hint are deployed. Native H.264 and Windows x64 packaging are source-only; Web defaults VP8.
 
@@ -16,7 +16,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 ## Current Snapshot
 
 - Capture precedes room creation; source/quality changes preserve peers and pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
-- Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. The source fix and atomic `SITE_ACCESS_PASSWORD`/`/api/site-access`/site-access-cookie rename are not deployed; raw credentials are never stored.
+- Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and the site-access cookie are deployed atomically; raw credentials are never stored.
 - Web Hosts can set their local/session display name, and the current release advertises it through the existing presence wire. The name is not an account identity.
 - Native v2 remains source-only (memory rooms, 300s reclaim); production does not run it.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
@@ -35,7 +35,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
 - Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
-- The `c27df22` gate preserved env/DB hashes, SQLite v3/five rooms/room `1`, services, and local/public health plus route/asset 200s. No TURN/SFU session ran.
+- The `5e4a367` gate preserved the SQLite hash, v3/five rooms/room `1`, selected-edge/SFU/ordinary-ICE settings, services, and local/public health plus route/asset 200s. Site access returned the unauthenticated status and the retired endpoint returned 404; no TURN/SFU session ran. Exact `c27df2235ecc0be17816f642ca49028e30380a34` is the rollback release.
 
 ## Unverified Boundaries
 
