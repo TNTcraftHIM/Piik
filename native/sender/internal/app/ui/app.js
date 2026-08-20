@@ -25,11 +25,12 @@ const elements = {
   serverURL: document.querySelector("#server-url"),
   password: document.querySelector("#password"),
   codec: document.querySelector("#codec"),
-  audioTarget: document.querySelector("#audio-target"),
-  refreshAudio: document.querySelector("#refresh-audio"),
+  windowTarget: document.querySelector("#window-target"),
+  refreshWindows: document.querySelector("#refresh-windows"),
   start: document.querySelector("#start"),
   stop: document.querySelector("#stop"),
   preview: document.querySelector("#preview"),
+  nativePreview: document.querySelector("#native-preview"),
   empty: document.querySelector("#empty-state"),
   invite: document.querySelector("#invite"),
   inviteLink: document.querySelector("#invite-link"),
@@ -48,6 +49,7 @@ const elements = {
 let stream = null;
 let processorReader = null;
 let encoder = null;
+let videoDecoder = null;
 let audioEncoder = null;
 let silentAudioChunks = 0;
 let mediaSocket = null;
@@ -59,10 +61,12 @@ let forceKeyFrame = true;
 let frameNumber = 0;
 let captureSettings = null;
 let nativeDiagnostics = null;
+let nativeVideoStatus = null;
 let metrics = emptyMetrics();
 let startGeneration = 0;
 let diagnosticsTimer = null;
 let pendingStartGeneration = 0;
+let activeVideoSource = "browser";
 
 if (!processToken) {
   showError("本地发送端令牌已失效，请重新启动 sender.exe");
@@ -80,47 +84,71 @@ elements.copy.addEventListener("click", async () => {
     showError("无法复制链接，请直接打开邀请链接");
   }
 });
-elements.refreshAudio.addEventListener("click", () => void loadAudioTargets());
-if (processToken) void loadAudioTargets();
+elements.refreshWindows.addEventListener("click", () => void loadWindowTargets());
+if (processToken) void loadWindowTargets();
 
 async function startSharing() {
   if (sharing || stopping || startInFlight) return;
   showError("");
-  if (!("VideoEncoder" in window) || !("MediaStreamTrackProcessor" in window)) {
+  const videoSource = selectedVideoSource();
+  const nativeWindow = videoSource === "native-window-h264";
+  if (!nativeWindow && (!("VideoEncoder" in window) || !("MediaStreamTrackProcessor" in window))) {
     showError("此浏览器缺少 WebCodecs 屏幕编码支持，请使用当前版 Chrome 或 Edge");
+    return;
+  }
+  if (nativeWindow && !("VideoDecoder" in window)) {
+    showError("此浏览器缺少原生 H.264 本地预览支持，请使用当前版 Chrome 或 Edge");
     return;
   }
   startInFlight = true;
   elements.start.disabled = true;
   const generation = ++startGeneration;
   const codec = selectedCodec();
-  const audioTargetId = elements.audioTarget.value;
-  if (audioTargetId && (!("AudioEncoder" in window) || !("AudioData" in window))) {
+  metrics.codec = codec;
+  const windowTargetId = elements.windowTarget.value;
+  activeVideoSource = videoSource;
+  if (nativeWindow && !windowTargetId) {
+    showError("原生 H.264 模式需要选择一个目标窗口");
+    startInFlight = false;
+    elements.start.disabled = false;
+    return;
+  }
+  if (windowTargetId && (!("AudioEncoder" in window) || !("AudioData" in window))) {
     showError("当前浏览器缺少 WebCodecs Opus 编码支持，请关闭目标进程音频或使用当前版 Chrome / Edge");
     startInFlight = false;
     elements.start.disabled = false;
     return;
   }
-  setStatus("选择屏幕");
   try {
-    const capturedStream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        width: { ideal: WIDTH, max: WIDTH },
-        height: { ideal: HEIGHT, max: HEIGHT },
-        frameRate: { ideal: FPS, max: FPS },
-      },
-      audio: false,
-    });
-    assertCurrentStart(generation, mediaSocket, capturedStream);
-    stream = capturedStream;
-    const videoTrack = stream.getVideoTracks()[0];
-    if (!videoTrack) throw new Error("没有可用的视频轨道");
-    await videoTrack.applyConstraints({ width: WIDTH, height: HEIGHT, frameRate: FPS });
-    assertCurrentStart(generation);
-    captureSettings = videoTrack.getSettings();
+    let videoTrack = null;
+    if (nativeWindow) {
+      await startNativeDecoder(generation);
+      captureSettings = { width: WIDTH, height: HEIGHT, frameRate: FPS };
+      elements.preview.hidden = true;
+      elements.nativePreview.hidden = false;
+    } else {
+      setStatus("选择屏幕");
+      const capturedStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: WIDTH, max: WIDTH },
+          height: { ideal: HEIGHT, max: HEIGHT },
+          frameRate: { ideal: FPS, max: FPS },
+        },
+        audio: false,
+      });
+      assertCurrentStart(generation, mediaSocket, capturedStream);
+      stream = capturedStream;
+      videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack) throw new Error("没有可用的视频轨道");
+      await videoTrack.applyConstraints({ width: WIDTH, height: HEIGHT, frameRate: FPS });
+      assertCurrentStart(generation);
+      captureSettings = videoTrack.getSettings();
+      videoTrack.addEventListener("ended", () => void stopSharing(generation), { once: true });
+      elements.preview.srcObject = stream;
+      elements.preview.hidden = false;
+      elements.nativePreview.hidden = true;
+    }
     updateDiagnostics();
-    videoTrack.addEventListener("ended", () => void stopSharing(generation), { once: true });
-    elements.preview.srcObject = stream;
     elements.empty.hidden = true;
 
     setStatus("创建房间");
@@ -129,7 +157,8 @@ async function startSharing() {
       serverUrl: elements.serverURL.value,
       password: elements.password.value,
       codec,
-      audioTargetId,
+      videoSource,
+      windowTargetId,
     });
     assertCurrentStart(generation);
     if (pendingStartGeneration === generation) pendingStartGeneration = 0;
@@ -139,15 +168,18 @@ async function startSharing() {
     elements.inviteLink.textContent = room.inviteUrl;
     elements.invite.hidden = false;
 
-    if (audioTargetId) await startAudioEncoder(generation);
-    await connectMediaSocket(generation, codec, Boolean(audioTargetId));
+    if (windowTargetId) await startAudioEncoder(generation);
+    await connectMediaSocket(generation, codec, videoSource, Boolean(windowTargetId));
     assertCurrentStart(generation);
-    const activeEncoder = await startEncoder(generation, codec);
-    assertCurrentStart(generation);
+    let activeEncoder = null;
+    if (!nativeWindow) {
+      activeEncoder = await startEncoder(generation, codec);
+      assertCurrentStart(generation);
+    }
     sharing = true;
     elements.stop.hidden = false;
     setStatus("正在分享");
-    void readFrames(videoTrack, generation, activeEncoder, mediaSocket);
+    if (!nativeWindow) void readFrames(videoTrack, generation, activeEncoder, mediaSocket);
   } catch (error) {
     if (generation === startGeneration && !(error instanceof StaleStartError)) {
       showError(readableError(error, "无法开始分享"));
@@ -159,7 +191,7 @@ async function startSharing() {
   }
 }
 
-async function connectMediaSocket(generation, codec, audio) {
+async function connectMediaSocket(generation, codec, videoSource, audio) {
   const url = new URL("/media", location.href);
   url.protocol = "ws:";
   const socket = new WebSocket(url, [`screener.token.${processToken}`]);
@@ -181,6 +213,7 @@ async function connectMediaSocket(generation, codec, audio) {
   socket.send(JSON.stringify({
     kind: "config",
     codec,
+    videoSource,
     width: WIDTH,
     height: HEIGHT,
     fps: FPS,
@@ -231,6 +264,34 @@ async function startEncoder(generation, codec) {
   activeEncoder.configure(support.config);
   updateDiagnostics();
   return activeEncoder;
+}
+
+async function startNativeDecoder(generation) {
+  const config = {
+    codec: "avc1.42c01f",
+    codedWidth: WIDTH,
+    codedHeight: HEIGHT,
+    optimizeForLatency: true,
+  };
+  const support = await VideoDecoder.isConfigSupported(config);
+  assertCurrentStart(generation);
+  if (!support.supported) throw new Error("此浏览器不支持 H.264 42c01f 本地预览");
+  let activeDecoder;
+  activeDecoder = new VideoDecoder({
+    output: (frame) => {
+      try {
+        if (generation === startGeneration && videoDecoder === activeDecoder) {
+          const context = elements.nativePreview.getContext("2d");
+          context?.drawImage(frame, 0, 0, WIDTH, HEIGHT);
+        }
+      } finally {
+        frame.close();
+      }
+    },
+    error: (error) => void failSharing(generation, `原生 H.264 本地预览失败：${error.message}`),
+  });
+  videoDecoder = activeDecoder;
+  activeDecoder.configure(support.config);
 }
 
 async function readFrames(videoTrack, generation, activeEncoder, activeSocket) {
@@ -319,7 +380,14 @@ function sendEncodedChunk(generation, activeEncoder, chunk) {
 function handleLocalEvent(generation, socket, event) {
   if (generation !== startGeneration || socket !== mediaSocket) return;
   if (event.data instanceof ArrayBuffer) {
-    handlePCM(generation, event.data);
+    const kind = event.data.byteLength > 1 ? new DataView(event.data).getUint8(1) : 0;
+    if (kind === MEDIA_KIND_PCM) {
+      handlePCM(generation, event.data);
+    } else if (kind === MEDIA_KIND_VIDEO && activeVideoSource === "native-window-h264") {
+      handleNativeVideo(generation, event.data);
+    } else {
+      void failSharing(generation, "本地媒体桥接返回了意外的二进制数据");
+    }
     return;
   }
   if (typeof event.data !== "string") return;
@@ -339,8 +407,37 @@ function handleLocalEvent(generation, socket, event) {
       ? "不可用（未回退系统声音）"
       : "正在连接目标进程";
   }
+  if (message.kind === "native-video-state") {
+    nativeVideoStatus = { ...nativeVideoStatus, ...message.status };
+    updateDiagnostics();
+    setStatus(message.status?.state === "active" ? "正在分享（原生 H.264）" : "正在启动原生硬件采集");
+  }
   if (message.kind === "fatal") {
     void failSharing(generation, message.message || "分享会话已失败并停止");
+  }
+}
+
+function handleNativeVideo(generation, message) {
+  if (generation !== startGeneration || !videoDecoder || videoDecoder.state !== "configured") return;
+  try {
+    const view = new DataView(message);
+    const flags = view.getUint8(2);
+    if (message.byteLength <= ENVELOPE_HEADER_BYTES || view.getUint8(0) !== 1 ||
+      view.getUint8(1) !== MEDIA_KIND_VIDEO || flags > 1 || view.getUint8(3) !== 0) {
+      throw new Error("本地 H.264 envelope 无效");
+    }
+    const data = new Uint8Array(message, ENVELOPE_HEADER_BYTES);
+    if (data.byteLength < 1 || data.byteLength > MAX_FRAME_BYTES) {
+      throw new Error("本地 H.264 access unit 长度无效");
+    }
+    videoDecoder.decode(new EncodedVideoChunk({
+      type: flags === 1 ? "key" : "delta",
+      timestamp: Number(view.getBigUint64(4, false) / 10n),
+      duration: Number(view.getBigUint64(12, false) / 10n),
+      data,
+    }));
+  } catch (error) {
+    void failSharing(generation, readableError(error, "处理本地 H.264 预览失败"));
   }
 }
 
@@ -382,6 +479,15 @@ async function stopSharing(expectedGeneration = startGeneration) {
     }
     encoder = null;
     try {
+      if (videoDecoder && videoDecoder.state !== "closed") videoDecoder.close();
+    } catch (error) {
+      rememberError(error);
+    }
+    videoDecoder = null;
+    elements.nativePreview.getContext("2d")?.clearRect(0, 0, WIDTH, HEIGHT);
+    elements.nativePreview.hidden = true;
+    elements.preview.hidden = false;
+    try {
       if (audioEncoder && audioEncoder.state !== "closed") audioEncoder.close();
     } catch (error) {
       rememberError(error);
@@ -408,6 +514,8 @@ async function stopSharing(expectedGeneration = startGeneration) {
     silentAudioChunks = 0;
     captureSettings = null;
     nativeDiagnostics = null;
+    nativeVideoStatus = null;
+    activeVideoSource = "browser";
     metrics = emptyMetrics();
     if (diagnosticsTimer !== null) {
       clearTimeout(diagnosticsTimer);
@@ -488,25 +596,25 @@ async function localRequest(path, body) {
   return result;
 }
 
-async function loadAudioTargets() {
-  elements.refreshAudio.disabled = true;
-  const previous = elements.audioTarget.value;
+async function loadWindowTargets() {
+  elements.refreshWindows.disabled = true;
+  const previous = elements.windowTarget.value;
   try {
-    const result = await localRequest("/api/audio-targets");
-    elements.audioTarget.replaceChildren(new Option("关闭", ""));
+    const result = await localRequest("/api/window-targets");
+    elements.windowTarget.replaceChildren(new Option("关闭窗口音频", ""));
     for (const target of Array.isArray(result.targets) ? result.targets : []) {
-      if (target?.id && target?.title) elements.audioTarget.add(new Option(target.title, target.id));
+      if (target?.id && target?.title) elements.windowTarget.add(new Option(target.title, target.id));
     }
-    if ([...elements.audioTarget.options].some((option) => option.value === previous)) {
-      elements.audioTarget.value = previous;
+    if ([...elements.windowTarget.options].some((option) => option.value === previous)) {
+      elements.windowTarget.value = previous;
     }
-    elements.audioTarget.disabled = !result.supported;
+    elements.windowTarget.disabled = !result.supported;
     elements.audioStatus.textContent = result.supported ? "关闭" : "Windows 11 helper 不可用";
   } catch (error) {
-    elements.audioTarget.disabled = true;
+    elements.windowTarget.disabled = true;
     elements.audioStatus.textContent = readableError(error, "窗口列表不可用");
   } finally {
-    elements.refreshAudio.disabled = false;
+    elements.refreshWindows.disabled = false;
   }
 }
 
@@ -595,7 +703,16 @@ function updateDiagnostics() {
   const height = captureSettings?.height ?? "未知";
   const rate = captureSettings?.frameRate ?? "未知";
   elements.captureDiagnostic.textContent = `${width} × ${height} · ${rate} FPS`;
-  elements.encoderDiagnostic.textContent = `${codecLabel(metrics.codec)} · 3 Mbps 上限 · 单对象 · 硬件偏好 ${hardwarePreferenceLabel(metrics.hardwarePreference)} · 硬件证据 ${hardwareEvidenceLabel(metrics.hardwareEvidence)}`;
+  if (activeVideoSource === "native-window-h264") {
+    const mftState = nativeVideoStatus?.state === "active"
+      ? "hardware-only MFT 已绑定并输出"
+      : nativeVideoStatus?.state === "starting"
+        ? "hardware-only MFT 已绑定，等待首帧"
+        : "hardware-only MFT 等待状态";
+    elements.encoderDiagnostic.textContent = `H.264 · 3 Mbps 上限 · 单 MF 编码器 · ${mftState}`;
+  } else {
+    elements.encoderDiagnostic.textContent = `${codecLabel(metrics.codec)} · 3 Mbps 上限 · 单对象 · 硬件偏好 ${hardwarePreferenceLabel(metrics.hardwarePreference)} · 硬件证据 ${hardwareEvidenceLabel(metrics.hardwareEvidence)}`;
+  }
   elements.bridgeDiagnostic.textContent = `读取 ${metrics.framesRead} · 提交 ${metrics.framesSubmitted} · 输出 ${metrics.encoderOutputs} · 编码队列丢弃 ${metrics.encoderQueueDrops} · 编码队列峰值 ${metrics.encoderQueuePeak} 帧 · socket 峰值 ${metrics.socketBufferedPeak} B`;
   const helper = nativeDiagnostics?.media;
   const queue = helper?.queue;
@@ -645,7 +762,11 @@ function boundedCount(value) {
 }
 
 function selectedCodec() {
-  return elements.codec?.value === "h264" ? "h264" : "vp8";
+  return elements.codec?.value === "h264" || elements.codec?.value === "native-h264" ? "h264" : "vp8";
+}
+
+function selectedVideoSource() {
+  return elements.codec?.value === "native-h264" ? "native-window-h264" : "browser";
 }
 
 function emptyMetrics() {

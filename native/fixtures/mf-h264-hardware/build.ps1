@@ -28,7 +28,7 @@ if ([string]::IsNullOrWhiteSpace($installationPath)) {
 }
 
 $developerCommand = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
-$sourcePath = Join-Path $fixtureDirectory 'main.cpp'
+$sourcePath = Join-Path $fixtureDirectory '..\..\window-capture-helper\main.cpp'
 $executablePath = Join-Path $outputPath 'screener-mf-h264-fixture.exe'
 $objectPath = Join-Path $outputPath 'main.obj'
 
@@ -36,7 +36,7 @@ New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 
 $compile = @(
     'call "{0}" -arch=x64 -host_arch=x64 >nul' -f $developerCommand
-    'cl.exe /nologo /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 "{0}" /Fo:"{1}" /Fe:"{2}" /link mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib ole32.lib oleaut32.lib pdh.lib' -f $sourcePath, $objectPath, $executablePath
+    'cl.exe /nologo /std:c++20 /EHsc /W4 /WX /DSCREENER_H264_FIXTURE /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 "{0}" /Fo:"{1}" /Fe:"{2}" /link mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib ole32.lib oleaut32.lib pdh.lib windowsapp.lib' -f $sourcePath, $objectPath, $executablePath
 ) -join ' && '
 
 & cmd.exe /d /s /c $compile

@@ -6,22 +6,38 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <evr.h>
+#include <fcntl.h>
+#include <io.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfidl.h>
 #include <mftransform.h>
+#ifdef SCREENER_H264_FIXTURE
 #include <pdh.h>
 #include <pdhmsg.h>
+#endif
 #include <propvarutil.h>
+#include <windows.graphics.capture.interop.h>
+#include <windows.graphics.directx.direct3d11.interop.h>
 #include <wrl/client.h>
 
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Graphics.Capture.h>
+#include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+#include <winrt/Windows.Graphics.DirectX.h>
+#include <winrt/base.h>
+
+#include "process_audio.h"
+
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cwctype>
 #include <exception>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -44,13 +60,16 @@ constexpr UINT32 kHeight = 720;
 constexpr UINT32 kFrameRate = 30;
 constexpr UINT32 kBitRate = 3'000'000;
 constexpr UINT32 kVbvBytes = kBitRate / kFrameRate / 8;
-constexpr UINT32 kFrameCount = 360;
 constexpr UINT32 kGopFrames = 60;
-constexpr UINT32 kMaxInFlight = 8;
 constexpr UINT32 kMaxEventsPerPump = 64;
 constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
+#ifdef SCREENER_H264_FIXTURE
+constexpr UINT32 kFrameCount = 360;
+constexpr UINT32 kMaxInFlight = 8;
 constexpr DWORD kMaxPdhArrayBytes = 4 * 1024 * 1024;
 constexpr DWORD kMaxPdhArrayItems = 16 * 1024;
+#endif
+
 constexpr LONGLONG kFrameDuration100ns = 10'000'000 / kFrameRate;
 
 class GateFailure final : public std::runtime_error {
@@ -552,6 +571,7 @@ void ValidateCodecReadback(ICodecAPI* codec) {
   }
 }
 
+#ifdef SCREENER_H264_FIXTURE
 std::vector<UINT8> SyntheticNv12(UINT32 frame_index) {
   std::vector<UINT8> pixels(kWidth * kHeight * 3 / 2);
   const UINT32 bar_start = (frame_index * 11) % kWidth;
@@ -607,6 +627,7 @@ ComPtr<IMFSample> CreateInputSample(ID3D11Device* device, UINT32 frame_index) {
         "input-sample-duration");
   return sample;
 }
+#endif
 
 struct NalSummary final {
   bool annex_b = false;
@@ -694,6 +715,7 @@ std::vector<UINT8> ReadSample(IMFSample* sample) {
   return bytes;
 }
 
+#ifdef SCREENER_H264_FIXTURE
 ULONGLONG ProcessCpu100ns() {
   FILETIME created = {};
   FILETIME exited = {};
@@ -851,6 +873,7 @@ struct RunEvidence final {
   ULONGLONG cpu_100ns = 0;
   double wall_seconds = 0.0;
 };
+#endif
 
 void ForceKeyFrame(ICodecAPI* codec) {
   VARIANT value;
@@ -928,6 +951,7 @@ ComPtr<IMFSample> PullOutput(IMFTransform* transform,
   return produced;
 }
 
+#ifdef SCREENER_H264_FIXTURE
 bool IsRecoveryFrame(UINT32 frame) {
   return frame % kGopFrames == 0;
 }
@@ -1164,6 +1188,7 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
   }
   return evidence;
 }
+#endif
 
 UINT ParseIndex(const wchar_t* value, const std::string& stage) {
   try {
@@ -1178,6 +1203,719 @@ UINT ParseIndex(const wchar_t* value, const std::string& stage) {
   }
 }
 
+#ifndef SCREENER_H264_FIXTURE
+constexpr DWORD kMaxProductAccessUnitBytes = 1 * 1024 * 1024;
+constexpr DWORD kMaxStatusBytes = 4 * 1024;
+constexpr UINT64 kEnvelopeFrameDuration100ns =
+    (static_cast<UINT64>(kFrameDuration100ns) / 10) * 10;
+
+enum class OutputKind : UINT8 {
+  pcm = 1,
+  h264 = 2,
+  status = 3,
+};
+
+class UniqueHandle final {
+ public:
+  UniqueHandle() = default;
+  explicit UniqueHandle(HANDLE value) : value_(value) {}
+  UniqueHandle(const UniqueHandle&) = delete;
+  UniqueHandle& operator=(const UniqueHandle&) = delete;
+  UniqueHandle(UniqueHandle&& other) noexcept
+      : value_(std::exchange(other.value_, nullptr)) {}
+  ~UniqueHandle() {
+    if (value_ != nullptr && value_ != INVALID_HANDLE_VALUE) CloseHandle(value_);
+  }
+  HANDLE get() const { return value_; }
+
+ private:
+  HANDLE value_ = nullptr;
+};
+
+void PutUint32BE(BYTE* output, UINT32 value) {
+  for (int index = 3; index >= 0; --index) {
+    output[index] = static_cast<BYTE>(value & 0xff);
+    value >>= 8;
+  }
+}
+
+void PutUint64BE(BYTE* output, UINT64 value) {
+  for (int index = 7; index >= 0; --index) {
+    output[index] = static_cast<BYTE>(value & 0xff);
+    value >>= 8;
+  }
+}
+
+class ProtocolWriter final {
+ public:
+  HRESULT Write(OutputKind kind, UINT8 flags, UINT64 timestamp100ns,
+                UINT64 duration100ns, const BYTE* data, DWORD size) {
+    DWORD maximum = kind == OutputKind::status ? kMaxStatusBytes
+                                                : kMaxProductAccessUnitBytes;
+    if (data == nullptr || size == 0 || size > maximum ||
+        (kind != OutputKind::status && duration100ns == 0)) {
+      return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+    }
+    std::array<BYTE, 28> header{};
+    header[0] = 'S';
+    header[1] = 'M';
+    header[2] = 'E';
+    header[3] = 'D';
+    header[4] = 1;
+    header[5] = static_cast<BYTE>(kind);
+    header[6] = flags;
+    PutUint64BE(header.data() + 8, timestamp100ns);
+    PutUint64BE(header.data() + 16, duration100ns);
+    PutUint32BE(header.data() + 24, size);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    HRESULT result = WriteAll(header.data(), static_cast<DWORD>(header.size()));
+    return SUCCEEDED(result) ? WriteAll(data, size) : result;
+  }
+
+  HRESULT WriteStatus(const std::string& value) {
+    return Write(OutputKind::status, 0, 0, 0,
+                 reinterpret_cast<const BYTE*>(value.data()),
+                 static_cast<DWORD>(value.size()));
+  }
+
+ private:
+  HRESULT WriteAll(const BYTE* data, DWORD size) {
+    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    while (size > 0) {
+      DWORD written = 0;
+      if (!WriteFile(output, data, size, &written, nullptr)) {
+        return HRESULT_FROM_WIN32(GetLastError());
+      }
+      if (written == 0) return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
+      data += written;
+      size -= written;
+    }
+    return S_OK;
+  }
+
+  std::mutex mutex_;
+};
+
+ComPtr<IMFSample> CreateSurfaceSample(ID3D11Texture2D* texture,
+                                      LONGLONG timestamp100ns,
+                                      LONGLONG duration100ns) {
+  ComPtr<IMFMediaBuffer> buffer;
+  Check(MFCreateDXGISurfaceBuffer(IID_ID3D11Texture2D, texture, 0, FALSE,
+                                  &buffer),
+        "input-dxgi-buffer");
+  ComPtr<IMFSample> sample;
+  Check(MFCreateVideoSampleFromSurface(nullptr, &sample),
+        "input-video-sample");
+  Check(sample->AddBuffer(buffer.Get()), "input-sample-buffer");
+  Check(sample->SetSampleTime(timestamp100ns), "input-sample-time");
+  Check(sample->SetSampleDuration(duration100ns), "input-sample-duration");
+  return sample;
+}
+
+struct EncodedAccessUnit final {
+  UINT64 timestamp100ns = 0;
+  bool key_frame = false;
+  std::vector<UINT8> bytes;
+};
+
+class LiveEncoder final {
+ public:
+  explicit LiveEncoder(SelectedTransform selected)
+      : selected_(std::move(selected)) {
+    ConfigureCodec(selected_.codec.Get());
+    ComPtr<IMFMediaType> output_type = CreateOutputType();
+    Check(selected_.transform->SetOutputType(0, output_type.Get(), 0),
+          "mft-set-output-type");
+    ComPtr<IMFMediaType> input_type = CreateInputType();
+    Check(selected_.transform->SetInputType(0, input_type.Get(), 0),
+          "mft-set-input-type");
+    ValidateMediaTypes(selected_.transform.Get());
+    ValidateCodecReadback(selected_.codec.Get());
+    Check(selected_.transform->GetOutputStreamInfo(0, &output_info_),
+          "mft-output-stream-info");
+    Check(selected_.transform->ProcessMessage(
+              MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0),
+          "mft-begin-streaming");
+    Check(selected_.transform->ProcessMessage(
+              MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0),
+          "mft-start-stream");
+    started_ = true;
+  }
+
+  LiveEncoder(const LiveEncoder&) = delete;
+  LiveEncoder& operator=(const LiveEncoder&) = delete;
+
+  ~LiveEncoder() {
+    if (started_) {
+      selected_.transform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+      selected_.transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
+    }
+  }
+
+  const SelectedTransform& selected() const { return selected_; }
+
+  EncodedAccessUnit Encode(ID3D11Texture2D* texture, UINT64 timestamp100ns,
+                           bool force_key_frame) {
+    WaitForInput();
+    if (force_key_frame) ForceKeyFrame(selected_.codec.Get());
+    ComPtr<IMFSample> sample = CreateSurfaceSample(
+        texture, static_cast<LONGLONG>(timestamp100ns), kFrameDuration100ns);
+    Check(selected_.transform->ProcessInput(0, sample.Get(), 0),
+          "mft-process-input");
+    --input_requests_;
+
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+      MediaEventType type = NextEvent(deadline);
+      if (type == METransformNeedInput) {
+        ++input_requests_;
+        continue;
+      }
+      if (type != METransformHaveOutput) continue;
+
+      ComPtr<IMFSample> output = PullOutput(selected_.transform.Get(),
+                                            output_info_);
+      LONGLONG output_time = -1;
+      Check(output->GetSampleTime(&output_time), "output-sample-time");
+      if (output_time != static_cast<LONGLONG>(timestamp100ns)) {
+        Fail("output-order", "hardware MFT changed or reordered a live timestamp");
+      }
+      std::vector<UINT8> bytes = ReadSample(output.Get());
+      NalSummary nal = InspectAnnexB(bytes);
+      if (!nal.annex_b) {
+        Fail("bitstream-annexb", "live output is not Annex-B H264");
+      }
+      if (nal.profile_level_id) {
+        if (*nal.profile_level_id != "42c01f") {
+          Fail("bitstream-profile", "hardware MFT did not emit profile-level-id 42c01f");
+        }
+        if (profile_level_id_ && *profile_level_id_ != *nal.profile_level_id) {
+          Fail("bitstream-profile-change", "hardware MFT changed SPS profile");
+        }
+        profile_level_id_ = nal.profile_level_id;
+      }
+      if (force_key_frame && !(nal.sps && nal.pps && nal.idr)) {
+        Fail("bitstream-recovery-unit",
+             "requested live recovery unit lacks SPS, PPS, or IDR");
+      }
+      if (!profile_level_id_) {
+        Fail("bitstream-sps", "first live access unit did not carry an SPS");
+      }
+      return EncodedAccessUnit{timestamp100ns, nal.idr, std::move(bytes)};
+    }
+    Fail("mft-output-timeout", "hardware MFT did not produce live output in time");
+  }
+
+ private:
+  MediaEventType NextEvent(std::chrono::steady_clock::time_point deadline) {
+    while (std::chrono::steady_clock::now() < deadline) {
+      ComPtr<IMFMediaEvent> event;
+      HRESULT result = selected_.events->GetEvent(MF_EVENT_FLAG_NO_WAIT,
+                                                   &event);
+      if (result == MF_E_NO_EVENTS_AVAILABLE) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      Check(result, "mft-get-event");
+      HRESULT status = S_OK;
+      Check(event->GetStatus(&status), "mft-event-status-read");
+      Check(status, "mft-event-status");
+      MediaEventType type = MEUnknown;
+      Check(event->GetType(&type), "mft-event-type");
+      if (type == MEError) Fail("mft-error-event", "hardware MFT emitted MEError");
+      return type;
+    }
+    Fail("mft-event-timeout", "hardware MFT did not request input in time");
+  }
+
+  void WaitForInput() {
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(2);
+    while (input_requests_ == 0) {
+      MediaEventType type = NextEvent(deadline);
+      if (type == METransformNeedInput) {
+        ++input_requests_;
+      } else if (type == METransformHaveOutput) {
+        Fail("mft-unexpected-output", "hardware MFT produced output without live input");
+      }
+    }
+  }
+
+  SelectedTransform selected_;
+  MFT_OUTPUT_STREAM_INFO output_info_ = {};
+  UINT32 input_requests_ = 0;
+  std::optional<std::string> profile_level_id_;
+  bool started_ = false;
+};
+
+class FrameConverter final {
+ public:
+  explicit FrameConverter(ID3D11Device* device) : device_(device) {
+    Check(device_->QueryInterface(IID_PPV_ARGS(&video_device_)),
+          "video-processor-device");
+    ComPtr<ID3D11DeviceContext> context;
+    device_->GetImmediateContext(&context);
+    Check(context.As(&video_context_), "video-processor-context");
+  }
+
+  ComPtr<ID3D11Texture2D> Convert(ID3D11Texture2D* source, UINT32 width,
+                                  UINT32 height) {
+    if (source == nullptr || width == 0 || height == 0 ||
+        width > 16'384 || height > 16'384) {
+      Fail("capture-size", "captured window dimensions are invalid");
+    }
+    if (!enumerator_ || width != input_width_ || height != input_height_) {
+      Configure(width, height);
+    }
+
+    D3D11_TEXTURE2D_DESC output_description = {};
+    output_description.Width = kWidth;
+    output_description.Height = kHeight;
+    output_description.MipLevels = 1;
+    output_description.ArraySize = 1;
+    output_description.Format = DXGI_FORMAT_NV12;
+    output_description.SampleDesc.Count = 1;
+    output_description.Usage = D3D11_USAGE_DEFAULT;
+    output_description.BindFlags = D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> output;
+    Check(device_->CreateTexture2D(&output_description, nullptr, &output),
+          "video-processor-output-texture");
+
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC input_description = {};
+    input_description.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+    input_description.Texture2D.ArraySlice = 0;
+    input_description.Texture2D.MipSlice = 0;
+    ComPtr<ID3D11VideoProcessorInputView> input_view;
+    Check(video_device_->CreateVideoProcessorInputView(
+              source, enumerator_.Get(), &input_description, &input_view),
+          "video-processor-input-view");
+
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC output_view_description = {};
+    output_view_description.ViewDimension = D3D11_VPOV_DIMENSION_TEXTURE2D;
+    output_view_description.Texture2D.MipSlice = 0;
+    ComPtr<ID3D11VideoProcessorOutputView> output_view;
+    Check(video_device_->CreateVideoProcessorOutputView(
+              output.Get(), enumerator_.Get(), &output_view_description,
+              &output_view),
+          "video-processor-output-view");
+
+    RECT source_rect = {0, 0, static_cast<LONG>(width),
+                        static_cast<LONG>(height)};
+    double scale = std::min(static_cast<double>(kWidth) / width,
+                            static_cast<double>(kHeight) / height);
+    LONG target_width = std::max<LONG>(
+        2, static_cast<LONG>(std::llround(width * scale)) & ~1L);
+    LONG target_height = std::max<LONG>(
+        2, static_cast<LONG>(std::llround(height * scale)) & ~1L);
+    target_width = std::min<LONG>(target_width, kWidth);
+    target_height = std::min<LONG>(target_height, kHeight);
+    LONG left = (static_cast<LONG>(kWidth) - target_width) / 2;
+    LONG top = (static_cast<LONG>(kHeight) - target_height) / 2;
+    RECT target_rect = {left, top, left + target_width, top + target_height};
+    RECT output_rect = {0, 0, static_cast<LONG>(kWidth),
+                        static_cast<LONG>(kHeight)};
+
+    D3D11_VIDEO_COLOR background = {};
+    background.RGBA.A = 1.0f;
+    video_context_->VideoProcessorSetOutputBackgroundColor(processor_.Get(),
+                                                            FALSE, &background);
+    video_context_->VideoProcessorSetOutputTargetRect(processor_.Get(), TRUE,
+                                                       &output_rect);
+    video_context_->VideoProcessorSetStreamFrameFormat(
+        processor_.Get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+    video_context_->VideoProcessorSetStreamSourceRect(processor_.Get(), 0,
+                                                       TRUE, &source_rect);
+    video_context_->VideoProcessorSetStreamDestRect(processor_.Get(), 0, TRUE,
+                                                     &target_rect);
+    video_context_->VideoProcessorSetStreamAutoProcessingMode(processor_.Get(),
+                                                              0, FALSE);
+    D3D11_VIDEO_PROCESSOR_STREAM stream = {};
+    stream.Enable = TRUE;
+    stream.pInputSurface = input_view.Get();
+    Check(video_context_->VideoProcessorBlt(processor_.Get(), output_view.Get(),
+                                             0, 1, &stream),
+          "video-processor-blit");
+    return output;
+  }
+
+ private:
+  void Configure(UINT32 width, UINT32 height) {
+    D3D11_VIDEO_PROCESSOR_CONTENT_DESC description = {};
+    description.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+    description.InputFrameRate = {kFrameRate, 1};
+    description.InputWidth = width;
+    description.InputHeight = height;
+    description.OutputFrameRate = {kFrameRate, 1};
+    description.OutputWidth = kWidth;
+    description.OutputHeight = kHeight;
+    description.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+    ComPtr<ID3D11VideoProcessorEnumerator> enumerator;
+    Check(video_device_->CreateVideoProcessorEnumerator(&description,
+                                                         &enumerator),
+          "video-processor-enumerator");
+    ComPtr<ID3D11VideoProcessor> processor;
+    Check(video_device_->CreateVideoProcessor(enumerator.Get(), 0, &processor),
+          "video-processor-create");
+    enumerator_ = std::move(enumerator);
+    processor_ = std::move(processor);
+    input_width_ = width;
+    input_height_ = height;
+  }
+
+  ComPtr<ID3D11Device> device_;
+  ComPtr<ID3D11VideoDevice> video_device_;
+  ComPtr<ID3D11VideoContext> video_context_;
+  ComPtr<ID3D11VideoProcessorEnumerator> enumerator_;
+  ComPtr<ID3D11VideoProcessor> processor_;
+  UINT32 input_width_ = 0;
+  UINT32 input_height_ = 0;
+};
+
+winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice
+CreateCaptureDevice(ID3D11Device* device) {
+  ComPtr<IDXGIDevice> dxgi_device;
+  Check(device->QueryInterface(IID_PPV_ARGS(&dxgi_device)),
+        "capture-dxgi-device");
+  winrt::com_ptr<IInspectable> inspectable;
+  Check(CreateDirect3D11DeviceFromDXGIDevice(dxgi_device.Get(),
+                                             inspectable.put()),
+        "capture-winrt-device");
+  return inspectable.as<
+      winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice>();
+}
+
+winrt::Windows::Graphics::Capture::GraphicsCaptureItem CreateCaptureItem(
+    HWND window) {
+  using winrt::Windows::Graphics::Capture::GraphicsCaptureItem;
+  auto interop = winrt::get_activation_factory<GraphicsCaptureItem,
+                                                IGraphicsCaptureItemInterop>();
+  GraphicsCaptureItem item{nullptr};
+  Check(interop->CreateForWindow(window, winrt::guid_of<GraphicsCaptureItem>(),
+                                 winrt::put_abi(item)),
+        "capture-item-window");
+  return item;
+}
+
+ComPtr<ID3D11Texture2D> CaptureTexture(
+    const winrt::Windows::Graphics::Capture::Direct3D11CaptureFrame& frame) {
+  auto access = frame.Surface().as<
+      ::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
+  ComPtr<ID3D11Texture2D> texture;
+  Check(access->GetInterface(IID_PPV_ARGS(&texture)),
+        "capture-frame-texture");
+  return texture;
+}
+
+std::string JSONString(const std::string& value) {
+  std::string output = "\"";
+  for (unsigned char character : value) {
+    if (character == '\\' || character == '"') {
+      output.push_back('\\');
+      output.push_back(static_cast<char>(character));
+    } else if (character >= 0x20 && character <= 0x7e) {
+      output.push_back(static_cast<char>(character));
+    } else {
+      output.push_back('?');
+    }
+  }
+  output.push_back('"');
+  return output;
+}
+
+bool ConsumeKeyFrameRequest() {
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  DWORD available = 0;
+  if (input == INVALID_HANDLE_VALUE || input == nullptr ||
+      !PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr) ||
+      available == 0) {
+    return false;
+  }
+  std::array<BYTE, 64> bytes{};
+  DWORD read = 0;
+  if (!ReadFile(input, bytes.data(),
+                std::min<DWORD>(available, static_cast<DWORD>(bytes.size())),
+                &read, nullptr)) {
+    return false;
+  }
+  return std::find(bytes.begin(), bytes.begin() + read,
+                   static_cast<BYTE>('K')) != bytes.begin() + read;
+}
+
+UINT64 ParseUint64(const wchar_t* value, const std::string& stage) {
+  try {
+    size_t consumed = 0;
+    unsigned long long parsed = std::stoull(value, &consumed, 10);
+    if (value[consumed] != L'\0' || parsed == 0) {
+      Fail(stage, "value is not a positive bounded integer");
+    }
+    return static_cast<UINT64>(parsed);
+  } catch (const std::exception&) {
+    Fail(stage, "value is not a positive bounded integer");
+  }
+}
+
+struct ProductArguments final {
+  enum class Mode { list, audio, window } mode = Mode::list;
+  DWORD pid = 0;
+  UINT64 creation_time = 0;
+  UINT64 window_handle = 0;
+  UINT adapter_index = 0;
+  UINT mft_index = 0;
+};
+
+ProductArguments ParseProductArguments(int count, wchar_t** values) {
+  ProductArguments arguments;
+  if (count == 2 && std::wstring(values[1]) == L"--list") return arguments;
+  if (count == 4 && std::wstring(values[1]) == L"--capture-audio") {
+    arguments.mode = ProductArguments::Mode::audio;
+  } else if (count == 10 && std::wstring(values[1]) == L"--capture-window" &&
+             std::wstring(values[5]) == L"--adapter-index" &&
+             std::wstring(values[7]) == L"--mft-index" &&
+             std::wstring(values[9]) == L"--protocol-v1") {
+    arguments.mode = ProductArguments::Mode::window;
+    arguments.window_handle = ParseUint64(values[4], "argument-window");
+    arguments.adapter_index = ParseIndex(values[6], "argument-adapter");
+    arguments.mft_index = ParseIndex(values[8], "argument-mft");
+  } else {
+    Fail("arguments", "unsupported or incomplete command-line argument");
+  }
+  UINT64 pid = ParseUint64(values[2], "argument-pid");
+  if (pid > std::numeric_limits<DWORD>::max()) {
+    Fail("argument-pid", "PID is outside the Windows process range");
+  }
+  arguments.pid = static_cast<DWORD>(pid);
+  arguments.creation_time = ParseUint64(values[3], "argument-creation-time");
+  return arguments;
+}
+
+HRESULT RunAudioCapture(const ProductArguments& arguments) {
+  UniqueHandle stop(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+  if (stop.get() == nullptr) return HRESULT_FROM_WIN32(GetLastError());
+  ProtocolWriter writer;
+  return screener::capture::CaptureProcessAudio(
+      arguments.pid, arguments.creation_time, stop.get(),
+      [&writer](UINT64 timestamp100ns, const BYTE* data, DWORD size) {
+        return writer.Write(OutputKind::pcm, 0, timestamp100ns,
+                            screener::capture::kAudioChunkDuration100ns, data,
+                            size);
+      });
+}
+
+void RunWindowCapture(const ProductArguments& arguments) {
+  HRESULT identity = screener::capture::ValidateWindowTarget(
+      arguments.window_handle, arguments.pid, arguments.creation_time);
+  Check(identity, "target-identity");
+
+  std::vector<Adapter> adapters = EnumerateAdapters();
+  const Adapter& adapter = SelectAdapter(adapters, arguments.adapter_index);
+  DeviceContext device = CreateDevice(adapter);
+  ActivationList activations = EnumerateHardwareEncoders(adapter);
+  SelectedTransform selected = ActivateTransform(
+      activations, arguments.mft_index, device.manager.Get());
+  LiveEncoder encoder(std::move(selected));
+  FrameConverter converter(device.device.Get());
+  ProtocolWriter writer;
+
+  using namespace winrt::Windows::Graphics::Capture;
+  using winrt::Windows::Graphics::DirectX::DirectXPixelFormat;
+  if (!GraphicsCaptureSession::IsSupported()) {
+    Fail("capture-support", "Windows Graphics Capture is unavailable");
+  }
+  UniqueHandle process(OpenProcess(SYNCHRONIZE, FALSE, arguments.pid));
+  if (process.get() == nullptr) {
+    Check(HRESULT_FROM_WIN32(GetLastError()), "target-process-handle");
+  }
+  Check(screener::capture::ValidateWindowTarget(
+            arguments.window_handle, arguments.pid, arguments.creation_time),
+        "target-identity-before-capture");
+  HWND window = reinterpret_cast<HWND>(
+      static_cast<UINT_PTR>(arguments.window_handle));
+  auto capture_device = CreateCaptureDevice(device.device.Get());
+  GraphicsCaptureItem item = CreateCaptureItem(window);
+  Check(screener::capture::ValidateWindowTarget(
+            arguments.window_handle, arguments.pid, arguments.creation_time),
+        "target-identity-after-item");
+  auto initial_size = item.Size();
+  if (initial_size.Width <= 0 || initial_size.Height <= 0) {
+    Fail("capture-size", "selected window has no capturable content");
+  }
+  Direct3D11CaptureFramePool pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
+      capture_device, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2,
+      initial_size);
+  GraphicsCaptureSession capture_session = pool.CreateCaptureSession(item);
+
+  UniqueHandle shutdown(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+  UniqueHandle frame_ready(CreateEventW(nullptr, FALSE, FALSE, nullptr));
+  if (shutdown.get() == nullptr || frame_ready.get() == nullptr) {
+    Check(HRESULT_FROM_WIN32(GetLastError()), "capture-events");
+  }
+
+  std::atomic<LONG> audio_result{S_OK};
+  std::atomic<bool> audio_finished{false};
+  std::atomic<bool> item_closed{false};
+  auto frame_token = pool.FrameArrived(
+      [event = frame_ready.get()](const Direct3D11CaptureFramePool&,
+                                  const winrt::Windows::Foundation::IInspectable&) {
+        SetEvent(event);
+      });
+  auto closed_token = item.Closed(
+      [event = shutdown.get(), &item_closed](const GraphicsCaptureItem&,
+                                              const winrt::Windows::Foundation::IInspectable&) {
+        item_closed.store(true);
+        SetEvent(event);
+      });
+  std::thread audio([&]() {
+    HRESULT result = screener::capture::CaptureProcessAudio(
+        arguments.pid, arguments.creation_time, shutdown.get(),
+        [&writer](UINT64 timestamp100ns, const BYTE* data, DWORD size) {
+          return writer.Write(OutputKind::pcm, 0, timestamp100ns,
+                              screener::capture::kAudioChunkDuration100ns,
+                              data, size);
+        });
+    audio_result.store(result);
+    audio_finished.store(true);
+    SetEvent(shutdown.get());
+  });
+
+  auto cleanup = [&]() noexcept {
+    SetEvent(shutdown.get());
+    try {
+      pool.FrameArrived(frame_token);
+    } catch (...) {
+    }
+    try {
+      item.Closed(closed_token);
+    } catch (...) {
+    }
+    try {
+      capture_session.Close();
+    } catch (...) {
+    }
+    try {
+      pool.Close();
+    } catch (...) {
+    }
+    if (audio.joinable()) audio.join();
+  };
+
+  try {
+    std::ostringstream starting;
+    starting << "{\"state\":\"starting\",\"hardwareOnly\":true,"
+             << "\"adapterIndex\":" << adapter.index
+             << ",\"adapterName\":"
+             << JSONString(NarrowAscii(adapter.description.Description))
+             << ",\"adapterLuid\":"
+             << JSONString(LuidString(adapter.description.AdapterLuid))
+             << ",\"mftIndex\":" << arguments.mft_index
+             << ",\"mftName\":"
+             << JSONString(encoder.selected().name)
+             << ",\"mftClsid\":"
+             << JSONString(encoder.selected().clsid) << '}';
+    Check(writer.WriteStatus(starting.str()), "capture-status-starting");
+    capture_session.StartCapture();
+
+    UINT64 previous_timestamp = 0;
+    UINT64 encoded_frames = 0;
+    bool active_status_written = false;
+    auto pool_size = initial_size;
+    const HANDLE waits[] = {process.get(), shutdown.get(), frame_ready.get()};
+    for (;;) {
+      DWORD wait = WaitForMultipleObjects(3, waits, FALSE, 5'000);
+      if (wait == WAIT_OBJECT_0) {
+        Fail("target-exited", "selected target process exited");
+      }
+      if (wait == WAIT_OBJECT_0 + 1) {
+        if (item_closed.load()) {
+          Fail("capture-closed", "selected window stopped capture");
+        }
+        HRESULT result = static_cast<HRESULT>(audio_result.load());
+        if (audio_finished.load() && result != HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+          throw GateFailure("process-audio", "target process audio stopped",
+                            result);
+        }
+        Fail("capture-stopped", "window capture stopped");
+      }
+      if (wait == WAIT_TIMEOUT) {
+        Fail("capture-frame-timeout", "selected window produced no frame in five seconds");
+      }
+      if (wait != WAIT_OBJECT_0 + 2) {
+        Check(HRESULT_FROM_WIN32(GetLastError()), "capture-wait");
+      }
+
+      Direct3D11CaptureFrame latest{nullptr};
+      for (;;) {
+        Direct3D11CaptureFrame next = pool.TryGetNextFrame();
+        if (!next) break;
+        latest = std::move(next);
+      }
+      if (!latest) continue;
+      INT64 signed_timestamp = latest.SystemRelativeTime().count();
+      if (signed_timestamp <= 0) {
+        Fail("capture-timestamp", "captured frame has no QPC timestamp");
+      }
+      UINT64 timestamp = static_cast<UINT64>(signed_timestamp);
+      if (previous_timestamp != 0 && timestamp <= previous_timestamp) continue;
+      if (previous_timestamp != 0 &&
+          timestamp - previous_timestamp <
+              static_cast<UINT64>(kFrameDuration100ns) * 19 / 20) {
+        continue;
+      }
+      auto content_size = latest.ContentSize();
+      if (content_size.Width <= 0 || content_size.Height <= 0) continue;
+      if (content_size.Width != pool_size.Width ||
+          content_size.Height != pool_size.Height) {
+        latest.Close();
+        latest = nullptr;
+        pool.Recreate(capture_device,
+                      DirectXPixelFormat::B8G8R8A8UIntNormalized, 2,
+                      content_size);
+        pool_size = content_size;
+        continue;
+      }
+      ComPtr<ID3D11Texture2D> source = CaptureTexture(latest);
+      D3D11_TEXTURE2D_DESC source_description = {};
+      source->GetDesc(&source_description);
+      UINT32 content_width = std::min<UINT32>(
+          source_description.Width, static_cast<UINT32>(content_size.Width));
+      UINT32 content_height = std::min<UINT32>(
+          source_description.Height, static_cast<UINT32>(content_size.Height));
+      ComPtr<ID3D11Texture2D> nv12 = converter.Convert(
+          source.Get(), content_width, content_height);
+      bool requested_key_frame = ConsumeKeyFrameRequest();
+      bool key_frame = encoded_frames == 0 || encoded_frames % kGopFrames == 0 ||
+                       requested_key_frame;
+      EncodedAccessUnit access_unit = encoder.Encode(nv12.Get(), timestamp,
+                                                      key_frame);
+      if (access_unit.bytes.size() > kMaxProductAccessUnitBytes) {
+        Fail("output-buffer-bounds", "live H264 access unit exceeded one MiB");
+      }
+      UINT64 wire_timestamp = (access_unit.timestamp100ns / 10) * 10;
+      Check(writer.Write(OutputKind::h264, access_unit.key_frame ? 1 : 0,
+                         wire_timestamp, kEnvelopeFrameDuration100ns,
+                         access_unit.bytes.data(),
+                         static_cast<DWORD>(access_unit.bytes.size())),
+            "capture-video-output");
+      previous_timestamp = timestamp;
+      ++encoded_frames;
+      if (!active_status_written) {
+        std::string active =
+            "{\"state\":\"active\",\"hardwareOnly\":true,"
+            "\"profileLevelId\":\"42c01f\",\"width\":1280,"
+            "\"height\":720,\"fps\":30}";
+        Check(writer.WriteStatus(active), "capture-status-active");
+        active_status_written = true;
+      }
+    }
+  } catch (...) {
+    cleanup();
+    throw;
+  }
+}
+#endif
+
+#ifdef SCREENER_H264_FIXTURE
 struct Arguments final {
   bool list = false;
   std::optional<UINT> adapter_index;
@@ -1236,9 +1974,11 @@ void PrintEvidence(const Adapter& adapter, UINT mft_index,
             << "videoencode_mean_percent=" << mean_video_encode << '\n'
             << "videoencode_max_percent=" << max_video_encode << '\n';
 }
+#endif
 
 }  // namespace
 
+#ifdef SCREENER_H264_FIXTURE
 int wmain(int argc, wchar_t** argv) {
   try {
     Arguments arguments = ParseArguments(argc, argv);
@@ -1288,3 +2028,39 @@ int wmain(int argc, wchar_t** argv) {
     return 3;
   }
 }
+#endif
+
+#ifndef SCREENER_H264_FIXTURE
+int wmain(int argc, wchar_t** argv) {
+  try {
+    ProductArguments arguments = ParseProductArguments(argc, argv);
+    if (arguments.mode == ProductArguments::Mode::list) {
+      return screener::capture::WriteWindowList();
+    }
+    if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+      Fail("stdout-binary", "could not switch stdout to binary mode");
+    }
+    if (arguments.mode == ProductArguments::Mode::audio) {
+      Check(RunAudioCapture(arguments), "process-audio-capture");
+      return 0;
+    }
+    Runtime runtime;
+    RunWindowCapture(arguments);
+    return 0;
+  } catch (const GateFailure& error) {
+    std::cerr << "result=window-capture-failed\n"
+              << "stage=" << error.stage() << '\n'
+              << "detail=" << error.what() << '\n';
+    if (FAILED(error.result())) {
+      std::cerr << "hresult=0x" << std::hex << std::setfill('0')
+                << std::setw(8) << static_cast<UINT32>(error.result()) << '\n';
+    }
+    return 2;
+  } catch (const std::exception& error) {
+    std::cerr << "result=window-capture-failed\n"
+              << "stage=unclassified\n"
+              << "detail=" << error.what() << '\n';
+    return 3;
+  }
+}
+#endif

@@ -17,7 +17,12 @@ import {
   type SenderIdentityEvidence,
   type ViewerIdentityEvidence,
 } from "../scripts/native-one-viewer-gate-core";
-import { profileCleanupScript, senderProbe } from "../scripts/native-one-viewer-gate";
+import {
+  animatedSourceUrl,
+  parseGateMode,
+  profileCleanupScript,
+  senderProbe,
+} from "../scripts/native-one-viewer-gate";
 
 const viewer: ViewerIdentityEvidence = {
   socketCount: 1, socketOrdinal: 1, authGeneration: 1,
@@ -33,6 +38,9 @@ const clean: CleanupResult = {
 };
 
 interface BridgeProbeSnapshot {
+  nativeHardwareStarting: boolean;
+  nativeHardwareActive: boolean;
+  nativeAdapterLuid: string | null;
   bridgeGeneration: number;
   binarySendAttempts: number;
   binarySendSucceeded: number;
@@ -41,6 +49,8 @@ interface BridgeProbeSnapshot {
   postSendDiagnosticsObserved: boolean;
   postSendDiagnosticsSequence: number;
   fatalEvents: number;
+  encoderInstances: number;
+  config: { codec: string; videoSource: string } | null;
 }
 
 class ProbeWebSocket {
@@ -79,6 +89,40 @@ function bridgeProbeContext(): {
 }
 
 describe("native one-viewer gate invariants", () => {
+  it("selects the explicit native H.264 source without changing its RTP codec", () => {
+    expect(parseGateMode("native-h264")).toBe("native-h264");
+    expect(parseGateMode("h264")).toBe("h264");
+    expect(parseGateMode("unsupported")).toBe("vp8");
+  });
+
+  it("keeps the fixed native target title and an audible process-tree source", () => {
+    const source = decodeURIComponent(animatedSourceUrl());
+    expect(source).toContain("<title>Native Gate Source</title>");
+    expect(source).toContain("createOscillator()");
+  });
+
+  it("retains the exact native hardware lifecycle without creating a browser encoder", () => {
+    const probe = bridgeProbeContext();
+    const socket = new probe.WebSocket("ws://127.0.0.1/media");
+    socket.send(JSON.stringify({ kind: "config", codec: "h264", videoSource: "native-window-h264",
+      width: 1280, height: 720, fps: 30, bitrate: 3_000_000, encoderInstances: 1 }));
+    socket.emitMessage(JSON.stringify({ kind: "native-video-state", status: {
+      state: "starting", hardwareOnly: true, adapterIndex: 0, adapterName: "GPU",
+      adapterLuid: "0:1", mftIndex: 0, mftName: "Hardware H264", mftClsid: "clsid",
+    } }));
+    socket.emitMessage(JSON.stringify({ kind: "native-video-state", status: {
+      state: "active", hardwareOnly: true, profileLevelId: "42c01f",
+      width: 1280, height: 720, fps: 30,
+    } }));
+    expect(probe.snapshot()).toMatchObject({
+      nativeHardwareStarting: true,
+      nativeHardwareActive: true,
+      nativeAdapterLuid: "0:1",
+      encoderInstances: 0,
+      config: { codec: "h264", videoSource: "native-window-h264" },
+    });
+  });
+
   it("rejects cumulative evidence from a rebuilt Viewer PC", () => {
     const baseline = captureOneViewerIdentity(viewer, sender);
     expect(baseline).not.toBeNull();

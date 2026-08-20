@@ -1,8 +1,10 @@
 # Media Foundation H.264 Hardware Fixture
 
-This is an offline Windows-only decision fixture. It is not linked into the
-Screener sender and does not contact a room, signaling service, Viewer, or
-production endpoint.
+This is an offline Windows-only decision fixture. Its build compiles the same
+Media Foundation encoder source used by `native/window-capture-helper`, under a
+fixture-only macro for synthetic input and telemetry. The generated fixture is
+not linked into the sender and does not contact a room, signaling service,
+Viewer, or production endpoint.
 
 The fixture selects one DXGI adapter and one adapter-bound Media Foundation
 transform. It never enumerates a software MFT and has no codec or software
@@ -36,10 +38,9 @@ The fixture prints bounded key/value evidence to stdout and never writes the
 encoded bitstream. A nonzero exit is a measured no-go at the reported stage;
 it must not be worked around by adding a software retry.
 
-The Pion/two-binding and browser decode boundary remains separate. The current
-machine has no Go toolchain in `PATH`, and the existing product bridge is still
-no-go before first Go RTP. Coupling either boundary into this encoder fixture
-would hide which layer failed.
+Pion transport and browser decode remain separate from this offline fixture;
+the product path reuses its exact `42c01f`, Annex-B, adapter-bound hardware
+contract without adding those network concerns to this executable.
 
 Primary API references, accessed 2026-08-20:
 

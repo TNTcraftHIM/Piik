@@ -22,6 +22,7 @@
         </div>
         <div class="preview-shell">
           <video id="preview" autoplay muted playsinline></video>
+          <canvas id="native-preview" width="1280" height="720" hidden></canvas>
           <div id="empty-state" class="empty-state">选择屏幕后，邀请链接会显示在这里</div>
         </div>
         <div id="invite" class="invite" hidden>
@@ -43,16 +44,17 @@
           <select id="codec">
             <option value="vp8">VP8 (default)</option>
             <option value="h264">H.264 (hardware preference)</option>
+            <option value="native-h264">H.264 (native window hardware)</option>
           </select>
         </label>
         <label>
-          <span>目标进程音频</span>
+          <span>目标窗口</span>
           <span class="select-row">
-            <select id="audio-target"><option value="">关闭</option></select>
-            <button id="refresh-audio" class="icon-button" type="button" title="刷新窗口列表" aria-label="刷新窗口列表">↻</button>
+            <select id="window-target"><option value="">关闭窗口音频</option></select>
+            <button id="refresh-windows" class="icon-button" type="button" title="刷新窗口列表" aria-label="刷新窗口列表">↻</button>
           </span>
         </label>
-        <p class="audio-note">请在浏览器画面选择器中选择同一目标。音频只包含所选进程树，失败时不会改用系统混音。</p>
+        <p class="audio-note">浏览器画面模式下请在系统选择器中选择同一窗口。原生模式直接采集这里选择的窗口；音频只包含其进程树，失败时不会改用系统混音。</p>
         <button id="start" class="button primary" type="button">开始分享</button>
         <p id="error" class="error" role="alert"></p>
         <details>
