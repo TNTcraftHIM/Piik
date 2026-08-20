@@ -140,12 +140,14 @@ class RemoteSession(
         when (event) {
             is ServerEvent.Authenticated -> {
                 iceConfig = event.iceConfig
-                if (event.routeAssignment == null || event.routeRevision == null) {
+                val assignment = event.routeAssignment
+                val revision = event.routeRevision
+                if (assignment == null || revision == null) {
                     fatal("This sender requires peer-assisted media")
                     return
                 }
                 socket?.send(Wire.qualitySettings())
-                apply(route.authoritative(event.peerId, event.routeRevision, event.routeAssignment))
+                apply(route.authoritative(event.peerId, revision, assignment))
                 events.onStatus("Connected; ${peers.size} viewer edge(s)")
             }
             is ServerEvent.RouteUpdate -> apply(route.update(event))
