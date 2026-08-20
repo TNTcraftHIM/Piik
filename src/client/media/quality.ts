@@ -152,12 +152,14 @@ export async function applyCaptureProfile(
   await videoTrack.applyConstraints(captureConstraints(profile));
 }
 
-export function setVideoPaused(stream: MediaStream, paused: boolean): boolean {
+export function setMediaPaused(stream: MediaStream, paused: boolean): boolean {
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
     return false;
   }
-  videoTrack.enabled = !paused;
+  for (const track of stream.getTracks()) {
+    track.enabled = !paused;
+  }
   return true;
 }
 

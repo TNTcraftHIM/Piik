@@ -8,7 +8,7 @@ import {
   QUALITY_PROFILES,
   screenShareLowBitrate,
   senderParameterWarning,
-  setVideoPaused,
+  setMediaPaused,
 } from "../src/client/media/quality.ts";
 
 function createVideoStream() {
@@ -18,12 +18,15 @@ function createVideoStream() {
     applyConstraints: vi.fn(async () => undefined),
     getSettings: () => ({ width: 1920, height: 1080, frameRate: 60 }),
   } as unknown as MediaStreamTrack;
+  const audioTrack = {
+    enabled: true,
+  } as unknown as MediaStreamTrack;
   const stream = {
-    getTracks: () => [videoTrack],
+    getTracks: () => [videoTrack, audioTrack],
     getVideoTracks: () => [videoTrack],
-    getAudioTracks: () => [],
+    getAudioTracks: () => [audioTrack],
   } as unknown as MediaStream;
-  return { stream, videoTrack };
+  return { stream, videoTrack, audioTrack };
 }
 
 afterEach(() => {
@@ -304,12 +307,14 @@ describe("realtime quality controls", () => {
     ).rejects.toThrow(message);
   });
 
-  it("pauses only the video track and can resume it", () => {
-    const { stream, videoTrack } = createVideoStream();
+  it("pauses and resumes the shared video and audio tracks together", () => {
+    const { stream, videoTrack, audioTrack } = createVideoStream();
 
-    expect(setVideoPaused(stream, true)).toBe(true);
+    expect(setMediaPaused(stream, true)).toBe(true);
     expect(videoTrack.enabled).toBe(false);
-    expect(setVideoPaused(stream, false)).toBe(true);
+    expect(audioTrack.enabled).toBe(false);
+    expect(setMediaPaused(stream, false)).toBe(true);
     expect(videoTrack.enabled).toBe(true);
+    expect(audioTrack.enabled).toBe(true);
   });
 });

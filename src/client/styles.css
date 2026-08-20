@@ -960,6 +960,10 @@ h3 {
   margin: 8px 0 12px;
 }
 
+.viewer-name-control.is-editing {
+  grid-template-columns: auto minmax(0, 1fr) 40px 40px;
+}
+
 .viewer-name-control label {
   color: var(--muted);
   font-size: 12px;
@@ -980,6 +984,16 @@ h3 {
 
 .viewer-name-control input:focus {
   border-color: var(--green);
+}
+
+.viewer-name-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .viewer-name-error {

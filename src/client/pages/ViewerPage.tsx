@@ -2,12 +2,14 @@ import {
   KeyRound,
   LoaderCircle,
   Maximize2,
+  Pencil,
   Play,
   RefreshCw,
   Save,
   VideoOff,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -101,6 +103,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [displayName, setDisplayName] = useState(() => readDisplayName());
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [hostPresence, setHostPresence] = useState<Extract<
     ParticipantPresenceEntry,
     { role: "host" }
@@ -977,6 +980,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     setDisplayName(saved);
     setDisplayNameDraft(saved);
     setDisplayNameError(null);
+    setEditingDisplayName(false);
     signalRef.current?.setViewerDisplayName(saved);
   }
 
@@ -1061,7 +1065,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         <div className="viewer-title-row">
           <div>
             <div className="title-line">
-              <h1>好友屏幕</h1>
+              <h1>
+                {hostPresence ? `${hostPresence.displayName} 的屏幕` : "好友屏幕"}
+              </h1>
               <RoomCode roomId={roomId} />
             </div>
           </div>
@@ -1073,41 +1079,76 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           </div>
         </div>
 
-        {hostPresence && (
-          <p className="section-meta viewer-host-name">
-            {hostPresence.displayName} 的屏幕
-          </p>
-        )}
-
         <form
-          className="viewer-name-control"
+          className={`viewer-name-control${
+            editingDisplayName ? " is-editing" : ""
+          }`}
           onSubmit={(event) => {
             event.preventDefault();
             commitDisplayName();
           }}
         >
-          <label htmlFor="viewer-display-name">显示名</label>
-          <input
-            id="viewer-display-name"
-            type="text"
-            value={displayNameDraft}
-            maxLength={96}
-            autoComplete="nickname"
-            aria-invalid={displayNameError ? "true" : undefined}
-            onChange={(event) => {
-              setDisplayNameDraft(event.target.value);
-              setDisplayNameError(null);
-            }}
-          />
-          <button
-            type="submit"
-            className="icon-button"
-            title="保存显示名"
-            aria-label="保存显示名"
-            disabled={displayNameDraft === displayName}
+          <label
+            htmlFor={editingDisplayName ? "viewer-display-name" : undefined}
           >
-            <Save size={17} />
-          </button>
+            显示名
+          </label>
+          {editingDisplayName ? (
+            <>
+              <input
+                id="viewer-display-name"
+                type="text"
+                value={displayNameDraft}
+                maxLength={96}
+                autoComplete="nickname"
+                autoFocus
+                aria-invalid={displayNameError ? "true" : undefined}
+                onChange={(event) => {
+                  setDisplayNameDraft(event.target.value);
+                  setDisplayNameError(null);
+                }}
+              />
+              <button
+                type="submit"
+                className="icon-button"
+                title="保存显示名"
+                aria-label="保存显示名"
+                disabled={displayNameDraft === displayName}
+              >
+                <Save size={17} />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                title="取消编辑"
+                aria-label="取消编辑显示名"
+                onClick={() => {
+                  setDisplayNameDraft(displayName);
+                  setDisplayNameError(null);
+                  setEditingDisplayName(false);
+                }}
+              >
+                <X size={17} />
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="viewer-name-value">{displayName}</span>
+              <button
+                type="button"
+                className="icon-button"
+                title="编辑显示名"
+                aria-label="编辑显示名"
+                onClick={() => {
+                  setDisplayNameDraft(displayName);
+                  setDisplayNameError(null);
+                  setEditingDisplayName(true);
+                }}
+              >
+                <Pencil size={17} />
+              </button>
+            </>
+          )}
           {displayNameError && (
             <span className="viewer-name-error" role="alert">
               {displayNameError}
