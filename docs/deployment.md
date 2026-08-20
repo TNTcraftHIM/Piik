@@ -14,12 +14,12 @@ current controller's automatic final media fallback. This capacity is dormant un
 the peer-assisted experiment, or required STUN discovery. It is configured with
 ICE/UDP only; the candidate has no ordinary TURN or media-TCP configuration.
 
-Production `89e6d7649169` runs this candidate for exact room `1` on the existing
-shared public IP. The immediate `bbe4654a7a9b` code rollback uses the current v2
-database and `HOST_ADMISSION_PASSWORD` environment. Only the deeper pre-access
-`9610032fc5f5` rollback may restore the matching v1 database and old environment.
-Coturn relay also remains rollback-only. This is a bounded production smoke, not
-clean-port or broad-rollout acceptance; the media procedures below still apply.
+Production `d4bc421828c4` runs this candidate for exact room `1` on the existing
+shared public IP. Immediate rollback to `05f98d10ecd1` uses the current v2
+database and environment. Rolling back the admission-policy cutover requires
+`89e6d7649169` plus the environment backup recorded below; only deeper
+pre-access `9610032fc5f5` may restore matching v1 state. Coturn relay remains
+rollback-only. This is a bounded smoke, not broad-rollout acceptance.
 
 ## Topology and prerequisites
 
@@ -285,6 +285,43 @@ room `1`, and environment, nginx, and LiveKit state were unchanged. At 09:37 a
 bare `systemctl is-active` treated the expected stopped state as an error under
 strict shell and caused an immediate healthy rollback; no new application had
 failed. The later explicit `ActiveState` sequence completed successfully.
+
+The admission-policy and anonymous-entry cutover deployed between
+2026-08-20 11:13:42 and 11:13:43 +08 on exact
+`05f98d10ecd174427fc969f3ba2d510f12c74eb3`; its artifact SHA-256 is
+`FF938E8D59428F08B3F162DEA6DCF842A4705A94D3153967814CCE9AD6CBD94D`.
+The full gate passed 25 test files/369 tests before the atomic code/environment
+switch. Health and the built asset returned 200; SQLite v2 with four rooms
+including room `1` and zero Screener/LiveKit restarts were preserved. Chrome
+kept all four anonymous entry routes neutral until authorization; the current admission key returned 200,
+while the former and an incorrect key returned 401. Rolling this cutover back
+requires exact `89e6d7649169` together with its environment backup at
+`/etc/screener/backups/05f98d10-precutover-20260820T110654+0800`.
+
+One failed validation assertion printed the stateless admission cookie only in
+the operator's private test output. It did not enter the repository, service
+logs, shell history, release artifact, browser profile, or temporary files. No
+value is retained here; the cookie has no server-side state and expires within
+12 hours.
+
+Local quality reparenting deployed between 2026-08-20 11:41:22 and 11:41:23
++08 on exact `d4bc421828c4b74f55195723aace290ffc0e5f9d`; its artifact SHA-256 is
+`3F8CF25F8D989CBDF38DBBCAC4A261C349E44B72D274A944B877540056171A08`.
+The immutable release is `/opt/screener/releases/d4bc421828c4`, its upload is
+`/opt/screener/uploads/screener-d4bc421828c4.tar.gz`, and the pre-switch target
+record is `/opt/screener/backups/current-before-d4bc421828c4.txt`.
+The gate passed 25 test files/378 tests, typecheck and both builds. The 760ms
+code-only switch kept health and `index-YdNLg2E8.js` at 200, SQLite integrity
+and four rooms including room `1`, Screener/LiveKit restarts at 0/0, and
+environment/nginx/LiveKit hashes unchanged. Its immediate rollback is
+`05f98d10ecd1` with the same environment and SQLite v2. A pre-cutover inode gate
+caught two internal esbuild hard links; hash-equal copy replacement broke them
+before the switch, so no running or rollback release was affected.
+At 11:44:15 +08 Screener and LiveKit were still active/running with zero restarts,
+used 39,198,720 and 79,269,888 bytes, and had no error-priority journal entries
+or cgroup high/max/OOM events; host available memory was 373,469,184 bytes.
+No quality/reparent log or real-room trigger appeared, so this verifies the
+deployed code and containment, not reparenting behavior.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
