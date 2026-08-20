@@ -577,9 +577,11 @@ export class HostSfuRoute {
     }
     if (phase === "prepare") {
       if (matchesPlannedRoute || wasActive) {
-        // Selected-edge ingress is only issued for an active SFU route.
-        // Prepare failures retain the existing null connection contract.
-        this.routeFailed(revision, "prepare", null);
+        this.routeFailed(
+          revision,
+          "prepare",
+          slot.selectedEdgeTurn ? slot.connectionId : null,
+        );
       }
       return;
     }
