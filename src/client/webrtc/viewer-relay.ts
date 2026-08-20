@@ -1,4 +1,8 @@
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import type {
+  IceConfig,
+  ServerMessage,
+  SignalPayload,
+} from "../../shared/protocol";
 import type { QualityProfile } from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
@@ -7,12 +11,15 @@ interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
 }
+type SelectedEdgeTurn = Extract<ServerMessage, { type: "selected-edge-turn" }>;
 
 export class ViewerRelay {
   private childPeerId: string | null = null;
   private stream: MediaStream | null = null;
   private peer: HostPeer | null = null;
   private snapshot: PeerSnapshot | null = null;
+  private retiredConnection: { peerId: string; connectionId: string } | null =
+    null;
   private syncQueue = Promise.resolve();
   private disposed = false;
 
@@ -26,6 +33,27 @@ export class ViewerRelay {
     return this.snapshot
       ? { ...this.snapshot, metrics: { ...this.snapshot.metrics } }
       : null;
+  }
+
+  startSelectedEdgeTurn(
+    message: SelectedEdgeTurn,
+  ): boolean {
+    const stream = this.stream;
+    const connection = this.peer
+      ? { peerId: this.peer.peerId, connectionId: this.peer.connectionId }
+      : this.retiredConnection;
+    if (
+      this.disposed ||
+      !stream ||
+      connection?.peerId !== message.viewerPeerId ||
+      connection.connectionId !== message.oldConnectionId
+    ) {
+      return false;
+    }
+    this.disposePeer();
+    this.childPeerId = message.viewerPeerId;
+    this.startPeer(message.viewerPeerId, stream, 0, message);
+    return true;
   }
 
   setChild(childPeerId: string | null): void {
@@ -178,6 +206,7 @@ export class ViewerRelay {
     childPeerId: string,
     stream: MediaStream,
     attempt = 0,
+    selectedTurn?: SelectedEdgeTurn,
   ): void {
     if (
       this.disposed ||
@@ -191,7 +220,9 @@ export class ViewerRelay {
     let peer: HostPeer;
     peer = new HostPeer(
       childPeerId,
-      this.iceConfig,
+      selectedTurn
+        ? { iceServers: [selectedTurn.iceServer] }
+        : this.iceConfig,
       stream,
       this.desiredProfile,
       {
@@ -209,6 +240,10 @@ export class ViewerRelay {
             snapshot.peerId === childPeerId &&
             snapshot.connectionId === peer.connectionId
           ) {
+            if (selectedTurn && snapshot.connectionState === "failed") {
+              this.disposePeer();
+              return;
+            }
             this.snapshot = {
               ...snapshot,
               metrics: { ...snapshot.metrics },
@@ -217,6 +252,8 @@ export class ViewerRelay {
           }
         },
       },
+      selectedTurn !== undefined,
+      selectedTurn?.newConnectionId,
     );
     this.peer = peer;
     void peer
@@ -228,6 +265,7 @@ export class ViewerRelay {
         }
         this.disposePeer();
         if (
+          !selectedTurn &&
           attempt < 1 &&
           !this.disposed &&
           this.stream === stream &&
@@ -242,6 +280,12 @@ export class ViewerRelay {
 
   private disposePeer(): void {
     const peer = this.peer;
+    if (peer) {
+      this.retiredConnection = {
+        peerId: peer.peerId,
+        connectionId: peer.connectionId,
+      };
+    }
     this.peer = null;
     this.snapshot = null;
     this.events.onUpdate?.(null);

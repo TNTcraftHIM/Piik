@@ -37,6 +37,7 @@ and is not part of production.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Native remains no-go: fixed VP8, one encoder and a generation-1 binary send returned; no later diagnostics arrived, a sanitized fatal marker was retained, and the media zeros are initial values rather than Go reports. No Viewer was created, cleanup passed 5/5, and no product root cause is proven.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
+- Selected-edge typecheck and 131 focused control tests pass; no TURN allocation/media evidence exists.
 
 ## Unverified Boundaries
 
@@ -64,11 +65,9 @@ evacuation. Native stopped after one binary send return: no later diagnostics,
 a retained fatal marker, and uninterpretable media zeros. Classify this boundary
 before any new run.
 Audio A/B/C may proceed without displacing P0.
-Ordinary Peer ICE stays STUN-only. Participant-wide TURN source and wire are
-removed; stale `PEER_ICE_TURN_*` keys fail startup even blank. Selected-edge TURN
-is unimplemented and undeployed. After SFU/UDP, bind one selected parent/child
-rebuild to current generations before one forced-relay canary; do not repeat the
-built-in direct canary.
+Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. Selected-edge
+is source-complete/default-off/undeployed. Next run one isolated forced-relay
+canary; retained performance/resource benchmarks follow functional landing.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate

@@ -86,6 +86,7 @@ type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
 >;
+type SelectedEdgeTurn = Extract<ServerMessage, { type: "selected-edge-turn" }>;
 
 interface CaptureDetails {
   resolution: string;
@@ -206,6 +207,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const signalRef = useRef<SignalingClient | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
+  const retiredConnectionsRef = useRef(new Map<string, string>());
+  const hostPeerIdRef = useRef<string | null>(null);
   const viewerQualityEvidenceRef = useRef(
     new Map<string, ViewerQualityEvidence>(),
   );
@@ -266,6 +269,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
+      retiredConnectionsRef.current.clear();
+      hostPeerIdRef.current = null;
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
         window.clearTimeout(timer),
       );
@@ -367,6 +372,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     shareGenerationRef.current = null;
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
+    retiredConnectionsRef.current.clear();
+    hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
     sfuStandbyPrewarmerRef.current?.setUrl(null);
@@ -628,7 +635,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function removePeer(peerId: string): void {
     clearViewerQualityEvidence(peerId);
     parentEdgeQualityEvidenceReporterRef.current.forget(peerId);
-    peersRef.current.get(peerId)?.dispose();
+    const peer = peersRef.current.get(peerId);
+    if (peer) {
+      retiredConnectionsRef.current.set(peerId, peer.connectionId);
+      peer.dispose();
+    }
     peersRef.current.delete(peerId);
     setPeerSnapshots((current) => {
       const next = new Map(current);
@@ -641,6 +652,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peerId: string,
     generation: number,
     attempt = 0,
+    selectedTurn?: SelectedEdgeTurn,
   ): Promise<void> {
     if (!isCurrentGeneration(generation)) {
       return;
@@ -649,7 +661,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     // negotiation whose offer or answer may have been lost with the WebSocket.
     const existing = peersRef.current.get(peerId);
     if (existing) {
-      if (existing.isConnected()) {
+      if (!selectedTurn && existing.isConnected()) {
         return;
       }
       removePeer(peerId);
@@ -664,7 +676,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let peer: HostPeer;
     peer = new HostPeer(
       peerId,
-      iceConfig,
+      selectedTurn ? { iceServers: [selectedTurn.iceServer] } : iceConfig,
       activeStream,
       qualitySettingsRef.current,
       {
@@ -677,10 +689,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             isCurrentGeneration(generation) &&
             peersRef.current.get(peerId) === peer
           ) {
+            if (selectedTurn && snapshot.connectionState === "failed") {
+              removePeer(peerId);
+              return;
+            }
             updatePeerSnapshot(snapshot);
           }
         },
       },
+      selectedTurn !== undefined,
+      selectedTurn?.newConnectionId,
     );
     peersRef.current.set(peerId, peer);
     let started: boolean;
@@ -697,7 +715,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
 
     removePeer(peerId);
-    if (!isCurrentGeneration(generation) || attempt >= 1) {
+    if (selectedTurn || !isCurrentGeneration(generation) || attempt >= 1) {
       return;
     }
     window.setTimeout(() => {
@@ -781,6 +799,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      hostPeerIdRef.current = message.peerId;
       setViewerAccessUpdating(false);
       clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
@@ -826,6 +845,25 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         if (!currentViewerIds.has(peerId)) {
           removePeer(peerId);
         }
+      }
+      return;
+    }
+    if (message.type === "selected-edge-turn") {
+      const current = peersRef.current.get(message.viewerPeerId);
+      const oldConnectionId =
+        current?.connectionId ??
+        retiredConnectionsRef.current.get(message.viewerPeerId);
+      if (
+        peerAssistedRef.current &&
+        message.parentPeerId === hostPeerIdRef.current &&
+        message.revision === activeRouteRevisionRef.current &&
+        Date.parse(message.expiresAt) > Date.now() &&
+        oldConnectionId === message.oldConnectionId
+      ) {
+        if (current) {
+          removePeer(message.viewerPeerId);
+        }
+        void startPeer(message.viewerPeerId, generation, 0, message);
       }
       return;
     }

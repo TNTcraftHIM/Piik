@@ -14,6 +14,53 @@ describe("server configuration", () => {
     expect(config.peerAssistedMedia).toBe(false);
     expect(config.peerAssistedRoomIds).toBeUndefined();
     expect(config.livekitFallback).toBeUndefined();
+    expect(config.selectedEdgeTurn).toBeUndefined();
+  });
+
+  it("enables selected-edge TURN only from its complete post-SFU tuple", () => {
+    const base = {
+      PEER_ASSISTED_MEDIA: "true",
+      PEER_ASSISTED_ROOM_IDS: "1",
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "s".repeat(32),
+    };
+    const turn = {
+      SELECTED_EDGE_TURN_URLS: "turn:turn.test:3478?transport=udp",
+      SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
+      SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
+    };
+    expect(loadConfig({ ...base, ...turn }).selectedEdgeTurn).toEqual({
+      urls: [turn.SELECTED_EDGE_TURN_URLS],
+      sharedSecret: turn.SELECTED_EDGE_TURN_SHARED_SECRET,
+      credentialTtlSeconds: 120,
+    });
+    expect(loadConfig({ ...base, ...turn }).stunUrls).toEqual([]);
+    for (const name of Object.keys(turn)) {
+      const partial = { ...base, ...turn };
+      delete partial[name as keyof typeof partial];
+      expect(() => loadConfig(partial)).toThrow("must be configured together");
+    }
+  });
+
+  it.each([
+    "turn:turn.test:3478",
+    "turns:turn.test:5349?transport=udp",
+    "turn:user@turn.test:3478?transport=udp",
+    "turn:turn.test:3478?transport=tcp",
+  ])("rejects a non-canonical selected-edge TURN URL: %s", (url) => {
+    expect(() =>
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: "1",
+        LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+        SELECTED_EDGE_TURN_URLS: url,
+        SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
+        SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
+      }),
+    ).toThrow("one UDP TURN URL");
   });
 
   it("enables LiveKit fallback only for a complete credential tuple", () => {
@@ -151,7 +198,7 @@ describe("server configuration", () => {
     },
   ])("rejects reused infrastructure secrets", (environment) => {
     expect(() => loadConfig(environment)).toThrow(
-      "HOST_ADMISSION_PASSWORD, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
+      "must use independent values",
     );
   });
 

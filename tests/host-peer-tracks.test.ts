@@ -819,6 +819,50 @@ describe("HostPeer source replacement", () => {
 });
 
 describe("ViewerRelay downstream ownership", () => {
+  it("rebuilds a retired child as one relay-only selected edge", async () => {
+    const sendSignal = vi.fn(() => true);
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal },
+    );
+    relay.setChild("selected-child");
+    relay.setStream(createStream(createTrack("video", "selected-video"), null));
+    await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledOnce());
+    const oldConnectionId = relay.getSnapshot()!.connectionId;
+    relay.setChild(null);
+    sendSignal.mockClear();
+    const iceServer = {
+      urls: ["turn:turn.example.test:3478?transport=udp"],
+      username: "1787230000:opaque_identity_12345678",
+      credential: "short-lived-credential",
+    };
+
+    expect(relay.startSelectedEdgeTurn({
+      type: "selected-edge-turn",
+      revision: 7,
+      parentPeerId: "selected-parent",
+      viewerPeerId: "selected-child",
+      oldConnectionId,
+      newConnectionId: "selected-connection-new",
+      expiresAt: "2026-08-20T12:00:00.000Z",
+      iceServer,
+    })).toBe(true);
+    await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledOnce());
+    expect(sendSignal).toHaveBeenCalledWith(
+      "selected-child",
+      expect.objectContaining({
+        kind: "description",
+        connectionId: "selected-connection-new",
+        description: expect.objectContaining({ type: "offer" }),
+      }),
+    );
+    expect(FakePeerConnection.latest?.configurations).toEqual([{
+      iceServers: [iceServer],
+      iceTransportPolicy: "relay",
+    }]);
+  });
+
   it("exposes a defensive snapshot of current downstream send metrics", async () => {
     const relay = new ViewerRelay(
       { iceServers: [] },

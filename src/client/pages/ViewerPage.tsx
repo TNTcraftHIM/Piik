@@ -71,6 +71,7 @@ type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
 >;
+type SelectedEdgeTurn = Extract<ServerMessage, { type: "selected-edge-turn" }>;
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [accessState, setAccessState] = useState<
@@ -130,6 +131,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let preparedParentSignals: Array<
       Extract<ServerMessage, { type: "signal" }>
     > = [];
+    let retiredUpstream: {
+      parentPeerId: string;
+      connectionId: string;
+    } | null = null;
+    let selectedEdgeTurn: SelectedEdgeTurn | null = null;
     const messageAuthority = new ViewerMessageAuthority();
     let sfuStandbyPrewarmer: SfuStandbyPrewarmer | null = null;
     let relayChildEvidenceCurrent: ViewerQualityEvidence | null = null;
@@ -245,9 +251,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentQualitySettings,
         {
           sendSignal: (targetPeerId, payload) =>
-            active &&
-            peerAssisted &&
-            currentAssignment.childPeerIds[0] === targetPeerId
+            active && peerAssisted
               ? signal.send({
                   type: "signal",
                   targetPeerId,
@@ -407,7 +411,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
     function clearUpstreamState(): void {
       qualityEvidenceReporter.reset();
-      peerRef.current?.dispose();
+      const peer = peerRef.current;
+      retiredUpstream = peer?.getConnectionIdentity() ?? retiredUpstream;
+      peer?.dispose();
       peerRef.current = null;
       setRemoteStream(null);
       setPeerSnapshot(null);
@@ -449,7 +455,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return null;
       }
       const peer = new ViewerPeer(
-        currentIceConfig,
+        selectedEdgeTurn
+          ? { iceServers: [selectedEdgeTurn.iceServer] }
+          : currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
             signal.send(
@@ -496,6 +504,21 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             }
           },
           onRecoveryExhausted: (parentPeerId, connectionId) => {
+            if (
+              selectedEdgeTurn?.parentPeerId === parentPeerId &&
+              selectedEdgeTurn.newConnectionId === connectionId
+            ) {
+              signal.send({
+                type: "route-failed",
+                revision: selectedEdgeTurn.revision,
+                phase: "active",
+                connectionId,
+              });
+              selectedEdgeTurn = null;
+              clearUpstreamState();
+              setStatusText("无法建立媒体连接");
+              return true;
+            }
             if (viewerSfuRoute) {
               return viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId);
             }
@@ -503,6 +526,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return true;
           },
         },
+        selectedEdgeTurn !== null,
       );
       peerRef.current = peer;
       return peer;
@@ -513,6 +537,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
+        selectedEdgeTurn = null;
         viewerAuthenticated = true;
         setAccessState("ready");
         clearRelayChildEvidence();
@@ -596,9 +621,43 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         return;
       }
+      if (message.type === "selected-edge-turn") {
+        if (
+          !peerAssisted ||
+          message.revision !== currentRouteRevision ||
+          Date.parse(message.expiresAt) <= Date.now()
+        ) {
+          return;
+        }
+        if (message.parentPeerId === currentPeerId) {
+          ensureViewerRelay()?.startSelectedEdgeTurn(message);
+          return;
+        }
+        const currentIdentity =
+          peerRef.current?.getConnectionIdentity() ?? retiredUpstream;
+        if (
+          message.viewerPeerId !== currentPeerId ||
+          currentIdentity?.parentPeerId !== message.parentPeerId ||
+          currentIdentity.connectionId !== message.oldConnectionId
+        ) {
+          return;
+        }
+        selectedEdgeTurn = message;
+        clearViewerSfuRoute();
+        clearUpstreamState();
+        currentAssignment = {
+          parentPeerId: message.parentPeerId,
+          childPeerIds: currentAssignment.childPeerIds,
+        };
+        setStatusText("正在恢复连接");
+        return;
+      }
       if (message.type === "route-update") {
         if (peerAssisted) {
           if (message.phase === "active") {
+            if (selectedEdgeTurn?.revision !== message.revision) {
+              selectedEdgeTurn = null;
+            }
             if (message.revision !== currentRouteRevision) {
               clearRelayChildEvidence();
             }

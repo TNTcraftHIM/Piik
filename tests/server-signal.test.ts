@@ -289,6 +289,7 @@ async function correlateParentEdgeQualityEvidence(
 
 async function startSfuHarness(options: {
   tokenIssuer: SfuTokenIssuer;
+  selectedEdgeTurn?: boolean;
   prepareTimeoutMs?: number;
   maxRoots?: number;
   viewerDisconnectGraceMs?: number;
@@ -317,6 +318,15 @@ async function startSfuHarness(options: {
       maxRoots: options.maxRoots ?? 2,
       prepareTimeoutMs: options.prepareTimeoutMs,
     },
+    ...(options.selectedEdgeTurn
+      ? {
+          selectedEdgeTurn: {
+            urls: ["turn:turn.example.test:3478?transport=udp"],
+            sharedSecret: "t".repeat(32),
+            credentialTtlSeconds: 120,
+          },
+        }
+      : {}),
     ice: {
       stunUrls: options.stunUrls ?? [],
     },
@@ -628,6 +638,63 @@ async function prepareFallbackForTwoViewers(
     hostPrepare,
     rootPrepare,
   };
+}
+
+async function failSingleViewerDirect(
+  webSocketUrl: string,
+  room: CreatedRoom,
+  prefix: string,
+) {
+  const host = await openClient(webSocketUrl);
+  const hostAuth = peerAssisted(
+    await authenticate(host, room, "host", `${prefix}-host`, 1, `${prefix}-share`),
+  );
+  const viewer = await openClient(webSocketUrl);
+  const viewerAuth = peerAssisted(
+    await authenticate(viewer, room, "viewer", `${prefix}-viewer`),
+  );
+  const oldConnectionId = `${prefix}-direct-connection`;
+  host.socket.send(JSON.stringify({
+    type: "signal",
+    targetPeerId: viewerAuth.peerId,
+    payload: {
+      kind: "description",
+      connectionId: oldConnectionId,
+      description: { type: "offer", sdp: "v=0\r\n" },
+    },
+  }));
+  await viewer.inbox.next("signal");
+  viewer.socket.send(JSON.stringify({
+    type: "route-failed",
+    revision: viewerAuth.routeRevision,
+    phase: "active",
+    connectionId: oldConnectionId,
+  }));
+  return { host, hostAuth, viewer, viewerAuth, oldConnectionId };
+}
+
+async function activateSingleViewerSfu(
+  webSocketUrl: string,
+  room: CreatedRoom,
+  prefix: string,
+) {
+  const direct = await failSingleViewerDirect(webSocketUrl, room, prefix);
+  const { host, viewer } = direct;
+  const hostPrepare = await nextPreparedRoute(host);
+  const viewerPrepare = await nextPreparedRoute(viewer);
+  await Promise.all([host.inbox.next("sfu-config"), viewer.inbox.next("sfu-config")]);
+  for (const client of [host, viewer]) {
+    client.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: viewerPrepare.revision,
+      phase: "prepare",
+    }));
+  }
+  await Promise.all([
+    nextActiveRouteRevision(host, hostPrepare.revision),
+    nextActiveRouteRevision(viewer, viewerPrepare.revision),
+  ]);
+  return { ...direct, revision: viewerPrepare.revision };
 }
 
 async function exhaustDeepViewerPeerRoutes(
@@ -3599,6 +3666,169 @@ describe("WebSocket signaling", () => {
     expect(issued.length).toBeGreaterThan(issuedBeforeFailback);
   });
 
+  it("falls through to selected TURN when SFU prepare is unavailable", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken() { throw new Error("offline"); } },
+      selectedEdgeTurn: true,
+    });
+    const direct = await failSingleViewerDirect(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-unavailable",
+    );
+    const [viewerGrant] = await Promise.all([
+      direct.viewer.inbox.next("selected-edge-turn"),
+      direct.host.inbox.next("selected-edge-turn"),
+    ]);
+    expect(viewerGrant.oldConnectionId).toBe(direct.oldConnectionId);
+  });
+
+  it("uses one selected TURN edge after a Viewer SFU refresh is exhausted", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const direct = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-host-parent",
+    );
+    expect(direct.hostAuth.iceConfig.iceServers).toEqual([]);
+    direct.viewer.socket.send(JSON.stringify({
+      type: "refresh-sfu",
+      revision: direct.revision,
+    }));
+    await direct.viewer.inbox.next("sfu-config");
+    direct.viewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: direct.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    const [viewerGrant, hostGrant] = await Promise.all([
+      direct.viewer.inbox.next("selected-edge-turn"),
+      direct.host.inbox.next("selected-edge-turn"),
+    ]);
+    expect(hostGrant).toEqual(viewerGrant);
+    expect(viewerGrant).toMatchObject({
+      revision: direct.revision,
+      parentPeerId: direct.hostAuth.peerId,
+      viewerPeerId: direct.viewerAuth.peerId,
+      oldConnectionId: direct.oldConnectionId,
+      iceServer: { urls: ["turn:turn.example.test:3478?transport=udp"] },
+    });
+    expect(viewerGrant.newConnectionId).not.toBe(direct.oldConnectionId);
+    direct.host.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: direct.viewerAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: viewerGrant.newConnectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }));
+    expect(await direct.viewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: direct.hostAuth.peerId,
+      payload: { connectionId: viewerGrant.newConnectionId },
+    });
+    direct.viewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: direct.hostAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: viewerGrant.newConnectionId,
+        description: { type: "answer", sdp: "v=0\r\n" },
+      },
+    }));
+    await direct.host.inbox.next("signal");
+    direct.viewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: direct.revision,
+      phase: "active",
+      connectionId: viewerGrant.newConnectionId,
+    }));
+    expect((await direct.viewer.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
+    await expect(
+      direct.viewer.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
+  it("authorizes a ViewerRelay parent and clears its grant on share stop", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const prepared = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-viewer-parent",
+      "selected-viewer-parent-share",
+    );
+    for (const client of [prepared.host, prepared.failedViewer]) {
+      client.socket.send(JSON.stringify({
+        type: "route-ready",
+        revision: prepared.rootPrepare.revision,
+        phase: "prepare",
+      }));
+    }
+    await Promise.all([
+      nextActiveRouteRevision(prepared.host, prepared.hostPrepare.revision),
+      nextActiveRouteRevision(prepared.failedViewer, prepared.rootPrepare.revision),
+    ]);
+    prepared.failedViewer.socket.send(JSON.stringify({
+      type: "refresh-sfu",
+      revision: prepared.rootPrepare.revision,
+    }));
+    await prepared.failedViewer.inbox.next("sfu-config");
+    prepared.failedViewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: prepared.rootPrepare.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    const [childGrant, parentGrant] = await Promise.all([
+      prepared.failedViewer.inbox.next("selected-edge-turn"),
+      prepared.rootViewer.inbox.next("selected-edge-turn"),
+    ]);
+    expect(parentGrant).toEqual(childGrant);
+    expect(childGrant.parentPeerId).toBe(prepared.rootAuth.peerId);
+    prepared.rootViewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: prepared.failedAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: childGrant.newConnectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }));
+    await prepared.failedViewer.inbox.next("signal");
+    prepared.failedViewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: prepared.rootAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: childGrant.newConnectionId,
+        description: { type: "answer", sdp: "v=0\r\n" },
+      },
+    }));
+    await prepared.rootViewer.inbox.next("signal");
+    prepared.host.socket.send(JSON.stringify({
+      type: "stop-sharing",
+      shareGeneration: "selected-viewer-parent-share",
+    }));
+    await prepared.failedViewer.inbox.next("sharing-stopped");
+    prepared.rootViewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: prepared.failedAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: childGrant.newConnectionId,
+        candidate: null,
+      },
+    }));
+    expect((await prepared.rootViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+  });
+
   it("moves both a failed deep viewer and its host branch within two SFU roots", async () => {
     const issued: Array<Parameters<SfuTokenIssuer["issueToken"]>[0]> = [];
     const harness = await startSfuHarness({
@@ -3721,6 +3951,7 @@ describe("WebSocket signaling", () => {
           return `token-${request.peerId}`;
         },
       },
+      selectedEdgeTurn: true,
     });
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = peerAssisted(
@@ -3785,6 +4016,20 @@ describe("WebSocket signaling", () => {
       peerId: hostAuth.peerId,
     });
     expect(directAuth.routeAssignment.sfuPublicationGeneration).toBeNull();
+    root.socket.send(JSON.stringify({
+      type: "refresh-sfu",
+      revision: directAuth.routeRevision,
+    }));
+    await root.inbox.next("sfu-config");
+    root.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: directAuth.routeRevision,
+      phase: "active",
+      connectionId: null,
+    }));
+    await expect(root.inbox.next("selected-edge-turn", 40)).rejects.toThrow(
+      "Timed out",
+    );
   });
 
   it("retires an SFU publication when its root allowlist shrinks", async () => {
