@@ -4,8 +4,8 @@ Last updated: 2026-08-21
 
 ## Phase
 
-`https://share.bonfire.icu` serves exact `5e4a3679076a9ea2fe7a41fadf4be65a439db450`; the 909,974-byte artifact SHA-256 is `e484773c7dc381e657da18720e842c3ae90ad727320a650abcb1098428c74774`.
-The cutover held the lock 9,474 ms and returned local health 676 ms after stop. SQLite v3 has five rooms; Screener, LiveKit, coturn and nginx are healthy with zero restarts.
+`https://share.bonfire.icu` serves exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`; the 915,377-byte artifact SHA-256 is `8da4b8b2b1ae4b82add615f4367ee447b5ade86c4e58a938e51085940b9867d3`.
+The cutover held the lock 8,389 ms and returned local health 520 ms after stop. SQLite v3 has five rooms; Screener, LiveKit, coturn and nginx are healthy with zero restarts.
 Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke and no real TURN/SFU media canary has run.
 Web Host names/audio hint are deployed. Native H.264 and Windows x64 packaging are source-only; Web defaults VP8.
 
@@ -36,7 +36,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native peer-assisted wire/session focused tests pass: authoritative direct children reconcile at no more than two, presence cannot create a third edge, stale revisions do not rebuild, and unsupported SFU/selected ingress fails once per current revision.
 - Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
 - Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
-- The `5e4a367` gate preserved the SQLite hash, v3/five rooms/room `1`, selected-edge/SFU/ordinary-ICE settings, services, and local/public health plus route/asset 200s. Site access returned the unauthenticated status and the retired endpoint returned 404; no TURN/SFU session ran. Exact `c27df2235ecc0be17816f642ca49028e30380a34` is the rollback release.
+- The `fd76277` gate preserved the environment and SQLite hashes, v3/five rooms/room `1`, selected-edge/SFU/ordinary-ICE settings, services, and local/public health plus route/asset 200s. Site access returned the unauthenticated status and the retired endpoint returned 404; no TURN/SFU session ran. Exact `5e4a3679076a9ea2fe7a41fadf4be65a439db450` is the rollback release.
 
 ## Unverified Boundaries
 
