@@ -12,7 +12,7 @@ Last updated: 2026-08-20
 - Two-tree packet/layer striping may reduce endpoint upload toward one stream bitrate, but needs a bounded multi-parent, loss, sync, churn, and latency experiment; it is not in the current full-stream chains.
 - Direct/peer keeps per-PC stock GCC. SFU paths start at a `HIGH` ceiling and share at most one `LOW`; next test LiveKit exactly-two built-in BWE on zero-descendant leaves. If it passes, no app media selector is built. Explicit quality, manual activation, then custom/native are later fallbacks; always-on `LOW` needs resource gates.
 - A later explicit quality fallback evacuates children under a generation guard first. Autonomous BWE enters `suspect`; confirmation evacuates children, and no confirmed `FALLBACK` parent remains. Root-with-children impact is a default-on gate; capacity returns after longer recovery plus cooldown. Self-report alone never triggers it.
-- Separate abuse control from watching: production Host admission protects room creation/Host role, while a default private capability grants Viewer access to one room; public-watch is explicit. Keep raw grants out of localStorage/cookies/query/logs/SQLite; retain no account, ACL, user, or session table.
+- Separate abuse control from watching: Host admission protects creation/Host; private Viewer entry uses a room grant or optional room password, while public-watch accepts the code. Persist neither raw credential; keep accounts, ACLs, users, and session tables out.
 - Keep decisions, snapshots, research, code, `AGENTS.md`, and `.codex/` in Git; rewrite memory/status in place. Research current primary sources before material work and reject speculative machinery.
 - Migrate client, server, and deployment atomically. After a canary, delete superseded config/wire/parsers/tests; do not retain compatibility layers, dual writes, or a second architecture without a current consumer. Git history owns the old implementation.
 - Autonomously deploy each coherent low-risk milestone after narrow tests, independent review, one full gate, CI and rollback preflight. Keep protocol/database migrations atomic rather than folding them into routine UI/media updates.
@@ -33,7 +33,7 @@ Last updated: 2026-08-20
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
 - Viewer-local names and the opt-in Web Host roster are deployed without media changes. Host self-name, endpoint details, and RTP loss remain pending.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
-- ADR-0002 access is deployed; names/presence are session-only with no account, member, session, or roster table.
+- ADR-0002 grant/public access is deployed; room-password is source-only. Names/presence remain session-only without account or roster tables.
 - Deferred architecture audit: `docs/maintenance.md`.
 
 ## Current Implementation

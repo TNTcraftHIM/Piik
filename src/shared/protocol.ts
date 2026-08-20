@@ -16,6 +16,8 @@ export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
 export const MAX_DISPLAY_NAME_CODE_POINTS = 24;
 export const DEFAULT_VIEWER_DISPLAY_NAME = "访客";
+export const MIN_VIEWER_PASSWORD_LENGTH = 1;
+export const MAX_VIEWER_PASSWORD_LENGTH = 64;
 
 const FORBIDDEN_DISPLAY_NAME_CHARACTERS =
   /[\p{Cc}\p{Zl}\p{Zp}\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/u;
@@ -81,6 +83,13 @@ export const viewerGrantSchema = z
   .min(50)
   .max(96)
   .regex(/^g1\.[1-9]\d{0,11}\.[1-9]\d{0,12}\.[A-Za-z0-9_-]{43}$/);
+
+export const viewerPasswordSchema = z
+  .string()
+  .min(MIN_VIEWER_PASSWORD_LENGTH)
+  .max(MAX_VIEWER_PASSWORD_LENGTH)
+  .regex(/^[\x21-\x7e]+$/);
+export type ViewerPassword = z.infer<typeof viewerPasswordSchema>;
 
 export const viewerAccessPolicySchema = z.enum([
   "private-link",
@@ -466,6 +475,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       clientId: opaqueIdSchema,
       shareGeneration: opaqueIdSchema.optional(),
       viewerPresence: z.literal(true).optional(),
+      viewerPasswordSettings: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -476,6 +486,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       role: z.literal("viewer"),
       clientId: opaqueIdSchema,
       viewerGrant: viewerGrantSchema.optional(),
+      viewerPassword: viewerPasswordSchema.optional(),
       displayName: displayNameSchema.optional(),
     })
     .strict(),
@@ -543,6 +554,12 @@ export const clientMessageSchema = z.union([
     .object({
       type: z.literal("set-viewer-access"),
       action: z.enum(["public-watch", "rotate", "revoke"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("set-viewer-password"),
+      password: viewerPasswordSchema.nullable(),
     })
     .strict(),
   z
@@ -719,6 +736,12 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("viewer-access-revoked"),
       viewerAuthorizationGeneration: opaqueIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("viewer-password-updated"),
+      enabled: z.boolean(),
     })
     .strict(),
   z.object({ type: z.literal("sharing-stopped") }).strict(),

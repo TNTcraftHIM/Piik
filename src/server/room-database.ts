@@ -1,13 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const MAX_ROOM_ID = 999_999_999_999;
 
 export interface StoredRoom {
   roomId: string;
   hostTokenDigest: Buffer;
   viewerGrantDigest: Buffer | null;
+  viewerPasswordMaterial: Buffer | null;
 }
 
 export class RoomDatabase {
@@ -28,7 +29,9 @@ export class RoomDatabase {
   loadRooms(): StoredRoom[] {
     const rows = this.database
       .prepare(
-        "SELECT id, host_token_digest, viewer_grant_digest FROM rooms ORDER BY id",
+        `SELECT id, host_token_digest, viewer_grant_digest,
+                viewer_password_material
+           FROM rooms ORDER BY id`,
       )
       .all();
 
@@ -44,6 +47,11 @@ export class RoomDatabase {
         roomId: roomId.toString(),
         hostTokenDigest: Buffer.from(row.host_token_digest),
         viewerGrantDigest: readViewerGrantDigest(row.viewer_grant_digest),
+        viewerPasswordMaterial: readNullableBytes(
+          row.viewer_password_material,
+          48,
+          "viewer password material",
+        ),
       };
     });
   }
@@ -79,6 +87,7 @@ export class RoomDatabase {
         hostTokenDigest: Buffer.from(hostTokenDigest),
         viewerGrantDigest:
           viewerGrantDigest === null ? null : Buffer.from(viewerGrantDigest),
+        viewerPasswordMaterial: null,
       };
     } catch (error) {
       if (this.database.isTransaction) {
@@ -104,6 +113,26 @@ export class RoomDatabase {
     }
   }
 
+  updateViewerPassword(
+    roomId: string,
+    material: Buffer | null,
+  ): void {
+    const numericRoomId = parseRoomId(roomId);
+    if (material) {
+      assertBytes(material, 48, "Viewer password material");
+    }
+    const changes = this.database
+      .prepare(
+        `UPDATE rooms
+            SET viewer_password_material = ?
+          WHERE id = ?`,
+      )
+      .run(material, numericRoomId).changes;
+    if (changes !== 1) {
+      throw new Error("Persistent room is missing from the room database");
+    }
+  }
+
   deleteRoom(roomId: string): boolean {
     const numericRoomId = parseRoomId(roomId);
     return (
@@ -122,6 +151,10 @@ export class RoomDatabase {
     const row = this.database.prepare("PRAGMA user_version").get();
     const version = readSafeInteger(row?.user_version, "schema version");
     if (version === SCHEMA_VERSION) {
+      return;
+    }
+    if (version === 2) {
+      this.migrateV2();
       return;
     }
     if (version === 1) {
@@ -144,6 +177,11 @@ export class RoomDatabase {
             CHECK (
               viewer_grant_digest IS NULL OR
               length(viewer_grant_digest) = 32
+            ),
+          viewer_password_material BLOB NULL
+            CHECK (
+              viewer_password_material IS NULL OR
+              length(viewer_password_material) = 48
             )
         ) STRICT;
         PRAGMA user_version = ${SCHEMA_VERSION};
@@ -166,6 +204,11 @@ export class RoomDatabase {
             viewer_grant_digest IS NULL OR
             length(viewer_grant_digest) = 32
           );
+        ALTER TABLE rooms ADD COLUMN viewer_password_material BLOB NULL
+          CHECK (
+            viewer_password_material IS NULL OR
+            length(viewer_password_material) = 48
+          );
       `);
       const roomIds = this.database.prepare("SELECT id FROM rooms ORDER BY id").all();
       const lockRoom = this.database.prepare(
@@ -187,12 +230,52 @@ export class RoomDatabase {
       throw error;
     }
   }
+
+  private migrateV2(): void {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database.exec(`
+        ALTER TABLE rooms ADD COLUMN viewer_password_material BLOB NULL
+          CHECK (
+            viewer_password_material IS NULL OR
+            length(viewer_password_material) = 48
+          );
+        PRAGMA user_version = ${SCHEMA_VERSION};
+        COMMIT;
+      `);
+    } catch (error) {
+      if (this.database.isTransaction) {
+        this.database.exec("ROLLBACK");
+      }
+      throw error;
+    }
+  }
 }
 
 function assertDigest(value: Buffer, name: string): void {
   if (value.byteLength !== 32) {
     throw new Error(`${name} digest must contain 32 bytes`);
   }
+}
+
+function assertBytes(value: Buffer, length: number, name: string): void {
+  if (value.byteLength !== length) {
+    throw new Error(`${name} must contain ${length} bytes`);
+  }
+}
+
+function readNullableBytes(
+  value: unknown,
+  length: number,
+  name: string,
+): Buffer | null {
+  if (value === null) {
+    return null;
+  }
+  if (!(value instanceof Uint8Array) || value.byteLength !== length) {
+    throw new Error(`Room database contains an invalid ${name}`);
+  }
+  return Buffer.from(value);
 }
 
 function readViewerGrantDigest(value: unknown): Buffer | null {

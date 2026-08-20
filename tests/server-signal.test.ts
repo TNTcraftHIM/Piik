@@ -443,7 +443,12 @@ async function authenticate(
   clientId: string,
   relayCapacity: 0 | 1 | null = 1,
   shareGeneration?: string,
-  presence: { displayName?: string; viewerPresence?: true } = {},
+  presence: {
+    displayName?: string;
+    viewerPresence?: true;
+    viewerPasswordSettings?: true;
+    viewerPassword?: string;
+  } = {},
 ) {
   client.socket.send(
     JSON.stringify(
@@ -457,6 +462,9 @@ async function authenticate(
             clientId,
             ...(shareGeneration ? { shareGeneration } : {}),
             ...(presence.viewerPresence ? { viewerPresence: true } : {}),
+            ...(presence.viewerPasswordSettings
+              ? { viewerPasswordSettings: true }
+              : {}),
           }
         : {
             type: "authenticate",
@@ -464,7 +472,11 @@ async function authenticate(
             roomId: room.roomId,
             role,
             clientId,
-            ...(room.viewerGrant ? { viewerGrant: room.viewerGrant } : {}),
+            ...(presence.viewerPassword
+              ? { viewerPassword: presence.viewerPassword }
+              : room.viewerGrant
+                ? { viewerGrant: room.viewerGrant }
+                : {}),
             ...(presence.displayName
               ? { displayName: presence.displayName }
               : {}),
@@ -808,6 +820,107 @@ describe("WebSocket signaling", () => {
 
     await host.inbox.next("peer-joined");
     await host.inbox.expectNone(40);
+
+    host.socket.send(
+      JSON.stringify({ type: "set-viewer-password", password: "unused" }),
+    );
+    expect(await host.inbox.next("error")).toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await host.inbox.expectNone(40);
+  });
+
+  it("lets an opted-in Web Host set and remove room password access", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "password-settings-host",
+      1,
+      undefined,
+      { viewerPasswordSettings: true },
+    );
+    expect("viewerPasswordEnabled" in hostAuth).toBe(false);
+    expect(await host.inbox.next("viewer-password-updated")).toEqual({
+      type: "viewer-password-updated",
+      enabled: false,
+    });
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-viewer-password",
+        password: "easy-password",
+      }),
+    );
+    expect(await host.inbox.next("viewer-password-updated")).toEqual({
+      type: "viewer-password-updated",
+      enabled: true,
+    });
+
+    const wrongViewer = await openClient(harness.webSocketUrl);
+    wrongViewer.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: harness.room.roomId,
+        role: "viewer",
+        clientId: "wrong-password-viewer",
+        viewerPassword: "wrong-password",
+      }),
+    );
+    expect(await wrongViewer.inbox.next("error")).toMatchObject({
+      code: "INVALID_TOKEN",
+    });
+
+    const passwordViewer = await openClient(harness.webSocketUrl);
+    await expect(
+      authenticate(
+        passwordViewer,
+        harness.room,
+        "viewer",
+        "password-viewer",
+        1,
+        undefined,
+        { viewerPassword: "easy-password" },
+      ),
+    ).resolves.toMatchObject({ role: "viewer" });
+    await host.inbox.next("peer-joined");
+
+    host.socket.send(
+      JSON.stringify({ type: "set-viewer-password", password: null }),
+    );
+    expect(await host.inbox.next("viewer-password-updated")).toEqual({
+      type: "viewer-password-updated",
+      enabled: false,
+    });
+
+    const grantViewer = await openClient(harness.webSocketUrl);
+    await expect(
+      authenticate(
+        grantViewer,
+        harness.room,
+        "viewer",
+        "grant-after-password-removal",
+      ),
+    ).resolves.toMatchObject({ role: "viewer" });
+    await host.inbox.next("peer-joined");
+
+    const removedPasswordViewer = await openClient(harness.webSocketUrl);
+    removedPasswordViewer.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: harness.room.roomId,
+        role: "viewer",
+        clientId: "removed-password-viewer",
+        viewerPassword: "easy-password",
+      }),
+    );
+    expect(await removedPasswordViewer.inbox.next("error")).toMatchObject({
+      code: "INVALID_TOKEN",
+    });
   });
 
   it("reports every online Viewer without expanding the Host media fanout", async () => {

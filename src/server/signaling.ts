@@ -46,6 +46,7 @@ interface AuthenticatedSession {
   shareGeneration: string | null;
   displayName: string | null;
   viewerPresence: boolean;
+  viewerPasswordSettings: boolean;
 }
 
 interface SocketState {
@@ -54,6 +55,8 @@ interface SocketState {
   authenticationTimer: NodeJS.Timeout;
   hostAdmissionAuthenticated: boolean;
   revoked?: boolean;
+  authenticating?: boolean;
+  viewerPasswordUpdatePending?: boolean;
   authenticated?: AuthenticatedSession;
 }
 
@@ -315,7 +318,16 @@ export class SignalingServer {
         socket.close(4001, "Authentication required");
         return;
       }
-      this.authenticate(socket, state, message);
+      if (state.authenticating) {
+        this.rejectInvalidMessage(socket);
+        return;
+      }
+      state.authenticating = true;
+      void this.authenticate(socket, state, message).finally(() => {
+        if (this.socketStates.get(socket) === state) {
+          state.authenticating = false;
+        }
+      });
       return;
     }
     if (message.type === "authenticate") {
@@ -338,11 +350,11 @@ export class SignalingServer {
     this.handleAuthenticatedMessage(socket, state.authenticated, message);
   }
 
-  private authenticate(
+  private async authenticate(
     socket: WebSocket,
     state: SocketState,
     message: Extract<ClientMessage, { type: "authenticate" }>,
-  ): void {
+  ): Promise<void> {
     if (message.role === "host" && !state.hostAdmissionAuthenticated) {
       this.sendError(socket, "AUTH_REQUIRED", "Host admission is required");
       socket.close(4003, "Authentication failed");
@@ -351,26 +363,49 @@ export class SignalingServer {
 
     let participant;
     try {
-      participant = this.options.roomStore.connectParticipant(
-        message.role === "host"
-          ? {
-              roomId: message.roomId,
-              role: "host",
-              token: message.token,
-              clientId: message.clientId,
-              sessionId: state.sessionId,
-            }
-          : {
-              roomId: message.roomId,
-              role: "viewer",
-              ...(message.viewerGrant
-                ? { viewerGrant: message.viewerGrant }
-                : {}),
-              clientId: message.clientId,
-              sessionId: state.sessionId,
-            },
-      );
+      if (
+        message.role === "viewer" &&
+        !message.viewerGrant &&
+        message.viewerPassword !== undefined
+      ) {
+        participant = await this.options.roomStore.connectViewerWithPassword(
+          {
+            roomId: message.roomId,
+            password: message.viewerPassword,
+            clientId: message.clientId,
+            sessionId: state.sessionId,
+          },
+          () =>
+            this.socketStates.get(socket) === state &&
+            !state.revoked &&
+            !state.authenticated &&
+            socket.readyState === WebSocket.OPEN,
+        );
+      } else {
+        participant = this.options.roomStore.connectParticipant(
+          message.role === "host"
+            ? {
+                roomId: message.roomId,
+                role: "host",
+                token: message.token,
+                clientId: message.clientId,
+                sessionId: state.sessionId,
+              }
+            : {
+                roomId: message.roomId,
+                role: "viewer",
+                ...(message.viewerGrant
+                  ? { viewerGrant: message.viewerGrant }
+                  : {}),
+                clientId: message.clientId,
+                sessionId: state.sessionId,
+              },
+        );
+      }
     } catch (error) {
+      if (this.socketStates.get(socket) !== state || state.revoked) {
+        return;
+      }
       if (!(error instanceof RoomStoreError)) {
         console.error("Signaling authentication failed unexpectedly");
       }
@@ -414,6 +449,7 @@ export class SignalingServer {
           ? (message.displayName ?? DEFAULT_VIEWER_DISPLAY_NAME)
           : null,
       viewerPresence: false,
+      viewerPasswordSettings: false,
     };
     if (participant.role === "viewer") {
       this.viewerQualityEvidenceGates.delete(
@@ -483,6 +519,14 @@ export class SignalingServer {
     }
     state.authenticated.viewerPresence =
       message.role === "host" && message.viewerPresence === true;
+    state.authenticated.viewerPasswordSettings =
+      message.role === "host" && message.viewerPasswordSettings === true;
+    if (state.authenticated.viewerPasswordSettings) {
+      this.send(socket, {
+        type: "viewer-password-updated",
+        enabled: participant.viewerPasswordEnabled,
+      });
+    }
 
     if (participant.replacedSessionId) {
       const replaced = this.socketsBySessionId.get(participant.replacedSessionId);
@@ -668,6 +712,36 @@ export class SignalingServer {
         }
         this.updateViewerAccess(socket, authenticated, message.action);
         return;
+      case "set-viewer-password": {
+        if (
+          authenticated.role !== "host" ||
+          !authenticated.viewerPasswordSettings
+        ) {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "Viewer password settings are unavailable",
+          );
+          return;
+        }
+        const socketState = this.socketStates.get(socket);
+        if (!socketState || socketState.viewerPasswordUpdatePending) {
+          this.sendError(socket, "FORBIDDEN", "Viewer password update is busy");
+          return;
+        }
+        socketState.viewerPasswordUpdatePending = true;
+        void this.updateViewerPassword(
+          socket,
+          authenticated,
+          socketState,
+          message.password,
+        ).finally(() => {
+          if (this.socketStates.get(socket) === socketState) {
+            socketState.viewerPasswordUpdatePending = false;
+          }
+        });
+        return;
+      }
       case "stop-sharing":
         if (authenticated.role !== "host") {
           this.sendError(socket, "FORBIDDEN", "Only the host may stop sharing");
@@ -785,6 +859,42 @@ export class SignalingServer {
       inviteUrl,
       viewerGrantExpiresAt: update.viewerGrantExpiresAt,
     });
+  }
+
+  private async updateViewerPassword(
+    hostSocket: WebSocket,
+    authenticated: AuthenticatedSession,
+    state: SocketState,
+    password: string | null,
+  ): Promise<void> {
+    try {
+      const enabled = await this.options.roomStore.setViewerPassword(
+        authenticated.roomId,
+        password,
+        state.sessionId,
+      );
+      if (
+        this.socketStates.get(hostSocket) !== state ||
+        state.authenticated !== authenticated ||
+        state.revoked
+      ) {
+        return;
+      }
+      this.send(hostSocket, { type: "viewer-password-updated", enabled });
+    } catch {
+      if (
+        this.socketStates.get(hostSocket) === state &&
+        state.authenticated === authenticated &&
+        !state.revoked
+      ) {
+        console.error("Viewer password update failed");
+        this.sendError(
+          hostSocket,
+          "SERVER_ERROR",
+          "Viewer password could not be updated",
+        );
+      }
+    }
   }
 
   private handleViewerQualityEvidence(
