@@ -226,9 +226,9 @@ function requiredTwoLayerEncodingIndexes(
   }
   if (
     parameters.encodings[0]?.rid !== "q" ||
-    parameters.encodings[1]?.rid !== "f"
+    parameters.encodings[1]?.rid !== "h"
   ) {
-    throw new Error("SFU simulcast requires ordered q and f video encodings");
+    throw new Error("SFU simulcast requires ordered q and h video encodings");
   }
   return { low: 0, high: 1 };
 }

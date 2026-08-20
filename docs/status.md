@@ -6,7 +6,7 @@ Last updated: 2026-08-21
 
 `https://share.bonfire.icu` serves exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`; the 915,377-byte artifact SHA-256 is `8da4b8b2b1ae4b82add615f4367ee447b5ade86c4e58a938e51085940b9867d3`.
 The cutover held the lock 8,389 ms and returned local health 520 ms after stop. SQLite v3 has five rooms; Screener, LiveKit, coturn and nginx are healthy with zero restarts.
-Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke and no real TURN/SFU media canary has run.
+Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke; production SFU/TURN media remains unverified.
 Web names/audio hint are deployed. Native WGC/MF/package is source-only; Web defaults VP8.
 
 ## Execution Principle
@@ -21,13 +21,14 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
-- Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
+- Latest source fixes LiveKit's two-layer `q,h` sender guard; production predates it.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
 - Web roster includes Host self-name and requests window-scoped display audio where supported; both are hints, and Native wire/media is unchanged.
 
 ## Verified Evidence
 
 - Chrome 151 synthetic `1/3/5/8` and 720p30 quality-change runs kept 2/1 fanout and decoding; slowest first frame was 1.05 seconds and one relay close recovered in 5.32 seconds. This is control evidence only.
+- Chrome 151 + local LiveKit 1.13.5/client 2.22.0 SFU/UDP passed after `q,f` -> `q,h`: one root, decoded 3 -> 23, rendered 26, Host edge one, clean leaves, no TURN. Functional only.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Chrome 151 browser loopbacks decoded VP8 299 and H.264 opt-in 299/298 rendered at 1280x720 without fatal/encoder errors. Browser hardware attribution, multi-viewer/endurance and public proof remain open; production stays VP8.
@@ -48,13 +49,12 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
-- The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
 - Headful fragment-to-sessionStorage consumption, invitation rotation after migration, and request/log leak inspection remain production UX gates. Accounts stay out.
 - Structure debt: split `HybridMediaRouter`, `HostPage`, `SignalingServer`, and `ViewerPage` only at proven consumer boundaries, never by file length.
 
 ## Next Milestone
 
-Repeat room `1` and fix only the identified SFU connect/source/publish/audio/transport layer; retain selected UDP, a rendered frame, edge caps and resource deltas.
+Deploy the `q,h` fix; one bounded production room `1` canary must retain UDP, a rendered frame, edge caps, and clean stop. TURN/performance follow later.
 Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then SFU. Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root evacuation.
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Benchmark later.
 Ordinary Peer ICE stays STUN-only. Selected-edge Host ingress still needs one forced-relay canary before a media-success claim.

@@ -1935,8 +1935,16 @@ async function runCase(
       signal,
     );
     const roomId = host.roomId!;
+    const viewerUrl = await evaluate<string>(
+      cdp,
+      hostPage,
+      "document.querySelector('.invite-url')?.getAttribute('title') || ''",
+    );
+    if (!viewerUrl.startsWith(`${baseUrl}/r/${roomId}#v=`)) {
+      throw new Error("Host private Viewer invite was unavailable");
+    }
     for (let viewerIndex = 1; viewerIndex <= viewerCount; viewerIndex += 1) {
-      const viewerPage = await createPage(cdp, `${baseUrl}/r/${roomId}`, {
+      const viewerPage = await createPage(cdp, viewerUrl, {
         ...commonInit,
         label: `viewer-${viewerIndex}`,
         role: "viewer",

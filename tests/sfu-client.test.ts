@@ -104,7 +104,7 @@ const livekit = vi.hoisted(() => {
               scaleResolutionDownBy: 2,
             },
             {
-              rid: "f",
+              rid: "h",
               maxBitrate: high.maxBitrate,
               maxFramerate: high.maxFramerate,
               scaleResolutionDownBy: 1,
@@ -400,7 +400,7 @@ describe("SfuPublisher", () => {
         scaleResolutionDownBy: 2,
       }),
       expect.objectContaining({
-        rid: "f",
+        rid: "h",
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
@@ -484,7 +484,7 @@ describe("SfuPublisher", () => {
             scaleResolutionDownBy: 2,
           }),
           expect.objectContaining({
-            rid: "f",
+            rid: "h",
             maxBitrate: 3_000_000,
             maxFramerate: 30,
             scaleResolutionDownBy: 1,
