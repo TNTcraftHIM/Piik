@@ -2,9 +2,9 @@
 
 Screener is a private, low-latency screen-sharing project for one game player and a small group of friends. Its accepted media target is WebRTC P2P-first, with an SFU virtual parent feeding only the necessary roots and optional authenticated TURN for explicitly supported restrictive networks. Roots continue distributing to bounded peer descendants; this is not an always-SFU conferencing design. Viewers should be able to join from a desktop or mobile browser without installing the sender application.
 
-The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code. Rooms default to a private fragment invitation whose capability authorizes only one room; a Host may explicitly choose public watching by room code after site access. During a share, the host can change between three ceiling profiles without reopening the source picker: 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps. The host can also temporarily pause the picture or switch sources. Rooms are random and temporary by default. A site-access-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. Default routing gives each viewer an independent direct WebRTC connection; the exact-room controller can instead use bounded peer descendants and LiveKit SFU roots. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
+The first measurable Web proof of concept is implemented. A host captures a screen, window, or browser tab and shares a numeric room code. Rooms default to a private fragment invitation whose capability authorizes only one room; a Host may explicitly choose public watching by room code after site access. During a share, the host can change between three ceiling profiles without reopening the source picker: 1080p60 at 8 Mbps, 1080p30 at 5 Mbps, and 720p30 at 3 Mbps. The host can also temporarily pause the picture or switch sources. Rooms are random and temporary by default. A site-access-protected deployment can optionally use SQLite-backed room numbers starting at `1`, reusable links, and a waiting state after sharing stops. Lightweight deployments may keep independent direct WebRTC connections. The flagship deployment enables the all-room controller with bounded peer descendants and LiveKit SFU roots; short-lived TURN may be authorized only for a controller-selected exceptional media edge. The default room capacity is eight viewers and deployments may configure 1 through 16, but that admission limit is not a performance promise.
 
-This is not yet a broadly validated production release. Production runs `d4bc421` with room-scoped Viewer access, neutral anonymous entry, initial-connect recovery, and exact-room quality reparenting; it uses self-hosted STUN-only ordinary ICE plus a separate LiveKit SFU/UDP domain. Current source also contains a no-go Native v2 candidate with no production runtime gate. Real cross-network media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
+This is not yet a broadly validated production release. Production runs exact `fd76277b05d491af8840b28f3132b7ff445d3cbe` with the all-room bounded peer/SFU-UDP controller; ordinary peer ICE remains STUN-only, and short-lived TURN is configured only for controller-selected exceptional media edges. Native Windows and Android senders remain source-only and are not production runtimes. Real cross-network SFU/TURN media, game audio, a sustained 1:8 room, mobile browser lifecycle behavior, and latency targets still require the documented manual test matrix.
 
 ## Run locally
 
@@ -30,10 +30,9 @@ Production keeps a stopped v1 SQLite backup and restore boundary as documented
 in [Deployment](./docs/deployment.md). `SITE_ACCESS_PASSWORD` supplies site access;
 valid private fragment grants bypass that gate, while code-only entry requires site access before
 public/private room policy is evaluated. The release has no v1 parser, old cookie, or
-dual-schema runtime. Ordinary ICE contains only self-hosted STUN, LiveKit serves
-normally one or two SFU/UDP roots, and exhausted paths fail clearly after bounded
-recovery. Optional generation-bound TURN for a selected exceptional edge is not
-implemented; HTTPS/WSS remains TLS/TCP independently.
+dual-schema runtime. Ordinary ICE contains only self-hosted STUN. LiveKit serves
+normally one or two SFU/UDP roots; the controller may authorize short-lived TURN
+only for a selected exceptional media edge. HTTPS/WSS remains TLS/TCP independently.
 
 Run the complete automated validation with:
 
