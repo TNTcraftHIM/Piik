@@ -15,10 +15,9 @@ active/running with `NRestarts=0`, and local/public health are 200.
 Ordinary ICE remains STUN-only; `PEER_ASSISTED_MEDIA=true` enables the
 bounded peer/SFU-UDP controller for every room (at most two roots), while the
 selected-edge UDP tuple is configured with TTL 120. Room `1` is historical
-smoke only. No real TURN/SFU media canary has run. Web Host names and the
-best-effort window-scoped audio request hint are deployed; Native H.264 source is
-available but no packaged native sender is deployed, and VP8 remains the Web
-default.
+smoke only. No real TURN/SFU media canary has run. Web Host names/audio hint are
+deployed. Native H.264 and Windows x64 evaluation packaging are source-only;
+there is no Native release/deployment, and Web defaults VP8.
 
 ## Execution Principle
 
@@ -42,7 +41,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Chrome 151 loopbacks decoded VP8 299 and H.264 opt-in 299/298 rendered at 1280x720 without fatal/encoder errors. Hardware attribution, Pion timing, multi-viewer/endurance/public/native proof remain open; production stays VP8.
-- Native Win11 audio is source-only/default-off. Smoke isolated target 4018x; one Viewer got 495 Opus packets. Packaging, game sync, Win10, and other routes remain open.
+- Native Win11 audio is source-only/default-off. Target isolation was 4018x; one Viewer got 495 Opus packets. Package build passes; download, game sync, Win10, and other routes are open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
 - Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
@@ -54,7 +53,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Android Chrome/iOS Safari Viewer leaves remain unverified and conservatively leaf-only. Mobile Web Host is unsupported; native senders are planned only.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
-- ADR-0006 has one Viewer proof; two-edge/FIFO, physical hardware, endurance, public, packaged-native, and browser-diversity proof remain open.
+- ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
@@ -71,10 +70,10 @@ SFU; it never runs three identical retries or abandons progressing P2P early.
 
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
 evacuation. Native source accepts increasing capture timestamps shorter than
-duration; VP8 and explicit H.264 Viewer decode/render are recorded. Hardware
-preference is not physical proof. Next prove fresh Pion
-outbound diagnostics before viewer 2/FIFO/hardware/endurance/deploy.
-Package Native audio and test one real-game A/V pair later without displacing P0.
+duration; VP8 and H.264 Viewer decode/render are recorded. Preference is not
+proof. Package one-Viewer VP8/H.264/Opus first; WGC/MF hardware then
+Viewer2/FIFO are functional slices. The 2s Pion sample is later diagnostic
+cleanup. Test real-game A/V later without displacing P0.
 Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. The
 selected-edge tuple is configured in production, but Host ingress still needs one
 forced-relay canary before any media-success claim. Retained performance/resource

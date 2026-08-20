@@ -1,0 +1,51 @@
+name: Native sender package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "native/sender/**"
+      - "native/process-audio-helper/**"
+      - "scripts/package-native-sender.ps1"
+      - ".github/workflows/native-sender-package.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "native/sender/**"
+      - "native/process-audio-helper/**"
+      - "scripts/package-native-sender.ps1"
+      - ".github/workflows/native-sender-package.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.26.6
+          cache-dependency-path: native/sender/go.sum
+      - name: Build and verify package
+        shell: pwsh
+        run: |
+          ./scripts/package-native-sender.ps1 `
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'screener-native-package') `
+            -Revision '${{ github.sha }}'
+      - name: Upload evaluation artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: screener-native-windows-x64-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/screener-native-package/*.zip
+            ${{ runner.temp }}/screener-native-package/*.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

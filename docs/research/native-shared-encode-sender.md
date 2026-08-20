@@ -477,6 +477,35 @@ static standard-path results and any future native reopen gate. This path still
 requires measured per-representation traffic/resources and cannot bypass #28's
 stock-GCC/RTX stop line.
 
+## 2026-08-21 Evaluation Packaging Boundary
+
+The current source now has one Windows x64 evaluation-package path. It reuses
+the existing Go build and MSVC helper build, places the two executables beside
+each other, embeds the exact Git revision, adds an internal `SHA256SUMS.txt`,
+and publishes the ZIP with an adjacent SHA-256 file.
+`screener-sender.exe --version` is the non-interactive package smoke. This does not add an installer,
+Electron, auto-update, signing, a bundled server, codec matrix, or release.
+
+The workflow uses the official `windows-latest` image, whose current manifest
+includes VSWhere, the x64 Visual C++ tools, and Windows 11 SDK, and the official
+immutable `actions/upload-artifact@v7` path with missing-file failure, zero
+second-stage compression for the precompressed ZIP, and seven-day retention.
+GitHub requires authentication to download the resulting artifact. The
+workflow is path-filtered on pull requests and `main`, with manual dispatch for
+an exact retained commit. Sources were checked 2026-08-21.
+
+The linked-binary audit covers 23 modules: coder/websocket is ISC; the 16 Pion
+modules are MIT; google/uuid, wlynxg/anet, and the four `golang.org/x` modules
+are BSD-style. Every linked module exposes a recognized root license file. The
+packager derives the list from `go list -deps`, copies those exact files plus
+the Go toolchain license, and fails if a linked module has no license file. No
+GPL/AGPL reference or proprietary Oopz code enters the package.
+
+The project distribution license remains undecided. The Actions artifact is
+therefore labeled evaluation-only and grants no project redistribution right;
+GitHub Release publication remains blocked on the license decision. This
+bounded trial artifact does not change ADR-0006's product No-Go status.
+
 ## Product Stop Line
 
 The stock Pion GCC plus negotiated RFC 4588 RTX composition is
@@ -544,10 +573,15 @@ SFU/UDP fails and needs its own bounded transport gate.
 - [Apple iOS ScreenCaptureKit sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios)
 - [Apple required hardware encoder key](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)
 - [Apple hardware encoder readback](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_usinghardwareacceleratedvideoencoder)
+- [GitHub Actions artifact upload](https://github.com/actions/upload-artifact)
+- [GitHub Windows 2025 runner image](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md)
+- [PowerShell `Compress-Archive`](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.archive/compress-archive)
+- [Go license](https://go.dev/LICENSE)
 
 The current Go candidate directly uses Pion (MIT) and coder/websocket (ISC).
-Before distributing any sender executable, choose the project license and
-generate and verify notices for those direct and all transitive dependencies.
+The evaluation package generates and verifies notices for the Go runtime and
+all linked direct/transitive dependencies. Choose the project license before a
+formal release or redistribution grant.
 libwebrtc/H.264 remains a separate future route requiring its own third-party
 notice and patent/licensing review. No source code from these projects was
 copied into Screener.

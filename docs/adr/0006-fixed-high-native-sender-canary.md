@@ -178,9 +178,12 @@ failed stage while synchronously retaining a bounded final-negative snapshot:
    candidates; a future selected-edge attempt requires its own generation-bound
    gate after SFU/UDP rather than widening or blocking the direct-path canary.
 
-Only after these stages pass may separate performance, quality, loss,
-reconnect, browser, audio/A-V-sync, packaging, and license gates begin. Do not
-expand the feature to make the diagnostic gate pass.
+A commit-bound, short-lived evaluation artifact may package the current source
+to run these stages without a development toolchain. That artifact is not an
+acceptance or release claim. Only after these stages pass may separate
+performance, quality, loss, reconnect, browser, audio/A-V-sync, formal release,
+and license gates begin. Do not expand the feature to make the diagnostic gate
+pass.
 
 ## Consequences
 
