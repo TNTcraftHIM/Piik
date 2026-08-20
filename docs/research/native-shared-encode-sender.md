@@ -93,6 +93,45 @@ Audio, per-process WASAPI capture, WGC/DDA fallback, source selection, Electron,
 installers, updating, and cross-platform abstractions stay outside the first
 spike.
 
+### 2026-08-20 Windows codec comparison
+
+The target workstation exposes an NVIDIA GeForce RTX 4070 SUPER. NVIDIA's
+published NVENC contract encodes H.264, HEVC, and AV1, but not VP8. The current
+Native canary instead fixes VP8 and asks WebCodecs for `prefer-hardware`; its
+code removes that preference when the capability check rejects it. The prior
+bounded run did reject the preferred configuration and continued with
+`no-preference`. One `VideoEncoder` and its first output callback therefore do
+not establish hardware encoding, and VP8 cannot use this GPU's NVENC engine.
+
+Discord and the read-only Oopz 0.87.425 package inspection both make H.264 the
+smallest Windows hardware candidate. Discord publishes native OS/driver capture
+and encoding with hardware preferred and WebRTC transport. Oopz's package
+contains Agora screen-share integration, WGC/DXGI/D3D11 capture components, an
+H.264 Web viewer configuration, NVENC/QSV/AMF plus software codec paths, and an
+observable hardware-acceleration field. The inspection found one channel screen
+publication and no evidence of an application-owned per-viewer PeerConnection
+loop. That is consistent with a common publication, but static packaging cannot
+prove one physical encoder, the codec/profile selected for a real host, or
+actual GPU use.
+
+The bounded WebCodecs H.264 run, its no-go result, and the hardware-only Media
+Foundation successor are owned by
+[Native H.264 hardware decision spike](./native-h264-hardware-decision.md).
+Do not recreate a codec ladder here. AV1 waits for the same physical-encode
+proof and the desktop/mobile Viewer decode matrix; compression efficiency alone
+cannot advance it.
+
+Reproducibility anchors for the proprietary-package inspection, without copied
+code or user data:
+
+- Oopz `data/app.so`: SHA-256
+  `462E081D03E49008AD8D64A032BD6396F0B97CDADBDF715F7C6810D081A714F8`.
+- Oopz screen-viewer bundle `screenShare/page/assets/index-C6S4n49C.js`:
+  SHA-256
+  `1EAECD2C0DC332E5D2628047EE1BECB874C8130C2C383355EE313961EFC6E1CA`.
+- Oopz `agora_rtc_sdk.dll`: SHA-256
+  `66B8B34A57BA0EE9DCC6C516E2CC20F5F1EB5D35ED7150FDF37201A46BC8D4A0`.
+
 ## Deferred Mobile Sender Boundary
 
 This section records later capability work; it does not broaden ADR-0006's
@@ -414,6 +453,10 @@ unless its own bounded capability and transport gate is accepted.
 - [Pion send-side bandwidth estimator](https://github.com/pion/interceptor/blob/main/pkg/gcc/send_side_bwe.go)
 - [Pion WebRTC license](https://github.com/pion/webrtc/blob/main/LICENSE)
 - [WebCodecs](https://www.w3.org/TR/webcodecs/)
+- [NVIDIA NVENC application note](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvenc-application-note/index.html)
+- [Agora Windows screen sharing](https://doc.shengwang.cn/doc/rtc/windows/basic-features/screen-share)
+- [Agora Windows encoding preference](https://doc.shengwang.cn/api-ref/rtc/windows/API/enum_encodingpreference)
+- [Oopz help center](https://help.oopz.cn/)
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
