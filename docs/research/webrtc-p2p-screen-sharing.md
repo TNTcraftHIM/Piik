@@ -199,13 +199,15 @@ screen track 或加入私有媒体协议。
 ### Viewer 向电视输出边界
 
 Remote Playback API 当前仍是 MDN `Limited availability`，不能作为跨浏览器基线。
-Safari 的原生视频控件可暴露 AirPlay，Chrome/Android 的平台 UI 也可能暴露 Cast 或
-系统屏幕镜像，但官方能力并不证明当前 live WebRTC `srcObject` 可在任意电视目标上
-远端播放。产品只能在运行时检测 `HTMLMediaElement.remote`，并在真实设备通过后
-显示入口；失败时保留本机播放和系统级屏幕镜像。
+W3C 规范还明确允许 UA 在只支持 media flinging、而媒体源不是可传给远端设备的 URL
+时返回 `NotSupportedError`。Safari 官方只保证 `HTMLMediaElement` 原生 AirPlay picker；
+这些能力都不证明 live WebRTC `srcObject` 可在任意电视目标上远端播放。产品只能在
+运行时检测 `HTMLMediaElement.remote`，并在真实设备通过后显示入口；失败时保留本机
+播放和现在就能使用的系统级屏幕镜像。
 
-Google Cast Web Receiver 接收的是 receiver 可获取的媒体 URL/队列，而当前 P2P
-Viewer 持有的是进程内 `MediaStream`，没有可供电视 fetch 的 URL。为它新增转码、
+Google Cast `MediaInfo` 的 `contentUrl` 会被用作 media URL，缺失时 `contentId` 自身会
+被当作 media URL；当前 P2P Viewer 持有的是进程内 `MediaStream`，没有可供电视 fetch
+的 URL。为它新增转码、
 HLS/Web Receiver 或私有协议会改变服务器媒体成本和安全边界，当前不做。投屏只属于
 Viewer 本地播放输出；无论是否启用，现有 upstream PeerConnection、TURN/SFU/peer
 route、Host fanout 和其他 Viewer 均不变。
@@ -213,9 +215,9 @@ route、Host fanout 和其他 Viewer 均不变。
 来源（访问于 2026-08-21）：
 
 - [MDN Remote Playback API](https://developer.mozilla.org/en-US/docs/Web/API/Remote_Playback_API)
-- [Apple: Delivering video content for Safari](https://developer.apple.com/documentation/webkit/delivering-video-content-for-safari)
-- [Google Cast Web Receiver overview](https://developers.google.com/cast/docs/web_receiver)
-- [Google Cast Web Sender integration](https://developers.google.com/cast/docs/web_sender/integrate)
+- [W3C Remote Playback API](https://www.w3.org/TR/remote-playback/)
+- [Apple: Adding an AirPlay button to Safari media controls](https://developer.apple.com/documentation/webkitjs/adding_an_airplay_button_to_your_safari_media_controls)
+- [Google Cast `chrome.cast.media.MediaInfo`](https://developers.google.com/cast/docs/reference/web_sender/chrome.cast.media.MediaInfo)
 
 ### Electron 分享端
 
