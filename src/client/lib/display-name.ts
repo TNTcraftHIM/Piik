@@ -1,4 +1,5 @@
 import {
+  DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_VIEWER_DISPLAY_NAME,
   normalizeDisplayName,
   type DisplayName,
@@ -6,11 +7,11 @@ import {
 
 const DISPLAY_NAME_STORAGE_KEY = "screener:display-name:v1";
 
-export function readDisplayName(): DisplayName {
+export function readStoredDisplayName(): DisplayName | null {
   try {
     const stored = window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY);
     if (!stored) {
-      return DEFAULT_VIEWER_DISPLAY_NAME;
+      return null;
     }
     const normalized = normalizeDisplayName(stored);
     if (normalized === stored) {
@@ -20,16 +21,33 @@ export function readDisplayName(): DisplayName {
   } catch {
     // Restricted storage must not block joining a room.
   }
-  return DEFAULT_VIEWER_DISPLAY_NAME;
+  return null;
 }
 
-export function saveDisplayName(value: string): DisplayName | null {
+export function readDisplayName(
+  fallback: DisplayName = DEFAULT_VIEWER_DISPLAY_NAME,
+): DisplayName {
+  return readStoredDisplayName() ?? fallback;
+}
+
+export function defaultHostDisplayName(clientId: string): DisplayName {
+  const suffix = clientId.slice(-6);
+  return (
+    normalizeDisplayName(`${DEFAULT_HOST_DISPLAY_NAME_PREFIX}-${suffix}`) ??
+    DEFAULT_HOST_DISPLAY_NAME_PREFIX
+  );
+}
+
+export function saveDisplayName(
+  value: string,
+  fallback: DisplayName = DEFAULT_VIEWER_DISPLAY_NAME,
+): DisplayName | null {
   const normalized = normalizeDisplayName(value);
   const useFallback = value.length === 0 || /^\p{Zs}+$/u.test(value);
   if (!normalized && !useFallback) {
     return null;
   }
-  const displayName = normalized ?? DEFAULT_VIEWER_DISPLAY_NAME;
+  const displayName = normalized ?? fallback;
   try {
     if (useFallback) {
       window.localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);

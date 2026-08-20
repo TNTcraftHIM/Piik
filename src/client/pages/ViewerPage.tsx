@@ -17,6 +17,7 @@ import {
   viewerPasswordSchema,
   type IceConfig,
   type MediaAssignment,
+  type ParticipantPresenceEntry,
   type ServerMessage,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
@@ -97,6 +98,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [displayName, setDisplayName] = useState(() => readDisplayName());
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [hostPresence, setHostPresence] = useState<Extract<
+    ParticipantPresenceEntry,
+    { role: "host" }
+  > | null>(null);
   const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
   const [viewerPasswordError, setViewerPasswordError] = useState<string | null>(
     null,
@@ -171,6 +176,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           ? { viewerPassword: viewerPasswordAttempt.password }
           : {}),
         displayName: displayNameRef.current,
+        viewerPresence: true,
       },
       {
         onStatus: (status) => {
@@ -186,6 +192,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setSfuStandbyUrl(null);
           clearViewerSfuRoute();
           clearPeerState();
+          setHostPresence(null);
           if (!viewerAuthenticated) {
             setAccessState("denied");
           }
@@ -197,6 +204,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             setSfuStandbyUrl(null);
             clearViewerSfuRoute();
             clearPeerState();
+            setHostPresence(null);
             viewerAuthenticated = false;
             setAccessState("denied");
             setStatusText("邀请无效或已失效");
@@ -758,11 +766,23 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         return;
       }
+      if (message.type === "viewer-presence") {
+        setHostPresence(
+          message.viewers.find(
+            (participant): participant is Extract<
+              ParticipantPresenceEntry,
+              { role: "host" }
+            > => participant.role === "host",
+          ) ?? null,
+        );
+        return;
+      }
       if (message.type === "sharing-stopped") {
         setSfuStandbyUrl(null);
         currentHostOnline = false;
         clearViewerSfuRoute();
         clearPeerState();
+        setHostPresence(null);
         setHostOnline(false);
         setStatusText("等待开始分享");
         return;
@@ -781,6 +801,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setSfuStandbyUrl(null);
         clearViewerSfuRoute();
         clearPeerState();
+        setHostPresence(null);
         setStatusText("邀请已失效，请向分享者获取新链接");
         signal.stop();
         return;
@@ -791,6 +812,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setSfuStandbyUrl(null);
         clearViewerSfuRoute();
         clearPeerState();
+        setHostPresence(null);
         setStatusText(message.reason === "expired" ? "房间已过期" : "房间已关闭");
         signal.stop();
         return;
@@ -798,6 +820,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (message.type === "error") {
         if (message.code === "PEER_NOT_FOUND" && !currentHostOnline) {
           clearPeerState();
+          setHostPresence(null);
           setStatusText("等待开始分享");
           return;
         }
@@ -812,6 +835,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setSfuStandbyUrl(null);
           clearViewerSfuRoute();
           clearPeerState();
+          setHostPresence(null);
           viewerAuthenticated = false;
           setAccessState("denied");
         }
@@ -840,6 +864,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       sfuStandbyPrewarmer?.dispose();
       signal.stop();
+      setHostPresence(null);
       if (signalRef.current === signal) {
         signalRef.current = null;
       }
@@ -1041,6 +1066,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             )}
           </div>
         </div>
+
+        {hostPresence && (
+          <p className="section-meta viewer-host-name">
+            {hostPresence.displayName} 的屏幕
+          </p>
+        )}
 
         <form
           className="viewer-name-control"

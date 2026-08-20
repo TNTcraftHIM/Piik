@@ -24,7 +24,7 @@ and is not part of production.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
-- Viewer names/true Host roster are deployed; Native wire/media remains unchanged.
+- Web opt-in roster includes Host self-name; Native wire/media remains unchanged.
 
 ## Verified Evidence
 

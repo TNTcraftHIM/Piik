@@ -9,21 +9,23 @@ import {
   Pause,
   Play,
   RefreshCw,
+  Save,
   Square,
   Trash2,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_QUALITY_SETTINGS,
   MAX_VIEWER_PASSWORD_LENGTH,
   VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   viewerPasswordSchema,
   type CreateRoomResponse,
   type IceConfig,
+  type ParticipantPresenceEntry,
   type ServerMessage,
   type ViewerAccessPolicy,
-  type ViewerPresenceEntry,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
@@ -39,6 +41,11 @@ import {
 import { StatsGrid } from "../components/StatsGrid";
 import { ApiError, createRoom } from "../lib/api";
 import { createOpaqueId } from "../lib/opaque-id";
+import {
+  defaultHostDisplayName,
+  readDisplayName,
+  saveDisplayName,
+} from "../lib/display-name";
 import {
   clearHostRoom,
   clearViewerGrant,
@@ -196,9 +203,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
   );
-  const [viewerPresence, setViewerPresence] = useState<ViewerPresenceEntry[]>(
-    [],
-  );
+  const [participantPresence, setParticipantPresence] = useState<
+    ParticipantPresenceEntry[]
+  >([]);
+  const [displayName, setDisplayName] = useState(() => readDisplayName());
+  const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
     Map<string, ViewerQualityEvidence>
   >(() => new Map());
@@ -212,6 +222,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
+  const displayNameRef = useRef(displayName);
+  const hostClientIdRef = useRef<string | null>(null);
   const viewerPasswordActionRef = useRef<"set" | "remove" | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
@@ -243,15 +255,35 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     [peerSnapshots],
   );
   const viewers = useMemo(
-    () => labelViewerPresence(viewerPresence),
-    [viewerPresence],
+    () =>
+      labelViewerPresence(
+        participantPresence.filter(
+          (participant): participant is Extract<
+            ParticipantPresenceEntry,
+            { role: "viewer" }
+          > => participant.role === "viewer",
+        ),
+      ),
+    [participantPresence],
+  );
+  const hostPresence = useMemo(
+    () =>
+      participantPresence.find(
+        (participant): participant is Extract<
+          ParticipantPresenceEntry,
+          { role: "host" }
+        > => participant.role === "host",
+      ) ?? null,
+    [participantPresence],
   );
   const hostDirectViewerCount = useMemo(
     () =>
-      viewerPresence.filter(
-        (viewer) => viewer.mediaTopology === "host-direct",
+      participantPresence.filter(
+        (participant) =>
+          participant.role === "viewer" &&
+          participant.mediaTopology === "host-direct",
       ).length,
-    [viewerPresence],
+    [participantPresence],
   );
   const selectedQualityProfileId = useMemo(
     () => matchingQualityProfileId(qualitySettings),
@@ -395,7 +427,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDetails(null);
     setMaxViewers(null);
     setPeerSnapshots(new Map());
-    setViewerPresence([]);
+    setParticipantPresence([]);
     viewerQualityEvidenceTimersRef.current.forEach((timer) =>
       window.clearTimeout(timer),
     );
@@ -910,7 +942,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "viewer-presence") {
-      setViewerPresence(message.viewers);
+      setParticipantPresence(message.viewers);
       return;
     }
     if (message.type === "route-update") {
@@ -1083,15 +1115,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         claimedRoom = true;
       }
       const activeRoom = createdRoom;
+      const hostClientId = getStableClientId("host", activeRoom.roomId);
+      hostClientIdRef.current = hostClientId;
+      const hostFallback = defaultHostDisplayName(hostClientId);
+      const initialDisplayName = readDisplayName(hostFallback);
+      displayNameRef.current = initialDisplayName;
+      setDisplayName(initialDisplayName);
+      setDisplayNameDraft(initialDisplayName);
+      setDisplayNameError(null);
       const signal = new SignalingClient(
         {
           roomId: activeRoom.roomId,
           role: "host",
           token: activeRoom.hostToken,
-          clientId: getStableClientId("host", activeRoom.roomId),
+          clientId: hostClientId,
           shareGeneration,
           viewerPresence: true,
           viewerPasswordSettings: true,
+          displayName: initialDisplayName,
         },
         {
           onStatus: (status) => {
@@ -1370,6 +1411,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setNotice(null);
   }
 
+  function commitDisplayName(): void {
+    const hostFallback = hostClientIdRef.current
+      ? defaultHostDisplayName(hostClientIdRef.current)
+      : DEFAULT_HOST_DISPLAY_NAME_PREFIX;
+    const saved = saveDisplayName(displayNameDraft, hostFallback);
+    if (!saved) {
+      setDisplayNameError("名称格式无效或超过 24 个字符");
+      return;
+    }
+    displayNameRef.current = saved;
+    setDisplayName(saved);
+    setDisplayNameDraft(saved);
+    setDisplayNameError(null);
+    if (!signalRef.current?.setDisplayName(saved)) {
+      setNotice("开始分享并连接后才能修改显示名");
+    }
+  }
+
   const expirationText = room
     ? room.expiresAt
       ? `${new Intl.DateTimeFormat("zh-CN", {
@@ -1394,7 +1453,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <div className="section-heading">
             <div>
               <div className="title-line">
-                <h1 id="broadcast-heading">屏幕分享</h1>
+                <h1 id="broadcast-heading">
+                  {hostPresence?.displayName ?? displayName} 的屏幕
+                </h1>
                 {room && <RoomCode roomId={room.roomId} />}
               </div>
               <p className="section-meta">
@@ -1454,6 +1515,42 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </div>
             )}
           </div>
+
+          <form
+            className="viewer-name-control host-name-control"
+            onSubmit={(event) => {
+              event.preventDefault();
+              commitDisplayName();
+            }}
+          >
+            <label htmlFor="host-display-name">显示名</label>
+            <input
+              id="host-display-name"
+              type="text"
+              value={displayNameDraft}
+              maxLength={96}
+              autoComplete="nickname"
+              aria-invalid={displayNameError ? "true" : undefined}
+              onChange={(event) => {
+                setDisplayNameDraft(event.target.value);
+                setDisplayNameError(null);
+              }}
+            />
+            <button
+              type="submit"
+              className="icon-button"
+              title="保存显示名"
+              aria-label="保存显示名"
+              disabled={displayNameDraft === displayName}
+            >
+              <Save size={17} />
+            </button>
+            {displayNameError && (
+              <span className="viewer-name-error" role="alert">
+                {displayNameError}
+              </span>
+            )}
+          </form>
 
           <div
             className="video-stage local-stage"

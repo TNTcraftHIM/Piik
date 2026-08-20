@@ -31,7 +31,7 @@ Last updated: 2026-08-20
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
-- Viewer-local names and the opt-in Web Host roster are deployed without media changes. Host self-name, endpoint details, and RTP loss remain pending.
+- Viewer-local names and the opt-in Web participant roster remain control-plane-only. The Web Host now has a local stable-ID fallback and can rename itself; names stay socket/localStorage-only, and Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access is deployed; room-password is source-only. Names/presence remain session-only without account or roster tables.
 - Deferred architecture audit: `docs/maintenance.md`.

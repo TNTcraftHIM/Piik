@@ -99,12 +99,19 @@ export class SignalingClient {
     return true;
   }
 
-  setViewerDisplayName(displayName: DisplayName): boolean {
-    if (this.identity.role !== "viewer") {
+  setDisplayName(displayName: DisplayName): boolean {
+    if (
+      this.identity.role === "host" &&
+      this.identity.viewerPresence !== true
+    ) {
       return false;
     }
     this.identity.displayName = displayName;
     return this.send({ type: "set-display-name", displayName });
+  }
+
+  setViewerDisplayName(displayName: DisplayName): boolean {
+    return this.setDisplayName(displayName);
   }
 
   sendThenStop(message: ClientMessage): void {

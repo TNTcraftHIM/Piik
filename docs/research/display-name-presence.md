@@ -10,4 +10,4 @@ Accessed 2026-08-20. This note records only the browser and Unicode facts that c
 
 ## Retained design
 
-The browser is the only durable owner of a display-name preference. The signaling server retains the canonical value only on the authenticated socket state and derives an authoritative online snapshot from current connected sessions. Presence is display-only: it neither authorizes nor changes media routing. A Web Host must opt in so the existing Native sender exact parser receives no new server message or field.
+The browser is the only durable owner of a display-name preference. The signaling server retains the canonical value only on the authenticated socket state and derives an authoritative online snapshot from current connected sessions. Presence is display-only: it neither authorizes nor changes media routing. Web Hosts and Viewers explicitly opt in to the shared participant snapshot; a Native sender does not, so its exact parser receives no new server message or field. Host defaults may be derived from the room-scoped stable client ID, but the value is still local/socket-only.
