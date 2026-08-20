@@ -25,8 +25,9 @@ the durable findings that still apply are summarized below.
 
 The current source no longer contains the rejected participant-wide config,
 issuer, authentication capability, refresh wire, or client propagation. Supplying any
-stale `PEER_ICE_TURN_*` key, even blank, fails startup. Selected-edge TURN config,
-wire, and rebuild remain unimplemented and undeployed.
+stale `PEER_ICE_TURN_*` key, even blank, fails startup. The replacement
+selected-edge config, wire, and rebuild now exist as a default-off source
+candidate; they remain undeployed and lack real relay-media evidence.
 
 ## Production Canary
 
@@ -98,11 +99,10 @@ Coturn still cannot enforce the application edge identity. The application
 guards provide selected-edge authorization; short expiry and coturn quotas bound
 bearer reuse and resource cost. Do not claim cryptographic edge binding.
 
-The exact protocol and environment names belong in the implementation PR, after
-all parent roles (`HostPeer` and relay parents), the Viewer child, and
-`HybridMediaRouter` share one reviewed generation contract. A config-only or
-issuer-only partial slice is forbidden because it would create credentials with
-no safe current consumer.
+The source candidate uses the complete `SELECTED_EDGE_TURN_*` tuple only with
+exact-room peer assistance and SFU configuration. `HostPeer`, relay parents, the
+Viewer child, and `HybridMediaRouter` share one generation contract; a config-only
+or issuer-only partial deployment remains forbidden.
 
 ## Acceptance Boundary
 

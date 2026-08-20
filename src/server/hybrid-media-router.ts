@@ -12,6 +12,7 @@ import {
   type ViewerMediaTopology,
 } from "../shared/protocol.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
+import type { SelectedEdgeTurnConfig } from "./config.js";
 import {
   MediaRouteController,
   type RoomMediaRoute,
@@ -22,10 +23,12 @@ import {
   type MediaAssignmentChange,
 } from "./peer-relay-topology.js";
 import type { RoomStore } from "./room-store.js";
+import { issueSelectedEdgeTurnCredential } from "./selected-edge-turn.js";
 
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
 
 const DEFAULT_SFU_PREPARE_TIMEOUT_MS = 5_000;
+const SELECTED_EDGE_TURN_ATTEMPT_TIMEOUT_MS = 30_000;
 const VIEWER_QUALITY_BAD_WINDOWS_TO_REASSIGN = 3;
 const VIEWER_QUALITY_EVIDENCE_GAP_MS = 5_000;
 const VIEWER_QUALITY_REASSIGN_COOLDOWN_MS = 30_000;
@@ -47,10 +50,26 @@ interface PendingRoutePreparation {
 
 interface ViewerRouteIntent {
   failedParentPeerId: string | null;
+  failedParentSessionId?: string;
+  failedConnectionId?: string;
   sessionId: string;
   sfuAttempts: number;
+  selectedTurnAttempted?: boolean;
   unavailableReported: boolean;
   qualityGuard?: QualityRouteIntentGuard;
+}
+
+interface SelectedEdgeTurnAttempt {
+  roomId: string;
+  revision: number;
+  shareGeneration: string;
+  parentPeerId: string;
+  parentSessionId: string;
+  viewerPeerId: string;
+  viewerSessionId: string;
+  newConnectionId: string;
+  answered: boolean;
+  timer: NodeJS.Timeout;
 }
 
 interface QualityRouteIntentGuard {
@@ -105,9 +124,11 @@ export interface SfuFallbackOptions {
 export interface HybridMediaRouterOptions {
   roomStore: RoomStore;
   sfuFallback?: SfuFallbackOptions;
+  selectedEdgeTurn?: SelectedEdgeTurnConfig;
   sendToSession: (sessionId: string, message: ServerMessage) => void;
   getConnectionId: (roomId: string, viewerPeerId: string) => string | undefined;
   deleteConnectionId: (roomId: string, viewerPeerId: string) => void;
+  getShareGeneration: (roomId: string) => string | undefined;
   onActiveRouteChanged?: (roomId: string) => void;
   now?: () => number;
 }
@@ -146,6 +167,10 @@ export class HybridMediaRouter {
     Map<string, ViewerRouteIntent>
   >();
   private readonly consumedSfuRefreshesByRoom = new Map<string, Set<string>>();
+  private readonly selectedEdgeTurnAttempts = new Map<
+    string,
+    SelectedEdgeTurnAttempt
+  >();
   private readonly relayCapacitySessionsByRoom = new Map<
     string,
     Map<string, string>
@@ -162,6 +187,9 @@ export class HybridMediaRouter {
 
   constructor(private readonly options: HybridMediaRouterOptions) {
     const fallback = options.sfuFallback;
+    if (options.selectedEdgeTurn && !fallback) {
+      throw new Error("Selected-edge TURN requires SFU fallback");
+    }
     if (!fallback) {
       return;
     }
@@ -183,6 +211,10 @@ export class HybridMediaRouter {
       clearTimeout(pending.timer);
     }
     this.pendingRoutePreparations.clear();
+    for (const attempt of this.selectedEdgeTurnAttempts.values()) {
+      clearTimeout(attempt.timer);
+    }
+    this.selectedEdgeTurnAttempts.clear();
     this.mediaRouteControllers.clear();
     this.failedParentPeerIdsByViewer.clear();
     this.viewerRouteIntentsByRoom.clear();
@@ -279,6 +311,63 @@ export class HybridMediaRouter {
       this.resolveActivePeerEdge(roomId, childPeerId)?.parentPeerId ===
       parentPeerId
     );
+  }
+
+  selectedEdgeTurnSignalAuthorization(input: {
+    roomId: string;
+    sourcePeerId: string;
+    sourceSessionId: string;
+    targetPeerId: string;
+    targetSessionId: string;
+    connectionId: string;
+    signalKind: "candidate" | "description";
+    descriptionType?: "offer" | "answer";
+  }): boolean | undefined {
+    const sourceKey = viewerConnectionKey(input.roomId, input.sourcePeerId);
+    const targetKey = viewerConnectionKey(input.roomId, input.targetPeerId);
+    const attempt =
+      this.selectedEdgeTurnAttempts.get(sourceKey)?.parentPeerId ===
+      input.targetPeerId
+        ? this.selectedEdgeTurnAttempts.get(sourceKey)
+        : this.selectedEdgeTurnAttempts.get(targetKey)?.parentPeerId ===
+            input.sourcePeerId
+          ? this.selectedEdgeTurnAttempts.get(targetKey)
+          : undefined;
+    if (!attempt) {
+      return undefined;
+    }
+    const parentToViewer = input.sourcePeerId === attempt.parentPeerId;
+    const currentRoute = this.mediaRouteControllers.get(input.roomId)?.getActiveRoute();
+    return Boolean(
+      input.connectionId === attempt.newConnectionId &&
+      currentRoute?.revision === attempt.revision &&
+      this.options.getShareGeneration(input.roomId) ===
+        attempt.shareGeneration &&
+      ((parentToViewer &&
+        input.sourceSessionId === attempt.parentSessionId &&
+        input.targetSessionId === attempt.viewerSessionId) ||
+        (!parentToViewer &&
+          input.sourceSessionId === attempt.viewerSessionId &&
+          input.targetSessionId === attempt.parentSessionId)) &&
+      (input.signalKind === "candidate" ||
+        (!attempt.answered &&
+          ((parentToViewer && input.descriptionType === "offer") ||
+            (!parentToViewer && input.descriptionType === "answer"))))
+    );
+  }
+
+  markSelectedEdgeTurnAnswered(
+    roomId: string,
+    viewerPeerId: string,
+    connectionId: string,
+  ): void {
+    const attempt = this.selectedEdgeTurnAttempts.get(
+      viewerConnectionKey(roomId, viewerPeerId),
+    );
+    if (attempt?.newConnectionId === connectionId) {
+      attempt.answered = true;
+      clearTimeout(attempt.timer);
+    }
   }
 
   resolveActivePeerEdge(
@@ -647,7 +736,17 @@ export class HybridMediaRouter {
         );
         return;
       }
+      if (
+        isSfuRoot &&
+        participant.role === "viewer" &&
+        this.startSelectedEdgeTurn(participant.roomId, participant.peerId, true)
+      ) {
+        return;
+      }
       this.failBackToPeerBaseline(participant.roomId);
+      return;
+    }
+    if (this.finishSelectedEdgeTurnFailure(participant, message)) {
       return;
     }
     if (participant.role !== "viewer") {
@@ -715,6 +814,11 @@ export class HybridMediaRouter {
     }
     roomIntents.set(participant.peerId, {
       failedParentPeerId: assignment.upstream.peerId,
+      failedParentSessionId: this.connectedPeer(
+        participant.roomId,
+        assignment.upstream.peerId,
+      )?.sessionId,
+      failedConnectionId: message.connectionId,
       sessionId: participant.sessionId,
       sfuAttempts: 0,
       unavailableReported: false,
@@ -737,6 +841,7 @@ export class HybridMediaRouter {
   }
 
   disconnectParticipant(roomId: string, peerId: string): void {
+    this.clearSelectedEdgeTurnsForParticipant(roomId, peerId);
     this.clearViewerQualityStateForParticipant(roomId, peerId);
     const pending = this.pendingRoutePreparations.get(roomId);
     if (!pending || this.pendingSessionsAreCurrent(roomId, pending)) {
@@ -746,6 +851,7 @@ export class HybridMediaRouter {
   }
 
   removeViewer(roomId: string, peerId: string): void {
+    this.clearSelectedEdgeTurnsForParticipant(roomId, peerId);
     this.clearViewerQualityStateForParticipant(roomId, peerId);
     this.abortPendingRouteForTopologyChange(roomId);
     const changes = this.peerRelayTopology.removeViewer(
@@ -811,6 +917,171 @@ export class HybridMediaRouter {
       return;
     }
     this.abortPendingRoute(participant.roomId);
+  }
+
+  private startSelectedEdgeTurn(
+    roomId: string,
+    viewerPeerId: string,
+    requireConsumedSfuRefresh: boolean,
+  ): boolean {
+    const config = this.options.selectedEdgeTurn;
+    const controller = this.mediaRouteControllers.get(roomId);
+    const active = controller?.getActiveRoute();
+    const intent = this.viewerRouteIntentsByRoom.get(roomId)?.get(viewerPeerId);
+    const key = viewerConnectionKey(roomId, viewerPeerId);
+    if (this.selectedEdgeTurnAttempts.has(key)) {
+      return true;
+    }
+    if (
+      !config ||
+      !active ||
+      !intent ||
+      intent.selectedTurnAttempted ||
+      !intent.failedParentPeerId ||
+      !intent.failedParentSessionId ||
+      !intent.failedConnectionId
+    ) {
+      return false;
+    }
+    const viewer = this.options.roomStore.getConnectedViewer(
+      roomId,
+      viewerPeerId,
+    );
+    const parent = this.connectedPeer(roomId, intent.failedParentPeerId);
+    const shareGeneration = this.options.getShareGeneration(roomId);
+    const parentAssignment = active.assignments.get(intent.failedParentPeerId);
+    const parentChildLimit =
+      intent.failedParentPeerId ===
+      this.peerRelayTopology.getHostPeerId(roomId)
+        ? 2
+        : 1;
+    if (
+      viewer?.sessionId !== intent.sessionId ||
+      parent?.sessionId !== intent.failedParentSessionId ||
+      !parentAssignment ||
+      (parentAssignment.childPeerIds.length +
+          (parentAssignment.sfuPublicationGeneration ? 1 : 0) >=
+        parentChildLimit &&
+        !parentAssignment.childPeerIds.includes(viewerPeerId)) ||
+      !shareGeneration
+    ) {
+      return false;
+    }
+    if (requireConsumedSfuRefresh) {
+      const publicationGeneration = active.sfu.publicationGeneration;
+      if (
+        !publicationGeneration ||
+        !active.sfu.rootPeerIds.includes(viewerPeerId) ||
+        !this.consumedSfuRefreshesByRoom
+          .get(roomId)
+          ?.has(
+            sfuRefreshKey(
+              publicationGeneration,
+              viewerPeerId,
+              viewer.sessionId,
+            ),
+          )
+      ) {
+        return false;
+      }
+    }
+
+    intent.selectedTurnAttempted = true;
+    const newConnectionId = randomBytes(16).toString("base64url");
+    let credential;
+    try {
+      credential = issueSelectedEdgeTurnCredential(
+        config,
+        {
+          roomId,
+          shareGeneration,
+          revision: active.revision,
+          parentPeerId: parent.peerId,
+          parentSessionId: parent.sessionId,
+          viewerPeerId,
+          viewerSessionId: viewer.sessionId,
+          oldConnectionId: intent.failedConnectionId,
+          newConnectionId,
+        },
+        this.options.now?.() ?? Date.now(),
+      );
+    } catch {
+      console.error("Selected-edge TURN credential issuance failed");
+      return false;
+    }
+
+    const timer = setTimeout(() => {
+      const current = this.selectedEdgeTurnAttempts.get(key);
+      if (
+        !current ||
+        current.newConnectionId !== newConnectionId ||
+        current.answered
+      ) {
+        return;
+      }
+      this.selectedEdgeTurnAttempts.delete(key);
+      this.sendError(
+        current.viewerSessionId,
+        "PEER_NOT_FOUND",
+        "Selected relay edge timed out",
+      );
+    }, SELECTED_EDGE_TURN_ATTEMPT_TIMEOUT_MS);
+    timer.unref();
+    const attempt: SelectedEdgeTurnAttempt = {
+      roomId,
+      revision: active.revision,
+      shareGeneration,
+      parentPeerId: parent.peerId,
+      parentSessionId: parent.sessionId,
+      viewerPeerId,
+      viewerSessionId: viewer.sessionId,
+      newConnectionId,
+      answered: false,
+      timer,
+    };
+    this.selectedEdgeTurnAttempts.set(key, attempt);
+    const message: Extract<ServerMessage, { type: "selected-edge-turn" }> = {
+      type: "selected-edge-turn",
+      revision: attempt.revision,
+      parentPeerId: attempt.parentPeerId,
+      viewerPeerId,
+      oldConnectionId: intent.failedConnectionId,
+      newConnectionId,
+      expiresAt: credential.expiresAt,
+      iceServer: credential.iceServer,
+    };
+    // Queue the Viewer grant first. Any parent offer is handled on a later
+    // event-loop turn, so the Viewer's socket observes this grant first.
+    this.options.sendToSession(viewer.sessionId, message);
+    this.options.sendToSession(parent.sessionId, message);
+    return true;
+  }
+
+  private finishSelectedEdgeTurnFailure(
+    participant: AuthenticatedRouteParticipant,
+    message: Extract<ClientMessage, { type: "route-failed" }>,
+  ): boolean {
+    if (participant.role !== "viewer" || message.connectionId === null) {
+      return false;
+    }
+    const key = viewerConnectionKey(participant.roomId, participant.peerId);
+    const attempt = this.selectedEdgeTurnAttempts.get(key);
+    if (
+      !attempt ||
+      attempt.viewerSessionId !== participant.sessionId ||
+      attempt.revision !== message.revision ||
+      attempt.newConnectionId !== message.connectionId
+    ) {
+      return false;
+    }
+    clearTimeout(attempt.timer);
+    this.selectedEdgeTurnAttempts.delete(key);
+    this.sendError(
+      participant.sessionId,
+      "PEER_NOT_FOUND",
+      "Selected relay edge failed",
+    );
+    return true;
   }
 
   private failBackToPeerBaseline(roomId: string): void {
@@ -1007,6 +1278,9 @@ export class HybridMediaRouter {
           continue;
         }
       } else {
+        if (assignment.upstream.kind === "sfu") {
+          continue;
+        }
         if (
           assignment.upstream.kind !== "peer" ||
           assignment.upstream.peerId !== intent.failedParentPeerId
@@ -1086,6 +1360,13 @@ export class HybridMediaRouter {
           return;
         }
         intent.unavailableReported = true;
+      }
+
+      if (
+        (intent.sfuAttempts > 0 || intent.unavailableReported) &&
+        this.startSelectedEdgeTurn(roomId, viewerPeerId, false)
+      ) {
+        return;
       }
 
       if (!intent.unavailableReported) {
@@ -1662,6 +1943,12 @@ export class HybridMediaRouter {
         current.sfu.publicationGeneration ===
           active.sfu.publicationGeneration
       ) {
+        if (
+          active.sfu.rootPeerIds.includes(peerId) &&
+          this.startSelectedEdgeTurn(roomId, peerId, true)
+        ) {
+          return;
+        }
         this.failBackToPeerBaseline(roomId);
       }
     }
@@ -1758,6 +2045,12 @@ export class HybridMediaRouter {
     route: RoomMediaRoute,
     excludedPeerId?: string,
   ): void {
+    for (const [key, attempt] of this.selectedEdgeTurnAttempts) {
+      if (attempt.roomId === roomId && attempt.revision !== route.revision) {
+        clearTimeout(attempt.timer);
+        this.selectedEdgeTurnAttempts.delete(key);
+      }
+    }
     this.clearRoomViewerQualityEvidenceStates(roomId);
     for (const [peerId, assignment] of route.assignments) {
       if (peerId === excludedPeerId) {
@@ -1893,10 +2186,31 @@ export class HybridMediaRouter {
     this.mediaRouteControllers.delete(roomId);
     this.clearRoomFailedParents(roomId);
     this.viewerRouteIntentsByRoom.delete(roomId);
+    for (const [key, attempt] of this.selectedEdgeTurnAttempts) {
+      if (attempt.roomId === roomId) {
+        clearTimeout(attempt.timer);
+        this.selectedEdgeTurnAttempts.delete(key);
+      }
+    }
     this.consumedSfuRefreshesByRoom.delete(roomId);
     this.sfuDisabledRoomIds.delete(roomId);
     this.clearRoomViewerQualityEvidenceStates(roomId);
     this.roomQualityMigrationCooldownUntilMs.delete(roomId);
+  }
+
+  private clearSelectedEdgeTurnsForParticipant(
+    roomId: string,
+    peerId: string,
+  ): void {
+    for (const [key, attempt] of this.selectedEdgeTurnAttempts) {
+      if (
+        attempt.roomId === roomId &&
+        (attempt.parentPeerId === peerId || attempt.viewerPeerId === peerId)
+      ) {
+        clearTimeout(attempt.timer);
+        this.selectedEdgeTurnAttempts.delete(key);
+      }
+    }
   }
 
   private clearSfuRefreshesForPeer(roomId: string, peerId: string): void {

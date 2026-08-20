@@ -13,6 +13,7 @@ const MAX_PENDING_CANDIDATES = 64;
 const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
 const INITIAL_CONNECTION_TIMEOUT_MS = 15_000;
 const AUTOMATIC_RECOVERY_TIMEOUT_MS = 3_000;
+type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
 type SignalCandidate = Extract<
   SignalPayload,
   { kind: "candidate" }
@@ -52,12 +53,13 @@ export class ViewerPeer {
   private automaticRecoveryRequests = 0;
   private recoveryExhaustedReported = false;
   private disposed = false;
-  private currentIceConfig: IceConfig;
+  private currentIceConfig: PeerIceConfig;
   private snapshot: PeerSnapshot | null = null;
 
   constructor(
-    iceConfig: IceConfig,
+    iceConfig: PeerIceConfig,
     private readonly events: ViewerPeerEvents,
+    private readonly relayOnly = false,
   ) {
     this.currentIceConfig = iceConfig;
   }
@@ -150,6 +152,7 @@ export class ViewerPeer {
       this.setError(error, "处理分享端信令失败");
       if (
         payload.kind === "description" &&
+        !this.relayOnly &&
         this.offerRecoveryAttempts < 1 &&
         this.events.sendRestartRequest(
           parentPeerId,
@@ -167,6 +170,9 @@ export class ViewerPeer {
   }
 
   updateIceConfig(iceConfig: IceConfig): void {
+    if (this.relayOnly) {
+      return;
+    }
     this.currentIceConfig = iceConfig;
     if (!this.connection) {
       return;
@@ -181,7 +187,7 @@ export class ViewerPeer {
   }
 
   requestRecovery(): boolean {
-    if (!this.connectionId || !this.parentPeerId) {
+    if (this.relayOnly || !this.connectionId || !this.parentPeerId) {
       return false;
     }
     const sent = this.events.sendRestartRequest(
@@ -206,6 +212,15 @@ export class ViewerPeer {
 
   hasConnectionId(connectionId: string): boolean {
     return this.connection !== null && this.connectionId === connectionId;
+  }
+
+  getConnectionIdentity(): {
+    parentPeerId: string;
+    connectionId: string;
+  } | null {
+    return this.parentPeerId && this.connectionId
+      ? { parentPeerId: this.parentPeerId, connectionId: this.connectionId }
+      : null;
   }
 
   isConnected(): boolean {
@@ -237,6 +252,7 @@ export class ViewerPeer {
 
     const connection = new RTCPeerConnection({
       iceServers: this.currentIceConfig.iceServers,
+      ...(this.relayOnly ? { iceTransportPolicy: "relay" } : {}),
     });
     this.connection = connection;
     this.snapshot = {
@@ -328,6 +344,10 @@ export class ViewerPeer {
       !this.connectionId ||
       !this.parentPeerId
     ) {
+      return;
+    }
+    if (this.relayOnly) {
+      this.reportRecoveryExhausted();
       return;
     }
     if (this.automaticRecoveryRequests >= MAX_AUTOMATIC_RECOVERY_REQUESTS) {

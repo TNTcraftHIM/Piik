@@ -13,8 +13,8 @@ current controller's automatic final media fallback. This capacity is dormant un
 `LIVEKIT_URL`/key/secret tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
 ICE/UDP only. Source no longer contains the rejected participant-wide Peer ICE TURN
-candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank, and
-selected-edge TURN is not implemented or deployed. Production advertises
+candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank. A
+default-off selected-edge source candidate exists but is not deployed. Production advertises
 STUN-only ICE and the tracked coturn example remains
 `stun-only`. The shared host still retains its older authenticated-relay daemon
 configuration and firewall range, but the application advertises no credential.
@@ -107,11 +107,11 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is not yet implemented or deployed.
+selected-edge TURN config/wire is source-only and not yet deployed.
 
 `PEER_ASSISTED_ROOM_IDS` remains the topology/SFU canary boundary. Listed and
-unlisted ordinary peer connections both get STUN-only ICE; only a future
-selected-edge implementation may grant TURN to the controller's then-current
+unlisted ordinary peer connections both get STUN-only ICE; only the selected-edge
+source path may grant TURN to the controller's then-current
 edge. Run candidate rooms on an isolated instance/hostname and keep
 the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
@@ -190,12 +190,12 @@ MAX_SFU_ROOTS_PER_ROOM=2
 ```
 
 The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
-stale key, even blank, fails startup. A future selected-edge release must
-introduce a distinct complete default-off tuple in the same coherent change as
-its controller consumer, strict schema and rollback tests; deployment
-documentation will name it only after that change lands. It
-must accept one explicit TURN/UDP URI, use an independent secret and bounded TTL,
-and issue credentials only for a current one-use route attempt. Credentials
+stale key, even blank, fails startup. The source candidate uses the complete
+`SELECTED_EDGE_TURN_URLS`, `SELECTED_EDGE_TURN_SHARED_SECRET`, and
+`SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS` default-off tuple with one explicit
+TURN/UDP URI, an independent secret and bounded TTL. Enable it only after the
+exact-room peer/SFU tuple and bounded coturn service are ready; roll back by
+removing the application tuple before changing coturn or firewall state. Credentials
 never enter URLs, logs, browser persistence, room rows, or SQLite.
 
 `PEER_ASSISTED_ROOM_IDS` is the required deployment canary boundary whenever
@@ -206,7 +206,7 @@ leading zeroes, and malformed IDs fail startup. A non-empty allowlist requires
 `PEER_ASSISTED_MEDIA=true`. Only listed rooms receive peer-assisted
 authentication, routing, room quality state, or optional LiveKit fallback;
 every other room keeps ordinary P2P route fields and signaling behavior. The
-future selected-edge TURN attempt is confined to a current controller edge in a
+selected-edge TURN attempt is confined to a current controller edge in a
 listed room; every ordinary peer connection remains STUN-only. Omitting or blanking the variable fails startup rather
 than enabling every room. There is no browser control, percentage rollout, or
 all-room fail-open.
@@ -240,7 +240,7 @@ that its authenticated message contains `mediaMode: "peer-assisted"` while a
 second non-allowlisted room contains none of `mediaMode`, `qualitySettings`,
 `routeRevision`, `routeAssignment`, or `sfuStandbyUrl`. Exercise join, offer and
 answer, stop, reconnect, and room deletion in both rooms. Ordinary Web and
-Native-shaped clients remain STUN-only. With a future selected-edge tuple, only
+Native-shaped clients remain STUN-only. With the selected-edge tuple, only
 the current controller-selected edge may receive a one-use grant; all other
 sessions and connections remain STUN-only. Roll back by disabling application
 issuance before restoring the exact recorded pre-canary coturn/firewall baseline, or direct
@@ -418,8 +418,8 @@ compatibility.
 The rejected candidate names `PEER_ICE_TURN_URLS`,
 `PEER_ICE_TURN_SHARED_SECRET`, and
 `PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS` must remain absent from production and
-now fail startup even when blank. They are not aliases for the future
-selected-edge tuple, which is not implemented or deployed.
+now fail startup even when blank. They are not aliases for the source-only
+selected-edge tuple, which is not deployed.
 
 ## HTTPS and WSS ingress
 
@@ -516,7 +516,7 @@ not the optional selected-edge target or the current shared-host coturn state. T
 host retains an older authenticated-relay configuration and TCP/UDP 3478 plus
 UDP 49152-49251 firewall range, while Screener advertises no TURN credential and
 the final canary audit found zero allocations. Authenticated selected-edge
-fallback remains unimplemented and default-off; its rollout stays blocked on
+fallback is source-complete and default-off; its rollout stays blocked on
 retained SFU/UDP media and one forced-relay edge acceptance.
 
 Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.example)

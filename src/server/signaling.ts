@@ -25,6 +25,7 @@ import {
   RoomStoreError,
   type ConnectedPeer,
 } from "./room-store.js";
+import type { SelectedEdgeTurnConfig } from "./config.js";
 import {
   HybridMediaRouter,
   type SfuFallbackOptions,
@@ -73,6 +74,7 @@ export interface SignalingOptions {
   peerAssistedMedia: boolean;
   peerAssistedRoomIds?: ReadonlySet<string>;
   sfuFallback?: SfuFallbackOptions;
+  selectedEdgeTurn?: SelectedEdgeTurnConfig;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
   hostAdmissionAtUpgrade: (request: IncomingMessage) => boolean;
@@ -149,6 +151,7 @@ export class SignalingServer {
       this.hybridMediaRouter = new HybridMediaRouter({
         roomStore: options.roomStore,
         sfuFallback: options.sfuFallback,
+        selectedEdgeTurn: options.selectedEdgeTurn,
         sendToSession: (sessionId, message) =>
           this.sendToSession(sessionId, message),
         getConnectionId: (roomId, viewerPeerId) =>
@@ -157,6 +160,7 @@ export class SignalingServer {
           ),
         deleteConnectionId: (roomId, viewerPeerId) =>
           this.deleteViewerConnectionId(roomId, viewerPeerId),
+        getShareGeneration: (roomId) => this.shareGenerationsByRoom.get(roomId),
         onActiveRouteChanged: (roomId) => this.sendViewerPresence(roomId),
         now: this.now,
       });
@@ -1028,11 +1032,23 @@ export class SignalingServer {
       message.payload.kind === "description"
         ? message.payload.description
         : undefined;
-    const authorized = description
+    const selectedEdgeAuthorized =
+      this.hybridMediaRouter!.selectedEdgeTurnSignalAuthorization({
+        roomId: source.roomId,
+        sourcePeerId: source.peerId,
+        sourceSessionId: this.socketStates.get(sourceSocket)?.sessionId ?? "",
+        targetPeerId: target.peerId,
+        targetSessionId: target.sessionId,
+        connectionId: message.payload.connectionId,
+        signalKind: message.payload.kind,
+        ...(description ? { descriptionType: description.type } : {}),
+      });
+    const assignedEdgeAuthorized = description
       ? description.type === "offer"
         ? parentToChild
         : childToParent
       : parentToChild || childToParent;
+    const authorized = selectedEdgeAuthorized ?? assignedEdgeAuthorized;
     if (!authorized) {
       this.sendError(
         sourceSocket,
@@ -1054,6 +1070,13 @@ export class SignalingServer {
       fromPeerId: source.peerId,
       payload: message.payload,
     });
+    if (selectedEdgeAuthorized && description?.type === "answer") {
+      this.hybridMediaRouter!.markSelectedEdgeTurnAnswered(
+        source.roomId,
+        source.peerId,
+        message.payload.connectionId,
+      );
+    }
   }
 
   private routePeerAssistedRestart(

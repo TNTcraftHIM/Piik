@@ -3,6 +3,7 @@ import {
   MAX_VIEWERS_PER_ROOM_LIMIT,
   roomCodeSchema,
   stunUrlSchema,
+  turnUrlSchema,
 } from "../shared/protocol.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
@@ -10,6 +11,10 @@ export type RuntimeEnvironment = "development" | "test" | "production";
 const MIN_HOST_ADMISSION_PASSWORD_BYTES = 8;
 const MAX_HOST_ADMISSION_PASSWORD_BYTES = 128;
 const MIN_LIVEKIT_API_SECRET_BYTES = 32;
+const MIN_SELECTED_EDGE_TURN_SECRET_BYTES = 32;
+const MAX_SELECTED_EDGE_TURN_SECRET_BYTES = 128;
+const MIN_SELECTED_EDGE_TURN_TTL_SECONDS = 60;
+const MAX_SELECTED_EDGE_TURN_TTL_SECONDS = 10 * 60;
 const MAX_PEER_ASSISTED_VIEWERS = 8;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const DEFAULT_MAX_SFU_ROOTS_PER_ROOM = 2;
@@ -31,6 +36,12 @@ export interface LiveKitFallbackConfig {
   maxSfuRootsPerRoom: number;
 }
 
+export interface SelectedEdgeTurnConfig {
+  urls: readonly [string];
+  sharedSecret: string;
+  credentialTtlSeconds: number;
+}
+
 export interface ServerConfig {
   nodeEnv: RuntimeEnvironment;
   port: number;
@@ -45,6 +56,7 @@ export interface ServerConfig {
   peerAssistedMedia: boolean;
   peerAssistedRoomIds?: ReadonlySet<string>;
   livekitFallback?: LiveKitFallbackConfig;
+  selectedEdgeTurn?: SelectedEdgeTurnConfig;
   stunUrls: readonly string[];
 }
 
@@ -190,6 +202,55 @@ function parseStunUrlList(value: string | undefined): string[] {
   });
 }
 
+function parseSelectedEdgeTurn(
+  environment: NodeJS.ProcessEnv,
+): SelectedEdgeTurnConfig | undefined {
+  const names = [
+    "SELECTED_EDGE_TURN_URLS", "SELECTED_EDGE_TURN_SHARED_SECRET",
+    "SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS",
+  ] as const;
+  const configuredNames = names.filter((name) => environment[name]?.trim());
+  if (configuredNames.length === 0) {
+    return undefined;
+  }
+  if (configuredNames.length !== names.length) {
+    throw new Error(`${names.join(", ")} must be configured together`);
+  }
+
+  const urls = parseUrlList(
+    environment.SELECTED_EDGE_TURN_URLS,
+    "SELECTED_EDGE_TURN_URLS",
+  );
+  if (urls.length !== 1 || !turnUrlSchema.safeParse(urls[0]).success) {
+    throw new Error(
+      "SELECTED_EDGE_TURN_URLS must contain one UDP TURN URL with transport=udp",
+    );
+  }
+  const sharedSecret = environment.SELECTED_EDGE_TURN_SHARED_SECRET!;
+  const secretBytes = Buffer.byteLength(sharedSecret);
+  if (
+    !VISIBLE_ASCII_PATTERN.test(sharedSecret) ||
+    secretBytes < MIN_SELECTED_EDGE_TURN_SECRET_BYTES ||
+    secretBytes > MAX_SELECTED_EDGE_TURN_SECRET_BYTES
+  ) {
+    throw new Error(
+      "SELECTED_EDGE_TURN_SHARED_SECRET must contain 32 to 128 visible ASCII bytes",
+    );
+  }
+
+  return {
+    urls: [urls[0]!],
+    sharedSecret,
+    credentialTtlSeconds: parseBoundedInteger(
+      environment.SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS,
+      MIN_SELECTED_EDGE_TURN_TTL_SECONDS,
+      "SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS",
+      MIN_SELECTED_EDGE_TURN_TTL_SECONDS,
+      MAX_SELECTED_EDGE_TURN_TTL_SECONDS,
+    ),
+  };
+}
+
 function parseOrigins(value: string | undefined, fallback: string): Set<string> {
   const origins = parseUrlList(value, "ALLOWED_ORIGINS");
   return new Set((origins.length > 0 ? origins : [fallback]).map(toOrigin));
@@ -299,6 +360,7 @@ export function loadConfig(
     environment.PEER_ASSISTED_ROOM_IDS,
   );
   const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
+  const selectedEdgeTurn = parseSelectedEdgeTurn(environment);
 
   if (peerAssistedRoomIds && !peerAssistedMedia) {
     throw new Error(
@@ -313,14 +375,20 @@ export function loadConfig(
   if (livekitFallback && !peerAssistedMedia) {
     throw new Error("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
   }
+  if (selectedEdgeTurn && (!peerAssistedMedia || !livekitFallback)) {
+    throw new Error(
+      "Selected-edge TURN requires peer-assisted media and LiveKit fallback",
+    );
+  }
   const configuredSecrets = [
     hostAdmissionPassword,
     livekitFallback?.apiKey,
     livekitFallback?.apiSecret,
+    selectedEdgeTurn?.sharedSecret,
   ].filter((secret): secret is string => secret !== undefined);
   if (new Set(configuredSecrets).size !== configuredSecrets.length) {
     throw new Error(
-      "HOST_ADMISSION_PASSWORD, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values",
+      "HOST_ADMISSION_PASSWORD, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, and SELECTED_EDGE_TURN_SHARED_SECRET must use independent values",
     );
   }
   if (
@@ -372,6 +440,7 @@ export function loadConfig(
     peerAssistedMedia,
     peerAssistedRoomIds,
     livekitFallback,
+    selectedEdgeTurn,
     stunUrls,
   };
 }

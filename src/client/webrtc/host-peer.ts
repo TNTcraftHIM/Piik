@@ -16,6 +16,7 @@ import {
 } from "./stats";
 
 const MAX_PENDING_CANDIDATES = 64;
+type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
 type SignalCandidate = Extract<
   SignalPayload,
   { kind: "candidate" }
@@ -59,7 +60,7 @@ function captureMetrics(track: MediaStreamTrack): CaptureMetrics {
 }
 
 export class HostPeer {
-  readonly connectionId = createOpaqueId();
+  readonly connectionId: string;
 
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
@@ -79,13 +80,17 @@ export class HostPeer {
 
   constructor(
     readonly peerId: string,
-    iceConfig: IceConfig,
+    iceConfig: PeerIceConfig,
     private stream: MediaStream,
     private desiredProfile: QualityProfile,
     private readonly events: HostPeerEvents,
+    private readonly relayOnly = false,
+    connectionId = createOpaqueId(),
   ) {
+    this.connectionId = connectionId;
     this.connection = new RTCPeerConnection({
       iceServers: iceConfig.iceServers,
+      ...(relayOnly ? { iceTransportPolicy: "relay" } : {}),
     });
     this.snapshot = {
       peerId,
@@ -250,7 +255,7 @@ export class HostPeer {
   }
 
   updateIceConfig(iceConfig: IceConfig): void {
-    if (this.disposed) {
+    if (this.disposed || this.relayOnly) {
       return;
     }
     try {

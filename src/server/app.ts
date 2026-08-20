@@ -113,6 +113,7 @@ export async function createScreenerServer(
     peerAssistedMedia: config.peerAssistedMedia,
     peerAssistedRoomIds: config.peerAssistedRoomIds,
     ...(sfuFallback ? { sfuFallback } : {}),
+    ...(config.selectedEdgeTurn ? { selectedEdgeTurn: config.selectedEdgeTurn } : {}),
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
     hostAdmissionAtUpgrade: (request) =>
