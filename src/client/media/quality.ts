@@ -5,6 +5,7 @@ import {
   type QualityResolution,
   type QualitySettings,
 } from "../../shared/protocol";
+import { displayMediaOptions } from "./audio-capture";
 
 export type {
   DegradationPreference,
@@ -127,10 +128,9 @@ export async function captureDisplay(
     throw new Error("当前浏览器不支持屏幕共享");
   }
 
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: captureConstraints(profile),
-    audio: true,
-  });
+  const stream = await navigator.mediaDevices.getDisplayMedia(
+    displayMediaOptions(captureConstraints(profile)),
+  );
 
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {

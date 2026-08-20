@@ -24,5 +24,6 @@
 - [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted direct/peer UDP -> SFU-root -> optional exceptional-edge TURN direction, with the room-`1` exact smoke and broader migration gates.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
 - [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted path-isolated `HIGH + at most one LOW` policy, optional idle-layer stop, evidence contract, and SVC boundary.
+- [ADR-0008](./adr/0008-window-scoped-audio-capture.md): browser window-audio hint and the Windows WASAPI process-loopback boundary.
 
 Documentation and project memory are part of the product source of truth. Update them in the same change that alters the corresponding requirement or architecture.

@@ -47,6 +47,8 @@ describe("realtime quality controls", () => {
         frameRate: { ideal: 30, max: 30 },
       },
       audio: true,
+      systemAudio: "exclude",
+      windowAudio: "window",
     });
     expect(videoTrack.contentHint).toBe("motion");
   });

@@ -61,6 +61,10 @@ import {
 import { SignalingClient } from "../lib/signaling";
 import { labelViewerPresence } from "../lib/viewer-presence";
 import {
+  browserAudioCaptureStatus,
+  type BrowserAudioCaptureStatus,
+} from "../media/audio-capture";
+import {
   applyCaptureProfile,
   captureDisplay,
   DEGRADATION_PREFERENCE_LABELS,
@@ -106,17 +110,20 @@ interface CaptureDetails {
   resolution: string;
   frameRate: number | null;
   hasAudio: boolean;
+  audio: BrowserAudioCaptureStatus;
 }
 
 function captureDetails(stream: MediaStream): CaptureDetails {
   const settings = stream.getVideoTracks()[0]?.getSettings();
+  const audio = browserAudioCaptureStatus(stream);
   return {
     resolution:
       settings?.width && settings.height
         ? `${settings.width}x${settings.height}`
         : "未知",
     frameRate: settings?.frameRate ?? null,
-    hasAudio: stream.getAudioTracks().length > 0,
+    hasAudio: audio.hasTrack,
+    audio,
   };
 }
 
@@ -1630,6 +1637,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
           {!details?.hasAudio && stream && (
             <WarningBanner>当前来源没有可共享音频</WarningBanner>
+          )}
+          {details?.audio.scope === "window-requested-unconfirmed" && stream && (
+            <WarningBanner>
+              已请求所选窗口音频，但浏览器没有提供来源范围确认；当前音频仍可能包含系统混音。
+              需要严格窗口独占时请使用 Windows 原生发送器。
+            </WarningBanner>
           )}
           {qualityLimitation && (
             <WarningBanner>{qualityLimitation}</WarningBanner>
