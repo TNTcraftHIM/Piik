@@ -38,7 +38,7 @@ Last updated: 2026-08-21
 
 ## Current Execution Principle
 
-- Prioritize flagship/mainline; parallelize design, research, implementation, tests, and audit. Land the smallest runnable change with one smoke and rollback; avoid duplicate matrices. Room `1` is not a feature boundary; reuse mature designs without overstating hardware; benchmark after functional landing.
+- Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/logs/comments=current; history/migration=`historical`; ship reverse-scan visible copy->source; drop no-consumer layer; copy masks no wrong model.
 
 ## Current Implementation
 

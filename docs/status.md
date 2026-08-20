@@ -22,7 +22,7 @@ default.
 
 ## Execution Principle
 
-Flagship first; parallelize design/research/code/tests/audit. Ship minimum runnable + smoke + rollback; avoid duplicate matrices. Room `1` is historical; benchmark later; no hardware overclaim.
+Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/logs/comments=current; history/migration=`historical`; ship reverse-scan visible copy->source; drop no-consumer layer; copy masks no wrong model.
 
 ## Current Snapshot
 
