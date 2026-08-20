@@ -75,7 +75,10 @@ type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
 >;
-type SelectedEdgeTurn = Extract<ServerMessage, { type: "selected-edge-turn" }>;
+type SelectedEdgeTurn = Extract<
+  ServerMessage,
+  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
+>;
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [accessState, setAccessState] = useState<
@@ -646,6 +649,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "selected-edge-turn") {
+        if (message.edgeKind !== "peer-selected") {
+          return;
+        }
         if (
           !peerAssisted ||
           message.revision !== currentRouteRevision ||

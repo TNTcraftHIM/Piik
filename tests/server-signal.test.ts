@@ -4062,6 +4062,9 @@ describe("WebSocket signaling", () => {
       prepared.rootViewer.inbox.next("selected-edge-turn"),
     ]);
     expect(parentGrant).toEqual(childGrant);
+    if (childGrant.edgeKind !== "peer-selected") {
+      throw new Error("expected a peer-selected grant");
+    }
     expect(childGrant.parentPeerId).toBe(prepared.rootAuth.peerId);
     prepared.rootViewer.socket.send(JSON.stringify({
       type: "signal",

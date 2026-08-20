@@ -692,18 +692,34 @@ export const serverMessageSchema = z.union([
       token: z.string().min(1).max(MAX_SFU_TOKEN_LENGTH),
     })
     .strict(),
-  z
-    .object({
-      type: z.literal("selected-edge-turn"),
-      revision: mediaRouteRevisionSchema,
-      parentPeerId: opaqueIdSchema,
-      viewerPeerId: opaqueIdSchema,
-      oldConnectionId: opaqueIdSchema,
-      newConnectionId: opaqueIdSchema,
-      expiresAt: z.string().datetime(),
-      iceServer: selectedEdgeTurnIceServerSchema,
-    })
-    .strict(),
+  z.discriminatedUnion("edgeKind", [
+    z
+      .object({
+        type: z.literal("selected-edge-turn"),
+        edgeKind: z.literal("peer-selected"),
+        revision: mediaRouteRevisionSchema,
+        parentPeerId: opaqueIdSchema,
+        viewerPeerId: opaqueIdSchema,
+        oldConnectionId: opaqueIdSchema,
+        newConnectionId: opaqueIdSchema,
+        expiresAt: z.string().datetime(),
+        iceServer: selectedEdgeTurnIceServerSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("selected-edge-turn"),
+        edgeKind: z.literal("host-sfu-ingress"),
+        revision: mediaRouteRevisionSchema,
+        hostPeerId: opaqueIdSchema,
+        publicationGeneration: opaqueIdSchema,
+        oldConnectionId: opaqueIdSchema,
+        newConnectionId: opaqueIdSchema,
+        expiresAt: z.string().datetime(),
+        iceServer: selectedEdgeTurnIceServerSchema,
+      })
+      .strict(),
+  ]),
   z
     .object({
       type: z.literal("quality-settings"),

@@ -40,6 +40,8 @@ interface HostPublisherSlot {
   active: boolean;
   failed: boolean;
   acknowledgeActive: boolean;
+  connectionId: string;
+  selectedEdgeTurn: boolean;
 }
 
 interface HostSfuRouteEvents {
@@ -60,6 +62,12 @@ export class HostSfuRoute {
   private resyncGeneration = 0;
   private resyncing = false;
   private closed = false;
+  private lastConfig: Extract<ServerMessage, { type: "sfu-config" }> | null =
+    null;
+  private selectedEdgeTurn: Extract<
+    ServerMessage,
+    { type: "selected-edge-turn"; edgeKind: "host-sfu-ingress" }
+  > | null = null;
 
   constructor(private readonly events: HostSfuRouteEvents) {}
 
@@ -75,6 +83,8 @@ export class HostSfuRoute {
     if (previousRevision !== update.revision) {
       this.recovery = null;
       this.lastFailureStage = null;
+      this.lastConfig = null;
+      this.selectedEdgeTurn = null;
     }
     if (update.phase === "prepare") {
       if (
@@ -170,6 +180,7 @@ export class HostSfuRoute {
     if (!token || !phase || !assignment || !publicationGeneration) {
       return;
     }
+    this.lastConfig = message;
 
     if (this.active?.publicationGeneration === publicationGeneration) {
       this.active.revision = message.revision;
@@ -196,6 +207,13 @@ export class HostSfuRoute {
     const publisher =
       this.events.createPublisher?.(() => this.handleFailure(slot)) ??
       new SfuPublisher({ onDisconnected: () => this.handleFailure(slot) });
+    const selectedEdgeTurn =
+      this.selectedEdgeTurn?.revision === message.revision &&
+      this.selectedEdgeTurn.publicationGeneration === publicationGeneration &&
+      this.selectedEdgeTurn.oldConnectionId === publicationGeneration
+        ? this.selectedEdgeTurn
+        : null;
+    this.selectedEdgeTurn = null;
     slot = {
       revision: message.revision,
       publicationGeneration,
@@ -204,12 +222,22 @@ export class HostSfuRoute {
       active: false,
       failed: false,
       acknowledgeActive: false,
+      connectionId: selectedEdgeTurn?.newConnectionId ?? publicationGeneration,
+      selectedEdgeTurn: selectedEdgeTurn !== null,
     };
     this.pending = slot;
     try {
       const connected = await publisher.connect({
         url: message.url,
         token: message.token,
+        ...(selectedEdgeTurn
+          ? {
+              rtcConfig: {
+                iceServers: [selectedEdgeTurn.iceServer],
+                iceTransportPolicy: "relay",
+              },
+            }
+          : {}),
       });
       if (!connected) {
         if (this.pending === slot && this.route.owns(token)) {
@@ -232,6 +260,37 @@ export class HostSfuRoute {
       await disconnectPublisher(publisher);
       this.handleFailure(slot);
     }
+  }
+
+  /** Apply one controller-selected TURN grant to the next SFU publisher PC. */
+  startSelectedEdgeTurn(
+    message: Extract<
+      ServerMessage,
+      { type: "selected-edge-turn"; edgeKind: "host-sfu-ingress" }
+    >,
+  ): boolean {
+    if (
+      this.closed ||
+      this.active !== null ||
+      !this.route.acceptsConfig(message.revision) ||
+      Date.parse(message.expiresAt) <= Date.now()
+    ) {
+      return false;
+    }
+    const assignment = this.route.getPlannedAssignment();
+    const publicationGeneration = assignment?.sfuPublicationGeneration;
+    if (
+      !publicationGeneration ||
+      publicationGeneration !== message.publicationGeneration ||
+      message.oldConnectionId !== publicationGeneration ||
+      !this.lastConfig ||
+      this.lastConfig.revision !== message.revision
+    ) {
+      return false;
+    }
+    this.selectedEdgeTurn = message;
+    void this.acceptConfig(this.lastConfig);
+    return true;
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
@@ -282,6 +341,8 @@ export class HostSfuRoute {
     this.resyncing = false;
     this.route.reset();
     this.recovery = null;
+    this.lastConfig = null;
+    this.selectedEdgeTurn = null;
     await this.queueTransition(async () => {
       const pending = this.pending;
       const active = this.active;
@@ -516,17 +577,22 @@ export class HostSfuRoute {
     }
     if (phase === "prepare") {
       if (matchesPlannedRoute || wasActive) {
-        this.routeFailed(revision, "prepare");
+        // Selected-edge ingress is only issued for an active SFU route.
+        // Prepare failures retain the existing null connection contract.
+        this.routeFailed(revision, "prepare", null);
       }
       return;
     }
     if (!matchesPlannedRoute) {
       return;
     }
-    this.requestRecovery(revision);
+    this.requestRecovery(revision, slot);
   }
 
-  private requestRecovery(revision: number): void {
+  private requestRecovery(
+    revision: number,
+    failedSlot?: HostPublisherSlot,
+  ): void {
     if (!this.recovery || this.recovery.revision !== revision) {
       this.recovery = { revision, refreshed: false };
     }
@@ -536,15 +602,23 @@ export class HostSfuRoute {
         return;
       }
     }
-    this.routeFailed(revision, "active");
+    this.routeFailed(
+      revision,
+      "active",
+      failedSlot?.selectedEdgeTurn ? failedSlot.connectionId : null,
+    );
   }
 
-  private routeFailed(revision: number, phase: MediaRoutePhase): void {
+  private routeFailed(
+    revision: number,
+    phase: MediaRoutePhase,
+    connectionId: string | null,
+  ): void {
     this.events.send({
       type: "route-failed",
       revision,
       phase,
-      connectionId: null,
+      connectionId,
     });
   }
 

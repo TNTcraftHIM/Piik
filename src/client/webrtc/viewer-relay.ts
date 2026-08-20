@@ -11,7 +11,10 @@ interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
 }
-type SelectedEdgeTurn = Extract<ServerMessage, { type: "selected-edge-turn" }>;
+type SelectedEdgeTurn = Extract<
+  ServerMessage,
+  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
+>;
 
 export class ViewerRelay {
   private childPeerId: string | null = null;

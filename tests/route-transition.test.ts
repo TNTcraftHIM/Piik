@@ -245,6 +245,73 @@ describe("HostSfuRoute", () => {
     ]);
   });
 
+  it("applies a host-SFU selected grant only to a relay-only publisher", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const failures: Array<() => void> = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: (onDisconnected) => {
+        const publisher = createFakePublisher([], `publisher-${publishers.length + 1}`);
+        publishers.push(publisher);
+        failures.push(onDisconnected);
+        if (publishers.length === 1) {
+          publisher.connect.mockResolvedValue(false);
+        }
+        return publisher;
+      },
+    });
+    const assignment = hostAssignment("generation-a");
+    route.accept({ revision: 1, phase: "prepare", assignment });
+    await route.acceptConfig(sfuConfig(1));
+    expect(messages).toContainEqual({
+      type: "route-failed",
+      revision: 1,
+      phase: "prepare",
+      connectionId: null,
+    });
+
+    expect(
+      route.startSelectedEdgeTurn({
+        type: "selected-edge-turn",
+        edgeKind: "host-sfu-ingress",
+        revision: 1,
+        hostPeerId: "host_12345678",
+        publicationGeneration: "generation-a",
+        oldConnectionId: "generation-a",
+        newConnectionId: "selected-connection-new",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        iceServer: {
+          urls: ["turn:turn.example.test:3478?transport=udp"],
+          username: "1787230000:opaque_identity_12345678",
+          credential: "short-lived-credential",
+        },
+      }),
+    ).toBe(true);
+    await vi.waitFor(() => expect(publishers).toHaveLength(2));
+    expect(publishers[1].connect).toHaveBeenCalledWith({
+      url: "wss://sfu.example.test",
+      token: "token-1",
+      rtcConfig: {
+        iceServers: [
+          {
+            urls: ["turn:turn.example.test:3478?transport=udp"],
+            username: "1787230000:opaque_identity_12345678",
+            credential: "short-lived-credential",
+          },
+        ],
+        iceTransportPolicy: "relay",
+      },
+    });
+    expect(failures).toHaveLength(2);
+  });
+
   it("surfaces a bounded publisher stage after active fallback fails", async () => {
     const publisher = {
       ...createFakePublisher([], "publisher"),

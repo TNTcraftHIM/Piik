@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Phase
 
@@ -38,7 +38,7 @@ automatic peer/SFU-UDP controller with at most two SFU roots. The old
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Native VP8 loopback (Chrome 151) reached one Viewer: 30 sender frames, 85 source RTP packets, 877 inbound packets, 299 decoded/rendered at 1280x720, no fatal. Pion outbound delta missed a 2s refresh; hardware/multi-viewer/FIFO/endurance/public/native proof remains open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
-- Selected-edge typecheck and 131 focused control tests pass; no TURN allocation/media evidence exists.
+- Source adds room-1 Host ingress + peer last-mile; Peer ICE STUN-only; 160 tests pass.
 - Prepared artifact `screener-61a87ae47e38abc943cef47b3d7318bb51bf86d6-20260820T143538Z.tar.gz` (883597 bytes, SHA-256 `d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`) was the sole Host-name cutover candidate. Its prepare-to-release and health gates passed before the stale restart-count assertion caused automatic rollback; `fdd14ba` is healthy with all four service restart counts at 0, and Host display-name remains source-only. Selected-edge TURN is disabled.
 
 ## Unverified Boundaries
@@ -68,8 +68,8 @@ duration; one VP8 Viewer decode/render run is recorded. Next prove fresh Pion
 outbound diagnostics before viewer 2/FIFO/hardware/endurance/deploy.
 Audio A/B/C may proceed without displacing P0.
 Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. Selected-edge
-is source-complete/default-off/undeployed. Next run one isolated forced-relay
-canary; retained performance/resource benchmarks follow functional landing.
+is source-complete/default-off/undeployed; Host ingress still needs one forced-relay
+canary before activation. Retained performance/resource benchmarks follow landing.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate

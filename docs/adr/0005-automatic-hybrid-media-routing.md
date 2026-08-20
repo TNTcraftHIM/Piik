@@ -83,6 +83,9 @@ TURN config, issuer, capability, refresh wire, or client propagation. Stale
 `PEER_ICE_TURN_*` keys fail startup even when blank. The source candidate now
 implements a complete default-off selected-edge tuple and one post-SFU
 relay-only rebuild; it remains undeployed and lacks real TURN/media evidence.
+The wire has two explicit edge kinds: `peer-selected` for the last-mile failed
+peer edge and `host-sfu-ingress` for an exact-room-`1` restricted Host-to-SFU
+retry. Ordinary Peer ICE remains STUN-only.
 
 The current runtime removes the old all-room coturn contract. Production
 requires STUN and authenticated ICE snapshots contain only STUN servers in
@@ -290,10 +293,13 @@ complete LiveKit tuple.
 
 8. An active Viewer SFU root may request one fresh short-lived grant. If its next
    failure, or the initial SFU prepare, is exhausted, the router grants at most
-   one relay-only rebuild of that Viewer's original failed peer edge. Failure is
+   one relay-only rebuild of that Viewer's original failed peer edge. An active
+   Host-to-SFU route may instead receive one `host-sfu-ingress` relay-only grant
+   when the explicit restricted-source decision applies to exact room `1`; the
+   grant is bound to the host session and publication generation. Failure is
    terminal for that attempt; stop, session replacement, topology revision or a
-   new sharing generation clears it. Host publisher/global SFU failure retains
-   the existing bounded peer failback.
+   new sharing generation clears it, then the existing bounded peer failback
+   remains available.
 
 Production logs on 2026-08-20 observed two root participants for about 4.6
 seconds and two short Host participants (about 0.46 and 0.27 seconds), all ending
@@ -411,9 +417,13 @@ their bounded peer descendants. Only an edge that also cannot use SFU/UDP may
 receive a controller-selected authenticated TURN attempt. Production currently
 ends in bounded failure and has no application TURN config. Source has no
 participant-wide TURN path: the rejected candidate is removed and its stale
-environment keys fail startup. The default-off selected-edge source candidate
-uses a short coturn REST bearer and one server-generated connection identity for
-the exact failed parent/Viewer pair. It is undeployed and has no real relay-media evidence.
+environment keys fail startup. The default-off selected-edge source candidate uses
+a short coturn REST bearer and one server-generated connection identity per explicit
+edge kind. `peer-selected` binds the failed parent/Viewer pair; `host-sfu-ingress`
+binds exact room `1`, the host session, the SFU publication generation, and the
+old/new connection identities. The Host client applies that grant only to a
+relay-only LiveKit publisher `RTCConfiguration`. It is undeployed and has no real
+relay-media evidence.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
 The bounded cost model, privacy-safe ICE fields, and exact-room A/B sequence

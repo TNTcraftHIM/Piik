@@ -2,7 +2,8 @@ import { createHmac } from "node:crypto";
 
 import type { SelectedEdgeTurnConfig } from "./config.js";
 
-export interface SelectedEdgeTurnIdentity {
+export interface PeerSelectedEdgeTurnIdentity {
+  edgeKind: "peer-selected";
   roomId: string;
   shareGeneration: string;
   revision: number;
@@ -14,6 +15,22 @@ export interface SelectedEdgeTurnIdentity {
   newConnectionId: string;
 }
 
+export interface HostSfuIngressTurnIdentity {
+  edgeKind: "host-sfu-ingress";
+  roomId: string;
+  shareGeneration: string;
+  revision: number;
+  hostPeerId: string;
+  hostSessionId: string;
+  publicationGeneration: string;
+  oldConnectionId: string;
+  newConnectionId: string;
+}
+
+export type SelectedEdgeTurnIdentity =
+  | PeerSelectedEdgeTurnIdentity
+  | HostSfuIngressTurnIdentity;
+
 export function issueSelectedEdgeTurnCredential(
   config: SelectedEdgeTurnConfig,
   identity: SelectedEdgeTurnIdentity,
@@ -24,22 +41,36 @@ export function issueSelectedEdgeTurnCredential(
   }
   const expiresAtSeconds =
     Math.floor(nowMs / 1_000) + config.credentialTtlSeconds;
+  const opaquePayload =
+    identity.edgeKind === "peer-selected"
+      ? [
+          "screener-selected-edge-turn-v1",
+          identity.roomId,
+          identity.shareGeneration,
+          identity.revision,
+          identity.parentPeerId,
+          identity.parentSessionId,
+          identity.viewerPeerId,
+          identity.viewerSessionId,
+          identity.oldConnectionId,
+          identity.newConnectionId,
+          expiresAtSeconds,
+        ]
+      : [
+          "screener-selected-edge-turn-v2",
+          identity.edgeKind,
+          identity.roomId,
+          identity.shareGeneration,
+          identity.revision,
+          identity.hostPeerId,
+          identity.hostSessionId,
+          identity.publicationGeneration,
+          identity.oldConnectionId,
+          identity.newConnectionId,
+          expiresAtSeconds,
+        ];
   const opaqueIdentity = createHmac("sha256", config.sharedSecret)
-    .update(
-      JSON.stringify([
-        "screener-selected-edge-turn-v1",
-        identity.roomId,
-        identity.shareGeneration,
-        identity.revision,
-        identity.parentPeerId,
-        identity.parentSessionId,
-        identity.viewerPeerId,
-        identity.viewerSessionId,
-        identity.oldConnectionId,
-        identity.newConnectionId,
-        expiresAtSeconds,
-      ]),
-    )
+    .update(JSON.stringify(opaquePayload))
     .digest("base64url")
     .slice(0, 32);
   const username = `${expiresAtSeconds}:${opaqueIdentity}`;
