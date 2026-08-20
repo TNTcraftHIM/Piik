@@ -27,6 +27,9 @@ describe("native one-viewer sender-start ledger", () => {
         binarySendAttempts: 1,
         binarySendSucceeded: 1,
         encoderInstances: 1,
+        diagnosticsObserved: true,
+        postSendDiagnosticsObserved: true,
+        postSendDiagnosticsSequence: 1,
         framesWritten: 4,
       },
     ];
@@ -61,11 +64,17 @@ describe("native one-viewer sender-start ledger", () => {
       binarySendSucceeded: 1,
       binarySendFailed: 0,
       encoderInstances: 1,
+      diagnosticsObserved: true,
+      postSendDiagnosticsObserved: true,
+      postSendDiagnosticsSequence: 1,
+      encoderErrors: 0,
+      fatalEvents: 0,
       framesWritten: 4,
       sourceRtpPacketsWritten: 0,
       sourceRtpBytesWritten: 0,
     });
-    expect(JSON.stringify(committed)).not.toMatch(/token|url|ip|sdp|error/i);
+    expect(JSON.stringify(committed)).not.toMatch(/token|url|ip|sdp/i);
+    expect(committed.flatMap(Object.values).every((value) => typeof value !== "string")).toBe(true);
   });
 
   it("fails closed and bounds evidence when the bridge generation changes", () => {
@@ -83,6 +92,11 @@ describe("native one-viewer sender-start ledger", () => {
       binarySendAttempts: Number.MAX_SAFE_INTEGER,
       binarySendSucceeded: Number.MAX_SAFE_INTEGER,
       encoderInstances: 1,
+      diagnosticsObserved: true,
+      postSendDiagnosticsObserved: true,
+      postSendDiagnosticsSequence: 99,
+      encoderErrors: 99,
+      fatalEvents: 99,
       framesWritten: 1,
       sourceRtpPacketsWritten: 1,
     });
@@ -94,6 +108,9 @@ describe("native one-viewer sender-start ledger", () => {
       binarySendAttempts: 1_000_000_000,
       binarySendSucceeded: 1_000_000_000,
       binarySendFailed: 1,
+      postSendDiagnosticsSequence: 2,
+      encoderErrors: 1,
+      fatalEvents: 1,
     });
     expect(senderStartComplete({ ...snapshot, binarySendFailed: 0 })).toBe(false);
     expect(senderStartComplete({ ...snapshot, bridgeGeneration: 1 })).toBe(false);

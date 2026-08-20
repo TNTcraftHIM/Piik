@@ -89,10 +89,11 @@ One separately authorized second run then used that frozen gate with the same
 bounded local topology. Its retained ledger proves `getDisplayMedia` request and
 resolution, Host admission and room creation, Host WSS authentication, local
 bridge readiness and fixed-`HIGH` config acceptance, exactly one encoder object,
-and entry into the first WebCodecs output callback. It retained zero Go
-`framesWritten`, source-RTP packets, and source-RTP bytes, so it stopped at
-`sender-start` and never created a Viewer. No retry or threshold adjustment
-followed. Cleanup completed before final failure: Chrome and Native exited, the
+and entry into the first WebCodecs output callback. It serialized zero media
+counters without retaining whether any diagnostics arrived, so those values do
+not prove that Go reported zero. It stopped at `sender-start` and never created
+a Viewer. No retry or threshold adjustment followed. Cleanup completed before
+final failure: Chrome and Native exited, the
 Node server and all three loopback ports closed, and the exact task Chrome
 profile passed the non-reparse audit and was removed.
 
@@ -110,28 +111,22 @@ while the app context is active, any close other than normal or going-away emits
 one `fatal` with the fixed sanitized message `local media bridge read failed`.
 Focused tests prove the abnormal classification without its underlying close
 reason and prove normal close and app shutdown do not misreport. This is a real
-P1 bridge-read failure fix, but it does not classify the retained zero counters
+P1 bridge-read failure fix, but it does not classify the missing diagnostics
 or prove a framing defect.
 
-One authorized post-fix revalidation then ran the frozen gate exactly once on
-exact source `86386b75d01919b213f5725467e495cdd0aa9a54`, fixed VP8 `HIGH`,
-Chrome 151, one in-memory local room, and peer assistance disabled. Its flushed
-ledger reached sequence 6 and retained capture request/resolution, Host
-admission/create/WSS, local bridge readiness and config acceptance, first
-encoded output, one encoder object, bridge generation 1, and one binary send
-attempt that returned synchronously without a throw. Go retained zero frames,
-source-RTP packets, and source-RTP bytes, so the first failed stage was
-`sender-start` and no Viewer was created. Chrome, Native, Node, all task ports,
-and the exact task profile then cleaned up before the result was finalized. No
-retry, threshold change, H.264, second Viewer, FIFO, or production run followed.
+One authorized evidence-clarification revalidation then ran the corrected gate
+exactly once with the same fixed VP8 `HIGH`, Chrome 151, one in-memory local room,
+and peer assistance disabled. It retained the same start sequence through one
+generation-1 binary send return, then observed no diagnostics or post-send
+diagnostics, zero encoder errors, and at least one sanitized fatal marker. Its
+media-counter zeros are initial ledger values, not Go reports. The first failed stage remained
+`sender-start`, no Viewer was created, and cleanup passed 5/5. No retry,
+threshold change, H.264, second Viewer, FIFO, or production run followed.
 
 The result remains `no-go-unclassified`. It proves the first product binary
-send returned, narrowing the retained interval to after that return and before
-Go frame accounting. It does not prove Go read or decode, and the fixed bridge
-fatal is not part of this failure ledger, so no raw cause may be inferred. A
-separate minimal diagnostic or fix slice must classify this interval before any
-further Chrome run. There is still no Viewer, two-viewer, FIFO, or physical or
-hardware-encoder proof.
+send returned, but the retained fatal marker and missing diagnostics do not prove
+where or why the product path stopped. No raw cause may be inferred. There is
+still no Viewer, two-viewer, FIFO, or physical or hardware-encoder proof.
 
 ## Staged Revalidation
 

@@ -7,10 +7,12 @@ import {
   captureOneViewerIdentity,
   fetchJsonBefore,
   finalizeGate,
+  hasNoCriticalSenderErrors,
   isExactGateProfile,
   retainsFirstBridgeSend,
   retainsOneViewerIdentity,
   waitForSample,
+  verifyFinalSenderEvidence,
   type CleanupResult,
   type SenderIdentityEvidence,
   type ViewerIdentityEvidence,
@@ -35,13 +37,23 @@ interface BridgeProbeSnapshot {
   binarySendAttempts: number;
   binarySendSucceeded: number;
   binarySendFailed: number;
+  diagnosticsObserved: boolean;
+  postSendDiagnosticsObserved: boolean;
+  postSendDiagnosticsSequence: number;
+  fatalEvents: number;
 }
 
 class ProbeWebSocket {
   failBinary = false;
+  private readonly listeners = new Map<string, Array<(event: { data: unknown }) => void>>();
 
   constructor(..._args: unknown[]) {}
-  addEventListener(..._args: unknown[]): void {}
+  addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  emitMessage(data: unknown): void {
+    for (const listener of this.listeners.get("message") ?? []) listener({ data });
+  }
   send(value: unknown): void {
     if (this.failBinary && value instanceof ArrayBuffer) throw new Error("not retained");
   }
@@ -84,11 +96,21 @@ describe("native one-viewer gate invariants", () => {
     const first = new successful.WebSocket("ws://127.0.0.1/media");
     first.send("config");
     first.send(new ArrayBuffer(1));
+    first.emitMessage(JSON.stringify({ kind: "diagnostics", media: {
+      framesWritten: 0, sourceRtpPacketsWritten: 0, sourceRtpBytesWritten: 0,
+    } }));
+    first.emitMessage(JSON.stringify({ kind: "diagnostics", media: null }));
+    first.emitMessage(JSON.stringify({ kind: "fatal" }));
+    first.emitMessage(JSON.stringify({ kind: "fatal" }));
     expect(successful.snapshot()).toMatchObject({
       bridgeGeneration: 1,
       binarySendAttempts: 1,
       binarySendSucceeded: 1,
       binarySendFailed: 0,
+      diagnosticsObserved: true,
+      postSendDiagnosticsObserved: true,
+      postSendDiagnosticsSequence: 2,
+      fatalEvents: 1,
     });
 
     const replacement = new successful.WebSocket("ws://127.0.0.1/media");
@@ -127,6 +149,27 @@ describe("native one-viewer gate invariants", () => {
       viewerMedia: retainsFirstBridgeSend(replaced),
       finalSuccess: retainsFirstBridgeSend(replaced),
     }).toEqual({ viewerSignal: false, viewerMedia: false, finalSuccess: false });
+  });
+
+  it("fails final sender evidence closed on late critical markers or sample failure", async () => {
+    const cleanSender = { fatalEvents: 0, encoderErrors: 0 };
+    expect(hasNoCriticalSenderErrors(cleanSender)).toBe(true);
+    await expect(verifyFinalSenderEvidence(
+      async () => ({ ...cleanSender, fatalEvents: 1 }),
+      (evidence) => evidence,
+    )).resolves.toBe(false);
+    await expect(verifyFinalSenderEvidence(
+      async () => cleanSender,
+      () => ({ ...cleanSender, encoderErrors: 1 }),
+    )).resolves.toBe(false);
+    await expect(verifyFinalSenderEvidence(
+      async () => { throw new Error("snapshot unavailable"); },
+      (evidence) => evidence,
+    )).resolves.toBe(false);
+    await expect(verifyFinalSenderEvidence(
+      async () => cleanSender,
+      (evidence) => evidence,
+    )).resolves.toBe(true);
   });
 
   it("bounds Chrome version headers and body with one abort deadline", async () => {

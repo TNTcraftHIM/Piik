@@ -266,9 +266,10 @@ did not retry or adjust a threshold. Its append-and-flush ledger reached sequenc
 7 and retained positive booleans for capture request/resolution, Host admission,
 private room creation, Host WSS authentication, bridge readiness, fixed VP8
 1280x720@30/3 Mbps config acceptance, one encoder object, and entry into the
-first WebCodecs output callback. Go diagnostics remained at zero
-`framesWritten`, source-RTP packets, and source-RTP bytes. The runner therefore
-failed closed at `sender-start`; it never created the Viewer page and did not
+first WebCodecs output callback. The ledger serialized zero media counters but
+did not retain whether diagnostics arrived, so those values do not prove that
+Go reported zero. The runner failed closed at `sender-start`; it never created
+the Viewer page and did not
 exercise Viewer auth, SDP/ICE, Pion bound-edge output, decode/render, a second
 Viewer, or FIFO. Cleanup was complete before the report was finalized: Chrome
 and Native exited, the isolated Node listener and all three random loopback
@@ -296,32 +297,19 @@ post-config close, normal close, and app shutdown. All Go tests, vet, Windows
 amd64 no-CGO build, TypeScript typecheck, and the relevant bridge probe/ledger
 tests pass.
 
-One authorized post-fix run then used exact source
-`86386b75d01919b213f5725467e495cdd0aa9a54` and the unchanged tracked gate
-exactly once. Its fixed VP8 1280x720@30, 3 Mbps, one-Viewer boundary used Chrome
-151, one in-memory loopback room, and no peer assistance. Preflight had passed
-the 411-test Node suite, typecheck, both builds, all Go tests, vet, a Windows
-gate build, and the 11 focused ledger/generation/cleanup tests.
+One authorized evidence-clarification run then used the corrected tracked gate
+exactly once with the same fixed VP8 1280x720@30, 3 Mbps, one-Viewer boundary,
+Chrome 151, one in-memory loopback room, and no peer assistance. It retained the
+start sequence through one generation-1 binary `super.send()` return, then
+observed no diagnostics or post-send diagnostics, zero encoder errors, and at
+least one sanitized fatal marker. The media-counter zeros are initial ledger
+values, not Go reports. The gate failed at `sender-start` and did not create a Viewer.
 
-The append-and-flush ledger reached sequence 6. It retained capture request and
-resolution, Host admission, private room creation, Host WSS authentication,
-bridge readiness, fixed-`HIGH` config acceptance, first WebCodecs output, one
-encoder object, bridge generation 1, and the first observed binary `super.send()`
-returning synchronously; it retained no observed synchronous throw. The ledger
-does not count later sends. Go still reported
-zero frames, source-RTP packets, and source-RTP bytes. The gate therefore failed
-at `sender-start` and did not create a Viewer. It did not run Viewer signaling,
-SDP/ICE, Pion bound-edge output, decode/render, H.264, a second Viewer, FIFO, or
-production. No retry or threshold change followed.
-
-Cleanup completed before final failure: Chrome and Native exited, Node and all
-task ports closed, and the exact task profile was audited and removed. The
-pre-existing historical task-profile count did not increase. The result remains
-`no-go-unclassified`: it narrows the retained interval to after the first
-product binary `send()` returned and before Go frame accounting, but does not
-prove Go read or decode. The fixed bridge fatal is not retained by this failure
-ledger, so no underlying close or raw cause may be inferred. A separate minimal
-diagnostic or fix slice must classify this interval before another Chrome run.
+Cleanup passed 5/5 before final failure. No retry, threshold change, H.264,
+second Viewer, FIFO, or production run followed. The result remains
+`no-go-unclassified`: the fatal marker and missing diagnostics do not prove where
+or why the product path stopped, so no underlying close or raw cause may be
+inferred.
 
 The frozen probe continues to bind the first actual local media WebSocket as
 gate-local generation 1. A second bridge generation saturates at 2, stops

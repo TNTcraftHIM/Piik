@@ -27,6 +27,11 @@ export interface BridgeSendEvidence {
   binarySendFailed: number;
 }
 
+export interface CriticalSenderEvidence {
+  encoderErrors: number;
+  fatalEvents: number;
+}
+
 export interface OneViewerIdentity {
   socketOrdinal: number;
   authGeneration: number;
@@ -85,6 +90,23 @@ export function retainsOneViewerIdentity(
 export function retainsFirstBridgeSend(evidence: BridgeSendEvidence): boolean {
   return evidence.bridgeGeneration === 1 && evidence.binarySendAttempts > 0 &&
     evidence.binarySendSucceeded > 0 && evidence.binarySendFailed === 0;
+}
+
+export function hasNoCriticalSenderErrors(evidence: CriticalSenderEvidence): boolean {
+  return evidence.encoderErrors === 0 && evidence.fatalEvents === 0;
+}
+
+export async function verifyFinalSenderEvidence<T extends CriticalSenderEvidence>(
+  sample: () => Promise<T>,
+  retain: (evidence: T) => CriticalSenderEvidence,
+): Promise<boolean> {
+  try {
+    const evidence = await sample();
+    const retained = retain(evidence);
+    return hasNoCriticalSenderErrors(evidence) && hasNoCriticalSenderErrors(retained);
+  } catch {
+    return false;
+  }
 }
 
 export function withDeadline<T>(
