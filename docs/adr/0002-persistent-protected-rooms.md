@@ -30,7 +30,7 @@ Separate Host admission from Viewer authorization in one atomic release:
 
 - Replace `ACCESS_PASSWORD` with `HOST_ADMISSION_PASSWORD`. Production startup
   requires it; local development and tests may explicitly disable it. It accepts
-  16 through 128 visible ASCII bytes, must be independent from other deployment
+  8 through 128 visible ASCII bytes, must be independent from other deployment
   secrets, and issues a 12-hour stateless
   HMAC `HttpOnly`, `SameSite=Strict`, `Path=/` cookie (`Secure` and `__Host-` in
   HTTPS production). It authorizes only room creation and an attempted Host
@@ -181,7 +181,7 @@ SQLite or participates in authorization, routing, or quality decisions.
 ## Acceptance Gates
 
 - The auth matrix proves production Host admission, Viewer-without-Host-cookie,
-  16-byte minimum/independent secret, ingress rate limit, exact-room/role grant
+  8-byte minimum/independent secret, ingress rate limit, exact-room/role grant
   scope, non-enumerating failures, and public-watch caps.
 - Leak tests cover HTTP/WS targets, Referrer, browser storage, SQLite, application
   and proxy logs, and errors; fragment consumption immediately clears the URL.

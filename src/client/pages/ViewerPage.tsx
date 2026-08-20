@@ -1,4 +1,5 @@
 import {
+  LoaderCircle,
   Maximize2,
   Play,
   RefreshCw,
@@ -67,6 +68,9 @@ type ViewerQualityEvidence = Extract<
 >;
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
+  const [accessState, setAccessState] = useState<
+    "checking" | "ready" | "denied"
+  >("checking");
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
   const [statusText, setStatusText] = useState("正在连接");
@@ -98,6 +102,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   useEffect(() => {
     let active = true;
+    let viewerAuthenticated = false;
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
     let peerAssisted = false;
@@ -150,6 +155,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setSfuStandbyUrl(null);
           clearViewerSfuRoute();
           clearPeerState();
+          if (!viewerAuthenticated) {
+            setAccessState("denied");
+          }
           setStatusText(message);
         },
         onAccessRequired: () => {
@@ -158,6 +166,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             setSfuStandbyUrl(null);
             clearViewerSfuRoute();
             clearPeerState();
+            viewerAuthenticated = false;
+            setAccessState("denied");
             setStatusText("邀请无效或已失效");
           }
         },
@@ -463,6 +473,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
+        viewerAuthenticated = true;
+        setAccessState("ready");
         clearRelayChildEvidence();
         currentPeerId = message.peerId;
         viewerAuthorizationGeneration =
@@ -648,6 +660,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           return;
         }
         viewerAuthorizationGeneration = null;
+        viewerAuthenticated = false;
+        setAccessState("denied");
         clearViewerGrant(roomId);
         setSfuStandbyUrl(null);
         clearViewerSfuRoute();
@@ -657,6 +671,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "room-closed") {
+        viewerAuthenticated = false;
+        setAccessState("denied");
         setSfuStandbyUrl(null);
         clearViewerSfuRoute();
         clearPeerState();
@@ -681,6 +697,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setSfuStandbyUrl(null);
           clearViewerSfuRoute();
           clearPeerState();
+          viewerAuthenticated = false;
+          setAccessState("denied");
         }
         if (message.code === "INVALID_TOKEN") {
           clearViewerGrant(roomId);
@@ -794,6 +812,25 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     } else {
       setStatusText("正在恢复连接");
     }
+  }
+
+  if (accessState !== "ready") {
+    return (
+      <div className="app-shell">
+        <main className="access-workspace access-workspace-full">
+          {accessState === "checking" ? (
+            <div className="access-loading" role="status">
+              <LoaderCircle size={20} className="spin" aria-hidden="true" />
+              正在验证
+            </div>
+          ) : (
+            <section className="access-panel">
+              <h1>无法访问</h1>
+            </section>
+          )}
+        </main>
+      </div>
+    );
   }
 
   return (

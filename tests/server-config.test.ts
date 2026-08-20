@@ -250,7 +250,7 @@ describe("server configuration", () => {
     const config = loadConfig({
       NODE_ENV: "production",
       PUBLIC_BASE_URL: "https://share.test",
-      HOST_ADMISSION_PASSWORD: "host-password-12",
+      HOST_ADMISSION_PASSWORD: "easy-key",
       STUN_URLS: "stun:stun.test:3478",
     });
     expect(config.stunUrls).toEqual(["stun:stun.test:3478"]);
@@ -352,10 +352,10 @@ describe("server configuration", () => {
     const config = loadConfig({
       NODE_ENV: "production",
       PUBLIC_BASE_URL: "https://share.test",
-      HOST_ADMISSION_PASSWORD: "host-password-12",
+      HOST_ADMISSION_PASSWORD: "easy-key",
       STUN_URLS: "stun:stun.test:3478",
     });
-    expect(config.hostAdmissionPassword).toBe("host-password-12");
+    expect(config.hostAdmissionPassword).toBe("easy-key");
   });
 
   it("requires Host admission protection for a persistent room database", () => {
@@ -382,13 +382,13 @@ describe("server configuration", () => {
     ).toThrow("ROOM_DATABASE_PATH must be file-backed in production");
   });
 
-  it.each(["x".repeat(15), "密码密码密码密码", "contains spaces", "x".repeat(129)])(
+  it.each(["x".repeat(7), "密码密码密码密码", "contains spaces", "x".repeat(129)])(
     "rejects a Host admission password outside the visible ASCII boundary",
     (hostAdmissionPassword) => {
       expect(() =>
         loadConfig({ HOST_ADMISSION_PASSWORD: hostAdmissionPassword }),
       ).toThrow(
-        "HOST_ADMISSION_PASSWORD must contain 16 to 128 visible ASCII bytes",
+        "HOST_ADMISSION_PASSWORD must contain 8 to 128 visible ASCII bytes",
       );
     },
   );

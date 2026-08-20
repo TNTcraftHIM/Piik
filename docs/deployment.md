@@ -128,7 +128,7 @@ LISTEN_HOST=127.0.0.1
 PORT=8787
 PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
-HOST_ADMISSION_PASSWORD=<INDEPENDENT_16_TO_128_BYTE_SECRET>
+HOST_ADMISSION_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
 ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
@@ -162,7 +162,7 @@ than enabling every room. There is no browser control, percentage rollout, or
 all-room fail-open.
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
-`HOST_ADMISSION_PASSWORD` is required in production and must contain 16 through
+`HOST_ADMISSION_PASSWORD` is required in production and must contain 8 through
 128 visible ASCII bytes (`0x21` through `0x7e`). It must not be reused for
 LiveKit, TLS, TURN, or another service. It authorizes room creation and Host
 role only; it is not a Viewer password. Local development and tests may omit it.
