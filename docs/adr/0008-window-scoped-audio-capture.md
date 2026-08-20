@@ -16,9 +16,9 @@ application is open can leak that conversation back to Viewers.
 Windows has a stricter primitive: WASAPI application loopback through
 `ActivateAudioInterfaceAsync` with
 `AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS.INCLUDE_TARGET_PROCESS_TREE`. It can be
-paired with a selected window's PID and a WGC/DXGI video capture. The API is
-available on Windows 11 build 20348 and later; this is not a Windows 10
-fallback.
+paired with a selected window's PID and a WGC/DXGI video capture. Microsoft's
+process-loopback contract starts at build 20348; this product slice gates on
+Windows 11 desktop (build 22000 or newer) and is not a Windows 10 fallback.
 
 ## Decision
 
@@ -60,6 +60,57 @@ independent voice process, a notification, process restart, no render stream,
 and A/V sync on one Viewer. It should use Microsoft's Application Loopback
 sample and process-loopback parameter contract rather than a custom mixer.
 
+## P1 First Slice: Audio Only
+
+The first product-wiring slice is deliberately smaller than the complete
+native capture boundary. It adds an explicit Windows 11
+`window-process-audio` input while leaving the current Web video capture and
+codec path unchanged. A small Windows helper resolves the selected target PID
+locally and sends timestamped PCM through the authenticated loopback bridge.
+The existing Chrome/Edge sender UI uses `AudioEncoder` with `codec: "opus"`,
+48 kHz, two channels, and 20 ms frames, then returns the encoded Opus packets to
+the existing Go sender. This reuses the current browser prerequisite and avoids
+adding a native Opus library or a second package toolchain in this slice.
+
+The bridge is one typed local media envelope (audio kind, flags, QPC-derived
+timestamp, duration, bounded payload); it does not add a public signaling field.
+The Go session owns one shared Opus `TrackLocalStaticRTP` and adds it before the
+offer on every native PeerConnection. Audio packetization uses the 48 kHz RTP
+clock and the source timestamp delta, so one encoded packet stream can feed the
+existing two-edge cap. The WGC/DXGI video adapter remains the next small slice;
+its `SystemRelativeTime` is retained in the fixture so it can share the same
+QPC origin when native video replaces the Web source.
+
+Expected implementation size is about **500--800 new LOC**, excluding the
+browser/Windows SDK and existing video/MF fixture code: Windows loopback
+capture and local IPC (250--400), Go audio envelope/timeline/track (150--250),
+and UI lifecycle/status plus focused tests (100--150). This is a planned P1
+input, not current product behavior or a deployment switch.
+
+The two source clocks are both converted from 100-ns QPC: WGC
+`SystemRelativeTime` and WASAPI `IAudioCaptureClient::GetBuffer`'s
+`pu64QPCPosition`. Keep timestamps monotonic and derive audio duration from
+the captured frame count (960 samples at 48 kHz for each 20 ms packet), not
+from bridge arrival time. `TrackLocalStaticSample.Timestamp` is not the source
+timeline control in the current Pion path; the audio fanout therefore uses the
+same explicit RTP packetizer/timeline pattern as native video.
+
+The slice fails closed. Windows 10, unsupported WGC, picker cancellation,
+activation denial, an exited/inaccessible target, `AUDCLNT_E_DEVICE_INVALIDATED`
+or `AUDCLNT_E_SERVICE_NOT_RUNNING`, protected-content silence, and a missing
+render stream produce `audio unavailable` or `audio silent`. There is no retry
+to whole-system loopback. No administrator privilege is required, but the
+helper must run in the interactive user's session and honor Windows consent and
+privacy settings. PID, title, path, device identity, and PCM remain local.
+
+The first smoke is one direct Viewer: a test window emits a known tone and
+visual marker, while an independent voice process and notification emit
+different markers. Require an Opus inbound track and rendered video/audio,
+monotonic QPC timestamps, and a bounded A/V offset; verify the unrelated
+markers are absent and that target exit/silence stops or asks without widening
+capture. SFU/TURN, second Viewer, endurance, and the native WGC video swap are
+follow-up gates.
+
 ## Consequences
 
 - Current Web users get a useful Chromium hint and an honest status without a
@@ -71,9 +122,10 @@ sample and process-loopback parameter contract rather than a custom mixer.
 
 ## Follow-Up TODO
 
-- Add a Windows-only WGC + WASAPI process-loopback fixture beside the existing
-  Media Foundation H.264 fixture.
+- Add the Windows-only WGC + WASAPI process-loopback fixture beside the existing
+  Media Foundation H.264 fixture, then land the bounded audio-only P1 slice.
 - Feed its timestamped PCM/video pair into the existing native sender only
-  after the isolation and sync checks pass.
+  after the isolation and sync checks pass; native WGC video replacement stays
+  a separate follow-up.
 - Retain a short matrix result in `docs/research/`; do not enable the mode by
   default or deploy it from this ADR alone.
