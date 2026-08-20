@@ -11,13 +11,15 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.ResultReceiver
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicReference
 
 class ProjectionService : Service() {
     private val worker = Executors.newSingleThreadExecutor()
-    private val stopping = AtomicBoolean()
+    private val state = AtomicReference(State.IDLE)
     private var receiver: ResultReceiver? = null
     private var capture: CaptureEngine? = null
+    @Volatile
     private var session: RemoteSession? = null
 
     override fun onCreate() {
@@ -32,7 +34,9 @@ class ProjectionService : Service() {
             finish("Sharing stopped")
             return START_NOT_STICKY
         }
-        if (intent?.action != ACTION_START || session != null || stopping.get()) return START_NOT_STICKY
+        if (intent?.action != ACTION_START || !state.compareAndSet(State.IDLE, State.STARTING)) {
+            return START_NOT_STICKY
+        }
         receiver = intent.getParcelableExtra(EXTRA_RECEIVER, ResultReceiver::class.java)
         startForeground(
             NOTIFICATION_ID,
@@ -47,27 +51,31 @@ class ProjectionService : Service() {
             return START_NOT_STICKY
         }
         sendResult(RESULT_ACTIVE, "Starting")
-        worker.execute {
+        schedule {
             try {
-                val engine = CaptureEngine(applicationContext, permission) {
+                val engine = CaptureEngine.create(applicationContext, permission) {
                     finish("The system stopped screen sharing")
                 }
-                if (stopping.get()) {
+                if (state.get() != State.STARTING) {
                     engine.close()
-                    return@execute
+                    return@schedule
                 }
                 capture = engine
                 val remote = RemoteSession(server, password, engine.factory, engine.track, worker, object : RemoteSession.Events {
                     override fun onRoom(inviteUrl: String) {
-                        sendResult(RESULT_ACTIVE, "Sharing 720p30 with hardware ${engine.codecs}", inviteUrl)
+                        if (state.get() == State.STOPPING) return
+                        sendResult(RESULT_ACTIVE, "Room ready; hardware codec requested", inviteUrl)
                         getSystemService(NotificationManager::class.java)
-                            .notify(NOTIFICATION_ID, notification("Screen sharing is active"))
+                            .notify(NOTIFICATION_ID, notification("Screen sharing is ready"))
                     }
 
-                    override fun onStatus(message: String) = sendResult(RESULT_ACTIVE, message)
+                    override fun onStatus(message: String) {
+                        if (state.get() != State.STOPPING) sendResult(RESULT_ACTIVE, message)
+                    }
                     override fun onFatal(message: String) = finish(message)
                 })
                 session = remote
+                if (!state.compareAndSet(State.STARTING, State.RUNNING)) return@schedule
                 remote.start()
             } catch (_: Exception) {
                 finish("Screen sharing could not start")
@@ -77,24 +85,40 @@ class ProjectionService : Service() {
     }
 
     override fun onDestroy() {
-        session?.close()
-        capture?.close()
-        worker.shutdownNow()
+        state.set(State.STOPPING)
+        session?.cancelPending()
+        schedule {
+            teardown()
+            worker.shutdown()
+        }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun finish(message: String) {
-        if (!stopping.compareAndSet(false, true)) return
+        if (state.getAndSet(State.STOPPING) == State.STOPPING) return
+        session?.cancelPending()
         sendResult(RESULT_STOPPED, message)
-        worker.execute {
-            session?.close()
-            session = null
-            capture?.close()
-            capture = null
+        schedule {
+            teardown()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
+        }
+    }
+
+    private fun teardown() {
+        session?.close()
+        session = null
+        capture?.close()
+        capture = null
+    }
+
+    private fun schedule(block: () -> Unit) {
+        try {
+            worker.execute(block)
+        } catch (_: RejectedExecutionException) {
+            state.set(State.STOPPING)
         }
     }
 
@@ -135,4 +159,6 @@ class ProjectionService : Service() {
         private const val CHANNEL_ID = "screen-sharing"
         private const val NOTIFICATION_ID = 70
     }
+
+    private enum class State { IDLE, STARTING, RUNNING, STOPPING }
 }

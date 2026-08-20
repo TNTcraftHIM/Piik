@@ -36,7 +36,8 @@
             android:hint="Site access password"
             android:importantForAutofill="no"
             android:inputType="textPassword"
-            android:maxLines="1" />
+            android:maxLines="1"
+            android:saveEnabled="false" />
 
         <Button
             android:id="@+id/start_button"
@@ -71,6 +72,7 @@
             android:layout_marginTop="12dp"
             android:autoLink="web"
             android:minHeight="48dp"
+            android:saveEnabled="false"
             android:textColor="#176B4D"
             android:textIsSelectable="true"
             android:textSize="15sp" />

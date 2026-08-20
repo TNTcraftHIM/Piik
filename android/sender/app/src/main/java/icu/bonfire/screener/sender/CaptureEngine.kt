@@ -16,51 +16,58 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import java.util.concurrent.atomic.AtomicBoolean
 
-class CaptureEngine(
+class CaptureEngine private constructor(
     context: Context,
     permissionData: Intent,
     onProjectionStopped: () -> Unit,
 ) : AutoCloseable {
-    private val egl = EglBase.create()
-    private val encoderFactory = HardwareOnlyEncoderFactory(egl.eglBaseContext)
-    val factory: PeerConnectionFactory
-    val track: VideoTrack
-    val codecs: String
-    private val capturer: ScreenCapturerAndroid
-    private val source: VideoSource
-    private val helper: SurfaceTextureHelper
+    private lateinit var egl: EglBase
+    lateinit var factory: PeerConnectionFactory
+        private set
+    lateinit var track: VideoTrack
+        private set
+    private lateinit var capturer: ScreenCapturerAndroid
+    private lateinit var source: VideoSource
+    private lateinit var helper: SurfaceTextureHelper
     private var closed = false
 
     init {
-        initializeOnce(context)
-        val supported = encoderFactory.supportedCodecs
-        if (supported.isEmpty()) error("No hardware VP8/H264 encoder is available")
-        codecs = supported.map { it.name.uppercase() }.distinct().joinToString("/")
-        factory = PeerConnectionFactory.builder()
-            .setVideoEncoderFactory(encoderFactory)
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
-            .createPeerConnectionFactory()
-        source = factory.createVideoSource(true)
-        helper = SurfaceTextureHelper.create("ScreenerCapture", egl.eglBaseContext)
-        capturer = ScreenCapturerAndroid(permissionData, object : MediaProjection.Callback() {
-            override fun onStop() = onProjectionStopped()
-        })
-        capturer.initialize(helper, context.applicationContext, source.capturerObserver)
-        capturer.startCapture(WIDTH, HEIGHT, FPS)
-        track = factory.createVideoTrack("screener-screen", source)
-        track.setEnabled(true)
+        try {
+            initializeOnce(context)
+            egl = EglBase.create()
+            val encoderFactory = HardwareOnlyEncoderFactory(egl.eglBaseContext)
+            if (encoderFactory.supportedCodecs.isEmpty()) error("No hardware VP8/H264 encoder is available")
+            factory = PeerConnectionFactory.builder()
+                .setVideoEncoderFactory(encoderFactory)
+                .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
+                .createPeerConnectionFactory()
+            source = factory.createVideoSource(true)
+            helper = SurfaceTextureHelper.create("ScreenerCapture", egl.eglBaseContext)
+            capturer = ScreenCapturerAndroid(permissionData, object : MediaProjection.Callback() {
+                override fun onStop() = onProjectionStopped()
+            })
+            capturer.initialize(helper, context.applicationContext, source.capturerObserver)
+            capturer.startCapture(WIDTH, HEIGHT, FPS)
+            track = factory.createVideoTrack("screener-screen", source)
+            track.setEnabled(true)
+        } catch (error: Throwable) {
+            release()
+            throw error
+        }
     }
 
-    override fun close() {
+    override fun close() = release()
+
+    private fun release() {
         if (closed) return
         closed = true
-        runCatching { capturer.stopCapture() }
-        capturer.dispose()
-        track.dispose()
-        source.dispose()
-        helper.dispose()
-        factory.dispose()
-        egl.release()
+        if (::capturer.isInitialized) runCatching { capturer.stopCapture() }
+        if (::capturer.isInitialized) runCatching { capturer.dispose() }
+        if (::track.isInitialized) runCatching { track.dispose() }
+        if (::source.isInitialized) runCatching { source.dispose() }
+        if (::helper.isInitialized) runCatching { helper.dispose() }
+        if (::factory.isInitialized) runCatching { factory.dispose() }
+        if (::egl.isInitialized) runCatching { egl.release() }
     }
 
     private class HardwareOnlyEncoderFactory(context: EglBase.Context) : VideoEncoderFactory {
@@ -81,12 +88,20 @@ class CaptureEngine(
         const val FPS = 30
         private val initialized = AtomicBoolean()
 
+        fun create(context: Context, permissionData: Intent, onProjectionStopped: () -> Unit) =
+            CaptureEngine(context, permissionData, onProjectionStopped)
+
         private fun initializeOnce(context: Context) {
             if (initialized.compareAndSet(false, true)) {
-                PeerConnectionFactory.initialize(
-                    PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
-                        .createInitializationOptions(),
-                )
+                try {
+                    PeerConnectionFactory.initialize(
+                        PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
+                            .createInitializationOptions(),
+                    )
+                } catch (error: Throwable) {
+                    initialized.set(false)
+                    throw error
+                }
             }
         }
     }

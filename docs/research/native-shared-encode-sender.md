@@ -175,6 +175,12 @@ landing and cannot silently enable software encoding. Network changes reuse the
 existing per-edge WebRTC recovery contract rather than restarting capture or
 creating a new transport.
 
+Activity recreation does not yet reattach to an active foreground service. After
+rotation or process recreation, controls can show their initial state while the
+service continues sharing; its duplicate-start gate still prevents a second
+session. Restoring service status is a later P2 lifecycle task, not a media-path
+requirement for this source slice.
+
 The pinned `webrtc-sdk/android` packaging project is MIT-licensed and bundles
 upstream libwebrtc under its BSD-style license and PATENTS terms. OkHttp and
 kotlinx.serialization are Apache-2.0. The slice copies no implementation from

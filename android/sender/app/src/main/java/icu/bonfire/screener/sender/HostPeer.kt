@@ -27,6 +27,7 @@ class HostPeer(
     private val status: (String) -> Unit,
 ) : AutoCloseable {
     private val pending = ArrayDeque<WireCandidate?>()
+    @Volatile
     private var closed = false
     private val connection: PeerConnection
 
@@ -38,10 +39,16 @@ class HostPeer(
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
         }
         connection = factory.createPeerConnection(config, Observer()) ?: error("Could not create PeerConnection")
-        val sender = connection.addTrack(track, listOf("screener")) ?: error("Could not add screen track")
-        sender.parameters.let { parameters ->
-            parameters.encodings.forEach { it.maxBitrateBps = 3_000_000 }
-            if (!sender.setParameters(parameters)) error("Could not set video bitrate")
+        try {
+            val sender = connection.addTrack(track, listOf("screener")) ?: error("Could not add screen track")
+            sender.parameters.let { parameters ->
+                parameters.encodings.forEach { it.maxBitrateBps = 3_000_000 }
+                if (!sender.setParameters(parameters)) error("Could not set video bitrate")
+            }
+        } catch (error: Throwable) {
+            closed = true
+            runCatching { connection.dispose() }
+            throw error
         }
     }
 
@@ -59,7 +66,7 @@ class HostPeer(
             is SignalPayload.Description -> {
                 val description = SessionDescription(SessionDescription.Type.ANSWER, payload.description.sdp)
                 connection.setRemoteDescription(object : SimpleSdpObserver() {
-                    override fun onSetSuccess() = serial.execute { flushCandidates() }
+                    override fun onSetSuccess() = dispatch { flushCandidates() }
                     override fun onSetFailure(error: String?) = status("Viewer answer was rejected")
                 }, description)
             }
@@ -99,6 +106,10 @@ class HostPeer(
 
     private fun flushCandidates() {
         while (!closed && pending.isNotEmpty()) addCandidate(pending.removeFirst())
+    }
+
+    private fun dispatch(block: () -> Unit) {
+        runCatching { serial.execute(block) }
     }
 
     private fun addCandidate(candidate: WireCandidate?) {

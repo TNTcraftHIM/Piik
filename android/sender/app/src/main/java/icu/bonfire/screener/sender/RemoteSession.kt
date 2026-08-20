@@ -5,6 +5,7 @@ import icu.bonfire.screener.protocol.ProtocolException
 import icu.bonfire.screener.protocol.RouteAction
 import icu.bonfire.screener.protocol.ServerEvent
 import icu.bonfire.screener.protocol.Wire
+import okhttp3.Call
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -21,6 +22,7 @@ import org.webrtc.VideoTrack
 import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class RemoteSession(
     serverUrl: String,
@@ -42,6 +44,9 @@ class RemoteSession(
     private val route = HostRoute()
     private val peers = linkedMapOf<String, HostPeer>()
     private val stopped = AtomicBoolean()
+    private val closed = AtomicBoolean()
+    private val activeCall = AtomicReference<Call?>()
+    @Volatile
     private var socket: WebSocket? = null
     private var room: Room? = null
     private var iceConfig: icu.bonfire.screener.protocol.IceConfig? = null
@@ -54,16 +59,23 @@ class RemoteSession(
     }
 
     fun start() {
-        authenticateSite()
-        sitePassword = ""
+        try {
+            authenticateSite()
+        } finally {
+            sitePassword = ""
+        }
+        if (stopped.get()) return
         val created = createRoom()
+        if (stopped.get()) return
         room = Room(created.roomId, created.hostToken, opaqueId(), opaqueId())
         events.onRoom(created.inviteUrl)
         connectSignal()
     }
 
     override fun close() {
-        if (!stopped.compareAndSet(false, true)) return
+        if (!closed.compareAndSet(false, true)) return
+        stopped.set(true)
+        activeCall.get()?.cancel()
         socket?.send(Wire.abandonRoom())
         socket?.close(1000, "sender stopped")
         socket = null
@@ -71,6 +83,12 @@ class RemoteSession(
         peers.clear()
         client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
+    }
+
+    fun cancelPending() {
+        stopped.set(true)
+        activeCall.get()?.cancel()
+        socket?.cancel()
     }
 
     private fun authenticateSite() {
@@ -95,12 +113,20 @@ class RemoteSession(
         return Wire.decodeCreatedRoom(execute(request, "Room creation failed"))
     }
 
-    private fun execute(request: Request, failure: String): String =
-        client.newCall(request).execute().use { response ->
-            val text = response.body.string()
-            if (!response.isSuccessful || text.toByteArray().size > Wire.MAX_HTTP_BYTES) error(failure)
-            text
+    private fun execute(request: Request, failure: String): String {
+        val call = client.newCall(request)
+        check(activeCall.compareAndSet(null, call))
+        try {
+            if (stopped.get()) call.cancel()
+            return call.execute().use { response ->
+                val text = response.body.string()
+                if (!response.isSuccessful || text.toByteArray().size > Wire.MAX_HTTP_BYTES) error(failure)
+                text
+            }
+        } finally {
+            activeCall.compareAndSet(call, null)
         }
+    }
 
     private fun connectSignal() {
         val wsUrl = endpoint(SIGNAL_PATH).toString().replaceFirst("https://", "wss://")
@@ -110,14 +136,15 @@ class RemoteSession(
         }.build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                serial.execute {
-                    val identity = room ?: return@execute
+                dispatch {
+                    if (stopped.get()) return@dispatch
+                    val identity = room ?: return@dispatch
                     webSocket.send(Wire.authenticate(identity.id, identity.token, identity.clientId, identity.shareGeneration))
                 }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                serial.execute { if (!stopped.get()) accept(text) }
+                dispatch { if (!stopped.get()) accept(text) }
             }
 
             override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) {
@@ -200,6 +227,9 @@ class RemoteSession(
 
     private fun routeChildren(): Set<String> = peers.keys.toSet()
     private fun send(message: String): Boolean = socket?.send(message) == true
+    private fun dispatch(block: () -> Unit) {
+        runCatching { serial.execute(block) }
+    }
     private fun fatal(message: String) {
         if (stopped.get()) return
         events.onFatal(message)

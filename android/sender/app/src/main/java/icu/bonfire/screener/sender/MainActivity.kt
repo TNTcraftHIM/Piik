@@ -37,6 +37,7 @@ class MainActivity : Activity() {
             val active = resultCode == ProjectionService.RESULT_ACTIVE
             startButton.isEnabled = !active
             stopButton.isEnabled = active
+            if (!active) clearInvite()
         }
     }
 
@@ -53,6 +54,7 @@ class MainActivity : Activity() {
         startButton.setOnClickListener { requestProjection() }
         stopButton.setOnClickListener {
             startService(Intent(this, ProjectionService::class.java).setAction(ProjectionService.ACTION_STOP))
+            clearInvite()
             statusText.text = "Stopping"
         }
     }
@@ -60,6 +62,7 @@ class MainActivity : Activity() {
     private fun requestProjection() {
         pendingServer = serverUrl.text.toString().trim().trimEnd('/')
         pendingPassword = sitePassword.text.toString()
+        clearInvite()
         if (!pendingServer.startsWith("https://")) {
             statusText.text = "An HTTPS server URL is required"
             return
@@ -87,7 +90,13 @@ class MainActivity : Activity() {
             putExtra(ProjectionService.EXTRA_RECEIVER, receiver)
         }
         startForegroundService(service)
+        sitePassword.text.clear()
         pendingPassword = ""
+    }
+
+    private fun clearInvite() {
+        inviteText.text = ""
+        inviteText.setOnClickListener(null)
     }
 
     companion object {
