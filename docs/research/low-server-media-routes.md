@@ -199,6 +199,11 @@ SFU, not ordinary peer PCs. Selected-edge coturn uses independent configuration
 and credentials. LiveKit TURN cannot rescue an unavailable SFU; the application
 controller selects whether independent coturn may rebuild one failed peer edge.
 
+Pinned client 2.22.0 accepts a per-connect `rtcConfig`; its engine retains
+explicit ICE servers when constructing the publisher PeerConnection. A selected
+Host ingress can therefore supply only its coturn server plus relay policy
+without advertising that credential to ordinary peer PCs.
+
 Ordinary peer ICE remains STUN-only. The participant-wide TURN
 config, capability and refresh wire are removed; any stale `PEER_ICE_TURN_*`
 key, including an empty value, fails startup. Selected-edge TURN is deployed as
@@ -415,6 +420,8 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
   and [end-to-end encryption](https://docs.livekit.io/transport/encryption/) -
   official behavior and operator-boundary references.
 - [LiveKit client 2.22.0 `Room.prepareConnection`](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts),
+  [connection options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/options.ts),
+  [RTC configuration construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/RTCEngine.ts),
   [two-layer RID construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts),
   and [official usage](https://github.com/livekit/client-sdk-js#usage) -
   Apache-2.0; API behavior and RID construction were inspected, with no source

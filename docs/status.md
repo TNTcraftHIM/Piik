@@ -5,7 +5,7 @@ Last updated: 2026-08-21
 ## Phase
 
 Production is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` at `https://share.bonfire.icu`; its 660,626-byte artifact SHA-256 is `3cbd8f6be82fa615fa2861ff1be0eba6c98f3f7d9acb73a0ba5c21a2ff4c661c`.
-Cutover took 1,696 ms lock/508 ms stop-health. SQLite v3 has five rooms; four services are healthy with zero restarts. Android-only source `b8b6994efe4da3a773e16cec370e2a5ce7cbbf93` is ahead and not deployed.
+Cutover: 1,696 ms lock/508 ms stop-health; SQLite v3/five rooms/four healthy zero-restart services. Android exact `b8b6994efe4da3a773e16cec370e2a5ce7cbbf93` and pending ingress are not deployed.
 Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke; production SFU/TURN media remains unverified.
 Web names/audio hint are deployed. Native WGC/MF/package is source-only; Web defaults VP8.
 
@@ -36,7 +36,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native Win11 audio is source-only/default-off: target isolation was 4018x and one Viewer got 495 Opus packets. Download, game sync, Win10, and other routes remain open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
-- Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
+- Source adds initial/active selected Host ingress and peer last-mile. Focused route/signaling tests pass exactly-once prepare retry, cleanup and rollback with ordinary peers STUN-only; no relay media ran.
 - Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
 - Exact `22119b9` passed typecheck, both builds and 30 files/440 tests. Deploy preserved environment, ingress/media/firewall/listener/SQLite hashes, v3/five rooms/room `1`, route settings, services and local/public/route/asset 200s. Site access stayed required, the retired endpoint remained 404, and no TURN/SFU session ran. Rollback is exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`.
 
@@ -57,7 +57,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 Run one bounded production room `1` canary that retains UDP, a rendered frame, edge caps, and clean stop. TURN/performance follow later.
 Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then SFU. Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root evacuation.
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Benchmark later.
-Ordinary Peer ICE stays STUN-only. Selected-edge Host ingress still needs one forced-relay canary before a media-success claim.
+Ordinary peers stay STUN-only. Initial/active Host ingress needs forced-relay canaries before any media claim.
 ADR-0004 still needs the 30-minute `1/3/5/8` matrix; a separate 20-viewer gate must pass before changing the default eight.
 
 ## Blockers And Decisions

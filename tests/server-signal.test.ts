@@ -4059,6 +4059,200 @@ describe("WebSocket signaling", () => {
     });
   });
 
+  it("retries an initial Host SFU prepare through one selected ingress", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const prepared = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-pending-ingress",
+    );
+    const publicationGeneration =
+      prepared.hostPrepare.assignment.sfuPublicationGeneration;
+    expect(publicationGeneration).toEqual(expect.any(String));
+
+    prepared.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: prepared.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: null,
+    }));
+    const grant = await prepared.host.inbox.next("selected-edge-turn");
+    expect(grant).toMatchObject({
+      edgeKind: "host-sfu-ingress",
+      revision: prepared.hostPrepare.revision,
+      hostPeerId: prepared.hostAuth.peerId,
+      publicationGeneration,
+      oldConnectionId: publicationGeneration,
+      newConnectionId: expect.any(String),
+    });
+
+    prepared.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: prepared.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: null,
+    }));
+    await expect(
+      prepared.host.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+
+    prepared.host.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: prepared.hostPrepare.revision,
+      phase: "prepare",
+    }));
+    prepared.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: prepared.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: null,
+    }));
+    await expect(
+      prepared.host.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+
+    prepared.failedViewer.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: prepared.rootPrepare.revision,
+      phase: "prepare",
+    }));
+    await expect(
+      nextActiveRouteRevision(prepared.host, prepared.hostPrepare.revision),
+    ).resolves.toMatchObject({
+      assignment: { sfuPublicationGeneration: publicationGeneration },
+    });
+  });
+
+  it("keeps the default prepare open for the initial LiveKit attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = await startSfuHarness({
+        tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+        selectedEdgeTurn: true,
+      });
+      const prepared = await prepareFallbackForTwoViewers(
+        harness.webSocketUrl,
+        harness.room,
+        "selected-pending-deadline",
+      );
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      prepared.host.socket.send(JSON.stringify({
+        type: "route-failed",
+        revision: prepared.hostPrepare.revision,
+        phase: "prepare",
+        connectionId: null,
+      }));
+
+      await expect(
+        prepared.host.inbox.next("selected-edge-turn"),
+      ).resolves.toMatchObject({
+        edgeKind: "host-sfu-ingress",
+        revision: prepared.hostPrepare.revision,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("replaces the initial deadline with one relay timeout and rollback", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = await startSfuHarness({
+        tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+        selectedEdgeTurn: true,
+        prepareTimeoutMs: 5_000,
+      });
+      const prepared = await prepareFallbackForTwoViewers(
+        harness.webSocketUrl,
+        harness.room,
+        "selected-pending-relay-deadline",
+      );
+      prepared.host.socket.send(JSON.stringify({
+        type: "route-failed",
+        revision: prepared.hostPrepare.revision,
+        phase: "prepare",
+        connectionId: null,
+      }));
+      await prepared.host.inbox.next("selected-edge-turn");
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      const noEarlyRollback = expect(
+        prepared.host.inbox.next("route-update", 1),
+      ).rejects.toThrow("Timed out");
+      await vi.advanceTimersByTimeAsync(1);
+      await noEarlyRollback;
+
+      await vi.advanceTimersByTimeAsync(24_999);
+      await expect(prepared.host.inbox.next("error")).resolves.toMatchObject({
+        code: "PEER_NOT_FOUND",
+        message: "Selected SFU relay ingress timed out",
+      });
+      await expect(
+        nextActiveRouteAfter(
+          prepared.host,
+          prepared.hostPrepare.revision,
+        ),
+      ).resolves.toMatchObject({
+        revision: prepared.hostPrepare.revision + 1,
+        assignment: { sfuPublicationGeneration: null },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rolls back when selected Host prepare ingress also fails", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const prepared = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-pending-failure",
+    );
+
+    prepared.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: prepared.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: null,
+    }));
+    const grant = await prepared.host.inbox.next("selected-edge-turn");
+    if (grant.edgeKind !== "host-sfu-ingress") {
+      throw new Error("expected a Host SFU ingress grant");
+    }
+    prepared.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: prepared.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: grant.newConnectionId,
+    }));
+
+    await expect(prepared.host.inbox.next("error")).resolves.toMatchObject({
+      code: "PEER_NOT_FOUND",
+    });
+    await expect(
+      nextActiveRouteAfter(prepared.host, prepared.hostPrepare.revision),
+    ).resolves.toMatchObject({
+      revision: prepared.hostPrepare.revision + 1,
+      assignment: { sfuPublicationGeneration: null },
+    });
+    prepared.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: prepared.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: grant.newConnectionId,
+    }));
+    await expect(
+      prepared.host.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
   it("authorizes a ViewerRelay parent and clears its grant on share stop", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },

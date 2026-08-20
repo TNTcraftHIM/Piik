@@ -82,8 +82,9 @@ and production ordinary peer connections remain STUN-only. The current source
 no longer contains the rejected participant-wide
 TURN config, issuer, capability, refresh wire, or client propagation. Stale
 `PEER_ICE_TURN_*` keys fail startup even when blank. The source candidate now
-implements a complete selected-edge tuple and one post-SFU relay-only rebuild;
-production configures it, but real TURN/media evidence remains open.
+implements a complete selected-edge tuple and one relay-only rebuild for either
+the initial pending Host publication or an active Host/SFU route; production
+configures the tuple, but real TURN/media evidence remains open.
 The wire has two explicit edge kinds: `peer-selected` for the last-mile failed
 peer edge and `host-sfu-ingress` for a restricted Host-to-SFU retry. Ordinary
 Peer ICE remains STUN-only.
@@ -293,13 +294,14 @@ ID allowlist.
 
 8. An active Viewer SFU root may request one fresh short-lived grant. If its next
    failure, or the initial SFU prepare, is exhausted, the router grants at most
-   one relay-only rebuild of that Viewer's original failed peer edge. An active
+   one relay-only rebuild of that Viewer's original failed peer edge. A
    Host-to-SFU route may instead receive one `host-sfu-ingress` relay-only grant
-   when the explicit restricted-source decision applies; the grant is bound to
-   the host session and publication generation. Failure is
-   terminal for that attempt; stop, session replacement, topology revision or a
-   new sharing generation clears it, then the existing bounded peer failback
-   remains available.
+   for an initial pending publication or an active route. The pending retry is
+   bound to the exact revision, publication/share generations, expected Host
+   session and a server-generated new connection ID. Prepare-ready consumes the
+   attempt; retry failure reports that new ID and restores the unchanged peer
+   baseline. Stop, session replacement, topology revision or a new sharing
+   generation also clears it.
 
 Production logs on 2026-08-20 observed two root participants for about 4.6
 seconds and two short Host participants (about 0.46 and 0.27 seconds), all ending
@@ -420,21 +422,20 @@ cannot connect. Source has no
 participant-wide TURN path: the rejected candidate is removed and its stale
 environment keys fail startup. The selected-edge implementation uses
 a short coturn REST bearer and one server-generated connection identity per explicit
-edge kind. `peer-selected` binds the failed parent/Viewer pair; `host-sfu-ingress`
-binds the room, host session, SFU publication generation, and the
-old/new connection identities. The Host client applies that grant only to a
-relay-only LiveKit publisher `RTCConfiguration`. It is configured in production
-but has no real relay-media evidence.
+edge kind. `peer-selected` binds the failed parent/Viewer pair;
+`host-sfu-ingress` binds the room, host session, SFU publication generation, and
+the old/new connection identities. The Host client applies that grant only to a
+relay-only LiveKit publisher `RTCConfiguration`, including during the initial
+pending prepare. Pinned LiveKit client 2.22.0 accepts `rtcConfig` on
+`Room.connect`; its engine clones that override before creating the publisher
+PeerConnection and does not replace explicitly supplied ICE servers. This path
+is configured in production but has no real relay-media evidence.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
-### Deferred Gap-Fill And Optimization
+### Deferred Optimization
 
 These items are not current runtime behavior:
 
-- If the Host cannot reach LiveKit over UDP during the initial pending SFU
-  prepare, the current active-route `host-sfu-ingress` retry cannot rescue that
-  prepare. A later gap-fill may authorize exactly one generation-bound,
-  relay-only retry for that pending publication.
 - A room in which the Host and every possible root are restricted may require
   several server-fed exceptional edges. Any such extension requires a per-room
   selected-relay and central-egress admission cap; it must wait or fail at that
@@ -578,6 +579,8 @@ Negative:
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/#selective-subscription)
 - [LiveKit track subscription permissions](https://docs.livekit.io/transport/media/publish/#track-permissions)
 - [LiveKit client 2.22.0 `prepareConnection` source](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
+- [LiveKit client 2.22.0 connection options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/options.ts)
+- [LiveKit client 2.22.0 RTC configuration construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/RTCEngine.ts)
 - [LiveKit JavaScript client usage](https://github.com/livekit/client-sdk-js#usage)
 - [LiveKit end-to-end encryption](https://docs.livekit.io/transport/encryption/)
 - [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html)

@@ -45,6 +45,24 @@ function sfuConfig(revision: number) {
   };
 }
 
+function hostSfuIngressGrant(newConnectionId = "selected-connection-new") {
+  return {
+    type: "selected-edge-turn" as const,
+    edgeKind: "host-sfu-ingress" as const,
+    revision: 1,
+    hostPeerId: "host_12345678",
+    publicationGeneration: "generation-a",
+    oldConnectionId: "generation-a",
+    newConnectionId,
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    iceServer: {
+      urls: ["turn:turn.example.test:3478?transport=udp"] as [string],
+      username: "1787230000:opaque_identity_12345678",
+      credential: "short-lived-credential",
+    },
+  };
+}
+
 function createFakePublisher(log: string[], label: string) {
   return {
     connect: vi.fn(async () => {
@@ -278,21 +296,7 @@ describe("HostSfuRoute", () => {
     });
 
     expect(
-      route.startSelectedEdgeTurn({
-        type: "selected-edge-turn",
-        edgeKind: "host-sfu-ingress",
-        revision: 1,
-        hostPeerId: "host_12345678",
-        publicationGeneration: "generation-a",
-        oldConnectionId: "generation-a",
-        newConnectionId: "selected-connection-new",
-        expiresAt: "2030-01-01T00:00:00.000Z",
-        iceServer: {
-          urls: ["turn:turn.example.test:3478?transport=udp"],
-          username: "1787230000:opaque_identity_12345678",
-          credential: "short-lived-credential",
-        },
-      }),
+      route.startSelectedEdgeTurn(hostSfuIngressGrant()),
     ).toBe(true);
     await vi.waitFor(() => expect(publishers).toHaveLength(2));
     expect(publishers[1].connect).toHaveBeenCalledWith({
@@ -310,6 +314,49 @@ describe("HostSfuRoute", () => {
       },
     });
     expect(failures).toHaveLength(2);
+    expect(messages).toContainEqual({
+      type: "route-ready",
+      revision: 1,
+      phase: "prepare",
+    });
+  });
+
+  it("identifies a failed selected ingress retry by its new connection", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: () => {
+        const publisher = createFakePublisher([], `publisher-${publishers.length + 1}`);
+        publisher.connect.mockResolvedValue(false);
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+
+    route.accept({
+      revision: 1,
+      phase: "prepare",
+      assignment: hostAssignment("generation-a"),
+    });
+    await route.acceptConfig(sfuConfig(1));
+    expect(route.startSelectedEdgeTurn(hostSfuIngressGrant())).toBe(true);
+
+    await vi.waitFor(() => expect(publishers).toHaveLength(2));
+    await vi.waitFor(() =>
+      expect(messages).toContainEqual({
+        type: "route-failed",
+        revision: 1,
+        phase: "prepare",
+        connectionId: "selected-connection-new",
+      }),
+    );
   });
 
   it("surfaces a bounded publisher stage after active fallback fails", async () => {

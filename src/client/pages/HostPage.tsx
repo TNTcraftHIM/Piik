@@ -951,7 +951,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         if (
           peerAssistedRef.current &&
           message.hostPeerId === hostPeerIdRef.current &&
-          message.revision === activeRouteRevisionRef.current &&
           Date.parse(message.expiresAt) > Date.now()
         ) {
           const route = ensureHostSfuRoute(generation);
