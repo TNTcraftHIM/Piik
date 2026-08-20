@@ -3,6 +3,7 @@ import { z } from "zod";
 import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
+export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
 export const SIGNALING_PROTOCOL = "screener-v2";
 export const ROOM_CODE_LENGTH = 12;
@@ -16,6 +17,7 @@ export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
 export const MAX_DISPLAY_NAME_CODE_POINTS = 24;
 export const DEFAULT_VIEWER_DISPLAY_NAME = "访客";
+export const DEFAULT_HOST_DISPLAY_NAME_PREFIX = "分享者";
 export const MIN_VIEWER_PASSWORD_LENGTH = 1;
 export const MAX_VIEWER_PASSWORD_LENGTH = 64;
 
@@ -63,8 +65,31 @@ const opaqueIdSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 
+export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
+  z
+    .object({
+      role: z.literal("host"),
+      peerId: opaqueIdSchema,
+      displayName: displayNameSchema,
+      mediaTopology: z.literal("host"),
+    })
+    .strict(),
+  z
+    .object({
+      role: z.literal("viewer"),
+      peerId: opaqueIdSchema,
+      displayName: displayNameSchema,
+      mediaTopology: viewerMediaTopologySchema,
+    })
+    .strict(),
+]);
+export type ParticipantPresenceEntry = z.infer<
+  typeof participantPresenceEntrySchema
+>;
+
 export const viewerPresenceEntrySchema = z
   .object({
+    role: z.literal("viewer"),
     peerId: opaqueIdSchema,
     displayName: displayNameSchema,
     mediaTopology: viewerMediaTopologySchema,
@@ -476,6 +501,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       shareGeneration: opaqueIdSchema.optional(),
       viewerPresence: z.literal(true).optional(),
       viewerPasswordSettings: z.literal(true).optional(),
+      displayName: displayNameSchema.optional(),
     })
     .strict(),
   z
@@ -488,6 +514,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       viewerGrant: viewerGrantSchema.optional(),
       viewerPassword: viewerPasswordSchema.optional(),
       displayName: displayNameSchema.optional(),
+      viewerPresence: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -705,8 +732,8 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("viewer-presence"),
       viewers: z
-        .array(viewerPresenceEntrySchema)
-        .max(MAX_VIEWERS_PER_ROOM_LIMIT),
+        .array(participantPresenceEntrySchema)
+        .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
     })
     .strict()
     .superRefine((message, context) => {

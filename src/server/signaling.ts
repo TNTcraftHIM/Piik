@@ -5,6 +5,7 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer } from "ws";
 
 import {
+  DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_VIEWER_DISPLAY_NAME,
   DEFAULT_QUALITY_SETTINGS,
   MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
@@ -18,7 +19,7 @@ import {
   type QualitySettings,
   type Role,
   type ServerMessage,
-  type ViewerPresenceEntry,
+  type ParticipantPresenceEntry,
 } from "../shared/protocol.js";
 import {
   RoomStore,
@@ -445,10 +446,12 @@ export class SignalingServer {
           : Date.parse(participant.expiresAt),
       shareGeneration,
       displayName:
-        message.role === "viewer"
-          ? (message.displayName ?? DEFAULT_VIEWER_DISPLAY_NAME)
-          : null,
-      viewerPresence: false,
+        message.role === "host"
+          ? message.viewerPresence === true
+            ? (message.displayName ?? DEFAULT_HOST_DISPLAY_NAME_PREFIX)
+            : null
+          : (message.displayName ?? DEFAULT_VIEWER_DISPLAY_NAME),
+      viewerPresence: message.viewerPresence === true,
       viewerPasswordSettings: false,
     };
     if (participant.role === "viewer") {
@@ -517,8 +520,6 @@ export class SignalingServer {
     } else {
       this.send(socket, authenticatedMessage);
     }
-    state.authenticated.viewerPresence =
-      message.role === "host" && message.viewerPresence === true;
     state.authenticated.viewerPasswordSettings =
       message.role === "host" && message.viewerPasswordSettings === true;
     if (state.authenticated.viewerPasswordSettings) {
@@ -694,8 +695,15 @@ export class SignalingServer {
         this.handleParentEdgeQualityEvidence(socket, authenticated, message);
         return;
       case "set-display-name":
-        if (authenticated.role !== "viewer") {
-          this.sendError(socket, "FORBIDDEN", "Only viewers may set a display name");
+        if (
+          authenticated.role === "host" &&
+          !authenticated.viewerPresence
+        ) {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "Display names require the Web presence capability",
+          );
           return;
         }
         authenticated.displayName = message.displayName;
@@ -764,6 +772,7 @@ export class SignalingServer {
             authenticated.peerId,
             state.sessionId,
           );
+          this.sendViewerPresence(authenticated.roomId);
         }
         this.stopSharing(authenticated.roomId);
         socket.close(1000, "Sharing stopped");
@@ -1277,6 +1286,7 @@ export class SignalingServer {
       )) {
         this.sendToSession(viewer.sessionId, { type: "host-status", online: false });
       }
+      this.sendViewerPresence(disconnected.roomId);
       return;
     }
 
@@ -1445,25 +1455,31 @@ export class SignalingServer {
     if (this.deferredViewerPresenceRooms.has(roomId)) {
       return;
     }
+
+    const viewers: ParticipantPresenceEntry[] = [];
     const host = this.options.roomStore.getConnectedHost(roomId);
-    if (!host) {
-      return;
-    }
-    const hostSocket = this.socketsBySessionId.get(host.sessionId);
+    const hostSocket = host
+      ? this.socketsBySessionId.get(host.sessionId)
+      : undefined;
     const hostState = hostSocket
       ? this.socketStates.get(hostSocket)?.authenticated
       : undefined;
     if (
-      !hostSocket ||
-      hostState?.role !== "host" ||
-      hostState.roomId !== roomId ||
-      hostState.peerId !== host.peerId ||
-      !hostState.viewerPresence
+      host &&
+      hostSocket &&
+      hostState?.role === "host" &&
+      hostState.roomId === roomId &&
+      hostState.peerId === host.peerId &&
+      hostState.displayName !== null
     ) {
-      return;
+      viewers.push({
+        role: "host",
+        peerId: host.peerId,
+        displayName: hostState.displayName,
+        mediaTopology: "host",
+      });
     }
 
-    const viewers: ViewerPresenceEntry[] = [];
     for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
       const viewerSocket = this.socketsBySessionId.get(viewer.sessionId);
       const viewerState = viewerSocket
@@ -1478,6 +1494,7 @@ export class SignalingServer {
         continue;
       }
       viewers.push({
+        role: "viewer",
         peerId: viewer.peerId,
         displayName: viewerState.displayName,
         mediaTopology: this.isPeerAssistedRoom(roomId)
@@ -1485,10 +1502,31 @@ export class SignalingServer {
               roomId,
               viewer.peerId,
             )
-          : "host-direct",
+        : "host-direct",
       });
     }
-    this.send(hostSocket, { type: "viewer-presence", viewers });
+
+    const message = { type: "viewer-presence" as const, viewers };
+    const recipients = new Set<WebSocket>();
+    if (hostSocket && hostState?.viewerPresence) {
+      recipients.add(hostSocket);
+    }
+    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+      const viewerSocket = this.socketsBySessionId.get(viewer.sessionId);
+      const viewerState = viewerSocket
+        ? this.socketStates.get(viewerSocket)?.authenticated
+        : undefined;
+      if (
+        viewerSocket &&
+        viewerState?.role === "viewer" &&
+        viewerState.roomId === roomId &&
+        viewerState.peerId === viewer.peerId &&
+        viewerState.viewerPresence
+      ) {
+        recipients.add(viewerSocket);
+      }
+    }
+    recipients.forEach((socket) => this.send(socket, message));
   }
 
   private sendToSession(sessionId: string, message: ServerMessage): void {

@@ -56,16 +56,19 @@ describe("browser-local display name", () => {
   it("extends only colliding room-scoped peer ID suffixes", () => {
     const labeled = labelViewerPresence([
       {
+        role: "viewer",
         peerId: "viewer_AAAAAAsuffix",
         displayName: "同名",
         mediaTopology: "host-direct",
       },
       {
+        role: "viewer",
         peerId: "viewer_BBBBBBsuffix",
         displayName: "同名",
         mediaTopology: "peer-relay",
       },
       {
+        role: "viewer",
         peerId: "viewer_independent",
         displayName: "朋友",
         mediaTopology: "sfu",

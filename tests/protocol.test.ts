@@ -723,6 +723,7 @@ describe("server signaling protocol", () => {
 
   it("accepts a strict, unique and bounded Viewer presence snapshot", () => {
     const viewer = {
+      role: "viewer",
       peerId: "viewer_12345678",
       displayName: "小明",
       mediaTopology: "peer-relay",
@@ -745,6 +746,20 @@ describe("server signaling protocol", () => {
         viewers: [{ ...viewer, ip: "203.0.113.1" }],
       }).success,
     ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-presence",
+        viewers: [
+          viewer,
+          {
+            role: "host",
+            peerId: "host_12345678",
+            displayName: "分享者",
+            mediaTopology: "host",
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it("represents persistent rooms without a room expiry", () => {
