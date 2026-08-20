@@ -23,14 +23,14 @@ Last updated: 2026-08-21
 - Use direct host P2P for one or two viewers, then the bounded controller for every room when `PEER_ASSISTED_MEDIA=true`. Room `1` is historical smoke, not a runtime gate; resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile evidence remain separate.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- ADR-0006 remains no-go. Native H.264 opt-in loopback (Chrome 151, 1280x720) rendered 298/299 with zero fatal/encoder errors; VP8 remains default. Pion timing, hardware attribution, multi-viewer/endurance/public/packaged proof remain open.
+- ADR-0006 remains no-go. VP8 is default; H.264 loopback rendered 298/299. Windows x64 evaluation packaging is source-complete; downloaded use, Pion timing, hardware, multi-viewer/endurance/public proof remain open.
 - Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
 - ADR-0005 accepts direct/peer UDP, bounded SFU roots, then optional selected-edge TURN. Production now enables the one-shot selected-edge tuple after SFU; participant-wide TURN remains rejected and ordinary peer ICE stays STUN-only. No real TURN/SFU media canary has yet been run.
 - The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, mobile leaves and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
-- Web capture cannot isolate process audio. ADR-0008 Windows 11 native audio is opt-in/source-only: opaque local selection, no system-mix fallback or exposed PID, and one shared Opus track; one direct Viewer received 495 packets. Packaging, game A/V sync, other routes, and Windows 10 remain open.
+- Web cannot isolate process audio. ADR-0008 Win11 audio is opt-in/source-only with no system-mix fallback or exposed PID; one Viewer got 495 Opus packets. Evaluation packaging includes the helper, hashes, and linked licenses; release, game sync, other routes, and Win10 remain open.
 - Viewer-local names and the opt-in Web participant roster remain control-plane-only. Web Host names are deployed in the current release and stay socket/localStorage-only; Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
@@ -53,7 +53,7 @@ Last updated: 2026-08-21
 - Chrome 151 synthetic topology/quality runs kept fanout 2/1 and decoding; one relay close recovered in 5.32 seconds. Control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
-- Web Host name/presence and the best-effort window-scoped audio request hint are deployed; both remain control-plane/capture hints and do not change the Native wire. Native H.264 opt-in source is present but no packaged native sender is in the release; VP8 remains the Web/production default. See `docs/research/native-h264-opt-in-path.md`.
+- Web Host name/presence and window-audio hint are deployed without changing the Native wire. Native H.264 source and Windows x64 evaluation packaging are present, but no Native release/deployment exists; VP8 remains the Web/production default. See `docs/research/native-h264-opt-in-path.md`.
 
 ## Provisional Quality Targets
 

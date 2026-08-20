@@ -2,8 +2,9 @@
 
 Date: 2026-08-21
 
-Status: Accepted. The browser hint and opt-in Native Windows P1 slice are
-source-complete; Native remains unpackaged, default-off, and undeployed.
+Status: Accepted. The browser hint, opt-in Native Windows P1 slice, and bounded
+Windows x64 evaluation-package path are source-complete; Native remains
+default-off, formally unreleased, and undeployed.
 
 ## Context
 
@@ -122,12 +123,16 @@ track and 495 inbound Opus packets while video decoded/rendered 296 frames.
   privacy claim the platform cannot support.
 - Strict per-window audio is a native Windows 11 feature, not a browser promise
   or a silent system-audio fallback.
+- The helper is packaged beside the sender in a commit-bound evaluation ZIP.
+  The ZIP carries internal and external SHA-256 manifests plus exact linked Go
+  dependency license files; it is neither an installer nor a release.
 - Android `AudioPlaybackCapture` and packaged cross-platform UI remain later
   candidates; they do not block this slice.
 
 ## Follow-Up TODO
 
-- Package the helper beside the sender and keep explicit target selection
-  default-off.
+- Download and run the short-lived Windows x64 evaluation artifact; keep
+  explicit target selection default-off. A formal release remains blocked on
+  the project license, signing, and its own acceptance boundary.
 - Keep native WGC video, a second Viewer, SFU/TURN, endurance, and real-game
   A/V sync as separate follow-ups.

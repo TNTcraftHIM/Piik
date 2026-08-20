@@ -5,8 +5,10 @@ It enumerates visible top-level windows locally and captures only the explicitly
 selected process plus its children through WASAPI application loopback. It has
 no whole-system fallback and no network code.
 
-Build it outside the repository, then place both executables in the same output
-directory (or set `SCREENER_PROCESS_AUDIO_HELPER` for a development run):
+The standard evaluation ZIP builds this helper beside the sender through
+`scripts/package-native-sender.ps1`. For a helper-only development build, use
+an output directory outside the repository (or set
+`SCREENER_PROCESS_AUDIO_HELPER` for a development run):
 
 ```powershell
 $out = Join-Path ([IO.Path]::GetTempPath()) 'screener-native-audio'

@@ -12,7 +12,23 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/app"
 )
 
+var buildRevision = "development"
+
 func main() {
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "--version":
+			fmt.Printf("Screener sender %s\n", buildRevision)
+			return
+		case "--help", "-h":
+			fmt.Println("Usage: screener-sender.exe [--version|--help]")
+			return
+		}
+	}
+	if len(os.Args) > 1 {
+		fmt.Fprintln(os.Stderr, "Usage: screener-sender.exe [--version|--help]")
+		os.Exit(2)
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Screener sender stopped:", err)
 		os.Exit(1)
