@@ -226,13 +226,13 @@ function observeNodeStages(server: ScreenerServer, ledger: SenderStartLedger): v
   });
 }
 
-function senderStartObservation(snapshot: SenderSnapshot): Partial<SenderStartObservation> {
+function senderStartObservation(snapshot: SenderSnapshot, expectedCodec = "vp8"): Partial<SenderStartObservation> {
   return {
     getDisplayMediaRequested: snapshot.getDisplayMediaRequested,
     getDisplayMediaResolved: snapshot.getDisplayMediaResolved,
     bridgeConnected: snapshot.ready > 0,
     fixedHighConfigured: snapshot.configAccepted > 0 &&
-      snapshot.config?.codec === "vp8" && snapshot.config.width === 1280 &&
+      snapshot.config?.codec === expectedCodec && snapshot.config.width === 1280 &&
       snapshot.config.height === 720 && snapshot.config.fps === 30 &&
       snapshot.config.bitrate === 3_000_000 && snapshot.config.encoderInstances === 1,
     firstEncodedChunk: snapshot.encoderOutputs > 0,
@@ -273,6 +273,7 @@ function appendLedgerRecord(path: string, record: object): void {
 async function main(): Promise<void> {
   const chromePath = requiredEnvironmentPath("SCREENER_NATIVE_GATE_CHROME");
   const goPath = process.env.SCREENER_NATIVE_GATE_GO?.trim() || "go";
+  const gateCodec = process.env.SCREENER_NATIVE_GATE_CODEC?.trim() === "h264" ? "h264" : "vp8";
   const accessKey = randomBytes(9).toString("base64url");
   const report: GateReport = {
     schemaVersion: 1,
@@ -369,10 +370,11 @@ async function main(): Promise<void> {
     await evaluate<void>(cdp, activeSenderPage, `(() => {
       document.querySelector('#server-url').value = ${JSON.stringify(baseUrl)};
       document.querySelector('#password').value = ${JSON.stringify(accessKey)};
+      document.querySelector('#codec').value = ${JSON.stringify(gateCodec)};
       document.querySelector('#start').click();
     })()`, Date.now() + 5_000);
     await waitForSenderStart(
-      async (deadline) => senderStartObservation(await senderSnapshot(cdp!, activeSenderPage, deadline)),
+      async (deadline) => senderStartObservation(await senderSnapshot(cdp!, activeSenderPage, deadline), gateCodec),
       senderLedger,
       { timeoutMs: 20_000 },
     );
@@ -498,7 +500,7 @@ async function main(): Promise<void> {
       finalSenderEvidence = await verifyFinalSenderEvidence(
         () => senderSnapshot(finalCdp, finalSenderPage, Date.now() + 1_000),
         (snapshot) => {
-          senderLedger.record(senderStartObservation(snapshot));
+          senderLedger.record(senderStartObservation(snapshot, gateCodec));
           return senderLedger.snapshot();
         },
       );

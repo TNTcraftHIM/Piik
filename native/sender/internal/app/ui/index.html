@@ -38,6 +38,13 @@
           <span>访问密码</span>
           <input id="password" type="password" autocomplete="current-password" />
         </label>
+        <label>
+          <span>Codec</span>
+          <select id="codec">
+            <option value="vp8">VP8 (default)</option>
+            <option value="h264">H.264 (hardware preference)</option>
+          </select>
+        </label>
         <button id="start" class="button primary" type="button">开始分享</button>
         <p class="notice">当前 canary 仅发送画面，不含音频。</p>
         <p id="error" class="error" role="alert"></p>

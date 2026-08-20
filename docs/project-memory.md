@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Confirmed Intent
 
@@ -23,7 +23,7 @@ Last updated: 2026-08-20
 - Use direct host P2P for one or two viewers. Keep ADR-0004 off broadly; use an isolated exact-room candidate until resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile gates pass.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- ADR-0006 remains no-go for expansion. A Chrome 151 loopback proves fixed VP8 WebCodecs -> Go RTP -> one 1280x720 Viewer: 30 sender frames/85 source RTP packets, 877 inbound packets, 299 decoded and rendered, no fatal. Pion outbound delta was not retained because its 2-second diagnostics snapshot did not refresh. Hardware, multi-viewer/FIFO, endurance, public-network, and packaged-native proof remain open. Source fixes timestamp overlap from nullable duration; the separate MF RTX fixture still misses Pion fmtp. Native v2 remains memory-only and leaves SQLite/Web unchanged.
+- ADR-0006 remains no-go. Native has explicit H.264 opt-in beside default VP8: Chrome 151 loopback reached 299 decoded/298 rendered frames (18 sender, 156 source RTP, 2,690 inbound) at 1280x720 with zero encoder/fatal errors. The gate retains a Pion snapshot-timing residual. `prefer-hardware` is only a request; physical attribution, multi-viewer, endurance, public-network, and packaged-native proof remain open.
 - Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
 - ADR-0005 accepts direct/peer UDP, bounded SFU roots, then optional selected-edge TURN. Source has a default-off, undeployed one-shot rebuild after SFU; participant-wide TURN remains rejected and production stays STUN-only.
 - Keep the controller exact-room only: room `1` is the STUN/SFU smoke. Preserve sticky progressing P2P, mobile leaves and break-before-make. Recovery spends one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries; active SFU gets one fresh grant before Peer failback.
@@ -50,6 +50,7 @@ Last updated: 2026-08-20
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
 - Source-only Web Host name/presence leaves Native wire/media unchanged and separates Viewer roster from Host diagnostics; the Host-name artifact was not activated.
+- Native H.264 opt-in is source-complete for one loopback; VP8 remains default and Web/production are unchanged. See `docs/research/native-h264-opt-in-path.md`.
 
 ## Provisional Quality Targets
 
@@ -69,7 +70,7 @@ These are measurement gates, not performance claims.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
 - Whether voice chat ever enters scope or Screener stays complementary to an existing voice application.
-- Production calibration of local-reparent thresholds and the ADR-0007 native matrix; #28's minimum-of-two rule is not a candidate.
+- Production calibration of local-reparent thresholds, physical H.264 hardware attribution, and the ADR-0007 native matrix; #28's minimum-of-two rule is not a candidate.
 
 ## Source Of Truth
 

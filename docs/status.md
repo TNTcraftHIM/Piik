@@ -36,10 +36,10 @@ automatic peer/SFU-UDP controller with at most two SFU roots. The old
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Native VP8 loopback (Chrome 151) reached one Viewer: 30 sender frames, 85 source RTP packets, 877 inbound packets, 299 decoded/rendered at 1280x720, no fatal. Pion outbound delta missed a 2s refresh; hardware/multi-viewer/FIFO/endurance/public/native proof remains open.
+- Native loopbacks (Chrome 151) reached 1280x720 Viewers: VP8 30 sender/85 source RTP/877 inbound/299 decoded; H.264 opt-in 18/156/2,690/299 decoded/298 rendered, with no fatal/encoder errors. H.264 uses `42c01f` Annex-B; `prefer-hardware` is not hardware proof. Pion outbound snapshot timing remains; multi-viewer/FIFO/endurance/public/native proof is open, production stays VP8.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Source adds room-1 Host ingress + peer last-mile; Peer ICE STUN-only; 160 tests pass.
-- Prepared artifact `screener-61a87ae47e38abc943cef47b3d7318bb51bf86d6-20260820T143538Z.tar.gz` (883597 bytes, SHA-256 `d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`) was the sole Host-name cutover candidate. Its prepare-to-release and health gates passed before the stale restart-count assertion caused automatic rollback; `fdd14ba` is healthy with all four service restart counts at 0, and Host display-name remains source-only. Selected-edge TURN is disabled.
+- The `61a87ae` Host-name artifact was rolled back after a stale restart-count assertion; `fdd14ba` is healthy and Host display-name remains source-only. Selected-edge TURN is disabled.
 
 ## Unverified Boundaries
 
@@ -48,7 +48,7 @@ automatic peer/SFU-UDP controller with at most two SFU roots. The old
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Real audio and heterogeneous clients remain unverified. Production reports poor film audio and voice-call self-echo under system capture; there is no app audio ceiling or Web process isolation. Diagnose A/B/C and sync, then gate Windows 11 game-process audio; Windows 10 stays unresolved without system fallback.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
-- ADR-0006 has one Viewer decode/render proof; two-edge/FIFO/hardware/endurance/public remain open.
+- ADR-0006 has one Viewer proof; two-edge/FIFO, physical hardware, endurance, public, packaged-native, and browser-diversity proof remain open.
 - Browser fanout is host two/viewer one; any accepted endpoint relay stays capped at two downstream edges.
 - PR #49/#50 BWE is unverified/default-off: test zero-child leaves, then root impact. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - The corrected standby smoke is localhost/headless/video-only; public DNS/TLS reuse, transport, audio, shaping, load, mobile, endurance, and sub-25 ms overlap remain open.
@@ -64,7 +64,8 @@ SFU; it never runs three identical retries or abandons progressing P2P early.
 
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
 evacuation. Native source accepts increasing capture timestamps shorter than
-duration; one VP8 Viewer decode/render run is recorded. Next prove fresh Pion
+duration; VP8 and explicit H.264 Viewer decode/render are recorded. Hardware
+preference is not physical proof. Next prove fresh Pion
 outbound diagnostics before viewer 2/FIFO/hardware/endurance/deploy.
 Audio A/B/C may proceed without displacing P0.
 Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. Selected-edge
