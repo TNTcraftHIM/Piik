@@ -34,9 +34,12 @@ describe("native sender hardware preference contract", () => {
     expect(retainsHardwarePreference(null)).toBe(false);
   });
 
-  it("keeps VP8 default, one encoder, and an explicit unverified hardware boundary", () => {
+  it("keeps VP8 default, maps browser/native H.264, and retains one encoder", () => {
     expect(senderHTML).toContain('<option value="vp8">VP8 (default)</option>');
-    expect(senderUI).toContain('elements.codec?.value === "h264" ? "h264" : "vp8"');
+    expect(senderHTML).toContain('<option value="h264">H.264 (hardware preference)</option>');
+    expect(senderHTML).toContain('<option value="native-h264">H.264 (native window hardware)</option>');
+    expect(senderUI).toContain('elements.codec?.value === "h264" || elements.codec?.value === "native-h264" ? "h264" : "vp8"');
+    expect(senderUI).toContain('elements.codec?.value === "native-h264" ? "native-window-h264" : "browser"');
     expect(senderUI).toContain('codec: codec === "h264" ? "avc1.42c01f" : "vp8"');
     expect(senderUI).toContain("metrics.codec = codec");
     expect(senderUI).toContain("codecLabel(metrics.codec)");
