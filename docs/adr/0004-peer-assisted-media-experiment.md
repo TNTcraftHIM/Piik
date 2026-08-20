@@ -1,6 +1,6 @@
 # ADR-0004: Peer-Assisted Media Experiment
 
-- Status: Proposed - Experiment Only
+- Status: Proposed - Historical Experiment (rollout superseded by ADR-0005)
 - Date: 2026-08-19
 
 ## Context
