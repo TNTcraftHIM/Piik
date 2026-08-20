@@ -14,9 +14,11 @@ current controller's automatic final media fallback. This capacity is dormant un
 the peer-assisted experiment, or required STUN discovery. It is configured with
 ICE/UDP only; the candidate has no ordinary TURN or media-TCP configuration.
 
-Production `bbe4654a7a9b` runs this candidate for exact room `1` on the existing
-shared public IP. The unchanged `9610032fc5f5` release, v1 database/environment
-backup, and coturn relay remain rollback-only. This is a bounded production smoke, not
+Production `89e6d7649169` runs this candidate for exact room `1` on the existing
+shared public IP. The immediate `bbe4654a7a9b` code rollback uses the current v2
+database and `HOST_ADMISSION_PASSWORD` environment. Only the deeper pre-access
+`9610032fc5f5` rollback may restore the matching v1 database and old environment.
+Coturn relay also remains rollback-only. This is a bounded production smoke, not
 clean-port or broad-rollout acceptance; the media procedures below still apply.
 
 ## Topology and prerequisites
@@ -53,6 +55,12 @@ remove: metadata changes would also mutate the rollback release. A copy or
 copy-on-write reflink is acceptable only after an inode audit confirms that the
 old and new regular-file sets have zero shared inodes. Do not recursively change
 permissions until that check passes.
+
+In a strict-shell deployment, expected service states are data, not command
+failures. Do not call `systemctl is-active` bare under `set -e`/`ERR`: an
+intentionally stopped service returns a nonzero status and can trigger a false rollback. Read
+`ActiveState` with `systemctl show`, compare the returned string explicitly, and
+keep stop, symlink switch, start, health check, and rollback as separate steps.
 
 Run `npm start` under a service supervisor that injects the environment, restarts
 on failure, and applies bounded logs. For a simple untracked environment file,
@@ -268,6 +276,15 @@ the v2 integrity/schema and locked-private digest checks passed, including room
 earlier artifact attempt was rolled back after hard-linked dependencies let a
 permission change make the rollback release unreadable for 3m11s; the final release has an
 independent dependency tree and zero shared regular-file inodes.
+
+The code-only initial-connect recovery deployed at 2026-08-20 09:40 +08 on
+exact `89e6d7649169`; its artifact SHA-256 is
+`39B62039FCFB05281F78FCF85C964C520E2BB2FE5661ADA4758D598A7DF6CEC1`.
+Health returned in 1.09 seconds, the v2 database still contained four rooms and
+room `1`, and environment, nginx, and LiveKit state were unchanged. At 09:37 a
+bare `systemctl is-active` treated the expected stopped state as an error under
+strict shell and caused an immediate healthy rollback; no new application had
+failed. The later explicit `ActiveState` sequence completed successfully.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
