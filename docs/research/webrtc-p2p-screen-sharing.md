@@ -198,12 +198,19 @@ screen track 或加入私有媒体协议。
 
 ### Viewer 向电视输出边界
 
-Remote Playback API 当前仍是 MDN `Limited availability`，不能作为跨浏览器基线。
-W3C 规范还明确允许 UA 在只支持 media flinging、而媒体源不是可传给远端设备的 URL
-时返回 `NotSupportedError`。Safari 官方只保证 `HTMLMediaElement` 原生 AirPlay picker；
-这些能力都不证明 live WebRTC `srcObject` 可在任意电视目标上远端播放。产品只能在
-运行时检测 `HTMLMediaElement.remote`，并在真实设备通过后显示入口；失败时保留本机
-播放和现在就能使用的系统级屏幕镜像。
+截至 2026-08-21，Remote Playback API 仍不能作为 live WebRTC 的可移植输出契约。
+W3C Candidate Recommendation 没有定义 `MediaStream`/`srcObject` 的远端播放行为，
+把目标兼容性留给 UA；当实现只有 media flinging、媒体源又不是可交给目标的 URL 时，
+规范明确允许 `prompt()` 返回 `NotSupportedError`。Chromium `f004e4a` 的实现只为非空、
+有效且已判定兼容的 `KURL` 建立 availability URL；Screener 的进程内 `MediaStream`
+没有该 URL。仅检测到 `HTMLMediaElement.remote` 因而不等于当前直播可投屏。
+
+Safari 的边界更明确：WebKit `e88b92e` 的
+`MediaPlayerPrivateMediaStreamAVFObjC::supportsType()` 对任何非本机 wireless playback
+target 直接返回 `IsNotSupported`，而 Apple 的 AirPlay picker 示例使用 URL 型
+`<video src="my-video.mp4">`，没有承诺 live WebRTC。当前 Safari AirPlay 媒体按钮和
+Chrome Remote Playback 都不能为 Screener 显示一个诚实可用的站内入口；保留本机播放
+以及系统级整屏/标签页镜像。
 
 Google Cast `MediaInfo` 的 `contentUrl` 会被用作 media URL，缺失时 `contentId` 自身会
 被当作 media URL；当前 P2P Viewer 持有的是进程内 `MediaStream`，没有可供电视 fetch
@@ -212,12 +219,28 @@ HLS/Web Receiver 或私有协议会改变服务器媒体成本和安全边界，
 Viewer 本地播放输出；无论是否启用，现有 upstream PeerConnection、TURN/SFU/peer
 route、Host fanout 和其他 Viewer 均不变。
 
+未来只在浏览器发布说明或实现明确支持 live `MediaStream` wireless playback 后重开
+这一切片。先用未合入产品的诊断页分别验证 Safari -> 实体 Apple TV 和 Chrome ->
+实体 Chromecast/Google TV：现有 `srcObject` 的动态画面与音频连续播放至少 60 秒，
+连接/断开后本机播放恢复，且 upstream PeerConnection identity、route 和 edge count
+不变。某一平台单独通过时只支持该平台；通过后产品改动限于现有 `<video>` 的本地
+availability 监听、一个用户手势图标按钮、状态/错误和监听清理，不增加媒体 URL、
+receiver、信令或服务端路径。
+
+许可证边界：这里只引用规范和官方实现行为，没有复制 Chromium/WebKit 代码或引入
+依赖。当前不加载 Google Cast SDK，也不接受其 Additional Developer Terms；若未来改走
+Cast sender/receiver，必须先单独完成条款、注册和分发审查。
+
 来源（访问于 2026-08-21）：
 
 - [MDN Remote Playback API](https://developer.mozilla.org/en-US/docs/Web/API/Remote_Playback_API)
 - [W3C Remote Playback API](https://www.w3.org/TR/remote-playback/)
 - [Apple: Adding an AirPlay button to Safari media controls](https://developer.apple.com/documentation/webkitjs/adding_an_airplay_button_to_your_safari_media_controls)
+- [Chromium `RemotePlayback` implementation at `f004e4a`](https://chromium.googlesource.com/chromium/src/+/f004e4a02b0ac1998398ed361d6aa133702b8c61/third_party/blink/renderer/modules/remoteplayback/remote_playback.cc)
+- [WebKit live `MediaStream` AVFoundation player at `e88b92e`](https://github.com/WebKit/WebKit/blob/e88b92e29f0753e644abe33fdbc2b78c051ebf59/Source/WebCore/platform/graphics/avfoundation/objc/MediaPlayerPrivateMediaStreamAVFObjC.mm)
+- [Google Cast Web Sender integration](https://developers.google.com/cast/docs/web_sender/integrate)
 - [Google Cast `chrome.cast.media.MediaInfo`](https://developers.google.com/cast/docs/reference/web_sender/chrome.cast.media.MediaInfo)
+- [Google Cast SDK Additional Developer Terms](https://developers.google.com/cast/docs/terms)
 
 ### Electron 分享端
 
