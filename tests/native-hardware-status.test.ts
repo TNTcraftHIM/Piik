@@ -38,6 +38,11 @@ describe("native sender hardware preference contract", () => {
     expect(senderHTML).toContain('<option value="vp8">VP8 (default)</option>');
     expect(senderUI).toContain('elements.codec?.value === "h264" ? "h264" : "vp8"');
     expect(senderUI).toContain('codec: codec === "h264" ? "avc1.42c01f" : "vp8"');
+    expect(senderUI).toContain("metrics.codec = codec");
+    expect(senderUI).toContain("codecLabel(metrics.codec)");
+    expect(senderUI).toContain("codecLabel(codec)");
+    expect(senderUI).not.toContain("此设备不支持 VP8 720p30 编码");
+    expect(senderUI).not.toContain("`VP8 · 3 Mbps 上限");
     expect(senderUI).toContain("encoderInstances: 1");
     expect(senderUI).toContain("HARDWARE_STATUS.PREFERENCE_ACCEPTED");
     expect(senderUI).toContain("HARDWARE_STATUS.FALLBACK");
