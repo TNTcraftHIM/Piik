@@ -38,23 +38,64 @@ func TestFrameTimelinePreservesDroppedSourceTime(t *testing.T) {
 	}
 }
 
-func TestFrameTimelineRejectsOverlappingSourceTime(t *testing.T) {
+func TestFrameTimelineAcceptsCaptureJitterShorterThanReportedDuration(t *testing.T) {
 	timeline := newFrameTimeline()
-	_, _, err := timeline.Packetize(Frame{
-		TimestampMicros: 100,
-		DurationMicros:  50,
+	first, _, err := timeline.Packetize(Frame{
+		TimestampMicros: 100_000,
+		DurationMicros:  33_333,
 		Data:            []byte{1},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = timeline.Packetize(Frame{
-		TimestampMicros: 149,
-		DurationMicros:  50,
+	second, gap, err := timeline.Packetize(Frame{
+		TimestampMicros: 133_000,
+		DurationMicros:  33_333,
 		Data:            []byte{2},
 	})
-	if err == nil {
-		t.Fatal("overlapping source timestamps were accepted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gap != 0 {
+		t.Fatalf("capture jitter reported a source gap of %d microseconds", gap)
+	}
+	if delta := second[0].Timestamp - first[0].Timestamp; delta != 2_970 {
+		t.Fatalf("RTP timestamp delta = %d, want 2970 samples", delta)
+	}
+}
+
+func TestFrameTimelineRejectsNonIncreasingSourceTime(t *testing.T) {
+	for _, timestamp := range []uint64{100, 99} {
+		timeline := newFrameTimeline()
+		if _, _, err := timeline.Packetize(Frame{
+			TimestampMicros: 100,
+			DurationMicros:  1,
+			Data:            []byte{1},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := timeline.Packetize(Frame{
+			TimestampMicros: timestamp,
+			DurationMicros:  1,
+			Data:            []byte{2},
+		}); err == nil {
+			t.Fatalf("non-increasing source timestamp %d was accepted", timestamp)
+		}
+	}
+}
+
+func TestFrameTimelineAdvancesForPositiveSubsampleDelta(t *testing.T) {
+	timeline := newFrameTimeline()
+	first, _, err := timeline.Packetize(Frame{TimestampMicros: 1, DurationMicros: 1, Data: []byte{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := timeline.Packetize(Frame{TimestampMicros: 2, DurationMicros: 1, Data: []byte{2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta := second[0].Timestamp - first[0].Timestamp; delta != 1 {
+		t.Fatalf("RTP timestamp delta = %d, want 1 sample", delta)
 	}
 }
 

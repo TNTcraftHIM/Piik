@@ -128,6 +128,19 @@ send returned, but the retained fatal marker and missing diagnostics do not prov
 where or why the product path stopped. No raw cause may be inferred. There is
 still no Viewer, two-viewer, FIFO, or physical or hardware-encoder proof.
 
+A source follow-up identifies and removes one concrete fatal path without relabeling
+that retained run. WebCodecs output duration is nullable; the local sender uses
+33,333 microseconds when it is absent, while a valid next capture timestamp may
+arrive slightly earlier. The prior RTP timeline rejected that strictly
+increasing pair as `encoded frame timestamps overlap`. The candidate now derives
+RTP cadence from adjacent strictly increasing source timestamps and uses duration
+only to report positive source gaps. Focused tests retain dropped-frame timing,
+non-increasing rejection, and sub-sample progress; the real `/media` handler also
+accepts two frames at 1,000,000 and 1,033,000 microseconds when the first reports
+33,333 microseconds. This proves the source path no longer raises that fatal, not
+that it caused the retained browser failure. No post-fix Chrome smoke ran, so
+ADR-0006 remains product-gate no-go.
+
 ## Staged Revalidation
 
 Any further run requires separate authorization and must stop at the first

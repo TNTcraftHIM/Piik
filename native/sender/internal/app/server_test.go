@@ -176,7 +176,7 @@ func TestAcceptedMediaWithoutConfigFailsWithinTheHandshakeDeadline(t *testing.T)
 	assertAbandonRoom(t, remoteDone)
 }
 
-func TestConfiguredMediaBinaryFrameReachesFanout(t *testing.T) {
+func TestConfiguredMediaFramesWithCaptureJitterReachFanout(t *testing.T) {
 	application, events, terminal := startObservedTestApplication(t)
 	connection := openConfiguredMedia(t, application)
 
@@ -191,11 +191,19 @@ func TestConfiguredMediaBinaryFrameReachesFanout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write encoded frame: %v", err)
 	}
+	payload[0] = 2
+	binary.BigEndian.PutUint64(payload[1:9], 1_033_000)
+	writeContext, cancelWrite = context.WithTimeout(context.Background(), time.Second)
+	err = connection.Write(writeContext, websocket.MessageBinary, payload)
+	cancelWrite()
+	if err != nil {
+		t.Fatalf("write jittered encoded frame: %v", err)
+	}
 
 	diagnostics := awaitRemoteEvent(t, events, "diagnostics", 5*time.Second)
-	if diagnostics.Media == nil || diagnostics.Media.FramesWritten == 0 ||
+	if diagnostics.Media == nil || diagnostics.Media.FramesWritten < 2 ||
 		diagnostics.Media.SourceRTPPacketsWritten == 0 {
-		t.Fatalf("binary frame did not reach fanout: %+v", diagnostics.Media)
+		t.Fatalf("binary frames did not reach fanout: %+v", diagnostics.Media)
 	}
 	if err = connection.Close(websocket.StatusNormalClosure, "test complete"); err != nil {
 		t.Fatalf("close configured media: %v", err)

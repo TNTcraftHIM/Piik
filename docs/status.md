@@ -35,7 +35,7 @@ and is not part of production.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Native remains no-go: fixed VP8, one encoder and a generation-1 binary send returned; no later diagnostics arrived, a sanitized fatal marker was retained, and the media zeros are initial values rather than Go reports. No Viewer was created, cleanup passed 5/5, and no product root cause is proven.
+- Native remains no-go: the retained VP8 run reached one encoder and generation-1 binary send, then no diagnostics, a fatal marker and initial media zeros; no Viewer. Source removes a deterministic timestamp-overlap fatal and passes timeline/`/media` tests, but the retained category and post-fix Chrome/Viewer proof are absent.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Selected-edge typecheck and 131 focused control tests pass; no TURN allocation/media evidence exists.
 
@@ -61,9 +61,9 @@ The recovery target uses one ICE restart, one same-parent rebuild, one alternate
 SFU; it never runs three identical retries or abandons progressing P2P early.
 
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
-evacuation. Native stopped after one binary send return: no later diagnostics,
-a retained fatal marker, and uninterpretable media zeros. Classify this boundary
-before any new run.
+evacuation. Native source accepts increasing capture timestamps shorter than
+duration, but has no post-fix browser evidence. The next authorized run must
+prove stage-1 bridge ingress/source RTP before a Viewer.
 Audio A/B/C may proceed without displacing P0.
 Ordinary Peer ICE stays STUN-only; participant-wide TURN is removed. Selected-edge
 is source-complete/default-off/undeployed. Next run one isolated forced-relay

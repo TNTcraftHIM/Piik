@@ -192,32 +192,26 @@ func newFrameTimeline() *frameTimeline {
 
 func (timeline *frameTimeline) Packetize(frame Frame) ([]*rtp.Packet, uint64, error) {
 	var gapMicros uint64
+	// Source timestamps own RTP cadence. WebCodecs duration is nullable and can
+	// extend past the next live-capture timestamp, so it is diagnostic only.
 	if timeline.hasPrevious {
 		if frame.TimestampMicros <= timeline.previousTimestampMicros {
 			return nil, 0, errors.New("encoded frame timestamp did not increase")
 		}
-		if timeline.previousTimestampMicros > math.MaxUint64-timeline.previousDurationMicros {
-			return nil, 0, errors.New("encoded frame timestamp overflowed")
+		deltaMicros := frame.TimestampMicros - timeline.previousTimestampMicros
+		if deltaMicros > timeline.previousDurationMicros {
+			gapMicros = deltaMicros - timeline.previousDurationMicros
 		}
-		expected := timeline.previousTimestampMicros + timeline.previousDurationMicros
-		if frame.TimestampMicros < expected {
-			return nil, 0, errors.New("encoded frame timestamps overlap")
-		}
-		gapMicros = frame.TimestampMicros - expected
-		gapSamples, err := microsToSamples(gapMicros)
+		deltaSamples, err := microsToSamples(deltaMicros)
 		if err != nil {
 			return nil, 0, err
 		}
-		timeline.packetizer.SkipSamples(gapSamples)
+		if deltaSamples == 0 {
+			deltaSamples = 1
+		}
+		timeline.packetizer.SkipSamples(deltaSamples)
 	}
-	durationSamples, err := microsToSamples(frame.DurationMicros)
-	if err != nil {
-		return nil, 0, err
-	}
-	if durationSamples == 0 {
-		durationSamples = uint32(videoClockRate / 30)
-	}
-	packets := timeline.packetizer.Packetize(frame.Data, durationSamples)
+	packets := timeline.packetizer.Packetize(frame.Data, 0)
 	timeline.hasPrevious = true
 	timeline.previousTimestampMicros = frame.TimestampMicros
 	timeline.previousDurationMicros = frame.DurationMicros
