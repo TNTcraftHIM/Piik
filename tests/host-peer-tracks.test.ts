@@ -69,6 +69,7 @@ class FakePeerConnection {
   static latest: FakePeerConnection | null = null;
   static offersFailing = 0;
 
+  readonly configurations: RTCConfiguration[] = [];
   readonly senders: FakeSender[] = [];
   readonly transceiverInputs: Array<{
     trackOrKind: MediaStreamTrack | string;
@@ -81,9 +82,16 @@ class FakePeerConnection {
   remoteDescription: RTCSessionDescription | null = null;
   readonly statsReports: Array<RTCStatsReport | Promise<RTCStatsReport>> = [];
 
-  constructor() {
+  constructor(configuration?: RTCConfiguration) {
     FakePeerConnection.latest = this;
+    if (configuration) {
+      this.configurations.push(configuration);
+    }
   }
+
+  readonly setConfiguration = vi.fn((configuration: RTCConfiguration) => {
+    this.configurations.push(configuration);
+  });
 
   addTransceiver(
     trackOrKind: MediaStreamTrack | string,
@@ -297,6 +305,37 @@ afterEach(() => {
 });
 
 describe("HostPeer source replacement", () => {
+  it("keeps standard ICE direct-first while refreshing future gathering", () => {
+    const peer = createPeer(createStream(createTrack("video", "video"), null));
+    const connection = FakePeerConnection.latest!;
+
+    expect(connection.configurations).toEqual([
+      { iceServers: [], iceTransportPolicy: "all" },
+    ]);
+    peer.updateIceConfig({
+      iceServers: [
+        {
+          urls: ["turn:relay.test:3478?transport=udp"],
+          username: `1787076000:${"a".repeat(32)}`,
+          credential: "temporary-credential",
+        },
+      ],
+      turnCredentialsExpiresAt: "2026-08-20T12:00:00.000Z",
+    });
+
+    expect(connection.setConfiguration).toHaveBeenCalledOnce();
+    expect(connection.configurations[1]).toEqual({
+      iceServers: [
+        {
+          urls: ["turn:relay.test:3478?transport=udp"],
+          username: `1787076000:${"a".repeat(32)}`,
+          credential: "temporary-credential",
+        },
+      ],
+      iceTransportPolicy: "all",
+    });
+  });
+
   it("reserves send-only video and audio senders and replaces both tracks", async () => {
     const oldVideo = createTrack("video", "old-video");
     const oldAudio = createTrack("audio", "old-audio");

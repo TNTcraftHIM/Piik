@@ -8,7 +8,8 @@
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, runtime relay-capacity extension, and abandon gates.
-- [Low-server-cost media routes](./research/low-server-media-routes.md): SFU-root/peer distribution, optional selected-edge TURN, hop-level accounting, privacy-safe ICE evidence, and the bounded transport canary.
+- [Low-server-cost media routes](./research/low-server-media-routes.md): SFU-root/peer distribution, built-in Peer ICE TURN, hop-level accounting, privacy-safe ICE evidence, and the bounded transport canary.
+- [Built-in peer ICE TURN candidate](./research/built-in-peer-ice-turn.md): implemented default-off direct-first TURN fallback, short-lived participant-session bearer, refresh ownership, idle-allocation cost, and deployment gates.
 - [Advanced peer distribution](./research/advanced-peer-distribution.md): multi-tree/SVC, encoded-object relay, native RTP forwarding, FEC/network-coding, MoQ, and measurable go/no-go gates.
 - [Native shared-encode sender](./research/native-shared-encode-sender.md): consolidated Draft #16/#18/#22/#23/#25/#28 ladder, unclassified product-gate failure, staged revalidation, and stop line.
 - [Realtime quality adaptation](./research/realtime-quality-adaptation.md): correlated capture/send/receive diagnosis, production generation-rebuild gate, path-isolated dual representations, and bounded simulcast/Dynacast/SVC checks.

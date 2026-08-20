@@ -11,8 +11,9 @@ through direct or peer edges whenever those paths work.
 A deployment may additionally provide one single-node LiveKit process as the
 current controller's automatic final media fallback. This capacity is dormant unless the complete
 `LIVEKIT_URL`/key/secret tuple is configured. It does not replace the P2P path,
-the peer-assisted experiment, or required STUN discovery. It is configured with
-ICE/UDP only; the candidate has no ordinary TURN or media-TCP configuration.
+the peer-assisted experiment, or required STUN discovery. LiveKit remains
+ICE/UDP only. Source also contains a separate default-off built-in Peer ICE
+TURN/UDP canary; production and the tracked coturn example remain STUN-only.
 
 Production `d4bc421828c4` runs this candidate for exact room `1` on the existing
 shared public IP. Immediate rollback to `05f98d10ecd1` uses the current v2
@@ -85,29 +86,34 @@ direct/peer UDP first, then an SFU virtual parent feeding normally one or two
 roots, whose peer descendants continue carrying media. Multiple exceptional viewers that cannot attach behind a healthy
 root may consume additional server egress only under a separate explicit cap.
 
-The repository candidate requires STUN but has no TURN URL/secret/TTL variables,
-credential issuer, expiry refresh protocol, LiveKit ICE/TCP listener, or
-embedded/external LiveKit TURN. Ordinary authenticated ICE contains only STUN
-servers. LiveKit participants receive only revision-bound `sfu-config` URL/token
+The repository requires STUN. It optionally accepts a complete
+`PEER_ICE_TURN_*` tuple and issues short-lived coturn REST bearer credentials
+only to capability-enabled Web sessions in an exact allowlisted room. Their
+peer connections use `iceTransportPolicy: "all"`, so standard ICE candidate
+priority prefers direct paths and can select TURN/UDP within the same PC. A PC
+failure still owns the existing restart, rebuild, alternate-peer, then SFU
+ladder. LiveKit participants receive only revision-bound `sfu-config` URL/token
 messages and negotiate within LiveKit's separate ICE domain.
 
-`PEER_ASSISTED_ROOM_IDS` remains an exact-room topology boundary, but ordinary
-STUN-only ICE is process-wide. An unlisted room keeps ordinary P2P routing, not
-the old TURN wire. Run candidate rooms on an isolated instance/hostname and keep
+`PEER_ASSISTED_ROOM_IDS` is also the Peer ICE TURN boundary. An unlisted room or
+a client without the explicit capability gets STUN-only ICE and keeps ordinary
+P2P routing. Run candidate rooms on an isolated instance/hostname and keep
 the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
 
 A shared-public-IP instance can test candidate behavior while the old TURN
 service stays live, but it cannot prove the clean-port boundary or approve broad
 migration. The room-1 smoke uses this shape: nginx owns 443, LiveKit 1.13.5 owns
-UDP 7882, ordinary ICE is STUN-only, and LiveKit is fail-closed under a 192 MiB
+UDP 7882, Peer ICE TURN is disabled, and LiveKit is fail-closed under a 192 MiB
 high/256 MiB hard cgroup limit with restart disabled. Prefer a separate VM/IP
 for the full gate and verify representative external networks and devices.
 
-Optional selected-edge TURN is not supported by this candidate. If later network
-evidence justifies it, configuration, generation-bound grants, client wire,
-tests, and deployment must arrive together in a separate PR. HTTPS/WSS always
-remains TLS/TCP independently.
+The application-side TURN slice does not change coturn or production by itself.
+TURN REST authentication proves only HMAC and expiry to coturn; the temporary
+credential is an App-authorized participant-session bearer and may be reused by
+its holder until expiry. Coturn cannot verify a room, route, edge, or connection
+generation. Never describe it as a cryptographic selected-edge restriction.
+HTTPS/WSS always remains TLS/TCP independently.
 
 ## Production application environment
 
@@ -148,6 +154,26 @@ LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
 MAX_SFU_ROOTS_PER_ROOM=2
 ```
 
+To make built-in Peer ICE TURN available to capability-enabled Web clients in
+the same exact rooms, provision authenticated coturn separately and add the
+complete independent tuple:
+
+```dotenv
+PEER_ICE_TURN_URLS=turn:turn.example.com:3478?transport=udp
+PEER_ICE_TURN_SHARED_SECRET=<INDEPENDENT_SECRET_OF_32_TO_128_BYTES>
+PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS=600
+```
+
+All three values must be present together, require
+`PEER_ASSISTED_MEDIA=true`, and accept a TTL from 300 through 1800 seconds.
+The first canary accepts exactly one explicit `turn:` UDP URI with
+`transport=udp`. The secret
+must not reuse Host admission or LiveKit credentials. Omitting the tuple keeps
+authenticated ICE snapshots and every peer STUN-only. The Web client refreshes two minutes
+before expiry with a 30-second skew floor; the server reuses a current session's
+grant until that window and rate-limits refresh requests to one per five seconds.
+Credentials never enter URLs, logs, browser persistence, room rows, or SQLite.
+
 `PEER_ASSISTED_ROOM_IDS` is the required deployment canary boundary whenever
 `PEER_ASSISTED_MEDIA=true`. Its non-empty value
 is a comma-separated set of exact positive numeric room IDs, using the same
@@ -156,8 +182,8 @@ leading zeroes, and malformed IDs fail startup. A non-empty allowlist requires
 `PEER_ASSISTED_MEDIA=true`. Only listed rooms receive peer-assisted
 authentication, routing, room quality state, or optional LiveKit fallback;
 every other room keeps ordinary P2P route fields and signaling behavior. The
-ordinary STUN-only ICE snapshot is process-wide; unlisted rooms do not retain
-the old TURN contract. Omitting or blanking the variable fails startup rather
+optional Peer ICE TURN snapshot is confined to capable sessions in listed
+rooms; unlisted rooms remain STUN-only. Omitting or blanking the variable fails startup rather
 than enabling every room. There is no browser control, percentage rollout, or
 all-room fail-open.
 
@@ -189,10 +215,14 @@ the application, and verify
 that its authenticated message contains `mediaMode: "peer-assisted"` while a
 second non-allowlisted room contains none of `mediaMode`, `qualitySettings`,
 `routeRevision`, `routeAssignment`, or `sfuStandbyUrl`. Exercise join, offer and
-answer, stop, reconnect, and room deletion in both rooms. Both rooms receive
-STUN-only ordinary ICE. Roll back by directing traffic to the unchanged old
-release; disabling `PEER_ASSISTED_MEDIA` only disables topology/SFU routing and
-does not restore the removed TURN wire. After acceptance, retire or replace the
+answer, stop, reconnect, and room deletion in both rooms. With the optional
+tuple configured, only the capable Web session in the listed room receives a
+TURN group and expiry; the other room and Native-shaped clients remain
+STUN-only. Roll back by removing the complete Peer ICE TURN tuple before
+restoring coturn `stun-only`, or direct traffic to the unchanged old
+release. Do not treat disabling `PEER_ASSISTED_MEDIA` alone as rollback: remove
+its dependent TURN tuple and exact-room allowlist together, and no removed old
+TURN wire is restored. After acceptance, retire or replace the
 temporary exact-room gate in a separate coherent change; never clear the value
 to trigger an implicit all-room rollout.
 
@@ -334,6 +364,11 @@ rejects `TURN_URLS`, `TURN_SHARED_SECRET`, or `TURN_CREDENTIAL_TTL_SECONDS` when
 any key is present, including with an empty value. Remove those obsolete keys
 from the candidate environment; startup fails instead of pretending they enable
 compatibility.
+
+The replacement names `PEER_ICE_TURN_URLS`,
+`PEER_ICE_TURN_SHARED_SECRET`, and
+`PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS` form a distinct complete tuple; the old
+keys above remain rejected and are not aliases.
 
 ## HTTPS and WSS ingress
 

@@ -88,10 +88,13 @@ describe("client signaling protocol", () => {
     }
   });
 
-  it("rejects the removed all-room ICE refresh request", () => {
+  it("accepts the capability-gated ICE refresh request", () => {
     expect(clientMessageSchema.safeParse({ type: "refresh-ice" }).success).toBe(
-      false,
+      true,
     );
+    expect(
+      clientMessageSchema.safeParse({ type: "refresh-ice", roomId }).success,
+    ).toBe(false);
   });
 
   it("accepts a bounded authentication message", () => {
@@ -118,6 +121,28 @@ describe("client signaling protocol", () => {
         }),
       ),
     ).toMatchObject({ viewerGrant });
+    expect(
+      decodeClientMessage(
+        JSON.stringify({
+          type: "authenticate",
+          protocol: SIGNALING_PROTOCOL,
+          roomId,
+          role: "viewer",
+          clientId: "client_12345678",
+          capabilities: { peerIceTurn: true },
+        }),
+      ),
+    ).toMatchObject({ capabilities: { peerIceTurn: true } });
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+        capabilities: { peerIceTurn: false },
+      }).success,
+    ).toBe(false);
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
@@ -590,21 +615,30 @@ describe("client signaling protocol", () => {
 });
 
 describe("server signaling protocol", () => {
-  it("rejects the removed all-room TURN credential wire", () => {
+  it("accepts only authenticated UDP TURN credentials paired with expiry", () => {
     expect(
       serverMessageSchema.safeParse({
         type: "ice-config",
-        iceConfig: { iceServers: [] },
+        iceConfig: {
+          iceServers: [
+            {
+              urls: "turn:relay.example.test:3478?transport=udp",
+              username: `1787076000:${"a".repeat(32)}`,
+              credential: "credential",
+            },
+          ],
+          turnCredentialsExpiresAt: "2026-08-20T12:00:00.000Z",
+        },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
         iceConfig: {
           iceServers: [
             {
-              urls: "turn:relay.example.test:3478",
-              username: "expires:viewer_12345678",
+              urls: "turn:relay.example.test:3478?transport=udp",
+              username: `1787076000:${"a".repeat(32)}`,
               credential: "credential",
             },
           ],
@@ -615,7 +649,7 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
         iceConfig: {
-          iceServers: [{ urls: "turn:relay.example.test:3478" }],
+          iceServers: [{ urls: "turn:relay.example.test:3478?transport=udp" }],
         },
       }).success,
     ).toBe(false);

@@ -30,6 +30,7 @@ import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-qua
 import { createStatsAccumulator, collectConnectionMetrics } from "../src/client/webrtc/stats.ts";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -437,6 +438,110 @@ describe("client signaling recovery policy", () => {
     expect(shouldReconnectSignaling(4004)).toBe(false);
     expect(shouldReconnectSignaling(1008)).toBe(false);
     expect(shouldReconnectSignaling(1006)).toBe(true);
+  });
+
+  it("opts into Peer ICE TURN and refreshes credentials two minutes before expiry", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/123456789012"),
+      setTimeout,
+      clearTimeout,
+    });
+    const signal = new SignalingClient(
+      {
+        roomId: "123456789012",
+        role: "viewer",
+        clientId: "viewer-client",
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(String(sockets[0]!.send.mock.calls[0]![0]))).toMatchObject({
+      type: "authenticate",
+      capabilities: { peerIceTurn: true },
+    });
+    const authenticated = new Event("message");
+    Object.defineProperty(authenticated, "data", {
+      value: JSON.stringify({
+        type: "authenticated",
+        protocol: "screener-v2",
+        role: "viewer",
+        peerId: "viewer_12345678",
+        roomExpiresAt: null,
+        maxViewers: 8,
+        hostOnline: true,
+        connectionId: null,
+        viewerPeerIds: [],
+        iceConfig: {
+          iceServers: [
+            {
+              urls: "turn:relay.test:3478?transport=udp",
+              username: `1787076000:${"a".repeat(32)}`,
+              credential: "temporary-credential",
+            },
+          ],
+          turnCredentialsExpiresAt: "2026-08-20T12:05:00.000Z",
+        },
+        viewerPolicy: "private-link",
+        viewerAuthorizationGeneration: "viewer_generation_12345678",
+      }),
+    });
+    sockets[0]!.dispatchEvent(authenticated);
+
+    vi.advanceTimersByTime(179_999);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(JSON.parse(String(sockets[0]!.send.mock.calls[1]![0]))).toEqual({
+      type: "refresh-ice",
+    });
+
+    const refreshed = new Event("message");
+    Object.defineProperty(refreshed, "data", {
+      value: JSON.stringify({
+        type: "ice-config",
+        iceConfig: {
+          iceServers: [
+            {
+              urls: "turn:relay.test:3478?transport=udp",
+              username: `1787076180:${"b".repeat(32)}`,
+              credential: "next-temporary-credential",
+            },
+          ],
+          turnCredentialsExpiresAt: "2026-08-20T12:08:00.000Z",
+        },
+      }),
+    });
+    sockets[0]!.dispatchEvent(refreshed);
+    vi.advanceTimersByTime(180_000);
+    expect(JSON.parse(String(sockets[0]!.send.mock.calls[2]![0]))).toEqual({
+      type: "refresh-ice",
+    });
+
+    signal.stop();
+    vi.advanceTimersByTime(300_000);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(3);
   });
 
   it.each([
