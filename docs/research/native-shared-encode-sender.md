@@ -151,8 +151,8 @@ experience and cannot be made invisible.
 The bounded Android data path is:
 
 ```text
-MediaProjection -> libwebrtc ScreenCapturerAndroid
-  -> HardwareVideoEncoderFactory (VP8/H.264 only, no software fallback)
+MediaProjection -> ScreenCapturerAndroid -> hardware VP8/H.264 --.
+explicit UID -> AudioPlaybackCapture -> ADM callback ---------+
   -> existing site access / room / WSS / peer-assisted direct assignment
   -> at most two unmodified Web viewers
 ```
@@ -160,18 +160,27 @@ MediaProjection -> libwebrtc ScreenCapturerAndroid
 The slice uses the public libwebrtc Android API rather than hand-building capture,
 RTP, pacing, congestion control, or SRTP. `DefaultVideoEncoderFactory` is excluded
 because it composes hardware with software fallback; a filtered
-`HardwareVideoEncoderFactory` exposes only VP8/H.264. It adds no mobile-only
-topology, audio, `LOW`, AV1, codec ladder, third downstream edge, SFU publisher,
-selected-edge TURN, or software fallback. Direct children are authoritative by
-route revision and connection generation. A requested SFU publication returns
+`HardwareVideoEncoderFactory` exposes only VP8/H.264. Optional playback audio is
+default-off and source-only: the user separately selects one single-package UID,
+the capture matches that UID plus eligible game/media usages, and the fixed
+webrtc-sdk public ADM callback injects 48 kHz mono PCM16 while its microphone
+`AudioRecord` is disabled. One audio source/track is attached to the same maximum
+of two direct children; this does not prove a shared physical Opus encoder. It
+adds no mobile-only topology, `LOW`, AV1, codec ladder, third downstream edge,
+SFU publisher, selected-edge TURN, microphone/system-mix fallback, or software
+fallback. Direct children are authoritative by route revision and connection
+generation. A requested SFU publication returns
 one bounded `route-failed`; it is not reported as supported.
 
 The first functional target is 720p30 at a 3 Mbps ceiling. Codec name and Android
 hardware metadata are admission signals, not performance proof. Once the source
 slice closes, one device/one Viewer smoke checks consent, selected encoder, first
-frame and cleanup. Rotation hot-resize, application audio, network reselection,
-thermal/power and multi-Viewer matrices follow later; they do not block source
-landing and cannot silently enable software encoding. Network changes reuse the
+frame and cleanup. The audio source compile is closed, but eligible/opt-out
+playback, silence, background service behavior and A/V sync still require one
+device; track creation only means selected-UID playback was requested. Rotation
+hot-resize, network reselection, thermal/power and multi-Viewer matrices follow
+later; they do not block source landing and cannot silently enable software
+encoding. Network changes reuse the
 existing per-edge WebRTC recovery contract rather than restarting capture or
 creating a new transport.
 
@@ -182,9 +191,11 @@ session. Restoring service status is a later P2 lifecycle task, not a media-path
 requirement for this source slice.
 
 The pinned `webrtc-sdk/android` packaging project is MIT-licensed and bundles
-upstream libwebrtc under its BSD-style license and PATENTS terms. OkHttp and
-kotlinx.serialization are Apache-2.0. The slice copies no implementation from
-LiveKit or another sender. A future distributed APK must retain the applicable
+upstream libwebrtc under its BSD-style license and PATENTS terms; the Maven
+artifact POM records BSD-3-Clause. LiveKit's Apache-2.0 `ScreenAudioCapturer` was
+studied as a reference for the public ADM callback and playback-capture lifecycle,
+but no implementation was copied. OkHttp and kotlinx.serialization are
+Apache-2.0. A future distributed APK must retain the applicable
 third-party notices and still waits on Screener's project-license decision.
 
 OkHttp 5.3.0 resolves Kotlin stdlib 2.2.21. Android's current compatibility
@@ -598,13 +609,18 @@ SFU/UDP fails and needs its own bounded transport gate.
 - [Android media projection](https://developer.android.com/media/grow/media-projection)
 - [Android 14 app screen sharing](https://developer.android.com/about/versions/14/features/app-screen-sharing)
 - [Android media-projection foreground service](https://developer.android.com/develop/background-work/services/fgs/service-types#media-projection)
+- [Android audio-playback capture](https://developer.android.com/media/platform/av-capture)
+- [Android `AudioPlaybackCaptureConfiguration`](https://developer.android.com/reference/android/media/AudioPlaybackCaptureConfiguration)
+- [Android 14 foreground-service type requirement](https://developer.android.com/about/versions/14/changes/fgs-types-required)
 - [Android `MediaCodecInfo`](https://developer.android.com/reference/android/media/MediaCodecInfo)
 - [Android `MediaCodecList`](https://developer.android.com/reference/android/media/MediaCodecList)
 - [libwebrtc `ScreenCapturerAndroid`](https://chromium.googlesource.com/external/webrtc/+/HEAD/sdk/android/api/org/webrtc/ScreenCapturerAndroid.java)
 - [libwebrtc `DefaultVideoEncoderFactory`](https://chromium.googlesource.com/external/webrtc/+/HEAD/sdk/android/api/org/webrtc/DefaultVideoEncoderFactory.java)
 - [libwebrtc `HardwareVideoEncoderFactory`](https://chromium.googlesource.com/external/webrtc/+/HEAD/sdk/android/api/org/webrtc/HardwareVideoEncoderFactory.java)
-- [`webrtc-sdk/android`](https://github.com/webrtc-sdk/android)
+- [`webrtc-sdk/android` v144.7559.12](https://github.com/webrtc-sdk/android/tree/v144.7559.12)
 - [`webrtc-sdk/android` license](https://github.com/webrtc-sdk/android/blob/main/LICENSE)
+- [LiveKit Android `ScreenAudioCapturer` reference](https://github.com/livekit/client-sdk-android/blob/4fdea28d8bd4b7053d7e5f0df50527f2c51fd38f/livekit-android-sdk/src/main/java/io/livekit/android/audio/ScreenAudioCapturer.kt)
+- [LiveKit Android license](https://github.com/livekit/client-sdk-android/blob/4fdea28d8bd4b7053d7e5f0df50527f2c51fd38f/LICENSE)
 - [libwebrtc license](https://webrtc.googlesource.com/src/+/refs/heads/main/LICENSE)
 - [OkHttp license](https://github.com/square/okhttp/blob/master/LICENSE.txt)
 - [kotlinx.serialization license](https://github.com/Kotlin/kotlinx.serialization/blob/master/LICENSE.txt)

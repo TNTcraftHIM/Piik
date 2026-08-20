@@ -17,6 +17,7 @@ import okhttp3.WebSocketListener
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.webrtc.AudioTrack
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.VideoTrack
 import java.util.UUID
@@ -29,6 +30,7 @@ class RemoteSession(
     private var sitePassword: String,
     private val factory: PeerConnectionFactory,
     private val track: VideoTrack,
+    private val audioTrack: AudioTrack?,
     private val serial: Executor,
     private val events: Events,
 ) : AutoCloseable {
@@ -207,7 +209,9 @@ class RemoteSession(
         (peers.keys - desired).forEach { peers.remove(it)?.close() }
         desired.filterNot(peers::containsKey).forEach { peerId ->
             val config = iceConfig ?: return@forEach
-            peers[peerId] = HostPeer(peerId, opaqueId(), config, factory, track, serial, ::send, events::onStatus).also {
+            peers[peerId] = HostPeer(
+                peerId, opaqueId(), config, factory, track, audioTrack, serial, ::send, events::onStatus,
+            ).also {
                 it.start()
             }
         }

@@ -4,6 +4,7 @@ import icu.bonfire.screener.protocol.IceConfig
 import icu.bonfire.screener.protocol.SignalPayload
 import icu.bonfire.screener.protocol.Wire
 import icu.bonfire.screener.protocol.IceCandidate as WireCandidate
+import org.webrtc.AudioTrack
 import org.webrtc.DataChannel
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
@@ -22,6 +23,7 @@ class HostPeer(
     iceConfig: IceConfig,
     factory: PeerConnectionFactory,
     track: VideoTrack,
+    audioTrack: AudioTrack?,
     private val serial: Executor,
     private val send: (String) -> Boolean,
     private val status: (String) -> Unit,
@@ -44,6 +46,9 @@ class HostPeer(
             sender.parameters.let { parameters ->
                 parameters.encodings.forEach { it.maxBitrateBps = 3_000_000 }
                 if (!sender.setParameters(parameters)) error("Could not set video bitrate")
+            }
+            audioTrack?.let {
+                connection.addTrack(it, listOf("screener")) ?: error("Could not add playback audio track")
             }
         } catch (error: Throwable) {
             closed = true
