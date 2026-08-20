@@ -2,20 +2,19 @@
 
 Date: 2026-08-20
 
-Status: `no-go-webcodecs-h264-hardware-unclassified`
+Status: `no-go-native-h264-hardware-pinned-fmtp`
 
 This spike does not amend ADR-0006 or authorize another product, room, or
-production run. It answers one narrow question: can the existing local-browser
-Native candidate switch from VP8 to WebCodecs H.264 and satisfy the project's
-physical hardware-encode contract with a small codec change?
+production run. It answers one narrow question: can a bounded Windows H.264
+path satisfy the project's physical hardware-encode and existing default Pion
+fmtp contracts before product integration?
 
-The answer is no. The H.264 bitstream and Pion packetization path are
-mechanically plausible, but the one bounded run did not observe a hardware
-encoder and emitted SPS constraint bytes that differ from the requested
-WebCodecs codec string. Their negotiated-fmtp compatibility remains
-unclassified. A WebCodecs H.264 product switch is frozen. The next candidate is
-a separate Windows hardware-only Media Foundation fixture, not a codec ladder
-or fallback framework.
+The WebCodecs answer remains no: its bounded run did not prove hardware and its
+emitted SPS differed from the requested codec string. A subsequent
+hardware-only Media Foundation run did prove the selected NVIDIA encoder and
+GPU engine, but emitted exact `profile-level-id=42c01f`, which is absent from
+the default Pion mode-1 fmtp set. It therefore stopped before Pion, a Viewer,
+rooms, or product wiring. Neither result authorizes an H.264 product switch.
 
 ## Decision Summary
 
@@ -27,7 +26,9 @@ or fallback framework.
 | Did forced key frames carry in-band recovery data? | Yes in this fixture: all six key chunks contained AUD, SPS, PPS, and IDR NAL units. |
 | Can Pion v1.10.5 packetize the resulting Annex-B access units? | Yes statically: its `H264Payloader` splits 3/4-byte start codes, suppresses AUD/filler, emits SPS/PPS as STAP-A, and fragments slices as FU-A. |
 | Is unmodified browser Viewer decode proven? | No. No PeerConnection, room, Viewer, or production service participated. |
-| Should the small WebCodecs/Pion codec diff be implemented? | No. It would preserve the two unresolved product gates: physical encoder identity and exact negotiated H.264 fmtp/constraint compatibility. |
+| Should the small WebCodecs/Pion codec diff be implemented? | No. It would preserve the two unresolved product gates: physical encoder identity and exact emitted-fmtp registration plus Viewer interoperability. |
+| Did the Media Foundation fixture prove physical H.264 hardware encode? | Yes for one local RTX 4070 SUPER run: adapter-LUID-bound hardware enumeration, D3D11 awareness, the NVIDIA H.264 Encoder MFT, and process-plus-LUID `VideoEncode` activity agreed. |
+| Did that hardware MFT emit an exact default Pion mode-1 fmtp string? | No. It emitted `42c01f`; the default set is `42001f`, `42e01f`, `4d001f`, and `64001f`. The fixture failed closed without changing the request or adding a fallback. This is not a standards-level profile incompatibility. |
 
 ## Standards And Platform Constraints
 
@@ -40,6 +41,10 @@ or fallback framework.
 - WebRTC browsers must implement VP8 and H.264 Constrained Baseline. H.264
   endpoints must support RFC 6184 and `packetization-mode=1`, include
   `profile-level-id`, and send parameter sets in-band.
+- RFC 6184 Table 5 identifies Constrained Baseline as `profile_idc=0x42` with
+  profile-iop matching `x1xx0000`. Both `42c01f` and `42e01f` match that same
+  Constrained Baseline sub-profile at level 3.1 even though their exact fmtp
+  strings differ.
 - NVIDIA lists the local GeForce RTX 4070 SUPER as an Ada, eighth-generation
   NVENC device with H.264 4:2:0 support. That proves the machine has suitable
   hardware; it does not prove Chrome selected it.
@@ -49,7 +54,7 @@ or fallback framework.
   selected device. Hardware enumeration and D3D awareness are read-back gates,
   not hints.
 
-## Bounded Fixture
+## WebCodecs Bounded Fixture
 
 ### Isolation
 
@@ -164,6 +169,84 @@ latency or CPU comparison is claimed. The current ADR-0006 candidate deletes
 shared-encode research already classifies that behavior as an implementation
 preference, not physical hardware evidence.
 
+## Media Foundation Hardware Fixture
+
+The follow-up fixture is retained at
+`native/fixtures/mf-h264-hardware/`. It is a Windows-only offline C++ program,
+not a sender component. Its generated object and executable stay outside the
+repository. It has one H.264 path and no software MFT, codec, adapter, room,
+capture, audio, signaling, Pion, or Viewer fallback.
+
+### Fixed Contract
+
+- Toolchain: MSVC 19.42 and Windows SDK 10.0.22621.0.
+- Selected adapter: DXGI index 0, NVIDIA GeForce RTX 4070 SUPER, LUID
+  `0x00000000:0x0001a496`, driver 610.88.
+- Selected transform: the sole adapter-bound candidate, NVIDIA H.264 Encoder
+  MFT, CLSID `{60F44560-5A20-4857-BFEF-D29773CB8040}`.
+- Enumeration: `MFTEnum2` with the selected LUID, NV12 input, H.264 output, and
+  only `MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER`.
+- Device path: explicit D3D11 hardware device with video support, a reset DXGI
+  device manager, `MF_TRANSFORM_ASYNC=true`,
+  `MF_SA_D3D11_AWARE=true`, and accepted `MFT_MESSAGE_SET_D3D_MANAGER`.
+- Media: NV12 GPU-surface inputs, 1280x720 at 30 fps, 3 Mbps H.264 Baseline
+  level 3.1, 360 paced inputs, and a maximum eight in flight.
+- Required `ICodecAPI` readback: CBR, 3 Mbps mean bitrate, 12,500-byte
+  one-frame VBV, low-latency mode, and a 60-frame GOP. Every value required
+  `IsSupported=S_OK`, `SetValue=S_OK`, and exact `GetValue` readback.
+- Recovery requests: `CODECAPI_AVEncVideoForceKeyFrame` immediately before
+  inputs 0, 60, 120, 180, 240, and 300.
+
+The NVIDIA MFT returned `E_NOTIMPL` for at least the CBR `IsModifiable` query.
+That advisory result was not treated as proof either way; an actual
+`SetValue=S_OK` followed by exact `GetValue` was required. `S_FALSE`, a failed
+set, missing readback, or a changed value still fails. Three redundant controls
+were deliberately excluded:
+
+- `AVEncCommonRealTime` was unsupported, while `AVLowLatencyMode` already
+  requires no reordering delay and one output per input;
+- `AVEncCommonMaxBitRate` applies to peak-constrained VBR, not the selected
+  CBR mode; and
+- the optional B-picture-count property was unsupported, while Baseline
+  excludes B slices and the run independently required ordered timestamps.
+
+This keeps the contract on observable behavior rather than on optional aliases.
+
+### Retained Run
+
+One final instrumented run used the exact adapter and transform above. No
+encoded sample was written to disk and no network or Screener process was
+started.
+
+| Measure | Retained value |
+| --- | --- |
+| Inputs / outputs | `360 / 360` |
+| Recovery access units | `6 / 6`, each with Annex-B SPS, PPS, and IDR |
+| Maximum in flight | `1` |
+| Encoded bytes | `2,956,354` |
+| Wall time | `12.106 s` |
+| Input-to-output latency p95 | `11.575 ms` |
+| Fixture process CPU | `2.094 CPU-s` over the run; includes synthetic NV12 generation and event handling |
+| Process-and-adapter `VideoEncode` | 45 samples; mean `2.949%`, max `4.863%` |
+| Output SPS `profile-level-id` | `42c01f` |
+| Final result | `no-go-native-h264-hardware-pinned-fmtp` |
+
+The physical evidence is correlated rather than inferred from low CPU: the
+hardware-only activation was bound to the selected DXGI LUID, accepted that
+device's D3D manager, and Windows observed `engtype_videoencode` activity for
+both the fixture PID and that same LUID. The existing unrelated NVIDIA encoder
+session cannot satisfy this PID-and-LUID filter.
+
+The run failed its local gate because `42c01f` is not exactly one of Pion
+v4.2.18's default mode-1 values (`42001f`, `42e01f`, `4d001f`, or `64001f`).
+RFC 6184 Table 5 nevertheless classifies both `42c01f` and `42e01f` as the same
+Constrained Baseline sub-profile. The result is therefore a default-capability
+miss with unmodified Viewer interoperability unproven, not an incompatible
+H.264 profile. The fixture did not change its request, register a new fmtp, try
+the AMD adapter, activate another MFT, or add an NVENC/software fallback. Pion
+and Viewer work did not begin, so the result proves a usable hardware-encode
+primitive but not a transportable Screener stream.
+
 ## Static Product-Path Evaluation
 
 The small bitstream path is plausible:
@@ -195,15 +278,16 @@ shape credible: one merged PLI/FIR can generate one access unit for every
 bound Viewer. This is static evidence plus an encoder-only fixture, not a
 Viewer proof.
 
-The unresolved constraint-byte/fmtp compatibility boundary blocks the
-mechanical switch. Pion v4.2.18's
-default H.264 mode-1 capabilities include `42001f`, `42e01f`, `4d001f`, and
-`64001f`; they do not include the observed `42041f`. Binding a track by MIME
-type alone can fall back to a partial codec match and advertise a different
-format. The gate must instead:
+Two exact-string boundaries remain distinct. The earlier WebCodecs run emitted
+`42041f`; the Media Foundation run emitted `42c01f`. Pion v4.2.18's default
+H.264 mode-1 capabilities include `42001f`, `42e01f`, `4d001f`, and `64001f`,
+so neither observed string is present by default. Unlike the earlier WebCodecs
+value, the Media Foundation `42c01f` value matches RFC 6184's Constrained
+Baseline pattern. Binding a track by MIME type alone can fall back to a partial
+codec match and advertise a different format. The next gate must instead:
 
 1. parse emitted SPS before publishing;
-2. register and offer only an exactly compatible mode-1 capability;
+2. register and offer the exact emitted, standards-valid mode-1 capability;
 3. retain the selected answer `profile-level-id` without raw SDP;
 4. prove Chrome, Edge, Firefox, and Safari Viewer decode/render;
 5. prove every join/PLI/FIR recovery unit carries usable in-band SPS/PPS and
@@ -220,79 +304,47 @@ exception despite being textually small.
 | Route | Advantage | Blocking cost / risk | Decision |
 | --- | --- | --- | --- |
 | WebCodecs H.264 Annex B + Pion | Smallest diff; observed SPS/PPS/IDR cadence; existing shared fanout remains intact | Hardware request is a hint; no encoder identity/readback; emitted constraint bytes differ and fmtp compatibility is unclassified; no Viewer proof | Freeze |
-| Media Foundation hardware H.264 MFT | Windows hardware-only enumeration, exact transform activation, D3D11 device manager, ICodecAPI support/readback, vendor-neutral across installed hardware MFTs | COM/asynchronous MFT lifecycle and GPU-surface ownership are materially larger than 300 core lines | Next bounded fixture |
+| Media Foundation hardware H.264 MFT | Proved one physical NVIDIA path with exact transform, D3D11 manager, codec readback, 360 outputs, and six recovery units | Emitted standards-valid Constrained Baseline `42c01f`, outside Pion's default exact fmtp set; no Pion or Viewer proof | Retain fixture; product no-go |
 | Direct NVENC | Explicit NVIDIA encoder session and detailed low-latency controls | NVIDIA-only, SDK/API lifecycle and redistribution review, separate AMD/Intel future decisions | Hold unless the Media Foundation hardware contract fails |
 
-Media Foundation is the Occam candidate because it can fail closed on an
-official hardware category while avoiding a vendor dispatch layer. It is one
-Windows H.264 path, not an abstraction for VP8/VP9/AV1/HEVC and not a software
-fallback.
+Media Foundation remains the smallest proved physical-encode primitive because
+it fails closed on an official hardware category without a vendor dispatch
+layer. Its default-fmtp miss leaves product interoperability unproven. It is one
+Windows H.264 fixture, not an abstraction for VP8/VP9/AV1/HEVC and not a
+software fallback.
 
-## Next Native Slice
+## Retained Stop Line
 
-Build an offline Windows executable fixture before touching capture, rooms, or
-the existing sender:
+The hardware-only fixture is complete for this decision. Do not alter its
+requested media type, local default-fmtp gate, or sender wiring merely to make
+this fixture return zero. A separately bounded follow-up may register and offer
+exact `42c01f`, then test Pion/two-binding and unmodified Viewer decode without
+turning that experiment into product integration.
 
-1. Create one D3D11 device on the explicitly selected adapter with
-   `D3D11_CREATE_DEVICE_VIDEO_SUPPORT`; create and reset one DXGI device
-   manager.
-2. Enumerate only `MFT_CATEGORY_VIDEO_ENCODER` transforms matching H.264 output
-   with `MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER`. Record bounded
-   activation identity and fail when the count is zero.
-3. Activate exactly one transform. Require `MF_SA_D3D11_AWARE=true`, send
-   `MFT_MESSAGE_SET_D3D_MANAGER`, and never retry a synchronous/software MFT.
-4. Use fixed NV12 1280x720@30 input and H.264 3 Mbps output. Require and read
-   back Constrained Baseline or another profile that exactly matches a Pion
-   mode-1 capability, level 3.1 or lower, realtime/low-latency mode, CBR mean
-   bitrate, bounded VBV, no frame reordering, and a 60-frame maximum GOP.
-   Unsupported, read-only, or weakened properties fail the fixture.
-5. Feed 360 synthetic GPU-resident frames. Retain input-to-output latency,
-   output cadence, queue depth, CPU, and adapter-specific Windows
-   `VideoEncode`. Add a vendor session counter only where the selected adapter
-   exposes one. Capability enumeration alone does not pass.
-6. Force an IDR at frames 0/60/120/180/240/300 and through the same
-   key-frame-request entry point. Parse every recovery access unit for Annex-B
-   SPS/PPS/IDR and exact profile/level bytes.
-7. Pass the same encoded access unit through Pion `H264Payloader` to two local
-   transport bindings, then prove an unmodified browser Viewer answer and
-   decode/render. Do not enter a Screener room.
-
-NVIDIA's low-latency guidance supports CBR, a very small (approximately one
-frame) VBV, low/ultra-low-latency tuning, and explicit IDR recovery. The first
-Media Foundation fixture should use only controls that its selected hardware
-MFT reports as supported and modifiable and then returns unchanged. Do not add
-an NVENC fallback when a Media Foundation control is absent.
-
-### Rough Size
-
-| Responsibility | Estimated core LOC |
-| --- | ---: |
-| D3D11 adapter/device, DXGI manager, synthetic NV12 surfaces | 180-260 |
-| Hardware-only MFT enumeration, activation, identity/readback | 100-160 |
-| Media types, ICodecAPI configuration, asynchronous input/output pump | 260-380 |
-| Annex-B/profile/key-frame validation and bounded measurements | 120-180 |
-| **Offline fixture total** | **660-980** |
-
-Focused tests and harness glue are likely another 200-350 lines. Windows
-Graphics Capture, BGRA-to-NV12 conversion, audio, packaging, and product bridge
-integration are explicitly outside that estimate. This is not a 200-300-line
-product change, so no implementation was started in this branch.
+Direct NVENC is still a separately authorized candidate if tighter bitstream
+control remains necessary after the bounded `42c01f` interop test. It is
+NVIDIA-only and brings a Video Codec SDK license and distribution review, so it
+is not an automatic fallback from this Media Foundation result. The existing
+WebCodecs-to-Go bridge product gap also remains independent and should not be
+hidden inside codec work.
 
 ## Go / No-Go Gates
 
 The Media Foundation slice is `go-native-h264-hardware-fixture` only when all
-of these are retained in one run:
+of these are retained in one run. The current result is shown inline:
 
-- exact hardware MFT identity and D3D11-aware readback;
-- adapter-attributed `VideoEncode` activity and no software fallback;
-- 360/360 bounded outputs with p95 input-to-output latency recorded;
-- exact SPS profile/constraint/level matching the offered mode-1 fmtp;
-- SPS/PPS/IDR after startup, late-join request, PLI, and FIR;
-- the same encoded access unit packetized once and delivered over two transport
-  bindings; and
-- unmodified Viewer decode/render in the target browser matrix.
+- pass: exact hardware MFT identity and D3D11-aware readback;
+- pass: process-and-adapter-attributed `VideoEncode` activity and no software
+  fallback;
+- pass: 360/360 bounded outputs with p95 input-to-output latency recorded;
+- fail: exact SPS string membership in the default Pion mode-1 fmtp set; this
+  does not mean the emitted Constrained Baseline profile is incompatible;
+- pass for encoder requests only: six SPS/PPS/IDR recovery access units;
+- not run: the same encoded access unit packetized once and delivered over two
+  transport bindings; and
+- not run: unmodified Viewer decode/render in the target browser matrix.
 
-Any missing physical, profile, feedback, or Viewer evidence remains no-go. Do
+Any missing physical, fmtp, feedback, or Viewer evidence remains no-go. Do
 not infer success from codec support, adapter model, transform enumeration,
 low CPU, or a single browser decode.
 
@@ -323,12 +375,19 @@ Accessed 2026-08-20:
 - [NVIDIA System Management Interface](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
 - [Microsoft `typeperf`](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/typeperf)
 - [Microsoft `MFTEnumEx`](https://learn.microsoft.com/en-us/windows/win32/api/mfapi/nf-mfapi-mftenumex)
+- [Microsoft `MFTEnum2`](https://learn.microsoft.com/en-us/windows/win32/api/mfapi/nf-mfapi-mftenum2)
 - [Microsoft hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts)
+- [Microsoft asynchronous MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/asynchronous-mfts)
+- [Microsoft async MFT unlock](https://learn.microsoft.com/en-us/windows/win32/medfound/mf-transform-async-unlock)
 - [Microsoft `MF_SA_D3D11_AWARE`](https://learn.microsoft.com/en-us/windows/win32/medfound/mf-sa-d3d11-aware)
 - [Microsoft `MFCreateDXGIDeviceManager`](https://learn.microsoft.com/en-us/windows/win32/api/mfapi/nf-mfapi-mfcreatedxgidevicemanager)
+- [Microsoft `MFCreateDXGISurfaceBuffer`](https://learn.microsoft.com/en-us/windows/win32/api/mfapi/nf-mfapi-mfcreatedxgisurfacebuffer)
 - [Microsoft H.264 video encoder](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder)
 - [Microsoft low-latency codec property](https://learn.microsoft.com/en-us/windows/win32/medfound/codecapi-avlowlatencymode)
 - [Microsoft force-key-frame property](https://learn.microsoft.com/en-us/windows/win32/medfound/codecapi-avencvideoforcekeyframe)
+- [Microsoft `ICodecAPI::IsModifiable`](https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-icodecapi-ismodifiable)
+- [Microsoft `ICodecAPI::SetValue`](https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-icodecapi-setvalue)
+- [Microsoft D3D multithread protection](https://learn.microsoft.com/en-us/windows/win32/api/d3d10/nf-d3d10-id3d10multithread-setmultithreadprotected)
 - [Microsoft H.264 profile enumeration](https://learn.microsoft.com/en-us/windows/win32/api/codecapi/ne-codecapi-eavench264vprofile)
 - [Pion RTP v1.10.5 H.264 payloader](https://github.com/pion/rtp/blob/v1.10.5/codecs/h264_packet.go)
 - [Pion WebRTC v4.2.18 media engine](https://github.com/pion/webrtc/blob/v4.2.18/mediaengine.go)
