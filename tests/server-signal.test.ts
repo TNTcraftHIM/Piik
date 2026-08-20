@@ -284,6 +284,7 @@ async function correlateParentEdgeQualityEvidence(
 async function startSfuHarness(options: {
   tokenIssuer: SfuTokenIssuer;
   selectedEdgeTurn?: boolean;
+  persistent?: boolean;
   prepareTimeoutMs?: number;
   maxRoots?: number;
   viewerDisconnectGraceMs?: number;
@@ -294,7 +295,11 @@ async function startSfuHarness(options: {
     ttlMs: 14_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,
+    database: options.persistent ? new RoomDatabase(":memory:") : undefined,
   });
+  if (options.persistent) {
+    roomStore.createRoom();
+  }
   const room = roomStore.createRoom();
   const httpServer = createServer((_request, response) => {
     response.statusCode = 404;
@@ -3942,6 +3947,34 @@ describe("WebSocket signaling", () => {
     await expect(
       direct.viewer.inbox.next("selected-edge-turn", 40),
     ).rejects.toThrow("Timed out");
+  });
+
+  it("allows selected TURN for Host SFU ingress outside historical room 1", async () => {
+    const harness = await startSfuHarness({
+      persistent: true,
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    expect(harness.room.roomId).toBe("2");
+    const direct = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-host-ingress-room-two",
+    );
+
+    direct.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: direct.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    await expect(direct.host.inbox.next("selected-edge-turn")).resolves.toMatchObject({
+      edgeKind: "host-sfu-ingress",
+      revision: direct.revision,
+      hostPeerId: direct.hostAuth.peerId,
+      publicationGeneration: expect.any(String),
+      iceServer: { urls: ["turn:turn.example.test:3478?transport=udp"] },
+    });
   });
 
   it("authorizes a ViewerRelay parent and clears its grant on share stop", async () => {

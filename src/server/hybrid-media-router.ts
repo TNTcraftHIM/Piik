@@ -1100,8 +1100,8 @@ export class HybridMediaRouter {
   }
 
   /**
-   * Restricted source-side fallback for the exact room-1 canary. This is a
-   * LiveKit publisher ICE override, not an ordinary peer candidate and not a
+   * Source-side fallback for a configured hybrid room. This is a LiveKit
+   * publisher ICE override, not an ordinary peer candidate or a
    * participant-wide TURN grant.
    */
   private startSelectedSfuIngressTurn(
@@ -1116,7 +1116,6 @@ export class HybridMediaRouter {
     const active = controller?.getActiveRoute();
     const key = roomId;
     if (
-      roomId !== "1" ||
       !config ||
       !fallback ||
       !active ||
