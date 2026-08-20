@@ -4,8 +4,8 @@ Last updated: 2026-08-21
 
 ## Phase
 
-Production is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` at `https://share.bonfire.icu`; its 660,626-byte artifact SHA-256 is `3cbd8f6be82fa615fa2861ff1be0eba6c98f3f7d9acb73a0ba5c21a2ff4c661c`.
-Cutover: 1,696 ms lock/508 ms stop-health; SQLite v3/five rooms/four healthy zero-restart services. Android exact `b8b6994efe4da3a773e16cec370e2a5ce7cbbf93` and pending ingress are not deployed.
+Production at `https://share.bonfire.icu` is exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767`; artifact 1,027,423 bytes, SHA-256 `74e0274ab11a162cb9dd4be1c34bb6b639e2ea76005969c30ae3a1daa656742f`.
+Cutover: 10,238 ms lock/641 ms stop-health/570 ms switch-health; SQLite v3/five rooms/four active services, observed `NRestarts=0`. Initial Host-ingress retry is deployed; Android remains source-only.
 Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke; production SFU/TURN media remains unverified.
 Web names/audio hint are deployed. Native WGC/MF/package is source-only; Web defaults VP8.
 
@@ -36,13 +36,13 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native Win11 audio is source-only/default-off: target isolation was 4018x and one Viewer got 495 Opus packets. Download, game sync, Win10, and other routes remain open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
-- Source adds initial/active selected Host ingress and peer last-mile. Focused route/signaling tests pass exactly-once prepare retry, cleanup and rollback with ordinary peers STUN-only; no relay media ran.
+- Production includes initial/active selected Host ingress and peer last-mile; focused tests cover exactly-once retry, cleanup, rollback, and ordinary STUN-only. No relay media ran.
 - Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
-- Exact `22119b9` passed typecheck, both builds and 30 files/440 tests. Deploy preserved environment, ingress/media/firewall/listener/SQLite hashes, v3/five rooms/room `1`, route settings, services and local/public/route/asset 200s. Site access stayed required, the retired endpoint remained 404, and no TURN/SFU session ran. Rollback is exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`.
+- Exact `16f6eab` passed typecheck, both builds and 30 files/445 tests. Deploy preserved all recorded config/network/SQLite hashes; DB, routes, services, endpoints, site access, and old-endpoint 404 passed. It triggered no TURN/SFU session. Rollback is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`; `fd76277b05d491af8840b28f3132b7ff445d3cbe` remains secondary.
 
 ## Unverified Boundaries
 
-- The `22119b9` deployment proves process/config health, not a retained production SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas; game-share load/blur remains unclassified.
+- The `16f6eab` deploy proves process/config health only; production SFU frames, initial/active retry/failback, relay pair, admission rescue, caps, quality, and resource evidence remain open. Game-share load/blur is unclassified.
 - Mobile Web Host unsupported; Viewer leaf-only. Android 14+ direct source/default-off selected-UID audio passed six protocol tests/`assembleDebug`. No device/audible claim; mediaProjection-only background, opt-out/silence/A-V, SFU/rotation remain open. iOS deferred; TV output P2.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.

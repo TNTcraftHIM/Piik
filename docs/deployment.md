@@ -20,20 +20,21 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`
+Production currently runs exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. The 660,626-byte artifact has SHA-256
-`3cbd8f6be82fa615fa2861ff1be0eba6c98f3f7d9acb73a0ba5c21a2ff4c661c`.
-The 2026-08-20T22:17:43Z UTC cutover held the deployment lock for 1,696 ms;
-local health returned 508 ms after service stop (479 ms after the symlink
+integrity. The 1,027,423-byte artifact has SHA-256
+`74e0274ab11a162cb9dd4be1c34bb6b639e2ea76005969c30ae3a1daa656742f`.
+The 2026-08-20T23:44:57Z UTC cutover held the deployment lock for 10,238 ms;
+local health returned 641 ms after service stop (570 ms after the symlink
 switch). Screener, LiveKit, coturn, and nginx are active/running with
-`NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
+observed `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
 service owner/mode and database hash preserved. `SITE_ACCESS_PASSWORD`,
 `/api/site-access`, and the nginx limiter replaced their retired Host-admission
 names in the prior access cutover; this release preserved the environment hash
 and the old endpoint remains 404. Exact
-`fd76277b05d491af8840b28f3132b7ff445d3cbe`
-is the immediate rollback target.
+`22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`
+is the immediate rollback target; exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`
+remains a secondary rollback.
 The selected-edge UDP tuple is configured with TTL 120, but no real TURN/SFU
 media canary was triggered; this remains a bounded configuration smoke, not
 broad-rollout media acceptance.
@@ -494,6 +495,27 @@ active/running with their observed `NRestarts=0`. No browser, SFU media, TURN,
 or performance canary ran. This deploys the `q,h` guard and preserves exact
 `fd76277b05d491af8840b28f3132b7ff445d3cbe` as the rollback release; the one-SFU-
 root functional evidence remains the separate localhost Chrome run.
+
+The pending Host-ingress retry cutover used exact source
+`16f6eab27bdfb1c15cdbd814a35864f4f18be767` and immutable artifact
+`screener-16f6eab27bdfb1c15cdbd814a35864f4f18be767-20260820T233516Z-git.tar.gz`
+(1,027,423 bytes, SHA-256
+`74e0274ab11a162cb9dd4be1c34bb6b639e2ea76005969c30ae3a1daa656742f`).
+Fresh `npm ci` plus the exact-source gate passed typecheck, both builds, and 30
+test files/445 tests. The one lock-held cutover completed at
+2026-08-20T23:45:02.296255986Z; the lock was held for 10,237.892 ms,
+stop-to-health took 640.561 ms, and symlink-to-health took 570.188 ms. The new
+release and exact `22119b907d3c` rollback share zero regular-file inodes.
+
+Environment, nginx, LiveKit, coturn, nftables, listener, and SQLite hashes were
+unchanged. SQLite v3 retained five rooms including room `1` with owner/mode
+`screener:screener`/0600. Local/public health, root, room `1`, the built asset,
+site-access status, and the retired-endpoint 404 passed; all four services were
+active/running with their observed `NRestarts=0`. Backup
+`/opt/screener/backups/16f6eab27bdf-precutover-20260820T234457Z` retains the
+prior environment, database, and exact current target. This deploys the one-use
+initial/active Host-ingress selected retry; no browser, SFU media, TURN relay,
+or performance canary ran, so TURN transport remains unproved.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
