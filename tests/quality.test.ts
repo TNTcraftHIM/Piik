@@ -222,7 +222,7 @@ describe("realtime quality controls", () => {
 
   it("configures ordered LOW and HIGH simulcast encodings without flattening LOW", async () => {
     let applied = {
-      encodings: [{ rid: "q" }, { rid: "f" }],
+      encodings: [{ rid: "q" }, { rid: "h" }],
     } as RTCRtpSendParameters;
     const sender = {
       track: {
@@ -249,7 +249,7 @@ describe("realtime quality controls", () => {
           scaleResolutionDownBy: 8 / 3,
         },
         {
-          rid: "f",
+          rid: "h",
           maxBitrate: 8_000_000,
           maxFramerate: 60,
           scaleResolutionDownBy: 4 / 3,
@@ -281,8 +281,8 @@ describe("realtime quality controls", () => {
     },
     {
       label: "reorders the RIDs",
-      after: { encodings: [{ rid: "f" }, { rid: "q" }] },
-      message: "ordered q and f video encodings",
+      after: { encodings: [{ rid: "h" }, { rid: "q" }] },
+      message: "ordered q and h video encodings",
     },
     {
       label: "adds a third RID",
@@ -291,7 +291,7 @@ describe("realtime quality controls", () => {
     },
   ])("fails closed when sender readback $label", async ({ after, message }) => {
     const before = {
-      encodings: [{ rid: "q" }, { rid: "f" }],
+      encodings: [{ rid: "q" }, { rid: "h" }],
     } as RTCRtpSendParameters;
     const sender = {
       track: { getSettings: () => ({ width: 1920, height: 1080 }) },

@@ -7,7 +7,8 @@
   then optional authenticated TURN/UDP for one controller-selected exceptional
   edge. Production enables the controller for all rooms and has a configured
   selected-edge TURN tuple; ordinary peer connections remain STUN-only, while
-  real SFU/TURN media behavior remains unverified.
+  production SFU/TURN media remains unverified. Latest source passed one local
+  SFU/UDP functional path; TURN remains unverified.
 
 ## Current Route Ladder
 
@@ -36,9 +37,16 @@ Any browser-spike failure other than isolated relay re-encoding closes that
 browser-relay route. It does not cancel the separate native sender plan. Closed
 PR #12's explicit whole-room SFU mode is superseded. ADR-0005 and merged PR #17
 own the automatic cross-mode controller. Production first enabled it only for
-room `1` and later removed that rollout boundary. Participant entry was
-observed, but retained media was not. Corrected localhost Chrome/LiveKit functional recovery passed, while public
-transport, quality, load, and browser validation remain open.
+room `1` and later removed that rollout boundary. The deployed release observed
+participant entry but did not retain media. On 2026-08-21, a latest-source run
+forced the first direct edge to fail and then passed one local SFU/UDP root with
+Chrome 151, LiveKit 1.13.5, and pinned client 2.22.0. LiveKit produced two sender
+RIDs in `q,h` order; Screener's former `q,f` guard caused the Host publisher to
+fail closed at `sender-config`. After correcting that contract, Viewer inbound
+packets and decoded/rendered frames increased, endpoint edges stayed bounded,
+and both clients left cleanly. TURN did not participate. This is functional,
+not performance, evidence; production/public transport and browser validation
+remain open.
 
 ## Token-Free SFU Standby Prewarm
 
@@ -287,7 +295,7 @@ lost.
 | Fixed two-chain browser relay | Host emits at most two copies; each relay emits at most one | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current default-off, maximum-eight-viewer spike |
 | Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
-| SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; current code is failure-only |
+| SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; latest source passes one local SFU/UDP root, while production evidence remains open |
 | Exceptional server-fed viewers | SFU/TURN emits necessary copies that no healthy root can distribute | Additional capped central egress | Explicit compatibility exception only; never unbounded whole-room fanout |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
@@ -355,7 +363,7 @@ The measurable gates and exact staged experiments are in
 
 ## Sources And License Boundary
 
-Primary sources checked on 2026-08-19:
+Primary sources checked on 2026-08-19 and 2026-08-21:
 
 - [Pion WebRTC](https://github.com/pion/webrtc) - MIT; no code copied.
 - [Pion WebRTC v4 API](https://pkg.go.dev/github.com/pion/webrtc/v4) - API
@@ -406,9 +414,11 @@ Primary sources checked on 2026-08-19:
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
   and [end-to-end encryption](https://docs.livekit.io/transport/encryption/) -
   official behavior and operator-boundary references.
-- [LiveKit client 2.22.0 `Room.prepareConnection`](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
+- [LiveKit client 2.22.0 `Room.prepareConnection`](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts),
+  [two-layer RID construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts),
   and [official usage](https://github.com/livekit/client-sdk-js#usage) -
-  Apache-2.0; API behavior was inspected, with no source copied.
+  Apache-2.0; API behavior and RID construction were inspected, with no source
+  copied.
 - [Grozev, *Towards a Scalable Video Conferencing System*](https://publication-theses.unistra.fr/public/theses_doctorat/2019/Grozev_Boris_2019_ED269.pdf)
   - one Jitsi profiling breakdown, not a coturn/LiveKit cross-system CPU ratio.
 
