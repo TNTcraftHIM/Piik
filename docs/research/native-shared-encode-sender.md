@@ -165,6 +165,24 @@ strict ordinary signaling wire, unmodified viewers, read-only feedback, and no
 audio or automatic `LOW`. This is a proposed test boundary, not current product
 behavior or hardware-encoder evidence.
 
+The 2026-08-20 local delivery checkpoint rebases that candidate onto the sole
+current access contract: `screener-v2`, Host-admission Cookie authentication,
+explicit `private-link` creation, fragment-only Viewer grants returned to the
+local Host, and STUN-only ordinary ICE. Native creation alone requests a fixed
+300-second provisional room. It remains random and memory-only even with SQLite
+configured: the current Host session suppresses the reclaim deadline, its
+generation-matched disconnect resets the five-minute window, the ordinary
+transient room TTL still caps the room, and restart drops it. A pre-auth
+connection or authentication failure gets one same-room/token/client-generation
+retry without a second room POST. SQLite remains v2 and ordinary Web creation is
+unchanged.
+HTTP statuses, Cookie attributes, create-room responses, Host authentication,
+and ignored Viewer evidence are strict and bounded; errors retain only fixed categories.
+Focused Go and TypeScript checks pass, but no Node/Chrome runtime gate has run.
+The overbroad unused gate/probe framework was deleted; a future authorized run
+must add only its executable minimum. This static checkpoint does not change the
+no-go result below.
+
 The sole authorized 2026-08-19 local product gate is
 `no-go-unclassified`:
 
@@ -286,12 +304,13 @@ No stacked PR is connected to Screener's product path, capture path, or
 audio path. Before product consideration, a target native sender must still
 prove one physical encoder invocation on representative hardware, live
 PLI/FIR-to-encoder control, heterogeneous downstream estimates, bounded burst
-and sustained loss, audio/A-V synchronization, mixed direct/TURN edges,
-reconnect isolation, browser diversity, lifecycle, and sustained CPU/GPU,
+and sustained loss, audio/A-V synchronization, reconnect isolation, browser
+diversity, lifecycle, and sustained CPU/GPU,
 memory, latency, quality, and upload measurements. A third host edge, custom
 RTP/SRTP, or a custom congestion-control framework remains out of scope. The
 #28 minimum-of-two policy is also out of scope for product code; retaining its
-evidence does not retain its policy.
+evidence does not retain its policy. Selected-edge TURN is a separate future
+contract and gate, not a prerequisite silently added to this STUN-only canary.
 
 ## Primary Sources And License Boundary
 
@@ -331,6 +350,9 @@ evidence does not retain its policy.
 - [Apple required hardware encoder key](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)
 - [Apple hardware encoder readback](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_usinghardwareacceleratedvideoencoder)
 
-libwebrtc uses a BSD-style license and Pion uses MIT, but distribution still
-requires a full libwebrtc third-party notice review and an H.264 patent/licensing
-review. No source code from these projects was copied into Screener.
+The current Go candidate directly uses Pion (MIT) and coder/websocket (ISC).
+Before distributing any sender executable, choose the project license and
+generate and verify notices for those direct and all transitive dependencies.
+libwebrtc/H.264 remains a separate future route requiring its own third-party
+notice and patent/licensing review. No source code from these projects was
+copied into Screener.

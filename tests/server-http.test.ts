@@ -86,6 +86,7 @@ async function createRoom(
   baseUrl: string,
   cookie?: string,
   viewerPolicy: "private-link" | "public-watch" = "private-link",
+  hostClaimTtlSeconds?: number,
 ): Promise<Response> {
   return fetch(`${baseUrl}/api/rooms`, {
     method: "POST",
@@ -94,7 +95,10 @@ async function createRoom(
       Origin: allowedOrigin,
       ...(cookie ? { Cookie: cookie } : {}),
     },
-    body: JSON.stringify({ viewerPolicy }),
+    body: JSON.stringify({
+      viewerPolicy,
+      ...(hostClaimTtlSeconds === undefined ? {} : { hostClaimTtlSeconds }),
+    }),
   });
 }
 
@@ -275,6 +279,25 @@ describe("room HTTP API", () => {
     expect(body.viewerPolicy).toBe("private-link");
     expect(body.viewerGrantExpiresAt).toBeTruthy();
     expect("iceConfig" in body).toBe(false);
+  });
+
+  it("accepts only the admitted fixed provisional Host lease", async () => {
+    const baseUrl = await start();
+    expect((await createRoom(baseUrl, undefined, "private-link", 300)).status).toBe(
+      401,
+    );
+
+    const authenticated = await login(baseUrl);
+    const cookie = cookiePair(authenticated);
+    expect((await createRoom(baseUrl, cookie, "private-link", 300)).status).toBe(
+      201,
+    );
+    expect((await createRoom(baseUrl, cookie, "private-link", 301)).status).toBe(
+      400,
+    );
+    expect((await createRoom(baseUrl, cookie, "private-link", 299)).status).toBe(
+      400,
+    );
   });
 
   it("allows explicit public-watch creation without Host admission in local mode", async () => {

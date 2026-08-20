@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import {
+  MAX_HOST_CLAIM_TTL_SECONDS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   ROOM_CODE_LENGTH,
   viewerGrantSchema,
@@ -37,6 +38,7 @@ interface Room {
   viewerGrantDigest: Buffer | null;
   viewerAuthorizationGeneration: string;
   expiresAtMs: number | null;
+  provisionalHostExpiresAtMs: number | null;
   host?: Participant;
   viewers: Map<string, Participant>;
 }
@@ -157,6 +159,7 @@ export class RoomStore {
               : Buffer.from(storedRoom.viewerGrantDigest),
           viewerAuthorizationGeneration: this.newAuthorizationGeneration(),
           expiresAtMs: null,
+          provisionalHostExpiresAtMs: null,
           viewers: new Map(),
         });
       }
@@ -166,7 +169,18 @@ export class RoomStore {
     }
   }
 
-  createRoom(viewerPolicy: ViewerAccessPolicy = "private-link"): CreatedRoom {
+  createRoom(
+    viewerPolicy: ViewerAccessPolicy = "private-link",
+    hostClaimTtlSeconds?: number,
+  ): CreatedRoom {
+    if (
+      hostClaimTtlSeconds !== undefined &&
+      hostClaimTtlSeconds !== MAX_HOST_CLAIM_TTL_SECONDS
+    ) {
+      throw new Error(
+        `Provisional Host TTL must be ${MAX_HOST_CLAIM_TTL_SECONDS} seconds`,
+      );
+    }
     if (this.rooms.size >= this.options.maxRooms) {
       throw new RoomStoreError("ROOM_LIMIT");
     }
@@ -175,22 +189,38 @@ export class RoomStore {
     const hostTokenDigest = digest(hostToken);
     const viewerAuthorizationGeneration = this.newAuthorizationGeneration();
     const createdAtMs = this.now();
+    const provisionalHostExpiresAtMs =
+      hostClaimTtlSeconds === undefined
+        ? null
+        : createdAtMs + hostClaimTtlSeconds * 1_000;
+    if (
+      provisionalHostExpiresAtMs !== null &&
+      !Number.isSafeInteger(provisionalHostExpiresAtMs)
+    ) {
+      throw new Error("Provisional Host expiry exceeds the supported time range");
+    }
     let viewerGrant: string | null = null;
     let viewerGrantExpiresAtMs: number | null = null;
-    const storedRoom = this.options.database?.createRoom(
-      hostTokenDigest,
-      (roomId) => {
-        if (viewerPolicy === "public-watch") {
-          return null;
-        }
-        const persistentGrantExpiresAtMs = toEpochSecondsMs(
-          createdAtMs + PERSISTENT_VIEWER_GRANT_TTL_MS,
-        );
-        viewerGrantExpiresAtMs = persistentGrantExpiresAtMs;
-        viewerGrant = this.createViewerGrant(roomId, persistentGrantExpiresAtMs);
-        return digest(viewerGrant);
-      },
-    );
+    const storedRoom =
+      provisionalHostExpiresAtMs === null
+        ? this.options.database?.createRoom(
+            hostTokenDigest,
+            (roomId) => {
+              if (viewerPolicy === "public-watch") {
+                return null;
+              }
+              const persistentGrantExpiresAtMs = toEpochSecondsMs(
+                createdAtMs + PERSISTENT_VIEWER_GRANT_TTL_MS,
+              );
+              viewerGrantExpiresAtMs = persistentGrantExpiresAtMs;
+              viewerGrant = this.createViewerGrant(
+                roomId,
+                persistentGrantExpiresAtMs,
+              );
+              return digest(viewerGrant);
+            },
+          )
+        : undefined;
     const roomId = storedRoom?.roomId ?? this.uniqueRoomCode();
     const expiresAtMs = storedRoom ? null : createdAtMs + this.options.ttlMs;
     if (!storedRoom && viewerPolicy === "private-link") {
@@ -210,6 +240,7 @@ export class RoomStore {
       viewerGrantDigest,
       viewerAuthorizationGeneration,
       expiresAtMs,
+      provisionalHostExpiresAtMs,
       viewers: new Map(),
     });
 
@@ -255,7 +286,9 @@ export class RoomStore {
       room.viewerAuthorizationGeneration;
 
     if (action === "public-watch") {
-      this.options.database?.updateViewerGrantDigest(roomId, null);
+      if (room.expiresAtMs === null) {
+        this.options.database?.updateViewerGrantDigest(roomId, null);
+      }
       room.viewerGrantDigest = null;
       return {
         viewerPolicy: "public-watch",
@@ -282,9 +315,11 @@ export class RoomStore {
     const nextViewerAuthorizationGeneration =
       this.newAuthorizationGeneration();
 
-    // Persistence is the commit point. No in-memory authorization or topology
-    // state changes before this write succeeds.
-    this.options.database?.updateViewerGrantDigest(roomId, nextDigest);
+    // Persistence is the commit point for durable rooms. Provisional native
+    // rooms deliberately never enter the configured database.
+    if (room.expiresAtMs === null) {
+      this.options.database?.updateViewerGrantDigest(roomId, nextDigest);
+    }
 
     const revokedViewers = [...room.viewers.values()].map((viewer) => ({
       peerId: viewer.peerId,
@@ -318,6 +353,10 @@ export class RoomStore {
         return undefined;
       }
       room.host.sessionId = undefined;
+      if (room.provisionalHostExpiresAtMs !== null) {
+        room.provisionalHostExpiresAtMs =
+          this.now() + MAX_HOST_CLAIM_TTL_SECONDS * 1_000;
+      }
       return { roomId, role: "host", peerId };
     }
 
@@ -371,7 +410,11 @@ export class RoomStore {
     if (!room) {
       return undefined;
     }
-    if (this.options.database && !this.options.database.deleteRoom(roomId)) {
+    if (
+      room.expiresAtMs === null &&
+      this.options.database &&
+      !this.options.database.deleteRoom(roomId)
+    ) {
       throw new Error("Persistent room is missing from the room database");
     }
     const sessionIds = connectedSessionIds(room);
@@ -382,8 +425,15 @@ export class RoomStore {
   expireRooms(nowMs = this.now()): ClosedRoom[] {
     const expired: ClosedRoom[] = [];
     for (const [roomId, room] of this.rooms) {
-      if (room.expiresAtMs === null || room.expiresAtMs > nowMs) {
+      if (!roomIsExpired(room, nowMs)) {
         continue;
+      }
+      if (
+        room.expiresAtMs === null &&
+        this.options.database &&
+        !this.options.database.deleteRoom(roomId)
+      ) {
+        throw new Error("Persistent room is missing from the room database");
       }
       expired.push({ roomId, sessionIds: connectedSessionIds(room) });
       this.rooms.delete(roomId);
@@ -476,7 +526,7 @@ export class RoomStore {
       // A single response avoids turning room IDs into an enumeration oracle.
       throw new RoomStoreError("INVALID_TOKEN");
     }
-    if (room.expiresAtMs !== null && room.expiresAtMs <= this.now()) {
+    if (roomIsExpired(room, this.now())) {
       throw new RoomStoreError("ROOM_EXPIRED");
     }
     return room;
@@ -560,6 +610,15 @@ export class RoomStore {
     }
     return value.toString("base64url");
   }
+}
+
+function roomIsExpired(room: Room, nowMs: number): boolean {
+  return (
+    (room.expiresAtMs !== null && room.expiresAtMs <= nowMs) ||
+    (!room.host?.sessionId &&
+      room.provisionalHostExpiresAtMs !== null &&
+      room.provisionalHostExpiresAtMs <= nowMs)
+  );
 }
 
 function isRoomCode(value: string): boolean {

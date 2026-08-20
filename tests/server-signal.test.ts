@@ -137,6 +137,7 @@ interface SignalHarness {
   webSocketUrl: string;
   roomStore: RoomStore;
   room: CreatedRoom;
+  database?: RoomDatabase;
   peerAssistedRoomIds?: Set<string>;
 }
 
@@ -164,6 +165,7 @@ async function startHarness(
     maxUnauthenticatedSignalConnections?: number;
     hostAdmissionPassword?: string;
     persistent?: boolean;
+    provisionalHostClaimSeconds?: number;
     peerAssistedMedia?: boolean;
     stunUrls?: readonly string[];
     now?: () => number;
@@ -175,13 +177,18 @@ async function startHarness(
   config.stunUrls = overrides.stunUrls ?? [];
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
+  const database = overrides.persistent ? new RoomDatabase(":memory:") : undefined;
   const roomStore = new RoomStore({
     ttlMs: config.roomTtlMs,
     maxRooms: config.maxRooms,
     maxViewersPerRoom,
-    database: overrides.persistent ? new RoomDatabase(":memory:") : undefined,
+    database,
+    now: overrides.now,
   });
-  const room = roomStore.createRoom();
+  const room = roomStore.createRoom(
+    "private-link",
+    overrides.provisionalHostClaimSeconds,
+  );
   const peerAssistedRoomIds = config.peerAssistedMedia
     ? new Set([room.roomId])
     : undefined;
@@ -205,6 +212,7 @@ async function startHarness(
     webSocketUrl: `ws://127.0.0.1:${port}/signal`,
     roomStore,
     room,
+    database,
     peerAssistedRoomIds,
   };
 }
@@ -748,6 +756,40 @@ describe("WebSocket signaling", () => {
     await expect(
       authenticate(host, harness.room, "host", "host-client-protected"),
     ).resolves.toMatchObject({ role: "host" });
+  });
+
+  it("rearms an in-memory provisional room lease only after Host disconnect", async () => {
+    let now = Date.UTC(2026, 7, 20, 12);
+    const harness = await startHarness({
+      persistent: true,
+      provisionalHostClaimSeconds: 300,
+      now: () => now,
+    });
+    expect(harness.database!.loadRooms()).toEqual([]);
+    const host = await openClient(harness.webSocketUrl);
+    const authenticated = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "provisional-host",
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(viewer, harness.room, "viewer", "provisional-viewer");
+    await host.inbox.next("peer-joined");
+
+    now += 301_000;
+    expect(harness.roomStore.expireRooms()).toEqual([]);
+    await closeClient(host);
+    await viewer.inbox.next("host-status");
+    expect(harness.roomStore.getConnectedHost(harness.room.roomId)).toBeUndefined();
+    expect(harness.roomStore.expireRooms(now + 299_999)).toEqual([]);
+    const expired = harness.roomStore.expireRooms(now + 300_001);
+    expect(expired).toHaveLength(1);
+    expect(expired[0]).toMatchObject({ roomId: harness.room.roomId });
+    expect(expired[0]?.sessionIds).toHaveLength(1);
+    await closeClient(viewer);
+    expect(authenticated.role).toBe("host");
+    expect(harness.database!.loadRooms()).toEqual([]);
   });
 
   it("leaves established authorization and media untouched when access persistence fails", async () => {

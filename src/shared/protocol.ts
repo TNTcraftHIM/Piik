@@ -618,9 +618,12 @@ export const createRoomResponseSchema = z
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;
 
+export const MAX_HOST_CLAIM_TTL_SECONDS = 5 * 60;
+
 export const createRoomRequestSchema = z
   .object({
     viewerPolicy: viewerAccessPolicySchema,
+    hostClaimTtlSeconds: z.literal(MAX_HOST_CLAIM_TTL_SECONDS).optional(),
   })
   .strict();
 export type CreateRoomRequest = z.infer<typeof createRoomRequestSchema>;

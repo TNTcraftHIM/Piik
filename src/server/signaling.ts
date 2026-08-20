@@ -362,7 +362,7 @@ export class SignalingServer {
       );
     } catch (error) {
       if (!(error instanceof RoomStoreError)) {
-        console.error("Signaling authentication failed unexpectedly", error);
+        console.error("Signaling authentication failed unexpectedly");
       }
       const code =
         error instanceof RoomStoreError && error.code !== "ROOM_LIMIT"

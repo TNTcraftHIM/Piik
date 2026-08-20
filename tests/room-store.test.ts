@@ -313,6 +313,133 @@ describe("RoomStore", () => {
     }
   });
 
+  it("keeps provisional native rooms in memory when persistence is configured", () => {
+    let now = Date.UTC(2026, 7, 18, 12);
+    const directory = mkdtempSync(join(tmpdir(), "screener-provisional-room-"));
+    const databasePath = join(directory, "rooms.sqlite");
+    const database = new RoomDatabase(databasePath);
+    const store = new RoomStore({
+      ttlMs: 14_400_000,
+      maxRooms: 3,
+      maxViewersPerRoom: 3,
+      now: () => now,
+      database,
+    });
+    try {
+      const provisional = store.createRoom("private-link", 300);
+      expect(provisional.expiresAt).not.toBeNull();
+      expect(database.loadRooms()).toEqual([]);
+
+      const persistent = store.createRoom();
+      expect(persistent).toMatchObject({ roomId: "1", expiresAt: null });
+      expect(database.loadRooms()).toHaveLength(1);
+
+      now += 300_001;
+      expect(store.expireRooms()).toEqual([
+        { roomId: provisional.roomId, sessionIds: [] },
+      ]);
+      expect(database.loadRooms()).toHaveLength(1);
+    } finally {
+      store.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reclaims only the disconnected current Host after the provisional lease", () => {
+    let now = Date.UTC(2026, 7, 18, 12);
+    const store = new RoomStore({
+      ttlMs: 14_400_000,
+      maxRooms: 2,
+      maxViewersPerRoom: 3,
+      now: () => now,
+    });
+    const room = store.createRoom("private-link", 300);
+    const first = store.connectParticipant({
+      roomId: room.roomId,
+      role: "host",
+      token: room.hostToken,
+      clientId: "native-host",
+      sessionId: "native-session-1",
+    });
+
+    now += 301_000;
+    expect(store.expireRooms()).toEqual([]);
+    const replacement = store.connectParticipant({
+      roomId: room.roomId,
+      role: "host",
+      token: room.hostToken,
+      clientId: "native-host",
+      sessionId: "native-session-2",
+    });
+    expect(replacement.replacedSessionId).toBe("native-session-1");
+    expect(
+      store.disconnectParticipant(room.roomId, first.peerId, "native-session-1"),
+    ).toBeUndefined();
+
+    now += 301_000;
+    expect(store.expireRooms()).toEqual([]);
+    expect(
+      store.disconnectParticipant(
+        room.roomId,
+        replacement.peerId,
+        "native-session-2",
+      ),
+    ).toMatchObject({ role: "host" });
+    expect(store.expireRooms(now + 299_999)).toEqual([]);
+    expect(store.expireRooms(now + 300_001)).toEqual([
+      { roomId: room.roomId, sessionIds: [] },
+    ]);
+
+    const ttlRoom = store.createRoom("private-link", 300);
+    const ttlHost = store.connectParticipant({
+      roomId: ttlRoom.roomId,
+      role: "host",
+      token: ttlRoom.hostToken,
+      clientId: "native-ttl-host",
+      sessionId: "native-ttl-session",
+    });
+    expect(store.expireRooms(now + 14_400_001)).toEqual([
+      { roomId: ttlRoom.roomId, sessionIds: ["native-ttl-session"] },
+    ]);
+    expect(ttlHost.hostOnline).toBe(true);
+  });
+
+  it("never restores a provisional native room from SQLite after restart", () => {
+    const directory = mkdtempSync(join(tmpdir(), "screener-provisional-restart-"));
+    const databasePath = join(directory, "rooms.sqlite");
+    let store: RoomStore | undefined;
+    try {
+      store = new RoomStore({
+        ttlMs: 14_400_000,
+        maxRooms: 2,
+        maxViewersPerRoom: 3,
+        database: new RoomDatabase(databasePath),
+      });
+      const room = store.createRoom("private-link", 300);
+      store.close();
+      store = new RoomStore({
+        ttlMs: 14_400_000,
+        maxRooms: 2,
+        maxViewersPerRoom: 3,
+        database: new RoomDatabase(databasePath),
+      });
+      expectRoomError(
+        () =>
+          store!.connectParticipant({
+            roomId: room.roomId,
+            role: "host",
+            token: room.hostToken,
+            clientId: "native-after-restart",
+            sessionId: "native-after-restart",
+          }),
+        "INVALID_TOKEN",
+      );
+    } finally {
+      store?.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("fails private Viewer access closed and scopes grants to one room", () => {
     const now = Date.UTC(2026, 7, 18, 12);
     const store = new RoomStore({
