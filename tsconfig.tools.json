@@ -15,5 +15,11 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "tests"]
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "scripts/native-one-viewer-gate.ts",
+    "scripts/native-one-viewer-ledger.ts",
+    "tests"
+  ]
 }

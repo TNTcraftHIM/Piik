@@ -4,7 +4,7 @@
 - Scope: one Windows game-capture sender, one encoded video stream, and at most
   two independent standard WebRTC media edges
 - Status: stacked Draft PRs #16/#18/#22/#23/#25/#28 pass one bounded live
-  two-leg WebCodecs/Pion candidate. The first product-wiring gate is
+  two-leg WebCodecs/Pion candidate. Both product-wiring attempts remain
   no-go-unclassified; product and physical shared encoding remain unproven.
 
 ## Decision Input
@@ -178,12 +178,93 @@ retry without a second room POST. SQLite remains v2 and ordinary Web creation is
 unchanged.
 HTTP statuses, Cookie attributes, create-room responses, Host authentication,
 and ignored Viewer evidence are strict and bounded; errors retain only fixed categories.
-Focused Go and TypeScript checks pass, but no Node/Chrome runtime gate has run.
-The overbroad unused gate/probe framework was deleted; a future authorized run
-must add only its executable minimum. This static checkpoint does not change the
-no-go result below.
+Focused Go and TypeScript checks pass. The overbroad unused gate/probe framework
+stays deleted; the current command consumer is limited to the executable runner
+and sanitized stage ledger required by the next authorized run.
 
-The sole authorized 2026-08-19 local product gate is
+The one authorized 2026-08-20 current-wire attempt used Chrome 151 on Windows
+amd64, a temporary non-default Chrome profile, a real animated Chrome tab, and
+an isolated local Node server with an in-memory RoomStore and peer assistance
+disabled. It did not contact production or SQLite. Retained history booleans
+show that the source and Sender pages loaded and no Viewer page was created. The
+runner reported `failedStage=node-host` after its bounded 20-second Sender-start
+interval because it did not observe the combined Sender-ready and Go source-RTP
+condition.
+
+This is `no-go-unclassified`, not evidence that the Node Host path itself
+failed. The timeout branch did not retain a final Sender DOM/counter sample, so
+it cannot locate the break among `getDisplayMedia` request/resolve, Host
+admission/create, WSS authentication, local bridge connection, first encoded
+chunk, or Go source RTP. There was no retry or timeout adjustment. Viewer auth,
+offer/answer/ICE, Pion bound-edge output, Viewer inbound/decode/render, two-edge,
+and FIFO evidence were never attempted. A later run needs separate authorization
+and an unconditional stage-1 final-negative ledger before it may create one
+Viewer.
+
+That local-only runner is now the current `npm run gate:native-one-viewer`
+consumer. It requires an explicit Chrome executable environment path and uses
+the task-local Go executable or task-specific `PATH`; neither path is committed.
+Each monotonic Sender-start transition appends and flushes one bounded JSON
+record containing only booleans and capped counters. A pure timeout test proves
+that capture, admission/create, Host WSS, bridge, fixed-`HIGH`, first encoded
+chunk, Go-ingest, and source-RTP state cannot be erased by a later failed sample.
+The one-Viewer signaling/media waits likewise preserve their latest sanitized
+sample in the final report. They now accept evidence only from one frozen
+signaling socket/auth/opaque-connection ordinal, one PeerConnection/video-track
+ordinal, and the same Pion slot/edge generation across signal and media stages.
+The raw connection ID remains page-local. Every CDP RPC/sample is capped by the
+remaining stage deadline. Final status is written only after bounded process-tree
+exit and closed-port polling, followed by an exact system-Temp path audit,
+recursive reparse-point rejection, profile deletion, and absence verification;
+any cleanup failure is fail-closed. Microsoft documents `/T` as terminating a
+task's child processes and `ReparsePoint` as the filesystem attribute used for
+these special entries. Pure tests cover hung sampling, cross-PC evidence,
+cleanup-before-pass, profile path bounds, and deletion failure. Sources were
+rechecked 2026-08-20.
+
+One separately authorized second current-wire run used the frozen gate once and
+did not retry or adjust a threshold. Its append-and-flush ledger reached sequence
+7 and retained positive booleans for capture request/resolution, Host admission,
+private room creation, Host WSS authentication, bridge readiness, fixed VP8
+1280x720@30/3 Mbps config acceptance, one encoder object, and entry into the
+first WebCodecs output callback. Go diagnostics remained at zero
+`framesWritten`, source-RTP packets, and source-RTP bytes. The runner therefore
+failed closed at `sender-start`; it never created the Viewer page and did not
+exercise Viewer auth, SDP/ICE, Pion bound-edge output, decode/render, a second
+Viewer, or FIFO. Cleanup was complete before the report was finalized: Chrome
+and Native exited, the isolated Node listener and all three random loopback
+ports closed, and the exact task profile passed a non-reparse audit and was
+removed.
+
+The result narrows but does not classify the break. The gate increments its
+encoded-output observation before it calls the product output callback, and that
+run did not retain whether the current local media WebSocket attempted, returned
+from, or threw during the binary frame send. Static source comparison shows a
+matching binary message type, 17-byte big-endian header, one-MiB payload limit,
+and VP8 frame decode on both sides. It also confirms that Pion's unbound static RTP track
+returns no error. Those facts do not prove which runtime operation followed the
+callback. The retained first break interval is after WebCodecs output callback
+entry and before Go frame/source-RTP accounting. There is no uniquely proven
+product bug. The current unrun probe now binds the first actual local media
+WebSocket as gate-local generation 1 and records only bounded binary-send
+attempt, synchronous-return, and synchronous-throw counters. A second bridge
+generation saturates at 2, stops accumulating the first generation's counters,
+and fails the Viewer signal, Viewer media, and final-success checks even after
+Sender-start passed. A pure in-memory test covers success, throw, and late
+replacement without retaining a URL, payload, token, SDP, IP address, or raw
+error. No subsequent browser/media run is authorized or has occurred.
+
+Chromium documents the tab-capture auto-selection switch as a test-only aid,
+and Chrome requires a non-default user-data directory for remote debugging from
+Chrome 136. Those constraints explain the isolated harness setup; they do not
+prove that `getDisplayMedia` resolved in the first failed current-wire run.
+Static inspection of the pinned Pion v4.2.18 `TrackLocalStaticRTP.WriteRTP` shows
+that it iterates the
+current bindings and returns no error for an empty binding set. This excludes a
+pre-Viewer no-binding write as the likely fatal break; it is not runtime proof
+of Go ingest or source RTP. Sources were rechecked 2026-08-20.
+
+The earlier authorized 2026-08-19 local product gate is
 `no-go-unclassified`:
 
 | Checkpoint | Retained evidence |
@@ -309,8 +390,9 @@ diversity, lifecycle, and sustained CPU/GPU,
 memory, latency, quality, and upload measurements. A third host edge, custom
 RTP/SRTP, or a custom congestion-control framework remains out of scope. The
 #28 minimum-of-two policy is also out of scope for product code; retaining its
-evidence does not retain its policy. Selected-edge TURN is a separate future
-contract and gate, not a prerequisite silently added to this STUN-only canary.
+evidence does not retain its policy. Built-in exact-room Peer ICE TURN
+supersedes selected-edge as a separate Web source canary; Native stays STUN-only
+unless its own bounded capability and transport gate is accepted.
 
 ## Primary Sources And License Boundary
 
@@ -328,6 +410,7 @@ contract and gate, not a prerequisite silently added to this STUN-only canary.
 - [WebRTC video codec requirements, RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html)
 - [WebRTC congestion control requirements, RFC 8836](https://www.rfc-editor.org/rfc/rfc8836.html)
 - [Pion track fanout implementation](https://github.com/pion/webrtc/blob/main/track_local_static.go)
+- [Pion v4.2.18 pinned track implementation](https://github.com/pion/webrtc/blob/v4.2.18/track_local_static.go)
 - [Pion send-side bandwidth estimator](https://github.com/pion/interceptor/blob/main/pkg/gcc/send_side_bwe.go)
 - [Pion WebRTC license](https://github.com/pion/webrtc/blob/main/LICENSE)
 - [WebCodecs](https://www.w3.org/TR/webcodecs/)
@@ -337,6 +420,10 @@ contract and gate, not a prerequisite silently added to this STUN-only canary.
 - [W3C WebRTC simulcast](https://www.w3.org/TR/webrtc/#simulcast-functionality)
 - [Pion WebRTC v4.2.18](https://github.com/pion/webrtc/tree/v4.2.18)
 - [Pion Interceptor v0.1.47](https://github.com/pion/interceptor/tree/v0.1.47)
+- [Chromium Chrome test switches](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/common/chrome_switches.cc)
+- [Chrome remote-debugging profile requirement](https://developer.chrome.com/blog/remote-debugging-port)
+- [Microsoft `taskkill`](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill)
+- [Microsoft `FileAttributes.ReparsePoint`](https://learn.microsoft.com/en-us/dotnet/api/system.io.fileattributes?view=net-10.0)
 - [RFC 4585 RTP/AVPF feedback](https://www.rfc-editor.org/rfc/rfc4585.html)
 - [RFC 4588 RTP retransmission](https://www.rfc-editor.org/rfc/rfc4588.html)
 - [RFC 8888 congestion-control feedback](https://www.rfc-editor.org/rfc/rfc8888.html)

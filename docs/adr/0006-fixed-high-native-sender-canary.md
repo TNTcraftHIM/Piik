@@ -52,14 +52,67 @@ authentication failure gets one retry with the same room/token/client generation
 and never another room POST. Server restart drops the room; SQLite stays at v2
 and ordinary Web rooms are unchanged. No claim-confirm message, durable native token, or recovery
 subsystem is added. Focused Go/TypeScript tests and static checks pass. The unused
-generic probe framework is deliberately not retained.
-No runtime/browser revalidation has run, so the product gate remains no-go and
-this local branch is not a product availability claim.
+generic probe framework is deliberately not retained. A current command consumer
+may keep only the minimum stage ledger needed by the next authorized run.
+
+The first authorized current-wire run on 2026-08-20 remains
+`no-go-unclassified`. It used Windows amd64, Chrome 151, one real animated Chrome
+tab, and an isolated local Node server with an in-memory RoomStore and peer
+assistance disabled. Safe Chrome history booleans prove that the source and
+Sender pages loaded and that no Viewer page was created. The runner stopped
+after a bounded 20-second Sender-start interval without observing the combined
+Sender-ready and Go source-RTP condition.
+
+The timeout path failed to preserve its final Sender DOM/counter sample. It
+therefore cannot distinguish capture selection, Host admission/create, WSS
+authentication, local bridge, first encoded output, or Go ingest as the first
+runtime break. None is a proven product failure. No retry, timeout adjustment,
+Viewer, second Viewer, or FIFO run followed. A separately authorized rerun must
+first make the stage-1 ledger unconditional and prove that timeout retains the
+last sanitized checkpoint; only a passed Sender/source-RTP stage may create the
+single Viewer. The product gate remains no-go and this local branch is not a
+product availability claim.
+
+The retained current command consumer appends and flushes only monotonic,
+sanitized Sender-start fields. Its static one-Viewer gate now freezes one
+socket/auth/connection/PeerConnection/video-track generation and the matching
+Pion slot/edge generation, then revalidates that identity during media progress;
+raw connection IDs never leave the page probe. Every CDP RPC and sample shares
+its enclosing absolute deadline. `passed` is impossible until bounded Chrome
+and native process-tree exit, listener closure, and audited deletion of the
+exact task profile under system Temp all succeed; a reparse point or deletion
+failure is a fixed cleanup failure. Pure checks cover retained timeout evidence,
+hung samples, cross-generation rejection, cleanup-before-pass, and profile
+cleanup failure.
+
+One separately authorized second run then used that frozen gate with the same
+bounded local topology. Its retained ledger proves `getDisplayMedia` request and
+resolution, Host admission and room creation, Host WSS authentication, local
+bridge readiness and fixed-`HIGH` config acceptance, exactly one encoder object,
+and entry into the first WebCodecs output callback. It retained zero Go
+`framesWritten`, source-RTP packets, and source-RTP bytes, so it stopped at
+`sender-start` and never created a Viewer. No retry or threshold adjustment
+followed. Cleanup completed before final failure: Chrome and Native exited, the
+Node server and all three loopback ports closed, and the exact task Chrome
+profile passed the non-reparse audit and was removed.
+
+This remains `no-go-unclassified`. The frozen probe counted the first encoded
+chunk before invoking the product output callback and did not record whether the
+generation-bound local bridge attempted, returned from, or threw during its
+binary send. Static inspection finds matching 17-byte big-endian frame contracts
+on the Web and Go sides, but cannot convert that into runtime evidence. The proven
+break interval is therefore after WebCodecs output callback entry and before Go
+frame/source-RTP accounting, not a proven product bridge defect. The current
+unrun gate now records only bounded attempt/synchronous-return/synchronous-throw
+counters for the first local bridge generation and rechecks that identity at
+Viewer signal, Viewer media, and final success. Pure tests reject late
+replacement. A further run requires separate authorization. There is still no
+Viewer, two-viewer, FIFO, or physical/hardware-encoder proof.
 
 ## Staged Revalidation
 
 A new run requires separate authorization and must stop at the first failed
-stage while retaining a bounded final-negative snapshot:
+stage while synchronously retaining a bounded final-negative snapshot:
 
 1. Prove host room/auth, local config acknowledgement, one encoder object,
    bridge ingress, frame decode, source RTP, and zero critical errors.
