@@ -76,8 +76,9 @@ class RemoteSession(
         if (!closed.compareAndSet(false, true)) return
         stopped.set(true)
         activeCall.get()?.cancel()
-        socket?.send(Wire.abandonRoom())
-        socket?.close(1000, "sender stopped")
+        val activeSocket = socket
+        if (room != null) activeSocket?.send(Wire.abandonRoom())
+        activeSocket?.close(1000, "sender stopped")
         socket = null
         peers.values.forEach(HostPeer::close)
         peers.clear()
@@ -88,7 +89,6 @@ class RemoteSession(
     fun cancelPending() {
         stopped.set(true)
         activeCall.get()?.cancel()
-        socket?.cancel()
     }
 
     private fun authenticateSite() {

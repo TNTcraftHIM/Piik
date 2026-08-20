@@ -240,6 +240,11 @@ transient room TTL still caps the room, and restart drops it. A pre-auth
 connection or authentication failure gets one same-room/token/client-generation
 retry without a second room POST. SQLite remains v2 and ordinary Web creation is
 unchanged.
+Android stop/capture-failure cleanup keeps the established signaling socket until
+its single-thread teardown sends `abandon-room` and then performs a normal close;
+pending-work cancellation only blocks callbacks and cancels active HTTP. No ACK
+is awaited. A provisional room whose WebSocket handshake never opened remains
+bounded by the existing 300-second reclaim window.
 HTTP statuses, Cookie attributes, create-room responses, Host authentication,
 and ignored Viewer evidence are strict and bounded; errors retain only fixed categories.
 Focused Go and TypeScript checks pass. The overbroad unused gate/probe framework
