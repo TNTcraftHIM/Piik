@@ -4,8 +4,8 @@ Last updated: 2026-08-21
 
 ## Phase
 
-`https://share.bonfire.icu` serves exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`; the 915,377-byte artifact SHA-256 is `8da4b8b2b1ae4b82add615f4367ee447b5ade86c4e58a938e51085940b9867d3`.
-The cutover held the lock 8,389 ms and returned local health 520 ms after stop. SQLite v3 has five rooms; Screener, LiveKit, coturn and nginx are healthy with zero restarts.
+Production is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` at `https://share.bonfire.icu`; its 660,626-byte artifact SHA-256 is `3cbd8f6be82fa615fa2861ff1be0eba6c98f3f7d9acb73a0ba5c21a2ff4c661c`.
+Cutover took 1,696 ms lock/508 ms stop-health. SQLite v3 has five rooms; four services are healthy with zero restarts. Android-only source `b8b6994efe4da3a773e16cec370e2a5ce7cbbf93` is ahead and not deployed.
 Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke; production SFU/TURN media remains unverified.
 Web names/audio hint are deployed. Native WGC/MF/package is source-only; Web defaults VP8.
 
@@ -21,7 +21,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
-- Latest source fixes LiveKit's two-layer `q,h` sender guard; production predates it.
+- Production includes LiveKit's two-layer `q,h` sender guard; its functional media proof remains local, not production.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
 - Web roster includes Host self-name and requests window-scoped display audio where supported; both are hints, and Native wire/media is unchanged.
 
@@ -38,11 +38,11 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
 - Source adds selected Host ingress and peer last-mile for every enabled room; focused routing/config tests pass with Peer ICE STUN-only.
 - Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
-- The `fd76277` gate preserved the environment and SQLite hashes, v3/five rooms/room `1`, selected-edge/SFU/ordinary-ICE settings, services, and local/public health plus route/asset 200s. Site access returned the unauthenticated status and the retired endpoint returned 404; no TURN/SFU session ran. Exact `5e4a3679076a9ea2fe7a41fadf4be65a439db450` is the rollback release.
+- Exact `22119b9` passed typecheck, both builds and 30 files/440 tests. Deploy preserved environment, ingress/media/firewall/listener/SQLite hashes, v3/five rooms/room `1`, route settings, services and local/public/route/asset 200s. Site access stayed required, the retired endpoint remained 404, and no TURN/SFU session ran. Rollback is exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`.
 
 ## Unverified Boundaries
 
-- The final deployment proves process/config health, not a retained SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas; game-share load/blur remains unclassified.
+- The `22119b9` deployment proves process/config health, not a retained production SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas; game-share load/blur remains unclassified.
 - Mobile Web Host unsupported; Viewer leaf-only. Android 14+ direct source/default-off selected-UID audio passed six protocol tests/`assembleDebug`. No device/audible claim; mediaProjection-only background, opt-out/silence/A-V, SFU/rotation remain open. iOS deferred; TV output P2.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
@@ -54,7 +54,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 
 ## Next Milestone
 
-Deploy the `q,h` fix; one bounded production room `1` canary must retain UDP, a rendered frame, edge caps, and clean stop. TURN/performance follow later.
+Run one bounded production room `1` canary that retains UDP, a rendered frame, edge caps, and clean stop. TURN/performance follow later.
 Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then SFU. Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root evacuation.
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Benchmark later.
 Ordinary Peer ICE stays STUN-only. Selected-edge Host ingress still needs one forced-relay canary before a media-success claim.

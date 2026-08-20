@@ -13,26 +13,26 @@ current controller's automatic final media fallback. This capacity is dormant un
 `LIVEKIT_URL`/key/secret tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
 ICE/UDP only. Source no longer contains the rejected participant-wide Peer ICE TURN
-candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank. A
-the selected-edge source tuple is enabled in production only for the controller's
+candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank. The
+selected-edge source tuple is enabled in production only for the controller's
 single exceptional edge. Production ordinary peer ICE remains STUN-only and the
 tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`
+Production currently runs exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. The 915,377-byte artifact has SHA-256
-`8da4b8b2b1ae4b82add615f4367ee447b5ade86c4e58a938e51085940b9867d3`.
-The 2026-08-20T20:53:59Z UTC cutover held the deployment lock for 8,389 ms;
-local health returned 520 ms after service stop (478 ms after the symlink
+integrity. The 660,626-byte artifact has SHA-256
+`3cbd8f6be82fa615fa2861ff1be0eba6c98f3f7d9acb73a0ba5c21a2ff4c661c`.
+The 2026-08-20T22:17:43Z UTC cutover held the deployment lock for 1,696 ms;
+local health returned 508 ms after service stop (479 ms after the symlink
 switch). Screener, LiveKit, coturn, and nginx are active/running with
 `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
 service owner/mode and database hash preserved. `SITE_ACCESS_PASSWORD`,
 `/api/site-access`, and the nginx limiter replaced their retired Host-admission
 names in the prior access cutover; this release preserved the environment hash
 and the old endpoint remains 404. Exact
-`5e4a3679076a9ea2fe7a41fadf4be65a439db450`
+`fd76277b05d491af8840b28f3132b7ff445d3cbe`
 is the immediate rollback target.
 The selected-edge UDP tuple is configured with TTL 120, but no real TURN/SFU
 media canary was triggered; this remains a bounded configuration smoke, not
@@ -474,6 +474,26 @@ root, and room route returned 200, all four services remained active/running,
 and exact `cf149df2411798cd632cc92a562b0a35146e0c1b` became the rollback release.
 No browser, TURN, SFU, or media canary was run, so this is deployment/config
 evidence only.
+
+The LiveKit two-layer RID fix cutover used exact source
+`22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` and immutable artifact
+`screener-22119b907d3cf03ce8b06d6fb4596ce1a26fedd7-20260820T221200Z-git.tar.gz`
+(660,626 bytes, SHA-256
+`3cbd8f6be82fa615fa2861ff1be0eba6c98f3f7d9acb73a0ba5c21a2ff4c661c`).
+The exact source passed typecheck, both builds, and 30 test files/440 tests.
+The one lock-held cutover completed at 2026-08-20T22:17:44.589825032Z;
+the lock was held for 1,695.676 ms, stop-to-health took 507.877 ms, and
+symlink-to-health took 479.483 ms. The release and its immediate
+`fd76277b05d4` rollback share zero regular-file inodes.
+
+Environment, nginx, LiveKit, coturn, nftables, listener, and SQLite hashes were
+unchanged. SQLite v3 retained five rooms including room `1` with owner/mode
+`screener:screener`/0600. Local/public health, root, room `1`, the built asset,
+site-access status, and the retired-endpoint 404 passed; all four services were
+active/running with their observed `NRestarts=0`. No browser, SFU media, TURN,
+or performance canary ran. This deploys the `q,h` guard and preserves exact
+`fd76277b05d491af8840b28f3132b7ff445d3cbe` as the rollback release; the one-SFU-
+root functional evidence remains the separate localhost Chrome run.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
