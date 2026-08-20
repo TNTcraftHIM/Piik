@@ -19,6 +19,7 @@ export interface StatsAccumulator {
   timestamp: number | null;
   previousTotalEncodeTime: number | null;
   previousTotalDecodeTime: number | null;
+  previousPacketsSent: number | null;
   previousPacketsReceived: number | null;
   previousPacketsLost: number | null;
   previousFramesDropped: number | null;
@@ -42,6 +43,7 @@ export function createStatsAccumulator(): StatsAccumulator {
     timestamp: null,
     previousTotalEncodeTime: null,
     previousTotalDecodeTime: null,
+    previousPacketsSent: null,
     previousPacketsReceived: null,
     previousPacketsLost: null,
     previousFramesDropped: null,
@@ -288,6 +290,7 @@ export async function collectConnectionMetrics(
   const timestamp = numberValue(media, "timestamp");
   const framesEncoded = numberValue(media, "framesEncoded");
   const framesDecoded = numberValue(media, "framesDecoded");
+  const packetsSent = numberValue(media, "packetsSent");
   const packetsReceived = numberValue(media, "packetsReceived");
   const packetsLost = numberValue(
     direction === "send" ? remoteInbound : media,
@@ -359,8 +362,16 @@ export async function collectConnectionMetrics(
           sampleWindowMs !== null,
         )
       : null;
+  const intervalPacketsSent =
+    direction === "send"
+      ? intervalDelta(
+          packetsSent,
+          previous.previousPacketsSent,
+          sampleWindowMs !== null,
+        )
+      : null;
   const intervalPacketsLost =
-    direction === "receive"
+    direction === "receive" || direction === "send"
       ? intervalDelta(
           packetsLost,
           previous.previousPacketsLost,
@@ -408,6 +419,7 @@ export async function collectConnectionMetrics(
   previous.timestamp = timestamp;
   previous.previousTotalEncodeTime = totalEncodeTime;
   previous.previousTotalDecodeTime = totalDecodeTime;
+  previous.previousPacketsSent = packetsSent;
   previous.previousPacketsReceived = packetsReceived;
   previous.previousPacketsLost = packetsLost;
   previous.previousFramesDropped = framesDropped;
@@ -456,6 +468,7 @@ export async function collectConnectionMetrics(
     frameHeight: height,
     resolution: width !== null && height !== null ? `${width}x${height}` : null,
     packetsLost,
+    intervalPacketsSent,
     intervalPacketsReceived,
     intervalPacketsLost,
     jitterMs:

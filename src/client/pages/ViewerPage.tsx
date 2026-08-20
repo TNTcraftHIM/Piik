@@ -29,6 +29,9 @@ import { StatsGrid } from "../components/StatsGrid";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import type { QualitySettings } from "../media/quality";
+import {
+  ParentEdgeQualityEvidenceReporter,
+} from "../media/parent-edge-quality-evidence";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
@@ -182,6 +185,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
       (message) => active && signal.send(message),
     );
+    const parentEdgeQualityEvidenceReporter =
+      new ParentEdgeQualityEvidenceReporter();
 
     function clearRelayChildEvidence(): void {
       relayChildEvidenceCurrent = null;
@@ -193,13 +198,21 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     }
 
     function acceptRelayChildEvidence(evidence: ViewerQualityEvidence): void {
+      const relaySnapshot = viewerRelay?.getSnapshot() ?? null;
       if (
         !peerAssisted ||
         evidence.parentPeerId !== currentPeerId ||
         evidence.guard.routeRevision !== currentRouteRevision ||
-        !qualityEvidenceMatchesSnapshot(evidence, viewerRelay?.getSnapshot() ?? null)
+        !qualityEvidenceMatchesSnapshot(evidence, relaySnapshot)
       ) {
         return;
+      }
+      const parentEvidence = parentEdgeQualityEvidenceReporter.offer(
+        evidence,
+        relaySnapshot,
+      );
+      if (parentEvidence) {
+        signal.send(parentEvidence);
       }
       clearRelayChildEvidence();
       relayChildEvidenceCurrent = evidence;
@@ -288,6 +301,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return;
           }
           currentAssignment = { parentPeerId: null, childPeerIds: [] };
+          parentEdgeQualityEvidenceReporter.reset();
           clearPeerState();
           viewerRelay?.setChild(null);
         },
@@ -295,6 +309,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           if (!active || viewerSfuRoute !== route) {
             return;
           }
+          const previousChildId = currentAssignment.childPeerIds[0] ?? null;
           currentAssignment = limitMediaAssignment(
             {
               parentPeerId: currentAssignment.parentPeerId,
@@ -302,6 +317,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             },
             MAX_VIEWER_MEDIA_CHILDREN,
           );
+          if (
+            previousChildId &&
+            previousChildId !== (currentAssignment.childPeerIds[0] ?? null)
+          ) {
+            parentEdgeQualityEvidenceReporter.forget(previousChildId);
+          }
           ensureViewerRelay()?.setChild(
             currentAssignment.childPeerIds[0] ?? null,
           );
@@ -310,10 +331,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           if (!active || viewerSfuRoute !== route) {
             return;
           }
+          const previousChildId = currentAssignment.childPeerIds[0] ?? null;
           currentAssignment = limitMediaAssignment(
             { parentPeerId: null, childPeerIds: assignment.childPeerIds },
             MAX_VIEWER_MEDIA_CHILDREN,
           );
+          if (
+            previousChildId &&
+            previousChildId !== (currentAssignment.childPeerIds[0] ?? null)
+          ) {
+            parentEdgeQualityEvidenceReporter.forget(previousChildId);
+          }
           const relay = ensureViewerRelay();
           relay?.setChild(currentAssignment.childPeerIds[0] ?? null);
           relay?.setStream(nextStream);
@@ -396,6 +424,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setStatusText("正在恢复连接");
       }
       if (previousChildId !== (nextAssignment.childPeerIds[0] ?? null)) {
+        if (previousChildId) {
+          parentEdgeQualityEvidenceReporter.forget(previousChildId);
+        }
         clearRelayChildEvidence();
       }
       ensureViewerRelay()?.setChild(nextAssignment.childPeerIds[0] ?? null);
@@ -714,6 +745,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       active = false;
       currentPeerId = null;
       qualityEvidenceReporter.reset();
+      parentEdgeQualityEvidenceReporter.reset();
       relayChildEvidenceCurrent = null;
       if (relayChildEvidenceTimer !== null) {
         window.clearTimeout(relayChildEvidenceTimer);

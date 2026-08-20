@@ -27,7 +27,7 @@ Last updated: 2026-08-20
 - Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
 - ADR-0005 accepts SFU roots as the primary central fallback after direct/peer UDP. The candidate has no TURN consumer or credential wire; any future exceptional-edge grant is a complete separate change. PR #12 is superseded.
 - Keep the controller exact-room only: room `1` is the STUN/SFU smoke. Preserve sticky progressing P2P, mobile leaves and break-before-make. Recovery spends one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries; active SFU gets one fresh grant before Peer failback.
-- Local reparenting is a later candidate: start with unassigned relay admission rescue; do not block current work.
+- Quality reparenting needs three correlated C+B hard-bad windows and reuses the local-subtree peer/SFU/failure intent. Single-sided reports are diagnostic; one room cooldown blocks churn. No score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
@@ -51,7 +51,7 @@ Last updated: 2026-08-20
 - Native drafts remain experiments: one WebCodecs object is not hardware proof; stock GCC+RTX is no-go.
 - Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
 - Room 1 publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings. It is unverified; test zero-child leaves, then root evacuation before broad rollout.
-- Local Host A+B aligns one capture/outbound/transport generation; authenticated Viewer C adds a sanitized, read-only P2P window and fails closed for stale, ambiguous, or SFU-fed evidence. It retains no raw fmtp/SDP/stats and performs no media action. Topology classification remains absent.
+- Generation-bound C+B needs three hard-bad windows; parent samples are one-use per connection. Pending SFU binds intent/guard. Stale/successful peer work releases quality exclusion; real failure may take it over. No metadata/topology classification.
 
 ## Provisional Quality Targets
 
@@ -71,7 +71,7 @@ These are measurement gates, not performance claims.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
 - Whether voice chat ever enters scope or Screener stays complementary to an existing voice application.
-- Exact evidence thresholds/windows and the native hardware matrix for ADR-0007; #28's minimum-of-two rule is not a candidate.
+- Production calibration of local-reparent thresholds and the ADR-0007 native matrix; #28's minimum-of-two rule is not a candidate.
 
 ## Source Of Truth
 

@@ -5,12 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import {
+  MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SIGNAL_BYTES,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   SIGNALING_PROTOCOL,
   decodeServerMessage,
+  type ParentEdgeQualityProof,
   type Role,
   type ServerMessage,
+  type ViewerQualityEvidenceMetrics,
 } from "../src/shared/protocol.ts";
 import {
   createScreenerServer,
@@ -21,6 +24,7 @@ import { RoomDatabase } from "../src/server/room-database.ts";
 import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
 import { SignalingServer } from "../src/server/signaling.ts";
 import type { SfuTokenIssuer } from "../src/server/livekit-token.ts";
+import { HybridMediaRouter } from "../src/server/hybrid-media-router.ts";
 
 const allowedOrigin = "http://allowed.test";
 const defaultQualitySettings = {
@@ -237,12 +241,51 @@ function viewerQualityEvidence(
   } as const;
 }
 
+function viewerQualityEvidenceWithMetrics(
+  connectionId: string,
+  routeRevision: number,
+  sequence: number,
+  metrics: Partial<ViewerQualityEvidenceMetrics>,
+) {
+  const evidence = viewerQualityEvidence(
+    connectionId,
+    routeRevision,
+    sequence,
+  );
+  return {
+    ...evidence,
+    metrics: { ...evidence.metrics, ...metrics },
+  };
+}
+
+async function correlateParentEdgeQualityEvidence(
+  parent: TestClient,
+  proof: ParentEdgeQualityProof = {
+    kind: "remote-loss",
+    packetsSentDelta: 100,
+    remotePacketsLostDelta: 30,
+  },
+) {
+  const viewerEvidence = await parent.inbox.next("viewer-quality-evidence");
+  parent.socket.send(
+    JSON.stringify({
+      type: "parent-edge-quality-evidence",
+      viewerPeerId: viewerEvidence.viewerPeerId,
+      guard: viewerEvidence.guard,
+      viewerSequence: viewerEvidence.sequence,
+      proof,
+    }),
+  );
+  return viewerEvidence;
+}
+
 async function startSfuHarness(options: {
   tokenIssuer: SfuTokenIssuer;
   prepareTimeoutMs?: number;
   maxRoots?: number;
   viewerDisconnectGraceMs?: number;
   stunUrls?: readonly string[];
+  now?: () => number;
 }): Promise<SignalHarness> {
   const roomStore = new RoomStore({
     ttlMs: 14_400_000,
@@ -272,6 +315,7 @@ async function startSfuHarness(options: {
     allowedOrigins: new Set([allowedOrigin]),
     hostAdmissionAtUpgrade: () => true,
     publicBaseUrl: new URL("https://share.example.test"),
+    now: options.now,
     authenticationTimeoutMs: 500,
     viewerDisconnectGraceMs: options.viewerDisconnectGraceMs ?? 50,
     heartbeatIntervalMs: 60_000,
@@ -1715,6 +1759,825 @@ describe("WebSocket signaling", () => {
     await host.inbox.expectNone(30);
   });
 
+  it("correlates B only from the current parent session and C generation", async () => {
+    const acceptedParentEvidence = vi.spyOn(
+      HybridMediaRouter.prototype,
+      "handleParentEdgeQualityEvidence",
+    );
+    let now = 80_000;
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      now: () => now,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-guard-host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(viewer, harness.room, "viewer", "quality-guard-viewer"),
+    );
+    const unrelatedParent = await openClient(harness.webSocketUrl);
+    const unrelatedParentAuth = peerAssisted(
+      await authenticate(
+        unrelatedParent,
+        harness.room,
+        "viewer",
+        "quality-guard-unrelated",
+      ),
+    );
+    const active = await nextActiveRouteAfter(
+      viewer,
+      viewerAuth.routeRevision,
+    );
+    expect(active.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_guard_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+
+    let sequence = 0;
+    const sendBadC = async (parent: TestClient = host) => {
+      viewer.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_guard_connection",
+            active.revision,
+            sequence,
+            { packetsReceivedDelta: 70, packetsLostDelta: 30 },
+          ),
+        ),
+      );
+      sequence += 1;
+      return parent.inbox.next("viewer-quality-evidence");
+    };
+    const parentProof = (
+      evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>,
+    ) => ({
+      type: "parent-edge-quality-evidence" as const,
+      viewerPeerId: evidence.viewerPeerId,
+      guard: evidence.guard,
+      viewerSequence: evidence.sequence,
+      proof: {
+        kind: "remote-loss" as const,
+        packetsSentDelta: 100,
+        remotePacketsLostDelta: 30,
+      },
+    });
+
+    let evidence = await sendBadC();
+    unrelatedParent.socket.send(JSON.stringify(parentProof(evidence)));
+    now += 2_000;
+
+    for (const mutate of [
+      (proof: ReturnType<typeof parentProof>) => ({
+        ...proof,
+        guard: { ...proof.guard, connectionId: "quality_guard_wrong" },
+      }),
+      (proof: ReturnType<typeof parentProof>) => ({
+        ...proof,
+        guard: { ...proof.guard, routeRevision: proof.guard.routeRevision + 1 },
+      }),
+      (proof: ReturnType<typeof parentProof>) => ({
+        ...proof,
+        viewerSequence: proof.viewerSequence + 1,
+      }),
+    ]) {
+      evidence = await sendBadC();
+      host.socket.send(JSON.stringify(mutate(parentProof(evidence))));
+      now += 2_000;
+    }
+
+    evidence = await sendBadC();
+    now += 5_001;
+    host.socket.send(JSON.stringify(parentProof(evidence)));
+
+    now += 2_000;
+    evidence = await sendBadC();
+    const replacementHost = await openClient(harness.webSocketUrl);
+    const replacementHostAuth = peerAssisted(
+      await authenticate(
+        replacementHost,
+        harness.room,
+        "host",
+        "quality-guard-host",
+      ),
+    );
+    expect(replacementHostAuth.peerId).toBe(hostAuth.peerId);
+    replacementHost.socket.send(JSON.stringify(parentProof(evidence)));
+
+    expect(acceptedParentEvidence).not.toHaveBeenCalled();
+    await expect(viewer.inbox.next("route-update", 40)).rejects.toThrow(
+      "Timed out",
+    );
+
+    now += 2_000;
+    for (let index = 0; index < 3; index += 1) {
+      evidence = await sendBadC(replacementHost);
+      const proof = parentProof(evidence);
+      replacementHost.socket.send(JSON.stringify(proof));
+      if (index === 0) {
+        replacementHost.socket.send(JSON.stringify(proof));
+      }
+      now += 2_000;
+    }
+    const moved = await nextActiveRouteAfter(viewer, active.revision);
+    expect(acceptedParentEvidence).toHaveBeenCalledTimes(3);
+    expect(moved.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: unrelatedParentAuth.peerId,
+    });
+    acceptedParentEvidence.mockRestore();
+  });
+
+  it("reparents only a viewer subtree after three hard quality windows", async () => {
+    let now = 100_000;
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      now: () => now,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-route-host"),
+    );
+    host.inbox.ignore("route-update");
+    host.inbox.ignore("media-assignment");
+
+    const parentA = await openClient(harness.webSocketUrl);
+    const parentAAuth = peerAssisted(
+      await authenticate(
+        parentA,
+        harness.room,
+        "viewer",
+        "quality-route-parent-a",
+      ),
+    );
+    expect(parentAAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    const parentB = await openClient(harness.webSocketUrl);
+    const parentBAuth = peerAssisted(
+      await authenticate(
+        parentB,
+        harness.room,
+        "viewer",
+        "quality-route-parent-b",
+      ),
+    );
+    expect(parentBAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    const subtreeRoot = await openClient(harness.webSocketUrl);
+    const subtreeRootAuth = peerAssisted(
+      await authenticate(
+        subtreeRoot,
+        harness.room,
+        "viewer",
+        "quality-route-subtree-root",
+      ),
+    );
+    expect(subtreeRootAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentAAuth.peerId,
+    });
+    const alternateParent = await openClient(harness.webSocketUrl);
+    const alternateParentAuth = peerAssisted(
+      await authenticate(
+        alternateParent,
+        harness.room,
+        "viewer",
+        "quality-route-alternate-parent",
+      ),
+    );
+    expect(alternateParentAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentBAuth.peerId,
+    });
+    const subtreeLeaf = await openClient(harness.webSocketUrl);
+    const subtreeLeafAuth = peerAssisted(
+      await authenticate(
+        subtreeLeaf,
+        harness.room,
+        "viewer",
+        "quality-route-subtree-leaf",
+        0,
+      ),
+    );
+    expect(subtreeLeafAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: subtreeRootAuth.peerId,
+    });
+    await nextActiveRouteRevision(
+      subtreeRoot,
+      subtreeLeafAuth.routeRevision,
+    );
+
+    parentA.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: subtreeRootAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_route_parent_a",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await subtreeRoot.inbox.next("signal");
+
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      subtreeRoot.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_route_stale",
+            subtreeLeafAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+    }
+    await expect(
+      subtreeRoot.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      subtreeRoot.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_route_parent_a",
+            subtreeLeafAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await parentA.inbox.next("viewer-quality-evidence");
+      now += 2_000;
+    }
+    await expect(
+      subtreeRoot.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+
+    for (let sequence = 3; sequence < 6; sequence += 1) {
+      subtreeRoot.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_route_parent_a",
+            subtreeLeafAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(parentA, {
+        kind: "sending",
+        packetsSentDelta: 1_500,
+      });
+      now += 2_000;
+    }
+    await expect(
+      subtreeRoot.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+
+    subtreeRoot.socket.send(
+      JSON.stringify(
+        viewerQualityEvidenceWithMetrics(
+          "quality_route_parent_a",
+          subtreeLeafAuth.routeRevision,
+          6,
+          { packetsReceivedDelta: 70, packetsLostDelta: 30 },
+        ),
+      ),
+    );
+    await correlateParentEdgeQualityEvidence(parentA);
+    now += 2_000;
+    subtreeRoot.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence(
+          "quality_route_parent_a",
+          subtreeLeafAuth.routeRevision,
+          7,
+        ),
+      ),
+    );
+    await correlateParentEdgeQualityEvidence(parentA);
+    now += 2_000;
+    subtreeRoot.socket.send(
+      JSON.stringify(
+        viewerQualityEvidenceWithMetrics(
+          "quality_route_parent_a",
+          subtreeLeafAuth.routeRevision,
+          8,
+          { freezeDurationMsDelta: 1_000 },
+        ),
+      ),
+    );
+    await correlateParentEdgeQualityEvidence(parentA, {
+      kind: "sender-limited",
+      packetsSentDelta: 1_500,
+      reason: "cpu",
+    });
+    now += 2_000;
+    subtreeRoot.socket.send(
+      JSON.stringify(
+        viewerQualityEvidenceWithMetrics(
+          "quality_route_parent_a",
+          subtreeLeafAuth.routeRevision,
+          9,
+          { freezeDurationMsDelta: 1_000 },
+        ),
+      ),
+    );
+    await correlateParentEdgeQualityEvidence(parentA, {
+      kind: "sender-limited",
+      packetsSentDelta: 1_500,
+      reason: "bandwidth",
+    });
+    await expect(
+      subtreeRoot.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+
+    now += 2_000;
+    subtreeRoot.socket.send(
+      JSON.stringify(
+        viewerQualityEvidenceWithMetrics(
+          "quality_route_parent_a",
+          subtreeLeafAuth.routeRevision,
+          10,
+          { freezeDurationMsDelta: 1_000 },
+        ),
+      ),
+    );
+    await correlateParentEdgeQualityEvidence(parentA, {
+      kind: "sender-limited",
+      packetsSentDelta: 1_500,
+      reason: "cpu",
+    });
+    const movedRoot = await nextActiveRouteAfter(
+      subtreeRoot,
+      subtreeLeafAuth.routeRevision,
+    );
+    expect(movedRoot.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: alternateParentAuth.peerId,
+    });
+    const movedLeaf = await nextActiveRouteAfter(
+      subtreeLeaf,
+      subtreeLeafAuth.routeRevision,
+    );
+    expect(movedLeaf).toMatchObject({
+      revision: movedRoot.revision,
+      assignment: {
+        upstream: { kind: "peer", peerId: subtreeRootAuth.peerId },
+      },
+    });
+    const unchangedBranch = await nextActiveRouteAfter(
+      alternateParent,
+      subtreeLeafAuth.routeRevision,
+    );
+    expect(unchangedBranch).toMatchObject({
+      revision: movedRoot.revision,
+      assignment: {
+        upstream: { kind: "peer", peerId: parentBAuth.peerId },
+        childPeerIds: [subtreeRootAuth.peerId],
+      },
+    });
+    const unchangedBranchRoot = await nextActiveRouteAfter(
+      parentB,
+      subtreeLeafAuth.routeRevision,
+    );
+    expect(unchangedBranchRoot).toMatchObject({
+      revision: movedRoot.revision,
+      assignment: {
+        upstream: { kind: "peer", peerId: hostAuth.peerId },
+        childPeerIds: [alternateParentAuth.peerId],
+      },
+    });
+
+    subtreeRoot.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: subtreeLeafAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_route_leaf",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await subtreeLeaf.inbox.next("signal");
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      now += 2_000;
+      subtreeLeaf.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_route_leaf",
+            movedRoot.revision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(subtreeRoot);
+    }
+    await expect(
+      subtreeLeaf.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+    await expect(
+      subtreeLeaf.inbox.next("error", 40),
+    ).rejects.toThrow("Timed out");
+
+    alternateParent.socket.close();
+    const reattachedRoot = await nextActiveRouteAfter(
+      subtreeRoot,
+      movedRoot.revision,
+    );
+    expect(reattachedRoot.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentAAuth.peerId,
+    });
+
+    parentA.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: subtreeRootAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_route_reattached",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await subtreeRoot.inbox.next("signal");
+    subtreeRoot.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: reattachedRoot.revision,
+        phase: "active",
+        connectionId: "quality_route_reattached",
+      }),
+    );
+    const recoveredRoot = await nextActiveRouteAfter(
+      subtreeRoot,
+      reattachedRoot.revision,
+    );
+    expect(recoveredRoot.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentBAuth.peerId,
+    });
+  });
+
+  it("resets a hard-quality streak after a five-second evidence gap", async () => {
+    let now = 200_000;
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      now: () => now,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-gap-host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(viewer, harness.room, "viewer", "quality-gap-viewer"),
+    );
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_gap_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+
+    const sendBadWindow = async (sequence: number) => {
+      viewer.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_gap_connection",
+            viewerAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(host);
+    };
+    await sendBadWindow(0);
+    now += 2_000;
+    await sendBadWindow(1);
+    now += 5_001;
+    await sendBadWindow(2);
+    await expect(viewer.inbox.next("error", 40)).rejects.toThrow("Timed out");
+    now += 2_000;
+    await sendBadWindow(3);
+    await expect(viewer.inbox.next("error", 40)).rejects.toThrow("Timed out");
+    now += 2_000;
+    await sendBadWindow(4);
+    expect(await viewer.inbox.next("error")).toMatchObject({
+      code: "PEER_NOT_FOUND",
+      message: "No media fallback route is available",
+    });
+    expect(viewerAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+  });
+
+  it("breaks a hard-quality streak when newer C replaces an unmatched window", async () => {
+    let now = 225_000;
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      now: () => now,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-pending-host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "quality-pending-viewer",
+      ),
+    );
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_pending_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+
+    const sendBadC = (sequence: number) => {
+      viewer.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_pending_connection",
+            viewerAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+    };
+
+    sendBadC(0);
+    await correlateParentEdgeQualityEvidence(host);
+    now += 2_000;
+
+    sendBadC(1);
+    await host.inbox.next("viewer-quality-evidence");
+    now += 2_000;
+
+    sendBadC(2);
+    await correlateParentEdgeQualityEvidence(host);
+    now += 2_000;
+    sendBadC(3);
+    await correlateParentEdgeQualityEvidence(host);
+    await expect(viewer.inbox.next("error", 40)).rejects.toThrow("Timed out");
+
+    now += 2_000;
+    sendBadC(4);
+    await correlateParentEdgeQualityEvidence(host);
+    expect(await viewer.inbox.next("error")).toMatchObject({
+      code: "PEER_NOT_FOUND",
+      message: "No media fallback route is available",
+    });
+    expect(viewerAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+  });
+
+  it("keeps a pending quality SFU prepare after the same intent becomes a real failure", async () => {
+    let now = 250_000;
+    let releaseTokens!: () => void;
+    let markTokenStarted!: () => void;
+    const tokenBarrier = new Promise<void>((resolve) => {
+      releaseTokens = resolve;
+    });
+    const tokenStarted = new Promise<void>((resolve) => {
+      markTokenStarted = resolve;
+    });
+    const harness = await startSfuHarness({
+      now: () => now,
+      tokenIssuer: {
+        async issueToken(request) {
+          markTokenStarted();
+          await tokenBarrier;
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const host = await openClient(harness.webSocketUrl);
+    peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-takeover-host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "quality-takeover-viewer",
+      ),
+    );
+    await nextActiveRouteRevision(host, viewerAuth.routeRevision);
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_takeover_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      viewer.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_takeover_connection",
+            viewerAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(host);
+      now += 2_000;
+    }
+    await tokenStarted;
+
+    viewer.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: viewerAuth.routeRevision,
+        phase: "active",
+        connectionId: "quality_takeover_connection",
+      }),
+    );
+    viewer.socket.send(
+      JSON.stringify({
+        type: "set-quality-settings",
+        qualitySettings: defaultQualitySettings,
+      }),
+    );
+    expect(await viewer.inbox.next("error")).toMatchObject({
+      code: "FORBIDDEN",
+    });
+    releaseTokens();
+
+    const prepare = await nextPreparedRoute(viewer);
+    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(await viewer.inbox.next("sfu-config")).toMatchObject({
+      revision: prepare.revision,
+    });
+  });
+
+  it("aborts a quality SFU prepare after next-generation C removes its intent", async () => {
+    let now = 300_000;
+    let releaseTokens!: () => void;
+    let holdTokens = true;
+    const tokenBarrier = new Promise<void>((resolve) => {
+      releaseTokens = resolve;
+    });
+    const harness = await startSfuHarness({
+      now: () => now,
+      tokenIssuer: {
+        async issueToken(request) {
+          if (holdTokens) {
+            await tokenBarrier;
+          }
+          return `token-${request.peerId}`;
+        },
+      },
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "quality-guard-host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "quality-guard-viewer",
+      ),
+    );
+    await nextActiveRouteRevision(host, viewerAuth.routeRevision);
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_guard_original",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      viewer.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "quality_guard_original",
+            viewerAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(host);
+      now += 2_000;
+    }
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "quality_guard_replaced",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+    viewer.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence(
+          "quality_guard_replaced",
+          viewerAuth.routeRevision,
+          0,
+        ),
+      ),
+    );
+    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
+      guard: { connectionId: "quality_guard_replaced" },
+      sequence: 0,
+    });
+    holdTokens = false;
+    releaseTokens();
+
+    const rollback = await nextActiveRouteAfter(
+      viewer,
+      viewerAuth.routeRevision,
+    );
+    expect(rollback.assignment).toMatchObject({
+      upstream: { kind: "peer", peerId: hostAuth.peerId },
+      sfuPublicationGeneration: null,
+    });
+    await expect(viewer.inbox.next("sfu-config", 40)).rejects.toThrow(
+      "Timed out",
+    );
+
+    viewer.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: rollback.revision,
+        phase: "active",
+        connectionId: "quality_guard_replaced",
+      }),
+    );
+    const prepare = await nextPreparedRoute(viewer);
+    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(await viewer.inbox.next("sfu-config")).toMatchObject({
+      revision: prepare.revision,
+    });
+  });
+
   it("rejects viewer C evidence above the byte cap", async () => {
     const harness = await startHarness();
     const viewer = await openClient(harness.webSocketUrl);
@@ -1736,6 +2599,33 @@ describe("WebSocket signaling", () => {
     );
 
     expect(await viewer.inbox.next("error")).toMatchObject({
+      code: "INVALID_MESSAGE",
+    });
+    expect(await closed).toBe(1008);
+  });
+
+  it("rejects parent B evidence above the byte cap", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "oversized-parent-host");
+    const closed = new Promise<number>((resolve) =>
+      host.socket.once("close", (code) => resolve(code)),
+    );
+    const valid = JSON.stringify({
+      type: "parent-edge-quality-evidence",
+      viewerPeerId: "oversized_parent_viewer",
+      guard: {
+        connectionId: "oversized_parent_connection",
+        routeRevision: 0,
+      },
+      viewerSequence: 0,
+      proof: { kind: "sending", packetsSentDelta: 1 },
+    });
+
+    host.socket.send(
+      `${valid}${" ".repeat(MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES + 1)}`,
+    );
+    expect(await host.inbox.next("error")).toMatchObject({
       code: "INVALID_MESSAGE",
     });
     expect(await closed).toBe(1008);
