@@ -20,15 +20,18 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `c27df2235ecc0be17816f642ca49028e30380a34`
+Production currently runs exact `5e4a3679076a9ea2fe7a41fadf4be65a439db450`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. The 912,999-byte artifact has SHA-256
-`1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`.
-The 2026-08-20T19:03:10Z UTC cutover held the deployment lock for 662 ms;
-local health returned 552 ms after service stop (543 ms after the symlink
+integrity. The 909,974-byte artifact has SHA-256
+`e484773c7dc381e657da18720e842c3ae90ad727320a650abcb1098428c74774`.
+The 2026-08-20T20:11:20Z UTC cutover held the deployment lock for 9,474 ms;
+local health returned 676 ms after service stop (529 ms after the symlink
 switch). Screener, LiveKit, coturn, and nginx are active/running with
 `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
-service owner/mode preserved. Exact `cf149df2411798cd632cc92a562b0a35146e0c1b`
+service owner/mode and database hash preserved. `SITE_ACCESS_PASSWORD`,
+`/api/site-access`, and the nginx limiter replaced their retired Host-admission
+names in the same lock-held cutover; the old endpoint returns 404. Exact
+`c27df2235ecc0be17816f642ca49028e30380a34`
 is the immediate rollback target.
 The selected-edge UDP tuple is configured with TTL 120, but no real TURN/SFU
 media canary was triggered; this remains a bounded configuration smoke, not
