@@ -1,6 +1,6 @@
 # Minimal Deployment
 
-Last verified against upstream documentation: 2026-08-20.
+Last verified against upstream documentation: 2026-08-21.
 
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
@@ -14,21 +14,24 @@ current controller's automatic final media fallback. This capacity is dormant un
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
 ICE/UDP only. Source no longer contains the rejected participant-wide Peer ICE TURN
 candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank. A
-default-off selected-edge source candidate exists but is not deployed. Production advertises
-STUN-only ICE and the tracked coturn example remains
-`stun-only`. The shared host still retains its older authenticated-relay daemon
-configuration and firewall range, but the application advertises no credential.
+the selected-edge source tuple is enabled in production only for the controller's
+single exceptional edge. Production ordinary peer ICE remains STUN-only and the
+tracked coturn example remains `stun-only`; the shared host retains its older
+authenticated-relay daemon configuration and firewall range. The application
+does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612` for exact
-room `1` on the existing shared public IP, with health 200 and SQLite v3. The
-current Screener, LiveKit, coturn, and nginx services each report
-`NRestarts=0`. The preceding `fdd14ba` deployment completed successfully and
-remains the rollback target. Rolling back the admission-policy cutover requires
-`89e6d7649169` plus the environment backup recorded below; only deeper
-pre-access `9610032fc5f5` may restore matching v1 state. The production
-application TURN tuple is absent and the failed canary backup is inactive. This
-is a bounded smoke, not broad-rollout acceptance. The selected-edge TURN tuple
-is disabled in production.
+Production currently runs exact `cf149df2411798cd632cc92a562b0a35146e0c1b`
+on the existing shared public IP, with local/public health 200 and SQLite v3
+integrity. The 893,953-byte artifact has SHA-256
+`80918716aefdbb958289b06b6f31551b78dbbaf7fb0f16980eb38d127e158e14`.
+The 2026-08-20T17:48:29Z UTC cutover held the deployment lock for 9,256.904 ms;
+local health returned 562.657 ms after service stop (509.983 ms after the
+symlink switch). Screener, LiveKit, coturn, and nginx are active/running with
+`NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
+service owner/mode preserved. The prior `fdd14ba` remains the rollback target.
+The selected-edge UDP tuple is configured with TTL 120, but no real TURN/SFU
+media canary was triggered; this remains a bounded configuration smoke, not
+broad-rollout media acceptance.
 
 ## Topology and prerequisites
 
@@ -110,7 +113,9 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is source-only and not yet deployed.
+selected-edge TURN config/wire is deployed in the `cf149df` release with one
+UDP URL and a 120-second credential TTL. It was not exercised by a real media
+session during this cutover.
 
 `PEER_ASSISTED_MEDIA=true` is the process-wide topology/SFU switch. Every normal
 room gets its own bounded controller state; ordinary peer connections remain
@@ -195,11 +200,12 @@ MAX_SFU_ROOTS_PER_ROOM=2
 The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
 stale key, even blank, fails startup. The source candidate uses the complete
 `SELECTED_EDGE_TURN_URLS`, `SELECTED_EDGE_TURN_SHARED_SECRET`, and
-`SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS` default-off tuple with one explicit
-TURN/UDP URI, an independent secret and bounded TTL. Enable it only after the
-all-room peer/SFU tuple and bounded coturn service are ready; roll back by
-removing the application tuple before changing coturn or firewall state. Credentials
-never enter URLs, logs, browser persistence, room rows, or SQLite.
+`SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS` tuple with one explicit TURN/UDP URI,
+an independent secret and bounded TTL. The current production tuple uses the
+coturn UDP endpoint and a 120-second TTL; only the controller-selected edge may
+receive a short-lived grant. Roll back by removing the application tuple before
+changing coturn or firewall state. Credentials never enter URLs, logs, browser
+persistence, room rows, or SQLite.
 
 `PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
 that a stale room-1 deployment cannot silently retain the old scope. With
@@ -284,11 +290,12 @@ Room allocation has two deliberately small policies:
   to `ROOM_TTL_SECONDS`; a private grant cannot outlive its room. Stopping sharing
   does not immediately delete it. Public-watch remains available but explicit.
 
-The built-in `node:sqlite` schema v2 stores only each room ID, a SHA-256 Host
-token digest, and one nullable SHA-256 Viewer-grant digest in the same `STRICT`
-row. `NULL` means public-watch; a checked 32-byte BLOB means private-link. It
-must not contain plaintext tokens or grants, passwords, cookies, names,
-participants, SDP, ICE candidates, IP addresses, TURN credentials, or media.
+The built-in `node:sqlite` schema v3 stores each room ID, a SHA-256 Host token
+digest, one nullable SHA-256 Viewer-grant digest, and optional validated Viewer
+password material in the same `STRICT` row. `NULL` means public-watch or no
+password; checked BLOBs mean private-link/password state. It must not contain
+plaintext tokens or grants, passwords, cookies, names, participants, SDP, ICE
+candidates, IP addresses, TURN credentials, or media.
 Protect and back up the file as service state. The tracked
 systemd unit creates `/var/lib/screener` with `StateDirectory=screener` and mode
 `0700`; the production path above is writable despite `ProtectSystem=strict`.
@@ -413,6 +420,37 @@ including room `1`; the current Screener, LiveKit, coturn, and nginx services
 each report `NRestarts=0`. Host display-name remains source-only/not deployed.
 No selected-edge TURN enablement occurred.
 
+The all-room routing and selected-edge configuration cutover used exact source
+`cf149df2411798cd632cc92a562b0a35146e0c1b` and immutable artifact
+`screener-cf149df2411798cd632cc92a562b0a35146e0c1b-20260820T173812Z-git.tar.gz`
+(893,953 bytes, SHA-256
+`80918716aefdbb958289b06b6f31551b78dbbaf7fb0f16980eb38d127e158e14`). The
+single lock-held run started at 2026-08-20T17:48:24.554Z and finished at
+2026-08-20T17:48:33.809Z (9,256.904 ms). Screener stopped at
+17:48:29.425Z, the symlink switched at 17:48:29.478Z, and local health was
+ready at 17:48:29.988Z: 562.657 ms from stop, or 509.983 ms from switch.
+The two transient local connection-refused probes were within that normal
+restart window; no browser or media benchmark was run.
+
+The final release removed `PEER_ASSISTED_ROOM_IDS`, set
+`PEER_ASSISTED_MEDIA=true` for every room, and configured one selected-edge
+TURN/UDP URL with a 120-second TTL. Ordinary peer ICE remained STUN-only; the
+coturn, nginx, LiveKit, firewall, and listener baselines were preserved, while
+the application environment changed only for the selected tuple and retained
+root ownership and mode 0600. Local/public health, the built asset, three neutral
+routes, and the anonymous Host-admission boolean passed. SQLite v3 integrity,
+owner/mode, checksum, five-room count, and room `1` were unchanged.
+Screener, LiveKit, coturn, and nginx were active/running with
+`NRestarts=0` at the final audit. The selected-edge tuple was not exercised
+by a real TURN session and no SFU frame or quality result was claimed.
+
+This release also carries the Web Host display-name path and the best-effort
+window-scoped display-audio request hint. Native H.264 opt-in source remains
+available in the repository, but no packaged native sender was deployed; VP8
+remains the Web default. The prior stale `NRestarts=31` rollback is historical
+evidence only, and the final wrapper records restart counts without asserting
+an obsolete baseline.
+
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
 created persistent room receives ID `1`.
@@ -428,8 +466,9 @@ compatibility.
 The rejected candidate names `PEER_ICE_TURN_URLS`,
 `PEER_ICE_TURN_SHARED_SECRET`, and
 `PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS` must remain absent from production and
-now fail startup even when blank. They are not aliases for the source-only
-selected-edge tuple, which is not deployed.
+now fail startup even when blank. They are not aliases for the selected-edge
+tuple; ordinary peer edges remain STUN-only while only the current controller
+edge may use the configured selected-edge transport.
 
 ## HTTPS and WSS ingress
 
@@ -521,13 +560,13 @@ canary pass silently.
 
 ## Self-hosted STUN
 
-This subsection describes the current temporary STUN-only deployment template,
-not the optional selected-edge target or the current shared-host coturn state. That
-host retains an older authenticated-relay configuration and TCP/UDP 3478 plus
-UDP 49152-49251 firewall range, while Screener advertises no TURN credential and
-the final canary audit found zero allocations. Authenticated selected-edge
-fallback is source-complete and default-off; its rollout stays blocked on
-retained SFU/UDP media and one forced-relay edge acceptance.
+This subsection describes the temporary STUN-only deployment template, not the
+enabled selected-edge production environment or the current shared-host coturn
+state. That host retains an older authenticated-relay configuration and TCP/UDP
+3478 plus UDP 49152-49251 firewall range. In this template Screener advertises
+no TURN credential and the canary audit found zero allocations; production
+selected-edge issuance remains limited to the controller's one configured edge
+and still lacks a real forced-relay media acceptance.
 
 Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.example)
 to an untracked service-owned location and use the tracked
