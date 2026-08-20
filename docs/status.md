@@ -37,7 +37,7 @@ also contains a no-go Native v2 candidate, but production does not run it.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - Source TURN tests pass; production/coturn stay STUN-only and untested.
-- Native remains experimental. The second 2026-08-20 run reached first WebCodecs output, then zero Go frame/RTP and no Viewer; cleanup passed 5/5. No product bug or retry followed.
+- Native stays no-go at WebCodecs -> Go RTP. MF proved RTX H.264 hardware (360/360, p95 11.575 ms); `42c01f` misses Pion's default fmtp, so Viewer interop is unproven.
 - Access focused tests pass protocol/config/HTTP/storage/RoomStore/SQLite/signaling, including commit-first teardown, persistence-failure continuity, relay/SFU retirement, grant bounds, and v1 migration rollback.
 
 ## Unverified Boundaries
