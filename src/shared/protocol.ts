@@ -9,6 +9,7 @@ export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
+export const MAX_TURN_CREDENTIAL_LENGTH = 256;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
@@ -192,7 +193,53 @@ export const stunUrlSchema = z
   .max(512)
   .refine(isValidStunUrl, { message: "Invalid STUN URL" });
 
-const iceServerSchema = z
+function isValidTurnUrl(value: string): boolean {
+  const schemeSeparator = value.indexOf(":");
+  if (
+    schemeSeparator <= 0 ||
+    value.slice(0, schemeSeparator).toLowerCase() !== "turn"
+  ) {
+    return false;
+  }
+
+  const turnUri = value.slice(schemeSeparator + 1);
+  const querySeparator = turnUri.indexOf("?");
+  const authorityText =
+    querySeparator === -1 ? turnUri : turnUri.slice(0, querySeparator);
+  const query = querySeparator === -1 ? "" : turnUri.slice(querySeparator + 1);
+  if (
+    !authorityText ||
+    /[\\/\s#]/.test(authorityText) ||
+    authorityText.endsWith(":") ||
+    query !== "transport=udp"
+  ) {
+    return false;
+  }
+
+  let authority: URL;
+  try {
+    authority = new URL(`http://${authorityText}`);
+  } catch {
+    return false;
+  }
+  return Boolean(
+    authority.hostname &&
+      !authority.username &&
+      !authority.password &&
+      authority.pathname === "/" &&
+      !authority.search &&
+      !authority.hash &&
+      (!authority.port || Number(authority.port) > 0),
+  );
+}
+
+export const turnUrlSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine(isValidTurnUrl, { message: "Invalid TURN URL" });
+
+const stunIceServerSchema = z
   .object({
     urls: z.union([
       stunUrlSchema,
@@ -201,12 +248,58 @@ const iceServerSchema = z
   })
   .strict();
 
+const turnIceServerSchema = z
+  .object({
+    urls: z.union([
+      turnUrlSchema,
+      z.array(turnUrlSchema).min(1).max(MAX_ICE_SERVER_URLS),
+    ]),
+    username: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[1-9]\d{0,12}:[A-Za-z0-9_-]{16,64}$/),
+    credential: z.string().min(1).max(MAX_TURN_CREDENTIAL_LENGTH),
+  })
+  .strict();
+
+const iceServerSchema = z.union([stunIceServerSchema, turnIceServerSchema]);
+
 export const iceConfigSchema = z
   .object({
     iceServers: z.array(iceServerSchema).max(8),
+    turnCredentialsExpiresAt: z.string().datetime().optional(),
+  })
+  .strict()
+  .superRefine((config, context) => {
+    const turnServers = config.iceServers.filter(
+      (server) => "username" in server,
+    );
+    if (turnServers.length > 1) {
+      context.addIssue({
+        code: "custom",
+        message: "ICE configuration has more than one TURN server group",
+        path: ["iceServers"],
+      });
+    }
+    if (
+      (turnServers.length === 1) !==
+      (config.turnCredentialsExpiresAt !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "TURN credentials and expiry must be present together",
+        path: ["turnCredentialsExpiresAt"],
+      });
+    }
+  });
+export type IceConfig = z.infer<typeof iceConfigSchema>;
+
+const webClientCapabilitiesSchema = z
+  .object({
+    peerIceTurn: z.literal(true),
   })
   .strict();
-export type IceConfig = z.infer<typeof iceConfigSchema>;
 
 const sessionDescriptionSchema = z
   .object({
@@ -425,6 +518,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       clientId: opaqueIdSchema,
       shareGeneration: opaqueIdSchema.optional(),
       viewerPresence: z.literal(true).optional(),
+      capabilities: webClientCapabilitiesSchema.optional(),
     })
     .strict(),
   z
@@ -436,6 +530,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       clientId: opaqueIdSchema,
       viewerGrant: viewerGrantSchema.optional(),
       displayName: displayNameSchema.optional(),
+      capabilities: webClientCapabilitiesSchema.optional(),
     })
     .strict(),
 ]);
@@ -490,6 +585,7 @@ export const clientMessageSchema = z.union([
       revision: mediaRouteRevisionSchema,
     })
     .strict(),
+  z.object({ type: z.literal("refresh-ice") }).strict(),
   viewerQualityEvidenceMessageSchema,
   parentEdgeQualityEvidenceMessageSchema,
   z
@@ -605,6 +701,12 @@ export const serverMessageSchema = z.union([
       revision: mediaRouteRevisionSchema,
       url: liveKitWebSocketUrlSchema,
       token: z.string().min(1).max(MAX_SFU_TOKEN_LENGTH),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("ice-config"),
+      iceConfig: iceConfigSchema,
     })
     .strict(),
   z

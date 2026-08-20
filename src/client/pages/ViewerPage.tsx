@@ -596,6 +596,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         return;
       }
+      if (message.type === "ice-config") {
+        currentIceConfig = message.iceConfig;
+        peerRef.current?.updateIceConfig(message.iceConfig);
+        viewerRelay?.updateIceConfig(message.iceConfig);
+        return;
+      }
       if (message.type === "route-update") {
         if (peerAssisted) {
           if (message.phase === "active") {

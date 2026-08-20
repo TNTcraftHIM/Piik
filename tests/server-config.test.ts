@@ -14,6 +14,96 @@ describe("server configuration", () => {
     expect(config.peerAssistedMedia).toBe(false);
     expect(config.peerAssistedRoomIds).toBeUndefined();
     expect(config.livekitFallback).toBeUndefined();
+    expect(config.peerIceTurn).toBeUndefined();
+    expect(
+      loadConfig({
+        PEER_ICE_TURN_URLS: "",
+        PEER_ICE_TURN_SHARED_SECRET: "",
+        PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS: "",
+      }).peerIceTurn,
+    ).toBeUndefined();
+  });
+
+  it("enables Peer ICE TURN only from a complete exact-room tuple", () => {
+    const config = loadConfig({
+      PEER_ASSISTED_MEDIA: "true",
+      PEER_ASSISTED_ROOM_IDS: "1",
+      PEER_ICE_TURN_URLS: "turn:relay-a.test:3478?transport=udp",
+      PEER_ICE_TURN_SHARED_SECRET: "t".repeat(32),
+      PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS: "300",
+    });
+
+    expect(config.peerIceTurn).toEqual({
+      urls: ["turn:relay-a.test:3478?transport=udp"],
+      sharedSecret: "t".repeat(32),
+      credentialTtlSeconds: 300,
+    });
+  });
+
+  it.each([
+    { PEER_ICE_TURN_URLS: "turn:relay.test:3478?transport=udp" },
+    { PEER_ICE_TURN_SHARED_SECRET: "t".repeat(32) },
+    { PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS: "300" },
+    {
+      PEER_ICE_TURN_URLS: "",
+      PEER_ICE_TURN_SHARED_SECRET: "t".repeat(32),
+      PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS: "300",
+    },
+  ])("rejects a partial Peer ICE TURN tuple", (partial) => {
+    expect(() => loadConfig(partial)).toThrow(
+      "PEER_ICE_TURN_URLS, PEER_ICE_TURN_SHARED_SECRET, and PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS must be configured together",
+    );
+  });
+
+  it("bounds Peer ICE TURN transport, secret, TTL, and feature ownership", () => {
+    const tuple = {
+      PEER_ICE_TURN_URLS: "turn:relay.test:3478?transport=udp",
+      PEER_ICE_TURN_SHARED_SECRET: "t".repeat(32),
+      PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS: "300",
+    };
+    expect(() => loadConfig(tuple)).toThrow(
+      "Peer ICE TURN requires PEER_ASSISTED_MEDIA=true",
+    );
+    for (const url of [
+      "turn:relay.test:3478",
+      "turn:relay.test:3478?transport=tcp",
+      "turns:relay.test:5349?transport=udp",
+    ]) {
+      expect(() =>
+        loadConfig({ ...tuple, PEER_ICE_TURN_URLS: url }),
+      ).toThrow("PEER_ICE_TURN_URLS");
+    }
+    for (const ttl of ["299", "1801", "1.5"]) {
+      expect(() =>
+        loadConfig({
+          ...tuple,
+          PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS: ttl,
+        }),
+      ).toThrow("PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS");
+    }
+    expect(() =>
+      loadConfig({ ...tuple, PEER_ICE_TURN_SHARED_SECRET: "short" }),
+    ).toThrow("PEER_ICE_TURN_SHARED_SECRET");
+    expect(() =>
+      loadConfig({
+        ...tuple,
+        PEER_ICE_TURN_URLS:
+          "turn:relay-a.test:3478?transport=udp,turn:relay-b.test:3478?transport=udp",
+      }),
+    ).toThrow("PEER_ICE_TURN_URLS must contain at most 1 URL");
+  });
+
+  it("requires an independent Peer ICE TURN shared secret", () => {
+    expect(() =>
+      loadConfig({
+        HOST_ADMISSION_PASSWORD: "x".repeat(32),
+        PEER_ASSISTED_MEDIA: "true",
+        PEER_ASSISTED_ROOM_IDS: "1",
+        PEER_ICE_TURN_URLS: "turn:relay.test:3478?transport=udp",
+        PEER_ICE_TURN_SHARED_SECRET: "x".repeat(32),
+        PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS: "300",
+      }),
+    ).toThrow("PEER_ICE_TURN_SHARED_SECRET must use independent values");
   });
 
   it("enables LiveKit fallback only for a complete credential tuple", () => {

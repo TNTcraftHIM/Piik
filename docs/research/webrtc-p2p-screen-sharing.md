@@ -348,7 +348,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 1. 首版坚持 P2P-first，但明确只服务小房间；默认接入上限为八名、可配置 1 至 16，真实 1:8 测量完成前不把它写成性能承诺。
 2. Web 先行，目标 Windows Chrome/Edge；把 1080p60 写成 best effort，同时提供降档。
-3. 保留当前 coturn 部署直到 ADR-0005 迁移 gate 通过。旗舰默认验证 direct/peer UDP 与 SFU/UDP roots；ordinary peer coturn 不再向房间常驻广告。LiveKit participant TURN 单独 canary，pinned participant-wide 形态不满足 selected-edge 目标，无法隔离或扩展时即拒绝。
+3. 保留当前 STUN-only coturn 部署直到 ADR-0005 迁移 gate 通过。旗舰默认验证 direct/peer UDP 与 SFU/UDP roots；可选 Web exact-room canary 从 PeerConnection 创建时下发短期 authenticated TURN candidate，由标准 ICE direct-first/relay fallback 选路。未命中房间及 Native 仍为 STUN-only；coturn 只验证 credential 与 expiry，不能验证 room 或 edge。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。
 5. 产品代码优先直接使用浏览器 WebRTC API；借鉴 MiroTalk BRO 和 Screego，不在许可证未定前直接 fork GPL/AGPL 代码。
 6. 分享端 hard fanout 为二；一至两名 viewer 走直接 P2P，第三名及以后只通过 ADR-0004 的 bounded peer-assisted spike 验证，不得隐藏回退为更多 host 连接。

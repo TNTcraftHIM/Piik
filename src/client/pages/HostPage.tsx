@@ -1078,6 +1078,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 expiresAt: message.roomExpiresAt,
               });
               setPhase("live");
+            } else if (message.type === "ice-config") {
+              iceConfigRef.current = message.iceConfig;
+              peersRef.current.forEach((peer) =>
+                peer.updateIceConfig(message.iceConfig),
+              );
             }
             handleSignalMessage(message, generation, activeRoom.roomId);
           },

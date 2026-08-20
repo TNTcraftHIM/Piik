@@ -342,7 +342,7 @@ The enabled SFU is normally a virtual parent for at most `R=2` roots, which
 retain bounded peer descendants. A viewer that cannot attach behind any healthy
 root may be separately admitted only under the explicit `E`/central-egress cap;
 this is an exceptional compatibility budget, not unbounded whole-room fanout.
-The SFU/UDP and optional selected-edge transport accounting lives in
+The SFU/UDP and optional built-in Peer ICE TURN transport accounting lives in
 [Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005's current
 controller remains failure-only, while its accepted target also handles
 admission with no eligible peer path; neither changes the sticky local

@@ -3,10 +3,10 @@
 - Research date: 2026-08-19
 - Scope: one broadcaster, at most eight trusted viewers, low latency, and host
   media fanout at most two
-- Status: ADR-0005 accepts SFU/UDP roots as the primary central fallback and
-  optional TURN only for exceptional edges; the repository candidate now has
-  STUN-only ordinary ICE plus separate LiveKit SFU/UDP, while its public
-  transport behavior and every non-browser data plane remain unverified
+- Status: ADR-0005 accepts standard direct-first Peer ICE with optional
+  authenticated TURN/UDP only for capable Web sessions in exact-room canaries,
+  then alternate peer and bounded SFU/UDP roots; production remains STUN-only,
+  and public transport behavior plus every non-browser data plane is unverified
 
 ## Current Route Ladder
 
@@ -158,51 +158,51 @@ old connection or ICE-restart history from being attributed to a new route.
 Use opaque generations only. This is a bounded diagnostic manifest, not a
 backend telemetry schema or controller input.
 
-## SFU-First UDP And Optional Selected-Edge TURN
+## Built-In Peer ICE TURN And SFU/UDP
 
-The accepted target is `direct/peer UDP -> SFU/UDP roots -> optional
-selected-edge TURN -> bounded failure`. It keeps distribution after central
-fallback: the SFU normally emits only one or two root copies, and roots keep
-their peer descendants. Every endpoint has at most two downstream edges;
-browser relays remain at one until re-encode/resource gates pass. Multiple
-exceptional viewers that cannot attach behind any healthy root may require
-additional server-fed edges, but only under a separate explicit central egress
-and admission cap.
+The accepted target gives each bounded peer `RTCPeerConnection` standard ICE.
+By default it has STUN only. In a complete default-off exact-room canary, a
+capable Web participant gets STUN plus short-lived authenticated TURN/UDP under
+`iceTransportPolicy: "all"`; standard candidate priority prefers direct and may
+nominate relay inside the same PC. PC failure then follows one restart, one
+same-parent rebuild, one alternate peer, SFU/UDP roots, and bounded failure.
+The SFU normally emits only one or two root copies, and roots keep their peer
+descendants. Endpoint and central egress caps remain unchanged.
 
 STUN/ICE discovers and checks paths. RFC 8656 TURN allocates a relayed address
-and continuously carries media; it is not a handshake helper. The target
-therefore does not advertise coturn to every ordinary peer edge. If that
-compatibility service is configured, a future controller may issue short-lived,
-assignment/generation-bound credentials only for an exceptional ordinary
-host-to-root or root-to-viewer transport after UDP is exhausted. Other healthy
-UDP paths stay unchanged.
+and continuously carries media when selected; it is not a handshake helper or
+topology. Configuring it can also create unselected allocations. Exact-room,
+complete-tuple, and Web capability gates prevent a process-wide rollout, while
+standard ICE priority leaves working direct paths selected.
 
-Pinned LiveKit 1.13.5 includes authenticated embedded TURN, but those
-credentials and relays belong to LiveKit participants and are advertised
-participant-wide when configured. They can cover a publisher or subscriber
-connection to the SFU; they are not Screener assignment/generation grants and
-do not transparently serve an ordinary peer `RTCPeerConnection`. A selected
-host/root-to-viewer TURN edge still needs independent coturn plus a new per-edge
-grant/wire path.
-Participant-wide LiveKit TURN is therefore only an isolated canary candidate;
-unless the integration can isolate or extend it to satisfy the accepted
-exceptional-edge scope, reject it rather than silently broadening the target.
-LiveKit TURN cannot rescue an unavailable SFU. Independent coturn can carry a
-separately authorized ordinary peer edge that bypasses the SFU, but TURN itself
-does not choose or create that topology.
+The application issues an opaque coturn REST bearer only from the current
+authenticated participant session. Coturn validates its HMAC and expiry, not
+the originating room, peer edge, revision, parent, or connection generation;
+the holder can reuse it until expiry. This is App-side authorization plus TTL,
+fanout, and quota containment, not cryptographic selected-edge enforcement.
+The detailed wire, refresh, allocation, and rollback analysis is in
+[Built-In Peer ICE TURN Candidate](./built-in-peer-ice-turn.md).
 
-Production `769de201f7cc` remains the old baseline with coturn UDP/TCP. The
-repository candidate has crossed a clean config/wire boundary: production
-requires STUN, ordinary ICE snapshots contain only STUN servers, and no TURN
-credential or refresh message remains. The tracked coturn example is UDP
+Pinned LiveKit 1.13.5 can advertise authenticated TURN to LiveKit participants,
+but that separate ICE domain covers publisher/subscriber connections to the
+SFU, not ordinary peer PCs. Screener's built-in Peer ICE uses independent
+coturn configuration and credentials. LiveKit TURN cannot rescue an unavailable
+SFU; ordinary coturn may carry the already-assigned peer topology but does not
+choose or create it.
+
+Production remains STUN-only. Current source accepts only the new complete
+`PEER_ICE_TURN_*` tuple, not the removed all-room keys, and uses capability-
+gated `iceConfig` expiry plus `refresh-ice`/`ice-config`. Non-allowlisted rooms
+and Native-shaped clients remain STUN-only. The tracked coturn example is UDP
 `stun-only`; the LiveKit example exposes only ICE/UDP mux 7882, explicitly sets
 `tcp_port: 0` and `allow_tcp_fallback: false`, supplies the self-hosted STUN
 endpoint, and configures no external or embedded TURN. Candidate validation and rollback use isolated
 instances rather than a process-wide old-release compatibility branch. HTTPS/WSS remains TLS/TCP.
 Coturn 4.17.2 documents `stun-only` as ignoring TURN requests and provides
 `no-tcp` and `no-tls`; it marks `no-dtls` deprecated, so the tracked candidate
-does not use that switch. Coturn remains the explicit self-hosted STUN owner
-without a TURN allocation surface or reliance on public Google STUN.
+does not use that switch. Coturn remains the production STUN owner without a
+TURN allocation surface; the application source slice alone does not change or
+deploy it.
 
 No public port is selected by this decision. LiveKit documents ICE/UDP mux as
 optional and its pinned sample recommends a multi-port UDP mux range at least
@@ -235,13 +235,13 @@ One bounded exact-room gate owns rollout evidence:
    8 and 12 Mbps with one and two roots. Record CPU seconds/GiB, RX/TX bytes,
    packets/s, RSS, host upload, p95/p99 forwarding latency, loss/recovery, and
    final decoded quality.
-2. Cover representative consumer networks on an isolated candidate with
-   `rtc.tcp_port: 0`, `allow_tcp_fallback: false`, and no external or embedded TURN. Verify ordinary peers and
-   SFU roots use UDP. Keep the old release on a separate rollback instance;
-   `PEER_ASSISTED_ROOM_IDS` does not preserve old TURN wire for unlisted rooms.
-3. Block all UDP and show a bounded explicit failure rather than a long
-   pseudo-connection. Any later selected-edge TURN or media TCP implementation
-   is a separate complete PR and cannot be marketed as a quality path.
+2. Cover representative consumer networks first with Peer ICE TURN disabled,
+   then with the complete exact-room tuple. Verify direct-selected peer,
+   forced relay-selected peer, and SFU/UDP separately. Unlisted rooms and
+   capability-absent clients must remain STUN-only.
+3. Measure idle allocation count/relay ports/RSS/CPU/latency at 1/3/5/8
+   participants and selected relay RX/TX/loss/latency at one and two edges.
+   Block all UDP and show a bounded explicit failure; TURN/UDP is not media TCP.
 4. Exercise root departure, reconnect, SFU unavailable, and rollback. Endpoint
    downstream edges stay at most two, normal SFU roots at most two, separately
    capped exceptional server edges stay bounded, and unaffected peer subtrees

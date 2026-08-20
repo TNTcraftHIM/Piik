@@ -36,7 +36,7 @@ also contains a no-go Native v2 candidate, but production does not run it.
 - A mobile-network room-1 run produced two root participants for about 4.6 seconds and two short Host participants (about 0.46/0.27 seconds), all client-requested leaves, with zero service restarts and no retained track. This is consistent with the code's one fresh-grant retry and Peer failback, but logs cannot prove those transitions. The deployed Host now shows only the local failure stage.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
-- HTTPS/WSS, room/WebSocket authorization, renewal, and public STUN pass. Current media has no TURN credential wire.
+- Source TURN tests pass; production/coturn stay STUN-only and untested.
 - Draft #16/#18/#22/#23/#25/#28 passed isolated experiments only. ADR-0006 reached host setup/one encoder output, then timed out before viewer 1 decoded/rendered.
 - Access focused tests pass protocol/config/HTTP/storage/RoomStore/SQLite/signaling, including commit-first teardown, persistence-failure continuity, relay/SFU retirement, grant bounds, and v1 migration rollback.
 
@@ -64,7 +64,7 @@ SFU; it never runs three identical retries or abandons progressing P2P early.
 Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root
 evacuation. Native v2 remains no-go pending an authorized runtime gate; Audio
 A/B/C may proceed without displacing P0.
-TURN remains a future selected-edge change, not this canary.
+Peer ICE TURN supersedes selected-edge but remains source-only pending an isolated coturn canary.
 
 ADR-0004 still requires a full-resolution 30-minute `1/3/5/8` network,
 resource, quality, latency, recovery, and browser/mobile-leaf matrix. A separate

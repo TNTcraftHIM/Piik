@@ -39,6 +39,7 @@ class FakePeerConnection extends EventTarget {
   static readonly instances: FakePeerConnection[] = [];
   static readonly plans: ConnectionPlan[] = [];
 
+  readonly configurations: RTCConfiguration[] = [];
   connectionState: RTCPeerConnectionState = "new";
   iceConnectionState: RTCIceConnectionState = "new";
   remoteDescription: RTCSessionDescription | null = null;
@@ -70,8 +71,11 @@ class FakePeerConnection extends EventTarget {
     },
   );
 
-  constructor() {
+  constructor(configuration?: RTCConfiguration) {
     super();
+    if (configuration) {
+      this.configurations.push(configuration);
+    }
     const plan = FakePeerConnection.plans.shift() ?? {};
     this.candidateGates = [...(plan.candidateGates ?? [])];
     this.localDescriptionGate = plan.localDescriptionGate ?? null;
@@ -95,7 +99,9 @@ class FakePeerConnection extends EventTarget {
     };
   }
 
-  setConfiguration(): void {}
+  readonly setConfiguration = vi.fn((configuration: RTCConfiguration) => {
+    this.configurations.push(configuration);
+  });
 
   close(): void {
     this.connectionState = "closed";
@@ -187,6 +193,38 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it("keeps standard ICE direct-first while refreshing future gathering", async () => {
+    const peer = createPeer([], []);
+    await peer.acceptSignal("host", offer("turn-config"));
+    const connection = FakePeerConnection.instances[0]!;
+
+    expect(connection.configurations).toEqual([
+      { iceServers: [], iceTransportPolicy: "all" },
+    ]);
+    peer.updateIceConfig({
+      iceServers: [
+        {
+          urls: ["turn:relay.test:3478?transport=udp"],
+          username: `1787076000:${"a".repeat(32)}`,
+          credential: "temporary-credential",
+        },
+      ],
+      turnCredentialsExpiresAt: "2026-08-20T12:00:00.000Z",
+    });
+
+    expect(connection.setConfiguration).toHaveBeenCalledOnce();
+    expect(connection.configurations[1]).toEqual({
+      iceServers: [
+        {
+          urls: ["turn:relay.test:3478?transport=udp"],
+          username: `1787076000:${"a".repeat(32)}`,
+          credential: "temporary-credential",
+        },
+      ],
+      iceTransportPolicy: "all",
+    });
+  });
+
   it("restarts ICE when an answered initial connection stays stuck", async () => {
     const restartRequests: Array<{
       peerId: string;
