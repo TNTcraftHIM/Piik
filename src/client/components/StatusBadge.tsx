@@ -1,4 +1,5 @@
 import { CircleAlert, Radio, Wifi, WifiOff } from "lucide-react";
+import type { ViewerMediaTopology } from "../../shared/protocol";
 import type {
   MediaPath,
   SignalConnectionState,
@@ -55,7 +56,7 @@ export function PathBadge({ path }: { path: MediaPath }) {
     return (
       <span className="path-badge path-direct" title="媒体未经过 TURN 中继">
         <Wifi size={14} aria-hidden="true" />
-        P2P 直连
+        ICE 直连
       </span>
     );
   }
@@ -63,16 +64,30 @@ export function PathBadge({ path }: { path: MediaPath }) {
     return (
       <span className="path-badge path-relay" title="此连接正在使用 TURN 中继">
         <Radio size={14} aria-hidden="true" />
-        TURN 中继
+        TURN 传输
       </span>
     );
   }
   return (
     <span className="path-badge path-unknown" title="尚未选出可用的 ICE 路径">
       <WifiOff size={14} aria-hidden="true" />
-      路径未知
+      ICE 未知
     </span>
   );
+}
+
+export function TopologyBadge({
+  topology,
+}: {
+  topology: ViewerMediaTopology;
+}) {
+  const values: Record<ViewerMediaTopology, BadgeProps> = {
+    "host-direct": { tone: "good", label: "Host 直连" },
+    "peer-relay": { tone: "warning", label: "Peer 中转" },
+    sfu: { tone: "warning", label: "SFU" },
+    pending: { tone: "neutral", label: "连接中" },
+  };
+  return <Badge {...values[topology]} />;
 }
 
 export function WarningBanner({ children }: { children: React.ReactNode }) {

@@ -2,6 +2,7 @@ import {
   decodeServerMessage,
   SIGNALING_PROTOCOL,
   type ClientMessage,
+  type DisplayName,
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
@@ -96,6 +97,14 @@ export class SignalingClient {
     }
     this.socket.send(JSON.stringify(message));
     return true;
+  }
+
+  setViewerDisplayName(displayName: DisplayName): boolean {
+    if (this.identity.role !== "viewer") {
+      return false;
+    }
+    this.identity.displayName = displayName;
+    return this.send({ type: "set-display-name", displayName });
   }
 
   sendThenStop(message: ClientMessage): void {

@@ -3,6 +3,7 @@ import {
   Maximize2,
   Play,
   RefreshCw,
+  Save,
   VideoOff,
   Volume2,
   VolumeX,
@@ -26,6 +27,7 @@ import {
   WarningBanner,
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
+import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import type { QualitySettings } from "../media/quality";
@@ -88,6 +90,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     DEFAULT_VIEWER_VOLUME_STATE,
   );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
+  const [displayName, setDisplayName] = useState(() => readDisplayName());
+  const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
 
   const qualityLimitation = useMemo(
     () =>
@@ -101,6 +106,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
+  const signalRef = useRef<SignalingClient | null>(null);
+  const displayNameRef = useRef(displayName);
   const { muted, volumePercent } = playbackVolume;
 
   useEffect(() => {
@@ -143,6 +150,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         role: "viewer",
         clientId: getStableClientId("viewer", roomId),
         ...(viewerGrant ? { viewerGrant } : {}),
+        displayName: displayNameRef.current,
       },
       {
         onStatus: (status) => {
@@ -182,6 +190,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         },
       },
     );
+    signalRef.current = signal;
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
       (message) => active && signal.send(message),
     );
@@ -753,6 +762,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       sfuStandbyPrewarmer?.dispose();
       signal.stop();
+      if (signalRef.current === signal) {
+        signalRef.current = null;
+      }
       void viewerSfuRoute?.disconnect();
       viewerSfuRoute = null;
       preparedParentPeerId = null;
@@ -846,6 +858,19 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     }
   }
 
+  function commitDisplayName(): void {
+    const saved = saveDisplayName(displayNameDraft);
+    if (!saved) {
+      setDisplayNameError("名称格式无效或超过 24 个字符");
+      return;
+    }
+    displayNameRef.current = saved;
+    setDisplayName(saved);
+    setDisplayNameDraft(saved);
+    setDisplayNameError(null);
+    signalRef.current?.setViewerDisplayName(saved);
+  }
+
   if (accessState !== "ready") {
     return (
       <div className="app-shell">
@@ -890,6 +915,42 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             )}
           </div>
         </div>
+
+        <form
+          className="viewer-name-control"
+          onSubmit={(event) => {
+            event.preventDefault();
+            commitDisplayName();
+          }}
+        >
+          <label htmlFor="viewer-display-name">显示名</label>
+          <input
+            id="viewer-display-name"
+            type="text"
+            value={displayNameDraft}
+            maxLength={96}
+            autoComplete="nickname"
+            aria-invalid={displayNameError ? "true" : undefined}
+            onChange={(event) => {
+              setDisplayNameDraft(event.target.value);
+              setDisplayNameError(null);
+            }}
+          />
+          <button
+            type="submit"
+            className="icon-button"
+            title="保存显示名"
+            aria-label="保存显示名"
+            disabled={displayNameDraft === displayName}
+          >
+            <Save size={17} />
+          </button>
+          {displayNameError && (
+            <span className="viewer-name-error" role="alert">
+              {displayNameError}
+            </span>
+          )}
+        </form>
 
         <section className="video-stage remote-stage" aria-label="共享画面">
           <video

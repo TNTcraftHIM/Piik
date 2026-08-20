@@ -794,6 +794,24 @@ h3 {
   gap: 8px;
 }
 
+.viewer-item-heading h3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-transport-heading {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
 .empty-viewers {
   display: grid;
   min-height: 150px;
@@ -905,6 +923,45 @@ h3 {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.viewer-name-control {
+  display: grid;
+  width: min(100%, 380px);
+  min-height: 40px;
+  grid-template-columns: auto minmax(0, 1fr) 40px;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 12px;
+}
+
+.viewer-name-control label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.viewer-name-control input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: 0;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.viewer-name-control input:focus {
+  border-color: var(--green);
+}
+
+.viewer-name-error {
+  grid-column: 2 / -1;
+  color: #ff9797;
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .remote-stage {
@@ -1058,6 +1115,10 @@ h3 {
   .viewer-badges {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .viewer-name-control {
+    width: 100%;
   }
 
   .viewer-toolbar {

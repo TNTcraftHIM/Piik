@@ -5,6 +5,7 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer } from "ws";
 
 import {
+  DEFAULT_VIEWER_DISPLAY_NAME,
   DEFAULT_QUALITY_SETTINGS,
   MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SIGNAL_BYTES,
@@ -17,6 +18,7 @@ import {
   type QualitySettings,
   type Role,
   type ServerMessage,
+  type ViewerPresenceEntry,
 } from "../shared/protocol.js";
 import {
   RoomStore,
@@ -41,6 +43,8 @@ interface AuthenticatedSession {
   peerId: string;
   roomExpiresAtMs: number | null;
   shareGeneration: string | null;
+  displayName: string | null;
+  viewerPresence: boolean;
 }
 
 interface SocketState {
@@ -99,6 +103,7 @@ export class SignalingServer {
   >();
   private readonly qualitySettingsByRoom = new Map<string, QualitySettings>();
   private readonly shareGenerationsByRoom = new Map<string, string>();
+  private readonly deferredViewerPresenceRooms = new Set<string>();
   private readonly hybridMediaRouter?: HybridMediaRouter;
   private readonly now: () => number;
   private readonly authenticationTimeoutMs: number;
@@ -152,6 +157,7 @@ export class SignalingServer {
           ),
         deleteConnectionId: (roomId, viewerPeerId) =>
           this.deleteViewerConnectionId(roomId, viewerPeerId),
+        onActiveRouteChanged: (roomId) => this.sendViewerPresence(roomId),
         now: this.now,
       });
     }
@@ -399,6 +405,11 @@ export class SignalingServer {
           ? null
           : Date.parse(participant.expiresAt),
       shareGeneration,
+      displayName:
+        message.role === "viewer"
+          ? (message.displayName ?? DEFAULT_VIEWER_DISPLAY_NAME)
+          : null,
+      viewerPresence: false,
     };
     if (participant.role === "viewer") {
       this.viewerQualityEvidenceGates.delete(
@@ -466,6 +477,8 @@ export class SignalingServer {
     } else {
       this.send(socket, authenticatedMessage);
     }
+    state.authenticated.viewerPresence =
+      message.role === "host" && message.viewerPresence === true;
 
     if (participant.replacedSessionId) {
       const replaced = this.socketsBySessionId.get(participant.replacedSessionId);
@@ -480,6 +493,8 @@ export class SignalingServer {
         hybridState,
       );
     }
+
+    this.sendViewerPresence(participant.roomId);
 
     if (participant.role === "host") {
       for (const viewer of connectedViewers) {
@@ -630,6 +645,14 @@ export class SignalingServer {
       case "parent-edge-quality-evidence":
         this.handleParentEdgeQualityEvidence(socket, authenticated, message);
         return;
+      case "set-display-name":
+        if (authenticated.role !== "viewer") {
+          this.sendError(socket, "FORBIDDEN", "Only viewers may set a display name");
+          return;
+        }
+        authenticated.displayName = message.displayName;
+        this.sendViewerPresence(authenticated.roomId);
+        return;
       case "set-viewer-access":
         if (authenticated.role !== "host") {
           this.sendError(
@@ -703,42 +726,48 @@ export class SignalingServer {
       this.clearRoomGraceTimers(authenticated.roomId);
       this.clearRoomConnectionIds(authenticated.roomId);
 
-      for (const viewer of update.revokedViewers) {
-        if (!viewer.sessionId) {
-          continue;
-        }
-        this.sendToSession(viewer.sessionId, {
-          type: "viewer-access-revoked",
-          viewerAuthorizationGeneration:
-            update.previousViewerAuthorizationGeneration,
-        });
-      }
-
-      if (this.isPeerAssistedRoom(authenticated.roomId)) {
+      this.deferredViewerPresenceRooms.add(authenticated.roomId);
+      try {
         for (const viewer of update.revokedViewers) {
-          this.hybridMediaRouter!.removeViewer(
-            authenticated.roomId,
-            viewer.peerId,
-          );
+          if (!viewer.sessionId) {
+            continue;
+          }
+          this.sendToSession(viewer.sessionId, {
+            type: "viewer-access-revoked",
+            viewerAuthorizationGeneration:
+              update.previousViewerAuthorizationGeneration,
+          });
         }
-      } else {
-        const host = this.options.roomStore.getConnectedHost(authenticated.roomId);
-        if (host) {
+
+        if (this.isPeerAssistedRoom(authenticated.roomId)) {
           for (const viewer of update.revokedViewers) {
-            this.sendToSession(host.sessionId, {
-              type: "peer-left",
-              peerId: viewer.peerId,
-            });
+            this.hybridMediaRouter!.removeViewer(
+              authenticated.roomId,
+              viewer.peerId,
+            );
+          }
+        } else {
+          const host = this.options.roomStore.getConnectedHost(authenticated.roomId);
+          if (host) {
+            for (const viewer of update.revokedViewers) {
+              this.sendToSession(host.sessionId, {
+                type: "peer-left",
+                peerId: viewer.peerId,
+              });
+            }
           }
         }
-      }
 
-      for (const viewer of update.revokedViewers) {
-        if (!viewer.sessionId) {
-          continue;
+        for (const viewer of update.revokedViewers) {
+          if (!viewer.sessionId) {
+            continue;
+          }
+          this.closeRevokedViewerSession(viewer.sessionId);
         }
-        this.closeRevokedViewerSession(viewer.sessionId);
+      } finally {
+        this.deferredViewerPresenceRooms.delete(authenticated.roomId);
       }
+      this.sendViewerPresence(authenticated.roomId);
     }
 
     const inviteUrl =
@@ -1118,6 +1147,8 @@ export class SignalingServer {
       return;
     }
 
+    this.sendViewerPresence(disconnected.roomId);
+
     const key = viewerGraceKey(disconnected.roomId, disconnected.peerId);
     const timer = setTimeout(() => {
       this.viewerGraceTimers.delete(key);
@@ -1275,6 +1306,56 @@ export class SignalingServer {
       return host;
     }
     return this.options.roomStore.getConnectedViewer(roomId, peerId);
+  }
+
+  private sendViewerPresence(roomId: string): void {
+    if (this.deferredViewerPresenceRooms.has(roomId)) {
+      return;
+    }
+    const host = this.options.roomStore.getConnectedHost(roomId);
+    if (!host) {
+      return;
+    }
+    const hostSocket = this.socketsBySessionId.get(host.sessionId);
+    const hostState = hostSocket
+      ? this.socketStates.get(hostSocket)?.authenticated
+      : undefined;
+    if (
+      !hostSocket ||
+      hostState?.role !== "host" ||
+      hostState.roomId !== roomId ||
+      hostState.peerId !== host.peerId ||
+      !hostState.viewerPresence
+    ) {
+      return;
+    }
+
+    const viewers: ViewerPresenceEntry[] = [];
+    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+      const viewerSocket = this.socketsBySessionId.get(viewer.sessionId);
+      const viewerState = viewerSocket
+        ? this.socketStates.get(viewerSocket)?.authenticated
+        : undefined;
+      if (
+        viewerState?.role !== "viewer" ||
+        viewerState.roomId !== roomId ||
+        viewerState.peerId !== viewer.peerId ||
+        viewerState.displayName === null
+      ) {
+        continue;
+      }
+      viewers.push({
+        peerId: viewer.peerId,
+        displayName: viewerState.displayName,
+        mediaTopology: this.isPeerAssistedRoom(roomId)
+          ? this.hybridMediaRouter!.getViewerMediaTopology(
+              roomId,
+              viewer.peerId,
+            )
+          : "host-direct",
+      });
+    }
+    this.send(hostSocket, { type: "viewer-presence", viewers });
   }
 
   private sendToSession(sessionId: string, message: ServerMessage): void {

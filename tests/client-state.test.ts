@@ -7,6 +7,10 @@ import {
   getHostAdmission,
 } from "../src/client/lib/api.ts";
 import {
+  readDisplayName,
+  saveDisplayName,
+} from "../src/client/lib/display-name.ts";
+import {
   clearHostRoom,
   getStableClientId,
   isValidRoomId,
@@ -21,11 +25,59 @@ import {
   shouldReconnectSignaling,
   SignalingClient,
 } from "../src/client/lib/signaling.ts";
+import { labelViewerPresence } from "../src/client/lib/viewer-presence.ts";
 import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import { createStatsAccumulator, collectConnectionMetrics } from "../src/client/webrtc/stats.ts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("browser-local display name", () => {
+  it("stores only the canonical preference and falls back when cleared", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(saveDisplayName("  Cafe\u0301\u00a0玩家 ")).toBe("Café 玩家");
+    expect(readDisplayName()).toBe("Café 玩家");
+    expect(saveDisplayName("\u202ehidden")).toBeNull();
+    expect(saveDisplayName("\n")).toBeNull();
+    expect(readDisplayName()).toBe("Café 玩家");
+    expect(saveDisplayName("   ")).toBe("访客");
+    expect(readDisplayName()).toBe("访客");
+  });
+
+  it("extends only colliding room-scoped peer ID suffixes", () => {
+    const labeled = labelViewerPresence([
+      {
+        peerId: "viewer_AAAAAAsuffix",
+        displayName: "同名",
+        mediaTopology: "host-direct",
+      },
+      {
+        peerId: "viewer_BBBBBBsuffix",
+        displayName: "同名",
+        mediaTopology: "peer-relay",
+      },
+      {
+        peerId: "viewer_independent",
+        displayName: "朋友",
+        mediaTopology: "sfu",
+      },
+    ]);
+
+    expect(labeled[0].peerIdSuffix.length).toBeGreaterThan(6);
+    expect(labeled[1].peerIdSuffix.length).toBeGreaterThan(6);
+    expect(labeled[0].peerIdSuffix).not.toBe(labeled[1].peerIdSuffix);
+    expect(labeled[2].peerIdSuffix).toHaveLength(6);
+    expect(labeled[0].label).toContain("同名 (");
+  });
 });
 
 describe("client session identity", () => {

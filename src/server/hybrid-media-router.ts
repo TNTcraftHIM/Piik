@@ -9,6 +9,7 @@ import {
   type RelayDownstreamEdges,
   type Role,
   type ServerMessage,
+  type ViewerMediaTopology,
 } from "../shared/protocol.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import {
@@ -107,6 +108,7 @@ export interface HybridMediaRouterOptions {
   sendToSession: (sessionId: string, message: ServerMessage) => void;
   getConnectionId: (roomId: string, viewerPeerId: string) => string | undefined;
   deleteConnectionId: (roomId: string, viewerPeerId: string) => void;
+  onActiveRouteChanged?: (roomId: string) => void;
   now?: () => number;
 }
 
@@ -302,6 +304,26 @@ export class HybridMediaRouter {
       revision: active.revision,
       parentPeerId: child.upstream.peerId,
     };
+  }
+
+  getViewerMediaTopology(
+    roomId: string,
+    viewerPeerId: string,
+  ): ViewerMediaTopology {
+    const assignment = this.mediaRouteControllers
+      .get(roomId)
+      ?.getActiveRoute()
+      .assignments.get(viewerPeerId);
+    if (!assignment || assignment.upstream.kind === "none") {
+      return "pending";
+    }
+    if (assignment.upstream.kind === "sfu") {
+      return "sfu";
+    }
+    return assignment.upstream.peerId ===
+      this.peerRelayTopology.getHostPeerId(roomId)
+      ? "host-direct"
+      : "peer-relay";
   }
 
   handleViewerQualityEvidence(input: ForwardedViewerQualityEvidence): void {
@@ -1735,6 +1757,7 @@ export class HybridMediaRouter {
         });
       }
     }
+    this.options.onActiveRouteChanged?.(roomId);
   }
 
   private clearChangedRouteConnectionIds(

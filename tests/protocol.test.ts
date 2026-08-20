@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_VIEWER_DISPLAY_NAME,
+  MAX_DISPLAY_NAME_CODE_POINTS,
   MAX_HOST_CLAIM_TTL_SECONDS,
   MAX_MEDIA_ROUTE_REVISION,
   MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
@@ -11,6 +13,7 @@ import {
   clientMessageSchema,
   createRoomRequestSchema,
   decodeClientMessage,
+  normalizeDisplayName,
   participantRouteAssignmentSchema,
   serverMessageSchema,
 } from "../src/shared/protocol.js";
@@ -132,6 +135,49 @@ describe("client signaling protocol", () => {
         clientId: "client_12345678",
       }).success,
     ).toBe(false);
+  });
+
+  it("normalizes display names and rejects misleading Unicode boundaries", () => {
+    expect(normalizeDisplayName("  Cafe\u0301\u00a0朋友  ")).toBe("Café 朋友");
+    expect(normalizeDisplayName("玩家 👩‍💻")).toBe("玩家 👩‍💻");
+    expect(normalizeDisplayName("名".repeat(MAX_DISPLAY_NAME_CODE_POINTS))).toBe(
+      "名".repeat(MAX_DISPLAY_NAME_CODE_POINTS),
+    );
+    expect(
+      normalizeDisplayName("名".repeat(MAX_DISPLAY_NAME_CODE_POINTS + 1)),
+    ).toBeNull();
+    for (const invalid of ["a\nb", "a\u202eb", "a\ufeffb", "a\ud800b"]) {
+      expect(normalizeDisplayName(invalid)).toBeNull();
+    }
+
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+        displayName: "小明",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId,
+        role: "host",
+        token,
+        clientId: "client_12345678",
+        viewerPresence: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-display-name",
+        displayName: " Cafe\u0301 ",
+      }).success,
+    ).toBe(false);
+    expect(DEFAULT_VIEWER_DISPLAY_NAME).toBe("访客");
   });
 
   it("accepts only canonical bounded Viewer grants and access actions", () => {
@@ -614,6 +660,32 @@ describe("server signaling protocol", () => {
         authenticatedMessage(MAX_VIEWERS_PER_ROOM_LIMIT),
       ).success,
     ).toBe(true);
+  });
+
+  it("accepts a strict, unique and bounded Viewer presence snapshot", () => {
+    const viewer = {
+      peerId: "viewer_12345678",
+      displayName: "小明",
+      mediaTopology: "peer-relay",
+    } as const;
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-presence",
+        viewers: [viewer],
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-presence",
+        viewers: [viewer, viewer],
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-presence",
+        viewers: [{ ...viewer, ip: "203.0.113.1" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("represents persistent rooms without a room expiry", () => {
