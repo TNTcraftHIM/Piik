@@ -1,3 +1,9 @@
+import {
+  HARDWARE_PREFERENCE,
+  HARDWARE_STATUS,
+  retainsHardwarePreference,
+} from "./hardware-status.js";
+
 const WIDTH = 1280;
 const HEIGHT = 720;
 const FPS = 30;
@@ -171,18 +177,22 @@ async function startEncoder(generation) {
     framerate: FPS,
     latencyMode: "realtime",
     bitrateMode: "variable",
-    hardwareAcceleration: "prefer-hardware",
+    hardwareAcceleration: HARDWARE_PREFERENCE,
   };
   let support = await VideoEncoder.isConfigSupported(preferred);
   assertCurrentStart(generation, mediaSocket);
-  metrics.hardwarePreference = "requested";
-  if (!support.supported) {
+  if (!retainsHardwarePreference(support)) {
     const fallback = { ...preferred };
     delete fallback.hardwareAcceleration;
     support = await VideoEncoder.isConfigSupported(fallback);
     assertCurrentStart(generation, mediaSocket);
-    metrics.hardwarePreference = "not accepted by capability check";
+    metrics.hardwarePreference = support.supported
+      ? HARDWARE_STATUS.FALLBACK
+      : HARDWARE_STATUS.UNSUPPORTED;
+  } else {
+    metrics.hardwarePreference = HARDWARE_STATUS.PREFERENCE_ACCEPTED;
   }
+  metrics.hardwareEvidence = HARDWARE_STATUS.UNVERIFIED;
   if (!support.supported) throw new Error("此设备不支持 VP8 720p30 编码");
   let activeEncoder;
   activeEncoder = new VideoEncoder({
@@ -445,7 +455,7 @@ function updateDiagnostics() {
   const height = captureSettings?.height ?? "未知";
   const rate = captureSettings?.frameRate ?? "未知";
   elements.captureDiagnostic.textContent = `${width} × ${height} · ${rate} FPS`;
-  elements.encoderDiagnostic.textContent = `VP8 · 3 Mbps 上限 · 单对象 · 硬件偏好 ${metrics.hardwarePreference}`;
+  elements.encoderDiagnostic.textContent = `VP8 · 3 Mbps 上限 · 单对象 · 硬件偏好 ${hardwarePreferenceLabel(metrics.hardwarePreference)} · 硬件证据 ${hardwareEvidenceLabel(metrics.hardwareEvidence)}`;
   elements.bridgeDiagnostic.textContent = `读取 ${metrics.framesRead} · 提交 ${metrics.framesSubmitted} · 输出 ${metrics.encoderOutputs} · 编码队列丢弃 ${metrics.encoderQueueDrops} · 编码队列峰值 ${metrics.encoderQueuePeak} 帧 · socket 峰值 ${metrics.socketBufferedPeak} B`;
   const helper = nativeDiagnostics?.media;
   const queue = helper?.queue;
@@ -503,8 +513,22 @@ function emptyMetrics() {
     encoderQueueDrops: 0,
     encoderQueuePeak: 0,
     socketBufferedPeak: 0,
-    hardwarePreference: "未请求",
+    hardwarePreference: HARDWARE_STATUS.UNREQUESTED,
+    hardwareEvidence: HARDWARE_STATUS.UNVERIFIED,
   };
+}
+
+function hardwarePreferenceLabel(value) {
+  return {
+    [HARDWARE_STATUS.UNREQUESTED]: "未请求",
+    [HARDWARE_STATUS.PREFERENCE_ACCEPTED]: "偏好已接受",
+    [HARDWARE_STATUS.FALLBACK]: "已回退",
+    [HARDWARE_STATUS.UNSUPPORTED]: "不支持",
+  }[value] || "未知";
+}
+
+function hardwareEvidenceLabel(value) {
+  return value === HARDWARE_STATUS.UNVERIFIED ? "未验证" : "未知";
 }
 
 function readableError(error, fallback) {
