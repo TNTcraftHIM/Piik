@@ -50,6 +50,7 @@ type App struct {
 	session        *remote.Session
 	sessionCancel  context.CancelFunc
 	room           remote.Room
+	codec          media.Codec
 	mediaConn      *websocket.Conn
 	mediaClaimed   bool
 	mediaClaimID   uint64
@@ -63,6 +64,7 @@ type App struct {
 type startRequest struct {
 	ServerURL string `json:"serverUrl"`
 	Password  string `json:"password"`
+	Codec     string `json:"codec,omitempty"`
 }
 
 type encoderConfig struct {
@@ -85,6 +87,7 @@ func New() (*App, error) {
 		ctx: ctx, cancel: cancel, token: token,
 		attachTimeout: mediaAttachTimeout,
 		configTimeout: mediaConfigTimeout,
+		codec:         media.CodecVP8,
 	}, nil
 }
 
@@ -174,6 +177,11 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	codec, validCodec := media.ParseCodec(strings.TrimSpace(input.Codec))
+	if input.Codec != "" && !validCodec {
+		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "unsupported native codec"})
+		return
+	}
 	baseURL, err := normalizeRemoteBase(input.ServerURL)
 	if err != nil {
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -196,6 +204,7 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 	session, room, err := remote.Start(startContext, remote.StartOptions{
 		BaseURL:               baseURL,
 		HostAdmissionPassword: strings.TrimSpace(input.Password),
+		Codec:                 codec,
 		OnEvent:               func(event remote.Event) { app.emit(generation, event) },
 	})
 	app.mu.Lock()
@@ -209,6 +218,7 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 		app.session = session
 		app.sessionCancel = startCancel
 		app.room = room
+		app.codec = codec
 		app.attachTimer = time.AfterFunc(app.attachTimeout, func() {
 			app.mu.Lock()
 			expired := app.generation == generation && app.session == session && app.mediaConn == nil
@@ -322,7 +332,7 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	var config encoderConfig
-	if err = decodeLocalPayload(payload, &config); err != nil || !validEncoderConfig(config) {
+	if err = decodeLocalPayload(payload, &config); err != nil || !validEncoderConfigForCodec(config, session.Codec()) {
 		session.Fail(errors.New("local encoder configuration is invalid"))
 		_ = connection.Close(websocket.StatusPolicyViolation, "invalid encoder config")
 		return
@@ -454,6 +464,7 @@ func (app *App) stopActiveGeneration(expectedGeneration uint64) {
 		app.attachTimer = nil
 	}
 	app.room = remote.Room{}
+	app.codec = media.CodecVP8
 	app.activeViewers = 0
 	app.waitingViewers = 0
 	app.mu.Unlock()
@@ -472,7 +483,11 @@ func (app *App) stopActiveGeneration(expectedGeneration uint64) {
 }
 
 func validEncoderConfig(config encoderConfig) bool {
-	return config.Kind == "config" && config.Codec == "vp8" &&
+	return validEncoderConfigForCodec(config, media.CodecVP8)
+}
+
+func validEncoderConfigForCodec(config encoderConfig, expected media.Codec) bool {
+	return config.Kind == "config" && config.Codec == string(expected) &&
 		config.Width == 1280 && config.Height == 720 && config.FPS == 30 &&
 		config.Bitrate == 3_000_000 && config.EncoderInstances == 1
 }

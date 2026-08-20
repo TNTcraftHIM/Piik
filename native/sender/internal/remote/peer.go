@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/native/sender/internal/media"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -54,7 +55,12 @@ func newPeer(session *Session, peerID string, slot int, configuration webrtc.Con
 	if err != nil {
 		return nil, fmt.Errorf("create connection identity: %w", err)
 	}
-	connection, err := webrtc.NewPeerConnection(configuration)
+	var connection *webrtc.PeerConnection
+	if session.peerAPI != nil {
+		connection, err = session.peerAPI.NewPeerConnection(configuration)
+	} else {
+		connection, err = webrtc.NewPeerConnection(configuration)
+	}
 	if err != nil {
 		return nil, errors.New("create viewer peer connection failed")
 	}
@@ -94,7 +100,15 @@ func newPeer(session *Session, peerID string, slot int, configuration webrtc.Con
 	sender, err := connection.AddTrack(session.fanout.Track())
 	if err != nil {
 		_ = connection.Close()
-		return nil, errors.New("bind shared VP8 track failed")
+		return nil, errors.New("bind shared encoded track failed")
+	}
+	if session.codec == media.CodecH264 {
+		transceivers := connection.GetTransceivers()
+		if len(transceivers) != 1 || len(session.codecPreferences) == 0 ||
+			transceivers[0].SetCodecPreferences(session.codecPreferences) != nil {
+			_ = connection.Close()
+			return nil, errors.New("configure H.264 codec preferences failed")
+		}
 	}
 	go peer.readRTCP(sender)
 	return peer, nil

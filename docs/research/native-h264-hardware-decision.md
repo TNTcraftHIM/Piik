@@ -4,6 +4,12 @@ Date: 2026-08-20
 
 Status: `no-go-native-h264-hardware-pinned-fmtp`
 
+The later source-only functional slice in
+[`native-h264-opt-in-path.md`](./native-h264-opt-in-path.md) registers the
+fixture profile explicitly and proves one H.264 Host/Viewer loopback. It does
+not change this spike's physical-hardware decision: WebCodecs hardware
+attribution remains unverified and production remains VP8/default.
+
 This spike does not amend ADR-0006 or authorize another product, room, or
 production run. It answers one narrow question: can a bounded Windows H.264
 path satisfy the project's physical hardware-encode and existing default Pion

@@ -21,6 +21,29 @@ const (
 	videoClockRate   = 90_000
 )
 
+// Codec selects the encoded representation carried by the native bridge.
+// VP8 remains the default; H.264 is an explicit Windows/WebCodecs opt-in.
+type Codec string
+
+const (
+	CodecVP8  Codec = "vp8"
+	CodecH264 Codec = "h264"
+
+	H264ProfileLevelID = "42c01f"
+	H264SDPFmtpLine    = "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=" + H264ProfileLevelID
+)
+
+func ParseCodec(value string) (Codec, bool) {
+	switch Codec(value) {
+	case CodecVP8:
+		return CodecVP8, true
+	case CodecH264:
+		return CodecH264, true
+	default:
+		return CodecVP8, false
+	}
+}
+
 type Frame struct {
 	KeyFrame        bool
 	TimestampMicros uint64
@@ -44,6 +67,7 @@ type rtpWriter interface {
 type Fanout struct {
 	track           *webrtc.TrackLocalStaticRTP
 	writer          rtpWriter
+	codec           Codec
 	queue           *frameQueue
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -57,22 +81,44 @@ type Fanout struct {
 }
 
 func NewFanout(requestKeyFrame func(), onFatal func(error)) (*Fanout, error) {
-	track, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: videoClockRate},
-		"screen",
-		"screener",
-	)
+	return NewFanoutWithCodec(CodecVP8, requestKeyFrame, onFatal)
+}
+
+func NewFanoutWithCodec(codec Codec, requestKeyFrame func(), onFatal func(error)) (*Fanout, error) {
+	capability, err := trackCapability(codec)
 	if err != nil {
-		return nil, fmt.Errorf("create shared VP8 track: %w", err)
+		return nil, err
 	}
-	return newFanout(track, track, requestKeyFrame, onFatal), nil
+	track, err := webrtc.NewTrackLocalStaticRTP(capability, "screen", "screener")
+	if err != nil {
+		return nil, fmt.Errorf("create shared %s track: %w", codec, err)
+	}
+	return newFanoutWithCodec(track, track, codec, requestKeyFrame, onFatal), nil
+}
+
+func trackCapability(codec Codec) (webrtc.RTPCodecCapability, error) {
+	switch codec {
+	case CodecVP8:
+		return webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: videoClockRate}, nil
+	case CodecH264:
+		return webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeH264, ClockRate: videoClockRate, SDPFmtpLine: H264SDPFmtpLine,
+		}, nil
+	default:
+		return webrtc.RTPCodecCapability{}, fmt.Errorf("unsupported native codec %q", codec)
+	}
 }
 
 func newFanout(track *webrtc.TrackLocalStaticRTP, writer rtpWriter, requestKeyFrame func(), onFatal func(error)) *Fanout {
+	return newFanoutWithCodec(track, writer, CodecVP8, requestKeyFrame, onFatal)
+}
+
+func newFanoutWithCodec(track *webrtc.TrackLocalStaticRTP, writer rtpWriter, codec Codec, requestKeyFrame func(), onFatal func(error)) *Fanout {
 	ctx, cancel := context.WithCancel(context.Background())
 	fanout := &Fanout{
 		track:           track,
 		writer:          writer,
+		codec:           codec,
 		queue:           newFrameQueue(queueCapacity),
 		ctx:             ctx,
 		cancel:          cancel,
@@ -90,7 +136,7 @@ func (fanout *Fanout) Track() *webrtc.TrackLocalStaticRTP {
 
 func (fanout *Fanout) Push(frame Frame) error {
 	if len(frame.Data) == 0 || len(frame.Data) > MaxFrameBytes || frame.DurationMicros == 0 {
-		return errors.New("encoded VP8 frame violates the bounded media contract")
+		return errors.New("encoded frame violates the bounded media contract")
 	}
 	result, err := fanout.queue.Push(frame)
 	if err != nil {
@@ -117,7 +163,7 @@ func (fanout *Fanout) Close() {
 
 func (fanout *Fanout) writeLoop() {
 	defer close(fanout.done)
-	timeline := newFrameTimeline()
+	timeline := newFrameTimelineForCodec(fanout.codec)
 	for {
 		frame, ok, err := fanout.queue.Pop(fanout.ctx)
 		if err != nil {
@@ -180,11 +226,21 @@ type frameTimeline struct {
 }
 
 func newFrameTimeline() *frameTimeline {
+	return newFrameTimelineForCodec(CodecVP8)
+}
+
+func newFrameTimelineForCodec(codec Codec) *frameTimeline {
+	var payloader rtp.Payloader
+	if codec == CodecH264 {
+		payloader = &codecs.H264Payloader{}
+	} else {
+		payloader = &codecs.VP8Payloader{}
+	}
 	return &frameTimeline{packetizer: rtp.NewPacketizer(
 		1200,
 		96,
 		0,
-		&codecs.VP8Payloader{},
+		payloader,
 		rtp.NewRandomSequencer(),
 		videoClockRate,
 	)}

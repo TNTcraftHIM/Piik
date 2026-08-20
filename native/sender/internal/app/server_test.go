@@ -32,6 +32,19 @@ func TestEncoderConfigUsesTheFixedHighContract(t *testing.T) {
 	}
 }
 
+func TestEncoderConfigAcceptsExplicitH264OnlyForAnH264Session(t *testing.T) {
+	config := encoderConfig{
+		Kind: "config", Codec: "h264", Width: 1280, Height: 720,
+		FPS: 30, Bitrate: 3_000_000, EncoderInstances: 1,
+	}
+	if !validEncoderConfigForCodec(config, media.CodecH264) {
+		t.Fatal("explicit H.264 config was rejected")
+	}
+	if validEncoderConfigForCodec(config, media.CodecVP8) {
+		t.Fatal("H.264 config crossed the VP8 session boundary")
+	}
+}
+
 func TestDecodeLocalPayloadIsStrictAndSingleValued(t *testing.T) {
 	valid := []byte(`{"kind":"config","codec":"vp8","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1}`)
 	var config encoderConfig

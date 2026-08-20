@@ -53,6 +53,7 @@ type Event struct {
 type StartOptions struct {
 	BaseURL               *url.URL
 	HostAdmissionPassword string
+	Codec                 media.Codec
 	OnEvent               func(Event)
 }
 
@@ -74,20 +75,23 @@ type Session struct {
 	shareGeneration string
 	onEvent         func(Event)
 
-	mu             sync.Mutex
-	writeMu        sync.Mutex
-	conn           *websocket.Conn
-	ice            iceConfig
-	peers          map[string]*peer
-	admission      *viewerAdmission
-	fanout         *media.Fanout
-	closeOnce      sync.Once
-	fatalOnce      sync.Once
-	terminalOnce   sync.Once
-	readDone       chan struct{}
-	terminalResult chan error
-	readerStarted  atomic.Bool
-	closing        atomic.Bool
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	conn             *websocket.Conn
+	ice              iceConfig
+	peers            map[string]*peer
+	admission        *viewerAdmission
+	fanout           *media.Fanout
+	codec            media.Codec
+	peerAPI          *webrtc.API
+	codecPreferences []webrtc.RTPCodecParameters
+	closeOnce        sync.Once
+	fatalOnce        sync.Once
+	terminalOnce     sync.Once
+	readDone         chan struct{}
+	terminalResult   chan error
+	readerStarted    atomic.Bool
+	closing          atomic.Bool
 }
 
 type createRoomResponse struct {
@@ -120,6 +124,13 @@ type iceConfig struct {
 func Start(parent context.Context, options StartOptions) (*Session, Room, error) {
 	if options.BaseURL == nil {
 		return nil, Room{}, errors.New("remote server URL is required")
+	}
+	codec := options.Codec
+	if codec == "" {
+		codec = media.CodecVP8
+	}
+	if _, ok := media.ParseCodec(string(codec)); !ok {
+		return nil, Room{}, fmt.Errorf("unsupported native codec %q", codec)
 	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -160,17 +171,23 @@ func Start(parent context.Context, options StartOptions) (*Session, Room, error)
 		hostToken:       created.HostToken,
 		clientID:        clientID,
 		shareGeneration: shareGeneration,
+		codec:           codec,
 		onEvent:         options.OnEvent,
 		peers:           make(map[string]*peer),
 		readDone:        make(chan struct{}),
 		terminalResult:  make(chan error, 1),
 	}
-	session.fanout, err = media.NewFanout(
+	session.fanout, err = media.NewFanoutWithCodec(codec,
 		func() { session.emit(Event{Kind: "request-keyframe"}) },
 		func(fatalErr error) { session.fail(fatalErr) },
 	)
 	if err != nil {
 		cancel()
+		return nil, Room{}, err
+	}
+	session.peerAPI, session.codecPreferences, err = newPeerAPI(codec)
+	if err != nil {
+		session.close()
 		return nil, Room{}, err
 	}
 	if err = session.connectWithRetry(parent); err != nil {
@@ -217,6 +234,10 @@ func (session *Session) WriteFrame(frame media.Frame) error {
 		return err
 	}
 	return nil
+}
+
+func (session *Session) Codec() media.Codec {
+	return session.codec
 }
 
 func (session *Session) Stop() {

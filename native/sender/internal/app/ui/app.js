@@ -20,6 +20,7 @@ history.replaceState(null, "", location.pathname);
 const elements = {
   serverURL: document.querySelector("#server-url"),
   password: document.querySelector("#password"),
+  codec: document.querySelector("#codec"),
   start: document.querySelector("#start"),
   stop: document.querySelector("#stop"),
   preview: document.querySelector("#preview"),
@@ -81,6 +82,7 @@ async function startSharing() {
   startInFlight = true;
   elements.start.disabled = true;
   const generation = ++startGeneration;
+  const codec = selectedCodec();
   setStatus("选择屏幕");
   try {
     const capturedStream = await navigator.mediaDevices.getDisplayMedia({
@@ -108,6 +110,7 @@ async function startSharing() {
     const room = await localRequest("/api/start", {
       serverUrl: elements.serverURL.value,
       password: elements.password.value,
+      codec,
     });
     assertCurrentStart(generation);
     if (pendingStartGeneration === generation) pendingStartGeneration = 0;
@@ -117,9 +120,9 @@ async function startSharing() {
     elements.inviteLink.textContent = room.inviteUrl;
     elements.invite.hidden = false;
 
-    await connectMediaSocket(generation);
+    await connectMediaSocket(generation, codec);
     assertCurrentStart(generation);
-    const activeEncoder = await startEncoder(generation);
+    const activeEncoder = await startEncoder(generation, codec);
     assertCurrentStart(generation);
     sharing = true;
     elements.stop.hidden = false;
@@ -136,7 +139,7 @@ async function startSharing() {
   }
 }
 
-async function connectMediaSocket(generation) {
+async function connectMediaSocket(generation, codec) {
   const url = new URL("/media", location.href);
   url.protocol = "ws:";
   const socket = new WebSocket(url, [`screener.token.${processToken}`]);
@@ -157,7 +160,7 @@ async function connectMediaSocket(generation) {
   const accepted = waitForLocalKind(socket, "config-accepted", "本地编码配置确认超时");
   socket.send(JSON.stringify({
     kind: "config",
-    codec: "vp8",
+    codec,
     width: WIDTH,
     height: HEIGHT,
     fps: FPS,
@@ -168,9 +171,9 @@ async function connectMediaSocket(generation) {
   assertCurrentStart(generation, socket);
 }
 
-async function startEncoder(generation) {
+async function startEncoder(generation, codec) {
   const preferred = {
-    codec: "vp8",
+    codec: codec === "h264" ? "avc1.42c01f" : "vp8",
     width: WIDTH,
     height: HEIGHT,
     bitrate: BITRATE,
@@ -179,6 +182,7 @@ async function startEncoder(generation) {
     bitrateMode: "variable",
     hardwareAcceleration: HARDWARE_PREFERENCE,
   };
+  if (codec === "h264") preferred.avc = { format: "annexb" };
   let support = await VideoEncoder.isConfigSupported(preferred);
   assertCurrentStart(generation, mediaSocket);
   if (!retainsHardwarePreference(support)) {
@@ -502,6 +506,10 @@ function parseLocalMessage(value) {
 function boundedCount(value) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
+}
+
+function selectedCodec() {
+  return elements.codec?.value === "h264" ? "h264" : "vp8";
 }
 
 function emptyMetrics() {

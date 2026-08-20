@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pion/rtp"
+	"github.com/pion/webrtc/v4"
 )
 
 func TestFrameTimelinePreservesDroppedSourceTime(t *testing.T) {
@@ -96,6 +97,38 @@ func TestFrameTimelineAdvancesForPositiveSubsampleDelta(t *testing.T) {
 	}
 	if delta := second[0].Timestamp - first[0].Timestamp; delta != 1 {
 		t.Fatalf("RTP timestamp delta = %d, want 1 sample", delta)
+	}
+}
+
+func TestH264TimelinePacketizesAnnexBWithInBandParameterSets(t *testing.T) {
+	timeline := newFrameTimelineForCodec(CodecH264)
+	accessUnit := []byte{
+		0, 0, 0, 1, 0x09, 0xf0,
+		0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x1f,
+		0, 0, 0, 1, 0x68, 0xce, 0x06, 0xe2,
+		0, 0, 0, 1, 0x65, 0x88, 0x84, 0x21,
+	}
+	packets, _, err := timeline.Packetize(Frame{
+		KeyFrame: true, TimestampMicros: 1, DurationMicros: 33_333, Data: accessUnit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packets) < 2 {
+		t.Fatalf("H.264 access unit yielded %d RTP packets", len(packets))
+	}
+	if packets[0].Payload[0]&0x1f != 24 {
+		t.Fatalf("first H.264 payload type = %d, want STAP-A (24)", packets[0].Payload[0]&0x1f)
+	}
+}
+
+func TestH264TrackCapabilityUsesFixtureProfile(t *testing.T) {
+	capability, err := trackCapability(CodecH264)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capability.MimeType != webrtc.MimeTypeH264 || capability.SDPFmtpLine != H264SDPFmtpLine {
+		t.Fatalf("H.264 capability = %+v", capability)
 	}
 }
 
