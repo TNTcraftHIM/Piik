@@ -429,9 +429,9 @@ diversity, lifecycle, and sustained CPU/GPU,
 memory, latency, quality, and upload measurements. A third host edge, custom
 RTP/SRTP, or a custom congestion-control framework remains out of scope. The
 #28 minimum-of-two policy is also out of scope for product code; retaining its
-evidence does not retain its policy. Built-in exact-room Peer ICE TURN
-supersedes selected-edge as a separate Web source canary; Native stays STUN-only
-unless its own bounded capability and transport gate is accepted.
+evidence does not retain its policy. Ordinary Web and Native peer ICE stays
+STUN-only; optional selected-edge TURN follows the shared controller only after
+SFU/UDP fails and needs its own bounded transport gate.
 
 ## Primary Sources And License Boundary
 

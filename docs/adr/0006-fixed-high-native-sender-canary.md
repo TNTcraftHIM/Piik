@@ -125,9 +125,9 @@ stage while synchronously retaining a bounded final-negative snapshot:
 5. Add viewer 3, prove no third edge and a host-side waiting observation while
    the viewer keeps its existing waiting state, then close viewer 1 and prove
    FIFO promotion plus decoding/rendering.
-6. Keep this candidate STUN-only and capability-absent. Built-in Peer ICE TURN
-   is a Web exact-room canary; any Native opt-in requires its own bounded gate
-   rather than widening ordinary Native ICE or blocking the direct-path canary.
+6. Keep this candidate STUN-only. Ordinary Native ICE never receives TURN
+   candidates; a future selected-edge attempt requires its own generation-bound
+   gate after SFU/UDP rather than widening or blocking the direct-path canary.
 
 Only after these stages pass may separate performance, quality, loss,
 reconnect, browser, audio/A-V-sync, packaging, and license gates begin. Do not

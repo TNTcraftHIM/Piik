@@ -187,8 +187,8 @@ candidate on current Windows 11 with game parent and child audio, an independent
 voice process, notifications, no render stream, and process restart. Windows 10
 records the explicit unsupported/unresolved result rather than a fake fallback.
 Direct is the primary route; one browser-relay and one
-SFU-root audio check cover route preservation, while TURN needs only a
-connectivity smoke. Correlate capture settings, negotiated codec/derived fmtp,
+SFU-root audio check cover route preservation, while selected-edge TURN needs
+only one post-SFU connectivity smoke. Correlate capture settings, negotiated codec/derived fmtp,
 actual outbound/inbound bitrate, loss, jitter, concealment, jitter buffer, and
 A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 

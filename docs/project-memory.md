@@ -7,7 +7,7 @@ Last updated: 2026-08-20
 - Build low-latency game sharing for one broadcaster and trusted friends; public or large broadcasts belong on OBS/Twitch-class services.
 - Viewers join from normal desktop/mobile browsers. A later native sender may share encoding and improve capture/audio without changing the Web viewer requirement.
 - Use a small central service for access, rooms, signaling, deterministic topology, STUN, observability, and bounded SFU-root capacity.
-- Minimize server bandwidth. Peer ICE is direct-first; an exact-room, default-off tuple adds expiring authenticated TURN/UDP to capable Web PCs. Failure tries restart, rebuild, alternate peer, SFU, then bounded failure. TURN is transport, not topology.
+- Minimize server bandwidth. Ordinary peer ICE is STUN-only. Failure tries restart, rebuild, alternate peer and bounded SFU/UDP roots; only then may the controller authorize short-lived TURN for one selected exceptional edge before clear failure. TURN is transport, not topology.
 - Non-server nodes have at most two downstream edges; browser relays stay at one until resource gates pass. SFU normally feeds one or two roots that retain peer descendants; separately capped server edges may serve exceptional viewers that cannot attach behind a healthy root.
 - Two-tree packet/layer striping may reduce endpoint upload toward one stream bitrate, but needs a bounded multi-parent, loss, sync, churn, and latency experiment; it is not in the current full-stream chains.
 - Direct/peer keeps per-PC stock GCC. SFU paths start at a `HIGH` ceiling and share at most one `LOW`; next test LiveKit exactly-two built-in BWE on zero-descendant leaves. If it passes, no app media selector is built. Explicit quality, manual activation, then custom/native are later fallbacks; always-on `LOW` needs resource gates.
@@ -25,13 +25,13 @@ Last updated: 2026-08-20
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
 - ADR-0006 stays no-go: the second product run reached first WebCodecs output, then zero Go frame/RTP and no Viewer; cleanup passed 5/5. A separate offline Media Foundation fixture proved one RTX 4070 SUPER H.264 hardware path over 360/360 frames, but its valid Constrained Baseline SPS `42c01f` is outside Pion's default exact fmtp set; Pion/Viewer interop remains unproven. Native v2 stays memory-only and leaves SQLite/Web unchanged.
 - Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
-- ADR-0005 accepts direct-first Peer ICE and bounded SFU roots. Its default-off exact-room slice is undeployed; production/coturn stay STUN-only. PR #12/selected-edge superseded.
+- ADR-0005 accepts direct/peer UDP, bounded SFU roots, then optional selected-edge TURN. The built-in participant-wide candidate failed its real direct acceptance before forced relay and rolled back completely; it is rejected as the product path. Production advertises STUN-only ICE.
 - Keep the controller exact-room only: room `1` is the STUN/SFU smoke. Preserve sticky progressing P2P, mobile leaves and break-before-make. Recovery spends one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries; active SFU gets one fresh grant before Peer failback.
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
-- Candidate UI has Viewer-local names and an opt-in Web Host roster without media changes. Host names, Viewer roster, endpoint details, and RTP loss remain pending.
+- Viewer-local names and the opt-in Web Host roster are deployed without media changes. Host self-name, endpoint details, and RTP loss remain pending.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 access is deployed; names/presence are session-only with no account, member, session, or roster table.
 - Deferred architecture audit: `docs/maintenance.md`.
@@ -39,19 +39,19 @@ Last updated: 2026-08-20
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production `d4bc421828c4b74f55195723aace290ffc0e5f9d` deployed at 2026-08-20 11:41:22 +08 to `https://share.bonfire.icu`. Persistent room `1` alone enables peer/SFU routing and C+B-correlated local quality reparenting; unlisted rooms remain ordinary P2P. Immediate rollback is `05f98d10ecd1` with the current v2 DB/env.
-- Production ICE is STUN-only. Source adds expiring STUN+TURN only for capable Web sessions in exact rooms; other rooms/Native stay STUN-only. Room `1` may feed two LiveKit roots with peer descendants; real relay/SFU media and game quality remain unverified.
+- Production `31bee238bc1e901e823f34e50737e202dc4b04bf` deployed at 2026-08-20 15:33:21 +08 to `https://share.bonfire.icu`. Room `1` alone enables peer/SFU routing, C+B local reparenting, and admission rescue; unlisted rooms remain ordinary P2P. Immediate rollback is `7fea60ef6f2a` with the current v2 DB/env.
+- Production ICE is STUN-only. Source still contains the default-off rejected built-in TURN candidate, but no room or client receives it. Room `1` may feed two LiveKit roots with peer descendants; selected-edge TURN is not implemented. Real rescue/relay/SFU media and game quality remain unverified.
 - Production requires an independent `HOST_ADMISSION_PASSWORD` only for creation/Host role. Default private fragment grants and explicit public-watch authorize Viewers; four anonymous Chrome routes stayed neutral until authorization. There are no accounts/JWT/session rows; SQLite v2 still contains all four rooms, including room `1`.
-- Production uses nginx, Node.js 24.19.0, coturn 4.17.2 for STUN/rollback, and pinned LiveKit 1.13.5 on UDP 7882 with TCP fallback disabled. Screener/LiveKit `NRestarts` remain 0/0; health and `index-YdNLg2E8.js` return 200. They used 39,198,720/79,269,888 bytes with zero cgroup high/max/OOM events at 11:44:15. No real room triggered quality reparenting. Public TCP 7880/7881 stays blocked; LiveKit keeps its 192/256 MiB cgroup boundary and restart disabled.
-- Old all-room TURN artifacts remain absent. The independent, default-off, undeployed `PEER_ICE_TURN_*` tuple is not an alias. Admission rollback requires `89e6d7649169` plus its environment backup; only pre-access `9610032` pairs with v1 SQLite.
+- Production uses nginx, Node.js 24.19.0, coturn 4.17.2, and pinned LiveKit 1.13.5 on UDP 7882 with TCP fallback disabled. The application TURN tuple is absent; coturn retains the old authenticated-relay config and TCP/UDP 3478 plus UDP 49152-49251 rules but receives no advertised credential. All services are active with zero automatic restarts; Screener used 38,031,360 bytes with zero cgroup events at 15:39:07.
+- Old all-room application TURN wire/config remains absent. Canary release `a11a73dfa79d-r4` is inactive after rollback to `7fea60e`; final health/config/firewall/SQLite passed with zero allocations.
 - ADR-0005 is configured with exact `PEER_ASSISTED_ROOM_IDS=1`; unlisted rooms use ordinary P2P. `screener-v2` is the only deployed signaling literal; there is no v1 parser or translator.
-- Production logs show two root participants and two short Host participants with no service restart or retained track. Their timing is consistent with, but does not directly prove, one fresh-grant retry and Peer failback. The Host exposes only the local current-revision failure stage (`connect|source|video-publish|sender-config|audio-publish|transport`) and uploads no raw error or endpoint data. Browser relays still re-encode; native capture/hardware remains outside validated production behavior.
-- The retained v1 backup is the only schema rollback path. A failed artifact attempt exposed unsafe hard-linked dependency reuse; the successful immutable release has zero shared regular-file inodes with rollback, and future releases preserve that boundary.
+- Production logs once showed two roots and two short Host participants without a retained track. Timing cannot prove retry/failback. Host exposes only its local current-revision failure stage and uploads no raw error or endpoint data; browser relays still re-encode.
+- The retained v1 backup is the only schema rollback path. Immutable releases share no regular-file inodes with rollback.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
 - Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
-- C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Source-only admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; focused/typecheck pass, real media unverified.
-- Undeployed Web name/presence leaves Native wire/media unchanged and separates Viewer roster from Host diagnostics; focused checks pass.
+- C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
+- Deployed Web name/presence leaves Native wire/media unchanged and separates Viewer roster from Host diagnostics.
 
 ## Provisional Quality Targets
 
@@ -66,7 +66,7 @@ These are measurement gates, not performance claims.
 
 - Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
-- Whether Peer ICE TURN passes direct/forced-relay, mobile, expiry/reconnect, 1/3/5/8 allocation/resource, 1/2 relay-bandwidth, and 1-GiB gates. Coturn deployment/ports remain unselected; media TCP is out of scope.
+- Whether one controller-selected edge can pass generation-bound parent/child rebuild, forced relay, expiry/failure, mobile, 1-GiB resource and relay-bandwidth gates after SFU/UDP fails. The rejected built-in canary left no application tuple, advertised credential, transient rule, or allocation; the old coturn relay config and ports remain. Media TCP is out of scope.
 - Exact mobile lifecycle behavior and whether Windows per-application audio is required for the first release.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.

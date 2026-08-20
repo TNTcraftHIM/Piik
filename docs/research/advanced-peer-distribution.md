@@ -312,8 +312,8 @@ optimizer, temporary fanout above budget, self-reported geography or device
 quality, or cannot beat the unchanged route. The earlier admission-rescue case
 remains valid, while this quality slice moves only the affected Viewer-rooted
 subtree and excludes only its current failed parent through the existing
-peer-first, then SFU, then explicit-failure path. Healthy TURN-to-direct
-optimization remains future work.
+peer-first, then SFU path. A future selected-edge TURN attempt follows SFU
+failure; healthy paths never enter relay optimization.
 
 ## Staged Connection Recovery Evidence
 
@@ -362,7 +362,7 @@ The enabled SFU is normally a virtual parent for at most `R=2` roots, which
 retain bounded peer descendants. A viewer that cannot attach behind any healthy
 root may be separately admitted only under the explicit `E`/central-egress cap;
 this is an exceptional compatibility budget, not unbounded whole-room fanout.
-The SFU/UDP and optional built-in Peer ICE TURN transport accounting lives in
+The SFU/UDP and optional selected-edge TURN transport accounting lives in
 [Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005's current
 controller remains failure-only, while its accepted target also handles
 admission with no eligible peer path; neither changes the sticky local
