@@ -132,12 +132,12 @@ code or user data:
 - Oopz `agora_rtc_sdk.dll`: SHA-256
   `66B8B34A57BA0EE9DCC6C516E2CC20F5F1EB5D35ED7150FDF37201A46BC8D4A0`.
 
-## Deferred Mobile Sender Boundary
+## Mobile Sender Boundary
 
-This section records later capability work; it does not broaden ADR-0006's
-Windows scope or authorize mobile runtime code. Priority remains the current
-deployment and staged Windows fixed-`HIGH` gate. The first mobile candidate is a
-separate P2 Android 14/API 34+ spike only after those P1 gates complete.
+Android now has one parallel P1 source slice; it does not broaden ADR-0006's
+Windows scope and does not create a cross-platform sender framework. Mobile Web
+Host remains unsupported. The accepted native slice targets Android 14/API 34+
+and the flagship peer-assisted Host direct-child path.
 
 Android's official `MediaProjection` path captures the display into a `Surface`;
 selected-app-window capture starts with Android 14 QPR2. API 34 requires fresh
@@ -151,21 +151,46 @@ experience and cannot be made invisible.
 The bounded Android data path is:
 
 ```text
-MediaProjection Surface -> one hardware MediaCodec fixed-HIGH encoder
-  -> existing site access / room / WSS / standard WebRTC
-  -> one or two unmodified Web viewers
+MediaProjection -> libwebrtc ScreenCapturerAndroid
+  -> HardwareVideoEncoderFactory (VP8/H.264 only, no software fallback)
+  -> existing site access / room / WSS / peer-assisted direct assignment
+  -> at most two unmodified Web viewers
 ```
 
-It adds no mobile-only topology, `LOW`, AV1, codec ladder, third downstream edge,
-or software fallback. `MediaCodecInfo.isHardwareAccelerated()` is metadata
-provided by the manufacturer that Android explicitly says cannot be tested for correctness,
-so it is only an admission signal. The spike must also prove the selected named
-encoder, supported fixed format, interval encode cost, CPU/GPU, temperature and
-throttling, power, queue bounds, actual bitrate/quality, and game impact on real
-devices. Missing or failed hardware evidence is no-go; the implementation must
-not silently select a software codec. Network changes reuse the existing
-per-edge WebRTC recovery contract rather than restarting capture or creating a
-new transport.
+The slice uses the public libwebrtc Android API rather than hand-building capture,
+RTP, pacing, congestion control, or SRTP. `DefaultVideoEncoderFactory` is excluded
+because it composes hardware with software fallback; a filtered
+`HardwareVideoEncoderFactory` exposes only VP8/H.264. It adds no mobile-only
+topology, audio, `LOW`, AV1, codec ladder, third downstream edge, SFU publisher,
+selected-edge TURN, or software fallback. Direct children are authoritative by
+route revision and connection generation. A requested SFU publication returns
+one bounded `route-failed`; it is not reported as supported.
+
+The first functional target is 720p30 at a 3 Mbps ceiling. Codec name and Android
+hardware metadata are admission signals, not performance proof. Once the source
+slice closes, one device/one Viewer smoke checks consent, selected encoder, first
+frame and cleanup. Rotation hot-resize, application audio, network reselection,
+thermal/power and multi-Viewer matrices follow later; they do not block source
+landing and cannot silently enable software encoding. Network changes reuse the
+existing per-edge WebRTC recovery contract rather than restarting capture or
+creating a new transport.
+
+Activity recreation does not yet reattach to an active foreground service. After
+rotation or process recreation, controls can show their initial state while the
+service continues sharing; its duplicate-start gate still prevents a second
+session. Restoring service status is a later P2 lifecycle task, not a media-path
+requirement for this source slice.
+
+The pinned `webrtc-sdk/android` packaging project is MIT-licensed and bundles
+upstream libwebrtc under its BSD-style license and PATENTS terms. OkHttp and
+kotlinx.serialization are Apache-2.0. The slice copies no implementation from
+LiveKit or another sender. A future distributed APK must retain the applicable
+third-party notices and still waits on Screener's project-license decision.
+
+OkHttp 5.3.0 resolves Kotlin stdlib 2.2.21. Android's current compatibility
+table requires AGP 8.10 or newer for Kotlin 2.2 class files, and AGP 8.10 uses
+Gradle 8.11.1 plus JDK 17. The source therefore pins Kotlin 2.2.21, AGP 8.10.1,
+Gradle 8.11.1, compile SDK 35 and JDK 17 rather than relying on an IDE default.
 
 iOS work remains later and separate. Apple's current ScreenCaptureKit
 documentation says the framework replaces ReplayKit for screen streaming and
@@ -566,9 +591,20 @@ SFU/UDP fails and needs its own bounded transport gate.
 - [RFC 8888 congestion-control feedback](https://www.rfc-editor.org/rfc/rfc8888.html)
 - [Electron desktop capture](https://www.electronjs.org/docs/latest/api/desktop-capturer/)
 - [Android media projection](https://developer.android.com/media/grow/media-projection)
+- [Android 14 app screen sharing](https://developer.android.com/about/versions/14/features/app-screen-sharing)
 - [Android media-projection foreground service](https://developer.android.com/develop/background-work/services/fgs/service-types#media-projection)
 - [Android `MediaCodecInfo`](https://developer.android.com/reference/android/media/MediaCodecInfo)
 - [Android `MediaCodecList`](https://developer.android.com/reference/android/media/MediaCodecList)
+- [libwebrtc `ScreenCapturerAndroid`](https://chromium.googlesource.com/external/webrtc/+/HEAD/sdk/android/api/org/webrtc/ScreenCapturerAndroid.java)
+- [libwebrtc `DefaultVideoEncoderFactory`](https://chromium.googlesource.com/external/webrtc/+/HEAD/sdk/android/api/org/webrtc/DefaultVideoEncoderFactory.java)
+- [libwebrtc `HardwareVideoEncoderFactory`](https://chromium.googlesource.com/external/webrtc/+/HEAD/sdk/android/api/org/webrtc/HardwareVideoEncoderFactory.java)
+- [`webrtc-sdk/android`](https://github.com/webrtc-sdk/android)
+- [`webrtc-sdk/android` license](https://github.com/webrtc-sdk/android/blob/main/LICENSE)
+- [libwebrtc license](https://webrtc.googlesource.com/src/+/refs/heads/main/LICENSE)
+- [OkHttp license](https://github.com/square/okhttp/blob/master/LICENSE.txt)
+- [kotlinx.serialization license](https://github.com/Kotlin/kotlinx.serialization/blob/master/LICENSE.txt)
+- [Android Kotlin/AGP compatibility](https://developer.android.com/build/kotlin-support)
+- [Android Gradle Plugin 8.10 compatibility](https://developer.android.com/build/releases/agp-8-10-0-release-notes)
 - [Apple ScreenCaptureKit](https://developer.apple.com/documentation/ScreenCaptureKit)
 - [Apple iOS ScreenCaptureKit sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios)
 - [Apple required hardware encoder key](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)

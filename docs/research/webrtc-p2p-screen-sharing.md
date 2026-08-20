@@ -1,7 +1,7 @@
 # P2P 优先游戏屏幕共享调研与可行性评估
 
 - 调研日期：2026-08-18
-- 移动端采集能力复核：2026-08-19
+- 移动端采集与 Viewer 投屏能力复核：2026-08-21
 - 目标场景：一名玩家向少量熟人私密分享，观看者可用手机/桌面浏览器加入，低延迟，尽量不消耗媒体服务器带宽
 - 结论状态：本文记录已部署 PoC 的 P2P/coturn 基线。ADR-0005 与[低服务器成本媒体路由](./low-server-media-routes.md)已取代本文早期“每条 peer edge 必带 TURN”的旗舰建议；生产后续移除了 room `1` 边界，ordinary ICE 仍为 STUN-only，selected-edge TURN 已配置但尚未完成真实媒体验收
 
@@ -176,7 +176,7 @@ await sender.setParameters(parameters);
 
 ### 移动浏览器分享端边界
 
-截至 2026-08-19，普通手机浏览器不能作为可靠的 Screener Host。当前
+截至 2026-08-21，普通手机浏览器不能作为可靠的 Screener Host。当前
 MDN Browser Compatibility Data 把 `getDisplayMedia()` 标为 Chrome Android、
 Firefox Android 和 Safari iOS 均不支持；Chrome Android 72--88 与 Firefox
 Android 66--79 曾暴露方法，但调用恒定以 `NotAllowedError` 失败。屏幕音频在
@@ -195,6 +195,29 @@ screen track 或加入私有媒体协议。
 - [MDN Browser Compatibility Data: `MediaDevices.getDisplayMedia`](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
 - [MDN `getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [W3C Screen Capture](https://w3c.github.io/mediacapture-screen-share/)
+
+### Viewer 向电视输出边界
+
+Remote Playback API 当前仍是 MDN `Limited availability`，不能作为跨浏览器基线。
+W3C 规范还明确允许 UA 在只支持 media flinging、而媒体源不是可传给远端设备的 URL
+时返回 `NotSupportedError`。Safari 官方只保证 `HTMLMediaElement` 原生 AirPlay picker；
+这些能力都不证明 live WebRTC `srcObject` 可在任意电视目标上远端播放。产品只能在
+运行时检测 `HTMLMediaElement.remote`，并在真实设备通过后显示入口；失败时保留本机
+播放和现在就能使用的系统级屏幕镜像。
+
+Google Cast `MediaInfo` 的 `contentUrl` 会被用作 media URL，缺失时 `contentId` 自身会
+被当作 media URL；当前 P2P Viewer 持有的是进程内 `MediaStream`，没有可供电视 fetch
+的 URL。为它新增转码、
+HLS/Web Receiver 或私有协议会改变服务器媒体成本和安全边界，当前不做。投屏只属于
+Viewer 本地播放输出；无论是否启用，现有 upstream PeerConnection、TURN/SFU/peer
+route、Host fanout 和其他 Viewer 均不变。
+
+来源（访问于 2026-08-21）：
+
+- [MDN Remote Playback API](https://developer.mozilla.org/en-US/docs/Web/API/Remote_Playback_API)
+- [W3C Remote Playback API](https://www.w3.org/TR/remote-playback/)
+- [Apple: Adding an AirPlay button to Safari media controls](https://developer.apple.com/documentation/webkitjs/adding_an_airplay_button_to_your_safari_media_controls)
+- [Google Cast `chrome.cast.media.MediaInfo`](https://developers.google.com/cast/docs/reference/web_sender/chrome.cast.media.MediaInfo)
 
 ### Electron 分享端
 

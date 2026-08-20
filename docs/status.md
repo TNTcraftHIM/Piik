@@ -41,7 +41,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 ## Unverified Boundaries
 
 - The final deployment proves process/config health, not a retained SFU frame, retry/failback, selected UDP pair, admission rescue, edge cap, quality, or resource deltas; game-share load/blur remains unclassified.
-- Android Chrome/iOS Safari Viewer leaves remain unverified and conservatively leaf-only. Mobile Web Host is unsupported; native senders are planned only.
+- Mobile Web Host unsupported; Viewer leaf-only. Android 14+ direct-child video source passes six local protocol tests and `assembleDebug`; its GitHub compile gate is account-billing blocked, while device media, SFU, audio, and rotation proof remain open. iOS is deferred; TV output is local-only P2.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
 - ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.
