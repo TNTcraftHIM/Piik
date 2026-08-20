@@ -512,11 +512,27 @@ export class HybridMediaRouter {
       this.relayCapacitySessionsByRoom.set(participant.roomId, advertised);
     }
     advertised.set(participant.peerId, participant.sessionId);
+    const controller = this.mediaRouteControllers.get(participant.roomId);
+    const active = controller?.getActiveRoute();
+    const routeIntent = this.viewerRouteIntentsByRoom
+      .get(participant.roomId)
+      ?.get(participant.peerId);
+    const allowAdmissionRescue =
+      downstreamEdges === 1 &&
+      active?.sfu.publicationGeneration === null &&
+      active.assignments.get(participant.peerId)?.upstream.kind === "none" &&
+      controller?.getPendingRoute() === undefined &&
+      !this.pendingRoutePreparations.has(participant.roomId) &&
+      (routeIntent === undefined || routeIntent.failedParentPeerId === null) &&
+      !this.failedParentPeerIdsByViewer.get(
+        viewerConnectionKey(participant.roomId, participant.peerId),
+      )?.size;
     const changes = this.peerRelayTopology.setViewerRelayCapacity(
       participant.roomId,
       participant.peerId,
       downstreamEdges,
       this.connectedPeerIds(participant.roomId),
+      { rescueUnassignedRelay: allowAdmissionRescue },
     );
     if (changes.length > 0) {
       this.clearChangedConnectionIds(participant.roomId, changes);

@@ -1435,6 +1435,108 @@ describe("WebSocket signaling", () => {
     expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
   });
 
+  it("rescues an unassigned relay in one bounded route generation", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "rescue-host"),
+    );
+    const first = await openClient(harness.webSocketUrl);
+    const firstAuth = peerAssisted(
+      await authenticate(
+        first,
+        harness.room,
+        "viewer",
+        "rescue-first",
+        null,
+      ),
+    );
+    const second = await openClient(harness.webSocketUrl);
+    const secondAuth = peerAssisted(
+      await authenticate(
+        second,
+        harness.room,
+        "viewer",
+        "rescue-second",
+        null,
+      ),
+    );
+    const relay = await openClient(harness.webSocketUrl);
+    const relayAuth = peerAssisted(
+      await authenticate(
+        relay,
+        harness.room,
+        "viewer",
+        "rescue-relay",
+        null,
+      ),
+    );
+    expect(relayAuth.routeAssignment.upstream).toEqual({ kind: "none" });
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: firstAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "admission-rescue-old-generation",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await first.inbox.next("signal");
+
+    relay.socket.send(
+      JSON.stringify({ type: "relay-capacity", downstreamEdges: 1 }),
+    );
+    const [hostRoute, firstRoute, secondRoute, relayRoute] = await Promise.all([
+      nextActiveRouteAfter(host, relayAuth.routeRevision),
+      nextActiveRouteAfter(first, relayAuth.routeRevision),
+      nextActiveRouteAfter(second, relayAuth.routeRevision),
+      nextActiveRouteAfter(relay, relayAuth.routeRevision),
+    ]);
+
+    expect(
+      new Set([
+        hostRoute.revision,
+        firstRoute.revision,
+        secondRoute.revision,
+        relayRoute.revision,
+      ]),
+    ).toEqual(new Set([relayAuth.routeRevision + 1]));
+    expect(hostRoute.assignment).toMatchObject({
+      upstream: { kind: "none" },
+      childPeerIds: [secondAuth.peerId, relayAuth.peerId],
+      sfuPublicationGeneration: null,
+    });
+    expect(firstRoute.assignment).toMatchObject({
+      upstream: { kind: "peer", peerId: relayAuth.peerId },
+      childPeerIds: [],
+    });
+    expect(secondRoute.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    expect(relayRoute.assignment).toMatchObject({
+      upstream: { kind: "peer", peerId: hostAuth.peerId },
+      childPeerIds: [firstAuth.peerId],
+    });
+    expect(hostRoute.assignment.childPeerIds).toHaveLength(2);
+    expect(relayRoute.assignment.childPeerIds).toHaveLength(1);
+
+    first.inbox.ignore("route-update");
+    first.inbox.ignore("media-assignment");
+    first.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: firstRoute.revision,
+        phase: "active",
+        connectionId: "admission-rescue-old-generation",
+      }),
+    );
+    await first.inbox.expectNone(30);
+  });
+
   it("keeps the P2P authenticated wire unchanged and forbids profile updates", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);

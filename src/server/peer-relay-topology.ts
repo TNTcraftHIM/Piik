@@ -9,6 +9,10 @@ export interface MediaAssignmentChange {
   mediaAssignment: MediaAssignment;
 }
 
+export interface RelayCapacityUpdateOptions {
+  rescueUnassignedRelay?: boolean;
+}
+
 export const MAX_PEER_RELAY_DEPTH = 4;
 
 interface RelayViewer {
@@ -87,6 +91,7 @@ export class PeerRelayTopology {
     peerId: string,
     downstreamEdges: RelayDownstreamEdges,
     connectedPeerIds: ReadonlySet<string>,
+    options: RelayCapacityUpdateOptions = {},
   ): MediaAssignmentChange[] {
     const room = this.rooms.get(roomId);
     const viewer = room?.viewers.get(peerId);
@@ -95,11 +100,19 @@ export class PeerRelayTopology {
     }
 
     const before = snapshot(room);
+    const previousDownstreamEdges = viewer.downstreamEdges;
     viewer.downstreamEdges = downstreamEdges;
     for (const [candidatePeerId, candidate] of orderedViewers(room)) {
       if (candidate.parentPeerId === null) {
         this.assignViewer(room, candidatePeerId, connectedPeerIds);
       }
+    }
+    if (
+      options.rescueUnassignedRelay &&
+      previousDownstreamEdges === 0 &&
+      downstreamEdges === 1
+    ) {
+      this.rescueUnassignedRelay(room, peerId, connectedPeerIds);
     }
     return changedAssignments(before, snapshot(room));
   }
@@ -283,6 +296,51 @@ export class PeerRelayTopology {
     if (childIndex !== -1) {
       children.splice(childIndex, 1);
     }
+  }
+
+  private rescueUnassignedRelay(
+    room: RelayRoom,
+    peerId: string,
+    connectedPeerIds: ReadonlySet<string>,
+  ): void {
+    const hostPeerId = room.hostPeerId;
+    const candidate = room.viewers.get(peerId);
+    if (
+      !hostPeerId ||
+      !candidate ||
+      !connectedPeerIds.has(hostPeerId) ||
+      !connectedPeerIds.has(peerId) ||
+      candidate.parentPeerId !== null ||
+      candidate.childPeerIds.length !== 0 ||
+      candidate.downstreamEdges !== 1 ||
+      room.hostChildPeerIds.length !== downstreamCapacity(room, hostPeerId)
+    ) {
+      return;
+    }
+
+    const leafPeerId = room.hostChildPeerIds.find((childPeerId) => {
+      const child = room.viewers.get(childPeerId);
+      return (
+        connectedPeerIds.has(childPeerId) &&
+        child?.parentPeerId === hostPeerId &&
+        child.childPeerIds.length === 0 &&
+        child.downstreamEdges === 0
+      );
+    });
+    if (!leafPeerId) {
+      return;
+    }
+
+    const leaf = room.viewers.get(leafPeerId)!;
+    const leafIndex = room.hostChildPeerIds.indexOf(leafPeerId);
+    room.hostChildPeerIds.splice(leafIndex, 1, peerId);
+    room.hostChildPeerIds.sort(
+      (left, right) =>
+        room.viewers.get(left)!.order - room.viewers.get(right)!.order,
+    );
+    candidate.parentPeerId = hostPeerId;
+    candidate.childPeerIds.push(leafPeerId);
+    leaf.parentPeerId = peerId;
   }
 }
 

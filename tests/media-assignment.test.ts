@@ -5,6 +5,7 @@ import {
   limitMediaAssignment,
   MAX_HOST_MEDIA_CHILDREN,
   MAX_VIEWER_MEDIA_CHILDREN,
+  reconcileBoundedMediaChildren,
   viewerRestartMessage,
   viewerSignalMessage,
 } from "../src/client/webrtc/media-assignment.ts";
@@ -38,6 +39,24 @@ describe("peer-assisted client assignment", () => {
       parentPeerId: "parent_12345678",
       childPeerIds: ["child_12345678"],
     });
+  });
+
+  it("removes stale host edges before starting replacement children", () => {
+    const operations: string[] = [];
+
+    reconcileBoundedMediaChildren(
+      new Set(["old-child", "kept-child"]),
+      ["kept-child", "new-child", "overflow-child"],
+      MAX_HOST_MEDIA_CHILDREN,
+      (peerId) => operations.push(`remove:${peerId}`),
+      (peerId) => operations.push(`start:${peerId}`),
+    );
+
+    expect(operations).toEqual([
+      "remove:old-child",
+      "start:kept-child",
+      "start:new-child",
+    ]);
   });
 
   it("leaves ordinary viewer signaling untargeted", () => {

@@ -27,7 +27,7 @@ Last updated: 2026-08-20
 - Mobile Web Host is unsupported; feature-detect and fail clearly. Mobile Viewer stays leaf-only. After Windows native, gate Android 14+; iOS waits for stable iOS 27 ScreenCaptureKit.
 - ADR-0005 accepts direct-first Peer ICE and bounded SFU roots. Its default-off exact-room slice is undeployed; production/coturn stay STUN-only. PR #12/selected-edge superseded.
 - Keep the controller exact-room only: room `1` is the STUN/SFU smoke. Preserve sticky progressing P2P, mobile leaves and break-before-make. Recovery spends one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries; active SFU gets one fresh grant before Peer failback.
-- Quality reparenting needs three correlated C+B hard-bad windows and reuses the local-subtree peer/SFU/failure intent. Single-sided reports are diagnostic; one room cooldown blocks churn. No score, timer, or global parent penalty.
+- C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
@@ -50,7 +50,7 @@ Last updated: 2026-08-20
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
 - Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
-- Generation-bound C+B needs three hard-bad windows; parent samples are one-use per connection. Pending SFU binds intent/guard. Stale/successful peer work releases quality exclusion; real failure may take it over. It uploads no raw endpoint metadata and computes no score.
+- C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Source-only admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; focused/typecheck pass, real media unverified.
 - Undeployed Web name/presence leaves Native wire/media unchanged and separates Viewer roster from Host diagnostics; focused checks pass.
 
 ## Provisional Quality Targets

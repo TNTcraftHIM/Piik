@@ -55,9 +55,11 @@ no UI, percentage rollout, or routing score.
 The signaling server assigns two sticky, balanced chains with a deterministic
 breadth-first walk. The host has capacity for at most two children and each
 viewer for at most one. Candidate parents are ordered by depth and server-issued
-join sequence. Joining a viewer does not move existing assignments. If a parent
-leaves, only its orphaned subtree root is assigned to the first available slot;
-the root's descendants stay attached. No RTT, bandwidth, CPU, geography,
+join sequence. Joining a viewer does not move existing assignments except for
+ADR-0005's bounded admission rescue: an unassigned one-slot relay may replace
+the oldest childless zero-capacity Host leaf when both Host slots are full. If a
+parent leaves, only its orphaned subtree root is assigned to the first available
+slot; the root's descendants stay attached. No RTT, bandwidth, CPU, geography,
 capability, or quality scoring is added.
 
 For this ADR, one media edge is one downstream `RTCPeerConnection` carrying the
