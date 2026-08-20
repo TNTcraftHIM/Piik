@@ -31,27 +31,25 @@ Last updated: 2026-08-20
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Production reports poor film audio and self-echo when system capture includes voice software. Diagnose audio A/B/C and sync; Web cannot isolate arbitrary processes and `maxBitrate` is not quality-up. A Windows 11 native candidate defaults to game-process-tree audio and never widens silently; Windows 10 remains unresolved/unsupported. See `docs/research/browser-screen-audio-quality.md`.
-- Viewer-local names and the opt-in Web participant roster remain control-plane-only. The Web Host now has a local stable-ID fallback and can rename itself; names stay socket/localStorage-only, and Native remains outside the capability boundary.
+- Viewer-local names and the opt-in Web participant roster remain control-plane-only. The Web Host name change is source-only after its failed activation; names stay socket/localStorage-only, and Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
-- ADR-0002 grant/public access is deployed; room-password is source-only. Names/presence remain session-only without account or roster tables.
+- ADR-0002 grant/public access and the v3 room-password migration are deployed; Host display-name remains source-only. Names/presence remain session-only without account or roster tables.
 - Deferred architecture audit: `docs/maintenance.md`.
 
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production `31bee238bc1e901e823f34e50737e202dc4b04bf` deployed at 2026-08-20 15:33:21 +08 to `https://share.bonfire.icu`. Room `1` alone enables peer/SFU routing, C+B local reparenting, and admission rescue; unlisted rooms remain ordinary P2P. Immediate rollback is `7fea60ef6f2a` with the current v2 DB/env.
+- Production currently serves `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612` at `https://share.bonfire.icu` after automatic rollback from the attempted `61a87ae47e38abc943cef47b3d7318bb51bf86d6` Host display-name activation. Health is 200; SQLite v3 retains four rooms including room `1`. Room `1` alone enables peer/SFU routing, C+B local reparenting, and admission rescue; unlisted rooms remain ordinary P2P. The preceding `31bee238` release remains historical rollback evidence.
+- The `61a87ae` artifact was prepared but the ephemeral wrapper omitted `mv` from `RELEASE_PREPARED` into `release`, producing systemd `status=200/CHDIR`; this was an activation-wrapper failure, not an application or database failure. Screener `NRestarts=31` reflects the attempt; LiveKit, coturn, and nginx were 0. Selected-edge TURN remains disabled.
 - Production ICE is STUN-only; stale `PEER_ICE_TURN_*` keys fail startup even blank. Source has a default-off coturn REST rebuild for the original failed Host/ViewerRelay edge after Viewer-root SFU exhaustion; it is undeployed/unverified and production advertises no TURN credential.
-- Production requires an independent `HOST_ADMISSION_PASSWORD` only for creation/Host role. Default private fragment grants and explicit public-watch authorize Viewers; four anonymous Chrome routes stayed neutral until authorization. There are no accounts/JWT/session rows; SQLite v2 still contains all four rooms, including room `1`.
-- Production uses nginx, Node.js 24.19.0, coturn 4.17.2, and pinned LiveKit 1.13.5 on UDP 7882 with TCP fallback disabled. The application TURN tuple is absent; coturn retains the old authenticated-relay config and TCP/UDP 3478 plus UDP 49152-49251 rules but receives no advertised credential. All services are active with zero automatic restarts; Screener used 38,031,360 bytes with zero cgroup events at 15:39:07.
-- Old all-room application TURN wire/config remains absent. Canary release `a11a73dfa79d-r4` is inactive after rollback to `7fea60e`; final health/config/firewall/SQLite passed with zero allocations.
+- Production requires an independent `HOST_ADMISSION_PASSWORD` only for creation/Host role. Default private fragment grants, room passwords, and explicit public-watch authorize Viewers; four anonymous Chrome routes stayed neutral until authorization. There are no accounts/JWT/session rows; SQLite v3 still contains all four rooms, including room `1`.
+- Production uses nginx, Node.js 24.19.0, coturn 4.17.2, and pinned LiveKit 1.13.5 on UDP 7882 with TCP fallback disabled. The application TURN tuple is absent; coturn retains the old authenticated-relay config and TCP/UDP 3478 plus UDP 49152-49251 rules but receives no advertised credential. Current service state is health 200 with Screener `NRestarts=31` from the failed activation sequence and LiveKit/coturn/nginx at 0.
 - ADR-0005 is configured with exact `PEER_ASSISTED_ROOM_IDS=1`; unlisted rooms use ordinary P2P. `screener-v2` is the only deployed signaling literal; there is no v1 parser or translator.
-- Production logs once showed two roots and two short Host participants without a retained track. Timing cannot prove retry/failback. Host exposes only its local current-revision failure stage and uploads no raw error or endpoint data; browser relays still re-encode.
-- The retained v1 backup is the only schema rollback path. Immutable releases share no regular-file inodes with rollback.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
 - Chrome 151 synthetic topology/quality-control runs kept fanout 2/1 and all viewers decoding; one relay close recovered in 5.32 seconds. This is control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
-- Deployed Web name/presence leaves Native wire/media unchanged and separates Viewer roster from Host diagnostics.
+- Source-only Web Host name/presence leaves Native wire/media unchanged and separates Viewer roster from Host diagnostics; the Host-name artifact was not activated.
 
 ## Provisional Quality Targets
 

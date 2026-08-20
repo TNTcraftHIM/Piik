@@ -4,40 +4,45 @@ Last updated: 2026-08-20
 
 ## Phase
 
-`https://share.bonfire.icu` runs `31bee238bc1e901e823f34e50737e202dc4b04bf`
-since 2026-08-20 15:33:21 +08 with Viewer presence, initial-connect recovery,
-local quality reparenting, and deterministic relay-admission rescue.
+`https://share.bonfire.icu` currently serves `fdd14ba0d9b5ea4c43aa0f6a3a29e0eacf182612`
+with health 200 after an automatic rollback from the attempted
+`61a87ae47e38abc943cef47b3d7318bb51bf86d6` Host display-name deployment. The
+ephemeral wrapper reached `RELEASE_PREPARED` but omitted the `mv` from its
+prepared stage into `release`; systemd reported `status=200/CHDIR`. The
+application and database were not the failure cause. SQLite v3 still has four
+rooms including room `1`; Screener `NRestarts=31` records the failed activation
+sequence, while LiveKit, coturn, and nginx remained at zero. Host display names
+remain source-only and are not deployed.
 Ordinary ICE is STUN-only process-wide; persistent room `1` alone enables the
 automatic peer/SFU-UDP controller with at most two SFU roots. The old
-`7fea60ef6f2a` is the immediate rollback with the current v2 DB/env; older
-schema rollback boundaries are in `docs/deployment.md`. Native remains no-go
-and is not part of production.
+`fdd14ba0d9b5` is the current healthy rollback target with the v3 DB/env;
+older schema rollback boundaries are in `docs/deployment.md`. Native remains
+no-go and is not part of production.
 
 ## Current Snapshot
 
 - Capture precedes room creation; source/quality changes preserve peers and pause keeps audio/connections. Quality defaults to `maintain-resolution` with balanced/fluid options.
-- Production access remains `screener-v2`: Host secret gates creation/Host; private grants and public codes authorize Viewers. The source-only, undeployed candidate adds private room-code + password entry without changing grant/public entry.
-- Production SQLite v2 retains four rooms and checked grant digests. Candidate v3 atomically adds a nullable checked 48-byte salt+scrypt-verifier BLOB; never plaintext.
+- Production access is `screener-v2`: Host admission, private grants/passwords, and public codes authorize Viewers. SQLite v3 retains four rooms and checked material; raw credentials are never stored.
+- The Host display-name change is source-only after the failed `61a87ae` activation; it did not alter the deployed wire or UI.
 - Source-only Native v2 uses memory-only rooms, 300s reclaim and `ROOM_TTL`; production does not run it.
 - PR #44's exact-room STUN-only/SFU-UDP router is enabled only for production room `1`: host/SFU roots <=2, browser relay <=1, bounded failure. HTTPS/WSS stays TLS/TCP.
 - Fallback prewarm is token-free and limited to room `1`; mobile/iPad viewers are leaves and healthy edges stay sticky.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` can publish exactly `HIGH+LOW` with Dynacast/backup codec off and subscriber `HIGH` ceilings; it has no retained real media frame.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
-- Web opt-in roster includes Host self-name; Native wire/media remains unchanged.
+- Web opt-in roster code includes Host self-name, but the Host display-name change is source-only/not deployed; Native wire/media remains unchanged.
 
 ## Verified Evidence
 
-- `31bee238` passed 28 files/421 tests and both builds. Health returned in 560.607 ms; observed downtime was 437.137 ms. Health/assets/routes, SQLite v2/four rooms/room `1`, and unchanged config/network gates passed. No real room triggered admission rescue.
-- At 15:39:07 Screener used 38,031,360 bytes with zero cgroup events. All four services were active with zero automatic restarts; only Screener had the planned restart.
+- Historical `31bee238` deployment passed 28 files/421 tests and both builds; no real admission rescue was triggered.
 - Chrome 151 synthetic `1/3/5/8` and 720p30 quality-change runs kept 2/1 fanout and decoding; slowest first frame was 1.05 seconds and one relay close recovered in 5.32 seconds. This is control evidence only.
-- A mobile-network room-1 run produced two root participants for about 4.6 seconds and two short Host participants (about 0.46/0.27 seconds), all client-requested leaves, with zero service restarts and no retained track. This is consistent with the code's one fresh-grant retry and Peer failback, but logs cannot prove those transitions. The deployed Host now shows only the local failure stage.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - SVC is `no-go-web-svc-cross-path-hardware-contract`: no direct/peer selection, cross-PC shared encode, or portable hardware proof; pinned screen share is `L1T3`. No browser run was warranted.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Native VP8 loopback (Chrome 151) reached one Viewer: 30 sender frames, 85 source RTP packets, 877 inbound packets, 299 decoded/rendered at 1280x720, no fatal. Pion outbound delta missed a 2s refresh; hardware/multi-viewer/FIFO/endurance/public/native proof remains open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Selected-edge typecheck and 131 focused control tests pass; no TURN allocation/media evidence exists.
+- Prepared artifact `screener-61a87ae47e38abc943cef47b3d7318bb51bf86d6-20260820T143538Z.tar.gz` (883597 bytes, SHA-256 `d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`) was never activated; rollback left `fdd14ba` healthy and selected-edge TURN disabled.
 
 ## Unverified Boundaries
 
