@@ -29,7 +29,7 @@ func TestStartUsesSiteAccessCookieAndPrivateV2Room(t *testing.T) {
 		t.Fatal(err)
 	}
 	session, room, err := Start(context.Background(), StartOptions{
-		BaseURL:               baseURL,
+		BaseURL:            baseURL,
 		SiteAccessPassword: password,
 	})
 	if err != nil {
@@ -172,7 +172,7 @@ func TestSiteAccessFailuresAreBoundedAndDoNotLeakSecrets(t *testing.T) {
 				t.Fatal(parseErr)
 			}
 			_, _, startErr := Start(context.Background(), StartOptions{
-				BaseURL:               baseURL,
+				BaseURL:            baseURL,
 				SiteAccessPassword: password,
 			})
 			if startErr == nil {
@@ -355,6 +355,117 @@ func TestSessionSendPropagatesAClosedSignalingConnection(t *testing.T) {
 	session := &Session{ctx: ctx, signalCtx: ctx, conn: connection}
 	if err = session.send(simpleMessage{Type: "abandon-room"}); err == nil {
 		t.Fatal("signaling write to a closed connection returned success")
+	}
+}
+
+func TestPeerAssistedHostUsesOnlyAuthoritativeRoutes(t *testing.T) {
+	received := make(chan []byte, 8)
+	accepted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		connection, err := websocket.Accept(response, request, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		defer connection.CloseNow()
+		close(accepted)
+		for {
+			_, payload, readErr := connection.Read(request.Context())
+			if readErr != nil {
+				return
+			}
+			received <- payload
+		}
+	}))
+	defer server.Close()
+	connection, _, err := websocket.Dial(context.Background(), "ws"+server.URL[len("http"):], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.CloseNow()
+	<-accepted
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := &Session{
+		signalCtx: ctx, conn: connection, peerAssisted: true,
+		peers: make(map[string]*peer), routeRevision: 7, routePhase: "active",
+	}
+
+	if err = session.handle(serverMessage{Type: "peer-joined", PeerID: "viewer-new"}); err != nil || len(session.peers) != 0 {
+		t.Fatal("peer-joined created a non-authoritative edge")
+	}
+	direct := participantRouteAssignment{ChildPeerIDs: []string{}}
+	direct.Upstream.Kind = "none"
+	direct.SFUPublicationGeneration = json.RawMessage("null")
+	stale := direct
+	stale.ChildPeerIDs = []string{"viewer-stale"}
+	if err = session.handle(serverMessage{Type: "route-update", RouteRevision: 6, RoutePhase: "active", RouteAssignment: stale}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case payload := <-received:
+		t.Fatalf("stale route emitted %s", payload)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err = session.handle(serverMessage{Type: "route-update", RouteRevision: 8, RoutePhase: "active", RouteAssignment: direct}); err != nil {
+		t.Fatal(err)
+	}
+	assertRouteStatus(t, receiveRouteStatus(t, received), "route-ready", 8, "active", nil)
+
+	sfu := direct
+	sfu.SFUPublicationGeneration = json.RawMessage(`"publication-1"`)
+	sfuUpdate := serverMessage{Type: "route-update", RouteRevision: 9, RoutePhase: "active", RouteAssignment: sfu}
+	if err = session.handle(sfuUpdate); err != nil {
+		t.Fatal(err)
+	}
+	assertRouteStatus(t, receiveRouteStatus(t, received), "route-failed", 9, "active", nil)
+	if err = session.handle(sfuUpdate); err != nil {
+		t.Fatal(err)
+	}
+	selected := serverMessage{Type: "selected-edge-turn", EdgeKind: "host-sfu-ingress", RouteRevision: 9, NewConnectionID: "connection-new"}
+	if err = session.handle(selected); err != nil {
+		t.Fatal(err)
+	}
+	connectionID := "connection-new"
+	assertRouteStatus(t, receiveRouteStatus(t, received), "route-failed", 9, "active", &connectionID)
+	if err = session.handle(selected); err != nil {
+		t.Fatal(err)
+	}
+	if err = session.handle(sfuUpdate); err != nil {
+		t.Fatal(err)
+	}
+	if err = session.handle(serverMessage{Type: "error", Code: "PEER_NOT_FOUND"}); err != nil {
+		t.Fatal("bounded selected-edge fallback became fatal")
+	}
+	select {
+	case payload := <-received:
+		t.Fatalf("duplicate route failure emitted %s", payload)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func receiveRouteStatus(t *testing.T, received <-chan []byte) []byte {
+	t.Helper()
+	select {
+	case payload := <-received:
+		return payload
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for route status")
+		return nil
+	}
+}
+
+func assertRouteStatus(t *testing.T, payload []byte, messageType string, revision int64, phase string, connectionID *string) {
+	t.Helper()
+	var message struct {
+		Type         string  `json:"type"`
+		Revision     int64   `json:"revision"`
+		Phase        string  `json:"phase"`
+		ConnectionID *string `json:"connectionId"`
+	}
+	if err := json.Unmarshal(payload, &message); err != nil || message.Type != messageType || message.Revision != revision || message.Phase != phase ||
+		(connectionID == nil) != (message.ConnectionID == nil) || connectionID != nil && *connectionID != *message.ConnectionID {
+		t.Fatalf("route status = %s", payload)
 	}
 }
 

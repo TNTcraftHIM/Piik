@@ -8,6 +8,8 @@ import (
 
 const validHostAuthenticated = `{"type":"authenticated","protocol":"screener-v2","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`
 
+const validPeerAssistedHostAuthenticated = `{"type":"authenticated","protocol":"screener-v2","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":["viewer-1","viewer-2"],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678","mediaMode":"peer-assisted","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1","viewer-2"]},"routeRevision":7,"routeAssignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1","viewer-2"],"sfuPublicationGeneration":null},"qualitySettings":{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution"}}`
+
 func TestMarshalHostSignalShapes(t *testing.T) {
 	mid := "0"
 	line := uint16(0)
@@ -59,6 +61,78 @@ func TestDecodeOrdinaryHostAuthentication(t *testing.T) {
 	if message.MaxViewers != 3 || message.Type != "authenticated" || message.Role != "host" ||
 		message.ViewerPolicy != "private-link" {
 		t.Fatalf("authentication = %+v", message)
+	}
+}
+
+func TestDecodePeerAssistedHostAuthentication(t *testing.T) {
+	message, err := decodeServerMessage([]byte(validPeerAssistedHostAuthenticated))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !message.PeerAssisted || message.RouteRevision != 7 || len(message.MediaAssignment.ChildPeerIDs) != 2 {
+		t.Fatalf("peer-assisted authentication = %+v", message)
+	}
+}
+
+func TestDecodePeerAssistedHostAuthenticationRejectsInvalidAuthority(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"third-child": func(message map[string]any) {
+			children := []any{"viewer-1", "viewer-2", "viewer-3"}
+			message["mediaAssignment"].(map[string]any)["childPeerIds"] = children
+			message["routeAssignment"].(map[string]any)["childPeerIds"] = children
+		},
+		"duplicate-child": func(message map[string]any) {
+			children := []any{"viewer-1", "viewer-1"}
+			message["mediaAssignment"].(map[string]any)["childPeerIds"] = children
+			message["routeAssignment"].(map[string]any)["childPeerIds"] = children
+		},
+		"host-parent": func(message map[string]any) {
+			message["mediaAssignment"].(map[string]any)["parentPeerId"] = "viewer-1"
+		},
+		"host-upstream": func(message map[string]any) {
+			message["routeAssignment"].(map[string]any)["upstream"] = map[string]any{"kind": "peer", "peerId": "viewer-1"}
+		},
+		"extra-upstream-field": func(message map[string]any) {
+			message["routeAssignment"].(map[string]any)["upstream"] = map[string]any{"kind": "none", "peerId": ""}
+		},
+		"mismatched-children": func(message map[string]any) {
+			message["routeAssignment"].(map[string]any)["childPeerIds"] = []any{"viewer-2", "viewer-1"}
+		},
+		"missing-quality": func(message map[string]any) { delete(message, "qualitySettings") },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			var candidate map[string]any
+			if err := json.Unmarshal([]byte(validPeerAssistedHostAuthenticated), &candidate); err != nil {
+				t.Fatal(err)
+			}
+			mutate(candidate)
+			payload, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = decodeServerMessage(payload); err == nil {
+				t.Fatal("invalid peer-assisted authority was accepted")
+			}
+		})
+	}
+}
+
+func TestDecodePeerAssistedRouteMessages(t *testing.T) {
+	tests := []struct {
+		payload  string
+		typeName string
+	}{
+		{`{"type":"media-assignment","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1"]}}`, "media-assignment"},
+		{`{"type":"route-update","revision":8,"phase":"active","assignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1"],"sfuPublicationGeneration":null}}`, "route-update"},
+		{`{"type":"sfu-config","revision":8,"url":"wss://example.test","token":"opaque"}`, "sfu-config"},
+		{`{"type":"selected-edge-turn","edgeKind":"host-sfu-ingress","revision":8,"hostPeerId":"host-peer","publicationGeneration":"publication-1","oldConnectionId":"connection-old","newConnectionId":"connection-new","expiresAt":"2030-01-01T00:00:00Z","iceServer":{"urls":["turn:example.test?transport=udp"],"username":"1:abcdefghijklmnop","credential":"opaque"}}`, "selected-edge-turn"},
+	}
+	for _, test := range tests {
+		message, err := decodeServerMessage([]byte(test.payload))
+		if err != nil || message.Type != test.typeName {
+			t.Fatalf("decode %s = %+v, %v", test.typeName, message, err)
+		}
 	}
 }
 
