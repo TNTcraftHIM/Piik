@@ -311,6 +311,28 @@ second Viewer, FIFO, or production run followed. The result remains
 or why the product path stopped, so no underlying close or raw cause may be
 inferred.
 
+A later static follow-up identified a deterministic source fatal candidate, but
+the retained run did not preserve the fatal category needed to attribute its
+failure to that branch. WebCodecs defines `EncodedVideoChunk.duration` as
+nullable and copies output timestamp and duration from the input `VideoFrame`;
+it does not establish the prior product assumption that the next timestamp must
+be at least the previous timestamp plus duration. The local sender substitutes
+33,333 microseconds when duration is absent, so ordinary capture jitter such as
+1,000,000 then 1,033,000 microseconds previously reached `encoded frame
+timestamps overlap` despite strictly increasing source time.
+
+The source candidate now packetizes the first frame without advancing Pion's
+clock, then advances it by each positive adjacent source-timestamp delta before
+packetizing the next frame. Reported duration remains only for positive
+dropped-source-time diagnostics; equal or decreasing timestamps still fail
+closed. Focused timeline tests cover shorter-than-duration jitter, dropped
+source time, non-increasing input, and a positive delta below one 90 kHz sample.
+A real `/media` handler test carries the two jittered frames through decode and
+fanout with two frames written and positive source RTP. All Native Go packages
+pass. These checks prove that specific fatal path is removed; without a post-fix
+Chrome smoke they do not classify the retained run or prove Viewer delivery.
+The WebCodecs and pinned Pion packetizer sources were rechecked 2026-08-20.
+
 The frozen probe continues to bind the first actual local media WebSocket as
 gate-local generation 1. A second bridge generation saturates at 2, stops
 accumulating the first generation's counters, and fails the Viewer signal,
