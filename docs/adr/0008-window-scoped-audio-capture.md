@@ -2,9 +2,10 @@
 
 Date: 2026-08-21
 
-Status: Accepted. The browser hint, opt-in Native Windows P1 slice, and bounded
-Windows x64 evaluation-package path are source-complete; Native remains
-default-off, formally unreleased, and undeployed.
+Status: Accepted. The browser hint and opt-in Native Windows audio slice are
+source-complete, including the bounded Windows x64 evaluation-package path.
+The paired WGC/MF hardware-video source passed its one-Viewer acceptance smoke;
+all Native sources remain default-off, formally unreleased, and undeployed.
 
 ## Context
 
@@ -33,12 +34,12 @@ Windows 11 desktop (build 22000 or newer) and is not a Windows 10 fallback.
 2. The default Web route remains unchanged in topology, codecs, and relay
    behavior. No Web Audio mixer, SDP rewrite, or app-owned audio bitrate knob
    is introduced by this ADR.
-3. The native sender's next audio slice is an explicit opt-in
-   `window-process-audio` mode on Windows 11. The local capture session owns
-   one selected target PID/process tree, one WGC/DXGI video source, and one
-   WASAPI loopback audio source. Process IDs, creation tokens, titles, paths,
-   device identity, and PCM stay local; they do not enter signaling, URLs,
-   logs, or storage.
+3. The native sender has an explicit Windows 11 local window target. Browser
+   VP8/H.264 may use that target only for `window-process-audio`; the separate
+   `native-window-h264` source uses the same bound HWND/PID/creation time for
+   WGC/DXGI video and WASAPI process-tree audio. Process IDs, HWNDs, creation
+   tokens, titles, paths, device identity, PCM, and local hardware status stay
+   local; they do not enter signaling, URLs, logs, or storage.
 4. If the target process exits, produces no render stream, or the loopback
    activation is denied, the sender reports `audio unavailable` or `audio
    silent` and stops/asks the user. It never widens to whole-system audio.
@@ -50,7 +51,7 @@ Windows 11 desktop (build 22000 or newer) and is not a Windows 10 fallback.
 This is an interface boundary, not a new framework or a current wire change:
 
 ```text
-NativeCaptureTarget { pid: uint32, creationTime: uint64, includeProcessTree: true }
+NativeCaptureTarget { hwnd: uint64, pid: uint32, creationTime: uint64, includeProcessTree: true }
 NativeCaptureSession.start(target)
   -> VideoFrames(WGC/DXGI) + AudioPcm(WASAPI process loopback)
   -> existing native sender timeline/encoder/fanout
@@ -80,9 +81,9 @@ timestamp, duration, bounded payload); it does not add a public signaling field.
 The Go session owns one shared Opus `TrackLocalStaticRTP` and adds it before the
 offer on every native PeerConnection. Audio packetization uses the 48 kHz RTP
 clock and the source timestamp delta, so one encoded packet stream can feed the
-existing two-edge cap. The WGC/DXGI video adapter remains the next small slice;
-its `SystemRelativeTime` is retained in the fixture so it can share the same
-QPC origin when native video replaces the Web source.
+existing two-edge cap. In this historical audio-only phase, the WGC/DXGI video
+adapter was the next small slice; its retained `SystemRelativeTime` let the
+completed native-video path share the same QPC origin.
 
 Expected implementation size is about **500--800 new LOC**, excluding the
 browser/Windows SDK and existing video/MF fixture code: Windows loopback
@@ -112,10 +113,28 @@ visual marker, while an independent voice process and notification emit
 different markers. Require an Opus inbound track and rendered video/audio,
 monotonic QPC timestamps, and a bounded A/V offset; verify the unrelated
 markers are absent and that target exit/silence stops or asks without widening
-capture. SFU/TURN, second Viewer, endurance, and the native WGC video swap are
-follow-up gates. On 2026-08-21, 100 20-ms chunks isolated a 440 Hz target from
+capture. SFU/TURN, second Viewer, and endurance remain follow-up gates; paired
+WGC video completion is recorded below. On 2026-08-21, 100 20-ms chunks isolated a 440 Hz target from
 an independent 880 Hz process by 4017.8x. Chrome 151 then received one audio
 track and 495 inbound Opus packets while video decoded/rendered 296 frames.
+
+## P1 WGC/MF Completion
+
+The paired native-video source reuses the proven hardware fixture rather than
+adding a second encoder framework. WGC creates a capture item directly from the
+bound HWND on the selected D3D11 device. The frame pool is free-threaded and is
+recreated on content-size changes. D3D11 VideoProcessor performs aspect-fit
+BGRA-to-NV12 conversion at fixed 1280x720/30, then the existing adapter-bound,
+hardware-only asynchronous MF H.264 path emits Annex-B `42c01f` access units.
+There is no software MFT, alternate codec, monitor, or browser-video fallback.
+
+The helper multiplexes process-tree PCM, H.264 access units, and bounded local
+status. Go writes H.264 directly to the existing shared fanout; the browser UI
+receives only a one-way local copy for `VideoDecoder` preview. PCM retains the
+existing WebCodecs Opus bridge. PLI/FIR recovery is generation-bound and
+coalesced into a helper key-frame command. Normal browser VP8/H.264 sources
+remain explicit alternatives, with VP8 as the default; neither is an implicit
+runtime downgrade.
 
 ## Consequences
 
@@ -131,8 +150,8 @@ track and 495 inbound Opus packets while video decoded/rendered 296 frames.
 
 ## Follow-Up TODO
 
+- Keep a second Viewer, SFU/TURN, endurance, and real-game A/V sync as separate
+  follow-ups; the one-Viewer H.264 and attributed `VideoEncode` gate passed.
 - Download and run the short-lived Windows x64 evaluation artifact; keep
   explicit target selection default-off. A formal release remains blocked on
   the project license, signing, and its own acceptance boundary.
-- Keep native WGC video, a second Viewer, SFU/TURN, endurance, and real-game
-  A/V sync as separate follow-ups.

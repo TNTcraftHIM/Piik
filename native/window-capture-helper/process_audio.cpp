@@ -9,10 +9,11 @@
 #include <wrl.h>
 #include <wrl/implements.h>
 
-#include <array>
+#include "process_audio.h"
+
 #include <cstdint>
-#include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -23,13 +24,8 @@ using Microsoft::WRL::RuntimeClass;
 using Microsoft::WRL::RuntimeClassFlags;
 using Microsoft::WRL::ClassicCom;
 
+namespace screener::capture {
 namespace {
-constexpr UINT32 kSampleRate = 48'000;
-constexpr UINT16 kChannels = 2;
-constexpr UINT16 kBytesPerSample = 2;
-constexpr UINT32 kFramesPerChunk = 960;
-constexpr DWORD kBytesPerChunk = kFramesPerChunk * kChannels * kBytesPerSample;
-constexpr UINT64 kChunkDuration100ns = 200'000;
 constexpr size_t kMaxWindows = 100;
 
 class ActivationHandler final : public RuntimeClass<
@@ -57,6 +53,7 @@ class ActivationHandler final : public RuntimeClass<
 };
 
 struct WindowTarget {
+  UINT64 windowHandle;
   DWORD pid;
   UINT64 creationTime;
   std::string title;
@@ -116,7 +113,7 @@ std::string JsonString(const std::string& value) {
 
 BOOL CALLBACK CollectWindow(HWND window, LPARAM parameter) {
   auto* targets = reinterpret_cast<std::vector<WindowTarget>*>(parameter);
-  if (targets->size() >= kMaxWindows) return FALSE;
+  if (targets->size() >= kMaxWindows) return TRUE;
   if (!IsWindowVisible(window) || GetWindow(window, GW_OWNER) != nullptr) return TRUE;
   const int length = GetWindowTextLengthW(window);
   if (length <= 0 || length > 512) return TRUE;
@@ -134,59 +131,28 @@ BOOL CALLBACK CollectWindow(HWND window, LPARAM parameter) {
   UINT64 creationTime = 0;
   const HRESULT result = ReadProcessCreationTime(process, &creationTime);
   CloseHandle(process);
-  if (SUCCEEDED(result)) targets->push_back({pid, creationTime, std::move(utf8)});
+  if (SUCCEEDED(result)) {
+    targets->push_back({static_cast<UINT64>(reinterpret_cast<UINT_PTR>(window)),
+                        pid, creationTime, std::move(utf8)});
+  }
   return TRUE;
 }
 
-int ListWindows() {
+}  // namespace
+
+int WriteWindowList() {
   std::vector<WindowTarget> targets;
   if (!EnumWindows(CollectWindow, reinterpret_cast<LPARAM>(&targets))) return 2;
   std::cout << '[';
   for (size_t index = 0; index < targets.size(); ++index) {
     if (index != 0) std::cout << ',';
-    std::cout << "{\"pid\":" << targets[index].pid << ",\"creationTime\":"
+    std::cout << "{\"windowHandle\":" << targets[index].windowHandle
+              << ",\"pid\":" << targets[index].pid << ",\"creationTime\":"
               << targets[index].creationTime << ",\"title\":"
               << JsonString(targets[index].title) << '}';
   }
   std::cout << ']';
   return std::cout.good() ? 0 : 2;
-}
-
-void PutUint32BE(BYTE* output, UINT32 value) {
-  for (int index = 3; index >= 0; --index) {
-    output[index] = static_cast<BYTE>(value & 0xff);
-    value >>= 8;
-  }
-}
-
-void PutUint64BE(BYTE* output, UINT64 value) {
-  for (int index = 7; index >= 0; --index) {
-    output[index] = static_cast<BYTE>(value & 0xff);
-    value >>= 8;
-  }
-}
-
-HRESULT WriteAll(HANDLE output, const BYTE* data, DWORD size) {
-  while (size > 0) {
-    DWORD written = 0;
-    if (!WriteFile(output, data, size, &written, nullptr) || written == 0) {
-      return HRESULT_FROM_WIN32(GetLastError());
-    }
-    data += written;
-    size -= written;
-  }
-  return S_OK;
-}
-
-HRESULT WritePCM(HANDLE output, UINT64 timestamp100ns, const BYTE* data) {
-  std::array<BYTE, 28> header{};
-  header[0] = 'S'; header[1] = 'P'; header[2] = 'C'; header[3] = 'M';
-  header[4] = 1;
-  PutUint64BE(header.data() + 8, timestamp100ns);
-  PutUint64BE(header.data() + 16, kChunkDuration100ns);
-  PutUint32BE(header.data() + 24, kBytesPerChunk);
-  HRESULT result = WriteAll(output, header.data(), static_cast<DWORD>(header.size()));
-  return SUCCEEDED(result) ? WriteAll(output, data, kBytesPerChunk) : result;
 }
 
 HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed, ComPtr<IAudioClient>* client) {
@@ -213,9 +179,42 @@ HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed, ComPtr<IAudioClient
   return result;
 }
 
-HRESULT Capture(DWORD pid, UINT64 expectedCreationTime) {
-  HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+HRESULT ValidateWindowTarget(UINT64 window_handle, DWORD pid,
+                             UINT64 expected_creation_time) {
+  if (window_handle == 0 || pid == 0 || expected_creation_time == 0 ||
+      window_handle > static_cast<UINT64>(std::numeric_limits<UINT_PTR>::max())) {
+    return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+  }
+  HWND window = reinterpret_cast<HWND>(static_cast<UINT_PTR>(window_handle));
+  DWORD window_pid = 0;
+  if (!IsWindow(window) || GetWindowThreadProcessId(window, &window_pid) == 0 ||
+      window_pid != pid) {
+    return HRESULT_FROM_WIN32(ERROR_INVALID_WINDOW_HANDLE);
+  }
+  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
   if (process == nullptr) return HRESULT_FROM_WIN32(GetLastError());
+  UINT64 actual_creation_time = 0;
+  HRESULT result = ReadProcessCreationTime(process, &actual_creation_time);
+  CloseHandle(process);
+  if (SUCCEEDED(result) && actual_creation_time != expected_creation_time) {
+    result = HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+  }
+  return result;
+}
+
+HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
+                            HANDLE stop_event, const PCMWriter& writer) {
+  if (stop_event == nullptr || !writer) {
+    return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+  }
+  HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  if (FAILED(com_result)) return com_result;
+  HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (process == nullptr) {
+    HRESULT result = HRESULT_FROM_WIN32(GetLastError());
+    CoUninitialize();
+    return result;
+  }
   HANDLE completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   HANDLE sampleReady = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   if (completed == nullptr || sampleReady == nullptr) {
@@ -223,6 +222,7 @@ HRESULT Capture(DWORD pid, UINT64 expectedCreationTime) {
     if (completed != nullptr) CloseHandle(completed);
     if (sampleReady != nullptr) CloseHandle(sampleReady);
     CloseHandle(process);
+    CoUninitialize();
     return result;
   }
   UINT64 creationTime = 0;
@@ -235,11 +235,11 @@ HRESULT Capture(DWORD pid, UINT64 expectedCreationTime) {
   ComPtr<IAudioCaptureClient> capture;
   WAVEFORMATEX format{};
   format.wFormatTag = WAVE_FORMAT_PCM;
-  format.nChannels = kChannels;
-  format.nSamplesPerSec = kSampleRate;
-  format.wBitsPerSample = kBytesPerSample * 8;
-  format.nBlockAlign = kChannels * kBytesPerSample;
-  format.nAvgBytesPerSec = kSampleRate * format.nBlockAlign;
+  format.nChannels = kAudioChannels;
+  format.nSamplesPerSec = kAudioSampleRate;
+  format.wBitsPerSample = kAudioBytesPerSample * 8;
+  format.nBlockAlign = kAudioChannels * kAudioBytesPerSample;
+  format.nAvgBytesPerSec = kAudioSampleRate * format.nBlockAlign;
   if (SUCCEEDED(result)) {
     result = client->Initialize(AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
@@ -253,15 +253,18 @@ HRESULT Capture(DWORD pid, UINT64 expectedCreationTime) {
   std::vector<BYTE> pending;
   size_t consumed = 0;
   UINT64 nextTimestamp = 0;
-  HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
-  const HANDLE waits[] = {process, sampleReady};
+  const HANDLE waits[] = {process, sampleReady, stop_event};
   while (SUCCEEDED(result)) {
-    const DWORD wait = WaitForMultipleObjects(2, waits, FALSE, 1'000);
+    const DWORD wait = WaitForMultipleObjects(3, waits, FALSE, 1'000);
     if (wait == WAIT_OBJECT_0) {
       result = HRESULT_FROM_WIN32(ERROR_PROCESS_ABORTED);
       break;
     }
     if (wait == WAIT_TIMEOUT) continue;
+    if (wait == WAIT_OBJECT_0 + 2) {
+      result = HRESULT_FROM_WIN32(ERROR_CANCELLED);
+      break;
+    }
     if (wait != WAIT_OBJECT_0 + 1) {
       result = HRESULT_FROM_WIN32(GetLastError());
       break;
@@ -294,14 +297,15 @@ HRESULT Capture(DWORD pid, UINT64 expectedCreationTime) {
         pending.insert(pending.end(), data, data + bytes);
       }
       capture->ReleaseBuffer(frames);
-      while (pending.size() - consumed >= kBytesPerChunk) {
-        result = WritePCM(output, nextTimestamp, pending.data() + consumed);
+      while (pending.size() - consumed >= kAudioBytesPerChunk) {
+        result = writer(nextTimestamp, pending.data() + consumed,
+                        kAudioBytesPerChunk);
         if (FAILED(result)) break;
-        consumed += kBytesPerChunk;
-        nextTimestamp += kChunkDuration100ns;
+        consumed += kAudioBytesPerChunk;
+        nextTimestamp += kAudioChunkDuration100ns;
       }
       if (FAILED(result)) break;
-      if (consumed > kBytesPerChunk * 4) {
+      if (consumed > kAudioBytesPerChunk * 4) {
         pending.erase(pending.begin(), pending.begin() + static_cast<ptrdiff_t>(consumed));
         consumed = 0;
       }
@@ -311,24 +315,8 @@ HRESULT Capture(DWORD pid, UINT64 expectedCreationTime) {
   CloseHandle(sampleReady);
   CloseHandle(completed);
   CloseHandle(process);
+  CoUninitialize();
   return result;
 }
-}  // namespace
 
-int wmain(int argc, wchar_t** argv) {
-  if (argc == 2 && std::wstring(argv[1]) == L"--list") return ListWindows();
-  if (argc != 4 || std::wstring(argv[1]) != L"--capture") return 2;
-  wchar_t* pidEnd = nullptr;
-  const unsigned long parsedPID = wcstoul(argv[2], &pidEnd, 10);
-  wchar_t* creationEnd = nullptr;
-  const unsigned long long parsedCreationTime = wcstoull(argv[3], &creationEnd, 10);
-  if (parsedPID == 0 || pidEnd == argv[2] || *pidEnd != L'\0' ||
-      parsedCreationTime == 0 || creationEnd == argv[3] || *creationEnd != L'\0') return 2;
-  if (_setmode(_fileno(stdout), _O_BINARY) == -1) return 2;
-  HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-  if (FAILED(result)) return 2;
-  result = Capture(static_cast<DWORD>(parsedPID), static_cast<UINT64>(parsedCreationTime));
-  CoUninitialize();
-  if (FAILED(result)) std::cerr << "process_audio_capture_failed hresult=0x" << std::hex << result << '\n';
-  return SUCCEEDED(result) ? 0 : 2;
-}
+}  // namespace screener::capture

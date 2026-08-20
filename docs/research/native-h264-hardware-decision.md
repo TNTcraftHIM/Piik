@@ -2,16 +2,21 @@
 
 Date: 2026-08-20
 
-Status: `no-go-native-h264-hardware-pinned-fmtp`
+Status: Historical gate. Its `no-go-native-h264-hardware-pinned-fmtp`
+stop resolved when the explicit opt-in Pion path registered exact `42c01f`;
+the product WGC/MF path later passed its attributed one-Viewer smoke.
 
 The later source-only functional slice in
 [`native-h264-opt-in-path.md`](./native-h264-opt-in-path.md) registers the
-fixture profile explicitly and proves one H.264 Host/Viewer loopback. It does
-not change this spike's physical-hardware decision: WebCodecs hardware
-attribution remains unverified and production remains VP8/default.
+fixture profile explicitly and proves one browser H.264 Host/Viewer loopback.
+The native-window source now compiles this fixture's MF encoder source into the
+product helper, retaining hardware-only enumeration and exact readback. That
+path rendered 203 frames for one Chrome Viewer while the exact helper PID and
+adapter LUID matched nonzero Windows `VideoEncode`; offline fixture telemetry
+remains separate evidence.
 
-This spike does not amend ADR-0006 or authorize another product, room, or
-production run. It answers one narrow question: can a bounded Windows H.264
+This spike did not amend ADR-0006 or authorize another product, room, or
+production run. It answered one narrow question: can a bounded Windows H.264
 path satisfy the project's physical hardware-encode and existing default Pion
 fmtp contracts before product integration?
 
@@ -20,7 +25,8 @@ emitted SPS differed from the requested codec string. A subsequent
 hardware-only Media Foundation run did prove the selected NVIDIA encoder and
 GPU engine, but emitted exact `profile-level-id=42c01f`, which is absent from
 the default Pion mode-1 fmtp set. It therefore stopped before Pion, a Viewer,
-rooms, or product wiring. Neither result authorizes an H.264 product switch.
+rooms, or product wiring. The later opt-in source resolved that exact
+registration mismatch without changing the browser VP8 default.
 
 ## Decision Summary
 
@@ -31,8 +37,8 @@ rooms, or product wiring. Neither result authorizes an H.264 product switch.
 | Did the requested codec string describe the emitted SPS exactly? | No. The requested `42e01f` produced SPS bytes `42 04 1f`. |
 | Did forced key frames carry in-band recovery data? | Yes in this fixture: all six key chunks contained AUD, SPS, PPS, and IDR NAL units. |
 | Can Pion v1.10.5 packetize the resulting Annex-B access units? | Yes statically: its `H264Payloader` splits 3/4-byte start codes, suppresses AUD/filler, emits SPS/PPS as STAP-A, and fragments slices as FU-A. |
-| Is unmodified browser Viewer decode proven? | No. No PeerConnection, room, Viewer, or production service participated. |
-| Should the small WebCodecs/Pion codec diff be implemented? | No. It would preserve the two unresolved product gates: physical encoder identity and exact emitted-fmtp registration plus Viewer interoperability. |
+| Did this isolated spike prove unmodified browser Viewer decode? | No. No PeerConnection, room, Viewer, or production service participated. A later opt-in loopback records that evidence separately. |
+| Did this spike authorize the small WebCodecs/Pion codec diff? | No. The later exact-`42c01f` opt-in reopened and proved that boundary separately. |
 | Did the Media Foundation fixture prove physical H.264 hardware encode? | Yes for one local RTX 4070 SUPER run: adapter-LUID-bound hardware enumeration, D3D11 awareness, the NVIDIA H.264 Encoder MFT, and process-plus-LUID `VideoEncode` activity agreed. |
 | Did that hardware MFT emit an exact default Pion mode-1 fmtp string? | No. It emitted `42c01f`; the default set is `42001f`, `42e01f`, `4d001f`, and `64001f`. The fixture failed closed without changing the request or adding a fallback. This is not a standards-level profile incompatibility. |
 
@@ -178,10 +184,10 @@ preference, not physical hardware evidence.
 ## Media Foundation Hardware Fixture
 
 The follow-up fixture is retained at
-`native/fixtures/mf-h264-hardware/`. It is a Windows-only offline C++ program,
-not a sender component. Its generated object and executable stay outside the
-repository. It has one H.264 path and no software MFT, codec, adapter, room,
-capture, audio, signaling, Pion, or Viewer fallback.
+`native/fixtures/mf-h264-hardware/`. Its build compiles the shared encoder
+source from `native/window-capture-helper/` with fixture-only synthetic input
+and telemetry. The generated fixture executable stays outside the repository
+and has no room, capture, audio, signaling, Pion, or Viewer fallback.
 
 ### Fixed Contract
 

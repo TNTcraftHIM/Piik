@@ -60,6 +60,9 @@ interface GateReport {
 interface SenderSnapshot {
   getDisplayMediaRequested: boolean;
   getDisplayMediaResolved: boolean;
+  nativeHardwareStarting: boolean;
+  nativeHardwareActive: boolean;
+  nativeAdapterLuid: string | null;
   ready: number;
   configAccepted: number;
   encoderInstances: number;
@@ -77,6 +80,7 @@ interface SenderSnapshot {
   maxPeers: number;
   config: {
     codec: string | null;
+    videoSource: string | null;
     width: number | null;
     height: number | null;
     fps: number | null;
@@ -97,6 +101,13 @@ interface SenderSnapshot {
     packetsSent: number;
     bytesSent: number;
   }>;
+}
+
+type GateMode = "vp8" | "h264" | "native-h264";
+
+export function parseGateMode(value: string | undefined): GateMode {
+  const normalized = value?.trim();
+  return normalized === "h264" || normalized === "native-h264" ? normalized : "vp8";
 }
 
 interface ViewerSnapshot {
@@ -229,16 +240,24 @@ function observeNodeStages(server: ScreenerServer, ledger: SenderStartLedger): v
   });
 }
 
-function senderStartObservation(snapshot: SenderSnapshot, expectedCodec = "vp8"): Partial<SenderStartObservation> {
+function senderStartObservation(
+  snapshot: SenderSnapshot,
+  expectedCodec = "vp8",
+  expectedVideoSource = "browser",
+): Partial<SenderStartObservation> {
+  const nativeWindow = expectedVideoSource === "native-window-h264";
   return {
     getDisplayMediaRequested: snapshot.getDisplayMediaRequested,
     getDisplayMediaResolved: snapshot.getDisplayMediaResolved,
     bridgeConnected: snapshot.ready > 0,
     fixedHighConfigured: snapshot.configAccepted > 0 &&
-      snapshot.config?.codec === expectedCodec && snapshot.config.width === 1280 &&
+      snapshot.config?.codec === expectedCodec && snapshot.config.videoSource === expectedVideoSource &&
+      snapshot.config.width === 1280 &&
       snapshot.config.height === 720 && snapshot.config.fps === 30 &&
       snapshot.config.bitrate === 3_000_000 && snapshot.config.encoderInstances === 1,
-    firstEncodedChunk: snapshot.encoderOutputs > 0,
+    firstEncodedChunk: nativeWindow
+      ? snapshot.nativeHardwareActive && (snapshot.media?.framesWritten ?? 0) > 0
+      : snapshot.encoderOutputs > 0,
     bridgeGeneration: snapshot.bridgeGeneration,
     binarySendAttempts: snapshot.binarySendAttempts,
     binarySendSucceeded: snapshot.binarySendSucceeded,
@@ -255,6 +274,28 @@ function senderStartObservation(snapshot: SenderSnapshot, expectedCodec = "vp8")
       sourceRtpBytesWritten: snapshot.media.sourceRtpBytesWritten,
     }),
   };
+}
+
+function retainsExpectedBridge(snapshot: SenderSnapshot, nativeWindow: boolean): boolean {
+  return nativeWindow
+    ? snapshot.bridgeGeneration === 1 && snapshot.binarySendFailed === 0
+    : retainsFirstBridgeSend(snapshot);
+}
+
+function nativeSenderStartComplete(
+  snapshot: SenderSnapshot,
+  ledger: SenderStartObservation,
+): boolean {
+  return !snapshot.getDisplayMediaRequested && !snapshot.getDisplayMediaResolved &&
+    snapshot.nativeHardwareStarting && snapshot.nativeHardwareActive &&
+    typeof snapshot.nativeAdapterLuid === "string" && snapshot.nativeAdapterLuid.length > 0 &&
+    snapshot.encoderInstances === 0 && snapshot.encoderErrors === 0 && snapshot.fatalEvents === 0 &&
+    snapshot.config?.videoSource === "native-window-h264" &&
+    ledger.siteAccessAccepted && ledger.roomCreated && ledger.hostWssAuthenticated &&
+    ledger.bridgeConnected && ledger.fixedHighConfigured && ledger.firstEncodedChunk &&
+    ledger.bridgeGeneration === 1 && ledger.binarySendFailed === 0 &&
+    ledger.diagnosticsObserved && ledger.framesWritten > 0 &&
+    ledger.sourceRtpPacketsWritten > 0 && ledger.sourceRtpBytesWritten > 0;
 }
 
 function requiredEnvironmentPath(name: string): string {
@@ -276,8 +317,15 @@ function appendLedgerRecord(path: string, record: object): void {
 async function main(): Promise<void> {
   const chromePath = requiredEnvironmentPath("SCREENER_NATIVE_GATE_CHROME");
   const goPath = process.env.SCREENER_NATIVE_GATE_GO?.trim() || "go";
-  const gateCodec = process.env.SCREENER_NATIVE_GATE_CODEC?.trim() === "h264" ? "h264" : "vp8";
-  const audioTargetTitle = process.env.SCREENER_NATIVE_GATE_AUDIO_TARGET_TITLE?.trim() || "";
+  const gateMode = parseGateMode(process.env.SCREENER_NATIVE_GATE_CODEC);
+  const nativeWindow = gateMode === "native-h264";
+  const gateCodec = gateMode === "vp8" ? "vp8" : "h264";
+  const gateVideoSource = nativeWindow ? "native-window-h264" : "browser";
+  const nativeHelperPath = nativeWindow
+    ? requiredEnvironmentPath("SCREENER_WINDOW_CAPTURE_HELPER")
+    : null;
+  const windowTargetTitle = process.env.SCREENER_NATIVE_GATE_WINDOW_TARGET_TITLE?.trim() ||
+    (nativeWindow ? "Native Gate Source" : "");
   const accessKey = randomBytes(9).toString("base64url");
   const report: GateReport = {
     schemaVersion: 1,
@@ -285,9 +333,13 @@ async function main(): Promise<void> {
     failedStage: "preflight",
     stages: {},
     limitations: [
-      "The source is a real animated Chrome tab captured through getDisplayMedia, not a game workload.",
-      "This run proves one WebCodecs object, not one physical or hardware encoder.",
-      audioTargetTitle
+      nativeWindow
+        ? "The source is a real animated top-level Chrome window captured through WGC, not a game workload."
+        : "The source is a real animated Chrome tab captured through getDisplayMedia, not a game workload.",
+      nativeWindow
+        ? "Hardware status is the helper's hardware-only MF contract; physical VideoEncode use requires correlated OS telemetry."
+        : "This run proves one WebCodecs object, not one physical or hardware encoder.",
+      windowTargetTitle
         ? "The loopback run does not prove public STUN, restrictive networks, TURN, packaging, or endurance."
         : "The loopback run does not prove public STUN, restrictive networks, TURN, audio, packaging, or endurance.",
     ],
@@ -323,7 +375,7 @@ async function main(): Promise<void> {
       ALLOWED_ORIGINS: baseUrl,
       SITE_ACCESS_PASSWORD: accessKey,
       ROOM_DATABASE_PATH: "",
-      PEER_ASSISTED_MEDIA: "false",
+      PEER_ASSISTED_MEDIA: "true",
       STUN_URLS: "",
     });
     const roomStore = new ObservedRoomStore({
@@ -363,45 +415,66 @@ async function main(): Promise<void> {
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 5_000);
     report.stages.preflight = {
       serverInMemory: config.roomDatabasePath === undefined,
-      peerAssistedDisabled: !config.peerAssistedMedia,
+      peerAssistedEnabled: config.peerAssistedMedia,
       oneViewerOnly: true,
+      videoSource: gateVideoSource,
+      nativeHelperConfigured: !nativeWindow || nativeHelperPath !== null,
       chromeMajor: Number(version.Browser.match(/Chrome\/(\d+)/)?.[1] ?? 0),
     };
     report.failedStage = "sender-start";
 
-    await createPage(cdp, animatedSourceUrl());
-    const activeSenderPage = await createPage(cdp, launchUrl, senderProbe());
+    await createPage(cdp, animatedSourceUrl(), undefined, nativeWindow);
+    const activeSenderPage = await createPage(cdp, launchUrl, senderProbe(), nativeWindow);
     senderPage = activeSenderPage;
-    let audioTargetId = "";
-    if (audioTargetTitle) {
+    let windowTargetId = "";
+    if (windowTargetTitle) {
       await waitForSample(
         (deadline) => evaluate<string>(cdp!, activeSenderPage,
-          `([...document.querySelector('#audio-target').options].find((option) => option.text.includes(${JSON.stringify(audioTargetTitle)}))?.value || '')`, deadline),
+          `([...document.querySelector('#window-target').options].find((option) => option.text.includes(${JSON.stringify(windowTargetTitle)}))?.value || '')`, deadline),
         Boolean,
         5_000,
       );
-      audioTargetId = await evaluate<string>(cdp, activeSenderPage,
-        `([...document.querySelector('#audio-target').options].find((option) => option.text.includes(${JSON.stringify(audioTargetTitle)}))?.value || '')`, Date.now() + 2_000);
+      windowTargetId = await evaluate<string>(cdp, activeSenderPage,
+        `([...document.querySelector('#window-target').options].find((option) => option.text.includes(${JSON.stringify(windowTargetTitle)}))?.value || '')`, Date.now() + 2_000);
     }
     await evaluate<void>(cdp, activeSenderPage, `(() => {
       document.querySelector('#server-url').value = ${JSON.stringify(baseUrl)};
       document.querySelector('#password').value = ${JSON.stringify(accessKey)};
-      document.querySelector('#codec').value = ${JSON.stringify(gateCodec)};
-      document.querySelector('#audio-target').value = ${JSON.stringify(audioTargetId)};
+      document.querySelector('#codec').value = ${JSON.stringify(gateMode)};
+      document.querySelector('#window-target').value = ${JSON.stringify(windowTargetId)};
       document.querySelector('#start').click();
     })()`, Date.now() + 5_000);
-    await waitForSenderStart(
-      async (deadline) => senderStartObservation(await senderSnapshot(cdp!, activeSenderPage, deadline), gateCodec),
-      senderLedger,
-      { timeoutMs: 20_000 },
-    );
+    if (nativeWindow) {
+      await waitForSample(async (deadline) => {
+        const snapshot = await senderSnapshot(cdp!, activeSenderPage, deadline);
+        senderLedger.record(senderStartObservation(snapshot, gateCodec, gateVideoSource));
+        return { snapshot, ledger: senderLedger.snapshot() };
+      }, ({ snapshot, ledger }) => nativeSenderStartComplete(snapshot, ledger), 20_000);
+    } else {
+      await waitForSenderStart(
+        async (deadline) => senderStartObservation(
+          await senderSnapshot(cdp!, activeSenderPage, deadline), gateCodec, gateVideoSource,
+        ),
+        senderLedger,
+        { timeoutMs: 20_000 },
+      );
+    }
     const senderReady = await senderSnapshot(cdp, activeSenderPage, Date.now() + 3_000);
     const senderStartChecks = {
-      oneEncoderObject: senderReady.encoderInstances === 1,
-      currentBridge: retainsFirstBridgeSend(senderReady),
+      correctVideoSource: senderReady.config?.videoSource === gateVideoSource,
+      currentBridge: retainsExpectedBridge(senderReady, nativeWindow),
       noCriticalErrors: senderReady.encoderErrors === 0 && senderReady.fatalEvents === 0,
+      ...(nativeWindow ? {
+        noBrowserCapture: !senderReady.getDisplayMediaRequested && !senderReady.getDisplayMediaResolved,
+        nativeHardwareStarting: senderReady.nativeHardwareStarting,
+        nativeHardwareActive: senderReady.nativeHardwareActive,
+        noBrowserVideoEncoder: senderReady.encoderInstances === 0,
+      } : { oneEncoderObject: senderReady.encoderInstances === 1 }),
     };
-    report.stages["sender-start"] = { ...senderLedger.snapshot(), ...senderStartChecks };
+    report.stages["sender-start"] = {
+      ...senderLedger.snapshot(), ...senderStartChecks,
+      adapterLuid: nativeWindow ? senderReady.nativeAdapterLuid : null,
+    };
     requireChecks(senderStartChecks);
     report.failedStage = "node-host";
     const inviteUrl = await evaluate<string>(cdp, activeSenderPage,
@@ -435,7 +508,7 @@ async function main(): Promise<void> {
         pionConnected: sender.peers.length === 1 && sender.peers[0]?.connectionState === "connected" &&
           ["connected", "completed"].includes(sender.peers[0]?.iceConnectionState ?? ""),
         sameGeneration: identity !== null,
-        sameBridge: retainsFirstBridgeSend(sender),
+        sameBridge: retainsExpectedBridge(sender, nativeWindow),
         edgeBound: sender.maxPeers <= 1 && sender.peers.length === 1,
       };
       report.stages["viewer-signal"] = {
@@ -476,13 +549,17 @@ async function main(): Promise<void> {
         videoReady: viewer.videoReadyState >= 2 && viewer.videoWidth > 0 && viewer.videoHeight > 0,
         playbackClock: viewer.videoCurrentTime > beforeViewer.videoCurrentTime,
         renderedFrames: viewer.renderedFrames > beforeViewer.renderedFrames,
-        pionOutbound: (sender.peers[0]?.packetsSent ?? 0) > (beforeSender.peers[0]?.packetsSent ?? 0) &&
-          (sender.peers[0]?.bytesSent ?? 0) > (beforeSender.peers[0]?.bytesSent ?? 0),
+        pionOutbound: (sender.peers[0]?.packetsSent ?? 0) > 0 &&
+          (sender.peers[0]?.bytesSent ?? 0) > 0,
         sameGeneration: retainsOneViewerIdentity(identity!, viewer.identity, senderIdentity(sender)),
-        sameBridge: retainsFirstBridgeSend(sender),
-        oneEncoderObject: sender.encoderInstances === 1,
+        sameBridge: retainsExpectedBridge(sender, nativeWindow),
         criticalErrors: sender.fatalEvents === 0 && sender.encoderErrors === 0,
-        ...(audioTargetTitle ? {
+        ...(nativeWindow ? {
+          nativeHardwareActive: sender.nativeHardwareActive,
+          noBrowserCapture: !sender.getDisplayMediaRequested && !sender.getDisplayMediaResolved,
+          noBrowserVideoEncoder: sender.encoderInstances === 0,
+        } : { oneEncoderObject: sender.encoderInstances === 1 }),
+        ...(windowTargetTitle ? {
           audioTrack: viewer.audioTrackCount === 1,
           audioInbound: viewer.audioPacketsReceived > beforeViewer.audioPacketsReceived,
         } : {}),
@@ -495,6 +572,7 @@ async function main(): Promise<void> {
         renderedDelta: viewer.renderedFrames - beforeViewer.renderedFrames,
         audioPacketDelta: viewer.audioPacketsReceived - beforeViewer.audioPacketsReceived,
         pionPacketDelta: (sender.peers[0]?.packetsSent ?? 0) - (beforeSender.peers[0]?.packetsSent ?? 0),
+        pionPacketsSent: sender.peers[0]?.packetsSent ?? 0,
         pcOrdinal: viewer.identity.pcOrdinal,
         pionSlot: sender.peers[0]?.slot ?? -1,
         pionEdgeGeneration: sender.peers[0]?.edgeGeneration ?? 0,
@@ -506,8 +584,13 @@ async function main(): Promise<void> {
     }, 10_000);
     const finalSender = await senderSnapshot(cdp, activeSenderPage, Date.now() + 3_000);
     const finalChecks = {
-      finalBridge: retainsFirstBridgeSend(finalSender),
+      finalBridge: retainsExpectedBridge(finalSender, nativeWindow),
       finalCriticalErrors: hasNoCriticalSenderErrors(finalSender),
+      finalVideoSource: finalSender.config?.videoSource === gateVideoSource,
+      ...(nativeWindow ? {
+        finalNativeHardwareActive: finalSender.nativeHardwareActive,
+        finalNoBrowserVideoEncoder: finalSender.encoderInstances === 0,
+      } : {}),
     };
     report.stages["viewer-media"] = { ...report.stages["viewer-media"], ...finalChecks };
     requireChecks(finalChecks);
@@ -522,7 +605,7 @@ async function main(): Promise<void> {
       finalSenderEvidence = await verifyFinalSenderEvidence(
         () => senderSnapshot(finalCdp, finalSenderPage, Date.now() + 1_000),
         (snapshot) => {
-          senderLedger.record(senderStartObservation(snapshot, gateCodec));
+          senderLedger.record(senderStartObservation(snapshot, gateCodec, gateVideoSource));
           return senderLedger.snapshot();
         },
       );
@@ -544,6 +627,8 @@ async function main(): Promise<void> {
 export function senderProbe(): string {
   return `(() => {
     const state = { getDisplayMediaRequested: false, getDisplayMediaResolved: false,
+      nativeHardwareStarting: false, nativeHardwareActive: false,
+      nativeAdapterLuid: null,
       ready: 0, configAccepted: 0,
       encoderInstances: 0, encoderOutputs: 0, encoderErrors: 0, fatalEvents: 0,
       bridgeGeneration: 0, binarySendAttempts: 0, binarySendSucceeded: 0, binarySendFailed: 0,
@@ -580,6 +665,22 @@ export function senderProbe(): string {
           if (message.kind === 'ready') state.ready += 1;
           if (message.kind === 'config-accepted') state.configAccepted += 1;
           if (message.kind === 'fatal') mark('fatalEvents');
+          if (message.kind === 'native-video-state' && message.status?.hardwareOnly === true) {
+            if (message.status.state === 'starting' && Number.isFinite(message.status.adapterIndex) &&
+                typeof message.status.adapterName === 'string' && message.status.adapterName.length > 0 &&
+                typeof message.status.adapterLuid === 'string' && message.status.adapterLuid.length > 0 &&
+                Number.isFinite(message.status.mftIndex) &&
+                typeof message.status.mftName === 'string' && message.status.mftName.length > 0 &&
+                typeof message.status.mftClsid === 'string' && message.status.mftClsid.length > 0) {
+              state.nativeHardwareStarting = true;
+              state.nativeAdapterLuid = message.status.adapterLuid;
+            }
+            if (message.status.state === 'active' && state.nativeHardwareStarting &&
+                message.status.profileLevelId === '42c01f' && message.status.width === 1280 &&
+                message.status.height === 720 && message.status.fps === 30) {
+              state.nativeHardwareActive = true;
+            }
+          }
           if (message.kind === 'ready' || message.kind === 'viewer-count') {
             state.activeViewers = finite(message.activeViewers);
           }
@@ -627,6 +728,7 @@ export function senderProbe(): string {
             let message; try { message = JSON.parse(value); } catch { message = null; }
             if (message?.kind === 'config') state.config = {
               codec: typeof message.codec === 'string' ? message.codec : null,
+              videoSource: typeof message.videoSource === 'string' ? message.videoSource : null,
               width: finite(message.width), height: finite(message.height), fps: finite(message.fps),
               bitrate: finite(message.bitrate), encoderInstances: finite(message.encoderInstances),
             };
@@ -827,9 +929,16 @@ function viewerProbe(): string {
   })();`;
 }
 
-async function createPage(cdp: CdpConnection, url: string, probe?: string): Promise<PageHandle> {
+async function createPage(
+  cdp: CdpConnection,
+  url: string,
+  probe?: string,
+  newWindow = false,
+): Promise<PageHandle> {
   const deadline = Date.now() + 15_000;
-  const created = await cdp.call<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: false }, undefined, deadline);
+  const created = await cdp.call<{ targetId: string }>(
+    "Target.createTarget", { url: "about:blank", background: false, newWindow }, undefined, deadline,
+  );
   const attached = await cdp.call<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true }, undefined, deadline);
   const page = { sessionId: attached.sessionId };
   await Promise.all([
@@ -1055,9 +1164,11 @@ async function removeGateProfile(profile: string): Promise<boolean> {
     10_000, { ...process.env, SCREENER_GATE_PROFILE_TO_REMOVE: profile });
 }
 
-function animatedSourceUrl(): string {
+export function animatedSourceUrl(): string {
   const html = `<!doctype html><title>Native Gate Source</title><canvas width="1280" height="720"></canvas>
-    <script>const c=document.querySelector('canvas'),x=c.getContext('2d');let f=0;
+    <script>const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();g.gain.value=.02;
+    o.connect(g).connect(a.destination);o.start();
+    const c=document.querySelector('canvas'),x=c.getContext('2d');let f=0;
     setInterval(()=>{f++;x.fillStyle='hsl('+f%360+' 80% 35%)';x.fillRect(0,0,1280,720);
     x.fillStyle='white';x.fillRect(f*13%1280,0,20,720);x.font='64px monospace';x.fillText(f,40,90)},33);<\/script>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;

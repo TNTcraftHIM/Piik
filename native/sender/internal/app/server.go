@@ -16,9 +16,16 @@ import (
 
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/media"
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/remote"
-	"github.com/TNTcraftHIM/Screener/native/sender/internal/windowaudio"
+	"github.com/TNTcraftHIM/Screener/native/sender/internal/windowcapture"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+)
+
+type videoSource string
+
+const (
+	videoSourceBrowser      videoSource = "browser"
+	videoSourceNativeWindow videoSource = "native-window-h264"
 )
 
 const (
@@ -38,43 +45,47 @@ type App struct {
 	token         string
 	attachTimeout time.Duration
 
-	mu             sync.Mutex
-	writeMu        sync.Mutex
-	server         *http.Server
-	listener       net.Listener
-	expectedHost   string
-	origin         string
-	starting       bool
-	generation     uint64
-	startCancel    context.CancelFunc
-	startFailure   string
-	session        *remote.Session
-	sessionCancel  context.CancelFunc
-	room           remote.Room
-	codec          media.Codec
-	mediaConn      *websocket.Conn
-	mediaClaimed   bool
-	mediaClaimID   uint64
-	nextClaimID    uint64
-	attachTimer    *time.Timer
-	configTimeout  time.Duration
-	activeViewers  int
-	waitingViewers int
-	audioProvider  windowaudio.Provider
-	audioTargets   map[string]windowaudio.Target
-	audioTarget    *windowaudio.Target
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	server           *http.Server
+	listener         net.Listener
+	expectedHost     string
+	origin           string
+	starting         bool
+	generation       uint64
+	startCancel      context.CancelFunc
+	startFailure     string
+	session          *remote.Session
+	sessionCancel    context.CancelFunc
+	room             remote.Room
+	codec            media.Codec
+	mediaConn        *websocket.Conn
+	mediaClaimed     bool
+	mediaClaimID     uint64
+	nextClaimID      uint64
+	attachTimer      *time.Timer
+	configTimeout    time.Duration
+	activeViewers    int
+	waitingViewers   int
+	captureProvider  windowcapture.Provider
+	windowTargets    map[string]windowcapture.Target
+	windowTarget     *windowcapture.Target
+	videoSource      videoSource
+	keyFrameRequests chan struct{}
 }
 
 type startRequest struct {
-	ServerURL     string `json:"serverUrl"`
-	Password      string `json:"password"`
-	Codec         string `json:"codec,omitempty"`
-	AudioTargetID string `json:"audioTargetId,omitempty"`
+	ServerURL      string `json:"serverUrl"`
+	Password       string `json:"password"`
+	Codec          string `json:"codec,omitempty"`
+	VideoSource    string `json:"videoSource,omitempty"`
+	WindowTargetID string `json:"windowTargetId,omitempty"`
 }
 
 type encoderConfig struct {
 	Kind             string `json:"kind"`
 	Codec            string `json:"codec"`
+	VideoSource      string `json:"videoSource"`
 	Width            int    `json:"width"`
 	Height           int    `json:"height"`
 	FPS              int    `json:"fps"`
@@ -83,7 +94,7 @@ type encoderConfig struct {
 	Audio            bool   `json:"audio"`
 }
 
-type localAudioTarget struct {
+type localWindowTarget struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 }
@@ -96,11 +107,12 @@ func New() (*App, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &App{
 		ctx: ctx, cancel: cancel, token: token,
-		attachTimeout: mediaAttachTimeout,
-		configTimeout: mediaConfigTimeout,
-		codec:         media.CodecVP8,
-		audioProvider: windowaudio.NewProvider(),
-		audioTargets:  make(map[string]windowaudio.Target),
+		attachTimeout:   mediaAttachTimeout,
+		configTimeout:   mediaConfigTimeout,
+		codec:           media.CodecVP8,
+		videoSource:     videoSourceBrowser,
+		captureProvider: windowcapture.NewProvider(),
+		windowTargets:   make(map[string]windowcapture.Target),
 	}, nil
 }
 
@@ -157,8 +169,8 @@ func (app *App) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 		app.handleStart(response, request)
 	case "/api/stop":
 		app.handleStop(response, request)
-	case "/api/audio-targets":
-		app.handleAudioTargets(response, request)
+	case "/api/window-targets":
+		app.handleWindowTargets(response, request)
 	case "/media":
 		app.handleMedia(response, request)
 	default:
@@ -197,21 +209,35 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "unsupported native codec"})
 		return
 	}
+	source, validSource := parseVideoSource(strings.TrimSpace(input.VideoSource))
+	if !validSource {
+		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "unsupported video source"})
+		return
+	}
+	if source == videoSourceNativeWindow && codec != media.CodecH264 {
+		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "native window capture requires H.264"})
+		return
+	}
 	baseURL, err := normalizeRemoteBase(input.ServerURL)
 	if err != nil {
 		writeJSON(response, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	app.mu.Lock()
-	var audioTarget *windowaudio.Target
-	if input.AudioTargetID != "" {
-		selected, ok := app.audioTargets[input.AudioTargetID]
+	var windowTarget *windowcapture.Target
+	if input.WindowTargetID != "" {
+		selected, ok := app.windowTargets[input.WindowTargetID]
 		if !ok {
 			app.mu.Unlock()
-			writeJSON(response, http.StatusBadRequest, map[string]string{"error": "selected audio target is no longer available"})
+			writeJSON(response, http.StatusBadRequest, map[string]string{"error": "selected window target is no longer available"})
 			return
 		}
-		audioTarget = &selected
+		windowTarget = &selected
+	}
+	if source == videoSourceNativeWindow && windowTarget == nil {
+		app.mu.Unlock()
+		writeJSON(response, http.StatusBadRequest, map[string]string{"error": "native window capture requires a selected window"})
+		return
 	}
 	if app.starting || app.session != nil {
 		app.mu.Unlock()
@@ -227,11 +253,11 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 	app.mu.Unlock()
 
 	session, room, err := remote.Start(startContext, remote.StartOptions{
-		BaseURL:               baseURL,
+		BaseURL:            baseURL,
 		SiteAccessPassword: strings.TrimSpace(input.Password),
-		Codec:                 codec,
-		EnableAudio:           audioTarget != nil,
-		OnEvent:               func(event remote.Event) { app.emit(generation, event) },
+		Codec:              codec,
+		EnableAudio:        windowTarget != nil,
+		OnEvent:            func(event remote.Event) { app.emit(generation, event) },
 	})
 	app.mu.Lock()
 	app.starting = false
@@ -245,7 +271,8 @@ func (app *App) handleStart(response http.ResponseWriter, request *http.Request)
 		app.sessionCancel = startCancel
 		app.room = room
 		app.codec = codec
-		app.audioTarget = audioTarget
+		app.videoSource = source
+		app.windowTarget = windowTarget
 		app.attachTimer = time.AfterFunc(app.attachTimeout, func() {
 			app.mu.Lock()
 			expired := app.generation == generation && app.session == session && app.mediaConn == nil
@@ -281,31 +308,31 @@ func (app *App) handleStop(response http.ResponseWriter, request *http.Request) 
 	response.WriteHeader(http.StatusNoContent)
 }
 
-func (app *App) handleAudioTargets(response http.ResponseWriter, request *http.Request) {
+func (app *App) handleWindowTargets(response http.ResponseWriter, request *http.Request) {
 	if !app.authorizeAPI(response, request, http.MethodPost) {
 		return
 	}
-	targets, err := app.audioProvider.List(request.Context())
+	targets, err := app.captureProvider.List(request.Context())
 	if err != nil {
 		writeJSON(response, http.StatusOK, map[string]any{
-			"supported": false, "targets": []localAudioTarget{},
-			"reason": "Windows 11 process audio helper is unavailable",
+			"supported": false, "targets": []localWindowTarget{},
+			"reason": "Windows 11 window capture helper is unavailable",
 		})
 		return
 	}
-	localTargets := make([]localAudioTarget, 0, len(targets))
-	resolved := make(map[string]windowaudio.Target, len(targets))
+	localTargets := make([]localWindowTarget, 0, len(targets))
+	resolved := make(map[string]windowcapture.Target, len(targets))
 	for _, target := range targets {
 		id, tokenErr := newOpaqueToken()
 		if tokenErr != nil {
-			writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "create local audio target identity failed"})
+			writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "create local window target identity failed"})
 			return
 		}
 		resolved[id] = target
-		localTargets = append(localTargets, localAudioTarget{ID: id, Title: target.Title})
+		localTargets = append(localTargets, localWindowTarget{ID: id, Title: target.Title})
 	}
 	app.mu.Lock()
-	app.audioTargets = resolved
+	app.windowTargets = resolved
 	app.mu.Unlock()
 	writeJSON(response, http.StatusOK, map[string]any{"supported": true, "targets": localTargets})
 }
@@ -388,8 +415,12 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	var config encoderConfig
+	app.mu.Lock()
+	source := app.videoSource
+	target := app.windowTarget
+	app.mu.Unlock()
 	if err = decodeLocalPayload(payload, &config); err != nil ||
-		!validEncoderConfigForCodec(config, session.Codec()) || config.Audio != session.AudioEnabled() {
+		!validEncoderConfigForSource(config, session.Codec(), source) || config.Audio != session.AudioEnabled() {
 		session.Fail(errors.New("local encoder configuration is invalid"))
 		_ = connection.Close(websocket.StatusPolicyViolation, "invalid encoder config")
 		return
@@ -398,38 +429,80 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 		session.Fail(fmt.Errorf("acknowledge local encoder configuration: %w", err))
 		return
 	}
-	app.mu.Lock()
-	target := app.audioTarget
-	app.mu.Unlock()
 	captureContext, cancelCapture := context.WithCancel(app.ctx)
-	audioDone := make(chan struct{})
+	captureDone := make(chan struct{})
+	keyFrameRequests := make(chan struct{}, 1)
+	if source == videoSourceNativeWindow {
+		app.mu.Lock()
+		if app.generation == generation && app.session == session {
+			app.keyFrameRequests = keyFrameRequests
+		}
+		app.mu.Unlock()
+	}
+	writePCM := func(chunk windowcapture.PCMChunk) error {
+		envelope, encodeErr := media.EncodePacket(media.Packet{
+			Kind: media.KindPCM, Timestamp100ns: chunk.Timestamp100ns,
+			Duration100ns: chunk.Duration100ns, Data: chunk.Data,
+		})
+		if encodeErr != nil {
+			return encodeErr
+		}
+		return app.writeLocalBinary(connection, envelope)
+	}
 	if target != nil {
 		_ = app.writeLocal(connection, map[string]string{"kind": "audio-state", "state": "starting"})
-		go func(selected windowaudio.Target) {
-			defer close(audioDone)
-			captureErr := app.audioProvider.Capture(captureContext, selected, func(chunk windowaudio.PCMChunk) error {
-				envelope, encodeErr := media.EncodePacket(media.Packet{
-					Kind: media.KindPCM, Timestamp100ns: chunk.Timestamp100ns,
-					Duration100ns: chunk.Duration100ns, Data: chunk.Data,
-				})
-				if encodeErr != nil {
-					return encodeErr
-				}
-				return app.writeLocalBinary(connection, envelope)
-			})
+		go func(selected windowcapture.Target) {
+			defer close(captureDone)
+			var captureErr error
+			if source == videoSourceNativeWindow {
+				captureErr = app.captureProvider.CaptureWindow(
+					captureContext, selected, keyFrameRequests, writePCM,
+					func(accessUnit windowcapture.H264AccessUnit) error {
+						packet := media.Packet{
+							Kind: media.KindVideo, KeyFrame: accessUnit.KeyFrame,
+							Timestamp100ns: accessUnit.Timestamp100ns,
+							Duration100ns:  accessUnit.Duration100ns, Data: accessUnit.Data,
+						}
+						if writeErr := session.WriteMedia(packet); writeErr != nil {
+							return writeErr
+						}
+						envelope, encodeErr := media.EncodePacket(packet)
+						if encodeErr != nil {
+							return encodeErr
+						}
+						return app.writeLocalBinary(connection, envelope)
+					},
+					func(status windowcapture.Status) error {
+						return app.writeLocal(connection, map[string]any{
+							"kind": "native-video-state", "status": status,
+						})
+					},
+				)
+			} else {
+				captureErr = app.captureProvider.CaptureAudio(captureContext, selected, writePCM)
+			}
 			if captureErr != nil && captureContext.Err() == nil {
-				_ = app.writeLocal(connection, map[string]string{
-					"kind": "audio-state", "state": "unavailable",
-					"message": "Target audio stopped; system audio was not substituted",
-				})
+				if source == videoSourceNativeWindow {
+					session.Fail(errors.New("native window capture stopped"))
+				} else {
+					_ = app.writeLocal(connection, map[string]string{
+						"kind": "audio-state", "state": "unavailable",
+						"message": "Target audio stopped; system audio was not substituted",
+					})
+				}
 			}
 		}(*target)
 	} else {
-		close(audioDone)
+		close(captureDone)
 	}
 	defer func() {
+		app.mu.Lock()
+		if app.generation == generation && app.keyFrameRequests == keyFrameRequests {
+			app.keyFrameRequests = nil
+		}
+		app.mu.Unlock()
 		cancelCapture()
-		<-audioDone
+		<-captureDone
 	}()
 	for {
 		messageType, payload, err = connection.Read(app.ctx)
@@ -450,7 +523,9 @@ func (app *App) handleMedia(response http.ResponseWriter, request *http.Request)
 			_ = connection.Close(websocket.StatusPolicyViolation, "invalid encoded media")
 			return
 		}
-		if packet.Kind != media.KindVideo && packet.Kind != media.KindOpus {
+		validKind := packet.Kind == media.KindOpus ||
+			(source == videoSourceBrowser && packet.Kind == media.KindVideo)
+		if !validKind {
 			session.Fail(errors.New("local media bridge received an invalid encoded media kind"))
 			_ = connection.Close(websocket.StatusPolicyViolation, "encoded media required")
 			return
@@ -502,7 +577,14 @@ func (app *App) emit(generation uint64, event remote.Event) {
 	}
 	connection := app.mediaConn
 	session := app.session
+	keyFrameRequests := app.keyFrameRequests
 	app.mu.Unlock()
+	if event.Kind == "request-keyframe" && keyFrameRequests != nil {
+		select {
+		case keyFrameRequests <- struct{}{}:
+		default:
+		}
+	}
 	if connection != nil {
 		if err := app.writeLocal(connection, event); err != nil && event.Kind != "fatal" && session != nil {
 			go session.Fail(fmt.Errorf("write local sender event: %w", err))
@@ -568,7 +650,9 @@ func (app *App) stopActiveGeneration(expectedGeneration uint64) {
 	}
 	app.room = remote.Room{}
 	app.codec = media.CodecVP8
-	app.audioTarget = nil
+	app.videoSource = videoSourceBrowser
+	app.windowTarget = nil
+	app.keyFrameRequests = nil
 	app.activeViewers = 0
 	app.waitingViewers = 0
 	app.mu.Unlock()
@@ -587,13 +671,28 @@ func (app *App) stopActiveGeneration(expectedGeneration uint64) {
 }
 
 func validEncoderConfig(config encoderConfig) bool {
-	return validEncoderConfigForCodec(config, media.CodecVP8)
+	return validEncoderConfigForSource(config, media.CodecVP8, videoSourceBrowser)
 }
 
 func validEncoderConfigForCodec(config encoderConfig, expected media.Codec) bool {
+	return validEncoderConfigForSource(config, expected, videoSourceBrowser)
+}
+
+func validEncoderConfigForSource(config encoderConfig, expected media.Codec, source videoSource) bool {
 	return config.Kind == "config" && config.Codec == string(expected) &&
+		config.VideoSource == string(source) &&
 		config.Width == 1280 && config.Height == 720 && config.FPS == 30 &&
 		config.Bitrate == 3_000_000 && config.EncoderInstances == 1
+}
+
+func parseVideoSource(value string) (videoSource, bool) {
+	if value == "" || value == string(videoSourceBrowser) {
+		return videoSourceBrowser, true
+	}
+	if value == string(videoSourceNativeWindow) {
+		return videoSourceNativeWindow, true
+	}
+	return videoSourceBrowser, false
 }
 
 func decodeLocalJSON(request *http.Request, target any) error {

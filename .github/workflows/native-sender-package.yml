@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - "native/sender/**"
-      - "native/process-audio-helper/**"
+      - "native/window-capture-helper/**"
       - "scripts/package-native-sender.ps1"
       - ".github/workflows/native-sender-package.yml"
   push:
@@ -13,7 +13,7 @@ on:
       - main
     paths:
       - "native/sender/**"
-      - "native/process-audio-helper/**"
+      - "native/window-capture-helper/**"
       - "scripts/package-native-sender.ps1"
       - ".github/workflows/native-sender-package.yml"
 

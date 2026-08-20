@@ -14,13 +14,13 @@ import (
 
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/media"
 	"github.com/TNTcraftHIM/Screener/native/sender/internal/remote"
-	"github.com/TNTcraftHIM/Screener/native/sender/internal/windowaudio"
+	"github.com/TNTcraftHIM/Screener/native/sender/internal/windowcapture"
 	"github.com/coder/websocket"
 )
 
 func TestEncoderConfigUsesTheFixedHighContract(t *testing.T) {
 	config := encoderConfig{
-		Kind: "config", Codec: "vp8", Width: 1280, Height: 720,
+		Kind: "config", Codec: "vp8", VideoSource: "browser", Width: 1280, Height: 720,
 		FPS: 30, Bitrate: 3_000_000, EncoderInstances: 1,
 	}
 	if !validEncoderConfig(config) {
@@ -34,7 +34,7 @@ func TestEncoderConfigUsesTheFixedHighContract(t *testing.T) {
 
 func TestEncoderConfigAcceptsExplicitH264OnlyForAnH264Session(t *testing.T) {
 	config := encoderConfig{
-		Kind: "config", Codec: "h264", Width: 1280, Height: 720,
+		Kind: "config", Codec: "h264", VideoSource: "browser", Width: 1280, Height: 720,
 		FPS: 30, Bitrate: 3_000_000, EncoderInstances: 1,
 	}
 	if !validEncoderConfigForCodec(config, media.CodecH264) {
@@ -45,14 +45,28 @@ func TestEncoderConfigAcceptsExplicitH264OnlyForAnH264Session(t *testing.T) {
 	}
 }
 
+func TestNativeWindowConfigRequiresExactH264Source(t *testing.T) {
+	config := encoderConfig{
+		Kind: "config", Codec: "h264", VideoSource: "native-window-h264",
+		Width: 1280, Height: 720, FPS: 30, Bitrate: 3_000_000, EncoderInstances: 1,
+	}
+	if !validEncoderConfigForSource(config, media.CodecH264, videoSourceNativeWindow) {
+		t.Fatal("native window H.264 config was rejected")
+	}
+	if validEncoderConfigForSource(config, media.CodecH264, videoSourceBrowser) ||
+		validEncoderConfigForSource(config, media.CodecVP8, videoSourceNativeWindow) {
+		t.Fatal("native window config crossed a source or codec boundary")
+	}
+}
+
 func TestDecodeLocalPayloadIsStrictAndSingleValued(t *testing.T) {
-	valid := []byte(`{"kind":"config","codec":"vp8","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1}`)
+	valid := []byte(`{"kind":"config","codec":"vp8","videoSource":"browser","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1}`)
 	var config encoderConfig
 	if err := decodeLocalPayload(valid, &config); err != nil {
 		t.Fatal(err)
 	}
 	invalid := [][]byte{
-		[]byte(`{"kind":"config","codec":"vp8","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1,"extra":true}`),
+		[]byte(`{"kind":"config","codec":"vp8","videoSource":"browser","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1,"extra":true}`),
 		append(append([]byte(nil), valid...), valid...),
 	}
 	for _, payload := range invalid {
@@ -62,20 +76,20 @@ func TestDecodeLocalPayloadIsStrictAndSingleValued(t *testing.T) {
 	}
 }
 
-func TestAudioTargetListingKeepsProcessIdentityBehindAnOpaqueLocalID(t *testing.T) {
+func TestWindowTargetListingKeepsBoundIdentityBehindAnOpaqueLocalID(t *testing.T) {
 	application, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	application.audioProvider = fakeAudioProvider{targets: []windowaudio.Target{{
-		PID: 424_242, CreationTime: 987_654_321, Title: "Game Window",
+	application.captureProvider = fakeCaptureProvider{targets: []windowcapture.Target{{
+		WindowHandle: 123_456, PID: 424_242, CreationTime: 987_654_321, Title: "Game Window",
 	}}}
 	if _, err = application.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer application.Close()
 
-	request, err := http.NewRequest(http.MethodPost, application.origin+"/api/audio-targets", nil)
+	request, err := http.NewRequest(http.MethodPost, application.origin+"/api/window-targets", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,21 +101,21 @@ func TestAudioTargetListingKeepsProcessIdentityBehindAnOpaqueLocalID(t *testing.
 	}
 	defer response.Body.Close()
 	var result struct {
-		Supported bool               `json:"supported"`
-		Targets   []localAudioTarget `json:"targets"`
+		Supported bool                `json:"supported"`
+		Targets   []localWindowTarget `json:"targets"`
 	}
 	if json.NewDecoder(response.Body).Decode(&result) != nil || !result.Supported || len(result.Targets) != 1 {
-		t.Fatalf("audio target response = %+v", result)
+		t.Fatalf("window target response = %+v", result)
 	}
 	if result.Targets[0].ID == "" || result.Targets[0].Title != "Game Window" ||
 		strings.Contains(result.Targets[0].ID, "424242") || strings.Contains(result.Targets[0].ID, "987654321") {
-		t.Fatalf("audio target was not locally anonymized: %+v", result.Targets[0])
+		t.Fatalf("window target was not locally anonymized: %+v", result.Targets[0])
 	}
 	application.mu.Lock()
-	resolved := application.audioTargets[result.Targets[0].ID]
+	resolved := application.windowTargets[result.Targets[0].ID]
 	application.mu.Unlock()
-	if resolved.PID != 424_242 || resolved.CreationTime != 987_654_321 {
-		t.Fatal("opaque target did not resolve in process memory")
+	if resolved.WindowHandle != 123_456 || resolved.PID != 424_242 || resolved.CreationTime != 987_654_321 {
+		t.Fatal("opaque target did not resolve to its bound identity in process memory")
 	}
 }
 
@@ -472,7 +486,7 @@ func openConfiguredMedia(t *testing.T, application *App) *websocket.Conn {
 	}
 	t.Cleanup(func() { _ = connection.CloseNow() })
 	readLocalKind(t, connection, "ready")
-	config := []byte(`{"kind":"config","codec":"vp8","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1}`)
+	config := []byte(`{"kind":"config","codec":"vp8","videoSource":"browser","width":1280,"height":720,"fps":30,"bitrate":3000000,"encoderInstances":1}`)
 	writeContext, cancelWrite := context.WithTimeout(context.Background(), time.Second)
 	err = connection.Write(writeContext, websocket.MessageText, config)
 	cancelWrite()
@@ -689,12 +703,23 @@ func appRoomResponse(origin string) map[string]any {
 	}
 }
 
-type fakeAudioProvider struct{ targets []windowaudio.Target }
+type fakeCaptureProvider struct{ targets []windowcapture.Target }
 
-func (provider fakeAudioProvider) List(context.Context) ([]windowaudio.Target, error) {
+func (provider fakeCaptureProvider) List(context.Context) ([]windowcapture.Target, error) {
 	return provider.targets, nil
 }
 
-func (fakeAudioProvider) Capture(context.Context, windowaudio.Target, func(windowaudio.PCMChunk) error) error {
+func (fakeCaptureProvider) CaptureAudio(context.Context, windowcapture.Target, func(windowcapture.PCMChunk) error) error {
+	return nil
+}
+
+func (fakeCaptureProvider) CaptureWindow(
+	context.Context,
+	windowcapture.Target,
+	<-chan struct{},
+	func(windowcapture.PCMChunk) error,
+	func(windowcapture.H264AccessUnit) error,
+	func(windowcapture.Status) error,
+) error {
 	return nil
 }

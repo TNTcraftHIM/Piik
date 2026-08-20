@@ -5,7 +5,7 @@ Last updated: 2026-08-21
 ## Confirmed Intent
 
 - Build low-latency game sharing for one broadcaster and trusted friends; public or large broadcasts belong on OBS/Twitch-class services.
-- Viewers join from normal desktop/mobile browsers. A later native sender may share encoding and improve capture/audio without changing the Web viewer requirement.
+- Viewers join from normal desktop/mobile browsers. Native senders may improve capture/audio without changing the Web viewer requirement.
 - Use a small central service for access, rooms, signaling, deterministic topology, STUN, observability, and bounded SFU-root capacity.
 - Minimize server bandwidth. Ordinary peer ICE is STUN-only. Failure tries restart, rebuild, alternate peer and bounded SFU/UDP roots; only then may the controller authorize short-lived TURN for one selected exceptional edge before clear failure. TURN is transport, not topology.
 - Non-server nodes have at most two downstream edges; browser relays stay at one until resource gates pass. SFU normally feeds one or two roots that retain peer descendants; separately capped server edges may serve exceptional viewers that cannot attach behind a healthy root.
@@ -23,7 +23,7 @@ Last updated: 2026-08-21
 - Use direct host P2P for one or two viewers, then the bounded controller for every room when `PEER_ASSISTED_MEDIA=true`. Room `1` is historical smoke, not a runtime gate; resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile evidence remain separate.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- ADR-0006 remains no-go. VP8 is default; H.264 loopback rendered 298/299. Windows x64 evaluation packaging is source-complete; downloaded use, Pion timing, hardware, multi-viewer/endurance/public proof remain open.
+- ADR-0006's historical browser-bridge canary remains no-go; VP8 stays default. Browser H.264 rendered 298/299; Native WGC/MF rendered 203 with PID/LUID-correlated `VideoEncode`. Downloaded use, multi-viewer/endurance/public proof remain open.
 - Mobile Web Host unsupported. Android 14+ sender is direct-child video-only; device, audio, rotation, and SFU remain open. iOS deferred; TV output is local-only P2.
 - ADR-0005 accepts direct/peer UDP, bounded SFU roots, then optional selected-edge TURN. Production now enables the one-shot selected-edge tuple after SFU; participant-wide TURN remains rejected and ordinary peer ICE stays STUN-only. No real TURN/SFU media canary has yet been run.
 - The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, mobile leaves and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
@@ -34,7 +34,6 @@ Last updated: 2026-08-21
 - Viewer-local names and the opt-in Web participant roster remain control-plane-only. Web Host names are deployed in the current release and stay socket/localStorage-only; Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
-- Deferred architecture audit: `docs/maintenance.md`.
 
 ## Current Execution Principle
 
@@ -53,7 +52,7 @@ Last updated: 2026-08-21
 - Chrome 151 synthetic topology/quality runs kept fanout 2/1 and decoding; one relay close recovered in 5.32 seconds. Control evidence only.
 - Room `1` publishes `HIGH+LOW` with Dynacast off and subscriber `HIGH` ceilings, and now has bounded local quality reparenting. Both remain unverified on real media; test zero-child leaves and calibrated C+B loss before broad rollout.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
-- Web Host name/presence and window-audio hint are deployed. Native source accepts authenticated peer-assisted direct-child assignments, ignores presence as an edge authority, and reports unsupported SFU/selected ingress as bounded route failure; it does not implement LiveKit or TURN media. Native H.264 source and Windows x64 evaluation packaging are present, but no Native release/deployment exists; VP8 remains the Web/production default. See `docs/research/native-h264-opt-in-path.md`.
+- Web Host name/presence and window-audio hint are deployed. Native accepts bounded peer-assisted direct children and fails unsupported SFU/selected ingress; it has no LiveKit/TURN media. Its WGC/MF H.264 direct-child smoke rendered 203 frames plus 500 Opus packets and matched helper PID/LUID `VideoEncode`; packaging is source-only, unreleased and undeployed. VP8 remains the Web/production default. See `docs/research/native-h264-opt-in-path.md`.
 
 ## Provisional Quality Targets
 
@@ -69,7 +68,7 @@ These are measurement gates, not performance claims.
 - Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
 - Whether source-complete selected-edge passes forced relay, expiry/failure, mobile, 1-GiB resource and relay-bandwidth gates. Coturn's bearer is non-revocable until expiry; application guards and TTL only bound reuse. Performance comparison and the retained matrix follow functional landing; Media TCP is out of scope.
-- Exact mobile lifecycle behavior and whether Windows per-application audio is required for the first release.
+- Exact mobile lifecycle behavior.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
 - Whether voice chat ever enters scope or Screener stays complementary to an existing voice application.

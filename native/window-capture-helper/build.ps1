@@ -23,18 +23,22 @@ if ([string]::IsNullOrWhiteSpace($installationPath)) {
 }
 
 $developerCommand = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
-$sourcePath = Join-Path $helperDirectory 'main.cpp'
-$executablePath = Join-Path $outputPath 'screener-process-audio.exe'
-$objectPath = Join-Path $outputPath 'main.obj'
+$mainSourcePath = Join-Path $helperDirectory 'main.cpp'
+$audioSourcePath = Join-Path $helperDirectory 'process_audio.cpp'
+$executablePath = Join-Path $outputPath 'screener-window-capture.exe'
+$mainObjectPath = Join-Path $outputPath 'window-capture.obj'
+$audioObjectPath = Join-Path $outputPath 'process-audio.obj'
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 
 $compile = @(
     'call "{0}" -arch=x64 -host_arch=x64 >nul' -f $developerCommand
-    'cl.exe /nologo /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}" /Fe:"{2}" /link ole32.lib mmdevapi.lib runtimeobject.lib user32.lib' -f $sourcePath, $objectPath, $executablePath
+    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $mainSourcePath, $mainObjectPath
+    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $audioSourcePath, $audioObjectPath
+    'link.exe /nologo /out:"{0}" "{1}" "{2}" ole32.lib mmdevapi.lib runtimeobject.lib user32.lib mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib oleaut32.lib windowsapp.lib' -f $executablePath, $mainObjectPath, $audioObjectPath
 ) -join ' && '
 
 & cmd.exe /d /s /c $compile
 if ($LASTEXITCODE -ne 0) {
-    throw "Process-audio helper compilation failed with exit code $LASTEXITCODE."
+    throw "Window-capture helper compilation failed with exit code $LASTEXITCODE."
 }
 Write-Output $executablePath

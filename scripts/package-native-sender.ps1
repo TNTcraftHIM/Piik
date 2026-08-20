@@ -68,9 +68,11 @@ try {
     $env:CGO_ENABLED = $previousCGO
 }
 
-& (Join-Path $repositoryRoot 'native\process-audio-helper\build.ps1') -OutputDirectory $packageDirectory | Out-Null
-$helperObject = Join-Path $packageDirectory 'main.obj'
-if (Test-Path -LiteralPath $helperObject) { Remove-Item -LiteralPath $helperObject -Force }
+& (Join-Path $repositoryRoot 'native\window-capture-helper\build.ps1') -OutputDirectory $packageDirectory | Out-Null
+@('window-capture.obj', 'process-audio.obj') | ForEach-Object {
+    $helperObject = Join-Path $packageDirectory $_
+    if (Test-Path -LiteralPath $helperObject) { Remove-Item -LiteralPath $helperObject -Force }
+}
 
 $moduleManifest = @()
 foreach ($line in $moduleLines) {
