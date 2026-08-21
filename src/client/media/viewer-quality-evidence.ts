@@ -219,6 +219,26 @@ export function qualityEvidenceMatchesSnapshot(
   );
 }
 
+export function classifyHostViewerQualityEvidence(
+  evidence: ViewerQualityEvidence,
+  hostPeerId: string | null,
+  routeRevision: number,
+  directSnapshot: PeerSnapshot | null,
+): "direct" | "peer-relayed" | null {
+  if (
+    hostPeerId === null ||
+    evidence.guard.routeRevision !== routeRevision
+  ) {
+    return null;
+  }
+  if (evidence.parentPeerId !== hostPeerId) {
+    return "peer-relayed";
+  }
+  return qualityEvidenceMatchesSnapshot(evidence, directSnapshot)
+    ? "direct"
+    : null;
+}
+
 export function metricsFromQualityEvidence(
   evidence: ViewerQualityEvidence,
 ): ConnectionMetrics {

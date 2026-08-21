@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ClientMessage, ServerMessage } from "../src/shared/protocol.ts";
 import {
+  classifyHostViewerQualityEvidence,
   metricsFromQualityEvidence,
   qualityEvidenceMatchesSnapshot,
   qualityEvidenceWindowFromMetrics,
@@ -234,6 +235,38 @@ describe("viewer quality evidence", () => {
         connectionId: "connection_replaced_12345678",
       }),
     ).toBe(false);
+    expect(
+      classifyHostViewerQualityEvidence(
+        evidence,
+        evidence.parentPeerId,
+        evidence.guard.routeRevision,
+        current,
+      ),
+    ).toBe("direct");
+    expect(
+      classifyHostViewerQualityEvidence(
+        evidence,
+        evidence.parentPeerId,
+        evidence.guard.routeRevision,
+        { ...current, connectionId: "connection_replaced_12345678" },
+      ),
+    ).toBeNull();
+    expect(
+      classifyHostViewerQualityEvidence(
+        { ...evidence, parentPeerId: "viewer_relay_12345678" },
+        evidence.parentPeerId,
+        evidence.guard.routeRevision,
+        null,
+      ),
+    ).toBe("peer-relayed");
+    expect(
+      classifyHostViewerQualityEvidence(
+        evidence,
+        evidence.parentPeerId,
+        evidence.guard.routeRevision + 1,
+        current,
+      ),
+    ).toBeNull();
     expect(metricsFromQualityEvidence(evidence)).toMatchObject({
       sampleWindowMs: 2_000,
       frameWidth: 1_920,
