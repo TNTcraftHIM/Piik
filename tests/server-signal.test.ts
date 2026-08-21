@@ -31,7 +31,7 @@ const defaultQualitySettings = {
   resolution: "1080p",
   maxFramerate: 60,
   maxBitrate: 8_000_000,
-  degradationPreference: "balanced",
+  degradationPreference: "maintain-resolution",
 } as const;
 const balancedQualitySettings = {
   resolution: "1080p",

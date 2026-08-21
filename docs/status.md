@@ -15,7 +15,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 
 ## Current Snapshot
 
-- Capture precedes room creation; source/quality changes and AV pause preserve peers. Recommended profiles and advanced defaults use `balanced`; clarity/fluid remain explicit. P2P reapplies the selected profile after each answer on the same sender; the browser still owns degradation and stats/readback expose it.
+- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are clarity-first; balanced/fluid stay explicit. P2P writes before offer or explicit changes, never on answer. The SFU lifecycle candidate retains sender/SDK/restart/republish options with rollback. Browser degradation and Host SFU A+B remain open.
 - Production `screener-v2` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
 - Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Status and details stay neutral before media proof; current evidence labels green P2P/yellow `SFU fallback`, while relay evidence adds `TURN` plus only a locally observed protocol.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
