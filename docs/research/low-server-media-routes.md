@@ -175,28 +175,157 @@ serve one or two roots, and those roots may still serve peer descendants. If
 every endpoint needs a server path, the existing root, exceptional-viewer, and
 egress caps must bound it.
 
-The remaining browser-first reachability candidate worth isolated measurement is:
+Do not infer endpoint-dependent mapping from a `cellular` or `CGNAT` label. A
+2023 experiment reached three of four Dutch mobile carriers, but that cohort is
+too small and unlike Screener's target networks. A 2026 native DCUtR study found
+that 97.6% of its successful traversals completed on the first attempt; its
+roughly 70% result is conditional on relay reservation and address discovery,
+which had already failed for about 29% of collected attempts. ProbeLab also says
+that its reported 39.7% "symmetric" success may include classification error or
+a network change. These studies justify measurement and bounded retry, not a
+browser success-rate claim or repeated-refresh roulette.
 
-1. Add dual-stack reachability for Web, STUN, SFU, and TURN. A public IPv6 pair
-   avoids IPv4 NAT, while ICE still handles IPv6 firewalls and IPv4 fallback.
-The acceptance matrix is EIM/EIM, one endpoint-dependent mapper, two endpoint-
-dependent mappers including cellular-to-cellular, all UDP blocked, and a Wi-Fi
-to-cellular change. Record only sanitized selected transport, generation, time
-to first decoded frame, loss, RTT, bitrate, and relay/SFU bytes. Keep credentials
-short-lived and edge-scoped and retain allocation, relay-port, and egress caps.
+One field observation retained a working P2P route after a Wi-Fi-to-cellular
+switch and still retained P2P when the user requested reconnect. That single
+session cannot distinguish endpoint-independent cellular mapping, public IPv6,
+an ICE-selected replacement pair, or operator mapping/filtering lifetime. It
+supports one fresh, generation-bound P2P opportunity after a discrete network
+change or explicit reconnect; it does not support periodic probing, a carrier
+"kept channel" assumption, or a universal hard-NAT traversal claim.
 
-Port prediction, birthday probing, PCP/NAT-PMP/UPnP, multi-socket probing, and
-explicit TCP simultaneous-open require native or router control; WebRTC exposes
-no raw-socket, port-allocation, or gateway-mapping API. RFC 5128 documents their
-sensitivity to random allocation, unrelated traffic, NAT layers, OS TCP state,
-and RST handling. In Tailscale's idealized analysis, one hard/one easy NAT with
-256 openings and probes reaches about 64%, while two hard NATs reach about 0.01%
-after one side opens 256 sockets and the other sends 2,048 probes over roughly
-20 seconds; about 99.9% would require roughly 170,000 probes per side. The scan-
-like traffic can exhaust mapping quotas. libp2p DCUtR instead starts with a relay
-and synchronizes a direct attempt; it improves native timing but cannot remove
-relay for incompatible mappings. Screener should measure ICE outcomes and keep
-its bounded relay rather than add a NAT classifier.
+### Deployable Browser-First Priorities
+
+**1. Dual-stack Web, STUN, SFU, and selected TURN**
+
+- Smallest change: publish working `AAAA` records, bind every public endpoint on
+  IPv6, and open the same bounded UDP paths. Browser ICE already gathers and
+  intermixes IPv4/IPv6 candidates; do not add application candidate ordering.
+  Product code can remain unchanged; any retained evidence is only a sanitized
+  selected-address-family enum tied to the existing opaque generation.
+- Dependency: routed IPv6 at the provider, dual-stack STUN/SFU/TURN listeners,
+  correct firewall rules, and no IPv4-only hostname hidden in the media ladder.
+- Acceptance: owned desktop, Wi-Fi, and cellular probes select an IPv6 P2P path
+  and an IPv6 SFU/selected-TURN path where available; broken IPv6 still reaches
+  the IPv4 ladder within the current route deadline. Retain only an `ipv4|ipv6`
+  enum with the existing opaque generation and media proof, never a raw address.
+- Stop line: if any required public media endpoint has no routed IPv6, record the
+  deployment as incomplete and keep the IPv4 ladder. Do not build a custom IPv6
+  selector or claim NAT bypass from an `AAAA` record alone.
+
+**2. Exactly two independent-destination STUN servers**
+
+- Smallest change: set the existing `STUN_URLS` list to two URLs. Current server
+  code already accepts the list and sends both URLs in one ICE server entry.
+  Existing schema capacity for eight URLs is not a product recommendation.
+- Dependency: each URL must resolve to a different public destination IP;
+  separate failure domains and dual-stack coverage are preferable. Current
+  libwebrtc tests show that equal observed mappings are deduplicated while two
+  different observed mappings from two STUN destinations can yield two `srflx`
+  candidates from the shared UDP port.
+- Acceptance: each server alone gathers a usable `srflx` candidate on the exact
+  Chrome, Firefox, and Safari releases recorded in the matrix, the pair does not
+  regress time to first decoded frame, and gathering still succeeds with either
+  server unavailable. Confirm server identity only in locally retained browser
+  diagnostics; do not add URL or address retention to production telemetry.
+- Stop line: two STUN destinations improve address-family/failure diversity and
+  can expose mapping differences in an owned canary; they do not reveal the
+  mapping that a peer destination will receive and do not solve two endpoint-
+  dependent mappers. Do not add a third server or a NAT classifier without a
+  measured failure that the second server fixes.
+
+**3. Healthy SFU-to-P2P bounded re-probe**
+
+- Current state: production `27ad90d` has the deployed one-root slice: it
+  reserves bounded capacity, keeps the healthy SFU route playing, proves one
+  fresh P2P generation with current decoded-media progress, then commits
+  atomically and closes the old route. Current source `4c9174d` additionally
+  retains one cooldown-time opportunity as a current tuple and requires two new
+  evidence windows at expiry; that continuation is not deployed. Neither polls
+  network state.
+- Retained candidate: a discrete network-change or explicit-reconnect event may
+  open one opportunity through that same controller after cooldown. It must not
+  create a second route controller or treat an ICE restart on the SFU
+  `RTCPeerConnection` as P2P discovery.
+- Acceptance: an owned viewer that fell back to SFU changes Wi-Fi/cellular,
+  receives one bounded fresh probe, and moves to P2P without playback loss or
+  duplicate active edges. A failed probe leaves the healthy SFU route unchanged;
+  stale answers or repeated browser events cannot start another generation or
+  leak capacity.
+- Stop line: no polling loop and no periodic probing. If one discrete probe
+  causes SFU playback regression, overlapping offers, cap violation, or route
+  churn, keep the healthy SFU route and fix the generation/commit boundary before
+  another rollout.
+
+### Isolated Eight-Guess Candidate Spike
+
+The earlier categorical rejection of every browser-side prediction experiment
+was too broad. WebRTC does not expose raw UDP, but the WebRTC API does let the
+application signal a remote ICE candidate and call `addIceCandidate()`. An owned
+experiment can therefore inject at most eight nearby remote-port candidate
+guesses in total across both endpoints for one edge generation and let the
+browser ICE agents send authenticated connectivity checks. This is bounded port
+prediction, not the birthday-paradox technique proposed for native peers with
+hundreds of sockets and probes.
+
+- Scope: zero production integration. Use an isolated test page or harness and
+  a sequential endpoint-dependent NAT emulator fixture. Reuse existing candidate
+  signaling and ICE generations; do not mutate SDP or create a second production
+  protocol.
+- Dependency: two controlled STUN destination IPs, a deterministic owned NAT
+  emulator, the same ICE base/socket across observations and peer checks, an
+  allowlisted test room, and a hard maximum of eight extra candidate guesses in
+  total across both endpoints per edge generation. No guessed address, candidate
+  string, or SDP may be retained.
+- Acceptance: ordinary ICE must deterministically fail direct connection in the
+  emulator; then the bounded variant must reach decoded media within the current
+  15-second route window in at least 90 of 100 runs on the exact stable Chrome
+  and Firefox releases recorded in the matrix, with no more than eight injected
+  guesses in total and no candidate-error or resource-growth regression. Actual
+  connectivity-check packets may exceed eight because guesses pair with local
+  candidates and ICE retransmits checks; the candidate budget is not a packet
+  budget. Safari is measured separately before any product decision. Only an
+  emulator pass permits a paired, explicitly consented mobile canary; it is still
+  not production evidence.
+- Stop line: reject the candidate if it needs raw sockets, extra peer
+  connections, browser-specific SDP rewriting, more than eight total guesses,
+  unbounded retries, a longer black-screen deadline, or fails the two-engine
+  repeatability gate. A failure closes this candidate in favor of bounded
+  SFU/UDP and selected TURN/UDP; it does not justify a native sender by itself.
+
+### Ordinary-Browser Hard Boundaries
+
+- Birthday-paradox traversal, broad multi-socket probing, source-port binding,
+  PCP/NAT-PMP/UPnP, and TCP simultaneous-open require socket or gateway control
+  that an ordinary page does not have. Many `RTCPeerConnection` objects are not
+  an acceptable substitute: the page still cannot bind ports and would create
+  unbounded ICE, DTLS, memory, and abuse risk.
+- Peer-reflexive candidates remain useful, but browser ICE creates them only
+  after a connectivity check succeeds. RFC 8863's recommended 39.5-second PAC
+  timer is an ICE-agent failure boundary, not a JavaScript tuning API. Do not
+  extend Screener's current route deadline to 40 seconds; measure late recovery
+  behind a playing SFU route through the bounded re-probe instead.
+- The April 2026 ICE-renomination draft requires opt-in from both ICE agents and
+  the W3C `RTCConfiguration` exposes no renomination switch. Historical
+  libwebrtc native code has a disabled-by-default flag for an older renomination
+  proposal; it is neither this draft nor a browser API. Renomination can choose
+  among retained pairs inside one ICE session; it cannot turn an SFU connection
+  into a peer topology.
+- Current QUIC traversal work also assumes an existing relay and candidate
+  discovery from the same application-controlled UDP socket. Browser
+  WebTransport is a client connection to a server, not a raw UDP socket or an
+  inbound peer listener. Native TCP/QUIC DCUtR results therefore do not reopen
+  Screener's accepted UDP-only browser media ladder.
+- `iceCandidatePoolSize` only pre-gathers implementation-managed candidates for
+  future ICE use. It does not expose ports, create birthday probes, or repair an
+  endpoint-dependent mapping. Repeated refreshes and a large STUN list likewise
+  add delay and mappings without a stable traversal mechanism.
+
+The shared acceptance matrix remains EIM/EIM, one endpoint-dependent mapper,
+two endpoint-dependent mappers including cellular-to-cellular, all UDP blocked,
+and a Wi-Fi-to-cellular change. Record only sanitized selected transport,
+address family, generation, time to first decoded frame, loss, RTT, bitrate, and
+relay/SFU bytes. Keep credentials short-lived and edge-scoped and retain
+allocation, relay-port, and egress caps.
 
 ## Privacy-Safe ICE Evidence Candidate
 
@@ -205,6 +334,8 @@ Only then may one exact allowlisted room record, without changing its route:
 
 - selected local/remote candidate type and protocol plus local
   `relayProtocol`;
+- selected address family reduced locally to `ipv4|ipv6`, without retaining the
+  source address;
 - `iceGatheringState`, `iceConnectionState`, and `connectionState` transitions
   with monotonic event-derived establishment duration;
 - `selectedCandidatePairChanges` when implemented, reported only as a delta
@@ -448,7 +579,7 @@ The measurable gates and exact staged experiments are in
 
 ## Sources And License Boundary
 
-Primary sources checked on 2026-08-19 and 2026-08-21:
+Primary sources accessed on 2026-08-19, 2026-08-21, and 2026-08-22:
 
 - [Pion WebRTC](https://github.com/pion/webrtc) - MIT; no code copied.
 - [Pion WebRTC v4 API](https://pkg.go.dev/github.com/pion/webrtc/v4) - API
@@ -456,9 +587,11 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
 - [Pion broadcast example](https://github.com/pion/webrtc/tree/main/examples/broadcast)
   and [examples index](https://github.com/pion/webrtc/blob/main/examples/README.md)
   - MIT; reference behavior only.
-- [RTP Topologies, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667.html) and
-  [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html) - IETF standards
-  under IETF Trust terms.
+- [RTP Topologies, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667.html),
+  [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html),
+  [dual-stack ICE guidance, RFC 8421](https://www.rfc-editor.org/rfc/rfc8421.html),
+  and [ICE PAC, RFC 8863](https://www.rfc-editor.org/rfc/rfc8863.html) - IETF
+  standards and BCP under IETF Trust terms.
 - [UDP NAT behavior, RFC 4787](https://www.rfc-editor.org/rfc/rfc4787.html),
   [P2P across NATs, RFC 5128](https://www.rfc-editor.org/rfc/rfc5128.html),
   [PCP, RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html), and
@@ -473,11 +606,22 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
 - [WebRTC transports, RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html) -
   browser transport capability requirements do not require an application to
   advertise every supported fallback on every connection.
-- [WebRTC](https://w3c.github.io/webrtc-pc/),
+- [WebRTC](https://www.w3.org/TR/webrtc/),
   [WebRTC Statistics](https://w3c.github.io/webrtc-stats/),
   [WebRTC Encoded Transform](https://w3c.github.io/webrtc-encoded-transform/#stream-processing),
-  and [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/) - W3C specifications; SVC
-  is an encoding control, not a distribution topology.
+  [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/), and
+  [WebTransport](https://www.w3.org/TR/webtransport/) - W3C specifications;
+  their JavaScript surfaces do not expose raw socket or gateway control.
+- [Current libwebrtc STUN-port tests](https://chromium.googlesource.com/external/webrtc/+/refs/heads/main/p2p/base/stun_port_unittest.cc),
+  [native peer-connection configuration](https://chromium.googlesource.com/external/webrtc/+/refs/heads/main/api/peer_connection_interface.h),
+  and [native port allocator](https://chromium.googlesource.com/external/webrtc.git/+/master/p2p/base/port_allocator.h)
+  - `TestNoDuplicatedAddressWithTwoStunServers` and
+  `TestTwoCandidatesWithTwoStunServersAcrossNat` are current evidence for the
+  two-STUN behavior; the other controls are not exposed to browser JavaScript.
+  BSD-3-Clause, no code copied.
+- [ICE Renomination, April 2026 Internet-Draft](https://datatracker.ietf.org/doc/draft-thatcher-tsvwg-renomination/)
+  and [n0 QUIC NAT Traversal, July 2026 Internet-Draft](https://datatracker.ietf.org/doc/draft-bruynooghe-n0-quic-nat-traversal/)
+  - active individual drafts, not browser APIs or final standards.
 - [MoQ Transport](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/),
   [MoQ Streaming Format](https://datatracker.ietf.org/doc/draft-ietf-moq-msf/),
   and the [MoQ working group](https://datatracker.ietf.org/wg/moq/) - active IETF
@@ -512,8 +656,13 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
   and [official usage](https://github.com/livekit/client-sdk-js#usage) -
   Apache-2.0; API behavior and RID construction were inspected, with no source
   copied.
-- [libp2p DCUtR](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md) and
-  [2025 DCUtR measurement](https://arxiv.org/abs/2510.27500) - native relay-assisted evidence, not a browser-WebRTC success rate.
+- [libp2p hole-punching platform boundary](https://github.com/libp2p/specs/blob/master/connections/hole-punching.md),
+  [2026 large-scale DCUtR measurement](https://arxiv.org/html/2604.12484), and
+  [ProbeLab's 2026 final report](https://github.com/probe-lab/dcutr-project/blob/main/docs/dcutr-final-report.md)
+  - native relay-assisted evidence with conditional cohorts and explicit NAT-
+  classification caveats, not a browser-WebRTC success rate.
+- [2023 CGNAT survey and four-carrier mobile experiment](https://arxiv.org/abs/2311.04658)
+  - small native mobile evidence, not a target-market coverage estimate.
 - [Tailscale NAT traversal](https://tailscale.com/blog/how-nat-traversal-works) and
   [2025 hard-NAT probing](https://tailscale.com/blog/nat-traversal-improvements-pt-1) - native operational references; no code copied.
 - [Grozev, *Towards a Scalable Video Conferencing System*](https://publication-theses.unistra.fr/public/theses_doctorat/2019/Grozev_Boris_2019_ED269.pdf)
