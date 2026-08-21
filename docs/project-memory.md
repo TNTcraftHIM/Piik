@@ -13,7 +13,7 @@ Last updated: 2026-08-21
 - Direct/peer keeps per-PC stock GCC. Active SFU publishes exactly `q,h` at a `HIGH` ceiling; built-in BWE may forward `LOW`. The zero-descendant quality/resource gate is next; if it passes, no app media selector is built. Explicit quality, manual activation, and custom/native remain fallbacks.
 - A later explicit quality fallback evacuates children under a generation guard first. Autonomous BWE enters `suspect`; confirmation evacuates children, and no confirmed `FALLBACK` parent remains. Root-with-children impact is a default-on gate; capacity returns after longer recovery plus cooldown. Self-report alone never triggers it.
 - Site access protects room creation, Host publication, and every code-only Viewer entry. A valid room-scoped fragment grant bypasses that site gate; otherwise site access is checked before public-watch or a private room password. Persist neither raw credential; keep accounts, ACLs, users, and session tables out.
-- Keep decisions, snapshots, research, code, `AGENTS.md`, and `.codex/` in Git; rewrite memory/status in place. Research current primary sources before material work and reject speculative machinery.
+- Prefer primary sources, maintained implementations, target-device evidence and sanitized production stats. Ordinary-PC synthetic runs prove only correctness/interoperability; never use them to calibrate performance or block a reversible standard API. Keep accepted truth in Git and replace stale facts in place.
 - Migrate client, server, and deployment atomically. After a canary, delete superseded config/wire/parsers/tests; do not retain compatibility layers, dual writes, or a second architecture without a current consumer. Git history owns the old implementation.
 - Deploy after narrow tests, independent review, one local full gate, and rollback preflight. Build/test off the 960 MiB production host; prepare audited dist with one bounded production install. Actions remain for a necessary main/release gate only.
 
@@ -24,7 +24,7 @@ Last updated: 2026-08-21
 - Use direct host P2P for one or two viewers, then the bounded controller for every room when `PEER_ASSISTED_MEDIA=true`. Room `1` is historical smoke, not a runtime gate; resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile evidence remain separate.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- ADR-0006's historical browser-bridge canary remains no-go; VP8 stays default. Browser H.264 rendered 298/299; Native WGC/MF rendered 203 with PID/LUID-correlated `VideoEncode`. Downloaded use, multi-viewer/endurance/public proof remain open.
+- Current Web source prefers H.264 through standard ordering, keeps the browser fallback list, and requests SFU H.264 with `backupCodec=false`; VP8 is used only when H.264 is unavailable. This is not a second encoder stack or shared-encode proof. ADR-0006's browser bridge remains no-go.
 - Mobile endpoints are Web Viewer-only. Current Android/iOS browsers do not expose Web Host capture; AirPlay/system mirroring is Viewer-local output.
 - ADR-0005: direct/peer UDP -> bounded SFU roots -> selected-edge TURN. The deployed controller caps pending/answered `peer-selected` at one per room; Host ingress is independent. A pre-`ecc794d` exact-source/production-media canary proves active Host ingress only. Ordinary peers stay STUN-only.
 - The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, one active upstream and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
@@ -38,7 +38,7 @@ Last updated: 2026-08-21
 
 ## Current Execution Principle
 
-- Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/logs/comments=current; history/migration=`historical`; ship reverse-scan visible copy->source; drop no-consumer layer; copy masks no wrong model.
+- Parallel flagship work; minimum relevant checks and rollback proof. Research plus target-device/production evidence drives product choices; synthetic runs cover only correctness/interoperability. Active text is current, Git owns history, and no-consumer layers are deleted.
 
 ## Current Implementation
 
@@ -51,7 +51,6 @@ Last updated: 2026-08-21
 - Production requires the independent site-access secret through `SITE_ACCESS_PASSWORD`. Its stateless cookie authorizes creation/Host and permits code-only Viewer attempts; valid private fragment grants remain direct. Public-watch accepts site access plus code, while private code-only entry additionally requires the room password. The env, endpoint, cookie, and nginx limiter naming migrated atomically; anonymous failures stay neutral, and there are no accounts/JWT/session rows.
 - Production uses nginx, Node.js 24.19.0, coturn 4.17.2, and LiveKit 1.13.5 on UDP 7882 (TCP fallback off). Ordinary peer ICE receives no TURN; the selected-edge tuple is configured only for the current controller edge, with no credential pre-advertised to ordinary peers. Coturn retains the old authenticated-relay ports. Services are healthy with zero restarts.
 - ADR-0005 rejects `PEER_ASSISTED_ROOM_IDS`; `PEER_ASSISTED_MEDIA=true` enables every room and ordinary peers stay STUN-only. Initial or active Host ingress may consume one bound relay-only grant; ready/abort clears it and failure restores peer baseline. Stale room-ID config fails startup; `screener-v2` is the only deployed wire.
-- Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
 - Web SFU uses LiveKit 2.22.0 `q,h`; local SFU/UDP and selected-TURN ingress work, while BWE remains open. P2P now reapplies its selected profile after each answer on the same sender. A local A/B supports the lifecycle candidate, but natural ramp, real capture, production, and SFU validation remain open.
 - Chrome 151 five-Viewer 720p30 cap2 evidence: Host/relay fanout two; both relay children +80 decoded frames/~1.1 MB; every Viewer decoded; clean stop. Functional only; resource and heterogeneous-network behavior remain open.
 
@@ -73,7 +72,7 @@ These are measurement gates, not performance claims.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
 - Whether voice chat ever enters scope or Screener stays complementary to an existing voice application.
-- Production calibration of local-reparent thresholds, physical H.264 hardware attribution, and the ADR-0007 native matrix; #28's minimum-of-two rule is not a candidate.
+- Production calibration of reparent thresholds and any adaptive codec policy. Hardware attribution gates claims, not H.264 preference; #28's minimum-of-two rule is not a candidate.
 
 ## Source Of Truth
 

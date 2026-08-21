@@ -7,11 +7,11 @@ Last updated: 2026-08-21
 Production at `https://share.bonfire.icu` is exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777`; immutable source/dist artifacts are 604,336/354,230 bytes, with hashes in deployment.
 Cutover: 2,276.366 ms lock/703.625 ms stop-health/562.538 ms switch-health. SQLite v3/five rooms has SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services are active/running at `NRestarts=0`; rollbacks are `691863e`, then `6634cb9` and `ecc794d`.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
-Stable SFU state, evidence-backed route/transport labels, Host preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only; Web defaults VP8.
+Stable SFU, route/transport truth, preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only. Production `261e980c` uses VP8; current source prefers H.264 with negotiated VP8 fallback.
 
 ## Execution Principle
 
-Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/logs/comments=current; history/migration=`historical`; ship reverse-scan visible copy->source; drop no-consumer layer; copy masks no wrong model.
+Parallel flagship work; minimum relevant checks and rollback proof. Research plus target-device/production evidence drives performance decisions; ordinary-PC synthetic runs prove only correctness/interoperability. Active text is current; Git owns history; delete no-consumer layers.
 
 ## Current Snapshot
 
@@ -29,7 +29,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Chrome 151 + local LiveKit 1.13.5/client 2.22.0 SFU/UDP passed after `q,f` -> `q,h`: one root, decoded 3 -> 23, rendered 26, Host edge one, clean leaves, no TURN. Functional only.
 - Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
-- Chrome 151 browser loopbacks decoded VP8 299 and H.264 opt-in 299/298 rendered at 1280x720 without fatal/encoder errors. Browser hardware attribution, multi-viewer/endurance and public proof remain open; production stays VP8.
+- Chrome 151 loopback proves H.264 negotiation/decode interoperability, not performance. Source orders H.264 first and keeps browser repair/fallback codecs; production remains VP8 until deployment.
 - Native WGC/MF used no browser capture/encoder. One Chrome Viewer rendered 203 1280x720 frames and received 500 Opus packets; process/LUID-correlated `VideoEncode` was nonzero, with no fatal/encoder errors.
 - Native Win11 audio is source-only/default-off: target isolation was 4018x and one Viewer got 495 Opus packets. Download, game sync, Win10, and other routes remain open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
@@ -53,7 +53,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 
 Next: representative production-room UDP/frame/cap/stop canary; room `1` is history. TURN performance follows later.
 Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then SFU. Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root evacuation.
-Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Benchmark later.
+Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
 Ordinary peers stay STUN-only; initial ingress and `peer-selected` still need forced-relay proof.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
 

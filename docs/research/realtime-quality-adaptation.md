@@ -142,28 +142,42 @@ server traffic but may still consume compositor/GPU work. Compare the exact
 release and current `main` under one fixture, with preview on/off as a separate
 binary intervention.
 
-## Codec And Hardware Gate
+## Codec Preference And Evidence Boundary
 
-Do not default to AV1 from compression efficiency alone. The deployed release
-does not call `setCodecPreferences()`, and a browser may expose a negotiable
-codec without a power-efficient WebRTC encoder. `getCapabilities()` establishes
-only an optimistic negotiation set; Media Capabilities supplies
-supported/smooth/power-efficient candidate evidence; outbound `codecId`,
-`encoderImplementation`, and `powerEfficientEncoder` describe the stream only
-when the browser exposes them. Final acceptance still requires interval encode
-cost, game FPS, CPU/GPU video-encode activity, and active sender count. Chromium
-`main` on the access date gates WebRTC AV1 hardware encoding off by default on
-Windows even when a platform accelerator exists; this is an implementation
-snapshot, not a permanent browser contract.
+RFC 7742 requires WebRTC browsers to implement both VP8 and H.264 Constrained
+Baseline, while W3C `setCodecPreferences()` lets the application reorder the
+browser's negotiated codec set. The smallest Web policy is therefore to place
+all advertised H.264 entries first and retain the complete repair and fallback
+list. If H.264 capability is absent or the API rejects the preference, leave the
+browser default unchanged. LiveKit publication requests H.264 only when the
+sender advertises it, falls back to VP8 otherwise, and keeps `backupCodec=false`;
+there is no parallel backup-codec publication.
 
-First diagnose the Host-refresh case using the browser-selected codec. Only if
-encode cost or `cpu` limitation is abnormal, hold scene, resolution/FPS/bitrate,
-network, and viewer constant while comparing browser default, H.264, and VP8.
-VP9 or AV1 enters that spike only when both endpoints can negotiate it and
-Media Capabilities reports the exact configuration supported, smooth, and
-power-efficient. A preference change must retain negotiated repair codecs and
-is successful only when outbound stats prove the codec actually in use; silent
-software fallback fails the gate.
+H.264 is the accepted product preference because its mature cross-device hardware
+encode/decode paths address the observed VP8 software-path cost and are more
+valuable here than VP8's royalty-free implementation model. This does not claim
+an intrinsic bitrate win for every implementation or scene; actual outbound
+codec/profile and decoded stats remain the result truth. The choice also does not
+prove shared encode: separate browser PeerConnections may construct separate
+encoders, and the SFU intentionally publishes exactly the existing `q,h` H.264
+representations.
+
+Open-source distribution is not itself a patent-license exemption. This Web
+change only requests a codec already implemented by the browser/LiveKit path and
+ships no H.264 codec binary or new codec dependency, so licensing uncertainty is
+not a runtime blocker for the preference. Bundling a codec implementation or
+changing the distribution/service model still requires a separate license review.
+
+This reversible standard preference is gated by focused ordering, fallback and
+interoperability tests, not by an exhaustive CPU/GPU/game matrix on one ordinary
+PC. Primary specifications, maintained implementation behavior, representative
+target-device observations and sanitized production stats drive product choices.
+Synthetic local runs may verify negotiation, decode, cleanup and edge bounds;
+they must not calibrate capacity, claim performance, or block a standard feature.
+Hardware attribution and controlled performance evidence remain required before
+making efficiency claims or introducing dynamic codec selection. AV1 remains
+outside the default because compression efficiency alone does not establish a
+power-efficient WebRTC encoder on the target cohort.
 
 Discord's published Go Live material is a useful architecture comparison, not
 a preset to copy. It describes native OS/driver-integrated capture and encoding,
@@ -628,6 +642,8 @@ is a separate optimization.
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
 - [W3C WebRTC codec preferences](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver-setcodecpreferences)
+- [RFC 7742 WebRTC video codec requirements](https://www.rfc-editor.org/rfc/rfc7742.html)
+- [Via LA AVC/H.264 licensing program](https://via-la.com/licensing-programs/avc-h-264/)
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C WebRTC SVC](https://www.w3.org/TR/webrtc-svc/)
 - [W3C Media Capabilities](https://www.w3.org/TR/media-capabilities/)
