@@ -32,6 +32,7 @@ const FATAL_SIGNAL_ERRORS = new Set([
   "HOST_ALREADY_CONNECTED",
 ]);
 const SESSION_REPLACED_CLOSE_CODE = 4001;
+const CLIENT_RECONNECT_CLOSE_CODE = 4002;
 const INVALID_MESSAGE_CLOSE_CODE = 1008;
 const VIEWER_ACCESS_REVOKED_CLOSE_CODE = 4004;
 const PROTOCOL_REFRESH_MESSAGE = "页面版本已更新，请刷新后重试";
@@ -85,6 +86,20 @@ export class SignalingClient {
       socket.close(1000, "client closed");
     }
     this.events.onStatus("offline");
+  }
+
+  reconnect(): boolean {
+    const socket = this.socket;
+    if (
+      this.stopped ||
+      !this.authenticated ||
+      !socket ||
+      socket.readyState >= WebSocket.CLOSING
+    ) {
+      return false;
+    }
+    socket.close(CLIENT_RECONNECT_CLOSE_CODE, "client reconnect");
+    return true;
   }
 
   send(message: ClientMessage): boolean {

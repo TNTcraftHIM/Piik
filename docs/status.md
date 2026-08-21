@@ -51,7 +51,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 ## Next Milestone
 
 Next: representative production-room UDP/frame/cap/stop canary; room `1` is history. TURN performance follows later.
-Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then SFU. Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root evacuation.
+Recovery: ICE restart -> same parent -> alternate peer -> SFU. Source-only manual recovery keeps the route: peer restarts; SFU reauth rebuilds its subscriber. Next: exactly-two/Dynacast-off zero-child SFU BWE, then evacuation.
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
 Ordinary peers stay STUN-only; initial ingress, `peer-selected`, and healthy-reselection browser gates remain open.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
