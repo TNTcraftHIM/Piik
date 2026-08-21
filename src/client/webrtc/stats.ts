@@ -28,6 +28,8 @@ export interface StatsAccumulator {
   previousTotalFreezesDuration: number | null;
   previousRetransmittedPackets: number | null;
   previousRetransmittedBytes: number | null;
+  previousVideoJitterBufferDelay: number | null;
+  previousVideoJitterBufferEmittedCount: number | null;
   audioMediaId: string | null;
   audioSsrc: number | null;
   audioTrackIdentifier: string | null;
@@ -36,6 +38,11 @@ export interface StatsAccumulator {
   audioTimestamp: number | null;
   previousAudioPacketsReceived: number | null;
   previousAudioPacketsLost: number | null;
+  previousAudioJitterBufferDelay: number | null;
+  previousAudioJitterBufferEmittedCount: number | null;
+  previousAudioTotalSamplesReceived: number | null;
+  previousAudioConcealedSamples: number | null;
+  previousAudioConcealmentEvents: number | null;
 }
 
 export interface StatsMediaSelector {
@@ -86,6 +93,8 @@ export function createStatsAccumulator(): StatsAccumulator {
     previousTotalFreezesDuration: null,
     previousRetransmittedPackets: null,
     previousRetransmittedBytes: null,
+    previousVideoJitterBufferDelay: null,
+    previousVideoJitterBufferEmittedCount: null,
     audioMediaId: null,
     audioSsrc: null,
     audioTrackIdentifier: null,
@@ -94,6 +103,11 @@ export function createStatsAccumulator(): StatsAccumulator {
     audioTimestamp: null,
     previousAudioPacketsReceived: null,
     previousAudioPacketsLost: null,
+    previousAudioJitterBufferDelay: null,
+    previousAudioJitterBufferEmittedCount: null,
+    previousAudioTotalSamplesReceived: null,
+    previousAudioConcealedSamples: null,
+    previousAudioConcealmentEvents: null,
   };
 }
 
@@ -161,6 +175,24 @@ export function packetLossPercentFromDeltas(
   }
   const packetDelta = packetsReceivedDelta + packetsLostDelta;
   return packetDelta > 0 ? (packetsLostDelta / packetDelta) * 100 : null;
+}
+
+function percentOfInterval(
+  partDelta: number | null,
+  totalDelta: number | null,
+): number | null {
+  if (
+    partDelta === null ||
+    totalDelta === null ||
+    !Number.isFinite(partDelta) ||
+    !Number.isFinite(totalDelta) ||
+    partDelta < 0 ||
+    totalDelta <= 0 ||
+    partDelta > totalDelta
+  ) {
+    return null;
+  }
+  return (partDelta / totalDelta) * 100;
 }
 
 function numberValue(record: StatsRecord | null, key: string): number | null {
@@ -427,6 +459,11 @@ export function collectConnectionMetricsFromReport(
       ? "retransmittedBytesSent"
       : "retransmittedBytesReceived",
   );
+  const videoJitterBufferDelay = numberValue(media, "jitterBufferDelay");
+  const videoJitterBufferEmittedCount = numberValue(
+    media,
+    "jitterBufferEmittedCount",
+  );
   let bitrateKbps: number | null = null;
   let derivedFps: number | null = null;
   const sampleWindowMs =
@@ -536,6 +573,15 @@ export function collectConnectionMetricsFromReport(
     previous.previousRetransmittedBytes,
     sampleWindowMs !== null,
   );
+  const videoJitterBufferDelayMs =
+    direction === "receive" && sampleWindowMs !== null
+      ? intervalAverageMs(
+          videoJitterBufferDelay,
+          previous.previousVideoJitterBufferDelay,
+          videoJitterBufferEmittedCount,
+          previous.previousVideoJitterBufferEmittedCount,
+        )
+      : null;
   previous.mediaId = mediaId;
   previous.ssrc = ssrc;
   previous.trackIdentifier = trackIdentifier;
@@ -553,6 +599,9 @@ export function collectConnectionMetricsFromReport(
   previous.previousTotalFreezesDuration = totalFreezesDuration;
   previous.previousRetransmittedPackets = retransmittedPackets;
   previous.previousRetransmittedBytes = retransmittedBytes;
+  previous.previousVideoJitterBufferDelay = videoJitterBufferDelay;
+  previous.previousVideoJitterBufferEmittedCount =
+    videoJitterBufferEmittedCount;
 
   const linkedCodec = linkedMediaCodec(report, media, transport, "video");
   const codecEvidence = deriveCodecEvidence(linkedCodec);
@@ -594,6 +643,14 @@ export function collectConnectionMetricsFromReport(
       : null;
   const audioPacketsReceived = numberValue(audioLossSource, "packetsReceived");
   const audioPacketsLost = numberValue(audioLossSource, "packetsLost");
+  const audioJitterBufferDelay = numberValue(audio, "jitterBufferDelay");
+  const audioJitterBufferEmittedCount = numberValue(
+    audio,
+    "jitterBufferEmittedCount",
+  );
+  const audioTotalSamplesReceived = numberValue(audio, "totalSamplesReceived");
+  const audioConcealedSamples = numberValue(audio, "concealedSamples");
+  const audioConcealmentEvents = numberValue(audio, "concealmentEvents");
   const audioPacketsReceivedDelta = intervalDelta(
     audioPacketsReceived,
     previous.previousAudioPacketsReceived,
@@ -611,6 +668,44 @@ export function collectConnectionMetricsFromReport(
     audioBytes >= previous.audioBytes
       ? ((audioBytes - previous.audioBytes) * 8) / audioSampleWindowMs
       : null;
+  const audioJitterBufferDelayMs =
+    direction === "receive" && audioSampleWindowMs !== null
+      ? intervalAverageMs(
+          audioJitterBufferDelay,
+          previous.previousAudioJitterBufferDelay,
+          audioJitterBufferEmittedCount,
+          previous.previousAudioJitterBufferEmittedCount,
+        )
+      : null;
+  const intervalAudioTotalSamplesReceived = intervalDelta(
+    audioTotalSamplesReceived,
+    previous.previousAudioTotalSamplesReceived,
+    direction === "receive" && audioSampleWindowMs !== null,
+  );
+  const intervalAudioConcealedSamples = intervalDelta(
+    audioConcealedSamples,
+    previous.previousAudioConcealedSamples,
+    direction === "receive" && audioSampleWindowMs !== null,
+  );
+  const intervalAudioConcealmentEvents = intervalDelta(
+    audioConcealmentEvents,
+    previous.previousAudioConcealmentEvents,
+    direction === "receive" && audioSampleWindowMs !== null,
+  );
+  const videoEstimatedPlayoutTimestamp = numberValue(
+    media,
+    "estimatedPlayoutTimestamp",
+  );
+  const audioEstimatedPlayoutTimestamp = numberValue(
+    audio,
+    "estimatedPlayoutTimestamp",
+  );
+  const audioVideoPlayoutDeltaMs =
+    direction === "receive" &&
+    videoEstimatedPlayoutTimestamp !== null &&
+    audioEstimatedPlayoutTimestamp !== null
+      ? audioEstimatedPlayoutTimestamp - videoEstimatedPlayoutTimestamp
+      : null;
   previous.audioMediaId = audioMediaId;
   previous.audioSsrc = audioSsrc;
   previous.audioTrackIdentifier = audioTrackIdentifier;
@@ -619,6 +714,12 @@ export function collectConnectionMetricsFromReport(
   previous.audioTimestamp = audioTimestamp;
   previous.previousAudioPacketsReceived = audioPacketsReceived;
   previous.previousAudioPacketsLost = audioPacketsLost;
+  previous.previousAudioJitterBufferDelay = audioJitterBufferDelay;
+  previous.previousAudioJitterBufferEmittedCount =
+    audioJitterBufferEmittedCount;
+  previous.previousAudioTotalSamplesReceived = audioTotalSamplesReceived;
+  previous.previousAudioConcealedSamples = audioConcealedSamples;
+  previous.previousAudioConcealmentEvents = audioConcealmentEvents;
   const linkedAudioCodec = linkedMediaCodec(
     report,
     audio,
@@ -697,6 +798,14 @@ export function collectConnectionMetricsFromReport(
       numberValue(audioLossSource, "jitter") !== null
         ? numberValue(audioLossSource, "jitter")! * 1_000
         : null,
+    audioVideoPlayoutDeltaMs,
+    videoJitterBufferDelayMs,
+    audioJitterBufferDelayMs,
+    audioConcealedSamplesPercent: percentOfInterval(
+      intervalAudioConcealedSamples,
+      intervalAudioTotalSamplesReceived,
+    ),
+    intervalAudioConcealmentEvents,
     audioCodec: stringValue(linkedAudioCodec, "mimeType"),
     audioCodecClockRate: positiveIntegerValue(linkedAudioCodec, "clockRate"),
     audioCodecChannels: positiveIntegerValue(linkedAudioCodec, "channels"),

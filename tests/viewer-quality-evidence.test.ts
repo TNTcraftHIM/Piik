@@ -33,6 +33,11 @@ function receiveMetrics(
     intervalPacketsReceived: 1_500,
     intervalPacketsLost: 2,
     jitterMs: 3.5,
+    audioVideoPlayoutDeltaMs: 12.5,
+    videoJitterBufferDelayMs: 24,
+    audioJitterBufferDelayMs: 18,
+    audioConcealedSamplesPercent: 1,
+    intervalAudioConcealmentEvents: 3,
     intervalFramesDecoded: 120,
     intervalFramesDropped: 1,
     intervalDecodeMs: 2.4,
@@ -113,6 +118,10 @@ describe("viewer quality evidence", () => {
     expect(JSON.stringify(bounded)).not.toContain("must-not-leave-the-client");
     expect(JSON.stringify(bounded)).not.toContain("scalabilityMode");
     expect(JSON.stringify(bounded)).not.toContain("L3T3_KEY");
+    expect(JSON.stringify(bounded)).not.toContain("audioVideoPlayoutDeltaMs");
+    expect(JSON.stringify(bounded)).not.toContain("JitterBufferDelayMs");
+    expect(JSON.stringify(bounded)).not.toContain("Concealed");
+    expect(JSON.stringify(bounded)).not.toContain("ConcealmentEvents");
   });
 
   it("rate-limits, deduplicates, and resets sequence per connection", () => {

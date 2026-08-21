@@ -57,7 +57,7 @@ Recovery: ICE restart -> same parent -> alternate peer -> SFU. Source-only manua
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
 Ordinary peers stay STUN-only; initial ingress, `peer-selected`, and healthy-reselection browser gates remain open.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
-Screen audio defaults to 128 kbps; the source-complete 64/128/256 kbps presets propagate through P2P, browser relay, and SFU and lock for the active share. Verify Host settings, negotiated/observed bitrate, audible quality, and route switches.
+Screen audio defaults to 128 kbps; the source-complete 64/128/256 kbps presets propagate through P2P, browser relay, and SFU and lock for the active share. A/V/jitter-buffer/concealment details are local-only in this observability branch. Verify Host settings, negotiated/observed bitrate, audible quality, synchronization evidence, and route switches.
 
 ## Blockers And Decisions
 

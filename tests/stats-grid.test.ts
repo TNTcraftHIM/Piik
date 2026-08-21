@@ -87,4 +87,47 @@ describe("StatsGrid progressive disclosure", () => {
     expect(html).not.toContain("更多指标");
     expect(html).not.toContain("aria-expanded");
   });
+
+  it("shows local inbound playout and repair evidence only for receivers", () => {
+    const receiverMetrics = {
+      ...metrics,
+      audioVideoPlayoutDeltaMs: -12.5,
+      videoJitterBufferDelayMs: 24.5,
+      audioJitterBufferDelayMs: 18.5,
+      audioConcealedSamplesPercent: 1.25,
+      intervalAudioConcealmentEvents: 3,
+    } satisfies ConnectionMetrics;
+    const receiveHtml = renderToStaticMarkup(
+      createElement(StatsGrid, {
+        metrics: receiverMetrics,
+        direction: "receive",
+      }),
+    );
+    const sendHtml = renderToStaticMarkup(
+      createElement(StatsGrid, {
+        metrics: receiverMetrics,
+        direction: "send",
+      }),
+    );
+    const unavailableReceiveHtml = renderToStaticMarkup(
+      createElement(StatsGrid, {
+        metrics,
+        direction: "receive",
+      }),
+    );
+
+    for (const label of [
+      "音视频播放差",
+      "视频抖动缓冲",
+      "音频抖动缓冲",
+      "音频补偿样本率",
+      "音频补偿事件",
+    ]) {
+      expect(receiveHtml).toContain(label);
+      expect(sendHtml).not.toContain(label);
+      expect(unavailableReceiveHtml).not.toContain(label);
+    }
+    expect(receiveHtml).toContain("-12.5 ms");
+    expect(receiveHtml).toContain("1.3%");
+  });
 });

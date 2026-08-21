@@ -352,6 +352,7 @@ function receiverReport(kind: "video" | "audio"): RTCStatsReport {
       timestamp: 1_000,
       kind,
       trackIdentifier: `${kind}-1`,
+      estimatedPlayoutTimestamp: kind === "video" ? 10_000 : 10_012,
     },
   ]);
 }
@@ -1445,6 +1446,7 @@ describe("SfuSubscriber", () => {
     expect(updates.at(-1)).toMatchObject({
       rtpStatsId: "video-in",
       trackIdentifier: "video-1",
+      audioVideoPlayoutDeltaMs: 12,
     });
 
     let releaseStats = (): void => undefined;

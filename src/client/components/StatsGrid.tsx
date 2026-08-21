@@ -69,6 +69,13 @@ export function StatsGrid({
             : ""
       }`
     : "未知";
+  const hasPlaybackEvidence = [
+    metrics.audioVideoPlayoutDeltaMs,
+    metrics.videoJitterBufferDelayMs,
+    metrics.audioJitterBufferDelayMs,
+    metrics.audioConcealedSamplesPercent,
+    metrics.intervalAudioConcealmentEvents,
+  ].some((value) => value !== null);
 
   const primaryMetrics = (
     <>
@@ -139,6 +146,35 @@ export function StatsGrid({
         label="音频抖动"
         value={`${readableNumber(metrics.audioJitterMs, 1)} ms`}
       />
+      {direction === "receive" && hasPlaybackEvidence && (
+        <>
+          <Metric
+            label="音视频播放差"
+            value={`${readableNumber(metrics.audioVideoPlayoutDeltaMs, 1)} ms`}
+            title="音频 estimatedPlayoutTimestamp 减视频；正值表示音频时间线领先"
+          />
+          <Metric
+            label="视频抖动缓冲"
+            value={`${readableNumber(metrics.videoJitterBufferDelayMs, 1)} ms`}
+            title="最近统计区间内已播放视频帧的平均 jitter-buffer delay"
+          />
+          <Metric
+            label="音频抖动缓冲"
+            value={`${readableNumber(metrics.audioJitterBufferDelayMs, 1)} ms`}
+            title="最近统计区间内已播放音频样本的平均 jitter-buffer delay"
+          />
+          <Metric
+            label="音频补偿样本率"
+            value={formatPacketLossPercent(metrics.audioConcealedSamplesPercent)}
+            title="最近统计区间内由接收端合成补偿的音频样本比例"
+          />
+          <Metric
+            label="音频补偿事件"
+            value={readableNumber(metrics.intervalAudioConcealmentEvents)}
+            title="最近统计区间内开始连续音频样本补偿的次数"
+          />
+        </>
+      )}
       <Metric label="音频 Codec" value={metrics.audioCodec ?? "未知"} />
       {metrics.audioCodecClockRate !== null && (
         <Metric

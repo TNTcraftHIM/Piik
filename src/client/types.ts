@@ -50,6 +50,11 @@ export interface ConnectionMetrics {
   audioBitrateKbps: number | null;
   audioPacketLossPercent: number | null;
   audioJitterMs: number | null;
+  audioVideoPlayoutDeltaMs: number | null;
+  videoJitterBufferDelayMs: number | null;
+  audioJitterBufferDelayMs: number | null;
+  audioConcealedSamplesPercent: number | null;
+  intervalAudioConcealmentEvents: number | null;
   audioCodec: string | null;
   audioCodecClockRate: number | null;
   audioCodecChannels: number | null;
@@ -119,6 +124,11 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   audioBitrateKbps: null,
   audioPacketLossPercent: null,
   audioJitterMs: null,
+  audioVideoPlayoutDeltaMs: null,
+  videoJitterBufferDelayMs: null,
+  audioJitterBufferDelayMs: null,
+  audioConcealedSamplesPercent: null,
+  intervalAudioConcealmentEvents: null,
   audioCodec: null,
   audioCodecClockRate: null,
   audioCodecChannels: null,

@@ -1784,6 +1784,178 @@ describe("WebRTC stats parsing", () => {
     });
   });
 
+  it("derives local inbound playout, jitter-buffer, and concealment evidence safely", async () => {
+    const report = (
+      timestamp: number,
+      video: Record<string, unknown> = {},
+      audio: Record<string, unknown> = {},
+    ) =>
+      new Map<string, unknown>([
+        [
+          "video-inbound",
+          {
+            id: "video-inbound",
+            type: "inbound-rtp",
+            timestamp,
+            kind: "video",
+            ssrc: 101,
+            trackIdentifier: "shared-video",
+            bytesReceived: timestamp * 10,
+            framesDecoded: timestamp / 20,
+            ...video,
+          },
+        ],
+        [
+          "audio-inbound",
+          {
+            id: "audio-inbound",
+            type: "inbound-rtp",
+            timestamp,
+            kind: "audio",
+            ssrc: 202,
+            trackIdentifier: "shared-audio",
+            bytesReceived: timestamp * 2,
+            ...audio,
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+    const reports = [
+      report(
+        1_000,
+        {
+          estimatedPlayoutTimestamp: 10_000,
+          jitterBufferDelay: 1.2,
+          jitterBufferEmittedCount: 60,
+        },
+        {
+          estimatedPlayoutTimestamp: 10_012.5,
+          jitterBufferDelay: 960,
+          jitterBufferEmittedCount: 48_000,
+          totalSamplesReceived: 48_000,
+          concealedSamples: 480,
+          concealmentEvents: 2,
+        },
+      ),
+      report(
+        3_000,
+        {
+          estimatedPlayoutTimestamp: 12_000,
+          jitterBufferDelay: 4.2,
+          jitterBufferEmittedCount: 180,
+        },
+        {
+          estimatedPlayoutTimestamp: 12_008.5,
+          jitterBufferDelay: 3_120,
+          jitterBufferEmittedCount: 144_000,
+          totalSamplesReceived: 144_000,
+          concealedSamples: 1_440,
+          concealmentEvents: 5,
+        },
+      ),
+      report(
+        5_000,
+        {
+          estimatedPlayoutTimestamp: 14_000,
+          jitterBufferDelay: 7.8,
+          jitterBufferEmittedCount: 300,
+        },
+        {
+          ssrc: 303,
+          trackIdentifier: "replacement-audio",
+          estimatedPlayoutTimestamp: 13_997,
+          jitterBufferDelay: 2_000,
+          jitterBufferEmittedCount: 96_000,
+          totalSamplesReceived: 96_000,
+          concealedSamples: 5_000,
+          concealmentEvents: 30,
+        },
+      ),
+      report(
+        7_000,
+        {
+          estimatedPlayoutTimestamp: 16_000,
+          jitterBufferDelay: 1,
+          jitterBufferEmittedCount: 20,
+        },
+        {
+          ssrc: 303,
+          trackIdentifier: "replacement-audio",
+          estimatedPlayoutTimestamp: 15_996,
+          jitterBufferDelay: 480,
+          jitterBufferEmittedCount: 24_000,
+          totalSamplesReceived: 24_000,
+          concealedSamples: 100,
+          concealmentEvents: 1,
+        },
+      ),
+      report(9_000, {}, { ssrc: 303, trackIdentifier: "replacement-audio" }),
+    ];
+    const connection = {
+      getStats: async () => reports.shift()!,
+    } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
+
+    const first = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const stable = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const changedAudio = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const reset = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const unsupported = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+
+    expect(first).toMatchObject({
+      audioVideoPlayoutDeltaMs: 12.5,
+      videoJitterBufferDelayMs: null,
+      audioJitterBufferDelayMs: null,
+      audioConcealedSamplesPercent: null,
+      intervalAudioConcealmentEvents: null,
+    });
+    expect(stable.audioVideoPlayoutDeltaMs).toBeCloseTo(8.5);
+    expect(stable.videoJitterBufferDelayMs).toBeCloseTo(25);
+    expect(stable.audioJitterBufferDelayMs).toBeCloseTo(22.5);
+    expect(stable.audioConcealedSamplesPercent).toBeCloseTo(1);
+    expect(stable.intervalAudioConcealmentEvents).toBe(3);
+    expect(changedAudio).toMatchObject({
+      audioVideoPlayoutDeltaMs: -3,
+      audioJitterBufferDelayMs: null,
+      audioConcealedSamplesPercent: null,
+      intervalAudioConcealmentEvents: null,
+    });
+    expect(changedAudio.videoJitterBufferDelayMs).toBeCloseTo(30);
+    expect(reset).toMatchObject({
+      audioVideoPlayoutDeltaMs: -4,
+      videoJitterBufferDelayMs: null,
+      audioJitterBufferDelayMs: null,
+      audioConcealedSamplesPercent: null,
+      intervalAudioConcealmentEvents: null,
+    });
+    expect(unsupported).toMatchObject({
+      audioVideoPlayoutDeltaMs: null,
+      videoJitterBufferDelayMs: null,
+      audioJitterBufferDelayMs: null,
+      audioConcealedSamplesPercent: null,
+      intervalAudioConcealmentEvents: null,
+    });
+  });
+
   it("uses linked remote inbound counters for outbound audio loss", async () => {
     const report = (
       timestamp: number,
