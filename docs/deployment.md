@@ -20,19 +20,24 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `66eb337171931edaf5d621600c3803a186cf85ac`
-from `/opt/screener/releases/66eb33717193`; immediate rollback is
-`/opt/screener/releases/d315d333e0a8`. Local and public health return 200;
+Production currently runs exact `93e4681915768db0bf3b0165c0fd9ec3f54f95c8`
+from `/opt/screener/releases/93e468191576`; immediate rollback is
+`/opt/screener/releases/66eb33717193`. Local and public health return 200;
 Screener, LiveKit, coturn, and nginx are active, and Screener reports
 `NRestarts=0`.
 
 The current release deploys the bounded pre-share health/WSS/STUN self-check,
 privacy-safe click-only diagnostic JSON export, room admission default eight
-with explicit limits from one through sixteen, and peer-quality MBB v1. MBB v1
-selects only an ordinary peer-upstream Viewer candidate; Host and SFU-root
-provisional children remain open. Production keeps the two-edge endpoint
+with explicit limits from one through sixteen, and peer-quality MBB. One
+ordinary Viewer with a peer or SFU upstream may own the provisional child;
+Host provisional children remain open. Production keeps the two-edge endpoint
 default. The retained sixteen-Viewer and resource runs are ordinary-PC
 functional evidence only and do not justify cap3 or close performance gates.
+The cutover used audited tree `848f1588000006d91546468abae858bf027929e6`,
+an independent production dependency tree with zero shared regular-file inodes,
+and byte-identical public client assets. A no-room Chrome 151 canary passed
+health, WSS open/close, STUN-only configuration, and `srflx` gathering in 2.49
+seconds; it did not exercise room media, route migration, SFU, or TURN.
 
 ## Topology and prerequisites
 
@@ -122,7 +127,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `66eb33717193` release with one
+selected-edge TURN config/wire is deployed in the current `93e468191576` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
