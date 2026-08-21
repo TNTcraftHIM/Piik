@@ -29,7 +29,7 @@ Use separate control and media planes:
 - A small HTTPS/WSS service owns identity, rooms, invitations, presence, and WebRTC signaling.
 - A viewer can join through a numeric room code on desktop or mobile without installing the sharing client. The viewer link has no separate token or fragment; the host publication token remains internal. A deployment may place one site-wide password gate in front of both hosting and viewing; access policy remains control-plane state and does not change the media topology. ADR-0002 owns the current room-ID and lifetime policy.
 - ICE attempts a direct UDP path for every current broadcaster-viewer edge, using STUN to discover candidates. A later accepted peer-assisted topology must apply the same rule independently to each assigned parent-child edge.
-- Ordinary peer connections use STUN-only ICE. After direct/peer UDP and the bounded SFU/UDP virtual-parent path fail, ADR-0005 permits an optional authenticated TURN attempt for only the controller-selected exceptional edge. TURN/TCP or TURN/TLS remains a separately gated restrictive-network enhancement.
+- Ordinary peer connections use STUN-only ICE. After direct/peer UDP and the bounded SFU/UDP virtual-parent path fail, ADR-0005 permits one optional authenticated TURN/UDP attempt for only the controller-selected exceptional edge, followed by bounded failure.
 - Candidate and route selection is independent per edge. A room may simultaneously contain direct, SFU-root, and one selected relayed edge without moving healthy peers onto the server.
 - The deployed MVP broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise. A newer product target caps host media fanout at two; the current implementation does not satisfy that target above two viewers, and Proposed ADR-0004 owns the isolated experiment rather than silently changing this accepted baseline.
 - An SFU is not the default whole-room path. The automatic controller is enabled for all configured normal rooms; local SFU/UDP media and active Host-ingress selected TURN/UDP function pass, while public-room and performance evidence remain open. ADR-0005 owns the bounded-root target.
@@ -51,7 +51,6 @@ Negative:
 - If the site-wide password is disabled, the numeric room code is the sole viewing capability and does not provide a strong privacy guarantee.
 - A room-level P2P-to-SFU migration adds state, keyframe, and reconnection complexity and is not part of the first prototype. This implementation boundary does not remove the product requirement for automatic, viewer-transparent fallback.
 - TURN over TCP can suffer head-of-line blocking, and its `turn:` client-to-server transport is not TLS-wrapped. The WebRTC media remains protected by DTLS-SRTP independently of that TURN transport.
-- Optional TURN/TLS on port 5349 or 443 can improve compatibility but cannot guarantee success through every authenticated proxy or policy-controlled network. A normal Cloudflare HTTP proxy does not proxy TURN; using Cloudflare for TURN requires a compatible layer-4 product such as Spectrum.
 
 ## Rejected For The MVP
 

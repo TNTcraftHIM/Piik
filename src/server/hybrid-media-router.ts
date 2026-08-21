@@ -193,7 +193,6 @@ export class HybridMediaRouter {
     string,
     Map<string, string>
   >();
-  private readonly p2pOnlyGenerationByRoom = new Map<string, string>();
   private readonly sfuDisabledRoomIds = new Set<string>();
   private readonly viewerQualityEvidenceStates = new Map<
     string,
@@ -243,29 +242,9 @@ export class HybridMediaRouter {
     this.viewerRouteIntentsByRoom.clear();
     this.consumedSfuRefreshesByRoom.clear();
     this.relayCapacitySessionsByRoom.clear();
-    this.p2pOnlyGenerationByRoom.clear();
     this.sfuDisabledRoomIds.clear();
     this.viewerQualityEvidenceStates.clear();
     this.roomQualityMigrationCooldownUntilMs.clear();
-  }
-
-  setP2pOnly(
-    roomId: string,
-    shareGeneration: string,
-    enabled: boolean,
-  ): void {
-    if (enabled) {
-      this.p2pOnlyGenerationByRoom.set(roomId, shareGeneration);
-      return;
-    }
-    this.p2pOnlyGenerationByRoom.delete(roomId);
-  }
-
-  isP2pOnly(roomId: string, shareGeneration?: string): boolean {
-    const activeGeneration = this.p2pOnlyGenerationByRoom.get(roomId);
-    return shareGeneration === undefined
-      ? activeGeneration !== undefined
-      : activeGeneration === shareGeneration;
   }
 
   connectParticipant(input: AuthenticatedRouteParticipant): HybridAuthenticationState {
@@ -938,14 +917,12 @@ export class HybridMediaRouter {
   }
 
   stopRoom(roomId: string): void {
-    this.p2pOnlyGenerationByRoom.delete(roomId);
     this.clearRoomMediaRouteState(roomId);
   }
 
   deleteRoom(roomId: string): void {
     this.peerRelayTopology.deleteRoom(roomId);
     this.relayCapacitySessionsByRoom.delete(roomId);
-    this.p2pOnlyGenerationByRoom.delete(roomId);
     this.clearRoomMediaRouteState(roomId);
   }
 
@@ -1037,7 +1014,6 @@ export class HybridMediaRouter {
       return false;
     }
     if (
-      this.isP2pOnly(roomId) ||
       !config ||
       !active ||
       !intent ||
@@ -1191,7 +1167,6 @@ export class HybridMediaRouter {
       );
     }
     if (
-      this.isP2pOnly(roomId) ||
       !config ||
       !fallback ||
       (pending !== undefined &&
@@ -1618,7 +1593,6 @@ export class HybridMediaRouter {
       if (
         intent.sfuAttempts === 0 &&
         this.options.sfuFallback &&
-        !this.isP2pOnly(roomId) &&
         !this.sfuDisabledRoomIds.has(roomId)
       ) {
         if (
@@ -1748,7 +1722,7 @@ export class HybridMediaRouter {
   ): SfuPrepareResult {
     const fallback = this.options.sfuFallback;
     const controller = this.mediaRouteControllers.get(roomId);
-    if (!fallback || !controller || this.isP2pOnly(roomId)) {
+    if (!fallback || !controller) {
       return "unavailable";
     }
     if (controller.getPendingRoute()) {
@@ -1929,7 +1903,7 @@ export class HybridMediaRouter {
     expectedSessionIds: ReadonlyMap<string, string>,
   ): Promise<void> {
     const fallback = this.options.sfuFallback;
-    if (!fallback || this.isP2pOnly(roomId)) {
+    if (!fallback) {
       return;
     }
     try {
@@ -1953,7 +1927,6 @@ export class HybridMediaRouter {
       const pendingRoute = controller.getPendingRoute();
       if (
         this.mediaRouteControllers.get(roomId) !== controller ||
-        this.isP2pOnly(roomId) ||
         pending?.revision !== revision ||
         pendingRoute?.route.revision !== revision
       ) {
@@ -2162,7 +2135,6 @@ export class HybridMediaRouter {
     if (
       !fallback ||
       !controller ||
-      this.isP2pOnly(roomId) ||
       !active ||
       active.revision !== revision ||
       !active.sfu.publicationGeneration ||

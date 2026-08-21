@@ -125,8 +125,8 @@ Before production enablement, one isolated canary must prove, in order:
 7. Android Chrome and iOS Safari complete the representative home, hotspot, and
    carrier matrix before broader rollout.
 
-TURN/TCP or TURN/TLS is a separate media-transport decision. HTTPS/WSS remains
-TLS/TCP and does not satisfy these media gates.
+The media ladder remains UDP-only. HTTPS/WSS remains TLS/TCP and does not
+satisfy these media gates.
 
 ## Sources
 
