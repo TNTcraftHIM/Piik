@@ -217,7 +217,12 @@ const livekit = vi.hoisted(() => {
     nextSenderParameterError: null,
   };
 
+  const AudioPresets = {
+    musicHighQualityStereo: { maxBitrate: 128_000 },
+  } as const;
+
   return {
+    AudioPresets,
     FakeRemoteParticipant,
     FakeRemotePublication,
     FakeRoom,
@@ -250,6 +255,7 @@ const VideoQuality = {
 } as const;
 
 vi.mock("livekit-client", () => ({
+  AudioPresets: livekit.AudioPresets,
   Room: livekit.FakeRoom,
   RoomEvent,
   Track,
@@ -460,6 +466,7 @@ describe("SfuPublisher", () => {
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
       audioPreset: { maxBitrate: 128_000 },
+      forceStereo: true,
       dtx: false,
     });
     expect(sender.setParameters).toHaveBeenCalledOnce();
@@ -916,6 +923,7 @@ describe("SfuPublisher", () => {
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
       audioPreset: { maxBitrate: 128_000 },
+      forceStereo: true,
       dtx: false,
     });
   });

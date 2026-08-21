@@ -17,6 +17,19 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
+const ANSWER_SDP = [
+  "v=0",
+  "o=- 1 1 IN IP4 127.0.0.1",
+  "s=-",
+  "t=0 0",
+  "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+  "c=IN IP4 0.0.0.0",
+  "a=rtpmap:111 opus/48000/2",
+  "a=fmtp:111 minptime=10;useinbandfec=1",
+  "a=recvonly",
+  "",
+].join("\r\n");
+
 interface ConnectionPlan {
   answerError?: Error;
   candidateGates?: Promise<void>[];
@@ -95,7 +108,7 @@ class FakePeerConnection extends EventTarget {
     }
     return {
       type: "answer",
-      sdp: `answer-${FakePeerConnection.instances.indexOf(this)}`,
+      sdp: ANSWER_SDP,
     };
   }
 
@@ -194,6 +207,30 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it("sets and signals stereo for initial, restart, and rebuild answers", async () => {
+    const signals: SignalPayload[] = [];
+    const peer = createPeer(signals, []);
+
+    await peer.acceptSignal("host", offer("screen-audio"));
+    await peer.acceptSignal("host", offer("screen-audio"));
+    await peer.acceptSignal("host", offer("screen-audio-rebuild"));
+
+    const answers = signals.filter((signal) => signal.kind === "description");
+    const localDescriptions = FakePeerConnection.instances.flatMap((connection) =>
+      connection.setLocalDescription.mock.calls.map(([description]) => description),
+    );
+    expect(answers).toHaveLength(3);
+    for (const [index, description] of localDescriptions.entries()) {
+      expect(description).toEqual(expect.objectContaining({
+        type: "answer",
+        sdp: expect.stringContaining(
+          "a=fmtp:111 minptime=10;useinbandfec=1;stereo=1",
+        ),
+      }));
+      expect(answers[index]?.description.sdp).toBe(description.sdp);
+    }
+  });
+
   it("applies STUN-only ICE configuration at creation and update", async () => {
     const peer = createPeer([], [], [], {
       iceServers: [{ urls: ["stun:stun-a.example.test:3478"] }],
