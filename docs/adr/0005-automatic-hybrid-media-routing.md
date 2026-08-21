@@ -87,7 +87,9 @@ the initial pending Host publication or an active Host/SFU route; production
 configures the tuple, but real TURN/media evidence remains open.
 The wire has two explicit edge kinds: `peer-selected` for the last-mile failed
 peer edge and `host-sfu-ingress` for a restricted Host-to-SFU retry. Ordinary
-Peer ICE remains STUN-only.
+Peer ICE remains STUN-only. Each room admits at most one pending or answered
+`peer-selected` attempt; `host-sfu-ingress` is an independent source transport
+attempt and does not consume that last-mile admission slot.
 
 The current runtime removes the old all-room coturn contract. Production
 requires STUN and authenticated ICE snapshots contain only STUN servers in

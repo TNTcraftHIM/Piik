@@ -1,6 +1,6 @@
 # Built-In Peer ICE TURN Candidate
 
-- Research date: 2026-08-20
+- Research date: 2026-08-20; quota boundary rechecked 2026-08-21
 - Scope: authenticated TURN on every ordinary peer `RTCPeerConnection` in an
   exact-room canary
 - Status: rejected after bounded production canary; historical evidence only
@@ -86,6 +86,8 @@ coherent controller-owned change with a current consumer:
 - one in-memory attempt bound to room/share generation, viewer and parent
   sessions, route revision, the replaced connection, and a server-generated new
   connection identity;
+- at most one pending or answered `peer-selected` attempt per room, with the
+  separate Host-to-SFU ingress attempt excluded from that last-mile cap;
 - coordinated parent and child rebuild for exactly that edge, using relay-only
   ICE only on the new connection;
 - revalidation at grant, rebuild, ready, failure, timeout, route change,
@@ -97,7 +99,10 @@ coherent controller-owned change with a current consumer:
 
 Coturn still cannot enforce the application edge identity. The application
 guards provide selected-edge authorization; short expiry and coturn quotas bound
-bearer reuse and resource cost. Do not claim cryptographic edge binding.
+bearer reuse and resource cost. Coturn's current `user-quota` and `total-quota`
+bound allocations by credential user and server/realm, not by Screener room, so
+they do not replace this application admission guard. Do not claim cryptographic
+edge binding.
 
 The source candidate uses the complete `SELECTED_EDGE_TURN_*` tuple only with
 exact-room peer assistance and SFU configuration. `HostPeer`, relay parents, the

@@ -36,7 +36,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native Win11 audio is source-only/default-off: target isolation was 4018x and one Viewer got 495 Opus packets. Download, game sync, Win10, and other routes remain open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
-- Production includes initial/active selected Host ingress and peer last-mile; focused tests cover exactly-once retry, cleanup, rollback, and ordinary STUN-only. No relay media ran.
+- Production includes initial/active selected Host ingress and peer last-mile; source caps pending plus answered `peer-selected` attempts at one per room without counting Host ingress. Focused tests cover admission, release, independent ingress, exactly-once retry, cleanup, rollback, and ordinary STUN-only. No relay media ran.
 - Host names/window audio/all-room routing/Host selected ingress are active. New AV stats pass 42 focused tests/typecheck; this is not audible proof.
 - Exact `16f6eab` passed typecheck, both builds and 30 files/445 tests. Deploy preserved all recorded config/network/SQLite hashes; DB, routes, services, endpoints, site access, and old-endpoint 404 passed. It triggered no TURN/SFU session. Rollback is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`; `fd76277b05d491af8840b28f3132b7ff445d3cbe` remains secondary.
 
