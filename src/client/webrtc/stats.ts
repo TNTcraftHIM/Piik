@@ -72,6 +72,16 @@ export function createStatsAccumulator(): StatsAccumulator {
   };
 }
 
+export function mergeStatsReports(
+  reports: readonly (RTCStatsReport | undefined)[],
+): RTCStatsReport | null {
+  const merged = new Map<string, unknown>();
+  for (const report of reports) {
+    report?.forEach((record, id) => merged.set(id, record));
+  }
+  return merged.size > 0 ? (merged as unknown as RTCStatsReport) : null;
+}
+
 function intervalDelta(
   current: number | null,
   previous: number | null,
@@ -296,7 +306,20 @@ export async function collectConnectionMetrics(
   previous: StatsAccumulator,
   selector: StatsMediaSelector | null = null,
 ): Promise<ConnectionMetrics> {
-  const report = await connection.getStats();
+  return collectConnectionMetricsFromReport(
+    await connection.getStats(),
+    direction,
+    previous,
+    selector,
+  );
+}
+
+export function collectConnectionMetricsFromReport(
+  report: RTCStatsReport,
+  direction: "send" | "receive",
+  previous: StatsAccumulator,
+  selector: StatsMediaSelector | null = null,
+): ConnectionMetrics {
   const media = mediaRecord(report, direction, selector);
   const transport = transportRecord(report, media);
   let pair = selectedCandidatePair(report, transport);

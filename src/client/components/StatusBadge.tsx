@@ -37,10 +37,14 @@ export function SignalStatusBadge({
 export function PeerStatusBadge({
   state,
 }: {
-  state: RTCPeerConnectionState | "waiting";
+  state: RTCPeerConnectionState | "reconnecting" | "waiting";
 }) {
-  const labels: Record<RTCPeerConnectionState | "waiting", BadgeProps> = {
+  const labels: Record<
+    RTCPeerConnectionState | "reconnecting" | "waiting",
+    BadgeProps
+  > = {
     waiting: { tone: "neutral", label: "等待开始分享" },
+    reconnecting: { tone: "warning", label: "正在恢复" },
     new: { tone: "neutral", label: "准备中" },
     connecting: { tone: "neutral", label: "正在连接" },
     connected: { tone: "good", label: "已连接" },
@@ -73,6 +77,16 @@ export function PathBadge({ path }: { path: MediaPath }) {
       <WifiOff size={14} aria-hidden="true" />
       ICE 未知
     </span>
+  );
+}
+
+export function MediaRouteBadge({ route }: { route: "p2p" | "sfu" }) {
+  return (
+    <Badge
+      tone={route === "p2p" ? "good" : "neutral"}
+      label={route === "p2p" ? "P2P" : "SFU"}
+      title="当前媒体路径"
+    />
   );
 }
 

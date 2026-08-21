@@ -7,15 +7,24 @@ import type {
 } from "livekit-client";
 
 import type { SfuConnectionConfig } from "./publisher";
+import type { ConnectionMetrics } from "../types";
+import {
+  collectConnectionMetricsFromReport,
+  createStatsAccumulator,
+  mergeStatsReports,
+  type StatsAccumulator,
+} from "../webrtc/stats";
 
 interface SubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
+  onStats?: (metrics: ConnectionMetrics) => void;
+  onState?: (state: "connected" | "reconnecting") => void;
   onDisconnected?: () => void;
 }
 
 interface SubscribedTrack {
   sid: string;
-  track: MediaStreamTrack;
+  track: RemoteTrack;
 }
 
 type SubscriberState =
@@ -27,6 +36,7 @@ type SubscriberState =
 type LiveKit = typeof import("livekit-client");
 
 const HOST_IDENTITY = "host";
+const STATS_INTERVAL_MS = 2_000;
 const roomDisconnects = new WeakMap<Room, Promise<void>>();
 
 export class SfuSubscriber {
@@ -36,6 +46,9 @@ export class SfuSubscriber {
   private audio: SubscribedTrack | null = null;
   private readonly desiredTrackSids = new Set<string>();
   private state: SubscriberState = "idle";
+  private statsAccumulator: StatsAccumulator = createStatsAccumulator();
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
+  private statsInFlight: StatsAccumulator | null = null;
   private generation = 0;
   private terminalNotified = false;
 
@@ -179,7 +192,7 @@ export class SfuSubscriber {
         this.addTrack(
           publication.trackSid,
           publication.source,
-          track.mediaStreamTrack,
+          track,
           sdk.Track,
         );
       },
@@ -214,6 +227,17 @@ export class SfuSubscriber {
         }
       },
     );
+    room.on(sdk.RoomEvent.Reconnecting, () => {
+      if (this.owns(room, generation) && this.state === "active") {
+        this.events.onState?.("reconnecting");
+      }
+    });
+    room.on(sdk.RoomEvent.Reconnected, () => {
+      if (this.owns(room, generation) && this.state === "active") {
+        this.events.onState?.("connected");
+        void this.updateStats();
+      }
+    });
     room.on(sdk.RoomEvent.Disconnected, () => {
       if (this.owns(room, generation)) {
         const notify = this.state !== "connecting";
@@ -258,7 +282,7 @@ export class SfuSubscriber {
   private addTrack(
     sid: string,
     source: Track.Source,
-    track: MediaStreamTrack,
+    track: RemoteTrack,
     trackType: typeof Track,
   ): void {
     if (source === trackType.Source.ScreenShare) {
@@ -269,6 +293,9 @@ export class SfuSubscriber {
       return;
     }
     this.emitStream();
+    if (this.video) {
+      this.startStats();
+    }
   }
 
   private removeTrack(sid: string): void {
@@ -279,21 +306,90 @@ export class SfuSubscriber {
       this.audio = null;
     }
     this.emitStream();
+    if (!this.video) {
+      this.stopStats();
+    }
   }
 
   private emitStream(): void {
     if (!this.video) {
       return;
     }
-    const tracks = [this.video.track];
+    const tracks = [this.video.track.mediaStreamTrack];
     if (this.audio) {
-      tracks.push(this.audio.track);
+      tracks.push(this.audio.track.mediaStreamTrack);
     }
     this.events.onStream(new MediaStream(tracks));
   }
 
+  private startStats(): void {
+    if (this.statsTimer === null) {
+      this.statsTimer = setInterval(() => {
+        void this.updateStats();
+      }, STATS_INTERVAL_MS);
+    }
+    void this.updateStats();
+  }
+
+  private async updateStats(): Promise<void> {
+    const room = this.room;
+    const video = this.video;
+    const generation = this.generation;
+    const accumulator = this.statsAccumulator;
+    if (
+      !room ||
+      !video ||
+      this.state !== "active" ||
+      this.statsInFlight === accumulator
+    ) {
+      return;
+    }
+    this.statsInFlight = accumulator;
+    try {
+      const reports = await Promise.all([
+        video.track.getRTCStatsReport(),
+        this.audio?.track.getRTCStatsReport(),
+      ]);
+      if (
+        !this.owns(room, generation) ||
+        this.state !== "active" ||
+        this.video !== video ||
+        this.statsAccumulator !== accumulator
+      ) {
+        return;
+      }
+      const report = mergeStatsReports(reports);
+      if (!report) {
+        return;
+      }
+      this.events.onStats?.(
+        collectConnectionMetricsFromReport(
+          report,
+          "receive",
+          accumulator,
+        ),
+      );
+    } catch {
+      // Stats are observational and must never disrupt active SFU media.
+    } finally {
+      if (this.statsInFlight === accumulator) {
+        this.statsInFlight = null;
+      }
+    }
+  }
+
+  private stopStats(): void {
+    if (this.statsTimer !== null) {
+      clearInterval(this.statsTimer);
+      this.statsTimer = null;
+    }
+    this.statsInFlight = null;
+    this.statsAccumulator = createStatsAccumulator();
+  }
+
   private clearMedia(notify: boolean): void {
     const hadVideo = this.video !== null;
+    this.stopStats();
     this.video = null;
     this.audio = null;
     if (notify && hadVideo) {

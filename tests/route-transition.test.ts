@@ -11,6 +11,7 @@ import {
 import { HostSfuRoute } from "../src/client/media/host-sfu-route.ts";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
+import type { ConnectionMetrics } from "../src/client/types.ts";
 
 const peerAssignment = (
   parentPeerId: string,
@@ -87,6 +88,8 @@ function createFakePublisher(log: string[], label: string) {
 
 interface FakeSubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
+  onStats?: (metrics: ConnectionMetrics) => void;
+  onState?: (state: "connected" | "reconnecting") => void;
   onDisconnected: () => void;
 }
 
@@ -947,6 +950,9 @@ describe("ViewerSfuRoute", () => {
       initialVideoStream: boolean;
       assignment: ParticipantRouteAssignment;
     }> = [];
+    const sfuUpdates: Array<ConnectionMetrics | null> = [];
+    const sfuStates: string[] = [];
+    const metrics = {} as ConnectionMetrics;
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     const route = new ViewerSfuRoute({
       activatePeer: (assignment) => {
@@ -956,6 +962,8 @@ describe("ViewerSfuRoute", () => {
       onSfuStream: (stream, assignment, initialVideoStream) => {
         streams.push({ stream, assignment, initialVideoStream });
       },
+      onSfuUpdate: (update) => sfuUpdates.push(update),
+      onSfuState: (state) => sfuStates.push(state),
       send: (message) => {
         messages.push(message);
         return true;
@@ -1000,9 +1008,17 @@ describe("ViewerSfuRoute", () => {
       revision: 2,
       phase: "active",
     });
+    subscribers[0]?.events.onStats?.(metrics);
+    subscribers[0]?.events.onState?.("reconnecting");
+    expect(sfuUpdates).toEqual([]);
+    expect(sfuStates).toEqual([]);
 
     const stream = {} as MediaStream;
     subscribers[0]?.events.onStream(stream);
+    subscribers[0]?.events.onStats?.(metrics);
+    subscribers[0]?.events.onState?.("reconnecting");
+    expect(sfuUpdates).toEqual([metrics]);
+    expect(sfuStates).toEqual(["reconnecting"]);
     expect(streams).toEqual([
       { stream, assignment: nextAssignment, initialVideoStream: true },
     ]);
@@ -1034,6 +1050,13 @@ describe("ViewerSfuRoute", () => {
     await vi.waitFor(() => expect(subscribers[1]?.disconnect).toHaveBeenCalled());
     expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
     expect(streams).toHaveLength(1);
+
+    await route.disconnect();
+    expect(sfuUpdates).toEqual([metrics, null]);
+    subscribers[0]?.events.onStats?.(metrics);
+    subscribers[0]?.events.onState?.("connected");
+    expect(sfuUpdates).toEqual([metrics, null]);
+    expect(sfuStates).toEqual(["reconnecting"]);
   });
 
   it("disconnects a subscriber whose connect completes after rollback", async () => {

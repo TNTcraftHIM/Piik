@@ -27,6 +27,7 @@ import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
 import { RoomCode } from "../components/RoomCode";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
+  MediaRouteBadge,
   PathBadge,
   PeerStatusBadge,
   SignalStatusBadge,
@@ -56,6 +57,7 @@ import {
   toggleViewerMuted,
 } from "../media/viewer-volume";
 import type {
+  ConnectionMetrics,
   PeerSnapshot,
   SignalConnectionState,
 } from "../types";
@@ -81,6 +83,10 @@ type SelectedEdgeTurn = Extract<
   ServerMessage,
   { type: "selected-edge-turn"; edgeKind: "peer-selected" }
 >;
+interface SfuUpstreamState {
+  connectionState: "connected" | "reconnecting";
+  metrics: ConnectionMetrics | null;
+}
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [accessState, setAccessState] = useState<
@@ -92,6 +98,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [hostOnline, setHostOnline] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
+  const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [relayChildEvidence, setRelayChildEvidence] =
     useState<ViewerQualityEvidence | null>(null);
@@ -343,6 +350,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           }
           currentAssignment = { parentPeerId: null, childPeerIds: [] };
           parentEdgeQualityEvidenceReporter.reset();
+          setSfuUpstream(null);
           clearPeerState();
           viewerRelay?.setChild(null);
         },
@@ -368,6 +376,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             currentAssignment.childPeerIds[0] ?? null,
           );
         },
+        onSfuUpdate: (metrics) => {
+          if (active && viewerSfuRoute === route) {
+            setSfuUpstream((current) =>
+              metrics && current ? { ...current, metrics } : null,
+            );
+          }
+        },
+        onSfuState: (state) => {
+          if (active && viewerSfuRoute === route) {
+            setSfuUpstream((current) =>
+              current ? { ...current, connectionState: state } : null,
+            );
+          }
+        },
         onSfuStream: (nextStream, assignment, initialVideoStream) => {
           if (!active || viewerSfuRoute !== route) {
             return;
@@ -387,6 +409,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           relay?.setChild(currentAssignment.childPeerIds[0] ?? null);
           relay?.setStream(nextStream);
           setRemoteStream(nextStream);
+          if (initialVideoStream) {
+            setSfuUpstream({ connectionState: "connected", metrics: null });
+          }
           setStatusText("正在播放");
           if (initialVideoStream) {
             peerRef.current?.dispose();
@@ -404,6 +429,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     function clearViewerSfuRoute(): void {
       const route = viewerSfuRoute;
       viewerSfuRoute = null;
+      setSfuUpstream(null);
       prepareParent(null);
       void route?.disconnect();
     }
@@ -1072,10 +1098,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             </div>
           </div>
           <div className="viewer-badges">
-            <PeerStatusBadge state={peerSnapshot?.connectionState ?? "waiting"} />
-            {showConnectionDetails && (
-              <PathBadge path={peerSnapshot?.metrics.path ?? "unknown"} />
-            )}
+            <PeerStatusBadge
+              state={
+                sfuUpstream
+                  ? sfuUpstream.connectionState
+                  : (peerSnapshot?.connectionState ?? "waiting")
+              }
+            />
+            {sfuUpstream ? (
+              <MediaRouteBadge route="sfu" />
+            ) : showConnectionDetails &&
+              peerSnapshot &&
+              peerSnapshot.metrics.path !== "unknown" ? (
+              <PathBadge path={peerSnapshot.metrics.path} />
+            ) : null}
           </div>
         </div>
 
@@ -1255,7 +1291,28 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         {showConnectionDetails && peerSnapshot && (
           <section className="viewer-stats" aria-labelledby="stats-heading">
             <h2 id="stats-heading">连接数据</h2>
+            <div className="viewer-transport-heading">
+              <MediaRouteBadge route="p2p" />
+              {peerSnapshot.metrics.path !== "unknown" && (
+                <PathBadge path={peerSnapshot.metrics.path} />
+              )}
+            </div>
             <StatsGrid metrics={peerSnapshot.metrics} direction="receive" />
+          </section>
+        )}
+        {showConnectionDetails && sfuUpstream && (
+          <section className="viewer-stats" aria-labelledby="sfu-stats-heading">
+            <h2 id="sfu-stats-heading">连接数据</h2>
+            <div className="viewer-transport-heading">
+              <MediaRouteBadge route="sfu" />
+              {sfuUpstream.metrics &&
+                sfuUpstream.metrics.path !== "unknown" && (
+                  <PathBadge path={sfuUpstream.metrics.path} />
+                )}
+            </div>
+            {sfuUpstream.metrics && (
+              <StatsGrid metrics={sfuUpstream.metrics} direction="receive" />
+            )}
           </section>
         )}
         {showConnectionDetails && relaySnapshot && (

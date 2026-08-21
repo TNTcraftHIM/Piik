@@ -5,6 +5,7 @@ import type {
   ServerMessage,
 } from "../../shared/protocol";
 import { SfuSubscriber } from "../sfu/subscriber";
+import type { ConnectionMetrics } from "../types";
 import type { SfuConnectionConfig } from "../sfu/publisher";
 import {
   MediaRouteTransition,
@@ -42,10 +43,14 @@ interface ViewerSfuRouteEvents {
     assignment: ParticipantRouteAssignment,
     initialVideoStream: boolean,
   ) => void;
+  onSfuUpdate?: (metrics: ConnectionMetrics | null) => void;
+  onSfuState?: (state: "connected" | "reconnecting") => void;
   send: (message: ClientMessage) => boolean;
   createSubscriber?: (
     events: {
       onStream: (stream: MediaStream | null) => void;
+      onStats: (metrics: ConnectionMetrics) => void;
+      onState: (state: "connected" | "reconnecting") => void;
       onDisconnected: () => void;
     },
   ) => ViewerSubscriberTransport;
@@ -184,6 +189,16 @@ export class ViewerSfuRoute {
           this.handleStream(slot, stream);
         }
       },
+      onStats: (metrics: ConnectionMetrics) => {
+        if (this.active === slot && !slot.failed) {
+          this.events.onSfuUpdate?.(metrics);
+        }
+      },
+      onState: (state: "connected" | "reconnecting") => {
+        if (this.active === slot && !slot.failed) {
+          this.events.onSfuState?.(state);
+        }
+      },
       onDisconnected: () => this.handleFailure(slot),
     };
     const subscriber =
@@ -250,6 +265,7 @@ export class ViewerSfuRoute {
       const active = this.active;
       this.pending = null;
       this.active = null;
+      this.events.onSfuUpdate?.(null);
       if (active?.activated) {
         try {
           active.subscriber.deactivate();
@@ -418,6 +434,7 @@ export class ViewerSfuRoute {
     }
     const active = this.active;
     this.active = null;
+    this.events.onSfuUpdate?.(null);
     if (active.activated) {
       try {
         active.subscriber.deactivate();
@@ -439,6 +456,7 @@ export class ViewerSfuRoute {
     }
     if (wasActive) {
       this.active = null;
+      this.events.onSfuUpdate?.(null);
     }
 
     const assignment = this.route.getPlannedAssignment();
