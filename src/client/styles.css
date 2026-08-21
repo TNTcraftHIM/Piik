@@ -988,6 +988,52 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+.stats-disclosure {
+  min-width: 0;
+}
+
+.stats-detail-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.stats-detail-actions span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-detail-toggle.icon-button {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+  margin-left: auto;
+}
+
+.stats-detail-toggle svg {
+  transition: transform 140ms ease;
+}
+
+.stats-detail-toggle.is-expanded svg {
+  transform: rotate(180deg);
+}
+
+.stats-grid-secondary {
+  margin-top: 10px;
+}
+
+.stats-grid-secondary[hidden] {
+  display: none;
+}
+
 .metric {
   min-width: 0;
 }
@@ -1347,5 +1393,9 @@ h3 {
   *::before,
   *::after {
     scroll-behavior: auto !important;
+  }
+
+  .stats-detail-toggle svg {
+    transition: none;
   }
 }
