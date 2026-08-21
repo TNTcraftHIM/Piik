@@ -20,54 +20,19 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `6ccb516a47261054f91dfa2fafa408d39ced59fc`
-on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. Its immutable source artifact is 619,674 bytes with SHA-256
-`ec0048023de4b40c32579c31db44cab8746dbae8e67430c16457a5bd437a4885`;
-the locally built dist artifact is 358,621 bytes with SHA-256
-`5d21c11e00e46525afbb40051b5276193f02c511728fce2c1e2df667b035cf73`.
-The 2026-08-21T10:14:26Z UTC cutover held the deployment lock for 2,048 ms;
-local health returned 1,272 ms after service stop (888 ms after the symlink
-switch). Screener, LiveKit, coturn, and nginx are active/running with
-observed `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
-service owner/mode `screener:screener`/0600 and SHA-256
-`aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`.
-The immutable release is `/opt/screener/releases/6ccb516a4726`; backup
-`/opt/screener/backups/6ccb516a4726-precutover-20260821T101426Z` preserves the
-database, environment, artifact digests, firewall snapshot, and exact previous
-target. Exact `1331fbddb59fc2b0b99ba9e5ee4848768ae907c8` is the immediate rollback
-target; exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777` and
-`691863e1720ebbee1b5368f29e94f05b3710ccf8` remain secondary and tertiary.
-This release keeps one stable SFU subscriber stream, clears unavailable SFU
-video state, stays neutral until current media evidence proves P2P or SFU, and
-labels TURN plus a protocol only from actual local relay stats. Routing remains
-automatic across direct/peer and bounded fallback paths. This exact deployed
-release reapplies the selected P2P quality profile after each answer; the
-candidate source removes that answer-time workaround because its confounded
-A/B did not establish causality. Until that candidate is deployed, the browser
-still owns degradation under the exact-release behavior. P2P/browser-relay
-offers prefer H.264 through standard codec ordering, and SFU publication
-requests H.264 with backup codec disabled; the complete browser list retains
-negotiated VP8 fallback. The Host preview notice,
-shared entry/nickname UI, and two
-downstream slots per Web
-relay remain deployed; a third child remains rejected. Production
-STUN/SFU/selected-edge configuration and the database were unchanged.
-One-root healthy-SFU make-before-break reselection is now deployed with its
-revision/session/connection/media-proof and overlap guards; capacity `0 -> 1`,
-multi-root, browser/media, and production-route evidence remain open.
-Fresh exact-source acceptance passed typecheck, 32 test files/489 tests, both
-builds, and repository hygiene. Deployment verified both artifact manifests and
-hashes, one bounded production-only install, runtime imports, `node:sqlite`,
-UTF-8 paths, zero cross-release regular-file inodes, and immutable permissions.
-The public index and all three referenced hashed assets matched the release
-byte-for-byte; the deployment lock was released after the atomic switch.
-This cutover triggered no browser, media, SFU, TURN, or performance canary and
-remains exact-source, build, configuration, and deployment evidence.
-A separate earlier local Screener canary using exact `16f6eab` source and the
-production LiveKit/coturn tuple later proved active Host-ingress relay function
-without using the production application room or database; it is not
-broad-rollout or performance acceptance.
+Production currently runs exact `66eb337171931edaf5d621600c3803a186cf85ac`
+from `/opt/screener/releases/66eb33717193`; immediate rollback is
+`/opt/screener/releases/d315d333e0a8`. Local and public health return 200;
+Screener, LiveKit, coturn, and nginx are active, and Screener reports
+`NRestarts=0`.
+
+The current release deploys the bounded pre-share health/WSS/STUN self-check,
+privacy-safe click-only diagnostic JSON export, room admission default eight
+with explicit limits from one through sixteen, and peer-quality MBB v1. MBB v1
+selects only an ordinary peer-upstream Viewer candidate; Host and SFU-root
+provisional children remain open. Production keeps the two-edge endpoint
+default. The retained sixteen-Viewer and resource runs are ordinary-PC
+functional evidence only and do not justify cap3 or close performance gates.
 
 ## Topology and prerequisites
 
@@ -157,7 +122,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `6ccb516a` release with one
+selected-edge TURN config/wire is deployed in the current `66eb33717193` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
@@ -243,7 +208,7 @@ MAX_SFU_ROOTS_PER_ROOM=2
 ```
 
 The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
-stale key, even blank, fails startup. The source candidate uses the complete
+stale key, even blank, fails startup. The deployed source uses the complete
 `SELECTED_EDGE_TURN_URLS`, `SELECTED_EDGE_TURN_SHARED_SECRET`, and
 `SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS` tuple with one explicit TURN/UDP URI,
 an independent secret and bounded TTL. The current production tuple uses the
