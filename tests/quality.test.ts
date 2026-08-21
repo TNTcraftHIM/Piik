@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyCaptureProfile,
   captureDisplay,
+  configureScreenAudioSender,
   configureTwoLayerVideoSender,
   configureVideoSender,
   QUALITY_PROFILES,
+  SCREEN_AUDIO_MAX_BITRATE,
   screenShareLowBitrate,
   senderParameterWarning,
   setMediaPaused,
@@ -75,11 +77,10 @@ describe("realtime quality controls", () => {
     });
   });
 
-  it("defaults every recommended profile to clarity-first degradation", () => {
+  it("defaults every recommended profile to balanced degradation", () => {
     expect(
       Object.values(QUALITY_PROFILES).every(
-        (profile) =>
-          profile.degradationPreference === "maintain-resolution",
+        (profile) => profile.degradationPreference === "balanced",
       ),
     ).toBe(true);
   });
@@ -107,14 +108,14 @@ describe("realtime quality controls", () => {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
-        degradationPreference: "maintain-resolution",
+        degradationPreference: "balanced",
         scalabilityMode: null,
       },
       applied: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
-        degradationPreference: "maintain-resolution",
+        degradationPreference: "balanced",
         scalabilityMode: null,
       },
       mismatches: [],
@@ -123,11 +124,28 @@ describe("realtime quality controls", () => {
     expect(setParameters).toHaveBeenCalledOnce();
   });
 
+  it("applies and reads back the screen audio send ceiling", async () => {
+    let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
+    const sender = {
+      getParameters: () => applied,
+      setParameters: vi.fn(async (parameters: RTCRtpSendParameters) => {
+        applied = parameters;
+      }),
+    } as unknown as RTCRtpSender;
+
+    await expect(configureScreenAudioSender(sender)).resolves.toBe(
+      SCREEN_AUDIO_MAX_BITRATE,
+    );
+    expect(applied.encodings).toEqual([
+      { maxBitrate: SCREEN_AUDIO_MAX_BITRATE },
+    ]);
+  });
+
   it("reports fields the browser does not retain", async () => {
     const before = { encodings: [{}] } as RTCRtpSendParameters;
     const after = {
       encodings: [{ maxBitrate: 8_000_000 }],
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
     } as unknown as RTCRtpSendParameters;
     const getParameters = vi
       .fn<() => RTCRtpSendParameters>()
@@ -167,7 +185,7 @@ describe("realtime quality controls", () => {
           scalabilityMode: "L1T2",
         },
       ],
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
     } as unknown as RTCRtpSendParameters;
     const sender = {
       track: { getSettings: () => ({ width: 1920, height: 1080 }) },
@@ -202,7 +220,7 @@ describe("realtime quality controls", () => {
         },
         { rid: "high", scalabilityMode: "L1T2" },
       ],
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
     } as unknown as RTCRtpSendParameters;
     const sender = {
       track: { getSettings: () => ({ width: 1920, height: 1080 }) },
@@ -242,7 +260,7 @@ describe("realtime quality controls", () => {
     );
 
     expect(applied).toMatchObject({
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
       encodings: [
         {
           rid: "q",

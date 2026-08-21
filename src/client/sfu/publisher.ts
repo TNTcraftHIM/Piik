@@ -8,6 +8,7 @@ import type {
 import {
   configureTwoLayerVideoSender,
   QUALITY_RESOLUTIONS,
+  SCREEN_AUDIO_MAX_BITRATE,
   SCREEN_SHARE_LOW_SCALE,
   screenShareLowBitrate,
   senderParameterWarning,
@@ -167,7 +168,7 @@ export class SfuPublisher {
             room,
             audioTrack,
             sdk.Track.Source.ScreenShareAudio,
-            { dtx: false },
+            audioPublishOptions(),
           );
           if (!this.owns(room, generation)) {
             return false;
@@ -278,7 +279,7 @@ export class SfuPublisher {
             room,
             nextAudioTrack,
             sdk.Track.Source.ScreenShareAudio,
-            { dtx: false },
+            audioPublishOptions(),
           );
           if (!this.owns(room, generation)) {
             return false;
@@ -601,6 +602,13 @@ function videoPublishOptions(
       ),
     ],
     degradationPreference: profile.degradationPreference,
+  };
+}
+
+function audioPublishOptions(): TrackPublishOptions {
+  return {
+    audioPreset: { maxBitrate: SCREEN_AUDIO_MAX_BITRATE },
+    dtx: false,
   };
 }
 

@@ -11,11 +11,11 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-The current bounded implementation retains the game-oriented `motion` hint,
-defaults to `maintain-resolution`, and offers explicit balanced and fluid
-choices. This is a readability-first default, not a quality guarantee: the
-WebRTC API describes a user-agent preference rather than its algorithm, so
-Chromium, Firefox, and Safari behavior still needs measured comparison.
+The current bounded implementation retains the game-oriented `motion` hint and
+uses `balanced` for every recommended profile and the advanced-settings initial
+value. Clarity and fluid remain explicit choices. The WebRTC API describes a
+user-agent preference rather than its algorithm, so the browser controls the
+actual degradation and Screener observes the result through readback and stats.
 
 The inspected Chromium/libwebrtc source chain makes a screen-only shortcut
 especially unsafe to assume for Screener. The JavaScript `motion` hint reaches
@@ -489,17 +489,18 @@ resolution, frame rate, or bitrate.
 - A live profile change uses `track.applyConstraints()` and updates every
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
-- The video track keeps `contentHint = "motion"`; recommended profiles default
-  to `maintain-resolution`, with explicit `balanced` and
-  `maintain-framerate` choices. None promises an emitted resolution or rate.
+- The video track keeps `contentHint = "motion"`; recommended profiles and the
+  advanced initial value use `balanced`, with explicit `maintain-resolution`
+  and `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
 - The folded advanced panel accepts only 720p/1080p/1440p, integer 15-60 fps,
   2-12 Mbps, and the three preferences. It exposes no audio quality controls.
   Display capture does not standardize channel-count or sample-rate control;
-  the portable audio `maxBitrate` field is only a ceiling and cannot raise
-  quality; and stereo, DTX, and FEC require negotiated fmtp/codec behavior that
-  has no portable sender setter. The full boundary is recorded in
+  the portable audio `maxBitrate` field is only a ceiling, though the fixed
+  128 kbps value materially raised Chrome's encoder budget in one narrow
+  fixture; stereo, DTX, and FEC require negotiated fmtp/codec behavior that has
+  no portable sender setter. The full boundary is recorded in
   `docs/research/browser-screen-audio-quality.md`.
 - Every sender update derives from `getParameters()`, calls `setParameters()`,
   then reads requested/applied bitrate, frame rate, scale, and preference.
@@ -507,8 +508,8 @@ resolution, frame rate, or bitrate.
 - One strict room setting is last-wins for current/future peer relays and the
   configured SFU publisher. Ordinary P2P keeps that state local and does not add
   it to the authenticated wire.
-- Pausing the picture disables the existing video track, producing black video
-  without closing the room or media connection. Audio remains enabled.
+- Pausing sharing disables every track in the current capture stream, producing
+  black video and silence without closing the room or media connection.
 
 The deployed implementation deliberately stops at manual bounded controls. It
 adds no composite score, periodic adjustment, codec forcing, SDP bitrate

@@ -361,6 +361,10 @@ describe("HostPeer source replacement", () => {
     expect(connection.senders[1]?.track).toBe(nextAudio);
     expect(connection.transceiverInputs).toHaveLength(2);
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
+      128_000,
+      128_000,
+    ]);
   });
 
   it("fills a pre-negotiated audio sender that started without a track", async () => {
@@ -372,6 +376,7 @@ describe("HostPeer source replacement", () => {
     const connection = FakePeerConnection.latest!;
     expect(connection.transceiverInputs[1]?.trackOrKind).toBe("audio");
     expect(connection.senders[1]?.track).toBeNull();
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([]);
 
     const nextAudio = createTrack("audio", "next-audio");
     await expect(
@@ -380,6 +385,7 @@ describe("HostPeer source replacement", () => {
       ),
     ).resolves.toBe(true);
     expect(connection.senders[1]?.track).toBe(nextAudio);
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([128_000]);
   });
 
   it("stops sending audio without renegotiating when the new source has none", async () => {
@@ -399,6 +405,7 @@ describe("HostPeer source replacement", () => {
     ).resolves.toBe(true);
 
     expect(connection.senders[1]?.track).toBeNull();
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([128_000]);
   });
 
   it("updates quality parameters without replacing media tracks", async () => {
@@ -418,7 +425,7 @@ describe("HostPeer source replacement", () => {
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });
@@ -495,7 +502,7 @@ describe("HostPeer source replacement", () => {
 
     expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
     expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });
