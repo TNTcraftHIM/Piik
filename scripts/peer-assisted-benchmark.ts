@@ -102,7 +102,10 @@ interface TimedSample {
   atEpochMs: number;
   elapsedMs: number;
   pages: PageObservation[];
+  browserProcesses?: BrowserProcessSample | null;
 }
+
+interface BrowserProcessSample { processes: Array<{ type: string; id: number; cpuTimeSeconds: number }> }
 
 interface RunCheck {
   name: string;
@@ -153,7 +156,7 @@ interface BenchmarkRun {
 }
 
 interface BenchmarkReport {
-  schemaVersion: 1;
+  schemaVersion: 2;
   startedAt: string;
   completedAt: string | null;
   gitCommit: string | null;
@@ -679,6 +682,12 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
     firstFrames,
     maxFirstDecodedAfterAuthenticateMs:
       decodedDelays.length === viewerCount ? Math.max(...decodedDelays) : null,
+    senderEvidence: {
+      scope: "connected outbound video with stable page, connection, and RTP identities",
+      host: summarizeSenderEvidence(samples, "host"),
+      relay: summarizeSenderEvidence(samples, "viewer"),
+    },
+    browserProcessResources: summarizeBrowserProcessResources(samples),
     finalTopology: finalPages.map((page) => ({
       label: page.label,
       role: page.role,
@@ -712,6 +721,122 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
           receiveTotals: connection.receiveTotals,
         })),
     ),
+  };
+}
+
+function numericSummary(values: number[]) {
+  return {
+    sampleCount: values.length,
+    min: values.length > 0 ? Math.min(...values) : null,
+    max: values.length > 0 ? Math.max(...values) : null,
+    mean: values.length > 0
+      ? values.reduce((total, value) => total + value, 0) / values.length
+      : null,
+  };
+}
+
+function summarizeSenderEvidence(samples: TimedSample[], role: PageRole) {
+  const identities = new Set<string>();
+  const bitrateKbps: number[] = [], framesPerSecond: number[] = [];
+  const availableOutgoingKbps: number[] = [];
+  const resolutions = new Set<string>();
+  const qualityLimitationReasonSamples: Record<string, number> = {};
+  let unknownIdentitySamples = 0;
+  let unknownQualityLimitationSamples = 0;
+  let encodeIntervalCount = 0, framesEncoded = 0, encodeTimeMs = 0;
+  const finite = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+
+  for (const sample of samples) {
+    for (const page of sample.pages.filter((candidate) => candidate.role === role)) {
+      for (const connection of page.connections) {
+        if (!connection.hasOutboundVideo || connection.connectionState !== "connected" || !connection.send) continue;
+        const rtpStatsId = connection.send.rtpStatsId;
+        if (typeof rtpStatsId !== "string" || rtpStatsId.length === 0) {
+          unknownIdentitySamples += 1;
+          continue;
+        }
+        identities.add(`${page.label}:${connection.createdAtEpochMs}:${connection.connectionId ?? connection.index}:${rtpStatsId}`);
+        if (finite(connection.send.bitrateKbps)) bitrateKbps.push(connection.send.bitrateKbps);
+        if (finite(connection.send.framesPerSecond)) framesPerSecond.push(connection.send.framesPerSecond);
+        if (finite(connection.send.availableOutgoingKbps)) availableOutgoingKbps.push(connection.send.availableOutgoingKbps);
+        if (typeof connection.send.resolution === "string" && /^\d+x\d+$/.test(connection.send.resolution)) resolutions.add(connection.send.resolution);
+        const reason = connection.send.qualityLimitationReason;
+        if (typeof reason === "string" && reason.length > 0) {
+          qualityLimitationReasonSamples[reason] = (qualityLimitationReasonSamples[reason] ?? 0) + 1;
+        } else {
+          unknownQualityLimitationSamples += 1;
+        }
+        const intervalFrames = connection.send.intervalFramesEncoded;
+        const intervalTime = connection.send.intervalEncodeTimeMs;
+        if (finite(intervalFrames) && intervalFrames >= 0 && finite(intervalTime) && intervalTime >= 0) {
+          encodeIntervalCount += 1;
+          framesEncoded += intervalFrames;
+          encodeTimeMs += intervalTime;
+        }
+      }
+    }
+  }
+  return {
+    uniqueSenderCount: identities.size,
+    unknownIdentitySamples,
+    bitrateKbps: numericSummary(bitrateKbps),
+    framesPerSecond: numericSummary(framesPerSecond),
+    resolutions: resolutions.size > 0 ? [...resolutions].sort() : null,
+    availableOutgoingKbps: numericSummary(availableOutgoingKbps),
+    encodeIntervals: {
+      sampleCount: encodeIntervalCount,
+      framesEncoded: encodeIntervalCount > 0 ? framesEncoded : null,
+      encodeTimeMs: encodeIntervalCount > 0 ? encodeTimeMs : null,
+      meanEncodeMsPerFrame: framesEncoded > 0 ? encodeTimeMs / framesEncoded : null,
+    },
+    qualityLimitationReasonSamples: Object.keys(qualityLimitationReasonSamples).length > 0
+      ? qualityLimitationReasonSamples : null,
+    unknownQualityLimitationSamples,
+  };
+}
+
+function summarizeBrowserProcessResources(samples: TimedSample[]) {
+  let validCpuIntervals = 0, invalidCpuIntervals = 0;
+  let measuredCpuTimeSeconds = 0, measuredWallTimeSeconds = 0;
+  let peakIntervalCpuUtilizationPercent: number | null = null;
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1]!;
+    const current = samples[index]!;
+    const wallSeconds = (current.atEpochMs - previous.atEpochMs) / 1_000;
+    const previousProcesses = previous.browserProcesses?.processes;
+    const currentProcesses = current.browserProcesses?.processes;
+    const previousByIdentity = new Map(previousProcesses?.map((process) => [`${process.type}:${process.id}`, process]));
+    let cpuSeconds = 0;
+    const valid = wallSeconds > 0 && previousProcesses && currentProcesses &&
+      previousProcesses.length === currentProcesses.length && previousByIdentity.size === previousProcesses.length &&
+      currentProcesses.every((process) => {
+        const baseline = previousByIdentity.get(`${process.type}:${process.id}`);
+        if (!baseline || process.cpuTimeSeconds < baseline.cpuTimeSeconds) return false;
+        cpuSeconds += process.cpuTimeSeconds - baseline.cpuTimeSeconds;
+        return true;
+      });
+    if (!valid) {
+      invalidCpuIntervals += 1;
+      continue;
+    }
+    validCpuIntervals += 1;
+    measuredCpuTimeSeconds += cpuSeconds;
+    measuredWallTimeSeconds += wallSeconds;
+    const utilization = (cpuSeconds / wallSeconds) * 100;
+    peakIntervalCpuUtilizationPercent = Math.max(peakIntervalCpuUtilizationPercent ?? 0, utilization);
+  }
+  return {
+    source: "CDP SystemInfo.getProcessInfo",
+    scope: "all CDP-reported processes in the isolated benchmark Chromium instance",
+    validCpuIntervals,
+    invalidCpuIntervals,
+    measuredCpuTimeSeconds: validCpuIntervals ? measuredCpuTimeSeconds : null,
+    measuredWallTimeSeconds: validCpuIntervals ? measuredWallTimeSeconds : null,
+    averageCpuUtilizationPercent: measuredWallTimeSeconds > 0
+      ? (measuredCpuTimeSeconds / measuredWallTimeSeconds) * 100 : null,
+    peakIntervalCpuUtilizationPercent,
+    peakResidentSetBytes: null,
   };
 }
 
@@ -1595,12 +1720,37 @@ async function samplePages(
   startedAtMs: number,
 ): Promise<TimedSample> {
   const atEpochMs = Date.now();
-  const observations = await Promise.all(pages.map((page) => detailedSample(cdp, page)));
+  const [observations, browserProcesses] = await Promise.all([
+    Promise.all(pages.map((page) => detailedSample(cdp, page))),
+    sampleBrowserProcesses(cdp),
+  ]);
   return {
     atEpochMs,
     elapsedMs: atEpochMs - startedAtMs,
     pages: observations,
+    browserProcesses,
   };
+}
+
+async function sampleBrowserProcesses(cdp: CdpConnection): Promise<BrowserProcessSample | null> {
+  try {
+    const result = await cdp.call<{ processInfo: unknown[] }>("SystemInfo.getProcessInfo");
+    if (!Array.isArray(result.processInfo)) return null;
+    const processes: BrowserProcessSample["processes"] = [];
+    const identities = new Set<string>();
+    for (const raw of result.processInfo) {
+      if (!raw || typeof raw !== "object") return null;
+      const { type, id, cpuTime } = raw as Record<string, unknown>;
+      if (typeof type !== "string" || type.length === 0 || !Number.isSafeInteger(id) || Number(id) < 0 || typeof cpuTime !== "number" || !Number.isFinite(cpuTime) || cpuTime < 0) return null;
+      const identity = `${type}:${id}`;
+      if (identities.has(identity)) return null;
+      identities.add(identity);
+      processes.push({ type, id: Number(id), cpuTimeSeconds: cpuTime });
+    }
+    return { processes: processes.sort((left, right) => left.id - right.id || left.type.localeCompare(right.type)) };
+  } catch {
+    return null;
+  }
 }
 
 function peerConnectionFingerprint(pages: PageObservation[]): string {
@@ -2249,7 +2399,7 @@ export async function main(): Promise<number> {
   const profile = PROFILE_SETTINGS[config.profileId];
   const profileResolution = QUALITY_RESOLUTIONS[profile.resolution];
   const report: BenchmarkReport = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     startedAt: new Date().toISOString(),
     completedAt: null,
     gitCommit: await gitCommit(),
@@ -2287,7 +2437,8 @@ export async function main(): Promise<number> {
       "Synthetic canvas motion exercises real Chromium WebRTC but is not a game-capture quality claim.",
       "Headless runs are topology and transport evidence, not representative GPU or power evidence.",
       "First-frame and recovery timing fields are diagnostics and never determine this loopback gate's status.",
-      "CPU, GPU, NIC totals, glass-to-glass latency, generational visual quality, mobile browsers, and TURN require external or device-specific measurement.",
+      "CDP process CPU covers the isolated Chromium instance, not a specific Host or relay page; identity changes or counter resets make that interval unknown, and multicore utilization may exceed 100%.",
+      "CDP SystemInfo exposes no resident-set field, so peakResidentSetBytes is null; GPU, NIC, glass-to-glass latency, generational visual quality, mobile browsers, and TURN require other measurement.",
       "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
     ],
