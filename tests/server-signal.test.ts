@@ -3466,7 +3466,7 @@ describe("WebSocket signaling", () => {
     ]);
   });
 
-  it("keeps the old edge when only the Host and an SFU root are capable", async () => {
+  it("uses a capable SFU root as the provisional peer parent", async () => {
     let now = 128_000;
     const harness = await startSfuHarness({
       now: () => now,
@@ -3545,11 +3545,18 @@ describe("WebSocket signaling", () => {
       await correlateParentEdgeQualityEvidence(parent);
       now += 2_000;
     }
-    await Promise.all([
-      expect(child.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
-      expect(active.host.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
-      expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
-    ]);
+    const moved = await completePreparedPeerMigration(
+      child,
+      active.viewer,
+      childAuth.peerId,
+      active.viewerAuth.peerId,
+      rootFreed.revision,
+      "quality_sfu_root_probe",
+    );
+    expect(moved.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.viewerAuth.peerId,
+    });
   });
 
   it("keeps the old relay edge when relative FPS has no alternate peer", async () => {

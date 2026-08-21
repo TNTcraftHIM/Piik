@@ -110,6 +110,8 @@ interface HealthySfuReselectionProbe {
 }
 
 interface PeerQualityReselectionProbe {
+  activeRevision: number;
+  shareGeneration: string;
   excludedParentPeerIds: ReadonlySet<string>;
   newParentPeerId: string;
   newConnectionId: string | null;
@@ -2364,7 +2366,11 @@ export class HybridMediaRouter {
     const guard = intent.qualityGuard;
     const controller = this.mediaRouteControllers.get(roomId);
     const active = controller?.getActiveRoute();
-    const viewer = this.options.roomStore.getConnectedViewer(roomId, viewerPeerId);
+    const viewer = this.options.roomStore.getConnectedViewer(
+      roomId,
+      viewerPeerId,
+    );
+    const shareGeneration = this.options.getShareGeneration(roomId);
     if (
       !guard ||
       !controller ||
@@ -2372,15 +2378,27 @@ export class HybridMediaRouter {
       this.roomPeerMigrationAttempt(roomId) !== null ||
       !active ||
       !viewer ||
+      !shareGeneration ||
+      active.revision !== guard.routeRevision ||
       !this.qualityIntentIsCurrent(roomId, viewerPeerId, intent)
     ) {
       return false;
     }
 
     const candidateExclusions = new Set(excludedParentPeerIds);
-    candidateExclusions.add(this.peerRelayTopology.getHostPeerId(roomId) ?? guard.parentPeerId);
+    candidateExclusions.add(
+      this.peerRelayTopology.getHostPeerId(roomId) ?? guard.parentPeerId,
+    );
     for (const [peerId, assignment] of active.assignments) {
-      if (assignment.upstream.kind !== "peer" || active.sfu.rootPeerIds.includes(peerId)) candidateExclusions.add(peerId);
+      if (
+        (assignment.upstream.kind !== "peer" &&
+          assignment.upstream.kind !== "sfu") ||
+        !this.options.roomStore.getConnectedViewer(roomId, peerId) ||
+        assignment.childPeerIds.length + 1 >
+          this.peerRelayTopology.getDownstreamCapacity(roomId, peerId)
+      ) {
+        candidateExclusions.add(peerId);
+      }
     }
     const newParentPeerId = this.peerRelayTopology.findViewerReassignmentParent(
       roomId,
@@ -2390,7 +2408,7 @@ export class HybridMediaRouter {
       MAX_PEER_RELAY_DEPTH,
     );
     const newParent = newParentPeerId
-      ? this.connectedPeer(roomId, newParentPeerId)
+      ? this.options.roomStore.getConnectedViewer(roomId, newParentPeerId)
       : undefined;
     if (!newParentPeerId || !newParent) {
       return false;
@@ -2460,6 +2478,8 @@ export class HybridMediaRouter {
       hostSfuIngressTurnAttempted: false,
       healthyReselection: null,
       peerQualityReselection: {
+        activeRevision: active.revision,
+        shareGeneration,
         excludedParentPeerIds: candidateExclusions,
         newParentPeerId,
         newConnectionId: null,
@@ -2959,11 +2979,26 @@ export class HybridMediaRouter {
   ): boolean {
     const probe = pending.peerQualityReselection;
     const controller = this.mediaRouteControllers.get(roomId);
+    const active = controller?.getActiveRoute();
     const planned = controller?.getPendingRoute()?.route;
-    const plannedUpstream = planned?.assignments.get(pending.intentPeerId)?.upstream;
+    const plannedUpstream = planned?.assignments.get(
+      pending.intentPeerId,
+    )?.upstream;
+    const parentAssignment = active?.assignments.get(
+      probe?.newParentPeerId ?? "",
+    );
     return Boolean(
       probe &&
         this.pendingRoutePreparations.get(roomId) === pending &&
+        active?.revision === probe.activeRevision &&
+        this.options.getShareGeneration(roomId) === probe.shareGeneration &&
+        (parentAssignment?.upstream.kind === "peer" ||
+          parentAssignment?.upstream.kind === "sfu") &&
+        parentAssignment.childPeerIds.length + 1 <=
+          this.peerRelayTopology.getDownstreamCapacity(
+            roomId,
+            probe.newParentPeerId,
+          ) &&
         planned?.revision === pending.revision &&
         plannedUpstream?.kind === "peer" &&
         plannedUpstream.peerId === probe.newParentPeerId &&

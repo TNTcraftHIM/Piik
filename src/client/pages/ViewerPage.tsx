@@ -439,6 +439,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
     function reconcileRelayChildren(
       previousChildPeerIds: readonly string[],
+      activeRevision?: number,
     ): void {
       const nextChildPeerIds = currentAssignment.childPeerIds;
       const changed =
@@ -454,7 +455,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (changed) {
         clearRelayChildEvidence();
       }
-      ensureViewerRelay()?.setChildren(nextChildPeerIds);
+      const relay = ensureViewerRelay();
+      if (activeRevision === undefined) {
+        relay?.setChildren(nextChildPeerIds);
+      } else {
+        relay?.activateChildren(activeRevision, nextChildPeerIds);
+      }
     }
 
     function discardPeerProbe(): void {
@@ -531,7 +537,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             applyMediaAssignment(
               {
                 parentPeerId: probe.parentPeerId,
-                childPeerIds: assignment.childPeerIds,
+                childPeerIds: currentAssignment.childPeerIds,
               },
               true,
             );
@@ -547,7 +553,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               assignment.upstream.kind === "peer"
                 ? assignment.upstream.peerId
                 : null,
-            childPeerIds: assignment.childPeerIds,
+            childPeerIds: currentAssignment.childPeerIds,
           });
           if (assignment.upstream.kind === "peer") {
             await drainPreparedParentSignals(assignment.upstream.peerId);
@@ -574,6 +580,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               : null,
           );
         },
+        prepareChild: (childPeerIds, revision) => {
+          if (!active || viewerSfuRoute !== route) {
+            return;
+          }
+          if (childPeerIds && revision !== undefined) {
+            ensureViewerRelay()?.prepareChild(revision, childPeerIds);
+          } else {
+            viewerRelay?.discardPreparedChild();
+          }
+        },
         resetMedia: () => {
           if (!active || viewerSfuRoute !== route) {
             return;
@@ -584,7 +600,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           clearPeerState();
           viewerRelay?.setChildren([]);
         },
-        reconcileSfuChildren: (childPeerIds) => {
+        activateChildren: (childPeerIds, revision) => {
           if (!active || viewerSfuRoute !== route) {
             return;
           }
@@ -592,11 +608,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           currentAssignment = limitMediaAssignment(
             {
               parentPeerId: currentAssignment.parentPeerId,
-              childPeerIds,
+              childPeerIds: [...childPeerIds],
             },
             MAX_VIEWER_MEDIA_CHILDREN,
           );
-          reconcileRelayChildren(previousChildPeerIds);
+          reconcileRelayChildren(previousChildPeerIds, revision);
         },
         onSfuUpdate: (metrics) => {
           if (active && viewerSfuRoute === route) {
@@ -1122,10 +1138,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         if (
           peerAssisted &&
-          (await viewerRelay?.acceptSignal(
+          viewerRelay &&
+          (await viewerRelay.acceptSignal(
             message.fromPeerId,
             message.payload,
-            currentRouteRevision,
+            viewerRelay.getSignalRouteRevision(
+              message.fromPeerId,
+              message.payload.connectionId,
+              currentRouteRevision,
+            ),
           ))
         ) {
           return;

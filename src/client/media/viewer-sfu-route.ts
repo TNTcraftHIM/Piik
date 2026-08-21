@@ -38,8 +38,16 @@ interface ViewerSfuRouteEvents {
     revision?: number,
   ) => boolean | void | Promise<boolean | void>;
   preparePeer?: (assignment: ParticipantRouteAssignment | null, revision?: number) => void;
+  prepareChild?: (
+    childPeerIds: readonly string[] | null,
+    revision?: number,
+  ) => void;
+  activateChildren?: (
+    childPeerIds: readonly string[],
+    revision: number,
+  ) => void;
   resetMedia?: () => void;
-  reconcileSfuChildren: (childPeerIds: string[]) => void;
+  reconcileSfuChildren?: (childPeerIds: string[]) => void;
   onSfuStream: (
     stream: MediaStream,
     assignment: ParticipantRouteAssignment,
@@ -96,6 +104,7 @@ export class ViewerSfuRoute {
       this.healthySfuWindows = null;
     }
     if (update.phase === "prepare") {
+      this.events.prepareChild?.(update.assignment.childPeerIds, update.revision);
       const mediaUpstream = this.route.getMediaAssignment()?.upstream;
       if (
         update.assignment.upstream.kind === "peer" &&
@@ -104,9 +113,6 @@ export class ViewerSfuRoute {
       ) {
         this.peerProbeRevision = update.revision;
         this.events.preparePeer?.(update.assignment, update.revision);
-      }
-      if (update.assignment.upstream.kind !== "sfu") {
-        this.events.reconcileSfuChildren(update.assignment.childPeerIds);
       }
       if (this.pending?.revision !== update.revision) {
         this.clearPending();
@@ -153,6 +159,7 @@ export class ViewerSfuRoute {
     this.route.reset();
     this.recovery = null;
     this.healthySfuWindows = null;
+    this.events.prepareChild?.(null);
     const pending = this.pending;
     const active = this.active;
     this.pending = null;
@@ -341,6 +348,7 @@ export class ViewerSfuRoute {
     this.failedPeerProbe = null;
     this.healthySfuWindows = null;
     this.events.preparePeer?.(null);
+    this.events.prepareChild?.(null);
     await this.queueTransition(async () => {
       const pending = this.pending;
       const active = this.active;
@@ -382,7 +390,7 @@ export class ViewerSfuRoute {
         return;
       }
       if (assignment.upstream.kind === "sfu") {
-        this.events.reconcileSfuChildren(assignment.childPeerIds);
+        this.activateChildren(assignment.childPeerIds, token.revision);
         const mediaAssignment = this.route.getMediaAssignment();
         if (
           mediaAssignment?.upstream.kind === "sfu" &&
@@ -429,6 +437,7 @@ export class ViewerSfuRoute {
       if (!this.route.owns(token, "active")) {
         return;
       }
+      this.activateChildren(assignment.childPeerIds, token.revision);
       this.commitMedia(token, acknowledge);
     });
   }
@@ -437,6 +446,14 @@ export class ViewerSfuRoute {
     const next = this.transitionTail.then(work, work);
     this.transitionTail = next.catch(() => undefined);
     return this.transitionTail;
+  }
+
+  private activateChildren(childPeerIds: readonly string[], revision: number): void {
+    if (this.events.activateChildren) {
+      this.events.activateChildren(childPeerIds, revision);
+    } else {
+      this.events.reconcileSfuChildren?.([...childPeerIds]);
+    }
   }
 
   private async activateSfu(

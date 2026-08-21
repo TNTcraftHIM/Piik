@@ -1189,7 +1189,7 @@ describe("ViewerSfuRoute", () => {
     const peer = peerAssignment("host-peer", ["relay-child"]);
     route.accept({ revision: 2, phase: "prepare", assignment: peer });
     expect(prepared).toContainEqual({ parent: "host-peer", revision: 2 });
-    expect(log).toContain("children:relay-child");
+    expect(log).not.toContain("children:relay-child");
     expect(subscriber.deactivate).not.toHaveBeenCalled();
 
     route.accept({ revision: 2, phase: "active", assignment: peer });
@@ -1203,7 +1203,55 @@ describe("ViewerSfuRoute", () => {
     expect(log.indexOf("peer:host-peer:2")).toBeLessThan(
       log.indexOf("subscriber:deactivate"),
     );
+    expect(log).toContain("children:relay-child");
     expect(activatePeer).not.toHaveBeenCalledWith(peer);
+  });
+
+  it.each([
+    ["peer Viewer", peerAssignment("current-parent", ["provisional-child"])],
+    ["SFU root Viewer", sfuAssignment(["provisional-child"])],
+  ])("uses the prepare/active child lifecycle for a %s", async (_label, assignment) => {
+    const prepared: Array<{
+      revision?: number;
+      children: readonly string[] | null;
+    }> = [];
+    const activated: Array<{
+      revision: number;
+      children: readonly string[];
+    }> = [];
+    const route = new ViewerSfuRoute({
+      activatePeer: () => undefined,
+      prepareChild: (children, revision) => prepared.push({
+        children,
+        ...(revision === undefined ? {} : { revision }),
+      }),
+      activateChildren: (children, revision) =>
+        activated.push({ children, revision }),
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+
+    route.accept({
+      revision: 1,
+      phase: "active",
+      assignment: { ...assignment, childPeerIds: [] },
+    });
+    await vi.waitFor(() => expect(activated).toEqual([{
+      revision: 1,
+      children: [],
+    }]));
+    prepared.length = 0;
+    activated.length = 0;
+    route.accept({ revision: 2, phase: "prepare", assignment });
+    expect(prepared).toEqual([{
+      revision: 2,
+      children: ["provisional-child"],
+    }]);
+    route.accept({ revision: 2, phase: "active", assignment });
+    await vi.waitFor(() => expect(activated).toEqual([{
+      revision: 2,
+      children: ["provisional-child"],
+    }]));
   });
 
   it("prepares a second peer without replacing the active peer before commit", async () => {

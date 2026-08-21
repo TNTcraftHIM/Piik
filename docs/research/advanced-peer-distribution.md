@@ -214,9 +214,10 @@ limitation or at least 100 sent packets with remote loss divided by sent packets
 at least 30%. Three consecutive windows of the same severe or relative kind are
 required. A healthy or incomplete correlated window, any Viewer/parent session,
 connection, route revision or parent change, or a gap over five seconds clears
-the streak. Severe and relative-FPS quality evidence each tries one ordinary
-peer-upstream Viewer through make-before-break; v1 skips Host and SFU roots but
-continues to later eligible Viewers. No candidate, probe failure, or timeout keeps
+the streak. Severe and relative-FPS quality evidence each tries one Viewer whose
+active upstream is peer or SFU through make-before-break; Host is excluded, and
+session/share/revision plus one strict effective-capacity slot are required
+before breadth-first selection continues. No candidate, probe failure, or timeout keeps
 the old edge without SFU, TURN, or an error. A started attempt spends a
 30-second room migration
 budget, so a new public Viewer identity cannot bypass it. Per-edge state clears
@@ -224,13 +225,17 @@ on authentication/generation change, disconnect/removal and route replacement;
 room stop/delete also clears the cooldown.
 
 The candidate is bound to the exact Viewer/parent sessions, active and pending
-route revisions, share lifecycle and a separate connection ID. Signaling keeps
+route revisions, share lifecycle and a separate connection ID. Its parent owns
+one provisional child PC outside the active child map and never auto-retries it
+with another connection ID. Signaling keeps
 the old connection ID authoritative until the Viewer proves positive RTP,
 positive decoded-frame progress and a live video track on the candidate; commit
-then changes topology, route and active connection identity together. Failure
-after ready retains the exact provisional identity until matching active or
-rollback, while another edge's authoritative failure aborts the soft probe
-before using the ordinary ladder. A
+then promotes that same PC and changes topology, route and active connection
+identity together. Failure after ready retains the exact provisional identity
+across repeated matching active updates; the candidate parent stays fail-closed
+and the target Viewer probe owns recovery. Rollback or another edge's
+authoritative failure clears or aborts the soft probe before using the ordinary
+ladder. A
 successful relative move holds the old parent for 30 seconds or until its
 session changes. A real active-route failure remains a separate hard recovery
 trigger and can reuse an otherwise playable old parent.
