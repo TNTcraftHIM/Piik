@@ -88,6 +88,7 @@ function createFakePublisher(log: string[], label: string) {
 
 interface FakeSubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
+  onVideoAvailability?: (available: boolean) => void;
   onStats?: (metrics: ConnectionMetrics) => void;
   onState?: (state: "connected" | "reconnecting") => void;
   onDisconnected: () => void;
@@ -158,6 +159,9 @@ describe("MediaRouteTransition", () => {
 
     route.accept({ revision: 5, phase: "active", assignment: direct });
 
+    expect(
+      route.accept({ revision: 4, phase: "active", assignment: sfu }),
+    ).toBe("stale");
     expect(route.acceptsConfig(4)).toBe(false);
     expect(route.owns(staleToken)).toBe(false);
     expect(route.markMediaActive(staleToken)).toBe(false);
@@ -941,7 +945,7 @@ describe("ViewerSfuRoute", () => {
     expect(deliveredSignals).toEqual(["early-offer"]);
   });
 
-  it("keeps peer media through prepare and switches on the first video stream callback", async () => {
+  it("switches on first SFU video and forwards loss across SFU revision reuse", async () => {
     const log: string[] = [];
     const messages: ClientMessage[] = [];
     const peerAssignments: ParticipantRouteAssignment[] = [];
@@ -952,6 +956,7 @@ describe("ViewerSfuRoute", () => {
     }> = [];
     const sfuUpdates: Array<ConnectionMetrics | null> = [];
     const sfuStates: string[] = [];
+    const videoAvailability: boolean[] = [];
     const metrics = {} as ConnectionMetrics;
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     const route = new ViewerSfuRoute({
@@ -964,6 +969,8 @@ describe("ViewerSfuRoute", () => {
       },
       onSfuUpdate: (update) => sfuUpdates.push(update),
       onSfuState: (state) => sfuStates.push(state),
+      onSfuVideoAvailability: (available) =>
+        videoAvailability.push(available),
       send: (message) => {
         messages.push(message);
         return true;
@@ -1008,6 +1015,10 @@ describe("ViewerSfuRoute", () => {
       revision: 2,
       phase: "active",
     });
+
+    subscribers[0]?.events.onVideoAvailability?.(false);
+    subscribers[0]?.events.onVideoAvailability?.(true);
+    expect(videoAvailability).toEqual([]);
     subscribers[0]?.events.onStats?.(metrics);
     subscribers[0]?.events.onState?.("reconnecting");
     expect(sfuUpdates).toEqual([]);
@@ -1028,6 +1039,10 @@ describe("ViewerSfuRoute", () => {
       phase: "active",
     });
 
+    subscribers[0]?.events.onVideoAvailability?.(false);
+    subscribers[0]?.events.onVideoAvailability?.(true);
+    expect(videoAvailability).toEqual([false, true]);
+
     route.accept({
       revision: 3,
       phase: "active",
@@ -1035,6 +1050,8 @@ describe("ViewerSfuRoute", () => {
     });
     expect(subscribers).toHaveLength(1);
     expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
+    subscribers[0]?.events.onVideoAvailability?.(false);
+    expect(videoAvailability).toEqual([false, true, false]);
 
     route.accept({
       revision: 4,
@@ -1055,8 +1072,10 @@ describe("ViewerSfuRoute", () => {
     expect(sfuUpdates).toEqual([metrics, null]);
     subscribers[0]?.events.onStats?.(metrics);
     subscribers[0]?.events.onState?.("connected");
+    subscribers[0]?.events.onVideoAvailability?.(false);
     expect(sfuUpdates).toEqual([metrics, null]);
     expect(sfuStates).toEqual(["reconnecting"]);
+    expect(videoAvailability).toEqual([false, true, false]);
   });
 
   it("disconnects a subscriber whose connect completes after rollback", async () => {

@@ -17,6 +17,7 @@ import {
 
 interface SubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
+  onVideoAvailability?: (available: boolean) => void;
   onStats?: (metrics: ConnectionMetrics) => void;
   onState?: (state: "connected" | "reconnecting") => void;
   onDisconnected?: () => void;
@@ -25,6 +26,8 @@ interface SubscriberEvents {
 interface SubscribedTrack {
   sid: string;
   track: RemoteTrack;
+  mediaStreamTrack: MediaStreamTrack;
+  onEnded: () => void;
 }
 
 type SubscriberState =
@@ -44,6 +47,8 @@ export class SfuSubscriber {
   private sdk: LiveKit | null = null;
   private video: SubscribedTrack | null = null;
   private audio: SubscribedTrack | null = null;
+  private readonly stream = new MediaStream();
+  private streamEmitted = false;
   private readonly desiredTrackSids = new Set<string>();
   private state: SubscriberState = "idle";
   private statsAccumulator: StatsAccumulator = createStatsAccumulator();
@@ -190,6 +195,8 @@ export class SfuSubscriber {
           return;
         }
         this.addTrack(
+          room,
+          generation,
           publication.trackSid,
           publication.source,
           track,
@@ -200,12 +207,12 @@ export class SfuSubscriber {
     room.on(
       sdk.RoomEvent.TrackUnsubscribed,
       (
-        _track: RemoteTrack,
+        track: RemoteTrack,
         publication: RemoteTrackPublication,
         participant: RemoteParticipant,
       ) => {
         if (this.owns(room, generation) && participant.identity === HOST_IDENTITY) {
-          this.removeTrack(publication.trackSid);
+          this.removeTrack(publication.trackSid, track.mediaStreamTrack);
         }
       },
     );
@@ -280,34 +287,73 @@ export class SfuSubscriber {
   }
 
   private addTrack(
+    room: Room,
+    generation: number,
     sid: string,
     source: Track.Source,
     track: RemoteTrack,
     trackType: typeof Track,
   ): void {
+    let previous: SubscribedTrack | null;
     if (source === trackType.Source.ScreenShare) {
-      this.video = { sid, track };
+      previous = this.video;
     } else if (source === trackType.Source.ScreenShareAudio) {
-      this.audio = { sid, track };
+      previous = this.audio;
     } else {
       return;
     }
+    const mediaStreamTrack = track.mediaStreamTrack;
+    if (previous?.sid === sid && previous.mediaStreamTrack === mediaStreamTrack) {
+      return;
+    }
+    const hadVideo = this.video !== null;
+    if (previous) this.detachTrack(previous);
+    const subscribed = {
+      sid,
+      track,
+      mediaStreamTrack,
+      onEnded: () => {
+        if (this.state === "active" && this.owns(room, generation)) {
+          this.removeTrack(sid, mediaStreamTrack);
+        }
+      },
+    };
+    mediaStreamTrack.addEventListener("ended", subscribed.onEnded, { once: true });
+    this.stream.addTrack(mediaStreamTrack);
+    if (source === trackType.Source.ScreenShare) {
+      this.video = subscribed;
+    } else {
+      this.audio = subscribed;
+    }
     this.emitStream();
+    if (!hadVideo && this.video) {
+      this.events.onVideoAvailability?.(true);
+    }
     if (this.video) {
       this.startStats();
     }
   }
 
-  private removeTrack(sid: string): void {
-    if (this.video?.sid === sid) {
+  private removeTrack(sid: string, track?: MediaStreamTrack): void {
+    const previousVideo = this.video;
+    const previousAudio = this.audio;
+    if (this.video?.sid === sid && (!track || this.video.mediaStreamTrack === track)) {
+      this.detachTrack(this.video);
       this.video = null;
     }
-    if (this.audio?.sid === sid) {
+    if (this.audio?.sid === sid && (!track || this.audio.mediaStreamTrack === track)) {
+      this.detachTrack(this.audio);
       this.audio = null;
+    }
+    if (this.video === previousVideo && this.audio === previousAudio) {
+      return;
     }
     this.emitStream();
     if (!this.video) {
       this.stopStats();
+      if (previousVideo) {
+        this.events.onVideoAvailability?.(false);
+      }
     }
   }
 
@@ -315,11 +361,13 @@ export class SfuSubscriber {
     if (!this.video) {
       return;
     }
-    const tracks = [this.video.track.mediaStreamTrack];
-    if (this.audio) {
-      tracks.push(this.audio.track.mediaStreamTrack);
-    }
-    this.events.onStream(new MediaStream(tracks));
+    this.streamEmitted = true;
+    this.events.onStream(this.stream);
+  }
+
+  private detachTrack(track: SubscribedTrack): void {
+    track.mediaStreamTrack.removeEventListener("ended", track.onEnded);
+    this.stream.removeTrack(track.mediaStreamTrack);
   }
 
   private startStats(): void {
@@ -388,11 +436,22 @@ export class SfuSubscriber {
   }
 
   private clearMedia(notify: boolean): void {
+    const hadStream = this.streamEmitted;
     const hadVideo = this.video !== null;
     this.stopStats();
+    if (this.video) {
+      this.detachTrack(this.video);
+    }
+    if (this.audio) {
+      this.detachTrack(this.audio);
+    }
     this.video = null;
     this.audio = null;
-    if (notify && hadVideo) {
+    this.streamEmitted = false;
+    if (hadVideo) {
+      this.events.onVideoAvailability?.(false);
+    }
+    if (notify && hadStream) {
       this.events.onStream(null);
     }
   }

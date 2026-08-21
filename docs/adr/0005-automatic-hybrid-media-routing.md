@@ -52,6 +52,13 @@ Treat the SFU as a virtual parent for selected fallback roots, not as an
 all-room replacement. Keep the existing peer-assisted topology as the active
 baseline and add one in-memory `MediaRouteController` per room.
 
+Eligible parent relationships form a mesh-like candidate graph, but active
+media remains a loop-free graph with one upstream per Viewer. Join, capacity,
+disconnect, and current-edge failure are bounded reselection triggers. A
+transition may overlap old and prepared edges only within the existing edge
+budgets and must commit from current-generation media proof; steady multi-source
+striping is not part of the media path.
+
 ```text
 normal:   host -> root A -> ...
           host -> root B -> ...

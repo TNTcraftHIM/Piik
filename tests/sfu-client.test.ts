@@ -244,6 +244,15 @@ vi.mock("livekit-client", () => ({
 class FakeMediaStream {
   constructor(private readonly tracks: MediaStreamTrack[] = []) {}
 
+  addTrack(track: MediaStreamTrack): void {
+    if (!this.tracks.includes(track)) this.tracks.push(track);
+  }
+
+  removeTrack(track: MediaStreamTrack): void {
+    const index = this.tracks.indexOf(track);
+    if (index >= 0) this.tracks.splice(index, 1);
+  }
+
   getTracks(): MediaStreamTrack[] {
     return [...this.tracks];
   }
@@ -270,7 +279,7 @@ const qualityProfile = {
 } as const;
 
 function track(kind: "video" | "audio", id: string): MediaStreamTrack {
-  return { id, kind } as MediaStreamTrack;
+  return Object.assign(new EventTarget(), { id, kind }) as MediaStreamTrack;
 }
 
 function remoteTrack(
@@ -845,7 +854,8 @@ describe("SfuSubscriber", () => {
       hostVideo,
       host,
     );
-    expect(streams.at(-1)?.getTracks()).toEqual([video, audio]);
+    expect(streams.at(-1)?.getVideoTracks()).toEqual([video]);
+    expect(streams.at(-1)?.getAudioTracks()).toEqual([audio]);
 
     expect(subscriber.deactivate()).toBe(true);
     expect(hostVideo.setSubscribed).toHaveBeenLastCalledWith(false);
@@ -853,6 +863,92 @@ describe("SfuSubscriber", () => {
     expect(streams.at(-1)).toBeNull();
     expect(room.disconnect).not.toHaveBeenCalled();
   });
+
+  it("keeps one stream while video-first tracks change", async () => {
+    const streams: Array<MediaStream | null> = [];
+    const availability: boolean[] = [];
+    const subscriber = new SfuSubscriber({
+      onStream: (nextStream) => streams.push(nextStream),
+      onVideoAvailability: (available) => availability.push(available),
+    });
+    await subscriber.connect(connection);
+    const room = livekit.state.rooms[0];
+    const host = new livekit.FakeRemoteParticipant("host");
+    const hostVideo = new livekit.FakeRemotePublication(
+      "host-video",
+      Track.Source.ScreenShare,
+    );
+    const hostAudio = new livekit.FakeRemotePublication(
+      "host-audio",
+      Track.Source.ScreenShareAudio,
+    );
+    host.add(hostVideo).add(hostAudio);
+    room.remoteParticipants.set("host", host);
+    expect(subscriber.activate()).toBe(true);
+    const video = track("video", "video-1");
+    room.emit(RoomEvent.TrackSubscribed, remoteTrack(video), hostVideo, host);
+    const stableStream = streams.at(-1);
+    expect(stableStream?.getTracks()).toEqual([video]);
+    expect(availability).toEqual([true]);
+    const audio = track("audio", "audio-1");
+    room.emit(RoomEvent.TrackSubscribed, remoteTrack(audio), hostAudio, host);
+    expect(streams.at(-1)).toBe(stableStream);
+    expect(stableStream?.getAudioTracks()).toEqual([audio]);
+    const callbacksBeforeReplacement = streams.length;
+    const replacement = track("video", "video-2");
+    room.emit(RoomEvent.TrackSubscribed, remoteTrack(replacement), hostVideo, host);
+    expect(streams).toHaveLength(callbacksBeforeReplacement + 1);
+    expect(streams.at(-1)).toBe(stableStream);
+    expect(stableStream?.getVideoTracks()).toEqual([replacement]);
+    video.dispatchEvent(new Event("ended"));
+    expect(stableStream?.getVideoTracks()).toEqual([replacement]);
+    expect(availability).toEqual([true]);
+    replacement.dispatchEvent(new Event("ended"));
+    expect(stableStream?.getVideoTracks()).toEqual([]);
+    expect(streams).toHaveLength(callbacksBeforeReplacement + 1);
+    expect(availability).toEqual([true, false]);
+
+    const recovered = track("video", "video-3");
+    room.emit(RoomEvent.TrackSubscribed, remoteTrack(recovered), hostVideo, host);
+    expect(streams.at(-1)).toBe(stableStream);
+    expect(stableStream?.getVideoTracks()).toEqual([recovered]);
+    expect(availability).toEqual([true, false, true]);
+  });
+
+  it.each(["unsubscribed", "unpublished", "host-disconnected"] as const)(
+    "reports the last video unavailable when it is %s",
+    async (loss) => {
+      const availability: boolean[] = [];
+      const subscriber = new SfuSubscriber({
+        onStream: vi.fn(),
+        onVideoAvailability: (available) => availability.push(available),
+      });
+      await subscriber.connect(connection);
+      const room = livekit.state.rooms[0];
+      const host = new livekit.FakeRemoteParticipant("host");
+      const publication = new livekit.FakeRemotePublication(
+        "host-video",
+        Track.Source.ScreenShare,
+      );
+      host.add(publication);
+      room.remoteParticipants.set("host", host);
+      subscriber.activate();
+      const video = track("video", "video-1");
+      const remoteVideo = remoteTrack(video);
+      room.emit(RoomEvent.TrackSubscribed, remoteVideo, publication, host);
+      availability.length = 0;
+
+      if (loss === "unsubscribed") {
+        room.emit(RoomEvent.TrackUnsubscribed, remoteVideo, publication, host);
+      } else if (loss === "unpublished") {
+        room.emit(RoomEvent.TrackUnpublished, publication, host);
+      } else {
+        room.emit(RoomEvent.ParticipantDisconnected, host);
+      }
+
+      expect(availability).toEqual([false]);
+    },
+  );
 
   it("reports merged receiver stats and drops a stale sample", async () => {
     const updates: ConnectionMetrics[] = [];

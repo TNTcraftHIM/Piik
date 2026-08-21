@@ -95,7 +95,10 @@ import {
   MAX_HOST_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
 } from "../webrtc/media-assignment";
-import { sourceSwitchNotice } from "./host-page-notices";
+import {
+  shouldPauseLocalPreview,
+  sourceSwitchNotice,
+} from "./host-page-notices";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
 
@@ -227,6 +230,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
+  const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
@@ -309,7 +313,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       if (!video) {
         return;
       }
-      if (document.visibilityState !== "visible" || !document.hasFocus()) {
+      const shouldPause = shouldPauseLocalPreview(
+        document.visibilityState,
+        document.hasFocus(),
+      );
+      setLocalPreviewPaused(shouldPause);
+      if (shouldPause) {
         video.pause();
         return;
       }
@@ -1718,13 +1727,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <MonitorUp size={36} strokeWidth={1.5} aria-hidden="true" />
               </div>
             )}
-            {(phase === "starting" || switchingSource || sharingPaused) && (
+            {(phase === "starting" ||
+              switchingSource ||
+              sharingPaused ||
+              (stream !== null && localPreviewPaused)) && (
               <div className="stage-overlay" role="status">
                 {switchingSource
                   ? "正在切换来源"
                   : sharingPaused
                     ? "音视频分享已暂停"
-                    : "正在连接"}
+                    : phase === "starting"
+                      ? "正在连接"
+                      : "本地预览已暂停，分享仍在继续"}
               </div>
             )}
           </div>
@@ -2081,13 +2095,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   ? peerSnapshots.get(viewer.peerId)
                   : undefined;
               const qualityEvidence = viewerQualityEvidence.get(viewer.peerId);
+              const hasCurrentMediaEvidence =
+                snapshot?.connectionState === "connected" ||
+                (viewer.upstream.kind === "peer" &&
+                  qualityEvidence?.parentPeerId === viewer.upstream.peerId);
               const viewerState =
-                snapshot?.connectionState === "connected" || qualityEvidence
+                hasCurrentMediaEvidence
                   ? "connected"
-                  : snapshot?.connectionState ??
-                    (viewer.upstream.kind === "none"
-                      ? "connecting"
-                      : "assigned");
+                  : (snapshot?.connectionState ?? "routing");
               return (
                 <article className="viewer-item" key={viewer.peerId}>
                   <div className="viewer-item-heading">
