@@ -1,8 +1,8 @@
 # Low-Server-Cost Media Routes
 
 - Research date: 2026-08-21
-- Scope: one broadcaster, at most eight trusted viewers, low latency, and host
-  media fanout at most two
+- Scope: one broadcaster, explicit admission up to sixteen trusted viewers,
+  low latency, and bounded host media fanout
 - Status: ADR-0005 accepts STUN-only direct/peer UDP, bounded SFU/UDP roots,
   then optional authenticated TURN/UDP for one controller-selected exceptional
   edge. Production enables the controller for all rooms and has a configured
@@ -16,9 +16,10 @@
 The smallest current plan is:
 
 1. Use direct host P2P for one or two viewers.
-2. For later viewers, use the fixed two-chain browser relay in ADR-0004. It is
-   controlled by `PEER_ASSISTED_MEDIA`, is limited to at most
-   eight viewers, and decodes and re-encodes at every relay.
+2. For later viewers, use the bounded browser relay DAG in ADR-0004. It is
+   controlled by `PEER_ASSISTED_MEDIA`, shares the one-through-sixteen room
+   admission limit, and decodes and re-encodes at every relay. The retained
+   representative resource/quality gate remains eight viewers.
 3. Plan a separate native shared-encode sender regardless of the browser relay
    result. It reduces duplicate host encoding while retaining at most two
    standard WebRTC edges, so it does not remove their upload cost. The bounded
@@ -527,7 +528,7 @@ lost.
 | Route | Where copies are emitted | Endpoint cost | Current disposition |
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per viewer | Host upload and sender pipelines grow with viewers | Keep for one or two viewers |
-| Bounded browser relay DAG | Host and each Web relay emit at most two copies | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current capacity-two source candidate, maximum-eight-viewer gate |
+| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Admission defaults to eight and permits 1-16; representative resource/quality gate remains eight viewers |
 | Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
 | SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; local SFU/UDP and active Host-ingress relay function pass, while public-room/performance evidence remains open |

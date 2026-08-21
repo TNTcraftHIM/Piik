@@ -9,6 +9,7 @@ import WebSocket from "ws";
 import {
   DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+  MAX_VIEWERS_PER_ROOM_LIMIT,
   type ParticipantRouteAssignment,
 } from "../src/shared/protocol";
 import {
@@ -202,7 +203,7 @@ interface ManagedProcess {
 }
 
 const DEFAULT_VIEWER_COUNTS = [1, 3, 5, 8];
-const MAX_VIEWERS = 8;
+const MAX_VIEWERS = MAX_VIEWERS_PER_ROOM_LIMIT;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 class BoundedLog {

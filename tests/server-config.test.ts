@@ -207,14 +207,24 @@ describe("server configuration", () => {
     expect(() => loadConfig({ PEER_ASSISTED_MEDIA: "1" })).toThrow(
       "PEER_ASSISTED_MEDIA must be true or false",
     );
+  });
+
+  it("keeps the peer-assisted room default at 8 and accepts explicit 16", () => {
+    expect(
+      loadConfig({ PEER_ASSISTED_MEDIA: "true" }).maxViewersPerRoom,
+    ).toBe(8);
+    expect(
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        MAX_VIEWERS_PER_ROOM: "16",
+      }).maxViewersPerRoom,
+    ).toBe(16);
     expect(() =>
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
-        MAX_VIEWERS_PER_ROOM: "9",
+        MAX_VIEWERS_PER_ROOM: "17",
       }),
-    ).toThrow(
-      "PEER_ASSISTED_MEDIA currently supports at most 8 viewers per room",
-    );
+    ).toThrow("MAX_VIEWERS_PER_ROOM");
   });
 
   it.each(["1", "2", "3"])(
