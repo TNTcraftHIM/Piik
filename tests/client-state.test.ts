@@ -19,6 +19,7 @@ import {
   readViewerGrant,
   readViewerRoute,
   replaceViewerInvite,
+  roomRouteFromInput,
   writeHostRoom,
 } from "../src/client/lib/session.ts";
 import {
@@ -414,7 +415,7 @@ describe("site access API", () => {
 
     await expect(authenticateSiteAccess("wrong-password")).rejects.toMatchObject({
       status: 401,
-      message: "访问密码不正确，请重试",
+      message: "站点口令不正确，请重试",
     });
   });
 
@@ -468,6 +469,8 @@ describe("room codes", () => {
     expect(isValidRoomId("012345")).toBe(false);
     expect(isValidRoomId("1234567890123")).toBe(false);
     expect(isValidRoomId("12345678901a")).toBe(false);
+    expect(roomRouteFromInput(" 42 ")).toBe("/r/42");
+    expect(roomRouteFromInput("042")).toBeNull();
   });
 });
 

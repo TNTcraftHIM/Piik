@@ -71,7 +71,7 @@ export async function getSiteAccess(): Promise<SiteAccessStatus> {
   if (!response.ok) {
     throw new ApiError(
       response.status === 401
-        ? "验证已失效，请重新登录"
+        ? "站点访问已失效，请重新验证"
         : (errorMessage(body) ?? `验证失败 (${response.status})`),
       response.status,
     );
@@ -93,7 +93,7 @@ export async function authenticateSiteAccess(
   if (!response.ok) {
     throw new ApiError(
       response.status === 401
-        ? "访问密码不正确，请重试"
+        ? "站点口令不正确，请重试"
         : (errorMessage(body) ?? `验证失败 (${response.status})`),
       response.status,
     );
@@ -118,7 +118,7 @@ export async function createRoom(
   if (!response.ok) {
     throw new ApiError(
       response.status === 401
-        ? "验证已失效，请重新登录"
+        ? "站点访问已失效，请重新验证"
         : (errorMessage(body) ?? `建房失败 (${response.status})`),
       response.status,
     );

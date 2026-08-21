@@ -35,6 +35,11 @@ export function isValidRoomId(value: string): boolean {
   return roomCodeSchema.safeParse(value).success;
 }
 
+export function roomRouteFromInput(value: string): string | null {
+  const roomId = value.trim();
+  return isValidRoomId(roomId) ? `/r/${roomId}` : null;
+}
+
 export function isHostRoomExpired(
   room: HostRoomIdentity,
   now = Date.now(),
