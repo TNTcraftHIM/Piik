@@ -413,15 +413,18 @@ unchanged severe or relative pair advances its own streak. Healthy or ambiguous
 correlated windows clear it. A Viewer or parent session,
 connection ID, route revision or parent identity change also resets it, as does
 an evidence gap over five seconds. Severe and relative-FPS evidence each open at
-most one peer-to-peer make-before-break attempt. Its v1 parent is an ordinary
-Viewer whose active upstream is peer; Host and SFU-root provisional children
-remain later work, and their exclusion does not stop enumeration. The old active edge and its
-connection ID remain authoritative while the candidate uses a separate exact
-identity. The Viewer sends prepare-ready only after positive current-candidate
+most one peer-to-peer make-before-break attempt. The candidate is a Viewer whose
+active upstream is peer or SFU, whose session/share/revision are current, and
+whose effective relay capacity has one strict spare slot; Host remains excluded.
+The candidate parent holds one provisional child `HostPeer` outside its active
+child IDs/map. The old active edge and its connection ID remain authoritative
+while the candidate uses a separate exact identity. The Viewer sends prepare-ready only after positive current-candidate
 RTP and decoded-frame progress plus a live video track; only then does the server
-commit the planned topology and promote the candidate connection ID. A failure
-after prepare-ready retains that exact identity until matching active authority
-is failed or rollback clears it. An unrelated authoritative route failure first
+commit the planned topology and promote the same provisional PC plus candidate
+connection ID. A failure after prepare-ready retains that exact identity across
+repeated matching active updates, where the candidate parent stays fail-closed
+without originating `route-failed`; the target Viewer's probe owns recovery.
+Rollback clears the identity. An unrelated authoritative route failure first
 aborts the soft probe and then immediately resumes its ordinary ladder. Failure,
 timeout, stale identity, or no eligible peer keeps the old active edge and does
 not start SFU, TURN, an error, or another migration. A started attempt creates

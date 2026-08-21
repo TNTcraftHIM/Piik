@@ -982,6 +982,272 @@ describe("HostPeer source replacement", () => {
 });
 
 describe("ViewerRelay downstream ownership", () => {
+  it("promotes the exact prepared child connection without touching active children", async () => {
+    const signals: Array<{ peerId: string; connectionId: string }> = [];
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId, payload) => {
+          signals.push({ peerId, connectionId: payload.connectionId });
+          return true;
+        },
+      },
+    );
+    relay.setChildren(["active-child"]);
+    relay.setStream(createStream(createTrack("video", "prepared-video"), null));
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const activeConnection = FakePeerConnection.latest!;
+    activeConnection.connectionState = "connected";
+
+    expect(
+      relay.prepareChild(7, ["active-child", "prepared-child"]),
+    ).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    const preparedConnection = FakePeerConnection.latest!;
+    const preparedConnectionId = signals[1]!.connectionId;
+    expect(preparedConnection).not.toBe(activeConnection);
+    expect(relay.getSnapshot("prepared-child")).toBeNull();
+    expect(FakePeerConnection.activeCount).toBe(2);
+    expect(
+      relay.getSignalRouteRevision(
+        "active-child",
+        signals[0]!.connectionId,
+        6,
+      ),
+    ).toBe(6);
+
+    await expect(
+      relay.acceptSignal("prepared-child", {
+        kind: "description",
+        connectionId: "wrong-connection",
+        description: { type: "answer", sdp: "wrong-answer" },
+      }, 7),
+    ).resolves.toBe(false);
+    await expect(
+      relay.acceptSignal("prepared-child", {
+        kind: "description",
+        connectionId: preparedConnectionId,
+        description: { type: "answer", sdp: "right-answer" },
+      }, 6),
+    ).resolves.toBe(false);
+    const preparedRevision = relay.getSignalRouteRevision(
+      "prepared-child",
+      preparedConnectionId,
+      6,
+    );
+    expect(preparedRevision).toBe(7);
+    const candidate = { candidate: "prepared-candidate" };
+    await expect(
+      relay.acceptSignal("prepared-child", {
+        kind: "candidate",
+        connectionId: preparedConnectionId,
+        candidate,
+      }, preparedRevision),
+    ).resolves.toBe(true);
+    expect(preparedConnection.addedIceCandidates).toEqual([]);
+    await expect(
+      relay.acceptSignal("prepared-child", {
+        kind: "description",
+        connectionId: preparedConnectionId,
+        description: { type: "answer", sdp: "right-answer" },
+      }, preparedRevision),
+    ).resolves.toBe(true);
+    expect(preparedConnection.remoteDescription?.sdp).toBe("right-answer");
+    expect(preparedConnection.addedIceCandidates).toEqual([candidate]);
+
+    preparedConnection.connectionState = "connected";
+    relay.activateChildren(7, ["active-child", "prepared-child"]);
+    expect(FakePeerConnection.latest).toBe(preparedConnection);
+    expect(FakePeerConnection.activeCount).toBe(2);
+    expect(relay.getSnapshot("prepared-child")?.connectionId).toBe(
+      preparedConnectionId,
+    );
+    expect(activeConnection.connectionState).toBe("connected");
+    relay.dispose();
+  });
+
+  it("cleans prepared children on failure, replacement, rollback, session reset, and share stop", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+    relay.setChildren(["active-child"]);
+    relay.setStream(createStream(createTrack("video", "rollback-video"), null));
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
+    const activeConnection = FakePeerConnection.latest!;
+    activeConnection.connectionState = "connected";
+
+    expect(relay.prepareChild(7, ["active-child", "first-probe"])).toBe(true);
+    const firstProbe = FakePeerConnection.latest!;
+    expect(relay.prepareChild(8, ["active-child", "second-probe"])).toBe(true);
+    const secondProbe = FakePeerConnection.latest!;
+    expect(firstProbe.connectionState).toBe("closed");
+    relay.activateChildren(9, ["active-child"]);
+    expect(secondProbe.connectionState).toBe("closed");
+    expect(activeConnection.connectionState).toBe("connected");
+
+    FakePeerConnection.offersFailing = 1;
+    const instancesBeforeFailure = FakePeerConnection.instances.length;
+    expect(relay.prepareChild(10, ["active-child", "failed-probe"])).toBe(true);
+    const failedProbe = FakePeerConnection.latest!;
+    await vi.waitFor(() => expect(failedProbe.connectionState).toBe("closed"));
+    expect(FakePeerConnection.instances).toHaveLength(instancesBeforeFailure + 1);
+    expect(activeConnection.connectionState).toBe("connected");
+
+    expect(relay.prepareChild(11, ["active-child", "session-probe"])).toBe(true);
+    const sessionProbe = FakePeerConnection.latest!;
+    relay.discardPreparedChild();
+    expect(sessionProbe.connectionState).toBe("closed");
+    expect(activeConnection.connectionState).toBe("connected");
+
+    expect(relay.prepareChild(12, ["active-child", "stopped-probe"])).toBe(true);
+    const stoppedProbe = FakePeerConnection.latest!;
+    relay.stop();
+    expect(stoppedProbe.connectionState).toBe("closed");
+    expect(activeConnection.connectionState).toBe("closed");
+    relay.dispose();
+  });
+
+  it("fails closed when the committed prepared connection already failed", async () => {
+    const signals: Array<{ peerId: string; connectionId: string }> = [];
+    let rejectSignalsFor: string | null = null;
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId, payload) => {
+          signals.push({ peerId, connectionId: payload.connectionId });
+          return peerId !== rejectSignalsFor;
+        },
+      },
+    );
+    relay.setChildren(["active-child"]);
+    relay.setStream(createStream(createTrack("video", "failed-active-video"), null));
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const activeConnection = FakePeerConnection.latest!;
+    activeConnection.connectionState = "connected";
+
+    rejectSignalsFor = "failed-child";
+    expect(relay.prepareChild(7, ["active-child", "failed-child"])).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    const failedConnectionId = signals[1]!.connectionId;
+    const failedConnection = FakePeerConnection.latest!;
+    await vi.waitFor(() => expect(failedConnection.connectionState).toBe("closed"));
+    const instanceCount = FakePeerConnection.instances.length;
+    expect(relay.prepareChild(7, ["active-child", "failed-child"])).toBe(false);
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+
+    relay.setChildren(["active-child", "failed-child"]);
+    relay.activateChildren(7, ["active-child", "failed-child"]);
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+    expect(FakePeerConnection.activeCount).toBe(1);
+    expect(activeConnection.connectionState).toBe("connected");
+    relay.setChildren(["active-child", "failed-child"]);
+    relay.activateChildren(7, ["active-child", "failed-child"]);
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+    expect(signals).toHaveLength(2);
+    expect(signals[1]!.connectionId).toBe(failedConnectionId);
+    relay.dispose();
+  });
+
+  it("keeps the prepared connection when its stream replacement succeeds", async () => {
+    const signals: Array<{ peerId: string; connectionId: string }> = [];
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId, payload) => {
+          signals.push({ peerId, connectionId: payload.connectionId });
+          return true;
+        },
+      },
+    );
+    relay.setChildren(["active-child"]);
+    relay.setStream(createStream(createTrack("video", "initial-video"), null));
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const activeConnection = FakePeerConnection.latest!;
+    activeConnection.connectionState = "connected";
+    expect(relay.prepareChild(7, ["active-child", "prepared-child"])).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    const preparedConnection = FakePeerConnection.latest!;
+    const preparedConnectionId = signals[1]!.connectionId;
+    const instanceCount = FakePeerConnection.instances.length;
+
+    const replacementVideo = createTrack("video", "replacement-video");
+    relay.setStream(createStream(replacementVideo, null));
+    await vi.waitFor(() =>
+      expect(preparedConnection.senders[0]!.track).toBe(replacementVideo),
+    );
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+    preparedConnection.connectionState = "connected";
+    relay.activateChildren(7, ["active-child", "prepared-child"]);
+    expect(relay.getSnapshot("prepared-child")?.connectionId).toBe(
+      preparedConnectionId,
+    );
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+    relay.dispose();
+  });
+
+  it("retains failed replacement identity across repeated active updates", async () => {
+    const signals: Array<{ peerId: string; connectionId: string }> = [];
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId, payload) => {
+          signals.push({ peerId, connectionId: payload.connectionId });
+          return true;
+        },
+      },
+    );
+    relay.setChildren(["active-child"]);
+    relay.setStream(createStream(createTrack("video", "initial-video"), null));
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const activeConnection = FakePeerConnection.latest!;
+    activeConnection.connectionState = "connected";
+    expect(relay.prepareChild(7, ["active-child", "prepared-child"])).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    const preparedConnection = FakePeerConnection.latest!;
+    const preparedConnectionId = signals[1]!.connectionId;
+    preparedConnection.senders[0]!.failNextReplace = true;
+    const instanceCount = FakePeerConnection.instances.length;
+
+    relay.setStream(createStream(createTrack("video", "failed-video"), null));
+    await vi.waitFor(() => expect(preparedConnection.connectionState).toBe("closed"));
+    relay.activateChildren(7, ["active-child", "prepared-child"]);
+    relay.activateChildren(7, ["active-child", "prepared-child"]);
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+    expect(FakePeerConnection.activeCount).toBe(1);
+    expect(activeConnection.connectionState).toBe("connected");
+    expect(signals).toHaveLength(2);
+    expect(signals[1]!.connectionId).toBe(preparedConnectionId);
+    relay.dispose();
+  });
+
+  it("admits one provisional child only while the one-through-three cap has room", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+    relay.setStream(createStream(createTrack("video", "cap-video"), null));
+    for (let count = 1; count <= 3; count += 1) {
+      const children = Array.from({ length: count }, (_, index) => `child-${index}`);
+      expect(relay.prepareChild(count, children)).toBe(true);
+      const preparedConnection = FakePeerConnection.latest!;
+      preparedConnection.connectionState = "connected";
+      relay.activateChildren(count, children);
+      expect(FakePeerConnection.activeCount).toBe(count);
+    }
+    expect(
+      relay.prepareChild(4, ["child-0", "child-1", "child-2", "child-3"]),
+    ).toBe(false);
+    expect(FakePeerConnection.activeCount).toBe(3);
+    relay.dispose();
+  });
+
   it("reconciles three children without ever opening a fourth edge", async () => {
     const targets: string[] = [];
     const relay = new ViewerRelay(
