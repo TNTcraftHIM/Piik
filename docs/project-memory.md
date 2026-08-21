@@ -31,8 +31,8 @@ Last updated: 2026-08-21
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
-- Web requests window audio and offers system audio for full displays; both are browser hints. Returned tracks use the `music` hint. Native Win11 process audio stays source-only; one Viewer got 495 Opus packets.
-- Presence is control-plane-only and exposes the exact active upstream for Host diagnostics; it does not create media. Web Host names stay socket/localStorage-only; Native remains outside the capability boundary.
+- Web window/system-audio requests are browser hints; tracks use `music`. P2P/relay/SFU senders request 128,000 bit/s and SFU disables DTX; this is a ceiling, not a quality/stereo guarantee. Native Win11 process audio stays source-only; one Viewer got 495 Opus packets.
+- Presence reports exact active upstream and feeds the on-demand Host topology; it never creates media. Details label P2P/SFU and show TURN only for an actual relay. Web Host names stay socket/localStorage-only; Native remains outside the boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
 
@@ -43,18 +43,15 @@ Last updated: 2026-08-21
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production at `https://share.bonfire.icu` is exact `ecc794d6f01ff8e90cc07a267d221daaac8da9e1`; artifact 951,317 bytes, SHA-256 `22c82d0e06f34abb746ee9e652821deebeea0174643b31ec6e21e159933f5431`. Cutover took 2,646.166 ms lock/425.531 ms stop-health/364.286 ms switch-health. Rollback is exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767`; `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` is secondary.
-- `main` is ahead only in non-runtime gate/export, tooling, and docs work. Windows Native stays source-only; Host-ingress retry and the per-room selected-last-mile cap are deployed.
-- The four services are active/running with observed `NRestarts=0`; local/public health are 200. SQLite v3 has five rooms including room `1`, with DB owner/mode `screener:screener`/0600.
-- Production ordinary ICE is STUN-only; all-room config is SFU roots <=2, one selected-edge UDP tuple/TTL 120, and at most one pending/answered `peer-selected` per room excluding Host ingress. The `ecc794d` rollout ran no browser/media/TURN canary; an earlier exact-`16f6eab` canary used production LiveKit/coturn without app/DB writes and proved active Host ingress only.
+- Production at `https://share.bonfire.icu` is exact `6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137`; its 957,434-byte artifact SHA-256 is `89ff05dbd4d642ed8364a1e230b26b6f4e1dab5a879a0d40a14364e3a26a5cf7`. Cutover was 2,755.457 ms lock/551.381 ms stop-health/478.335 ms switch-health. Rollbacks are `ecc794d`, then `16f6eab` and `22119b9`.
+- Active SFU Viewers use LiveKit state/stats, not P2P waiting/ICE-unknown placeholders. Exact route/topology and `balanced` defaults are deployed. Windows Native stays source-only.
+- Four services are active/running at `NRestarts=0`; local/public health are 200. SQLite v3 has five rooms, SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600.
+- Production keeps ordinary ICE STUN-only, SFU roots <=2, selected-edge UDP TTL 120, and one pending/answered `peer-selected` attempt per room excluding Host ingress. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` evidence proves active Host ingress only.
 - Production requires the independent site-access secret through `SITE_ACCESS_PASSWORD`. Its stateless cookie authorizes creation/Host and permits code-only Viewer attempts; valid private fragment grants remain direct. Public-watch accepts site access plus code, while private code-only entry additionally requires the room password. The env, endpoint, cookie, and nginx limiter naming migrated atomically; anonymous failures stay neutral, and there are no accounts/JWT/session rows.
 - Production uses nginx, Node.js 24.19.0, coturn 4.17.2, and LiveKit 1.13.5 on UDP 7882 (TCP fallback off). Ordinary peer ICE receives no TURN; the selected-edge tuple is configured only for the current controller edge, with no credential pre-advertised to ordinary peers. Coturn retains the old authenticated-relay ports. Services are healthy with zero restarts.
 - ADR-0005 rejects `PEER_ASSISTED_ROOM_IDS`; `PEER_ASSISTED_MEDIA=true` enables every room and ordinary peers stay STUN-only. Initial or active Host ingress may consume one bound relay-only grant; ready/abort clears it and failure restores peer baseline. Stale room-ID config fails startup; `screener-v2` is the only deployed wire.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
-- Chrome 151 synthetic topology/quality runs kept fanout 2/1 and decoding; one relay close recovered in 5.32 seconds. Control evidence only.
 - Deployed Web uses LiveKit 2.22.0 `q,h`. Chrome 151 proves local SFU/UDP and, separately, active selected TURN/UDP Host ingress against production media services with Viewer frame progress and clean stop. Initial/peer-selected relay, BWE, and C+B remain open.
-- C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
-- Web names, window/system-audio picker hints, audio `music`, interval A/V loss%, and audio codec/format/bitrate/jitter are deployed. Native WGC/MF stays source-only: 203 rendered frames, 500 Opus packets, matched PID/LUID `VideoEncode`. VP8 remains default.
 
 ## Provisional Quality Targets
 
