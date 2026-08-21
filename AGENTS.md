@@ -60,6 +60,7 @@
 ## Engineering Workflow
 
 - Apply Occam's razor: choose the simplest design that satisfies the verified requirement, and stop there. Avoid over-engineering for hypothetical scale or future features.
+- Treat new observations and follow-up ideas as queued input: record them in the owning requirement, design, research, or status document, then continue the active milestone. Interrupt current work only when the user explicitly requests immediate investigation or the new evidence reveals a P0 blocker.
 - Keep changes scoped and preserve unrelated user work.
 - Prefer the smallest proven extension point; do not add speculative frameworks, hooks, or abstractions without a current consumer.
 - Add automated tests in proportion to behavioral risk. Block the current phase on P0 security, privacy, irreversible data, authorization, generation, bounded-resource, and rollback failures, plus P1 failures of the milestone's core user path. Record or cover P2/P3 rare environments, diagnostic detail, and minor UI edges cheaply without turning them into canary blockers unless they can cause P0 harm. Use high-repeat race runs only for a reproduced concurrency failure. For realtime media changes, also document the manual network and browser matrix used.

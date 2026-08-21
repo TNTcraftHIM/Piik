@@ -52,6 +52,7 @@
 - 文档改动默认只运行 Markdown/链接/whitespace/diff 检查；不为与运行时代码无关的改动重跑 npm 全套或媒体基准。
 - 在 `status.md`、调研或 ADR 中记录昂贵验证对应的 commit、环境、结果和适用边界，PR 可以引用该记录，使后续工作能判断证据是否仍有效，而不是机械重跑。
 - 发布、安全边界、数据库迁移和部署切换仍按其风险执行必要的最终门禁；“批量验证”不是跳过会被当前变更影响的检查。
+- `gate:*` 只承载当前验收确实需要的正确性、安全、协议或资源上限；`probe:*` 是可选研究入口，不进入 Web 验收。localhost synthetic loopback 可记录诊断耗时，但不能用该耗时判定产品性能、标定阈值或阻断可逆标准能力。
 
 ## 阶段验收后的有界架构收敛
 
@@ -62,7 +63,7 @@
 - `src/server/hybrid-media-router.ts`：约 1,605 行；
 - `src/client/pages/HostPage.tsx`：约 1,455 行；
 - `src/server/signaling.ts`：约 1,057 行；
-- `scripts/peer-assisted-benchmark.ts`：约 2,049 行。
+- `scripts/peer-assisted-benchmark.ts`：约 2,271 行，当前入口是仅验证解码、拓扑与两边上限的 `gate:peer-topology-loopback`。
 
 这些总量、分类口径和“产品源码可能净减少 7%-14%”都只是当日待重测的审查假设，不是删除指标、承诺区间或 LOC KPI。文件长度也不单独证明职责错误。正式审查必须先重新读取 `AGENTS.md`、当前 memory/status、需求、相关研究及 [ADR-0004](adr/0004-peer-assisted-media-experiment.md)/[ADR-0005](adr/0005-automatic-hybrid-media-routing.md)，重新统计届时 `main`，明确计数口径，并按消费者和测试把代码分为：
 
@@ -78,7 +79,7 @@
 - `SignalingServer` 是否能只保留认证、WebSocket 分发与薄协调职责；
 - `HybridMediaRouter` 的拓扑计划、SFU grant/lifecycle、intent drain 和广播是否形成可独立验证的自然边界；
 - `HostPage`/`ViewerPage` 的纯媒体编排与展示状态能否适度分离，而不建立新的前端架构层；
-- benchmark 的一次性探针和重复 CDP 逻辑能否收缩，同时保留可重复验收与结果可比性；
+- peer topology loopback 的一次性探针和重复 CDP 逻辑能否收缩，同时保留可重复的正确性边界；
 - 测试 setup/fixtures 能否合并，同时完整保留竞态、鉴权和 host edge 上限覆盖。
 
 不要为了缩短文件机械拆分，也不要引入通用框架、工厂、事件总线或更多状态机。Peer/SFU 代码不能因默认关闭就视为多余：若 canary 和 ADR 门槛支持该路线，则保留并整理；若路线被实测否决或明确替代，则删除失败路径，不长期保留无消费者的负担。
@@ -105,4 +106,4 @@
 - `.githooks/pre-commit` 和 CI 调用 `scripts/check-project-state.sh`；原生 Windows 可运行等价的 `scripts/check-project-state.ps1`。两份入口共享 `scripts/required-project-paths.txt`，检查 whitespace、清单内必需文件的 Git 跟踪状态和上下文文件上限。
 - `.github/workflows/repository-hygiene.yml` 在 push/PR 上运行 tracked POSIX 入口。
 - hook 只做快速、确定、可复现的检查；需要工程判断的内容留给评审和测试。
-- 新脚本必须有明确当前用途、跨平台入口、失败信息和 CI 调用方。没有现实使用者的 hook 或框架不进入仓库。
+- 新脚本必须有明确当前用途、适用平台、失败信息和调用方。可选研究 probe 不要求进入 CI；没有现实使用者的 hook 或框架不进入仓库。

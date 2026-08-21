@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseGateEnvironment, parseGateResult } from "../scripts/turn-allocation-gate";
 
-describe("TURN allocation gate", () => {
+describe("TURN UDP allocation gate", () => {
   it("parses credential input without truncating values containing equals", () => {
     expect(
       parseGateEnvironment(

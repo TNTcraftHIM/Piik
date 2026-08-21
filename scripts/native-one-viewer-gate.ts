@@ -334,6 +334,7 @@ async function main(): Promise<void> {
     failedStage: "preflight",
     stages: {},
     limitations: [
+      "This is an optional Native research probe and is not part of Web acceptance.",
       nativeWindow
         ? "The source is a real animated top-level Chrome window captured through WGC, not a game workload."
         : "The source is a real animated Chrome tab captured through getDisplayMedia, not a game workload.",
