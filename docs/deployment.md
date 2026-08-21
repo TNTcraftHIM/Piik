@@ -20,37 +20,42 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777`
+Production currently runs exact `1331fbddb59fc2b0b99ba9e5ee4848768ae907c8`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. Its immutable source artifact is 604,336 bytes with SHA-256
-`d8a100d3b06e4a566a84cd9556dafa73a6d533360f82b302c62a0f354958403e`;
-the locally built dist artifact is 354,230 bytes with SHA-256
-`58b7149bd390d1a9b0179283b50fc4870433988f8037d5b46504019b8b3c3f30`.
-The 2026-08-21T08:35:20Z UTC cutover held the deployment lock for 2,276.366 ms;
-local health returned 703.625 ms after service stop (562.538 ms after the symlink
+integrity. Its immutable source artifact is 606,386 bytes with SHA-256
+`7defb2c8d813de0576301f011a61cfc45481ce6ff209f14d61d2b9f0096a6a99`;
+the locally built dist artifact is 355,113 bytes with SHA-256
+`f20719d415396e6bc1feb6fba883c3a7ef0c619ba70fe1feafff96c93f8c8740`.
+The 2026-08-21T09:19:09Z UTC cutover held the deployment lock for 848.008 ms;
+local health returned 626.778 ms after service stop (560.282 ms after the symlink
 switch). Screener, LiveKit, coturn, and nginx are active/running with
 observed `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
 service owner/mode `screener:screener`/0600 and SHA-256
 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`.
-The immutable release is `/opt/screener/releases/261e980c3a9f`; backup
-`/opt/screener/backups/261e980c3a9f-precutover-20260821T083520Z` preserves the
+The immutable release is `/opt/screener/releases/1331fbddb59f`; backup
+`/opt/screener/backups/1331fbddb59f-precutover-20260821T091908Z` preserves the
 database, environment, artifact digests, firewall snapshot, and exact previous
-target. Exact `691863e1720ebbee1b5368f29e94f05b3710ccf8` is the immediate rollback
-target; exact `6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137` and
-`ecc794d6f01ff8e90cc07a267d221daaac8da9e1` remain secondary and tertiary.
+target. Exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777` is the immediate rollback
+target; exact `691863e1720ebbee1b5368f29e94f05b3710ccf8` and
+`6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137` remain secondary and tertiary.
 This release keeps one stable SFU subscriber stream, clears unavailable SFU
 video state, stays neutral until current media evidence proves P2P or SFU, and
 labels TURN plus a protocol only from actual local relay stats. Routing remains
 automatic across direct/peer and bounded fallback paths. P2P reapplies the
 selected quality profile after each answer on the same sender; the browser still
-owns degradation. The Host preview notice, shared entry/nickname UI, and two
+owns degradation. P2P/browser-relay offers prefer H.264 through standard codec
+ordering, and SFU publication requests H.264 with backup codec disabled; the
+complete browser list retains negotiated VP8 fallback. The Host preview notice,
+shared entry/nickname UI, and two
 downstream slots per Web
 relay remain deployed; a third child remains rejected. Production
 STUN/SFU/selected-edge configuration and the database were unchanged.
-Fresh exact-source acceptance passed typecheck, 32 test files/470 tests, both
+Fresh exact-source acceptance passed typecheck, 32 test files/473 tests, both
 builds, and repository hygiene. Deployment verified both artifact manifests and
 hashes, one bounded production-only install, runtime imports, `node:sqlite`,
 UTF-8 paths, zero cross-release regular-file inodes, and immutable permissions.
+The public index and all three referenced hashed assets matched the release
+byte-for-byte; the deployment lock was released after the atomic switch.
 This cutover triggered no browser, media, SFU, TURN, or performance canary and
 remains exact-source, build, configuration, and deployment evidence.
 A separate earlier local Screener canary using exact `16f6eab` source and the
@@ -146,7 +151,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `261e980c` release with one
+selected-edge TURN config/wire is deployed in the current `1331fbdd` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 

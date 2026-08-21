@@ -24,7 +24,7 @@ Last updated: 2026-08-21
 - Use direct host P2P for one or two viewers, then the bounded controller for every room when `PEER_ASSISTED_MEDIA=true`. Room `1` is historical smoke, not a runtime gate; resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile evidence remain separate.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
-- Current Web source prefers H.264 through standard ordering, keeps the browser fallback list, and requests SFU H.264 with `backupCodec=false`; VP8 is used only when H.264 is unavailable. This is not a second encoder stack or shared-encode proof. ADR-0006's browser bridge remains no-go.
+- Production Web prefers H.264 through standard ordering, keeps the browser fallback list, and requests SFU H.264 with `backupCodec=false`; VP8 is used only when H.264 is unavailable. This is not a second encoder stack or shared-encode proof. ADR-0006's browser bridge remains no-go.
 - Mobile endpoints are Web Viewer-only. Current Android/iOS browsers do not expose Web Host capture; AirPlay/system mirroring is Viewer-local output.
 - ADR-0005: direct/peer UDP -> bounded SFU roots -> selected-edge TURN. The deployed controller caps pending/answered `peer-selected` at one per room; Host ingress is independent. A pre-`ecc794d` exact-source/production-media canary proves active Host ingress only. Ordinary peers stay STUN-only.
 - The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, one active upstream and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
@@ -43,7 +43,7 @@ Last updated: 2026-08-21
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production is exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777`; source/dist artifacts are 604,336/354,230 bytes, with hashes in deployment; cutover 2,276.366 ms lock/703.625 ms stop-health/562.538 ms switch-health; rollbacks `691863e`, `6634cb9`, `ecc794d`.
+- Production is exact `1331fbddb59fc2b0b99ba9e5ee4848768ae907c8`; source/dist artifacts are 606,386/355,113 bytes, with hashes in deployment; cutover 848.008 ms lock/626.778 ms stop-health/560.282 ms switch-health; rollbacks `261e980`, `691863e`, `6634cb9`.
 - Web keeps one SFU stream, clears unavailable video, exposes evidence-backed routes/transports and paused preview, and drops signals to a grace-retained offline current-edge target. Routing is automatic; entry/nickname UI is live; Native remains source-only.
 - Web relay is cap2 with one upstream; child3 rejects and no UA/visibility split exists.
 - Four services are active/running at `NRestarts=0`; local/public health are 200. SQLite v3 has five rooms, SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600.
