@@ -229,6 +229,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [copied, setCopied] = useState(false);
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
+  const [p2pOnlyDebug, setP2pOnlyDebug] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
   const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
@@ -477,6 +478,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setSignalStatus("offline");
     setSwitchingSource(false);
     setChangingQuality(false);
+    setP2pOnlyDebug(false);
     sharingPausedRef.current = false;
     setSharingPaused(false);
   }
@@ -1197,6 +1199,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           token: activeRoom.hostToken,
           clientId: hostClientId,
           shareGeneration,
+          ...(p2pOnlyDebug ? { debugP2pOnly: true } : {}),
           viewerPresence: true,
           viewerPasswordSettings: true,
           displayName: initialDisplayName,
@@ -1235,6 +1238,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               return;
             }
             if (message.type === "authenticated" && message.role === "host") {
+              setP2pOnlyDebug(
+                "debugP2pOnly" in message && message.debugP2pOnly === true,
+              );
               iceConfigRef.current = message.iceConfig;
               peersRef.current.forEach((peer) =>
                 peer.updateIceConfig(message.iceConfig),
@@ -1816,7 +1822,21 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </fieldset>
 
               <details className="advanced-quality">
-                <summary>高级视频设置</summary>
+                <summary>高级设置</summary>
+                <label className="viewer-policy-toggle">
+                  <input
+                    type="checkbox"
+                    checked={p2pOnlyDebug}
+                    disabled={phase === "starting" || phase === "live"}
+                    onChange={(event) => setP2pOnlyDebug(event.target.checked)}
+                  />
+                  <span>仅测试 P2P</span>
+                </label>
+                {p2pOnlyDebug && (
+                  <WarningBanner>
+                    本次分享不使用 SFU 或 TURN；P2P 路径耗尽后直接报错
+                  </WarningBanner>
+                )}
                 <div className="advanced-quality-grid">
                   <label>
                     <span>分辨率上限</span>

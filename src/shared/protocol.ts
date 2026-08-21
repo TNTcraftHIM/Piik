@@ -483,6 +483,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       token: tokenSchema,
       clientId: opaqueIdSchema,
       shareGeneration: opaqueIdSchema.optional(),
+      debugP2pOnly: z.literal(true).optional(),
       viewerPresence: z.literal(true).optional(),
       viewerPasswordSettings: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
@@ -620,6 +621,7 @@ const authenticatedMessageSchema = z.union([
       routeRevision: mediaRouteRevisionSchema,
       routeAssignment: participantRouteAssignmentSchema,
       qualitySettings: qualitySettingsSchema,
+      debugP2pOnly: z.literal(true).optional(),
       sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
     })
     .strict(),

@@ -435,11 +435,18 @@ export class SignalingServer {
       );
       shareGeneration =
         message.shareGeneration ?? currentGeneration ?? state.sessionId;
-      if (
+      const generationChanged =
         currentGeneration !== undefined &&
-        currentGeneration !== shareGeneration
-      ) {
+        currentGeneration !== shareGeneration;
+      if (generationChanged) {
         this.stopSharing(participant.roomId);
+      }
+      if (currentGeneration === undefined || generationChanged) {
+        this.hybridMediaRouter?.setP2pOnly(
+          participant.roomId,
+          shareGeneration,
+          message.debugP2pOnly === true,
+        );
       }
       this.shareGenerationsByRoom.set(participant.roomId, shareGeneration);
     }
@@ -520,7 +527,14 @@ export class SignalingServer {
         qualitySettings:
           this.qualitySettingsByRoom.get(participant.roomId) ??
           DEFAULT_QUALITY_SETTINGS,
-        ...(this.options.sfuFallback
+        ...(this.hybridMediaRouter?.isP2pOnly(
+          participant.roomId,
+          shareGeneration ?? undefined,
+        )
+          ? { debugP2pOnly: true as const }
+          : {}),
+        ...(this.options.sfuFallback &&
+          !this.hybridMediaRouter?.isP2pOnly(participant.roomId)
           ? { sfuStandbyUrl: this.options.sfuFallback.url }
           : {}),
       });
