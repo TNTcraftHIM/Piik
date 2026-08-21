@@ -1031,6 +1031,13 @@ export class SignalingServer {
     if (!viewerState || viewerState.authenticated !== source) {
       return;
     }
+    const connectedViewer = this.options.roomStore.getConnectedViewer(
+      source.roomId,
+      source.peerId,
+    );
+    if (connectedViewer?.sessionId !== viewerState.sessionId) {
+      return;
+    }
 
     const connectionId = this.connectionIdsByViewer.get(
       viewerConnectionKey(source.roomId, source.peerId),
@@ -1117,6 +1124,23 @@ export class SignalingServer {
         parentSessionId: parent.sessionId,
         evidence: forwarded,
       });
+    }
+
+    const host = this.options.roomStore.getConnectedHost(source.roomId);
+    if (!host || host.sessionId === parent.sessionId) {
+      return;
+    }
+    const hostSocket = this.socketsBySessionId.get(host.sessionId);
+    const hostState = hostSocket
+      ? this.socketStates.get(hostSocket)?.authenticated
+      : undefined;
+    if (
+      hostState?.role === "host" &&
+      hostState.roomId === source.roomId &&
+      hostState.peerId === host.peerId &&
+      hostState.viewerPresence
+    ) {
+      this.sendEncodedToSession(host.sessionId, encoded);
     }
   }
 

@@ -88,7 +88,10 @@ import {
   ParentEdgeQualityEvidenceReporter,
 } from "../media/parent-edge-quality-evidence";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
-import { metricsFromQualityEvidence } from "../media/viewer-quality-evidence";
+import {
+  classifyHostViewerQualityEvidence,
+  metricsFromQualityEvidence,
+} from "../media/viewer-quality-evidence";
 import type {
   PeerSnapshot,
   SignalConnectionState,
@@ -536,19 +539,27 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   function acceptViewerQualityEvidence(evidence: ViewerQualityEvidence): void {
     const peer = peersRef.current.get(evidence.viewerPeerId);
+    const directSnapshot = peer?.getSnapshot() ?? null;
+    const evidenceSource = classifyHostViewerQualityEvidence(
+      evidence,
+      hostPeerIdRef.current,
+      activeRouteRevisionRef.current,
+      directSnapshot,
+    );
     if (
-      !peer ||
-      peer.connectionId !== evidence.guard.connectionId ||
-      evidence.guard.routeRevision !== activeRouteRevisionRef.current
+      !evidenceSource ||
+      (evidenceSource === "peer-relayed" && !peerAssistedRef.current)
     ) {
       return;
     }
-    const parentEvidence = parentEdgeQualityEvidenceReporterRef.current.offer(
-      evidence,
-      peer.getSnapshot(),
-    );
-    if (peerAssistedRef.current && parentEvidence) {
-      signalRef.current?.send(parentEvidence);
+    if (evidenceSource === "direct") {
+      const parentEvidence = parentEdgeQualityEvidenceReporterRef.current.offer(
+        evidence,
+        directSnapshot,
+      );
+      if (peerAssistedRef.current && parentEvidence) {
+        signalRef.current?.send(parentEvidence);
+      }
     }
     const next = new Map(viewerQualityEvidenceRef.current);
     next.set(evidence.viewerPeerId, evidence);

@@ -2686,14 +2686,27 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("derives peer-assisted C routing from the active assignment", async () => {
-    const harness = await startHarness({ peerAssistedMedia: true });
+  it("forwards peer-assisted C to the active parent and opted-in Host", async () => {
+    let now = 50_000;
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      now: () => now,
+    });
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = peerAssisted(
-      await authenticate(host, harness.room, "host", "peer-quality-host"),
+      await authenticate(
+        host,
+        harness.room,
+        "host",
+        "peer-quality-host",
+        1,
+        undefined,
+        { viewerPresence: true },
+      ),
     );
     host.inbox.ignore("route-update");
     host.inbox.ignore("media-assignment");
+    host.inbox.ignore("viewer-presence");
     const viewer = await openClient(harness.webSocketUrl);
     const viewerAuth = peerAssisted(
       await authenticate(
@@ -2813,7 +2826,8 @@ describe("WebSocket signaling", () => {
         ),
       ),
     );
-    expect(await viewer.inbox.next("viewer-quality-evidence")).toMatchObject({
+    const relayedEvidence = await viewer.inbox.next("viewer-quality-evidence");
+    expect(relayedEvidence).toMatchObject({
       viewerPeerId: relayChildAuth.peerId,
       parentPeerId: viewerAuth.peerId,
       guard: {
@@ -2821,6 +2835,31 @@ describe("WebSocket signaling", () => {
         routeRevision: relayChildAuth.routeRevision,
       },
     });
+    expect(await host.inbox.next("viewer-quality-evidence")).toEqual(
+      relayedEvidence,
+    );
+
+    const replaced = harness.roomStore.connectParticipant({
+      roomId: harness.room.roomId,
+      role: "viewer",
+      ...(harness.room.viewerGrant
+        ? { viewerGrant: harness.room.viewerGrant }
+        : {}),
+      clientId: "peer-quality-relay-child",
+      sessionId: "peer-quality-relay-child-replacement-session",
+    });
+    expect(replaced.peerId).toBe(relayChildAuth.peerId);
+    now += 2_000;
+    relayChild.socket.send(
+      JSON.stringify(
+        viewerQualityEvidence(
+          "relay_child_quality_connection",
+          relayChildAuth.routeRevision,
+          1,
+        ),
+      ),
+    );
+    await viewer.inbox.expectNone(30);
     await host.inbox.expectNone(30);
   });
 
