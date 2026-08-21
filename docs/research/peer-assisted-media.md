@@ -201,7 +201,7 @@ integer 15-60 fps, integer 2-12 Mbps, and the three standard degradation
 preferences; missing, extra, or out-of-range fields fail schema validation.
 The three visible presets are recommendations rather than wire IDs. The server
 stores the latest complete object in a room-count-bounded in-memory map,
-defaults to 1080p60 at 8 Mbps with balanced priority, includes it in
+defaults to 1080p60 at 8 Mbps with clarity-first priority, includes it in
 peer-assisted authenticated snapshots, and broadcasts host changes to online
 viewers. The value survives a stopped share, is removed with the room, and is
 not written to SQLite. Ordinary P2P authentication remains unchanged and

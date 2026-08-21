@@ -11,11 +11,14 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-The current bounded implementation retains the game-oriented `motion` hint and
-uses `balanced` for every recommended profile and the advanced-settings initial
-value. Clarity and fluid remain explicit choices. The WebRTC API describes a
-user-agent preference rather than its algorithm, so the browser controls the
-actual degradation and Screener observes the result through readback and stats.
+The user previously accepted `balanced` as the recommended-profile and advanced
+default. Later field feedback reported default blur and apparently overcorrected
+fluid behavior, so the user explicitly superseded that decision: current source
+returns those defaults to clarity-first `maintain-resolution`, while `balanced`
+and `maintain-framerate` remain explicit choices. Independently, the P2P
+answer-time whole-profile workaround rested on confounded evidence and is
+removed below. These preferences still leave actual degradation to the browser;
+Screener observes readback and stats.
 
 The inspected Chromium/libwebrtc source chain makes a screen-only shortcut
 especially unsafe to assume for Screener. The JavaScript `motion` hint reaches
@@ -88,7 +91,7 @@ are ceilings rather than targets. Raising them cannot repair CPU or bandwidth
 limitation and should only follow evidence that the encoder is already pinned
 to the ceiling while spare transport capacity remains.
 
-## Initial Balanced Lifecycle Evidence
+## Confounded Same-Setting Observation
 
 On 2026-08-21 one bounded local Chrome 151 run used exact source `b447ab6`, a
 synthetic 1920x1080 at 60 fps capture, and one direct UDP Viewer. After the
@@ -114,13 +117,12 @@ Static review does not support the simpler claim that Chromium discards every
 pre-negotiation `setParameters()` call. Current libwebrtc stores sender init
 parameters while no SSRC exists and transfers them into the negotiated sender.
 The observed transition followed the same-setting action, but this single run
-cannot attribute it to sender lifecycle or the reapply itself. The bounded
-implementation change refreshes the same video-sender profile after each
-accepted answer, serialized with existing sender mutations. It
-changes no track, PeerConnection, ceiling, degradation preference, or room
-setting and adds no periodic controller. A post-change real-capture P2P check
-must still confirm that the negotiated sender reapply, without a new capture
-generation, clears the reported startup condition.
+cannot attribute it to sender lifecycle or the reapply itself and therefore
+does not support an answer-time whole-profile workaround. Current source keeps
+the pre-offer sender configuration and serialized explicit source/profile
+updates, but an accepted answer itself does not rewrite the profile. A future
+workaround requires a controlled, real-capture reproduction that isolates one
+intervention from stock BWE ramp-up.
 
 This evidence does not justify an SFU change. The current SFU publisher always
 publishes the ordered `q,h` pair when an SFU route is active and configures its
@@ -141,6 +143,48 @@ shared-encoder guarantee; its muted local preview creates no media edge or
 server traffic but may still consume compositor/GPU work. Compare the exact
 release and current `main` under one fixture, with preview on/off as a separate
 binary intervention.
+
+## SFU Profile Lifecycle And Publisher Evidence
+
+A 2026-08-21 report says that selecting fluid preference on an SFU path could
+retain low received FPS without reducing the visible resolution. This is not
+proof that the preference was ignored: `maintain-framerate` is a degradation
+tradeoff rather than an FPS target. It is also not evidence of SFU temporal
+downlayering on Screener's current H.264 `q,h` publication. Pinned LiveKit
+server 1.13.5 installs a temporal selector for VP8, but its H.264/H.265 path
+installs only the simulcast spatial selector. A `HIGH` ceiling may therefore
+let current H.264 BWE choose the lower-resolution `q` representation, not a
+lower temporal layer at the same resolution. When resolution remains stable,
+classify the case in A/B/C order: capture FPS, Host publisher outbound FPS and
+limitation, then Viewer inbound FPS and decode.
+
+Pinned LiveKit client 2.22.0 keeps three relevant pieces of state. Its public
+`LocalVideoTrack.setDegradationPreference()` updates the saved preference used
+when a sender is installed; `LocalVideoTrack.publishOptions` drives encoding
+recomputation after a track restart; and `LocalTrackPublication.options` is the
+input to `republishAllTracks()`. The previous Screener update path configured
+the raw sender and replaced only `track.publishOptions`, so a later SDK
+republish could read the initial publication preference. The bounded fix uses
+the existing publisher operation queue and rollback: call the SDK preference
+API to update its saved state, configure/read back the current `q,h` sender as
+the final write, then assign one merged option object to both retained
+locations. Failure reapplies the previous profile; generation loss cannot
+retain the result as current publisher state. This changes no capture
+constraint, codec, representation, subscriber layer or route policy and does
+not explain an immediate same-publication report.
+
+Host SFU publisher A+B remains a separate observability slice. The smallest
+design is one two-second, publication-generation-bound local sampler owned by
+`SfuPublisher`: merge its video/audio `LocalTrack` reports, reuse the existing
+strict stats parser and accumulator, correlate capture settings from the owned
+video track, and emit only while the same publication is active. Activation,
+replacement, deactivation and disconnect reset its identity and interval
+baseline. `HostSfuRoute` may expose that local snapshot to one Host-only
+publisher row; it must not duplicate the shared Host-to-SFU ingress inside each
+SFU Viewer card. Viewer inbound remains the per-Viewer C signal. This needs no
+wire, server telemetry, global score, selector or new UI framework, but crosses
+publisher sampling, route ownership and Host rendering and therefore is not
+bundled into the lifecycle repair.
 
 ## Codec Preference And Evidence Boundary
 
@@ -375,9 +419,12 @@ encoder, CPU work, or GPU allocation.
 
 Pinned LiveKit 2.22.0 can publish screen-share original plus one lower
 simulcast encoding. `RemoteTrackPublication.setVideoQuality(HIGH)` sets a
-per-subscriber spatial-quality ceiling. Server 1.13.5 maps quality, dimensions,
-and FPS to maximum spatial/temporal layers and can adapt each SFU downtrack to
-its own bandwidth and recover it independently. Server Dynacast
+per-subscriber spatial-quality ceiling. Server 1.13.5 derives requested
+spatial/temporal maxima from quality, dimensions and FPS, but applies them
+through codec-specific selectors: VP8 has temporal selection, while H.264/H.265
+simulcast is spatial-only. The current H.264 candidate can adapt each SFU
+downtrack between `q,h` spatial representations and recover it independently.
+Server Dynacast
 takes the maximum quality requested across subscribers and subscriber nodes,
 then enables every quality at or below that maximum; a `HIGH` root therefore
 keeps `LOW` active. That prevents dynamic `LOW` stop while `HIGH` is subscribed,
@@ -484,9 +531,11 @@ as boundaries, not UA quality rankings:
 Pinned LiveKit can select layers per SFU subscriber: client 2.22.0 exposes
 `RemoteTrackPublication.setVideoQuality()`, and server 1.13.5 maps each
 subscriber's quality/dimensions/FPS to maximum spatial/temporal layers on that
-subscriber's downtrack. That useful SFU contract still does not extend to
-direct/peer receivers. Screener's current SFU subscriber calls only
-`setSubscribed(true)`, so it does not own a layer choice today.
+subscriber's downtrack. The actual selector remains codec-dependent: VP8 has a
+temporal selector, whereas H.264/H.265 simulcast is spatial-only. That useful
+SFU contract still does not extend to direct/peer receivers. Screener's current
+SFU subscriber calls only `setSubscribed(true)`, so it does not own a layer
+choice today.
 
 For this screen-share product the pin has an additional hard mismatch. Client
 2.22.0 overwrites SVC screen-share publication to `L1T3`, even when another
@@ -550,8 +599,9 @@ resolution, frame rate, or bitrate.
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
 - The video track keeps `contentHint = "motion"`; recommended profiles and the
-  advanced initial value use `balanced`, with explicit `maintain-resolution`
-  and `maintain-framerate` choices. None promises an emitted resolution or rate.
+  advanced initial value use clarity-first `maintain-resolution`, with explicit
+  `balanced` and `maintain-framerate` choices. None promises an emitted
+  resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
 - The folded advanced panel accepts only 720p/1080p/1440p, integer 15-60 fps,
@@ -565,10 +615,9 @@ resolution, frame rate, or bitrate.
 - Every sender update derives from `getParameters()`, calls `setParameters()`,
   then reads requested/applied bitrate, frame rate, scale, and preference.
   Rejection or browser rewriting is visible rather than console-only.
-- A P2P sender receives that update before its first offer and once more after
-  each accepted answer. The negotiated reapply uses the current selected
-  profile and existing sender; it neither rebuilds the connection nor changes
-  the browser-owned degradation decision.
+- A P2P sender receives its profile before the first offer. Explicit source or
+  profile changes use the existing serialized sender-mutation path; accepting
+  an answer does not trigger an extra whole-profile write.
 - One strict room setting is last-wins for current/future peer relays and the
   configured SFU publisher. Ordinary P2P keeps that state local and does not add
   it to the authenticated wire.
@@ -626,9 +675,9 @@ manifest for time series and percentiles rather than adding a server telemetry
 pipeline.
 
 Compare image readability and motion continuity instead of declaring success
-from FPS alone. If reproducible evidence later shows that `balanced` still
-oscillates or makes the wrong tradeoff on supported machines, revise the fixed
-profiles before enabling ADR-0007. Its acceptance matrix must prove that built-in
+from FPS alone. If reproducible evidence later shows a supported preference
+oscillates or makes the wrong tradeoff on supported machines, revise that
+explicit option before enabling ADR-0007. Its acceptance matrix must prove that built-in
 LiveKit BWE independently moves one shaped SFU leaf to the shared `LOW` and back
 while a healthy leaf remains `HIGH`, without an application media selector. The
 application's asymmetric evidence windows must affect only confirmed topology
@@ -673,12 +722,13 @@ is a separate optimization.
 - [LiveKit degradation defaults](https://github.com/livekit/client-sdk-js/blob/main/src/room/participant/publishUtils.ts)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit client 2.22.0 SVC defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
-- [LiveKit client 2.22.0 screen-share SVC override](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
+- [LiveKit client 2.22.0 screen-share SVC and republish lifecycle](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
 - [LiveKit client 2.22.0 start-bitrate negotiation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/PCTransport.ts)
 - [LiveKit client 2.22.0 SVC encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit client 2.22.0 subscriber quality control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/RemoteTrackPublication.ts)
 - [LiveKit server 1.13.5 per-subscriber layer application](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscribedtrack.go)
-- [LiveKit client 2.22.0 Dynacast layer control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
+- [LiveKit server 1.13.5 codec-specific layer selectors](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
+- [LiveKit client 2.22.0 Dynacast and saved degradation preference](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
 - [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
 - [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
 - [LiveKit server 1.13.5 release assets and checksums](https://github.com/livekit/livekit/releases/tag/v1.13.5)

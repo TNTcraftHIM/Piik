@@ -179,7 +179,7 @@ export const DEFAULT_QUALITY_SETTINGS = {
   resolution: "1080p",
   maxFramerate: 60,
   maxBitrate: 8_000_000,
-  degradationPreference: "balanced",
+  degradationPreference: "maintain-resolution",
 } as const satisfies QualitySettings;
 
 export const relayDownstreamEdgesSchema = z.union([

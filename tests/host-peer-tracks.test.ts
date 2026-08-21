@@ -524,39 +524,34 @@ describe("HostPeer source replacement", () => {
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });
 
-  it("reapplies the selected video profile after the answer", async () => {
+  it("accepts an answer without reapplying the selected profile", async () => {
     const video = createTrack("video", "video");
-    const audio = createTrack("audio", "audio");
-    const peer = createPeer(createStream(video, audio));
+    const peer = createPeer(createStream(video, createTrack("audio", "audio")));
 
     await expect(peer.start()).resolves.toBe(true);
     const connection = FakePeerConnection.latest!;
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
-
+    const pendingCandidate = { candidate: "candidate-before-answer" };
+    await peer.acceptSignal({
+      kind: "candidate",
+      connectionId: peer.connectionId,
+      candidate: pendingCandidate,
+    });
+    expect(connection.addedIceCandidates).toEqual([]);
     await peer.acceptSignal({
       kind: "description",
       connectionId: peer.connectionId,
       description: { type: "answer", sdp: "test-answer" },
     });
 
-    expect(connection.remoteDescription).toMatchObject({
-      type: "answer",
-      sdp: "test-answer",
-    });
+    expect(connection.remoteDescription?.type).toBe("answer");
+    expect(connection.addedIceCandidates).toEqual([pendingCandidate]);
     expect(connection.senders[0]?.track).toBe(video);
-    expect(connection.senders[0]?.replaceTrack).not.toHaveBeenCalled();
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
-    expect(
-      connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
-    ).toMatchObject({
-      degradationPreference: "balanced",
-      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
-    });
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
   });
 
@@ -632,7 +627,7 @@ describe("HostPeer source replacement", () => {
 
     expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
     expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });

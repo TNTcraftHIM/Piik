@@ -157,8 +157,9 @@ export class SfuPublisher {
           video,
           profile,
           sdk,
+          () => this.owns(room, generation),
         );
-        if (!this.owns(room, generation)) {
+        if (!videoConfiguration || !this.owns(room, generation)) {
           return false;
         }
 
@@ -292,8 +293,9 @@ export class SfuPublisher {
           previousVideo,
           profile,
           sdk,
+          () => this.owns(room, generation),
         );
-        if (!this.owns(room, generation)) {
+        if (!videoConfiguration || !this.owns(room, generation)) {
           return false;
         }
         previousVideo.rawTrack = nextVideoTrack;
@@ -337,8 +339,9 @@ export class SfuPublisher {
               previousVideo,
               profile,
               sdk,
+              () => this.owns(room, generation),
             );
-            if (!this.owns(room, generation)) {
+            if (!videoConfiguration || !this.owns(room, generation)) {
               return false;
             }
             this.senderParameters = videoConfiguration.readback;
@@ -377,8 +380,9 @@ export class SfuPublisher {
           video,
           profile,
           sdk,
+          () => this.owns(room, generation),
         );
-        if (!this.owns(room, generation)) {
+        if (!videoConfiguration || !this.owns(room, generation)) {
           return false;
         }
         this.profile = profile;
@@ -397,8 +401,9 @@ export class SfuPublisher {
             video,
             previousProfile,
             sdk,
+            () => this.owns(room, generation),
           );
-          if (!this.owns(room, generation)) {
+          if (!videoConfiguration || !this.owns(room, generation)) {
             return false;
           }
           this.senderParameters = videoConfiguration.readback;
@@ -553,17 +558,35 @@ async function configurePublishedVideo(
   published: PublishedTrack,
   profile: QualityProfile,
   sdk: LiveKit,
-): Promise<PublishedVideoConfiguration> {
+  ownsPublication: () => boolean,
+): Promise<PublishedVideoConfiguration | null> {
   const videoTrack = published.publication.videoTrack;
   const sender = videoTrack?.sender;
   if (!sender) {
     throw new Error("SFU video publication has no RTP sender");
   }
+  const previousPreference = videoTrack.publishOptions?.degradationPreference;
+  await videoTrack.setDegradationPreference(profile.degradationPreference);
+  if (!ownsPublication()) {
+    if (previousPreference) {
+      await videoTrack.setDegradationPreference(previousPreference);
+    }
+    return null;
+  }
   const readbacks = await configureTwoLayerVideoSender(sender, profile);
-  videoTrack.publishOptions = {
+  if (!ownsPublication()) {
+    if (previousPreference) {
+      await videoTrack.setDegradationPreference(previousPreference);
+    }
+    return null;
+  }
+  const retainedPublishOptions = {
+    ...published.publication.options,
     ...videoTrack.publishOptions,
     ...videoPublishOptions(sdk, profile),
   };
+  published.publication.options = retainedPublishOptions;
+  videoTrack.publishOptions = retainedPublishOptions;
   const highWarning = senderParameterWarning(readbacks.high);
   const lowWarning = senderParameterWarning(readbacks.low);
   return {

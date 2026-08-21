@@ -148,13 +148,15 @@ evidence windows remain limited to topology eligibility and diagnostics:
 2. **Pinned LiveKit two-layer simulcast: implemented; acceptance remains open.**
    Client 2.22.0 can publish a screen-share original plus one lower simulcast
    encoding. `RemoteTrackPublication.setVideoQuality(HIGH)` sets a per-subscriber
-   spatial-quality ceiling. Server 1.13.5 maps quality, dimensions, and FPS to
-   maximum spatial/temporal layers and can adapt each SFU downtrack to its own
-   bandwidth and recover it independently. Server Dynacast
-   takes the maximum requested quality and enables every quality at or below
-   it, so any `HIGH` root keeps `LOW` active. That cumulative behavior prevents
-   dynamic `LOW` stop while `HIGH` is subscribed, but dynamic stop is now an
-   optimization rather than a hard requirement.
+   spatial-quality ceiling. Server 1.13.5 derives requested spatial/temporal
+   maxima from quality, dimensions and FPS, but actual selection is
+   codec-specific: VP8 has temporal selection, while H.264/H.265 simulcast is
+   spatial-only. The current H.264 candidate can adapt each SFU downtrack
+   between `q,h` spatial representations and recover it independently. Server
+   Dynacast takes the maximum requested quality and enables every quality at or
+   below it, so any `HIGH` root keeps `LOW` active. That cumulative behavior
+   prevents dynamic `LOW` stop while `HIGH` is subscribed, but dynamic stop is
+   now an optimization rather than a hard requirement.
 
    The candidate therefore publishes exactly `HIGH+LOW` with standard
    simulcast/send encodings, leaves each LiveKit root's ceiling at `HIGH`, and
@@ -198,10 +200,12 @@ evidence windows remain limited to topology eligibility and diagnostics:
    layers, so it provides no low-resolution base and exceeds this product's
    two-active-layer ceiling. Its `RemoteTrackPublication.setVideoQuality()`
    controls per-subscriber spatial quality, while server 1.13.5 maps
-   quality/dimensions/FPS to maximum spatial/temporal layers. That selection
-   exists only on an SFU downtrack; it does not extend to
-   Screener's direct/peer receivers. The current subscriber only requests the
-   publication, and LiveKit documents that Dynacast can pause an entire SVC
+   quality/dimensions/FPS to requested spatial/temporal maxima. Actual selection
+   remains codec-dependent: VP8 has a temporal selector, whereas H.264/H.265
+   simulcast is spatial-only. That selection exists only on an SFU downtrack;
+   it does not extend to Screener's direct/peer receivers. The current
+   subscriber only requests the publication, and LiveKit documents that
+   Dynacast can pause an entire SVC
    stream but not individual SVC layers. Chrome ships the outgoing-track API;
    current Firefox and WebKit WebIDL do not expose the standard
    `scalabilityMode` member, and Firefox's implementation remains behind a

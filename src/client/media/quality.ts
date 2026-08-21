@@ -22,13 +22,13 @@ export const QUALITY_PROFILES = {
     resolution: "1080p",
     maxFramerate: 30,
     maxBitrate: 5_000_000,
-    degradationPreference: "balanced",
+    degradationPreference: "maintain-resolution",
   },
   "720p30": {
     resolution: "720p",
     maxFramerate: 30,
     maxBitrate: 3_000_000,
-    degradationPreference: "balanced",
+    degradationPreference: "maintain-resolution",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 

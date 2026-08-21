@@ -41,11 +41,14 @@ target; exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777` and
 This release keeps one stable SFU subscriber stream, clears unavailable SFU
 video state, stays neutral until current media evidence proves P2P or SFU, and
 labels TURN plus a protocol only from actual local relay stats. Routing remains
-automatic across direct/peer and bounded fallback paths. P2P reapplies the
-selected quality profile after each answer on the same sender; the browser still
-owns degradation. P2P/browser-relay offers prefer H.264 through standard codec
-ordering, and SFU publication requests H.264 with backup codec disabled; the
-complete browser list retains negotiated VP8 fallback. The Host preview notice,
+automatic across direct/peer and bounded fallback paths. This exact deployed
+release reapplies the selected P2P quality profile after each answer; the
+candidate source removes that answer-time workaround because its confounded
+A/B did not establish causality. Until that candidate is deployed, the browser
+still owns degradation under the exact-release behavior. P2P/browser-relay
+offers prefer H.264 through standard codec ordering, and SFU publication
+requests H.264 with backup codec disabled; the complete browser list retains
+negotiated VP8 fallback. The Host preview notice,
 shared entry/nickname UI, and two
 downstream slots per Web
 relay remain deployed; a third child remains rejected. Production

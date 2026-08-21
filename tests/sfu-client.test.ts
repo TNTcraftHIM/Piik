@@ -57,6 +57,8 @@ const livekit = vi.hoisted(() => {
   class FakeLocalTrack {
     currentTrack: MediaStreamTrack;
     readonly sender = new FakeSender();
+    publishOptions?: Record<string, unknown>;
+    savedDegradationPreference: RTCDegradationPreference | null = null;
 
     constructor(track: MediaStreamTrack) {
       this.currentTrack = track;
@@ -65,6 +67,12 @@ const livekit = vi.hoisted(() => {
     readonly replaceTrack = vi.fn(
       async (nextTrack: MediaStreamTrack): Promise<void> => {
         this.currentTrack = nextTrack;
+      },
+    );
+
+    readonly setDegradationPreference = vi.fn(
+      async (preference: RTCDegradationPreference): Promise<void> => {
+        this.savedDegradationPreference = preference;
       },
     );
   }
@@ -83,6 +91,7 @@ const livekit = vi.hoisted(() => {
         options: Record<string, unknown>,
       ) => {
         const localTrack = new FakeLocalTrack(rawTrack);
+        localTrack.publishOptions = options;
         const simulcastLayers = options.screenShareSimulcastLayers;
         const highEncoding = options.screenShareEncoding;
         if (
@@ -123,6 +132,13 @@ const livekit = vi.hoisted(() => {
         return publication;
       },
     );
+
+    republishedOptions: Array<Record<string, unknown>> = [];
+    readonly republishAllTracks = vi.fn(async (): Promise<void> => {
+      this.republishedOptions = this.publications.map((publication) => ({
+        ...publication.options,
+      }));
+    });
 
     readonly unpublishTrack = vi.fn(
       async (_track: FakeLocalTrack, _stopOnUnpublish: boolean) => undefined,
@@ -275,7 +291,7 @@ const qualityProfile = {
   resolution: "1080p",
   maxFramerate: 60,
   maxBitrate: 8_000_000,
-  degradationPreference: "balanced",
+  degradationPreference: "maintain-resolution",
 } as const;
 
 function track(kind: "video" | "audio", id: string): MediaStreamTrack {
@@ -439,7 +455,7 @@ describe("SfuPublisher", () => {
           },
         }),
       ],
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
     });
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
@@ -466,14 +482,14 @@ describe("SfuPublisher", () => {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
-        degradationPreference: "balanced",
+        degradationPreference: "maintain-resolution",
         scalabilityMode: null,
       },
       applied: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
-        degradationPreference: "balanced",
+        degradationPreference: "maintain-resolution",
         scalabilityMode: null,
       },
       mismatches: [],
@@ -570,6 +586,151 @@ describe("SfuPublisher", () => {
     expect(publisher.getQualityWarning()).toBeNull();
   });
 
+  it("retains the active profile for LiveKit track restart and republish", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const publication = livekit.state.rooms[0].localParticipant.publications[0];
+    const localTrack = publication.track;
+
+    await expect(
+      publisher.updateProfile({
+        resolution: "720p",
+        maxFramerate: 30,
+        maxBitrate: 3_000_000,
+        degradationPreference: "maintain-framerate",
+      }),
+    ).resolves.toBe(true);
+
+    expect(localTrack.setDegradationPreference).toHaveBeenLastCalledWith(
+      "maintain-framerate",
+    );
+    expect(
+      localTrack.setDegradationPreference.mock.invocationCallOrder.at(-1)!,
+    ).toBeLessThan(
+      localTrack.sender.setParameters.mock.invocationCallOrder.at(-1)!,
+    );
+    expect(localTrack.savedDegradationPreference).toBe("maintain-framerate");
+    expect(localTrack.sender.parameters).toMatchObject({
+      degradationPreference: "maintain-framerate",
+      encodings: [
+        {
+          rid: "q",
+          maxBitrate: 750_000,
+          maxFramerate: 30,
+          scaleResolutionDownBy: 2,
+        },
+        {
+          rid: "h",
+          maxBitrate: 3_000_000,
+          maxFramerate: 30,
+          scaleResolutionDownBy: 1,
+        },
+      ],
+    });
+    expect(localTrack.publishOptions).toBe(publication.options);
+    expect(publication.options).toMatchObject({
+      source: Track.Source.ScreenShare,
+      backupCodec: false,
+      videoCodec: "h264",
+      screenShareEncoding: {
+        maxBitrate: 3_000_000,
+        maxFramerate: 30,
+      },
+      degradationPreference: "maintain-framerate",
+    });
+
+    await livekit.state.rooms[0].localParticipant.republishAllTracks();
+    expect(
+      livekit.state.rooms[0].localParticipant.republishedOptions[0],
+    ).toMatchObject({
+      screenShareEncoding: {
+        maxBitrate: 3_000_000,
+        maxFramerate: 30,
+      },
+      degradationPreference: "maintain-framerate",
+    });
+  });
+
+  it("restores LiveKit retained state when saving a new profile fails", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const publication = livekit.state.rooms[0].localParticipant.publications[0];
+    const localTrack = publication.track;
+    localTrack.setDegradationPreference.mockRejectedValueOnce(
+      new Error("preference save failed"),
+    );
+
+    await expect(
+      publisher.updateProfile({
+        resolution: "720p",
+        maxFramerate: 30,
+        maxBitrate: 3_000_000,
+        degradationPreference: "maintain-framerate",
+      }),
+    ).resolves.toBe(false);
+
+    expect(localTrack.setDegradationPreference).toHaveBeenLastCalledWith(
+      "maintain-resolution",
+    );
+    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
+    expect(localTrack.publishOptions).toBe(publication.options);
+    expect(publication.options).toMatchObject({
+      screenShareEncoding: {
+        maxBitrate: 8_000_000,
+        maxFramerate: 60,
+      },
+      degradationPreference: "maintain-resolution",
+    });
+    expect(publisher.getSenderParameters()?.applied).toMatchObject({
+      maxBitrate: 8_000_000,
+      maxFramerate: 60,
+      degradationPreference: "maintain-resolution",
+    });
+    expect(publisher.getQualityWarning()).toContain("preference save failed");
+  });
+
+  it("does not retain an update from a disconnected publisher generation", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
+    const publication = livekit.state.rooms[0].localParticipant.publications[0];
+    const gate = deferred();
+    localTrack.setDegradationPreference.mockImplementationOnce(
+      async (preference) => {
+        await gate.promise;
+        localTrack.savedDegradationPreference = preference;
+      },
+    );
+
+    const updating = publisher.updateProfile({
+      resolution: "720p",
+      maxFramerate: 30,
+      maxBitrate: 3_000_000,
+      degradationPreference: "maintain-framerate",
+    });
+    await vi.waitFor(() =>
+      expect(localTrack.setDegradationPreference).toHaveBeenCalledTimes(2),
+    );
+    await publisher.disconnect();
+    gate.resolve();
+
+    await expect(updating).resolves.toBe(false);
+    expect(publisher.getSenderParameters()).toBeNull();
+    expect(publisher.getQualityWarning()).toBeNull();
+    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
+    expect(localTrack.sender.setParameters).toHaveBeenCalledTimes(1);
+    expect(publication.options).toMatchObject({
+      screenShareEncoding: {
+        maxBitrate: 8_000_000,
+        maxFramerate: 60,
+      },
+      degradationPreference: "maintain-resolution",
+    });
+  });
+
   it("retains a visible warning when the SFU sender rewrites a parameter", async () => {
     const publisher = new SfuPublisher();
     await publisher.connect(connection);
@@ -637,8 +798,9 @@ describe("SfuPublisher", () => {
     const publisher = new SfuPublisher();
     await publisher.connect(connection);
     await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
-      .sender;
+    const publication = livekit.state.rooms[0].localParticipant.publications[0];
+    const localTrack = publication.track;
+    const sender = localTrack.sender;
     sender.setParameters.mockRejectedValueOnce(new Error("unsupported"));
 
     await expect(
@@ -646,10 +808,36 @@ describe("SfuPublisher", () => {
         resolution: "720p",
         maxFramerate: 30,
         maxBitrate: 3_000_000,
-        degradationPreference: "balanced",
+        degradationPreference: "maintain-framerate",
       }),
     ).resolves.toBe(false);
 
+    expect(localTrack.setDegradationPreference).toHaveBeenLastCalledWith(
+      "maintain-resolution",
+    );
+    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
+    expect(publication.options).toMatchObject({
+      screenShareEncoding: {
+        maxBitrate: 8_000_000,
+        maxFramerate: 60,
+      },
+      degradationPreference: "maintain-resolution",
+    });
+    expect(sender.parameters).toMatchObject({
+      degradationPreference: "maintain-resolution",
+      encodings: [
+        expect.objectContaining({
+          rid: "q",
+          maxBitrate: 2_000_000,
+          maxFramerate: 60,
+        }),
+        expect.objectContaining({
+          rid: "h",
+          maxBitrate: 8_000_000,
+          maxFramerate: 60,
+        }),
+      ],
+    });
     expect(publisher.getQualityWarning()).toBe(
       "应用 SFU 发送参数失败：unsupported",
     );
@@ -746,7 +934,7 @@ describe("SfuPublisher", () => {
     expect(publisher.getSenderParameters()?.requested).toMatchObject({
       maxBitrate: 8_000_000,
       maxFramerate: 60,
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
     });
   });
 

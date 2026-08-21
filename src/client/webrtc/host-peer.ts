@@ -227,15 +227,6 @@ export class HostPeer {
         }
         await this.connection.setRemoteDescription(payload.description);
         await this.flushCandidates();
-        await this.enqueueSenderMutation(async () => {
-          const videoSender = this.videoSender;
-          if (this.disposed || !videoSender) {
-            return false;
-          }
-          // Refresh requested bounds after negotiation; browser adaptation
-          // remains authoritative.
-          return this.configureSender(videoSender);
-        });
       } else if (this.connection.remoteDescription) {
         await this.connection.addIceCandidate(payload.candidate);
       } else if (this.pendingCandidates.length < MAX_PENDING_CANDIDATES) {
