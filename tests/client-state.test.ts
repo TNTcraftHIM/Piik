@@ -541,7 +541,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v2",
+        protocol: "screener-v3",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });

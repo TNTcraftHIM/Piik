@@ -15,7 +15,7 @@ import {
   collectConnectionMetrics,
   createStatsAccumulator,
 } from "./stats";
-import { preferH264 } from "./video-codec-preference";
+import { applyVideoCodecPreference } from "./video-codec-preference";
 
 const MAX_PENDING_CANDIDATES = 64;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
@@ -118,7 +118,10 @@ export class HostPeer {
       direction: "sendonly",
       streams: [this.stream],
     });
-    preferH264(videoTransceiver);
+    applyVideoCodecPreference(
+      videoTransceiver,
+      this.desiredProfile.videoCodec,
+    );
     this.videoSender = videoTransceiver.sender;
     this.audioSender = this.connection.addTransceiver(audioTrack ?? "audio", {
       direction: "sendonly",

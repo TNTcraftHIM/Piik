@@ -279,16 +279,7 @@ export class SignalingServer {
     try {
       message = decodeClientMessage(encoded);
     } catch {
-      if (!state.authenticated) {
-        this.sendError(
-          socket,
-          "AUTH_REQUIRED",
-          "页面版本已更新，请刷新后重试",
-        );
-        socket.close(4001, "Protocol mismatch");
-      } else {
-        this.rejectInvalidMessage(socket);
-      }
+      this.rejectInvalidMessage(socket);
       return;
     }
     if (

@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
+import {
+  QUALITY_PROFILES,
+  type QualityProfile,
+} from "../src/client/media/quality.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer } from "../src/client/webrtc/host-peer.ts";
 import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
@@ -116,9 +119,9 @@ class FakePeerConnection {
     this.transceiverInputs.push({ trackOrKind, init });
     return {
       sender,
-      setCodecPreferences: vi.fn((codecs: RTCRtpCodec[]) => {
+      setCodecPreferences: (codecs: RTCRtpCodec[]) => {
         this.codecPreferenceCalls.push([...codecs]);
-      }),
+      },
     } as unknown as RTCRtpTransceiver;
   }
 
@@ -324,12 +327,13 @@ function createPeer(
   stream: MediaStream,
   onUpdate: (snapshot: PeerSnapshot) => void = () => undefined,
   iceConfig: IceConfig = { iceServers: [] },
+  profile: QualityProfile = QUALITY_PROFILES["720p30"],
 ): HostPeer {
   return new HostPeer(
     "viewer-peer",
     iceConfig,
     stream,
-    QUALITY_PROFILES["720p30"],
+    profile,
     {
       sendSignal: () => true,
       onUpdate,
@@ -346,19 +350,13 @@ beforeEach(() => {
   statsCallbacks.length = 0;
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
   vi.stubGlobal("RTCRtpSender", {
-    getCapabilities: vi.fn(() => ({
+    getCapabilities: () => ({
       codecs: [
         { mimeType: "video/VP8", clockRate: 90_000 },
-        { mimeType: "video/rtx", clockRate: 90_000, sdpFmtpLine: "apt=96" },
-        {
-          mimeType: "video/H264",
-          clockRate: 90_000,
-          sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f",
-        },
-        { mimeType: "video/rtx", clockRate: 90_000, sdpFmtpLine: "apt=102" },
+        { mimeType: "video/H264", clockRate: 90_000 },
       ],
       headerExtensions: [],
-    })),
+    }),
   });
   vi.stubGlobal("window", {
     setInterval: vi.fn((callback: () => void) => {
@@ -378,33 +376,48 @@ afterEach(() => {
 });
 
 describe("HostPeer source replacement", () => {
-  it("prefers H.264 before the first offer while retaining codec fallback", async () => {
-    const peer = createPeer(createStream(createTrack("video", "video"), null));
-
-    await expect(peer.start()).resolves.toBe(true);
-
-    const preferences = FakePeerConnection.latest!.codecPreferenceCalls[0]!;
-    expect(preferences).toHaveLength(4);
-    expect(preferences[0]?.mimeType).toBe("video/H264");
-    expect(preferences.map(({ mimeType }) => mimeType)).toContain("video/VP8");
-    expect(
-      preferences.filter(({ mimeType }) => mimeType === "video/rtx"),
-    ).toHaveLength(2);
-  });
-
-  it("keeps browser defaults when H.264 send capability is absent", async () => {
-    vi.stubGlobal("RTCRtpSender", {
-      getCapabilities: vi.fn(() => ({
-        codecs: [{ mimeType: "video/VP8", clockRate: 90_000 }],
-        headerExtensions: [],
-      })),
-    });
+  it("leaves browser codec ordering unchanged", async () => {
     const peer = createPeer(createStream(createTrack("video", "video"), null));
 
     await expect(peer.start()).resolves.toBe(true);
 
     expect(FakePeerConnection.latest!.codecPreferenceCalls).toEqual([]);
   });
+
+  it.each(["h264", "vp8"] as const)(
+    "prefers %s before the first offer while retaining fallback codecs",
+    async (videoCodec) => {
+      vi.stubGlobal("RTCRtpSender", {
+        getCapabilities: () => ({
+          codecs: [
+            { mimeType: "video/VP8", clockRate: 90_000 },
+            { mimeType: "video/rtx", clockRate: 90_000 },
+            {
+              mimeType: "video/H264",
+              clockRate: 90_000,
+              sdpFmtpLine: "packetization-mode=1;profile-level-id=42001f",
+            },
+            { mimeType: "video/rtx", clockRate: 90_000 },
+          ],
+          headerExtensions: [],
+        }),
+      });
+      const peer = createPeer(
+        createStream(createTrack("video", "video"), null),
+        () => undefined,
+        { iceServers: [] },
+        { ...QUALITY_PROFILES["720p30"], videoCodec },
+      );
+
+      await expect(peer.start()).resolves.toBe(true);
+
+      const preferences = FakePeerConnection.latest!.codecPreferenceCalls[0]!;
+      expect(preferences[0]?.mimeType.toLowerCase()).toBe(`video/${videoCodec}`);
+      expect(preferences.map(({ mimeType }) => mimeType.toLowerCase())).toEqual(
+        expect.arrayContaining(["video/h264", "video/vp8", "video/rtx"]),
+      );
+    },
+  );
 
   it("applies STUN-only ICE configuration at creation and update", () => {
     const peer = createPeer(
@@ -524,7 +537,7 @@ describe("HostPeer source replacement", () => {
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });
@@ -627,7 +640,7 @@ describe("HostPeer source replacement", () => {
 
     expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
     expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });

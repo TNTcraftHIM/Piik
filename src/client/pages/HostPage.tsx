@@ -80,6 +80,8 @@ import {
   type DegradationPreference,
   type QualityProfileId,
   type QualitySettings,
+  type VideoCodecPreference,
+  VIDEO_CODEC_PREFERENCE_LABELS,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
 import {
@@ -607,7 +609,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setAdvancedQuality(settings);
   }
 
+  function changeVideoCodec(videoCodec: VideoCodecPreference): void {
+    if (phase === "starting" || phase === "live") {
+      return;
+    }
+    const next = { ...qualitySettingsRef.current, videoCodec };
+    qualitySettingsRef.current = next;
+    setQualitySettings(next);
+    setAdvancedQuality((current) => ({ ...current, videoCodec }));
+  }
+
   async function changeQuality(nextProfile: QualitySettings): Promise<void> {
+    if (
+      phase === "live" &&
+      (nextProfile.videoCodec ?? "automatic") !==
+        (qualitySettingsRef.current.videoCodec ?? "automatic")
+    ) {
+      return;
+    }
     if (phase !== "live") {
       commitQuality(nextProfile);
       return;
@@ -1807,7 +1826,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           switchingSource ||
                           changingQuality
                         }
-                        onClick={() => void changeQuality(QUALITY_PROFILES[id])}
+                        onClick={() =>
+                          void changeQuality({
+                            ...QUALITY_PROFILES[id],
+                            videoCodec:
+                              qualitySettingsRef.current.videoCodec ?? "automatic",
+                          })
+                        }
                       >
                         {QUALITY_PROFILE_LABELS[id]}
                       </button>
@@ -1911,6 +1936,39 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           }
                         >
                           {DEGRADATION_PREFERENCE_LABELS[preference]}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <fieldset className="control-group quality-priority">
+                    <legend>视频编码</legend>
+                    <div className="segmented-control">
+                      {(
+                        Object.keys(
+                          VIDEO_CODEC_PREFERENCE_LABELS,
+                        ) as VideoCodecPreference[]
+                      ).map((codec) => (
+                        <button
+                          key={codec}
+                          type="button"
+                          className={
+                            (advancedQuality.videoCodec ?? "automatic") === codec
+                              ? "is-selected"
+                              : undefined
+                          }
+                          aria-pressed={
+                            (advancedQuality.videoCodec ?? "automatic") === codec
+                          }
+                          disabled={
+                            phase === "starting" ||
+                            phase === "live" ||
+                            changingQuality
+                          }
+                          onClick={() =>
+                            changeVideoCodec(codec)
+                          }
+                        >
+                          {VIDEO_CODEC_PREFERENCE_LABELS[codec]}
                         </button>
                       ))}
                     </div>

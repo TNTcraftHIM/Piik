@@ -6,7 +6,9 @@ import {
   configureScreenAudioSender,
   configureTwoLayerVideoSender,
   configureVideoSender,
+  matchingQualityProfileId,
   QUALITY_PROFILES,
+  qualitySettingsEqual,
   SCREEN_AUDIO_MAX_BITRATE,
   screenShareLowBitrate,
   senderParameterWarning,
@@ -77,13 +79,19 @@ describe("realtime quality controls", () => {
     });
   });
 
-  it("defaults every recommended profile to clarity-first degradation", () => {
+  it("defaults every recommended profile to balanced degradation", () => {
     expect(
       Object.values(QUALITY_PROFILES).every(
         (profile) =>
-          profile.degradationPreference === "maintain-resolution",
+          profile.degradationPreference === "balanced",
       ),
     ).toBe(true);
+  });
+
+  it("keeps codec selection orthogonal to the recommended quality profile", () => {
+    const h264 = { ...QUALITY_PROFILES["1080p60"], videoCodec: "h264" } as const;
+    expect(matchingQualityProfileId(h264)).toBe("1080p60");
+    expect(qualitySettingsEqual(h264, QUALITY_PROFILES["1080p60"])).toBe(false);
   });
 
   it("reads back every requested sender control after setParameters", async () => {
@@ -109,14 +117,14 @@ describe("realtime quality controls", () => {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
-        degradationPreference: "maintain-resolution",
+        degradationPreference: "balanced",
         scalabilityMode: null,
       },
       applied: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
-        degradationPreference: "maintain-resolution",
+        degradationPreference: "balanced",
         scalabilityMode: null,
       },
       mismatches: [],
@@ -146,7 +154,7 @@ describe("realtime quality controls", () => {
     const before = { encodings: [{}] } as RTCRtpSendParameters;
     const after = {
       encodings: [{ maxBitrate: 8_000_000 }],
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-resolution",
     } as unknown as RTCRtpSendParameters;
     const getParameters = vi
       .fn<() => RTCRtpSendParameters>()
@@ -186,7 +194,7 @@ describe("realtime quality controls", () => {
           scalabilityMode: "L1T2",
         },
       ],
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
     } as unknown as RTCRtpSendParameters;
     const sender = {
       track: { getSettings: () => ({ width: 1920, height: 1080 }) },
@@ -221,7 +229,7 @@ describe("realtime quality controls", () => {
         },
         { rid: "high", scalabilityMode: "L1T2" },
       ],
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
     } as unknown as RTCRtpSendParameters;
     const sender = {
       track: { getSettings: () => ({ width: 1920, height: 1080 }) },
@@ -261,7 +269,7 @@ describe("realtime quality controls", () => {
     );
 
     expect(applied).toMatchObject({
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
       encodings: [
         {
           rid: "q",
