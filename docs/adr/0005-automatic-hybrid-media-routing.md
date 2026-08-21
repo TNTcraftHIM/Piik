@@ -530,12 +530,21 @@ failure, only the exact current SFU owner may abort. Ordinary transport uses a
 null connection; selected Host ingress must match its activated connection
 identity. The rollback active revision then drives the existing one-refresh
 recovery. Success and abort share the room's 30-second migration cooldown.
+If one otherwise-current healthy event arrives during that cooldown, the room
+retains only the latest root/session/revision/share/publication tuple. At the
+cooldown boundary it reasserts the same authoritative SFU assignment only when
+that tuple and the one-root topology are still current. The Viewer must then
+produce two new positive RTP/decoded-frame windows before sending another
+ready event; the pre-cooldown proof never authorizes a delayed peer probe.
 
 The implemented source slice deliberately handles exactly one active SFU root
 and only its parent retained in the deterministic peer baseline. The accepted
 capacity `0 -> 1` trigger and deterministic selection among multiple SFU roots
-remain follow-ups. No timer/polling trigger, global score, new dependency,
-ordinary-peer TURN grant, or second route controller was added.
+remain follow-ups. No periodic polling trigger, global score, new dependency,
+ordinary-peer TURN grant, or second route controller was added. The single
+cooldown-bound timer above is an event continuation and is cleared on session,
+room-stop, or room-delete changes; a changed route or generation discards it at
+the boundary.
 
 The bounded cost model and privacy-safe ICE fields
 live in [Low-Server-Cost Media Routes](../research/low-server-media-routes.md).

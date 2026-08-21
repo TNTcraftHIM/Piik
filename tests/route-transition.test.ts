@@ -1159,7 +1159,7 @@ describe("ViewerSfuRoute", () => {
     expect(subscriber.deactivate).not.toHaveBeenCalled();
   });
 
-  it("retries a sticky authoritative SFU route only after stable decoded RTP", async () => {
+  it("re-proves a sticky SFU route after a cooldown-bound authority reassertion", async () => {
     const healthy: number[] = [];
     const messages: ClientMessage[] = [];
     let subscriber!: ReturnType<typeof createFakeSubscriber>;
@@ -1217,6 +1217,21 @@ describe("ViewerSfuRoute", () => {
       intervalFramesDecoded: 1,
     } as ConnectionMetrics);
     expect(healthy).toEqual([7]);
+
+    expect(route.accept({
+      revision: 7,
+      phase: "active",
+      assignment: sfuAssignment(),
+    })).toBe("duplicate");
+    subscriber.events.onStats?.({
+      intervalPacketsReceived: 3,
+      intervalFramesDecoded: 2,
+    } as ConnectionMetrics);
+    subscriber.events.onStats?.({
+      intervalPacketsReceived: 5,
+      intervalFramesDecoded: 4,
+    } as ConnectionMetrics);
+    expect(healthy).toEqual([7, 7]);
   });
 
   it("switches on first SFU video and forwards loss across same-publication revision reuse", async () => {

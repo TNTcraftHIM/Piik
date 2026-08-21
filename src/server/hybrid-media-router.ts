@@ -104,6 +104,15 @@ interface HealthySfuReselectionProbe {
   parentPeerId: string;
 }
 
+interface DeferredHealthySfuReselection {
+  activeRevision: number;
+  shareGeneration: string;
+  publicationGeneration: string;
+  rootPeerId: string;
+  rootSessionId: string;
+  timer: NodeJS.Timeout | null;
+}
+
 interface QualityRouteIntentGuard {
   kind: ViewerQualityBadWindowKind;
   viewerSessionId: string;
@@ -244,6 +253,10 @@ export class HybridMediaRouter {
     string,
     number
   >();
+  private readonly deferredHealthySfuReselections = new Map<
+    string,
+    DeferredHealthySfuReselection
+  >();
 
   constructor(private readonly options: HybridMediaRouterOptions) {
     const fallback = options.sfuFallback;
@@ -279,6 +292,12 @@ export class HybridMediaRouter {
       clearTimeout(attempt.timer);
     }
     this.selectedSfuIngressAttempts.clear();
+    for (const deferred of this.deferredHealthySfuReselections.values()) {
+      if (deferred.timer) {
+        clearTimeout(deferred.timer);
+      }
+    }
+    this.deferredHealthySfuReselections.clear();
     this.activeSelectedSfuIngresses.clear();
     this.mediaRouteControllers.clear();
     this.failedParentPeerIdsByViewer.clear();
@@ -296,6 +315,10 @@ export class HybridMediaRouter {
     this.clearHeldQualityParentExclusion(input.roomId, input.peerId);
     this.clearSfuRefreshesForPeer(input.roomId, input.peerId);
     if (input.role === "viewer") {
+      this.clearDeferredHealthySfuReselectionForParticipant(
+        input.roomId,
+        input.peerId,
+      );
       const connectionKey = viewerConnectionKey(input.roomId, input.peerId);
       this.failedParentPeerIdsByViewer.delete(
         connectionKey,
@@ -836,18 +859,31 @@ export class HybridMediaRouter {
       active?.revision !== revision ||
       active.sfu.rootPeerIds.length !== 1 ||
       active.sfu.rootPeerIds[0] !== participant.peerId ||
+      this.options.roomStore.getConnectedViewer(roomId, participant.peerId)
+        ?.sessionId !== participant.sessionId ||
       !publicationGeneration ||
       !shareGeneration
     ) {
       return;
     }
     const now = this.options.now?.() ?? Date.now();
-    if (
-      !Number.isFinite(now) ||
-      (this.roomQualityMigrationCooldownUntilMs.get(roomId) ?? 0) > now
-    ) {
+    const cooldownUntil =
+      this.roomQualityMigrationCooldownUntilMs.get(roomId) ?? 0;
+    if (!Number.isFinite(now)) {
       return;
     }
+    if (cooldownUntil > now) {
+      this.deferHealthySfuReselection(
+        participant,
+        revision,
+        shareGeneration,
+        publicationGeneration,
+        cooldownUntil,
+        now,
+      );
+      return;
+    }
+    this.clearDeferredHealthySfuReselection(roomId);
     this.startRoomQualityMigrationCooldown(roomId);
     const hostPeerId = this.peerRelayTopology.getHostPeerId(roomId);
     const parentPeerId = this.peerRelayTopology.getAssignment(
@@ -1294,6 +1330,7 @@ export class HybridMediaRouter {
   disconnectParticipant(roomId: string, peerId: string): void {
     this.clearSelectedEdgeTurnsForParticipant(roomId, peerId);
     this.clearViewerQualityStateForParticipant(roomId, peerId);
+    this.clearDeferredHealthySfuReselectionForParticipant(roomId, peerId);
     const pending = this.pendingRoutePreparations.get(roomId);
     if (!pending || this.pendingSessionsAreCurrent(roomId, pending)) {
       return;
@@ -1304,6 +1341,7 @@ export class HybridMediaRouter {
   removeViewer(roomId: string, peerId: string): void {
     this.clearSelectedEdgeTurnsForParticipant(roomId, peerId);
     this.clearViewerQualityStateForParticipant(roomId, peerId);
+    this.clearDeferredHealthySfuReselectionForParticipant(roomId, peerId);
     this.abortPendingRouteForTopologyChange(roomId);
     const changes = this.peerRelayTopology.removeViewer(
       roomId,
@@ -3049,6 +3087,7 @@ export class HybridMediaRouter {
       this.selectedSfuIngressAttempts.delete(roomId);
     }
     this.activeSelectedSfuIngresses.delete(roomId);
+    this.clearDeferredHealthySfuReselection(roomId);
     this.consumedSfuRefreshesByRoom.delete(roomId);
     this.sfuDisabledRoomIds.delete(roomId);
     this.clearRoomViewerQualityEvidenceStates(roomId);
@@ -3103,6 +3142,104 @@ export class HybridMediaRouter {
       roomId,
       now + VIEWER_QUALITY_REASSIGN_COOLDOWN_MS,
     );
+  }
+
+  private deferHealthySfuReselection(
+    participant: AuthenticatedRouteParticipant,
+    activeRevision: number,
+    shareGeneration: string,
+    publicationGeneration: string,
+    cooldownUntil: number,
+    now: number,
+  ): void {
+    this.clearDeferredHealthySfuReselection(participant.roomId);
+    const deferred: DeferredHealthySfuReselection = {
+      activeRevision,
+      shareGeneration,
+      publicationGeneration,
+      rootPeerId: participant.peerId,
+      rootSessionId: participant.sessionId,
+      timer: null,
+    };
+    const schedule = (delayMs: number) => {
+      deferred.timer = setTimeout(reassert, Math.max(0, delayMs));
+      deferred.timer.unref();
+    };
+    const reassert = () => {
+      if (
+        this.deferredHealthySfuReselections.get(participant.roomId) !== deferred
+      ) {
+        return;
+      }
+      deferred.timer = null;
+      const currentTime = this.options.now?.() ?? Date.now();
+      if (!Number.isFinite(currentTime)) {
+        this.deferredHealthySfuReselections.delete(participant.roomId);
+        return;
+      }
+      const currentCooldown =
+        this.roomQualityMigrationCooldownUntilMs.get(participant.roomId) ?? 0;
+      if (currentCooldown > currentTime) {
+        schedule(currentCooldown - currentTime);
+        return;
+      }
+
+      this.deferredHealthySfuReselections.delete(participant.roomId);
+      const viewer = this.options.roomStore.getConnectedViewer(
+        participant.roomId,
+        deferred.rootPeerId,
+      );
+      const controller = this.mediaRouteControllers.get(participant.roomId);
+      const active = controller?.getActiveRoute();
+      const assignment = active?.assignments.get(deferred.rootPeerId);
+      if (
+        viewer?.sessionId !== deferred.rootSessionId ||
+        !controller ||
+        controller.getPendingRoute() ||
+        this.roomPeerMigrationAttempt(participant.roomId) !== null ||
+        active?.revision !== deferred.activeRevision ||
+        active.sfu.publicationGeneration !== deferred.publicationGeneration ||
+        active.sfu.rootPeerIds.length !== 1 ||
+        active.sfu.rootPeerIds[0] !== deferred.rootPeerId ||
+        assignment?.upstream.kind !== "sfu" ||
+        this.options.getShareGeneration(participant.roomId) !==
+          deferred.shareGeneration
+      ) {
+        return;
+      }
+
+      // Duplicate authority asks the Viewer for fresh media proof.
+      this.options.sendToSession(deferred.rootSessionId, {
+        type: "route-update",
+        revision: active.revision,
+        phase: "active",
+        assignment,
+      });
+    };
+    this.deferredHealthySfuReselections.set(participant.roomId, deferred);
+    schedule(cooldownUntil - now);
+  }
+
+  private clearDeferredHealthySfuReselection(roomId: string): void {
+    const deferred = this.deferredHealthySfuReselections.get(roomId);
+    if (!deferred) {
+      return;
+    }
+    if (deferred.timer) {
+      clearTimeout(deferred.timer);
+    }
+    this.deferredHealthySfuReselections.delete(roomId);
+  }
+
+  private clearDeferredHealthySfuReselectionForParticipant(
+    roomId: string,
+    peerId: string,
+  ): void {
+    if (
+      this.deferredHealthySfuReselections.get(roomId)?.rootPeerId === peerId
+    ) {
+      this.clearDeferredHealthySfuReselection(roomId);
+    }
   }
 
   private clearViewerQualityStateForParticipant(
