@@ -54,7 +54,7 @@
 - STUN 让客户端发现公网映射并产生 server-reflexive candidate。它不承载媒体，也不能保证穿过所有 NAT。
 - ICE 测试 host、server-reflexive、peer-reflexive 和 relay candidates，并选择可工作的候选对。Trickle ICE 可以减少建连等待。
 - TURN 在无法直连时转发完整媒体流，是 NAT 组件中真正产生高带宽成本的部分。
-- 当前 production release `31bee238bc1e` 只向 ordinary peer 提供 STUN；共享主机保留旧 authenticated coturn relay 配置，但应用不签发凭据且最终审计为零 allocation。ADR-0005 的目标是 direct/peer UDP -> SFU/UDP roots -> optional selected-edge TURN -> bounded failure。每个 PeerConnection 只检查实际配置的候选；媒体 TCP 仍是独立验收项，在丢包时可能产生队头阻塞。
+- 当前媒体梯级是 direct/peer UDP -> SFU/UDP roots -> optional selected-edge TURN/UDP -> bounded failure。Ordinary peer 只接收 STUN；controller 只为当前异常 edge 的一次重建签发短期 TURN 凭据。每个 `RTCPeerConnection` 只检查实际配置的候选，全部 UDP 路径耗尽后明确失败。
 
 不存在适用于所有用户的权威“P2P 直连率”。CGNAT、endpoint-dependent mapping、校园/企业防火墙、移动网络、IPv6 和地区运营商都会改变结果。首版必须通过 `getStats()` 统计自己的 `host/srflx/prflx/relay` 比例，而不是引用未经验证的行业百分比。
 
@@ -62,17 +62,15 @@
 
 ICE 是按分享者与每一名观看者的网络组合独立选路，而不是整个房间只做一次连接。一个家庭宽带观看者可能成功 UDP 打洞，另一个处于 CGNAT、对称 NAT、校园网、企业代理或蜂窝网络的观看者却没有可用直连候选。因此同一房间天然可能出现不同结果。
 
-早期 PoC 曾同时提供 TURN 凭据和多种传输；当前/目标边界如下：
+当前边界如下：
 
 1. 将 direct UDP 设为最高优先级，成功者保持零媒体服务器路径。
-2. 当前生产 ordinary peer ICE 为 STUN-only；UDP peer 失败时优先使用 SFU root，可选 coturn 只由新 selected-edge grant/rebuild 授予异常连接。
+2. Ordinary peer ICE 为 STUN-only；UDP peer 失败时优先使用 SFU root，可选 coturn 只由 selected-edge grant/rebuild 授予异常连接。
 3. 通过统计确认最终选中的 candidate pair；LiveKit participant TURN 与 selected-edge coturn 分别记录，不能从应用计时顺序推断路径。
 4. 网络切换或候选对失效时执行 ICE restart，超时后重建该 peer connection。
 5. 在 UI 和诊断中区分“直连”“服务器中继”“正在恢复”和明确失败原因。
 
-这种混合房间里，一名观看者走 TURN 不会迫使其他观看者也中继。`turn:` over TCP 不提供客户端至 TURN 的 TLS 封装，但被中继的 WebRTC 媒体仍由端点间 DTLS-SRTP 加密。可选 TURN/TLS 使用 RFC 7065 标准 TCP 5349；改用 443 能覆盖更多只放行常见端口的网络，但需要独立公网 IP 或经过验证的 L4/SNI 路由，且仍无法穿过所有认证代理、深度检测或管理员策略。
-
-普通 Cloudflare 橙云代理只代理其 HTTP/HTTPS 管线，不能因为目标端口是 443 就转发 TURN。Cloudflare 官方将任意 TCP/UDP 应用放在 Spectrum 产品边界内；不使用这类 L4 服务时，TURN DNS 记录必须直连源站。网站仍可独立使用 Cloudflare HTTP 代理。
+这种混合房间里，一名观看者走 TURN/UDP 不会迫使其他观看者也中继；被中继的 WebRTC 媒体仍由端点间 DTLS-SRTP 加密。
 
 来源：
 
@@ -363,7 +361,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - `ws.close()` 默认会等待关闭握手，不能用“升级成功后发送 close frame”实现公网连接硬上限。总连接和未鉴权连接容量应在 `handleUpgrade()` 前检查，超限直接返回 HTTP 503 并销毁底层 socket。
 - Node 的 `IncomingMessage.url` 是未经应用路由解析的 request-target，而 WHATWG `URL` 构造器会拒绝部分输入。upgrade handler 必须捕获解析失败并关闭 socket，不能让未鉴权输入抛到 EventEmitter 顶层。
 - coturn 使用 `use-auth-secret` 支持的 TURN REST 短期凭据：`base64(HMAC-SHA1(secret, expiry + ":" + subject))`。coturn 不提供 HTTP 凭据接口，必须由已鉴权的应用服务生成。
-- RFC 7065/5928 将 `turn` + UDP、`turn` + TCP 和 `turns` + TCP 分别映射到客户端至 TURN 的 UDP、TCP 和 TLS 传输，并规定 TURN/TLS 默认端口为 5349。WebRTC 会逐条验证 ICE URL，任一坏项都可能使整个 PeerConnection 配置失败，因此启动预检先按原始 URI 语法 fail closed，再要求生产基线的 TURN/UDP 和 TURN/TCP URL 显式声明小写 `transport`；`turns` 是可选项，可显式使用 5349 或部署者实际提供的端口。这只能验证配置形状，不能替代公网 relay allocation 测试。
+- WebRTC 会逐条验证 ICE URL，任一坏项都可能使整个 `RTCPeerConnection` 配置失败。启动预检按原始 URI 语法 fail closed，并要求 selected TURN URI 显式声明小写 `transport=udp`；配置形状验证不能替代公网 relay allocation 测试。
 - Node `server.listen()` 省略 host 时可能监听未指定 IPv6 地址或 `0.0.0.0`。单机反向代理基线应显式绑定 loopback，容器或可信 LAN 才通过配置选择宽绑定；进程级 HTTP 健康检查不应同步探测 TURN 或其他外部网络。
 - 截至本次复核，coturn 应使用 4.17.2 或更新补丁版本；4.17.2 修复了此前补丁版本的 UDP TTL 回归。
 - MiroTalk BRO 当前 P2P 模式仍是 broadcaster 对每位 viewer 建独立连接；Screego 也采用独立 session 和 HMAC TURN 凭据。这验证了拓扑，但两者的静态/长时凭据与轻量恢复策略不直接照搬。
@@ -378,10 +376,6 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2)
 - [coturn turnserver documentation](https://github.com/coturn/coturn/blob/master/README.turnserver)
 - [coturn example configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
-- [TURN URI scheme RFC 7065](https://www.rfc-editor.org/rfc/rfc7065.html)
-- [TURN TCP/TLS allocations RFC 5928](https://www.rfc-editor.org/rfc/rfc5928.html)
-- [Cloudflare proxied network ports](https://developers.cloudflare.com/fundamentals/reference/network-ports/)
-- [Cloudflare Spectrum configuration](https://developers.cloudflare.com/spectrum/reference/configuration-options/)
 - [Node.js 24 `server.listen`](https://nodejs.org/docs/latest-v24.x/api/net.html#serverlistenport-host-backlog-callback)
 
 ## 实施难度与预估

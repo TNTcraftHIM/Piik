@@ -7,7 +7,7 @@ Last updated: 2026-08-21
 Production at `https://share.bonfire.icu` is exact `691863e1720ebbee1b5368f29e94f05b3710ccf8`; artifact 605,904 bytes, SHA-256 `7e751c0bf7c97bc7d23edb1e37441fb6c55d90a0cd80647b778fdb5b1ee28bae`.
 Cutover: 3,376.021 ms lock/669.678 ms stop-health/604.174 ms switch-health. SQLite v3/five rooms has SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services are active/running at `NRestarts=0`; rollbacks are `6634cb9`, then `ecc794d` and `16f6eab`.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
-Stable SFU stream/unavailable state, authoritative pending/P2P/SFU and actual-only TURN are deployed with Host preview notice, entry/nickname UI, P2P-only debug and Web relay cap2. Native is source-only; Web defaults VP8.
+Stable SFU stream/unavailable state, authoritative pending/P2P/SFU and actual-only TURN are deployed with Host preview notice, entry/nickname UI and Web relay cap2. Native is source-only; Web defaults VP8.
 
 ## Execution Principle
 
@@ -20,7 +20,6 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Production UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Exact upstream may label green P2P/yellow `SFU fallback` before media proof; connected status still needs evidence and TURN stays actual-only.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
 - Production is roots <=2/Web relay <=2; every Web Viewer keeps one upstream and bounded sticky recovery, while child3 is rejected. Room `1` is historical; HTTPS/WSS is TLS/TCP.
-- Host advanced settings offer generation-bound P2P-only debug before sharing; it disables SFU/selected TURN and fails clearly after peer recovery.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
 

@@ -466,8 +466,7 @@ These items are not current runtime behavior:
 - A room in which the Host and every possible root are restricted may require
   several server-fed exceptional edges. Any such extension requires a per-room
   selected-relay and central-egress admission cap; it must wait or fail at that
-  cap rather than become unbounded server fanout. TURN/TCP and TURN/TLS remain
-  separate transport decisions.
+  cap rather than become unbounded server fanout.
 - ICE restart and connection rebuild already recover failed edges after Wi-Fi,
   cellular, or similar network changes. A healthy fallback path remains sticky:
   the current controller does not proactively move it back when a new Viewer
@@ -558,8 +557,8 @@ boundary is actually configured and the UI must not claim E2EE.
   controller-selected exceptional edge may receive a short-lived TURN grant.
 - LiveKit/SFU UDP must pass CGNAT, double-NAT, hotspot, home-network, loss,
   rollback, and SFU-unavailable gates. Blocked UDP fails clearly within a
-  bounded window even when TURN/UDP is enabled. Media TCP remains a separate
-  decision and TURN availability never becomes a quality claim.
+  bounded window even when TURN/UDP is enabled; media does not fall back to TCP.
+  TURN availability never becomes a quality claim.
 
 ## Consequences
 

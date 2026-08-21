@@ -444,7 +444,6 @@ async function authenticate(
     viewerPresence?: true;
     viewerPasswordSettings?: true;
     viewerPassword?: string;
-    debugP2pOnly?: true;
   } = {},
 ) {
   client.socket.send(
@@ -458,7 +457,6 @@ async function authenticate(
             token: room.hostToken,
             clientId,
             ...(shareGeneration ? { shareGeneration } : {}),
-            ...(presence.debugP2pOnly ? { debugP2pOnly: true } : {}),
             ...(presence.viewerPresence ? { viewerPresence: true } : {}),
             ...(presence.viewerPasswordSettings
               ? { viewerPasswordSettings: true }
@@ -4123,108 +4121,6 @@ describe("WebSocket signaling", () => {
       revision: resumedPrepare.revision,
     });
     expect(issued.length).toBeGreaterThan(issuedBeforeFailback);
-  });
-
-  it("binds the Host-only P2P debug mode to one share generation", async () => {
-    const issueToken = vi.fn(async ({ peerId }: { peerId: string }) =>
-      `token-${peerId}`,
-    );
-    const harness = await startSfuHarness({
-      tokenIssuer: { issueToken },
-      selectedEdgeTurn: true,
-      stunUrls: ["stun:stun.example.test:3478"],
-    });
-    const shareGeneration = "debug-p2p-only-share";
-    // Empty generation state is also the first authentication after a restart.
-    const initialHost = await openClient(harness.webSocketUrl);
-    const hostAuth = peerAssisted(
-      await authenticate(
-        initialHost, harness.room, "host", "debug-p2p-host", 1, shareGeneration,
-        { debugP2pOnly: true },
-      ),
-    );
-    expect(hostAuth.debugP2pOnly).toBe(true);
-    expect(hostAuth.sfuStandbyUrl).toBeUndefined();
-    expect(hostAuth.iceConfig.iceServers).toEqual([
-      { urls: ["stun:stun.example.test:3478"] },
-    ]);
-
-    await closeClient(initialHost);
-    const host = await openClient(harness.webSocketUrl);
-    const resumedAuth = peerAssisted(
-      await authenticate(
-        host, harness.room, "host", "debug-p2p-host", 1, shareGeneration,
-      ),
-    );
-    expect(resumedAuth.debugP2pOnly).toBe(true);
-    expect(resumedAuth.sfuStandbyUrl).toBeUndefined();
-
-    const failedViewer = await openClient(harness.webSocketUrl);
-    const failedAuth = peerAssisted(
-      await authenticate(
-        failedViewer, harness.room, "viewer", "debug-p2p-failed",
-      ),
-    );
-    expect(failedAuth.debugP2pOnly).toBe(true);
-    expect(failedAuth.sfuStandbyUrl).toBeUndefined();
-    host.socket.send(JSON.stringify({
-      type: "signal",
-      targetPeerId: failedAuth.peerId,
-      payload: {
-        kind: "description",
-        connectionId: "debug-direct-connection",
-        description: { type: "offer", sdp: "v=0\r\n" },
-      },
-    }));
-    await failedViewer.inbox.next("signal");
-    failedViewer.socket.send(JSON.stringify({
-      type: "route-failed",
-      revision: failedAuth.routeRevision,
-      phase: "active",
-      connectionId: "debug-direct-connection",
-    }));
-    expect((await failedViewer.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
-    for (const [client, type] of [
-      [host, "sfu-config"],
-      [failedViewer, "sfu-config"],
-      [host, "selected-edge-turn"],
-      [failedViewer, "selected-edge-turn"],
-    ] as const) {
-      await expect(client.inbox.next(type, 40)).rejects.toThrow("Timed out");
-    }
-    expect(issueToken).not.toHaveBeenCalled();
-
-    await closeClient(host);
-    const nextHost = await openClient(harness.webSocketUrl);
-    const nextAuth = peerAssisted(
-      await authenticate(
-        nextHost, harness.room, "host", "debug-p2p-host", 1,
-        "next-share-generation",
-      ),
-    );
-    expect(nextAuth.debugP2pOnly).toBeUndefined();
-    expect(nextAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
-
-    await closeClient(nextHost);
-    const stoppedHost = await openClient(harness.webSocketUrl);
-    const stoppedGeneration = "stopped-debug-generation";
-    expect(peerAssisted(await authenticate(
-      stoppedHost, harness.room, "host", "debug-p2p-host", 1,
-      stoppedGeneration, { debugP2pOnly: true },
-    )).debugP2pOnly).toBe(true);
-    const stopped = new Promise<void>((resolve) =>
-      stoppedHost.socket.once("close", () => resolve()),
-    );
-    stoppedHost.socket.send(JSON.stringify({ type: "stop-sharing" }));
-    await stopped;
-
-    const afterStop = await openClient(harness.webSocketUrl);
-    const afterStopAuth = peerAssisted(await authenticate(
-      afterStop, harness.room, "host", "debug-p2p-host", 1,
-      stoppedGeneration, { debugP2pOnly: true },
-    ));
-    expect(afterStopAuth.debugP2pOnly).toBeUndefined();
-    expect(afterStopAuth.sfuStandbyUrl).toBe("wss://sfu.example.test");
   });
 
   it("falls through to selected TURN when SFU prepare is unavailable", async () => {

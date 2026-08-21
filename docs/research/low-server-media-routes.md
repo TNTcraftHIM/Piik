@@ -164,7 +164,7 @@ network changes, but their selected ICE path must be measured.
 | Endpoint-independent mapping with UDP | Full ICE can check host, server-reflexive, and peer-reflexive paths | Keep direct/peer UDP first |
 | One endpoint-dependent mapper | Coordinated checks can sometimes create a peer-reflexive path; success is not guaranteed | Exhaust the existing bounded restart/rebuild/alternate-parent steps |
 | Both peer endpoints use endpoint-dependent mapping | A direct peer path is not reliable; RFC 8835 requires TURN support for this case | A public SFU/UDP connection can still feed one or two roots when outbound UDP works; an eligible edge may then use selected TURN/UDP |
-| All outbound UDP is blocked | Direct ICE/TCP can help only when its TCP candidate is reachable; TURN/TCP or TURN/TLS gives each browser an outbound connection to a public relay | Current tracked LiveKit and selected-edge examples deliberately disable these transports, so the present result is bounded failure |
+| All outbound UDP is blocked | The UDP media ladder has no reachable candidate | End with a clear bounded failure |
 | Wi-Fi/cellular or address change | Old mappings and candidate pairs can become invalid | Use a new opaque generation and bounded ICE restart/rebuild, then re-run the same priority ladder |
 
 Peer-reflexive discovery records an address only after a connectivity check
@@ -175,24 +175,10 @@ serve one or two roots, and those roots may still serve peer descendants. If
 every endpoint needs a server path, the existing root, exceptional-viewer, and
 egress caps must bound it.
 
-ICE/TCP, TURN/TCP, and TURN/TLS solve different failures. ICE/TCP attempts a
-direct TCP candidate pair and inherits TCP simultaneous-open, NAT, firewall, and
-browser limitations. TURN/TCP or TURN/TLS instead carries the client-to-relay
-leg over outbound TCP; the relay-to-peer leg may still be UDP. TCP avoids a UDP
-block but adds head-of-line blocking and can amplify latency during packet loss.
-"UDP/TCP hybrid" means selection or fallback between candidate pairs, not
-striping or duplicating one media flow across both.
-
-The next two browser-first candidates worth isolated measurement are:
+The remaining browser-first reachability candidate worth isolated measurement is:
 
 1. Add dual-stack reachability for Web, STUN, SFU, and TURN. A public IPv6 pair
    avoids IPv4 NAT, while ICE still handles IPv6 firewalls and IPv4 fallback.
-2. Compare pinned LiveKit 1.13.5 SFU ICE/TCP with a separately authenticated
-   TURN/TLS selected-edge path. The pinned server exposes `rtc.tcp_port`,
-   `allow_tcp_fallback`, and TURN/TLS; the tracked example sets `tcp_port: 0`,
-   `allow_tcp_fallback: false`, and no LiveKit TURN. TURN/TLS on 443 is an L4
-   TLS service with certificate and port constraints, not HTTPS.
-
 The acceptance matrix is EIM/EIM, one endpoint-dependent mapper, two endpoint-
 dependent mappers including cellular-to-cellular, all UDP blocked, and a Wi-Fi
 to-cellular change. Record only sanitized selected transport, generation, time
@@ -320,11 +306,9 @@ later selected-edge functional evidence above.
 
 No public port is selected by this decision. LiveKit documents ICE/UDP mux as
 optional and its pinned sample recommends a multi-port UDP mux range at least
-as wide as the CPU count for performance. Embedded TURN/UDP defaults to 3478
-and recommends 443 only when it does not conflict with HTTP/3/QUIC; TURN/TLS
-has different certificate and 443 constraints. The current nginx template has
-no HTTP/3 listener, but that fact alone does not prove one UDP port or UDP 443
-is the best production layout.
+as wide as the CPU count for performance. Embedded TURN/UDP defaults to 3478.
+The current nginx template has no HTTP/3 listener, but that fact alone does not
+prove one UDP port is the best production layout.
 
 For one equal representation of measured bitrate `B` and `R` roots:
 
@@ -477,7 +461,6 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
   under IETF Trust terms.
 - [UDP NAT behavior, RFC 4787](https://www.rfc-editor.org/rfc/rfc4787.html),
   [P2P across NATs, RFC 5128](https://www.rfc-editor.org/rfc/rfc5128.html),
-  [ICE-TCP, RFC 6544](https://www.rfc-editor.org/rfc/rfc6544.html),
   [PCP, RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html), and
   [CGN requirements, RFC 6888](https://www.rfc-editor.org/rfc/rfc6888.html) -
   mapping, filtering, prediction, simultaneous-open, gateway-control, and CGN
