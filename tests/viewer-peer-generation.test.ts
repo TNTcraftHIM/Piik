@@ -207,7 +207,7 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
-  it("sets and signals stereo for initial, restart, and rebuild answers", async () => {
+  it("sets and signals stereo audio bitrate for every answer", async () => {
     const signals: SignalPayload[] = [];
     const peer = createPeer(signals, []);
 
@@ -224,7 +224,7 @@ describe("ViewerPeer connection generations", () => {
       expect(description).toEqual(expect.objectContaining({
         type: "answer",
         sdp: expect.stringContaining(
-          "a=fmtp:111 minptime=10;useinbandfec=1;stereo=1",
+          "a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=128000",
         ),
       }));
       expect(answers[index]?.description.sdp).toBe(description.sdp);
