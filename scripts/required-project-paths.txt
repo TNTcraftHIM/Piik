@@ -18,6 +18,7 @@ tsconfig.json
 docs/README.md
 docs/project-memory.md
 docs/status.md
+docs/verification-status.md
 docs/maintenance.md
 docs/需求理解.md
 docs/方案设计.md

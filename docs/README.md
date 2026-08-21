@@ -3,7 +3,8 @@
 - [需求理解](./需求理解.md): current product scope, priorities, constraints, and acceptance criteria.
 - [方案设计](./方案设计.md): accepted, code-ready design for the first measurable WebRTC proof of concept.
 - [Project memory](./project-memory.md): durable decisions and unresolved questions to read at the start of future work.
-- [Current status](./status.md): bounded snapshot of the current phase, completed baseline, next step, and blockers.
+- [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
+- [Verification status](./verification-status.md): demand-loaded ledger of current cross-cutting evidence, open proof boundaries, and expensive-test applicability.
 - [Deployment](./deployment.md): old production rollback boundary and the isolated self-hosted-STUN plus LiveKit-SFU/UDP candidate contract.
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
