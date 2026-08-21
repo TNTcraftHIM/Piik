@@ -21,9 +21,16 @@ const metrics = {
   remoteCandidateType: "host",
   codec: "video/VP8",
   codecParameters: "max-fs=8160",
+  captureWidth: 1920,
+  captureHeight: 1080,
+  captureFramesPerSecond: 60,
+  mediaSourceFramesPerSecond: 58.5,
+  rtpRid: "h",
   audioBitrateKbps: 128,
   audioCodec: "audio/opus",
   encoderImplementation: "ExternalEncoder",
+  intervalFramesEncoded: 116,
+  intervalEncodeTimeMs: 371.2,
   intervalEncodeMs: 3.2,
   qualityLimitationReason: "bandwidth",
 } satisfies ConnectionMetrics;
@@ -62,7 +69,12 @@ describe("StatsGrid progressive disclosure", () => {
     expect(html.indexOf("质量状态")).toBeLessThan(panelStart);
     expect(html.indexOf("视频 Codec")).toBeGreaterThan(panelStart);
     expect(html.indexOf("音频发送码率")).toBeGreaterThan(panelStart);
+    expect(html.indexOf("编码输入帧率")).toBeGreaterThan(panelStart);
+    expect(html.indexOf("最近区间编码量")).toBeGreaterThan(panelStart);
     expect(html.indexOf("最近区间编码/帧")).toBeGreaterThan(panelStart);
+    expect(html).toContain("58.5 fps");
+    expect(html).toContain("116 帧 · 371.2 ms");
+    expect(html).toContain("当前 RID");
   });
 
   it("keeps the existing full grid when progressive disclosure is not requested", () => {

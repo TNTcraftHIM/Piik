@@ -164,7 +164,7 @@ export function StatsGrid({
       {direction === "send" ? (
         <>
           <Metric
-            label="实际捕获"
+            label="捕获设置"
             value={
               metrics.captureWidth !== null && metrics.captureHeight !== null
                 ? `${metrics.captureWidth}x${metrics.captureHeight} · ${readableNumber(
@@ -173,12 +173,31 @@ export function StatsGrid({
                   )} fps`
                 : "未知"
             }
-            title="浏览器实际捕获设置"
+            title="MediaStreamTrack 当前设置，不代表最近一秒实际输入帧率"
           />
+          <Metric
+            label="编码输入帧率"
+            value={`${readableNumber(metrics.mediaSourceFramesPerSecond, 1)} fps`}
+            title="media-source 最近一秒送入编码器的帧率"
+          />
+          {metrics.rtpRid && <Metric label="当前 RID" value={metrics.rtpRid} />}
           {metrics.scalabilityMode && (
             <Metric label="当前流伸缩模式" value={metrics.scalabilityMode} />
           )}
           <Metric label="编码器" value={encoder} />
+          <Metric
+            label="最近区间编码量"
+            value={
+              metrics.intervalFramesEncoded === null &&
+              metrics.intervalEncodeTimeMs === null
+                ? "未知"
+                : `${readableNumber(metrics.intervalFramesEncoded)} 帧 · ${readableNumber(
+                    metrics.intervalEncodeTimeMs,
+                    1,
+                  )} ms`
+            }
+            title="相邻样本间 framesEncoded 增量与 totalEncodeTime 增量"
+          />
           <Metric
             label="最近区间编码/帧"
             value={`${readableNumber(metrics.intervalEncodeMs, 1)} ms`}

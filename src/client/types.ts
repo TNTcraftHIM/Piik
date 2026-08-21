@@ -12,11 +12,13 @@ export interface ConnectionMetrics {
   rtpStatsId: string | null;
   rtpSsrc: number | null;
   rtpMid: string | null;
+  rtpRid: string | null;
   trackIdentifier: string | null;
   selectedCandidatePairId: string | null;
   captureWidth: number | null;
   captureHeight: number | null;
   captureFramesPerSecond: number | null;
+  mediaSourceFramesPerSecond: number | null;
   path: MediaPath;
   iceProtocol: string | null;
   localRelayProtocol: string | null;
@@ -55,6 +57,8 @@ export interface ConnectionMetrics {
   scalabilityMode: string | null;
   encoderImplementation: string | null;
   powerEfficientEncoder: boolean | null;
+  intervalFramesEncoded: number | null;
+  intervalEncodeTimeMs: number | null;
   intervalEncodeMs: number | null;
   intervalDecodeMs: number | null;
   qualityLimitationReason: string | null;
@@ -77,11 +81,13 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   rtpStatsId: null,
   rtpSsrc: null,
   rtpMid: null,
+  rtpRid: null,
   trackIdentifier: null,
   selectedCandidatePairId: null,
   captureWidth: null,
   captureHeight: null,
   captureFramesPerSecond: null,
+  mediaSourceFramesPerSecond: null,
   path: "unknown",
   iceProtocol: null,
   localRelayProtocol: null,
@@ -120,6 +126,8 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   scalabilityMode: null,
   encoderImplementation: null,
   powerEfficientEncoder: null,
+  intervalFramesEncoded: null,
+  intervalEncodeTimeMs: null,
   intervalEncodeMs: null,
   intervalDecodeMs: null,
   qualityLimitationReason: null,

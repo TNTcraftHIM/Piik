@@ -371,7 +371,7 @@ function senderReport(
       rid: "q",
       mediaSourceId: "video-source",
       bytesSent: Math.floor(bytesSent / 4),
-      framesEncoded,
+      framesEncoded: Math.floor(framesEncoded / 4),
       framesPerSecond: 15,
       frameWidth: 960,
       frameHeight: 540,
@@ -384,6 +384,8 @@ function senderReport(
       timestamp,
       kind: "video",
       rid: "h",
+      transportId: "transport",
+      codecId: "codec",
       mediaSourceId: "video-source",
       bytesSent,
       framesEncoded,
@@ -392,12 +394,28 @@ function senderReport(
       frameHeight: 1080,
       totalEncodeTime: framesEncoded * 0.004,
       qualityLimitationReason: "bandwidth",
+      encoderImplementation: "ExternalEncoder",
+      powerEfficientEncoder: true,
     },
     {
       id: "video-source",
       type: "media-source",
       timestamp,
       trackIdentifier: trackId,
+      framesPerSecond: 59,
+    },
+    {
+      id: "transport",
+      type: "transport",
+      timestamp,
+    },
+    {
+      id: "codec",
+      type: "codec",
+      timestamp,
+      transportId: "transport",
+      mimeType: "video/H264",
+      sdpFmtpLine: "profile-level-id=42e01f;packetization-mode=1",
     },
   ]);
 }
@@ -457,8 +475,14 @@ describe("SfuPublisher", () => {
       captureHeight: 1080,
       captureFramesPerSecond: 60,
       trackIdentifier: previousVideo.id,
+      rtpRid: "h",
+      mediaSourceFramesPerSecond: 59,
       framesPerSecond: 57,
       resolution: "1920x1080",
+      codec: "video/H264",
+      codecProfile: "profile-level-id=42e01f",
+      encoderImplementation: "ExternalEncoder",
+      powerEfficientEncoder: true,
       qualityLimitationReason: "bandwidth",
     });
 
@@ -468,6 +492,8 @@ describe("SfuPublisher", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     expect(updates.at(-1)).toMatchObject({
       bitrateKbps: 800,
+      intervalFramesEncoded: 120,
+      intervalEncodeTimeMs: 480,
       intervalEncodeMs: 4,
     });
 

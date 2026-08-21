@@ -193,9 +193,17 @@ function mediaTrackIdentifier(
   if (direction === "receive") {
     return stringValue(media, "trackIdentifier");
   }
+  const source = mediaSourceRecord(report, media);
+  return stringValue(source, "trackIdentifier");
+}
+
+function mediaSourceRecord(
+  report: RTCStatsReport,
+  media: StatsRecord | null,
+): StatsRecord | null {
   const source = getRecord(report, stringValue(media, "mediaSourceId"));
   return source?.type === "media-source"
-    ? stringValue(source, "trackIdentifier")
+    ? source
     : null;
 }
 
@@ -451,6 +459,18 @@ export function collectConnectionMetricsFromReport(
           sampleWindowMs !== null ? previous.frames : null,
         )
       : null;
+  const intervalFramesEncoded =
+    direction === "send"
+      ? intervalDelta(framesEncoded, previous.frames, sampleWindowMs !== null)
+      : null;
+  const encodeTimeDelta =
+    direction === "send"
+      ? intervalDelta(
+          totalEncodeTime,
+          previous.previousTotalEncodeTime,
+          sampleWindowMs !== null,
+        )
+      : null;
   const intervalDecodeMs =
     direction === "receive"
       ? intervalAverageMs(
@@ -536,6 +556,8 @@ export function collectConnectionMetricsFromReport(
 
   const linkedCodec = linkedMediaCodec(report, media, transport, "video");
   const codecEvidence = deriveCodecEvidence(linkedCodec);
+  const mediaSource =
+    direction === "send" ? mediaSourceRecord(report, media) : null;
   const audio = mediaRecord(report, direction, null, "audio");
   const audioTransport = transportRecord(report, audio);
   const audioRemoteInbound =
@@ -618,6 +640,7 @@ export function collectConnectionMetricsFromReport(
     rtpStatsId: mediaId,
     rtpSsrc: ssrc,
     rtpMid: stringValue(media, "mid"),
+    rtpRid: stringValue(media, "rid"),
     trackIdentifier,
     selectedCandidatePairId: pair?.id ?? null,
     path,
@@ -636,6 +659,7 @@ export function collectConnectionMetricsFromReport(
       numberValue(pair, "availableOutgoingBitrate") !== null
         ? numberValue(pair, "availableOutgoingBitrate")! / 1_000
         : null,
+    mediaSourceFramesPerSecond: numberValue(mediaSource, "framesPerSecond"),
     framesPerSecond: numberValue(media, "framesPerSecond") ?? derivedFps,
     frameWidth: width,
     frameHeight: height,
@@ -681,6 +705,9 @@ export function collectConnectionMetricsFromReport(
       direction === "send" ? scalabilityModeValue(media) : null,
     encoderImplementation: stringValue(media, "encoderImplementation"),
     powerEfficientEncoder: booleanValue(media, "powerEfficientEncoder"),
+    intervalFramesEncoded,
+    intervalEncodeTimeMs:
+      encodeTimeDelta === null ? null : encodeTimeDelta * 1_000,
     intervalEncodeMs,
     intervalDecodeMs,
     qualityLimitationReason: stringValue(media, "qualityLimitationReason"),

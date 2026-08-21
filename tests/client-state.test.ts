@@ -849,9 +849,13 @@ describe("WebRTC stats parsing", () => {
         mediaSourceId: "source-a",
         remoteId: "remote-inbound-a",
         codecId: "codec-a",
+        rid: "main",
         scalabilityMode: "L2T3_KEY",
         bytesSent: 2_000,
         framesEncoded: 60,
+        totalEncodeTime: 0.3,
+        encoderImplementation: "ExternalEncoder",
+        powerEfficientEncoder: true,
       }),
       entry("outbound-z", "outbound-rtp", {
         kind: "video",
@@ -866,6 +870,7 @@ describe("WebRTC stats parsing", () => {
       entry("source-a", "media-source", {
         kind: "video",
         trackIdentifier: "capture-track-a",
+        framesPerSecond: 58.5,
       }),
       entry("source-z", "media-source", {
         kind: "video",
@@ -913,7 +918,9 @@ describe("WebRTC stats parsing", () => {
       rtpStatsId: "outbound-a",
       rtpSsrc: 111,
       rtpMid: "0",
+      rtpRid: "main",
       trackIdentifier: "capture-track-a",
+      mediaSourceFramesPerSecond: 58.5,
       selectedCandidatePairId: "pair-a",
       path: "direct",
       iceProtocol: "udp",
@@ -925,6 +932,10 @@ describe("WebRTC stats parsing", () => {
       codecParameters:
         "packetization-mode=1; level-asymmetry-allowed=1",
       scalabilityMode: "L2T3_KEY",
+      encoderImplementation: "ExternalEncoder",
+      powerEfficientEncoder: true,
+      intervalFramesEncoded: null,
+      intervalEncodeTimeMs: null,
     });
     expect(JSON.stringify(metrics)).not.toContain("sprop-parameter-sets");
     expect(JSON.stringify(metrics)).not.toContain("x-google-start-bitrate");
