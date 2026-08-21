@@ -116,9 +116,9 @@ class FakePeerConnection {
     this.transceiverInputs.push({ trackOrKind, init });
     return {
       sender,
-      setCodecPreferences: vi.fn((codecs: RTCRtpCodec[]) => {
+      setCodecPreferences: (codecs: RTCRtpCodec[]) => {
         this.codecPreferenceCalls.push([...codecs]);
-      }),
+      },
     } as unknown as RTCRtpTransceiver;
   }
 
@@ -346,19 +346,13 @@ beforeEach(() => {
   statsCallbacks.length = 0;
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
   vi.stubGlobal("RTCRtpSender", {
-    getCapabilities: vi.fn(() => ({
+    getCapabilities: () => ({
       codecs: [
         { mimeType: "video/VP8", clockRate: 90_000 },
-        { mimeType: "video/rtx", clockRate: 90_000, sdpFmtpLine: "apt=96" },
-        {
-          mimeType: "video/H264",
-          clockRate: 90_000,
-          sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f",
-        },
-        { mimeType: "video/rtx", clockRate: 90_000, sdpFmtpLine: "apt=102" },
+        { mimeType: "video/H264", clockRate: 90_000 },
       ],
       headerExtensions: [],
-    })),
+    }),
   });
   vi.stubGlobal("window", {
     setInterval: vi.fn((callback: () => void) => {
@@ -378,27 +372,7 @@ afterEach(() => {
 });
 
 describe("HostPeer source replacement", () => {
-  it("prefers H.264 before the first offer while retaining codec fallback", async () => {
-    const peer = createPeer(createStream(createTrack("video", "video"), null));
-
-    await expect(peer.start()).resolves.toBe(true);
-
-    const preferences = FakePeerConnection.latest!.codecPreferenceCalls[0]!;
-    expect(preferences).toHaveLength(4);
-    expect(preferences[0]?.mimeType).toBe("video/H264");
-    expect(preferences.map(({ mimeType }) => mimeType)).toContain("video/VP8");
-    expect(
-      preferences.filter(({ mimeType }) => mimeType === "video/rtx"),
-    ).toHaveLength(2);
-  });
-
-  it("keeps browser defaults when H.264 send capability is absent", async () => {
-    vi.stubGlobal("RTCRtpSender", {
-      getCapabilities: vi.fn(() => ({
-        codecs: [{ mimeType: "video/VP8", clockRate: 90_000 }],
-        headerExtensions: [],
-      })),
-    });
+  it("leaves browser codec ordering unchanged", async () => {
     const peer = createPeer(createStream(createTrack("video", "video"), null));
 
     await expect(peer.start()).resolves.toBe(true);
