@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SfuPublisher } from "../src/client/sfu/publisher.ts";
 import { SfuSubscriber } from "../src/client/sfu/subscriber.ts";
+import type { ConnectionMetrics } from "../src/client/types.ts";
+import { mergeStatsReports } from "../src/client/webrtc/stats.ts";
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -211,6 +213,8 @@ const livekit = vi.hoisted(() => {
 const RoomEvent = {
   Disconnected: "disconnected",
   ParticipantDisconnected: "participant-disconnected",
+  Reconnected: "reconnected",
+  Reconnecting: "reconnecting",
   TrackPublished: "track-published",
   TrackSubscribed: "track-subscribed",
   TrackUnpublished: "track-unpublished",
@@ -267,6 +271,37 @@ const qualityProfile = {
 
 function track(kind: "video" | "audio", id: string): MediaStreamTrack {
   return { id, kind } as MediaStreamTrack;
+}
+
+function remoteTrack(
+  mediaStreamTrack: MediaStreamTrack,
+  getStats: () => RTCStatsReport | Promise<RTCStatsReport> = () =>
+    new Map() as unknown as RTCStatsReport,
+) {
+  return {
+    mediaStreamTrack,
+    getRTCStatsReport: vi.fn(async () => getStats()),
+  };
+}
+
+function statsReport(
+  records: Array<Record<string, unknown> & { id: string }>,
+): RTCStatsReport {
+  return new Map(
+    records.map((record) => [record.id, record]),
+  ) as unknown as RTCStatsReport;
+}
+
+function receiverReport(kind: "video" | "audio"): RTCStatsReport {
+  return statsReport([
+    {
+      id: `${kind}-in`,
+      type: "inbound-rtp",
+      timestamp: 1_000,
+      kind,
+      trackIdentifier: `${kind}-1`,
+    },
+  ]);
 }
 
 function stream(...tracks: MediaStreamTrack[]): MediaStream {
@@ -778,7 +813,7 @@ describe("SfuSubscriber", () => {
     const audio = track("audio", "audio-1");
     room.emit(
       RoomEvent.TrackSubscribed,
-      { mediaStreamTrack: audio },
+      remoteTrack(audio),
       hostAudio,
       host,
     );
@@ -787,7 +822,7 @@ describe("SfuSubscriber", () => {
     const video = track("video", "video-1");
     room.emit(
       RoomEvent.TrackSubscribed,
-      { mediaStreamTrack: video },
+      remoteTrack(video),
       hostVideo,
       host,
     );
@@ -798,6 +833,77 @@ describe("SfuSubscriber", () => {
     expect(hostAudio.setSubscribed).toHaveBeenLastCalledWith(false);
     expect(streams.at(-1)).toBeNull();
     expect(room.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("reports merged receiver stats and drops a stale sample", async () => {
+    const updates: ConnectionMetrics[] = [];
+    const states: string[] = [];
+    const subscriber = new SfuSubscriber({
+      onStream: vi.fn(),
+      onStats: (metrics) => updates.push(metrics),
+      onState: (state) => states.push(state),
+    });
+    await subscriber.connect(connection);
+    const room = livekit.state.rooms[0];
+    const host = new livekit.FakeRemoteParticipant("host");
+    const hostVideo = new livekit.FakeRemotePublication(
+      "host-video",
+      Track.Source.ScreenShare,
+    );
+    const hostAudio = new livekit.FakeRemotePublication(
+      "host-audio",
+      Track.Source.ScreenShareAudio,
+    );
+    host.add(hostVideo).add(hostAudio);
+    room.remoteParticipants.set("host", host);
+    expect(subscriber.activate()).toBe(true);
+
+    const reports = {
+      video: receiverReport("video"),
+      audio: receiverReport("audio"),
+    };
+    expect(
+      Array.from(mergeStatsReports([reports.video, reports.audio])!.keys()),
+    ).toEqual(["video-in", "audio-in"]);
+    const video = track("video", "video-1");
+    const audio = track("audio", "audio-1");
+    let videoStats: RTCStatsReport | Promise<RTCStatsReport> = reports.video;
+    const remoteVideo = remoteTrack(video, () => videoStats);
+    room.emit(
+      RoomEvent.TrackSubscribed,
+      remoteTrack(audio, () => reports.audio),
+      hostAudio,
+      host,
+    );
+    room.emit(
+      RoomEvent.TrackSubscribed,
+      remoteVideo,
+      hostVideo,
+      host,
+    );
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+
+    expect(updates.at(-1)).toMatchObject({
+      rtpStatsId: "video-in",
+      trackIdentifier: "video-1",
+    });
+
+    let releaseStats = (): void => undefined;
+    videoStats = new Promise<RTCStatsReport>((resolve) => {
+      releaseStats = () => resolve(reports.video);
+    });
+    room.emit(RoomEvent.Reconnecting);
+    room.emit(RoomEvent.Reconnected);
+    expect(states).toEqual(["reconnecting", "connected"]);
+    await vi.waitFor(() =>
+      expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(2),
+    );
+
+    expect(subscriber.deactivate()).toBe(true);
+    releaseStats();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(updates).toHaveLength(1);
   });
 
   it("notifies the controller after a terminal room disconnect", async () => {
