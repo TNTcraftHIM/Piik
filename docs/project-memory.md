@@ -25,7 +25,7 @@ Last updated: 2026-08-21
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
 - ADR-0006's historical browser-bridge canary remains no-go; VP8 stays default. Browser H.264 rendered 298/299; Native WGC/MF rendered 203 with PID/LUID-correlated `VideoEncode`. Downloaded use, multi-viewer/endurance/public proof remain open.
 - Mobile endpoints are Web Viewer-only. Current Android/iOS browsers do not expose Web Host capture; AirPlay/system mirroring is Viewer-local output.
-- ADR-0005 accepts direct/peer UDP -> bounded SFU roots -> selected-edge TURN. An exact-Web-source canary against production media services proves active Host-ingress relay; initial ingress and `peer-selected` remain open. Ordinary peers stay STUN-only.
+- ADR-0005: direct/peer UDP -> bounded SFU roots -> selected-edge TURN. Source caps pending/answered `peer-selected` at one per room; Host ingress is independent. An exact-source/production-media canary proves active Host ingress only. Ordinary peers stay STUN-only.
 - The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, mobile leaves and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
