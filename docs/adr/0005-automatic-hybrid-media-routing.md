@@ -280,6 +280,12 @@ ID allowlist.
    STUN-only throughout these attempts. When admission has no eligible peer path,
    or recovery is exhausted, select the SFU root plan. Stock LiveKit participant
    ICE remains a distinct domain.
+   The Viewer recovery control follows the authoritative active route: a peer
+   edge requests the existing peer recovery, while an SFU assignment restarts
+   Screener signaling so reauthentication reasserts the same route and the
+   existing authoritative resync rebuilds the subscriber from fresh config. It
+   neither reports a connection as healthy nor directly requests SFU-to-peer
+   migration.
 3. The server computes revision `R+1` without mutating the active topology. It
    sends a prepare plan only to the host and required fallback roots.
 4. When fallback is configured, host and viewer clients have already made one

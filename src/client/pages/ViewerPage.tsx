@@ -114,6 +114,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
   const [assignedRoute, setAssignedRoute] = useState<{
     revision: number;
+    phase: "prepare" | "active";
     upstream: ParticipantRouteAssignment["upstream"];
   } | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
@@ -195,11 +196,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   function acceptAssignedRoute(
     revision: number,
     upstream: ParticipantRouteAssignment["upstream"],
+    phase: "prepare" | "active" = "active",
   ): void {
     setAssignedRoute((current) =>
       current && revision < current.revision
         ? current
-        : { revision, upstream },
+        : { revision, phase, upstream },
     );
   }
 
@@ -825,6 +827,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           nextPeerAssisted && "routeAssignment" in message
             ? {
                 revision: message.routeRevision,
+                phase: "active",
                 upstream: message.routeAssignment.upstream,
               }
             : null,
@@ -949,7 +952,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           }
           const result = ensureViewerSfuRoute().accept(message);
           if (result !== "stale") {
-            acceptAssignedRoute(message.revision, message.assignment.upstream);
+            acceptAssignedRoute(
+              message.revision,
+              message.assignment.upstream,
+              message.phase,
+            );
           }
         }
         return;
@@ -1219,7 +1226,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }
 
   function retryConnection(): void {
-    if (!peerRef.current?.requestRecovery()) {
+    const requested =
+      assignedRoute?.phase === "active" &&
+      assignedRoute.upstream.kind === "sfu"
+        ? signalRef.current?.reconnect() === true
+        : peerRef.current?.requestRecovery() === true;
+    if (!requested) {
       setStatusText(hostOnline ? "正在连接" : "等待开始分享");
     } else {
       setStatusText("正在恢复连接");
@@ -1484,7 +1496,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               className="icon-button"
               title="恢复连接"
               aria-label="恢复连接"
-              disabled={!peerSnapshot}
+              disabled={
+                !peerSnapshot &&
+                !(
+                  assignedRoute?.phase === "active" &&
+                  assignedRoute.upstream.kind === "sfu"
+                )
+              }
               onClick={retryConnection}
             >
               <RefreshCw size={19} />

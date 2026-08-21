@@ -587,7 +587,72 @@ describe("client signaling recovery policy", () => {
     expect(shouldReconnectSignaling(4001)).toBe(false);
     expect(shouldReconnectSignaling(4004)).toBe(false);
     expect(shouldReconnectSignaling(1008)).toBe(false);
+    expect(shouldReconnectSignaling(4002)).toBe(true);
     expect(shouldReconnectSignaling(1006)).toBe(true);
+  });
+
+  it("restarts only an authenticated active signaling session on request", () => {
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly CLOSING = 2;
+      readyState = 1;
+      readonly send = vi.fn();
+      readonly close = vi.fn((code?: number, reason?: string) => {
+        void code;
+        void reason;
+        this.readyState = FakeWebSocket.CLOSING;
+      });
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/123456789012"),
+      setTimeout,
+      clearTimeout,
+    });
+    const signal = new SignalingClient(
+      {
+        roomId: "123456789012",
+        role: "viewer",
+        clientId: "viewer-client",
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+
+    signal.start();
+    expect(signal.reconnect()).toBe(false);
+    sockets[0]!.dispatchEvent(new Event("open"));
+    const authenticated = new Event("message");
+    Object.defineProperty(authenticated, "data", {
+      value: JSON.stringify({
+        type: "authenticated",
+        protocol: "screener-v4",
+        role: "viewer",
+        peerId: "viewer_12345678",
+        roomExpiresAt: null,
+        maxViewers: 8,
+        hostOnline: true,
+        connectionId: null,
+        viewerPeerIds: [],
+        iceConfig: { iceServers: [] },
+        viewerPolicy: "private-link",
+        viewerAuthorizationGeneration: "viewer_generation_12345678",
+      }),
+    });
+    sockets[0]!.dispatchEvent(authenticated);
+
+    expect(signal.reconnect()).toBe(true);
+    expect(sockets[0]!.close).toHaveBeenCalledWith(4002, "client reconnect");
+    expect(signal.reconnect()).toBe(false);
   });
 
   it.each([
