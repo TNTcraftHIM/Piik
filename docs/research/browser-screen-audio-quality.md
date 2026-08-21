@@ -1,8 +1,8 @@
 # Browser Screen-Audio Quality Controls
 
-Accessed: 2026-08-19
+Accessed: 2026-08-21
 
-Status: retained no-go for user-facing browser audio quality controls.
+Status: standard music hint accepted; user-facing codec controls remain no-go.
 
 ## Scope And Decision
 
@@ -14,13 +14,17 @@ requirement.
 The Web sender keeps the current minimal behavior:
 
 - request audio with `audio: true`;
+- request window audio for a selected window and offer system audio for a full
+  display;
+- mark returned audio tracks with `contentHint = "music"`;
 - treat an audio track as optional and warn before publishing when none exists;
 - preserve returned audio through source changes, picture pause, P2P, relay, and
   configured SFU routes; and
 - expose no channel-count, sample-rate, Opus bitrate, stereo, DTX, or FEC
   quality control.
 
-No codec-quality control is justified yet. In particular, Screener will not add
+The music hint is not a codec or quality mode. No codec-quality control is
+justified yet. In particular, Screener will not add
 application-owned SDP munging or a control whose value cannot be separated into
 requested, applied, negotiated, and observed states using standard APIs. The
 deployed reports below do justify an explicit source-scope acceptance gate and
@@ -42,12 +46,18 @@ and sent back. It is not ordinary microphone acoustic echo. AEC, noise
 suppression, or post-mix Web Audio cannot recover the originating process and
 must not be presented as a fix.
 
+On 2026-08-21 the production picker was user-verified to keep tab and window
+audio scoped as intended in that browser environment. Current source requests
+the source-appropriate window and full-display audio choices. This is one
+environment observation, not a cross-browser source guarantee.
+
 ## Standard API Boundary
 
 | Concern | Standard request or control | Honest readback | What it does not prove | Current product action |
 | --- | --- | --- | --- | --- |
 | Audio presence | `getDisplayMedia({ audio: true, video: ... })` expresses interest | `stream.getAudioTracks().length` proves only whether a track was returned | The browser may still return video only; a track does not identify system, window, tab, or selected-game audio | Keep the existing presence check and visible no-audio warning |
-| Audio source choice | `systemAudio`, `windowAudio`, and `audioSelection` are picker hints that a user agent may ignore | There is no standard audio-source category readback corresponding to those hints | The selected audio scope, per-application isolation, or cross-browser availability | Do not present these hints as quality or source guarantees |
+| Audio source choice | `windowAudio: "window"` asks for window audio and `systemAudio: "include"` offers system audio for monitor surfaces; a user agent may ignore either hint | There is no standard audio-source category readback corresponding to those hints | The selected audio scope, per-application isolation, or cross-browser availability | Let the picker expose the source-appropriate option without adding an inferred source label |
+| Content intent | `track.contentHint = "music"` asks the media pipeline to treat the returned audio as music | The assigned hint can be read back | A codec, bitrate, stereo mode, or guarantee that browser processing changed | Apply the hint without presenting it as a quality preset |
 | Voice-app exclusion | `restrictOwnAudio` concerns audio produced by the document that invoked capture; `suppressLocalAudioPlayback` concerns local playback of a captured browser surface | The app may observe whether a returned track exists, not which OS processes it contains | Excluding Discord, KOOK, WeChat, notifications, or any other independent process from system audio | Web keeps video-only available and warns that system audio may include calls/notifications; it does not claim isolation |
 | Capture channels | The Screen Capture specification does not list generic `channelCount` as applicable to display audio | `track.getSettings().channelCount` may describe the returned track when the browser supplies it | That the app controlled the value, or that the RTP encoder sends stereo | Observe only in a future diagnostic; absent means unknown |
 | Capture sample rate | The Screen Capture specification does not list generic `sampleRate` as applicable to display audio | `track.getSettings().sampleRate` may be present in an implementation | The Opus mode, RTP clock semantics, receiver output rate, or end-to-end fidelity | Observe only in a future diagnostic; absent means unknown |
@@ -79,8 +89,10 @@ MDN browser-compatibility data on the access date reports:
   Windows and ChromeOS but tab-only audio on Linux and macOS;
 - no display-audio capture support in Firefox or Safari;
 - `systemAudio` in desktop Chromium from Chrome 105, but not Firefox or Safari;
-- `windowAudio` only partially implemented in Chrome 141: `"exclude"` and
-  `"system"` are supported, while `"window"` is not; and
+- `windowAudio` is listed as partial in Chrome 141: `"exclude"` and `"system"`
+  are documented while `"window"` is not yet represented as supported in BCD;
+  current Chrome deployments may differ, so runtime/user evidence stays local;
+  and
 - `MediaTrackSettings.channelCount` as non-Baseline because it is missing in
   widely used browsers.
 

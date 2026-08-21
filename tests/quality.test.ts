@@ -19,6 +19,7 @@ function createVideoStream() {
     getSettings: () => ({ width: 1920, height: 1080, frameRate: 60 }),
   } as unknown as MediaStreamTrack;
   const audioTrack = {
+    contentHint: "",
     enabled: true,
   } as unknown as MediaStreamTrack;
   const stream = {
@@ -35,7 +36,7 @@ afterEach(() => {
 
 describe("realtime quality controls", () => {
   it("bounds initial capture to the selected profile", async () => {
-    const { stream, videoTrack } = createVideoStream();
+    const { stream, videoTrack, audioTrack } = createVideoStream();
     const getDisplayMedia = vi.fn(async () => stream);
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
 
@@ -50,10 +51,11 @@ describe("realtime quality controls", () => {
         frameRate: { ideal: 30, max: 30 },
       },
       audio: true,
-      systemAudio: "exclude",
+      systemAudio: "include",
       windowAudio: "window",
     });
     expect(videoTrack.contentHint).toBe("motion");
+    expect(audioTrack.contentHint).toBe("music");
   });
 
   it("changes custom capture ceilings without selecting the source again", async () => {

@@ -24,16 +24,14 @@ Windows 11 desktop (build 22000 or newer) and is not a Windows 10 fallback.
 
 ## Decision
 
-1. The Web sender requests Chromium's best-effort window-audio hints,
-   `windowAudio: "window"` and `systemAudio: "exclude"`. The latter avoids
-   offering the whole-system source in Chromium's picker. Older browsers may
-   ignore these dictionary members. The UI labels a returned track as
-   **window requested, scope unconfirmed** and warns that system audio may
-   still be present. It never retries with a wider source after a capture
-   failure and never claims isolation from a track's presence alone.
+1. The Web sender requests `windowAudio: "window"` for window surfaces and
+   `systemAudio: "include"` for monitor surfaces. The browser picker and user
+   consent decide whether audio is shared; older browsers may ignore either
+   hint, and track presence alone does not identify its source.
 2. The default Web route remains unchanged in topology, codecs, and relay
-   behavior. No Web Audio mixer, SDP rewrite, or app-owned audio bitrate knob
-   is introduced by this ADR.
+   behavior. Returned audio tracks use the standard `contentHint = "music"`;
+   this does not force a codec, bitrate, channel count, or processing mode. No
+   Web Audio mixer, SDP rewrite, or app-owned audio bitrate knob is introduced.
 3. The native sender has an explicit Windows 11 local window target. Browser
    VP8/H.264 may use that target only for `window-process-audio`; the separate
    `native-window-h264` source uses the same bound HWND/PID/creation time for

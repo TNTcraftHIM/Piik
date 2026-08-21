@@ -23,7 +23,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Production includes LiveKit's two-layer `q,h` sender guard; its functional media proof remains local, not production.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
-- Web roster includes Host self-name and requests window-scoped display audio where supported; both are hints, and Native wire/media is unchanged.
+- Web roster has Host names. Source requests window/system audio by surface and uses the music hint; the full-display change awaits deploy.
 
 ## Verified Evidence
 

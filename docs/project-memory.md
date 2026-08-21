@@ -30,7 +30,7 @@ Last updated: 2026-08-21
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
-- Web cannot isolate process audio. ADR-0008 Win11 audio is opt-in/source-only with no system-mix fallback or exposed PID; one Viewer got 495 Opus packets. Evaluation packaging includes the helper, hashes, and linked licenses; release, game sync, other routes, and Win10 remain open.
+- Web requests window audio and offers system audio for full displays; both are browser hints. Returned tracks use the `music` hint. Native Win11 process audio stays source-only; one Viewer got 495 Opus packets.
 - Viewer-local names and the opt-in Web participant roster remain control-plane-only. Web Host names are deployed in the current release and stay socket/localStorage-only; Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
@@ -53,7 +53,7 @@ Last updated: 2026-08-21
 - Chrome 151 synthetic topology/quality runs kept fanout 2/1 and decoding; one relay close recovered in 5.32 seconds. Control evidence only.
 - Deployed Web source uses LiveKit 2.22.0's two-layer `q,h` layout. Local Chrome 151/LiveKit 1.13.5 kept one SFU/UDP root with growing inbound/decoded/rendered counters, clean leaves and no TURN. Production SFU media, zero-child BWE, and calibrated C+B loss remain open.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
-- Web Host name/presence and window-audio hint are deployed. Native accepts bounded peer-assisted direct children and fails unsupported SFU/selected ingress; it has no LiveKit/TURN media. Its WGC/MF H.264 direct-child smoke rendered 203 frames plus 500 Opus packets and matched helper PID/LUID `VideoEncode`; packaging is source-only, unreleased and undeployed. VP8 remains the Web/production default. See `docs/research/native-h264-opt-in-path.md`.
+- Web names/window audio are deployed; current source adds full-display system audio and the music hint. Native WGC/MF remains source-only: 203 rendered frames, 500 Opus packets, and matched PID/LUID `VideoEncode`. VP8 remains the Web default.
 
 ## Provisional Quality Targets
 
