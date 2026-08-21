@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { closeSync, fsyncSync, openSync, writeFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { lstat, mkdtemp, readdir, rm } from "node:fs/promises";
 import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -41,7 +41,7 @@ import {
 
 type Stage = "preflight" | "sender-start" | "node-host" | "viewer-signal" | "viewer-media" | "cleanup";
 
-interface PageHandle {
+export interface PageHandle {
   sessionId: string;
 }
 
@@ -136,7 +136,7 @@ interface ViewerSnapshot {
   audioBytesReceived: number;
 }
 
-class CdpConnection {
+export class CdpConnection {
   private nextId = 1;
   private readonly pending = new Map<number, {
     resolve: (value: unknown) => void;
@@ -941,15 +941,19 @@ function viewerProbe(): string {
   })();`;
 }
 
-async function createPage(
+export async function createPage(
   cdp: CdpConnection,
   url: string,
   probe?: string,
   newWindow = false,
+  browserContextId?: string,
 ): Promise<PageHandle> {
   const deadline = Date.now() + 15_000;
   const created = await cdp.call<{ targetId: string }>(
-    "Target.createTarget", { url: "about:blank", background: false, newWindow }, undefined, deadline,
+    "Target.createTarget", {
+      url: "about:blank", background: false, newWindow,
+      ...(browserContextId ? { browserContextId } : {}),
+    }, undefined, deadline,
   );
   const attached = await cdp.call<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true }, undefined, deadline);
   const page = { sessionId: attached.sessionId };
@@ -967,7 +971,7 @@ async function createPage(
   return page;
 }
 
-async function evaluate<T>(cdp: CdpConnection, page: PageHandle, expression: string, deadline: number): Promise<T> {
+export async function evaluate<T>(cdp: CdpConnection, page: PageHandle, expression: string, deadline: number): Promise<T> {
   const value = await cdp.call<CdpResult<T>>("Runtime.evaluate", {
     expression, awaitPromise: true, returnByValue: true, userGesture: true,
   }, page.sessionId, deadline);
@@ -998,7 +1002,7 @@ function safeRoute(value: string | undefined): string {
     .has(value ?? "") ? value! : "unknown";
 }
 
-async function reservePort(): Promise<number> {
+export async function reservePort(): Promise<number> {
   const server = createServer();
   return new Promise((resolvePort, rejectPort) => {
     server.once("error", rejectPort);
@@ -1034,7 +1038,7 @@ async function readLaunchUrl(child: ChildProcessWithoutNullStreams): Promise<str
   });
 }
 
-async function waitForVersion(port: number, child: ChildProcessWithoutNullStreams): Promise<{ Browser: string; webSocketDebuggerUrl: string }> {
+export async function waitForVersion(port: number, child: ChildProcessWithoutNullStreams): Promise<{ Browser: string; webSocketDebuggerUrl: string }> {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline && child.exitCode === null) {
     try {
@@ -1047,7 +1051,7 @@ async function waitForVersion(port: number, child: ChildProcessWithoutNullStream
   throw new Error("Chrome startup timed out");
 }
 
-interface CleanupResources {
+export interface CleanupResources {
   cdp: CdpConnection | null;
   native: ChildProcessWithoutNullStreams | null;
   chrome: ChildProcessWithoutNullStreams | null;
@@ -1056,7 +1060,7 @@ interface CleanupResources {
   ports: number[];
 }
 
-async function cleanupRun(resources: CleanupResources): Promise<CleanupResult> {
+export async function cleanupRun(resources: CleanupResources): Promise<CleanupResult> {
   if (resources.cdp) {
     try { await resources.cdp.call("Browser.close", {}, undefined, Date.now() + 2_000); } catch {}
     resources.cdp.close();
@@ -1082,8 +1086,13 @@ function processRunning(child: ChildProcessWithoutNullStreams): boolean {
 async function stopProcessTree(child: ChildProcessWithoutNullStreams): Promise<boolean> {
   if (!processRunning(child)) return true;
   if (await waitForExit(child, 2_000)) return true;
-  if (process.platform !== "win32" || child.pid === undefined) return false;
-  await runBounded("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], 5_000);
+  if (process.platform === "win32" && child.pid !== undefined) {
+    await runBounded("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], 5_000);
+  } else {
+    child.kill("SIGTERM");
+    if (await waitForExit(child, 2_000)) return true;
+    child.kill("SIGKILL");
+  }
   return waitForExit(child, 3_000);
 }
 
@@ -1145,7 +1154,7 @@ $root = [IO.Path]::GetFullPath($env:SCREENER_GATE_PROFILE_TO_REMOVE)
 $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $parent = [IO.Path]::GetDirectoryName($root).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $name = [IO.Path]::GetFileName($root)
-if ($parent -ine $temp -or $name -notmatch '^screener-native-one-viewer-[A-Za-z0-9_-]{6}$') { exit 31 }
+if ($parent -ine $temp -or $name -notmatch '^screener-(native-one-viewer|access-privacy)-[A-Za-z0-9_-]{6}$') { exit 31 }
 $rootEntries = @([IO.Directory]::EnumerateFileSystemEntries($parent, $name, [IO.SearchOption]::TopDirectoryOnly))
 if ($rootEntries.Count -eq 0) { exit 0 }
 if ($rootEntries.Count -ne 1) { exit 34 }
@@ -1171,7 +1180,24 @@ if ($rootEntries.Count -ne 0) { exit 33 }
 `;
 
 async function removeGateProfile(profile: string): Promise<boolean> {
-  if (process.platform !== "win32" || !isExactGateProfile(profile, tmpdir())) return false;
+  if (!isExactGateProfile(profile, tmpdir())) return false;
+  if (process.platform !== "win32") {
+    const pending = [profile];
+    try {
+      while (pending.length > 0) {
+        const current = pending.pop()!;
+        const stat = await lstat(current);
+        if (stat.isSymbolicLink()) return false;
+        if (stat.isDirectory()) {
+          pending.push(...(await readdir(current)).map((name) => join(current, name)));
+        }
+      }
+      await rm(profile, { recursive: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
   return runBounded("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", profileCleanupScript],
     10_000, { ...process.env, SCREENER_GATE_PROFILE_TO_REMOVE: profile });
 }

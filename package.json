@@ -14,6 +14,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node dist/server/server/index.js",
     "benchmark:peer-assisted": "tsx scripts/peer-assisted-benchmark.ts",
+    "gate:access-privacy": "npm run build:client && vitest run tests/server-signal.test.ts && tsx scripts/access-privacy-gate.ts",
     "gate:turn-allocation": "tsx scripts/turn-allocation-gate.ts",
     "gate:native-one-viewer": "tsx scripts/native-one-viewer-gate.ts",
     "typecheck": "tsc -b --pretty false",

@@ -215,5 +215,5 @@ export function isExactGateProfile(profile: string, systemTemp: string): boolean
   const same = process.platform === "win32"
     ? dirname(candidate).toLowerCase() === temp.toLowerCase()
     : dirname(candidate) === temp;
-  return same && /^screener-native-one-viewer-[A-Za-z0-9_-]{6}$/.test(basename(candidate));
+  return same && /^screener-(?:native-one-viewer|access-privacy)-[A-Za-z0-9_-]{6}$/.test(basename(candidate));
 }

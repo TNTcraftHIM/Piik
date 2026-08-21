@@ -287,6 +287,7 @@ describe("native one-viewer gate invariants", () => {
   it("accepts only the exact task profile directly under system Temp", () => {
     const temp = join("C:", "Temp");
     expect(isExactGateProfile(join(temp, "screener-native-one-viewer-a1B_2-"), temp)).toBe(true);
+    expect(isExactGateProfile(join(temp, "screener-access-privacy-a1B_2-"), temp)).toBe(true);
     expect(isExactGateProfile(join(temp, "nested", "screener-native-one-viewer-a1B_2-"), temp)).toBe(false);
     expect(isExactGateProfile(join(temp, "other-a1B_2-"), temp)).toBe(false);
     expect(profileCleanupScript).toContain("EnumerateFileSystemEntries($parent, $name");
