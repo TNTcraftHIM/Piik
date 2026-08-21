@@ -84,7 +84,9 @@ TURN config, issuer, capability, refresh wire, or client propagation. Stale
 `PEER_ICE_TURN_*` keys fail startup even when blank. The source candidate now
 implements a complete selected-edge tuple and one relay-only rebuild for either
 the initial pending Host publication or an active Host/SFU route; production
-configures the tuple, but real TURN/media evidence remains open.
+configures the tuple. A bounded exact-Web-source canary against the production
+LiveKit/coturn tuple proves the active Host/SFU relay route; initial Host ingress
+and `peer-selected` relay media remain open.
 The wire has two explicit edge kinds: `peer-selected` for the last-mile failed
 peer edge and `host-sfu-ingress` for a restricted Host-to-SFU retry. Ordinary
 Peer ICE remains STUN-only. Each room admits at most one pending or answered
@@ -97,7 +99,7 @@ production. The tracked LiveKit sample explicitly sets `tcp_port: 0`, disables
 TCP fallback, supplies
 the deployment-owned STUN server, and configures no TURN service. The SFU controller still
 activates only after a peer edge exhausts recovery. Public participant entry has
-been observed, but retained media and route admission remain unverified. The old
+been observed, but public-room retained media and route admission remain unverified. The old
 `769de201f7cc` release and coturn relay are isolated rollback resources, not a
 permanent compatibility branch or advertised current transport.
 
@@ -431,8 +433,24 @@ relay-only LiveKit publisher `RTCConfiguration`, including during the initial
 pending prepare. Pinned LiveKit client 2.22.0 accepts `rtcConfig` on
 `Room.connect`; its engine clones that override before creating the publisher
 PeerConnection and does not replace explicitly supplied ICE servers. This path
-is configured in production but has no real relay-media evidence.
+is configured in production, and its active Host-ingress relay function is now
+proven; the initial-ingress and `peer-selected` variants remain open.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
+
+On 2026-08-21 a standalone relay-only Chrome allocation gate issued a credential
+through the production parser/issuer and received one UDP relay candidate. One
+subsequent bounded Chrome 151 canary ran the exact deployed Web source in a local
+Screener room against the production LiveKit/coturn tuple. A temporary DEV-only
+hook forced the active SFU publisher to fail once and was removed afterward. The
+application then issued `host-sfu-ingress`, connected a relay-policy publisher
+whose only ICE server was TURN, selected a succeeded/nominated pair with
+`relayProtocol=udp`, sent video bytes and frames, and kept Viewer decode/render
+counters advancing. Ordinary peer PCs remained STUN-only, Host outbound media
+edges peaked at one, and explicit stop returned them to zero. This proves the
+active functional transition only; it is not latency, quality, capacity, expiry,
+mobile, or resource evidence. Chrome reported `candidateType=prflx` for the same
+local candidate; the standards-bounded interpretation and raw-counter summary
+are retained in the linked research rather than normalized away.
 
 ### Deferred Optimization
 

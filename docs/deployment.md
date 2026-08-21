@@ -35,9 +35,12 @@ and the old endpoint remains 404. Exact
 `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`
 is the immediate rollback target; exact `fd76277b05d491af8840b28f3132b7ff445d3cbe`
 remains a secondary rollback.
-The selected-edge UDP tuple is configured with TTL 120, but no real TURN/SFU
-media canary was triggered; this remains a bounded configuration smoke, not
-broad-rollout media acceptance.
+The selected-edge UDP tuple is configured with TTL 120. The cutover itself
+triggered no TURN/SFU media and remains configuration evidence. A separate
+post-deploy local Screener canary using this exact Web source and the production
+LiveKit/coturn tuple later proved active Host-ingress relay function without
+using the production application room or database; it is not broad-rollout or
+performance acceptance.
 
 ## Topology and prerequisites
 
@@ -212,6 +215,16 @@ coturn UDP endpoint and a 120-second TTL; only the controller-selected edge may
 receive a short-lived grant. Roll back by removing the application tuple before
 changing coturn or firewall state. Credentials never enter URLs, logs, browser
 persistence, room rows, or SQLite.
+
+Before a media canary, `npm run gate:turn-allocation` provides the bounded
+allocation check. Set `CHROME_PATH` in the process environment and supply the
+complete selected-edge tuple either in that environment or as newline-delimited
+`KEY=value` records on stdin. Values containing `=` are preserved. The script
+uses an isolated Chrome profile and loopback-only in-memory credential response,
+then emits only status, relay-candidate count, transport protocol, and coarse ICE
+error-code buckets. Do not echo, log, or persist raw production environment
+input; never add TURN URLs, usernames, credentials, candidate addresses, or raw
+errors to the result.
 
 `PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
 that a stale room-1 deployment cannot silently retain the old scope. With
@@ -515,7 +528,8 @@ active/running with their observed `NRestarts=0`. Backup
 `/opt/screener/backups/16f6eab27bdf-precutover-20260820T234457Z` retains the
 prior environment, database, and exact current target. This deploys the one-use
 initial/active Host-ingress selected retry; no browser, SFU media, TURN relay,
-or performance canary ran, so TURN transport remains unproved.
+or performance canary ran during that cutover. The later post-deploy functional
+canary is recorded above and does not change this cutover record.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently
@@ -632,7 +646,8 @@ state. That host retains an older authenticated-relay configuration and TCP/UDP
 3478 plus UDP 49152-49251 firewall range. In this template Screener advertises
 no TURN credential and the canary audit found zero allocations; production
 selected-edge issuance remains limited to the controller's one configured edge
-and still lacks a real forced-relay media acceptance.
+and has one active Host-ingress forced-relay functional acceptance. Initial
+Host ingress and `peer-selected` last mile remain open.
 
 Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.example)
 to an untracked service-owned location and use the tracked
@@ -674,9 +689,10 @@ Run these checks from real external networks before calling the deployment usabl
 3. On a normal room, exhaust a peer route and verify the host plus at
    most two necessary roots select LiveKit UDP 7882. Peer descendants stay on
    ordinary direct UDP and host/relay downstream caps remain two/one.
-4. Block all UDP on one test client. Verify bounded ICE recovery ends in a clear
-   connection failure, without an ICE/TCP, TURN/TCP, or long pseudo-connected
-   path. No force-relay product branch exists in this candidate.
+4. Force one controller-eligible edge past SFU/UDP and verify only that edge gets
+   the short-lived TURN server plus relay policy and selects TURN/UDP. Ordinary
+   peer PCs must stay STUN-only. Then block all UDP and verify bounded recovery
+   ends clearly without ICE/TCP, TURN/TCP, or a long pseudo-connected path.
 5. Exercise root departure, reconnect, SFU unavailable, route prepare rollback,
    stop, and source/profile changes. Unaffected subtrees must not migrate.
 6. Repeat at 1, 3, 5, and 8 viewers across representative consumer networks.

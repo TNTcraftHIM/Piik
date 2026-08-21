@@ -1,14 +1,15 @@
 # Low-Server-Cost Media Routes
 
-- Research date: 2026-08-19
+- Research date: 2026-08-21
 - Scope: one broadcaster, at most eight trusted viewers, low latency, and host
   media fanout at most two
 - Status: ADR-0005 accepts STUN-only direct/peer UDP, bounded SFU/UDP roots,
   then optional authenticated TURN/UDP for one controller-selected exceptional
   edge. Production enables the controller for all rooms and has a configured
-  selected-edge TURN tuple; ordinary peer connections remain STUN-only, while
-  production SFU/TURN media remains unverified. Latest source passed one local
-  SFU/UDP functional path; TURN remains unverified.
+  selected-edge TURN tuple; ordinary peer connections remain STUN-only. A
+  post-deploy exact-Web-source canary against the production LiveKit/coturn tuple
+  passed active Host SFU -> selected TURN/UDP ingress. Initial ingress,
+  peer-selected last mile, external cohorts, and performance remain unverified.
 
 ## Current Route Ladder
 
@@ -44,9 +45,10 @@ Chrome 151, LiveKit 1.13.5, and pinned client 2.22.0. LiveKit produced two sende
 RIDs in `q,h` order; Screener's former `q,f` guard caused the Host publisher to
 fail closed at `sender-config`. After correcting that contract, Viewer inbound
 packets and decoded/rendered frames increased, endpoint edges stayed bounded,
-and both clients left cleanly. TURN did not participate. This is functional,
-not performance, evidence; production/public transport and browser validation
-remain open.
+and both clients left cleanly. TURN did not participate in that first run. A
+later exact-source canary against the production media tuple proved the active
+Host-ingress selected relay described below. Both are functional, not
+performance, evidence; public-room and browser-diversity validation remain open.
 
 ## Token-Free SFU Standby Prewarm
 
@@ -207,20 +209,51 @@ without advertising that credential to ordinary peer PCs.
 Ordinary peer ICE remains STUN-only. The participant-wide TURN
 config, capability and refresh wire are removed; any stale `PEER_ICE_TURN_*`
 key, including an empty value, fails startup. Selected-edge TURN is deployed as
-a configured, controller-issued exceptional transport; its real media path is
-not yet canary-proven. Every ordinary Web peer and Native-shaped client remains
-STUN-only. The tracked coturn example is UDP
+a configured, controller-issued exceptional transport. Its active Host-ingress
+media path is canary-proven; initial ingress and `peer-selected` remain open.
+Every ordinary Web peer and Native-shaped client remains STUN-only. The tracked coturn example is UDP
 `stun-only`; the LiveKit example exposes only ICE/UDP mux 7882, explicitly sets
 `tcp_port: 0` and `allow_tcp_fallback: false`, supplies the self-hosted STUN
 endpoint, and configures no external or embedded TURN. Candidate validation and rollback use isolated
 instances rather than a process-wide old-release compatibility branch. HTTPS/WSS remains TLS/TCP.
+
+### Active Host-Ingress Functional Evidence
+
+On 2026-08-21 the tracked standalone gate reused the production selected-edge
+tuple parser and credential issuer, supplied the short-lived credential only to
+an isolated loopback Chrome page, and returned a sanitized result: one UDP relay
+candidate and an otherwise non-blocking `701` error bucket. No URL, username,
+credential, candidate address, or raw error text was emitted or persisted.
+
+The canonical Chrome 151 product canary then used exact deployed Web source
+`16f6eab27bdfb1c15cdbd814a35864f4f18be767` in a local Screener room while
+connecting to the production LiveKit 1.13.5 and coturn tuple. After direct media
+and active SFU media, a temporary DEV-only hook failed the refreshed publisher
+once; the normal application failure path requested `host-sfu-ingress` and the
+hook was removed after the run. The relay-policy publisher had only a TURN
+server, reached connected/ICE-connected, and selected a succeeded/nominated UDP
+pair with `relayProtocol=udp`. Pair counters reached 1,054,606 bytes sent and
+4,934 received; outbound RTP reached 837,103 bytes and 101 frames. Viewer decode
+and render counters both advanced during the selected stage. Ordinary peer PCs
+kept policy `all` with STUN-only servers, Host active outbound edges stayed at
+one, and explicit stop reduced them to zero. The production Screener app and
+database were not used or modified.
+
+Chrome reported the selected local candidate's `candidateType` as `prflx` while
+also reporting `relayProtocol=udp`. That tuple is internally inconsistent with
+the W3C model: `iceTransportPolicy="relay"` permits only media-relay candidates,
+and `relayProtocol` is defined for a local relay candidate. The evidence is
+therefore retained verbatim and classified from the relay-only configuration,
+TURN-only server set, `relayProtocol`, and transmitted media together; the
+`candidateType` field is not rewritten. This proves one active functional route,
+not latency, quality, capacity, expiry, mobile, resource, or bandwidth behavior.
 Coturn 4.17.2 documents `stun-only` as ignoring TURN requests and provides
 `no-tcp` and `no-tls`; it marks `no-dtls` deprecated, so the tracked temporary
 template does not use that switch. The shared production host instead retains its old
 authenticated-relay daemon and TCP/UDP 3478 plus UDP 49152-49251 rules. The
-application advertises no TURN credential, and the post-canary audit found zero
-allocations. This baseline is neither the accepted selected-edge rollout nor
-proof that relay media works.
+rejected participant-wide candidate advertised no TURN credential, and that
+historical post-canary audit found zero allocations. This baseline is not the
+later selected-edge functional evidence above.
 
 No public port is selected by this decision. LiveKit documents ICE/UDP mux as
 optional and its pinned sample recommends a multi-port UDP mux range at least
@@ -300,7 +333,7 @@ lost.
 | Fixed two-chain browser relay | Host emits at most two copies; each relay emits at most one | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current default-off, maximum-eight-viewer spike |
 | Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
-| SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; latest source passes one local SFU/UDP root, while production evidence remains open |
+| SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; local SFU/UDP and active Host-ingress relay function pass, while public-room/performance evidence remains open |
 | Exceptional server-fed viewers | SFU/TURN emits necessary copies that no healthy root can distribute | Additional capped central egress | Explicit compatibility exception only; never unbounded whole-room fanout |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
@@ -387,8 +420,8 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
 - [WebRTC transports, RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html) -
   browser transport capability requirements do not require an application to
   advertise every supported fallback on every connection.
-- [WebRTC](https://www.w3.org/TR/webrtc/),
-  [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/),
+- [WebRTC](https://w3c.github.io/webrtc-pc/),
+  [WebRTC Statistics](https://w3c.github.io/webrtc-stats/),
   [WebRTC Encoded Transform](https://w3c.github.io/webrtc-encoded-transform/#stream-processing),
   and [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/) - W3C specifications; SVC
   is an encoding control, not a distribution topology.
