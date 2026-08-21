@@ -663,6 +663,12 @@ describe("client signaling protocol", () => {
     ).toBe(true);
     expect(
       clientMessageSchema.safeParse({
+        type: "route-media-unavailable",
+        revision: 7,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
         type: "route-failed",
         revision: 7,
         phase: "active",
@@ -681,6 +687,12 @@ describe("client signaling protocol", () => {
         type: "route-ready",
         revision: -1,
         phase: "prepare",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-media-unavailable",
+        revision: -1,
       }).success,
     ).toBe(false);
     expect(
@@ -788,9 +800,21 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({
         type: "viewer-presence",
-        viewers: [viewer],
+        viewers: [
+          {
+            ...viewer,
+            upstream: { kind: "sfu" },
+            sfuMediaReady: true,
+          },
+        ],
       }).success,
     ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-presence",
+        viewers: [{ ...viewer, sfuMediaReady: false }],
+      }).success,
+    ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         type: "viewer-presence",

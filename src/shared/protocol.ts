@@ -84,6 +84,7 @@ export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
       peerId: opaqueIdSchema,
       displayName: displayNameSchema,
       upstream: mediaRouteUpstreamSchema,
+      sfuMediaReady: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -97,6 +98,7 @@ export const viewerPresenceEntrySchema = z
     peerId: opaqueIdSchema,
     displayName: displayNameSchema,
     upstream: mediaRouteUpstreamSchema,
+    sfuMediaReady: z.literal(true).optional(),
   })
   .strict();
 export type ViewerPresenceEntry = z.infer<typeof viewerPresenceEntrySchema>;
@@ -556,6 +558,12 @@ export const clientMessageSchema = z.union([
       type: z.literal("route-ready"),
       revision: mediaRouteRevisionSchema,
       phase: mediaRoutePhaseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("route-media-unavailable"),
+      revision: mediaRouteRevisionSchema,
     })
     .strict(),
   z

@@ -2163,11 +2163,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               const hasCurrentQualityEvidence =
                 viewer.upstream.kind === "peer" &&
                 qualityEvidence?.parentPeerId === viewer.upstream.peerId;
+              const hasCurrentSfuEvidence =
+                viewer.upstream.kind === "sfu" &&
+                viewer.sfuMediaReady === true;
               const hasCurrentRouteEvidence =
-                hasPeerRouteEvidence(snapshot) || hasCurrentQualityEvidence;
+                hasPeerRouteEvidence(snapshot) ||
+                hasCurrentQualityEvidence ||
+                hasCurrentSfuEvidence;
               const hasCurrentConnectionEvidence =
                 snapshot?.connectionState === "connected" ||
-                hasCurrentQualityEvidence;
+                hasCurrentQualityEvidence ||
+                hasCurrentSfuEvidence;
               const viewerState =
                 hasCurrentConnectionEvidence
                   ? "connected"

@@ -1161,13 +1161,17 @@ describe("ViewerSfuRoute", () => {
 
   it("retries a sticky authoritative SFU route only after stable decoded RTP", async () => {
     const healthy: number[] = [];
+    const messages: ClientMessage[] = [];
     let subscriber!: ReturnType<typeof createFakeSubscriber>;
     const route = new ViewerSfuRoute({
       activatePeer: () => undefined,
       reconcileSfuChildren: () => undefined,
       onSfuStream: () => undefined,
       onHealthySfu: (revision) => healthy.push(revision),
-      send: () => true,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
       createSubscriber: (events) => {
         subscriber = createFakeSubscriber(events, [], "subscriber");
         return subscriber;
@@ -1182,7 +1186,17 @@ describe("ViewerSfuRoute", () => {
     route.armHealthySfuReselection(7);
     await route.acceptConfig(sfuConfig(7));
     await vi.waitFor(() => expect(subscriber.activate).toHaveBeenCalledOnce());
+    expect(messages).not.toContainEqual({
+      type: "route-ready",
+      revision: 7,
+      phase: "active",
+    });
     subscriber.events.onStream({} as MediaStream);
+    expect(messages).toContainEqual({
+      type: "route-ready",
+      revision: 7,
+      phase: "active",
+    });
     subscriber.events.onStats?.({
       intervalPacketsReceived: 4,
       intervalFramesDecoded: 0,
@@ -1302,16 +1316,61 @@ describe("ViewerSfuRoute", () => {
     subscribers[0]?.events.onVideoAvailability?.(false);
     subscribers[0]?.events.onVideoAvailability?.(true);
     expect(videoAvailability).toEqual([false, true]);
+    expect(messages).toContainEqual({
+      type: "route-media-unavailable",
+      revision: 2,
+    });
+    expect(
+      messages.filter(
+        (message) =>
+          message.type === "route-ready" &&
+          message.revision === 2 &&
+          message.phase === "active",
+      ),
+    ).toHaveLength(2);
 
+    const revisionThreeAssignment = sfuAssignment(["other-child"]);
     route.accept({
       revision: 3,
       phase: "active",
-      assignment: sfuAssignment(["other-child"]),
+      assignment: revisionThreeAssignment,
     });
+    await vi.waitFor(() =>
+      expect(messages).toContainEqual({
+        type: "route-ready",
+        revision: 3,
+        phase: "active",
+      }),
+    );
     expect(subscribers).toHaveLength(1);
     expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
+    const readyBeforeReauth = messages.filter(
+      (message) =>
+        message.type === "route-ready" &&
+        message.revision === 3 &&
+        message.phase === "active",
+    ).length;
+    await route.resyncAuthoritative({
+      revision: 3,
+      phase: "active",
+      assignment: revisionThreeAssignment,
+    });
+    await vi.waitFor(() =>
+      expect(
+        messages.filter(
+          (message) =>
+            message.type === "route-ready" &&
+            message.revision === 3 &&
+            message.phase === "active",
+        ),
+      ).toHaveLength(readyBeforeReauth + 1),
+    );
     subscribers[0]?.events.onVideoAvailability?.(false);
     expect(videoAvailability).toEqual([false, true, false]);
+    expect(messages).toContainEqual({
+      type: "route-media-unavailable",
+      revision: 3,
+    });
 
     route.accept({
       revision: 4,
@@ -1327,6 +1386,11 @@ describe("ViewerSfuRoute", () => {
     await vi.waitFor(() => expect(subscribers[1]?.disconnect).toHaveBeenCalled());
     expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
     expect(streams).toHaveLength(1);
+    expect(messages).not.toContainEqual({
+      type: "route-ready",
+      revision: 5,
+      phase: "active",
+    });
 
     await route.disconnect();
     expect(sfuUpdates).toEqual([metrics, null]);
