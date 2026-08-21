@@ -11,6 +11,7 @@ import {
   everyViewerRecoveredMedia,
   mergeRecoveryHostPeaks,
   parseBenchmarkConfig,
+  parseExpectedEndpointCap,
   parseViewerCounts,
   summarizeSamples,
 } from "../scripts/peer-assisted-benchmark";
@@ -142,7 +143,7 @@ interface ObserverSnapshot {
   maxAssignedChildren: number;
 }
 
-function createObserverHarness() {
+function createObserverHarness(expectedEndpointCap = 2) {
   const context: Record<string, unknown> = {
     WebSocket: FakeWebSocket,
     RTCPeerConnection: class FakePeerConnection {},
@@ -162,6 +163,7 @@ function createObserverHarness() {
     width: 1280,
     height: 720,
     frameRate: 30,
+    expectedEndpointCap,
   }).replace(
     'const statsModule = import("/src/client/webrtc/stats.ts");',
     "const statsModule = new Promise(() => undefined);",
@@ -230,6 +232,19 @@ describe("peer topology loopback configuration", () => {
     ).toThrow(/selected viewer count/);
   });
 
+  it("keeps cap2 by default and accepts only an explicit cap3 expectation", () => {
+    expect(parseExpectedEndpointCap(undefined)).toBe(2);
+    for (const value of ["1", "2.5", "4"]) {
+      expect(() => parseExpectedEndpointCap(value)).toThrow(/integer from 2 to 3/);
+    }
+    expect(
+      parseBenchmarkConfig({
+        CHROME_PATH: "chrome",
+        BENCHMARK_EXPECTED_ENDPOINT_CAP: "3",
+      }).expectedEndpointCap,
+    ).toBe(3);
+  });
+
   it("requires a relay-sized case for the optional quality control smoke", () => {
     expect(() =>
       parseBenchmarkConfig({
@@ -296,6 +311,38 @@ describe("peer topology loopback observations", () => {
           JSON.stringify(lowQualitySettings),
       ),
     ).toBe(true);
+  });
+
+  it("requires an explicit cap3 run to exercise cap3 fanout", () => {
+    const initial = [
+      page("host", "host", 3, 0),
+      ...Array.from({ length: 6 }, (_, index) =>
+        page("viewer", `viewer-${index + 1}`, index === 0 ? 3 : 0, 1),
+      ),
+    ];
+    const final = structuredClone(initial);
+    for (const viewer of final.filter((entry) => entry.role === "viewer")) {
+      viewer.connections.at(-1)!.receiveTotals!.framesTotal = 20;
+    }
+    const summary = summarizeSamples(
+      [
+        { atEpochMs: 2_000, elapsedMs: 0, pages: initial },
+        { atEpochMs: 4_000, elapsedMs: 2_000, pages: final },
+      ],
+      6,
+    );
+    const checks = buildRunChecks(summary, 6, "720p30", 3);
+    expect(checks.find((check) => check.name === "endpoint-cap-observed")?.passed).toBe(true);
+    const underused = {
+      ...summary,
+      maxHostAssignedChildren: 2,
+      maxRelayActiveMediaEdges: 2,
+    };
+    expect(
+      buildRunChecks(underused, 6, "720p30", 3).find(
+        (check) => check.name === "endpoint-cap-observed",
+      )?.passed,
+    ).toBe(false);
   });
 
   it("fails continuity when frames freeze or stats collection errors", () => {
@@ -830,6 +877,25 @@ describe("peer topology loopback observations", () => {
     });
   });
 
+  it("accepts a three-child route only for an explicit cap3 observer", () => {
+    const assignment = routeAssignment(["child_peer_0001", "child_peer_0002", "child_peer_0003"]);
+    for (const [cap, accepted] of [[2, false], [3, true]] as const) {
+      const observer = createObserverHarness(cap);
+      const socket = observer.socket();
+      authenticate(socket);
+      socket.emitMessage({
+        type: "authenticated",
+        role: "host",
+        peerId: "host_peer_0001",
+        mediaMode: "peer-assisted",
+        routeRevision: 1,
+        routeAssignment: assignment,
+        qualitySettings: lowQualitySettings,
+      });
+      expect(observer.snapshot().routeAssignment !== null).toBe(accepted);
+    }
+  });
+
   it("clears hybrid state only from the current authenticated socket", () => {
     const observer = createObserverHarness();
     const previous = observer.socket();
@@ -891,6 +957,7 @@ describe("peer topology loopback observations", () => {
       width: 1280,
       height: 720,
       frameRate: 30,
+      expectedEndpointCap: 2,
     });
     expect(source).toContain('"width":1280');
     expect(source).toContain('"frameRate":30');
