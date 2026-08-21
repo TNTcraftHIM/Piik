@@ -4,8 +4,7 @@ Last updated: 2026-08-21
 
 ## Phase
 
-Production at `https://share.bonfire.icu` is exact `6ccb516a47261054f91dfa2fafa408d39ced59fc`; immutable source/dist artifacts are 619,674/358,621 bytes, with hashes in deployment.
-Cutover: 2,048 ms lock/1,272 ms stop-health/888 ms switch-health. SQLite v3/five rooms has SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services are active/running at `NRestarts=0`; rollbacks are `1331fbdd`, then `261e980` and `691863e`.
+Production is exact `7dd38fc39ce8e91b913b1f45e053c00e0520f3b9` at `https://share.bonfire.icu`, release `7dd38fc39ce8`, wire `screener-v3`; rollback is `f7d667c4d32d`. SQLite v3/five rooms retains SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services and local/public health are green.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
 Stable SFU, route/transport truth, preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only. The controlled production A/B uses browser/LiveKit codec defaults; explicit codec controls are source-complete.
 
@@ -16,7 +15,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 ## Current Snapshot
 
 - Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced and automatic codec; clarity/fluid plus H.264/VP8 stay explicit, with codec locked during a share. Browser degradation and Host SFU A+B remain open.
-- Production `screener-v2` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
+- Production `screener-v3` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
 - Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Status and details stay neutral before media proof; current evidence labels green P2P/yellow `SFU fallback`, while relay evidence adds `TURN` plus only a locally observed protocol.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
 - Production is roots/Web relay <=2; every Viewer has one upstream and rejects child3. One-root healthy-SFU MBB is deployed but media-unverified; capacity `0 -> 1`, multi-root and browser gates remain open. Room `1` is historical; HTTPS/WSS is TLS/TCP.
@@ -56,7 +55,7 @@ Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
 Ordinary peers stay STUN-only; initial ingress, `peer-selected`, and healthy-reselection browser gates remain open.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
-Stereo: open.
+Peer/SFU stereo targets 128 kbps in production; user route comparison remains. Next: codec-lock explanation, then existing-stats H.264 encoder follow-up.
 
 ## Blockers And Decisions
 

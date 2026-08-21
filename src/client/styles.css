@@ -552,6 +552,12 @@ h3 {
   grid-column: 1 / -1;
 }
 
+.control-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .advanced-quality-grid > .button {
   justify-self: start;
 }
