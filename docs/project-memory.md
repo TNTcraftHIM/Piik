@@ -32,7 +32,7 @@ Last updated: 2026-08-21
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Web window/system-audio requests are browser hints; tracks use `music`. P2P/relay/SFU senders request 128,000 bit/s and SFU disables DTX; this is a ceiling, not a quality/stereo guarantee. Native Win11 process audio stays source-only; one Viewer got 495 Opus packets.
-- Presence reports exact active upstream and feeds Host topology; it does not prove media. Details may label assigned P2P/SFU before media proof and show TURN only for an actual relay; status stays pending without local/current evidence. Web Host names stay socket/localStorage-only; Native remains outside the boundary.
+- Presence reports exact active upstream and feeds Host topology; it does not prove media. Status and details stay neutral until local/current media evidence, then label P2P/SFU and actual TURN; append its protocol only from local relay stats. Web Host names stay socket/localStorage-only; Native remains outside the boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
 
@@ -44,7 +44,7 @@ Last updated: 2026-08-21
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
 - Production is exact `691863e1720ebbee1b5368f29e94f05b3710ccf8`; artifact 605,904 bytes/SHA-256 `7e751c0bf7c97bc7d23edb1e37441fb6c55d90a0cd80647b778fdb5b1ee28bae`; cutover 3,376.021 ms lock/669.678 ms stop-health/604.174 ms switch-health; rollbacks `6634cb9`, `ecc794d`, `16f6eab`.
-- Web keeps one SFU stream, clears unavailable video, shows authoritative pending/P2P/SFU and actual-only TURN, labels paused preview, and drops signals to a grace-retained offline current-edge target. Shared entry/nickname UI is live; Native remains source-only.
+- Web keeps one SFU stream, clears unavailable video, shows evidence-backed P2P/SFU and actual-only TURN, labels paused preview, and drops signals to a grace-retained offline current-edge target. Shared entry/nickname UI is live; Native remains source-only.
 - Web relay is cap2 with one upstream; child3 rejects and no UA/visibility split exists.
 - Four services are active/running at `NRestarts=0`; local/public health are 200. SQLite v3 has five rooms, SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600.
 - Production keeps ordinary ICE STUN-only, SFU roots <=2, selected-edge UDP TTL 120, and one pending/answered `peer-selected` attempt per room excluding Host ingress. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` evidence proves active Host ingress only.

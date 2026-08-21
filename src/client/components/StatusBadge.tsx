@@ -1,9 +1,13 @@
 import { CircleAlert, Network, Radio, Server, Wifi, WifiOff } from "lucide-react";
 import type {
-  MediaPath,
+  ConnectionMetrics,
   SignalConnectionState,
 } from "../types";
-import { MEDIA_ROUTE_PRESENTATION, ROUTING_STATUS_PRESENTATION } from "./status-badge-model";
+import {
+  MEDIA_ROUTE_PRESENTATION,
+  mediaTransportPresentation,
+  ROUTING_STATUS_PRESENTATION,
+} from "./status-badge-model";
 
 interface BadgeProps {
   tone: "good" | "warning" | "danger" | "neutral";
@@ -56,27 +60,28 @@ export function PeerStatusBadge({
   return <Badge {...labels[state]} />;
 }
 
-export function PathBadge({ path }: { path: MediaPath }) {
-  if (path === "direct") {
+export function PathBadge({ metrics }: { metrics: ConnectionMetrics }) {
+  const presentation = mediaTransportPresentation(metrics);
+  if (metrics.path === "direct") {
     return (
-      <span className="path-badge path-direct" title="ICE 直连成功">
+      <span className="path-badge path-direct" title={presentation.title}>
         <Wifi size={14} aria-hidden="true" />
-        ICE 直连
+        {presentation.label}
       </span>
     );
   }
-  if (path === "relay") {
+  if (metrics.path === "relay") {
     return (
-      <span className="path-badge path-relay" title="此连接正在使用 TURN 中继">
+      <span className="path-badge path-relay" title={presentation.title}>
         <Radio size={14} aria-hidden="true" />
-        TURN 传输
+        {presentation.label}
       </span>
     );
   }
   return (
-    <span className="path-badge path-unknown" title="尚未选出可用的 ICE 路径">
+    <span className="path-badge path-unknown" title={presentation.title}>
       <WifiOff size={14} aria-hidden="true" />
-      ICE 未知
+      {presentation.label}
     </span>
   );
 }

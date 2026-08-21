@@ -45,6 +45,7 @@ import {
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
 import { TopologyView } from "../components/TopologyView";
+import { hasPeerRouteEvidence } from "../components/status-badge-model";
 import { ApiError, createRoom } from "../lib/api";
 import { createOpaqueId } from "../lib/opaque-id";
 import {
@@ -2095,12 +2096,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   ? peerSnapshots.get(viewer.peerId)
                   : undefined;
               const qualityEvidence = viewerQualityEvidence.get(viewer.peerId);
-              const hasCurrentMediaEvidence =
+              const hasCurrentQualityEvidence =
+                viewer.upstream.kind === "peer" &&
+                qualityEvidence?.parentPeerId === viewer.upstream.peerId;
+              const hasCurrentRouteEvidence =
+                hasPeerRouteEvidence(snapshot) || hasCurrentQualityEvidence;
+              const hasCurrentConnectionEvidence =
                 snapshot?.connectionState === "connected" ||
-                (viewer.upstream.kind === "peer" &&
-                  qualityEvidence?.parentPeerId === viewer.upstream.peerId);
+                hasCurrentQualityEvidence;
               const viewerState =
-                hasCurrentMediaEvidence
+                hasCurrentConnectionEvidence
                   ? "connected"
                   : (snapshot?.connectionState ?? "routing");
               return (
@@ -2111,26 +2116,30 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       <PeerStatusBadge state={viewerState} />
                     </div>
                   </div>
-                  {showConnectionDetails && viewer.upstream.kind !== "none" && (
+                  {showConnectionDetails &&
+                    hasCurrentRouteEvidence &&
+                    viewer.upstream.kind !== "none" && (
                     <div className="viewer-transport-heading">
                       <MediaRouteBadge
                         route={viewer.upstream.kind === "peer" ? "p2p" : "sfu"}
                       />
                       {snapshot?.metrics.path === "relay" && (
-                        <PathBadge path="relay" />
+                        <PathBadge metrics={snapshot.metrics} />
                       )}
                     </div>
                   )}
-                  {showConnectionDetails && snapshot && (
-                    <>
+                  {showConnectionDetails &&
+                    snapshot &&
+                    hasPeerRouteEvidence(snapshot) && (
                       <StatsGrid
                         metrics={snapshot.metrics}
                         direction="send"
                         senderParameters={snapshot.senderParameters}
                       />
-                    </>
-                  )}
-                  {showConnectionDetails && qualityEvidence && (
+                    )}
+                  {showConnectionDetails &&
+                    qualityEvidence &&
+                    hasCurrentQualityEvidence && (
                     <>
                       <p className="section-meta">观看端接收</p>
                       <StatsGrid
