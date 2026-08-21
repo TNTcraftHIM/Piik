@@ -169,8 +169,10 @@ current connection, using the existing finite monotonic stats timestamp; its
 DOMHighResTimeStamp-derived window is rounded before the one-to-five-second
 bound is checked. Viewer C may wait pending, but the router advances the streak
 only when that C has a hard receive predicate and B independently reports one
-of the two hard sender predicates. Both inputs are WebRTC stats gathered by
-stock browsers at separate endpoints; parent remote loss originates in RTCP.
+of the two hard sender predicates. Signaling binds the room's current
+`maxFramerate` to C internally without changing the public wire. Both inputs
+are WebRTC stats gathered by stock browsers at separate endpoints; parent
+remote loss originates in RTCP.
 This is cross-endpoint corroboration, not cryptographic independence or defense
 against colluding authenticated participants. Raw stats, addresses, candidates,
 SDP, URLs and a composite score remain out of wire.
@@ -379,7 +381,8 @@ The first controller reacts only to discrete events:
 - three consecutive, current-identity correlated Viewer C/parent B windows in
   which C has a hard receive predicate (freeze duration at least 50% of the
   sample window, positive received RTP with zero decoded frames, or at least
-  100 received-plus-lost packets with loss at least 30%) and B independently
+  100 received-plus-lost packets with loss at least 30%, or decoded FPS below
+  five-sixths of the room's current `maxFramerate`) and B independently
   reports `cpu`/`bandwidth` sender limitation or at least 100 sent packets with
   RTCP-reported remote loss divided by sent packets at least 30%.
 
@@ -402,10 +405,10 @@ release only the quality-owned temporary parent exclusion; a real
 `route-failed` exclusion remains owned by the failure path. The W3C stats
 definitions establish the counter meanings and their WebRTC 1.0 example uses
 30% loss as a likely culprit; they do not
-prescribe Screener's route policy. Therefore 50%, 100 packets, three windows,
-five seconds and 30 seconds are conservative candidate constants pending
-production calibration, not claimed optimums. Measurements may change them
-only through a reviewed change.
+prescribe Screener's route policy. Therefore 50% freeze share, five-sixths FPS,
+100 packets, three windows, five seconds and 30 seconds are conservative
+candidate constants pending production calibration, not claimed optimums.
+Measurements may change them only through a reviewed change.
 ADR-0007's `HIGH`/`FALLBACK` quality state is separate and does not become a
 topology trigger or a room-wide health score.
 

@@ -43,7 +43,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Production startup blur remains open. One local Chrome synthetic same-`balanced` A/B kept route/PC/SSRC/track and coincided with 720p -> 1080p without loss/freeze, but natural ramp prevents causal, production, or SFU proof.
 - ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.
-- Production fanout is Host2/Viewer2 and rejects child3. Relay resource behavior remains open.
+- Production fanout is Host2/Viewer2 and rejects child3. C+B moves only the affected subtree; relay-capacity penalties stay a separate P2.
 - Active SFU already publishes `q,h`; only BWE/resource/zero-child/root gates are unverified. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
 - Access lacks headful/production proof for fragment consumption, rotate/revoke and request/nginx/journal/SQLite leakage; its source gate is loopback-only. No accounts.
 - Split large modules only at proven consumer boundaries, never by file length.
