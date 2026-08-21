@@ -46,6 +46,7 @@ interface PendingRoutePreparation {
   expectedSessionIds: ReadonlyMap<string, string>;
   grantsIssued: boolean;
   hostSfuIngressTurnAttempted: boolean;
+  healthyReselection: HealthySfuReselectionProbe | null;
   timer: NodeJS.Timeout;
 }
 
@@ -84,6 +85,22 @@ interface SelectedSfuIngressAttempt {
   newConnectionId: string;
   answered: boolean;
   timer: NodeJS.Timeout;
+}
+
+interface ActiveSelectedSfuIngress {
+  shareGeneration: string;
+  hostPeerId: string;
+  hostSessionId: string;
+  publicationGeneration: string;
+  connectionId: string;
+}
+
+interface HealthySfuReselectionProbe {
+  activeRevision: number;
+  shareGeneration: string;
+  publicationGeneration: string;
+  rootPeerId: string;
+  parentPeerId: string;
 }
 
 interface QualityRouteIntentGuard {
@@ -189,6 +206,10 @@ export class HybridMediaRouter {
     string,
     SelectedSfuIngressAttempt
   >();
+  private readonly activeSelectedSfuIngresses = new Map<
+    string,
+    ActiveSelectedSfuIngress
+  >();
   private readonly relayCapacitySessionsByRoom = new Map<
     string,
     Map<string, string>
@@ -237,6 +258,7 @@ export class HybridMediaRouter {
       clearTimeout(attempt.timer);
     }
     this.selectedSfuIngressAttempts.clear();
+    this.activeSelectedSfuIngresses.clear();
     this.mediaRouteControllers.clear();
     this.failedParentPeerIdsByViewer.clear();
     this.viewerRouteIntentsByRoom.clear();
@@ -356,7 +378,24 @@ export class HybridMediaRouter {
           ? this.selectedEdgeTurnAttempts.get(targetKey)
           : undefined;
     if (!attempt) {
-      return undefined;
+      const pending = this.pendingRoutePreparations.get(input.roomId);
+      const probe = pending?.healthyReselection;
+      const parentToRoot = probe?.parentPeerId === input.sourcePeerId &&
+        probe.rootPeerId === input.targetPeerId;
+      const rootToParent = probe?.rootPeerId === input.sourcePeerId &&
+        probe.parentPeerId === input.targetPeerId;
+      if (!pending || !probe || (!parentToRoot && !rootToParent)) {
+        return undefined;
+      }
+      if (!this.healthySfuReselectionIsCurrent(input.roomId, pending)) {
+        return false;
+      }
+      const connectionId = this.options.getConnectionId(input.roomId, probe.rootPeerId);
+      return parentToRoot && input.descriptionType === "offer"
+        ? connectionId === undefined
+        : connectionId === input.connectionId &&
+            (input.signalKind === "candidate" ||
+              (rootToParent && input.descriptionType === "answer"));
     }
     const parentToViewer = input.sourcePeerId === attempt.parentPeerId;
     const currentRoute = this.mediaRouteControllers.get(input.roomId)?.getActiveRoute();
@@ -677,6 +716,131 @@ export class HybridMediaRouter {
     this.drainViewerRouteIntents(participant.roomId);
   }
 
+  handleHealthySfuReselection(
+    participant: AuthenticatedRouteParticipant,
+    revision: number,
+  ): void {
+    const roomId = participant.roomId;
+    const controller = this.mediaRouteControllers.get(roomId);
+    const active = controller?.getActiveRoute();
+    const publicationGeneration = active?.sfu.publicationGeneration;
+    const shareGeneration = this.options.getShareGeneration(roomId);
+    if (
+      participant.role !== "viewer" ||
+      !controller ||
+      controller.getPendingRoute() ||
+      this.roomPeerMigrationAttempt(roomId) !== null ||
+      active?.revision !== revision ||
+      active.sfu.rootPeerIds.length !== 1 ||
+      active.sfu.rootPeerIds[0] !== participant.peerId ||
+      !publicationGeneration ||
+      !shareGeneration
+    ) {
+      return;
+    }
+    const now = this.options.now?.() ?? Date.now();
+    if (
+      !Number.isFinite(now) ||
+      (this.roomQualityMigrationCooldownUntilMs.get(roomId) ?? 0) > now
+    ) {
+      return;
+    }
+    this.startRoomQualityMigrationCooldown(roomId);
+    const hostPeerId = this.peerRelayTopology.getHostPeerId(roomId);
+    const parentPeerId = this.peerRelayTopology.getAssignment(
+      roomId,
+      participant.peerId,
+    )?.parentPeerId;
+    if (!hostPeerId || !parentPeerId) {
+      return;
+    }
+    const host = this.connectedPeer(roomId, hostPeerId);
+    const parent = this.connectedPeer(roomId, parentPeerId);
+    const activeParent = active.assignments.get(parentPeerId);
+    const capacity = Math.min(
+      this.peerRelayTopology.getDownstreamCapacity(roomId, parentPeerId),
+      parentPeerId === hostPeerId ? 2 : 1,
+    );
+    if (
+      !host ||
+      !parent ||
+      !activeParent ||
+      activeParent.childPeerIds.length +
+          (activeParent.sfuPublicationGeneration ? 1 : 0) +
+          1 >
+        capacity ||
+      (parentPeerId !== hostPeerId &&
+        this.relayCapacitySessionsByRoom.get(roomId)?.get(parentPeerId) !==
+          parent.sessionId)
+    ) {
+      return;
+    }
+    const assignments = participantRoutesFromTopology(
+      this.peerRelayTopology.getAssignments(roomId),
+      hostPeerId,
+      null,
+      [],
+    );
+    const rootAssignment = assignments.get(participant.peerId)!;
+    const parentAssignment = assignments.get(parentPeerId)!;
+    let pendingRevision: number | undefined;
+    try {
+      pendingRevision = controller.prepare({
+        assignments,
+        expectedParticipantIds: new Set([participant.peerId]),
+      });
+    } catch {
+      return;
+    }
+    if (pendingRevision === undefined) {
+      return;
+    }
+    const timer = setTimeout(
+      () => this.abortPendingRoute(roomId),
+      this.options.sfuFallback?.prepareTimeoutMs ??
+        DEFAULT_SFU_PREPARE_TIMEOUT_MS,
+    );
+    timer.unref();
+    this.options.deleteConnectionId(roomId, participant.peerId);
+    this.pendingRoutePreparations.set(roomId, {
+      revision: pendingRevision,
+      intentPeerId: participant.peerId,
+      routeIntent: {
+        failedParentPeerId: null,
+        sessionId: participant.sessionId,
+        sfuAttempts: 0,
+        unavailableReported: false,
+      },
+      qualityIntent: null,
+      expectedSessionIds: new Map([
+        [participant.peerId, participant.sessionId],
+        [parentPeerId, parent.sessionId],
+        [hostPeerId, host.sessionId],
+      ]),
+      grantsIssued: true,
+      hostSfuIngressTurnAttempted: false,
+      healthyReselection: {
+        activeRevision: revision,
+        shareGeneration,
+        publicationGeneration,
+        rootPeerId: participant.peerId,
+        parentPeerId,
+      },
+      timer,
+    });
+    for (const [sessionId, assignment] of [
+      [participant.sessionId, rootAssignment],
+      [parent.sessionId, parentAssignment],
+    ] as const) {
+      this.options.sendToSession(sessionId, {
+        type: "route-update",
+        revision: pendingRevision,
+        phase: "prepare",
+        assignment,
+      });
+    }
+  }
+
   handleRouteReady(
     participant: AuthenticatedRouteParticipant,
     message: Extract<ClientMessage, { type: "route-ready" }>,
@@ -715,6 +879,20 @@ export class HybridMediaRouter {
     ) {
       return;
     }
+    const healthy = pending.healthyReselection;
+    if (healthy) {
+      const current = this.healthySfuReselectionIsCurrent(participant.roomId, pending);
+      if (
+        participant.peerId !== healthy.rootPeerId ||
+        !this.options.getConnectionId(participant.roomId, healthy.rootPeerId) ||
+        !current
+      ) {
+        if (!current) {
+          this.abortPendingRoute(participant.roomId);
+        }
+        return;
+      }
+    }
     const expectedSessionId = pending.expectedSessionIds.get(participant.peerId);
     if (!expectedSessionId) {
       this.sendError(
@@ -745,6 +923,63 @@ export class HybridMediaRouter {
     participant: AuthenticatedRouteParticipant,
     message: Extract<ClientMessage, { type: "route-failed" }>,
   ): void {
+    const healthyPending = this.pendingRoutePreparations.get(participant.roomId);
+    const healthy = healthyPending?.healthyReselection;
+    const ownsHealthyActiveSfu = healthyPending
+      ? this.ownsActiveSfuForHealthyReselection(participant, healthyPending)
+      : false;
+    if (
+      message.phase === "active" &&
+      healthy?.activeRevision === message.revision &&
+      ownsHealthyActiveSfu
+    ) {
+      this.abortPendingRoute(participant.roomId);
+      const rollbackRevision = this.mediaRouteControllers
+        .get(participant.roomId)
+        ?.getActiveRoute().revision;
+      if (rollbackRevision === undefined) {
+        return;
+      }
+      message = { ...message, revision: rollbackRevision };
+    }
+    if (
+      message.phase === "prepare" &&
+      healthyPending?.revision === message.revision &&
+      healthy
+    ) {
+      if (!ownsHealthyActiveSfu) {
+        return;
+      }
+      const activeIngress = this.activeSelectedSfuIngresses.get(
+        participant.roomId,
+      );
+      const hasCurrentSelectedHostIngress =
+        participant.role === "host" &&
+        activeIngress?.hostPeerId === participant.peerId &&
+        activeIngress.hostSessionId === participant.sessionId &&
+        activeIngress.shareGeneration === healthy.shareGeneration &&
+        activeIngress.publicationGeneration ===
+          healthy.publicationGeneration;
+      const activeSfuTransportFailed = hasCurrentSelectedHostIngress
+        ? activeIngress.connectionId === message.connectionId
+        : message.connectionId === null;
+      if (activeSfuTransportFailed) {
+        if (participant.role === "host") {
+          this.activeSelectedSfuIngresses.delete(participant.roomId);
+        }
+        this.abortPendingRoute(participant.roomId, undefined, false);
+        return;
+      }
+      if (
+        participant.role === "viewer" &&
+        participant.peerId === healthy.rootPeerId &&
+        message.connectionId ===
+          this.options.getConnectionId(participant.roomId, healthy.rootPeerId)
+      ) {
+        this.abortPendingRoute(participant.roomId);
+      }
+      return;
+    }
     if (message.phase === "prepare") {
       this.handlePrepareRouteFailed(participant, message);
       return;
@@ -993,6 +1228,19 @@ export class HybridMediaRouter {
     this.abortPendingRoute(participant.roomId);
   }
 
+  private roomPeerMigrationAttempt(
+    roomId: string,
+  ): "healthy" | "selected" | null {
+    if (this.pendingRoutePreparations.get(roomId)?.healthyReselection) {
+      return "healthy";
+    }
+    return [...this.selectedEdgeTurnAttempts.values()].some(
+      (attempt) => attempt.roomId === roomId,
+    )
+      ? "selected"
+      : null;
+  }
+
   private startSelectedEdgeTurn(
     roomId: string,
     viewerPeerId: string,
@@ -1003,14 +1251,15 @@ export class HybridMediaRouter {
     const active = controller?.getActiveRoute();
     const intent = this.viewerRouteIntentsByRoom.get(roomId)?.get(viewerPeerId);
     const key = viewerConnectionKey(roomId, viewerPeerId);
+    const roomAttempt = this.roomPeerMigrationAttempt(roomId);
+    if (roomAttempt === "healthy") {
+      // The healthy probe already owns recovery, so suppress active-route failback.
+      return true;
+    }
     if (this.selectedEdgeTurnAttempts.has(key)) {
       return true;
     }
-    if (
-      [...this.selectedEdgeTurnAttempts.values()].some(
-        (attempt) => attempt.roomId === roomId,
-      )
-    ) {
+    if (roomAttempt === "selected") {
       return false;
     }
     if (
@@ -1256,6 +1505,7 @@ export class HybridMediaRouter {
       pending.timer = timer;
       pending.hostSfuIngressTurnAttempted = true;
     }
+    this.activeSelectedSfuIngresses.delete(roomId);
     this.selectedSfuIngressAttempts.set(key, attempt);
     this.options.sendToSession(hostSessionId, {
       type: "selected-edge-turn",
@@ -1291,6 +1541,13 @@ export class HybridMediaRouter {
       clearTimeout(attempt.timer);
     }
     this.selectedSfuIngressAttempts.delete(roomId);
+    this.activeSelectedSfuIngresses.set(roomId, {
+      shareGeneration: attempt.shareGeneration,
+      hostPeerId: attempt.hostPeerId,
+      hostSessionId: attempt.hostSessionId,
+      publicationGeneration: attempt.publicationGeneration,
+      connectionId: attempt.newConnectionId,
+    });
   }
 
   private finishSelectedEdgeTurnFailure(
@@ -1881,6 +2138,7 @@ export class HybridMediaRouter {
       expectedSessionIds,
       grantsIssued: false,
       hostSfuIngressTurnAttempted: false,
+      healthyReselection: null,
       timer,
     });
     void this.issueSfuPrepareGrants(
@@ -1995,9 +2253,67 @@ export class HybridMediaRouter {
     clearTimeout(pending.timer);
     this.pendingRoutePreparations.delete(roomId);
     const active = controller.getActiveRoute();
-    this.clearChangedRouteConnectionIds(roomId, before, active);
+    const healthy = pending.healthyReselection;
+    if (healthy) {
+      this.failedParentPeerIdsByViewer.delete(
+        viewerConnectionKey(roomId, healthy.rootPeerId),
+      );
+      this.viewerRouteIntentsByRoom.get(roomId)?.delete(healthy.rootPeerId);
+      this.consumedSfuRefreshesByRoom.delete(roomId);
+    } else {
+      this.clearChangedRouteConnectionIds(roomId, before, active);
+    }
     this.broadcastActiveRoute(roomId, active);
     this.drainViewerRouteIntents(roomId);
+  }
+
+  private healthySfuReselectionIsCurrent(
+    roomId: string,
+    pending: PendingRoutePreparation,
+  ): boolean {
+    const probe = pending.healthyReselection;
+    const controller = this.mediaRouteControllers.get(roomId);
+    const active = controller?.getActiveRoute();
+    return (
+      probe !== null &&
+      this.pendingRoutePreparations.get(roomId) === pending &&
+      active?.revision === probe.activeRevision &&
+      active.sfu.publicationGeneration === probe.publicationGeneration &&
+      controller?.getPendingRoute()?.route.revision === pending.revision &&
+      this.options.getShareGeneration(roomId) === probe.shareGeneration &&
+      this.pendingSessionsAreCurrent(roomId, pending)
+    );
+  }
+
+  private ownsActiveSfuForHealthyReselection(
+    participant: AuthenticatedRouteParticipant,
+    pending: PendingRoutePreparation,
+  ): boolean {
+    const probe = pending.healthyReselection;
+    if (
+      !probe ||
+      pending.expectedSessionIds.get(participant.peerId) !==
+        participant.sessionId ||
+      !this.healthySfuReselectionIsCurrent(participant.roomId, pending)
+    ) {
+      return false;
+    }
+    const active = this.mediaRouteControllers
+      .get(participant.roomId)
+      ?.getActiveRoute();
+    const assignment = active?.assignments.get(participant.peerId);
+    if (participant.role === "viewer") {
+      return (
+        participant.peerId === probe.rootPeerId &&
+        assignment?.upstream.kind === "sfu" &&
+        active?.sfu.rootPeerIds.includes(participant.peerId) === true
+      );
+    }
+    return (
+      participant.peerId ===
+        this.peerRelayTopology.getHostPeerId(participant.roomId) &&
+      assignment?.sfuPublicationGeneration === probe.publicationGeneration
+    );
   }
 
   private abortPendingRoute(
@@ -2012,6 +2328,9 @@ export class HybridMediaRouter {
     }
     clearTimeout(pending.timer);
     this.pendingRoutePreparations.delete(roomId);
+    if (pending.healthyReselection) {
+      this.options.deleteConnectionId(roomId, pending.healthyReselection.rootPeerId);
+    }
     const ingress = this.selectedSfuIngressAttempts.get(roomId);
     if (ingress?.revision === pending.revision) {
       clearTimeout(ingress.timer);
@@ -2170,6 +2489,17 @@ export class HybridMediaRouter {
         return;
       }
       consumed.add(refreshKey);
+      const activeIngress = this.activeSelectedSfuIngresses.get(roomId);
+      if (
+        activeIngress?.hostPeerId === peerId &&
+        activeIngress.hostSessionId === sessionId &&
+        activeIngress.publicationGeneration ===
+          active.sfu.publicationGeneration &&
+        activeIngress.shareGeneration ===
+          this.options.getShareGeneration(roomId)
+      ) {
+        this.activeSelectedSfuIngresses.delete(roomId);
+      }
     }
     try {
       const token = await fallback.tokenIssuer.issueToken({
@@ -2322,6 +2652,20 @@ export class HybridMediaRouter {
         this.selectedSfuIngressAttempts.delete(key);
       }
     }
+    const activeIngress = this.activeSelectedSfuIngresses.get(roomId);
+    if (
+      activeIngress &&
+      (route.sfu.publicationGeneration !==
+        activeIngress.publicationGeneration ||
+        route.assignments.get(activeIngress.hostPeerId)
+          ?.sfuPublicationGeneration !== activeIngress.publicationGeneration ||
+        this.connectedPeer(roomId, activeIngress.hostPeerId)?.sessionId !==
+          activeIngress.hostSessionId ||
+        this.options.getShareGeneration(roomId) !==
+          activeIngress.shareGeneration)
+    ) {
+      this.activeSelectedSfuIngresses.delete(roomId);
+    }
     this.clearRoomViewerQualityEvidenceStates(roomId);
     for (const [peerId, assignment] of route.assignments) {
       if (peerId === excludedPeerId) {
@@ -2468,6 +2812,7 @@ export class HybridMediaRouter {
       clearTimeout(ingress.timer);
       this.selectedSfuIngressAttempts.delete(roomId);
     }
+    this.activeSelectedSfuIngresses.delete(roomId);
     this.consumedSfuRefreshesByRoom.delete(roomId);
     this.sfuDisabledRoomIds.delete(roomId);
     this.clearRoomViewerQualityEvidenceStates(roomId);
@@ -2491,6 +2836,9 @@ export class HybridMediaRouter {
     if (ingress?.hostPeerId === peerId) {
       clearTimeout(ingress.timer);
       this.selectedSfuIngressAttempts.delete(roomId);
+    }
+    if (this.activeSelectedSfuIngresses.get(roomId)?.hostPeerId === peerId) {
+      this.activeSelectedSfuIngresses.delete(roomId);
     }
   }
 

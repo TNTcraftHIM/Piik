@@ -19,7 +19,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 - Production `screener-v2` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
 - Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Status and details stay neutral before media proof; current evidence labels green P2P/yellow `SFU fallback`, while relay evidence adds `TURN` plus only a locally observed protocol.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
-- Production is roots <=2/Web relay <=2; every Web Viewer keeps one upstream and bounded sticky recovery, while child3 is rejected. Room `1` is historical; HTTPS/WSS is TLS/TCP.
+- Production is roots/Web relay <=2; every Viewer has one upstream and rejects child3. One-root healthy-SFU MBB is source-only, not deployed; capacity `0 -> 1`, multi-root and browser gates remain open. Room `1` is historical; HTTPS/WSS is TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
 
@@ -35,7 +35,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 - Local gate proves pre-DOM fragment clearing, room-scoped session isolation, no site/grant transport-log hits, and no raw room-password SQLite sentinel; rotate/revoke tests pass. Headless loopback only.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
 - Production caps pending/answered `peer-selected` at one per room; Host ingress is independent. Focused admission/release/rollback/STUN-only tests pass; earlier Chrome proves active Host-ingress function only.
-- Exact `1331fbdd` passed fresh typecheck, builds, hygiene and 32 files/473 tests. Bounded runtime, UTF-8 artifact, inode and deploy gates preserved config/nft/DB hashes and four zero-restart services.
+- Exact `1331fbdd` passed typecheck/build/hygiene and 32/473; deploy gates preserved runtime, artifacts, config/nft/DB hashes and four zero-restart services. Healthy-reselection source passed the same local gates and 32/489; no browser/deploy ran.
 
 ## Unverified Boundaries
 
@@ -46,15 +46,15 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 - ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.
 - Production fanout is Host2/Viewer2 and rejects child3. Relay resource behavior remains open.
 - Active SFU already publishes `q,h`; only BWE/resource/zero-child/root gates are unverified. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
-- Access remains unverified headfully and in production: fragment consumption, invitation rotation/revoke, and exact request/nginx/journal/SQLite leak inspection. The source gate is loopback-only; accounts stay out.
-- Structure debt: split `HybridMediaRouter`, `HostPage`, `SignalingServer`, and `ViewerPage` only at proven consumer boundaries, never by file length.
+- Access lacks headful/production proof for fragment consumption, rotate/revoke and request/nginx/journal/SQLite leakage; its source gate is loopback-only. No accounts.
+- Split large modules only at proven consumer boundaries, never by file length.
 
 ## Next Milestone
 
 Next: representative production-room UDP/frame/cap/stop canary; room `1` is history. TURN performance follows later.
 Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then SFU. Next gate exactly-two/Dynacast-off BWE on a zero-child SFU leaf, then root evacuation.
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
-Ordinary peers stay STUN-only; initial ingress and `peer-selected` still need forced-relay proof.
+Ordinary peers stay STUN-only; initial ingress, `peer-selected`, and healthy-reselection browser gates remain open.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
 
 ## Blockers And Decisions
