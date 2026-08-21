@@ -437,7 +437,7 @@ async function authenticate(
   room: CreatedRoom,
   role: Role,
   clientId: string,
-  relayCapacity: 0 | 1 | null = 1,
+  relayCapacity: 0 | 1 | 2 | null = 1,
   shareGeneration?: string,
   presence: {
     displayName?: string;
@@ -572,6 +572,7 @@ async function prepareFallbackForTwoViewers(
   room: CreatedRoom,
   prefix: string,
   shareGeneration?: string,
+  options: { viewerParentSibling?: boolean } = {},
 ) {
   const host = await openClient(webSocketUrl);
   const hostAuth = peerAssisted(
@@ -591,6 +592,7 @@ async function prepareFallbackForTwoViewers(
       room,
       "viewer",
       `${prefix}-failed-client`,
+      options.viewerParentSibling ? 0 : 1,
     ),
   );
   const rootViewer = await openClient(webSocketUrl);
@@ -600,12 +602,35 @@ async function prepareFallbackForTwoViewers(
       room,
       "viewer",
       `${prefix}-root-client`,
+      options.viewerParentSibling ? 2 : 1,
     ),
   );
-  const directRoute = await nextActiveRouteAfter(
-    failedViewer,
-    failedAuth.routeRevision,
-  );
+  let rootSibling: TestClient | undefined;
+  let rootSiblingAuth:
+    | ReturnType<typeof peerAssisted>
+    | undefined;
+  if (options.viewerParentSibling) {
+    rootSibling = await openClient(webSocketUrl);
+    rootSiblingAuth = peerAssisted(
+      await authenticate(
+        rootSibling,
+        room,
+        "viewer",
+        `${prefix}-root-sibling-client`,
+        0,
+      ),
+    );
+    expect(rootSiblingAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: rootAuth.peerId,
+    });
+  }
+  const directRoute = rootSiblingAuth
+    ? await nextActiveRouteRevision(
+        failedViewer,
+        rootSiblingAuth.routeRevision,
+      )
+    : await nextActiveRouteAfter(failedViewer, failedAuth.routeRevision);
   host.socket.send(
     JSON.stringify({
       type: "signal",
@@ -661,6 +686,8 @@ async function prepareFallbackForTwoViewers(
     failedAuth,
     rootViewer,
     rootAuth,
+    rootSibling,
+    rootSiblingAuth,
     hostPrepare,
     rootPrepare,
   };
@@ -4690,6 +4717,7 @@ describe("WebSocket signaling", () => {
       harness.room,
       "selected-viewer-parent",
       "selected-viewer-parent-share",
+      { viewerParentSibling: true },
     );
     for (const client of [prepared.host, prepared.failedViewer]) {
       client.socket.send(JSON.stringify({
@@ -4698,9 +4726,13 @@ describe("WebSocket signaling", () => {
         phase: "prepare",
       }));
     }
-    await Promise.all([
+    const [, , parentActive] = await Promise.all([
       nextActiveRouteRevision(prepared.host, prepared.hostPrepare.revision),
       nextActiveRouteRevision(prepared.failedViewer, prepared.rootPrepare.revision),
+      nextActiveRouteRevision(prepared.rootViewer, prepared.rootPrepare.revision),
+    ]);
+    expect(parentActive.assignment.childPeerIds).toEqual([
+      prepared.rootSiblingAuth!.peerId,
     ]);
     prepared.failedViewer.socket.send(JSON.stringify({
       type: "refresh-sfu",
@@ -4732,6 +4764,16 @@ describe("WebSocket signaling", () => {
       },
     }));
     await prepared.failedViewer.inbox.next("signal");
+    prepared.rootViewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: prepared.failedAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: childGrant.newConnectionId,
+        candidate: { candidate: "parent-candidate" },
+      },
+    }));
+    await prepared.failedViewer.inbox.next("signal");
     prepared.failedViewer.socket.send(JSON.stringify({
       type: "signal",
       targetPeerId: prepared.rootAuth.peerId,
@@ -4742,6 +4784,52 @@ describe("WebSocket signaling", () => {
       },
     }));
     await prepared.rootViewer.inbox.next("signal");
+    prepared.failedViewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: prepared.rootAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: childGrant.newConnectionId,
+        candidate: null,
+      },
+    }));
+    await prepared.rootViewer.inbox.next("signal");
+    const reconnectedSibling = await openClient(harness.webSocketUrl);
+    const reconnectedSiblingAuth = peerAssisted(
+      await authenticate(
+        reconnectedSibling,
+        harness.room,
+        "viewer",
+        "selected-viewer-parent-root-sibling-client",
+        0,
+      ),
+    );
+    expect(reconnectedSiblingAuth.routeRevision).toBe(childGrant.revision);
+    expect(
+      await nextActiveRouteRevision(
+        prepared.rootViewer,
+        childGrant.revision,
+      ),
+    ).toMatchObject({
+      assignment: { childPeerIds: [reconnectedSiblingAuth.peerId] },
+    });
+    prepared.rootViewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: prepared.failedAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: childGrant.newConnectionId,
+        candidate: { candidate: "candidate-after-sibling-reconnect" },
+      },
+    }));
+    expect(await prepared.failedViewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: prepared.rootAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: childGrant.newConnectionId,
+        candidate: { candidate: "candidate-after-sibling-reconnect" },
+      },
+    });
     prepared.host.socket.send(JSON.stringify({
       type: "stop-sharing",
       shareGeneration: "selected-viewer-parent-share",

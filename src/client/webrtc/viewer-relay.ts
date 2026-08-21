@@ -6,6 +6,7 @@ import type {
 import type { QualityProfile } from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
+import { MAX_VIEWER_MEDIA_CHILDREN } from "./media-assignment";
 
 interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
@@ -15,14 +16,19 @@ type SelectedEdgeTurn = Extract<
   ServerMessage,
   { type: "selected-edge-turn"; edgeKind: "peer-selected" }
 >;
+interface SelectedChildConnection {
+  peerId: string;
+  connectionId: string;
+  revision: number;
+}
 
 export class ViewerRelay {
-  private childPeerId: string | null = null;
+  private childPeerIds: string[] = [];
   private stream: MediaStream | null = null;
-  private peer: HostPeer | null = null;
-  private snapshot: PeerSnapshot | null = null;
-  private retiredConnection: { peerId: string; connectionId: string } | null =
-    null;
+  private readonly peers = new Map<string, HostPeer>();
+  private readonly snapshots = new Map<string, PeerSnapshot>();
+  private readonly retiredConnections = new Map<string, string>();
+  private selectedChildConnection: SelectedChildConnection | null = null;
   private syncQueue = Promise.resolve();
   private disposed = false;
 
@@ -32,52 +38,101 @@ export class ViewerRelay {
     private readonly events: ViewerRelayEvents,
   ) {}
 
-  getSnapshot(): PeerSnapshot | null {
-    return this.snapshot
-      ? { ...this.snapshot, metrics: { ...this.snapshot.metrics } }
+  getSnapshot(childPeerId?: string): PeerSnapshot | null {
+    const peerId =
+      childPeerId ??
+      this.childPeerIds.find((candidate) => this.snapshots.has(candidate));
+    const snapshot = peerId ? this.snapshots.get(peerId) : undefined;
+    return snapshot
+      ? { ...snapshot, metrics: { ...snapshot.metrics } }
       : null;
   }
 
   startSelectedEdgeTurn(
     message: SelectedEdgeTurn,
+    parentPeerId: string,
+    routeRevision: number,
+    now = Date.now(),
   ): boolean {
     const stream = this.stream;
-    const connection = this.peer
-      ? { peerId: this.peer.peerId, connectionId: this.peer.connectionId }
-      : this.retiredConnection;
+    const currentPeer = this.peers.get(message.viewerPeerId);
+    const connectionId =
+      currentPeer?.connectionId ??
+      this.retiredConnections.get(message.viewerPeerId);
+    const selected = this.selectedChildConnection;
+    const retainedChildPeerIds = selected
+      ? this.childPeerIds.filter((peerId) => peerId !== selected.peerId)
+      : this.childPeerIds;
     if (
       this.disposed ||
       !stream ||
-      connection?.peerId !== message.viewerPeerId ||
-      connection.connectionId !== message.oldConnectionId
+      message.parentPeerId !== parentPeerId ||
+      message.revision !== routeRevision ||
+      Date.parse(message.expiresAt) <= now ||
+      connectionId !== message.oldConnectionId ||
+      (!retainedChildPeerIds.includes(message.viewerPeerId) &&
+        retainedChildPeerIds.length >= MAX_VIEWER_MEDIA_CHILDREN)
     ) {
       return false;
     }
-    this.disposePeer();
-    this.childPeerId = message.viewerPeerId;
+    if (selected) {
+      this.clearSelectedEdgeTurn();
+    }
+    if (!this.childPeerIds.includes(message.viewerPeerId)) {
+      this.childPeerIds.push(message.viewerPeerId);
+    }
+    this.disposePeer(message.viewerPeerId);
+    this.selectedChildConnection = {
+      peerId: message.viewerPeerId,
+      connectionId: message.newConnectionId,
+      revision: message.revision,
+    };
     this.startPeer(message.viewerPeerId, stream, 0, message);
     return true;
   }
 
-  setChild(childPeerId: string | null): void {
+  clearSelectedEdgeTurn(): void {
+    const selected = this.selectedChildConnection;
+    if (!selected) {
+      return;
+    }
+    this.selectedChildConnection = null;
+    this.childPeerIds = this.childPeerIds.filter(
+      (peerId) => peerId !== selected.peerId,
+    );
+    this.disposePeer(selected.peerId);
+  }
+
+  setChildren(childPeerIds: readonly string[]): void {
     if (this.disposed) {
       return;
     }
-    if (this.childPeerId === childPeerId) {
-      if (
-        childPeerId &&
-        this.stream &&
-        (!this.peer || !this.peer.isConnected())
-      ) {
-        this.disposePeer();
+    const nextChildPeerIds = [...new Set(childPeerIds)].slice(
+      0,
+      MAX_VIEWER_MEDIA_CHILDREN,
+    );
+    const selectedPeerId = this.selectedChildConnection?.peerId ?? null;
+    if (selectedPeerId && !nextChildPeerIds.includes(selectedPeerId)) {
+      if (nextChildPeerIds.length >= MAX_VIEWER_MEDIA_CHILDREN) {
+        nextChildPeerIds.pop();
+      }
+      nextChildPeerIds.push(selectedPeerId);
+    }
+    for (const childPeerId of this.childPeerIds) {
+      if (!nextChildPeerIds.includes(childPeerId)) {
+        this.disposePeer(childPeerId);
+      }
+    }
+    this.childPeerIds = nextChildPeerIds;
+    for (const childPeerId of this.childPeerIds) {
+      const peer = this.peers.get(childPeerId);
+      if (childPeerId === selectedPeerId) {
+        continue;
+      }
+      if (this.stream && (!peer || !peer.isConnected())) {
+        this.disposePeer(childPeerId);
         this.startPeer(childPeerId, this.stream);
       }
-      return;
-    }
-    this.disposePeer();
-    this.childPeerId = childPeerId;
-    if (childPeerId && this.stream) {
-      this.startPeer(childPeerId, this.stream);
     }
   }
 
@@ -107,11 +162,22 @@ export class ViewerRelay {
   async acceptSignal(
     fromPeerId: string,
     payload: SignalPayload,
-  ): Promise<void> {
-    if (fromPeerId !== this.childPeerId) {
-      return;
+    routeRevision: number,
+  ): Promise<boolean> {
+    const peer = this.peers.get(fromPeerId);
+    const selected = this.selectedChildConnection;
+    if (
+      !this.childPeerIds.includes(fromPeerId) ||
+      !peer ||
+      peer.connectionId !== payload.connectionId ||
+      (selected?.peerId === fromPeerId &&
+        (selected.connectionId !== payload.connectionId ||
+          selected.revision !== routeRevision))
+    ) {
+      return false;
     }
-    await this.peer?.acceptSignal(payload);
+    await peer.acceptSignal(payload);
+    return true;
   }
 
   async recover(
@@ -120,15 +186,15 @@ export class ViewerRelay {
     rebuild: boolean,
   ): Promise<void> {
     const stream = this.stream;
-    const peer = this.peer;
-    if (this.disposed || !stream || fromPeerId !== this.childPeerId) {
+    const peer = this.peers.get(fromPeerId);
+    if (this.disposed || !stream || !this.childPeerIds.includes(fromPeerId)) {
       return;
     }
     if (rebuild) {
       if (peer && peer.connectionId !== connectionId) {
         return;
       }
-      this.disposePeer();
+      this.disposePeer(fromPeerId);
       this.startPeer(fromPeerId, stream);
       return;
     }
@@ -138,20 +204,23 @@ export class ViewerRelay {
     if (await peer.restartIce()) {
       return;
     }
-    if (this.peer === peer) {
-      this.disposePeer();
+    if (this.peers.get(fromPeerId) === peer) {
+      this.disposePeer(fromPeerId);
       this.startPeer(fromPeerId, stream);
     }
   }
 
   updateIceConfig(iceConfig: IceConfig): void {
     this.iceConfig = iceConfig;
-    this.peer?.updateIceConfig(iceConfig);
+    for (const peer of this.peers.values()) {
+      peer.updateIceConfig(iceConfig);
+    }
   }
 
   stop(): void {
     this.stream = null;
-    this.disposePeer();
+    this.clearSelectedEdgeTurn();
+    this.disposePeers();
   }
 
   dispose(): void {
@@ -160,16 +229,27 @@ export class ViewerRelay {
     }
     this.disposed = true;
     this.stream = null;
-    this.childPeerId = null;
-    this.disposePeer();
+    this.selectedChildConnection = null;
+    this.childPeerIds = [];
+    this.disposePeers();
   }
 
   private async syncStream(stream: MediaStream): Promise<void> {
-    const childPeerId = this.childPeerId;
-    if (this.disposed || this.stream !== stream || !childPeerId) {
+    if (this.disposed || this.stream !== stream) {
       return;
     }
-    const peer = this.peer;
+    await Promise.all(
+      this.childPeerIds.map((childPeerId) =>
+        this.syncPeerStream(childPeerId, stream),
+      ),
+    );
+  }
+
+  private async syncPeerStream(
+    childPeerId: string,
+    stream: MediaStream,
+  ): Promise<void> {
+    const peer = this.peers.get(childPeerId);
     if (!peer) {
       this.startPeer(childPeerId, stream);
       return;
@@ -184,13 +264,13 @@ export class ViewerRelay {
     if (
       replaced ||
       this.disposed ||
-      this.peer !== peer ||
+      this.peers.get(childPeerId) !== peer ||
       this.stream !== stream ||
-      this.childPeerId !== childPeerId
+      !this.childPeerIds.includes(childPeerId)
     ) {
       return;
     }
-    this.disposePeer();
+    this.disposePeer(childPeerId);
     this.startPeer(childPeerId, stream);
   }
 
@@ -198,11 +278,17 @@ export class ViewerRelay {
     if (this.disposed || this.desiredProfile !== profile) {
       return false;
     }
-    const peer = this.peer;
-    if (!peer) {
+    const peers = [...this.peers.entries()];
+    if (peers.length === 0) {
       return true;
     }
-    return peer.updateProfile(this.desiredProfile);
+    const results = await Promise.all(
+      peers.map(async ([childPeerId, peer]) =>
+        this.peers.get(childPeerId) !== peer ||
+        (await peer.updateProfile(this.desiredProfile)),
+      ),
+    );
+    return this.desiredProfile === profile && results.every(Boolean);
   }
 
   private startPeer(
@@ -213,9 +299,9 @@ export class ViewerRelay {
   ): void {
     if (
       this.disposed ||
-      this.peer ||
+      this.peers.has(childPeerId) ||
       this.stream !== stream ||
-      this.childPeerId !== childPeerId
+      !this.childPeerIds.includes(childPeerId)
     ) {
       return;
     }
@@ -231,26 +317,26 @@ export class ViewerRelay {
       {
         sendSignal: (targetPeerId, payload) =>
           !this.disposed &&
-          this.peer === peer &&
-          this.childPeerId === targetPeerId
+          this.peers.get(childPeerId) === peer &&
+          childPeerId === targetPeerId
             ? this.events.sendSignal(targetPeerId, payload)
             : false,
         onUpdate: (snapshot) => {
           if (
             !this.disposed &&
-            this.peer === peer &&
-            this.childPeerId === childPeerId &&
+            this.peers.get(childPeerId) === peer &&
+            this.childPeerIds.includes(childPeerId) &&
             snapshot.peerId === childPeerId &&
             snapshot.connectionId === peer.connectionId
           ) {
             if (selectedTurn && snapshot.connectionState === "failed") {
-              this.disposePeer();
+              this.disposePeer(childPeerId);
               return;
             }
-            this.snapshot = {
+            this.snapshots.set(childPeerId, {
               ...snapshot,
               metrics: { ...snapshot.metrics },
-            };
+            });
             this.events.onUpdate?.(this.getSnapshot());
           }
         },
@@ -258,21 +344,21 @@ export class ViewerRelay {
       selectedTurn !== undefined,
       selectedTurn?.newConnectionId,
     );
-    this.peer = peer;
+    this.peers.set(childPeerId, peer);
     void peer
       .start()
       .catch(() => false)
       .then((started) => {
-        if (started || this.peer !== peer) {
+        if (started || this.peers.get(childPeerId) !== peer) {
           return;
         }
-        this.disposePeer();
+        this.disposePeer(childPeerId);
         if (
           !selectedTurn &&
           attempt < 1 &&
           !this.disposed &&
           this.stream === stream &&
-          this.childPeerId === childPeerId
+          this.childPeerIds.includes(childPeerId)
         ) {
           window.setTimeout(() => {
             this.startPeer(childPeerId, stream, attempt + 1);
@@ -281,17 +367,37 @@ export class ViewerRelay {
       });
   }
 
-  private disposePeer(): void {
-    const peer = this.peer;
-    if (peer) {
-      this.retiredConnection = {
-        peerId: peer.peerId,
-        connectionId: peer.connectionId,
-      };
+  private disposePeers(): void {
+    for (const childPeerId of [...this.peers.keys()]) {
+      this.disposePeer(childPeerId);
     }
-    this.peer = null;
-    this.snapshot = null;
-    this.events.onUpdate?.(null);
+  }
+
+  private disposePeer(childPeerId: string): void {
+    const peer = this.peers.get(childPeerId);
+    if (
+      peer &&
+      this.selectedChildConnection?.peerId === childPeerId &&
+      this.selectedChildConnection.connectionId === peer.connectionId
+    ) {
+      this.selectedChildConnection = null;
+      this.childPeerIds = this.childPeerIds.filter(
+        (peerId) => peerId !== childPeerId,
+      );
+    }
+    if (peer) {
+      this.retiredConnections.delete(childPeerId);
+      this.retiredConnections.set(childPeerId, peer.connectionId);
+      while (this.retiredConnections.size > MAX_VIEWER_MEDIA_CHILDREN) {
+        const oldestPeerId = this.retiredConnections.keys().next().value;
+        if (typeof oldestPeerId === "string") {
+          this.retiredConnections.delete(oldestPeerId);
+        }
+      }
+    }
+    this.peers.delete(childPeerId);
+    this.snapshots.delete(childPeerId);
+    this.events.onUpdate?.(this.getSnapshot());
     peer?.dispose();
   }
 }

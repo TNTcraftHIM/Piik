@@ -110,9 +110,14 @@ export class PeerRelayTopology {
     if (
       options.rescueUnassignedRelay &&
       previousDownstreamEdges === 0 &&
-      downstreamEdges === 1
+      downstreamEdges > 0
     ) {
       this.rescueUnassignedRelay(room, peerId, connectedPeerIds);
+    }
+    for (const [candidatePeerId, candidate] of orderedViewers(room)) {
+      if (candidate.parentPeerId === null) {
+        this.assignViewer(room, candidatePeerId, connectedPeerIds);
+      }
     }
     return changedAssignments(before, snapshot(room));
   }
@@ -130,8 +135,8 @@ export class PeerRelayTopology {
 
     const before = snapshot(room);
     this.detach(room, peerId, removed.parentPeerId);
-    const subtreeRootPeerId = removed.childPeerIds[0];
-    if (subtreeRootPeerId) {
+    const subtreeRootPeerIds = [...removed.childPeerIds];
+    for (const subtreeRootPeerId of subtreeRootPeerIds) {
       const subtreeRoot = room.viewers.get(subtreeRootPeerId);
       if (subtreeRoot) {
         subtreeRoot.parentPeerId = null;
@@ -139,7 +144,7 @@ export class PeerRelayTopology {
     }
     room.viewers.delete(peerId);
 
-    if (subtreeRootPeerId) {
+    for (const subtreeRootPeerId of subtreeRootPeerIds) {
       this.assignViewer(room, subtreeRootPeerId, connectedPeerIds);
     }
     for (const [candidatePeerId, viewer] of orderedViewers(room)) {
@@ -176,6 +181,14 @@ export class PeerRelayTopology {
   getAssignments(roomId: string): Map<string, MediaAssignment> {
     const room = this.rooms.get(roomId);
     return room ? snapshot(room) : new Map();
+  }
+
+  getDownstreamCapacity(
+    roomId: string,
+    peerId: string,
+  ): RelayDownstreamEdges {
+    const room = this.rooms.get(roomId);
+    return room ? downstreamCapacity(room, peerId) : 0;
   }
 
   getHostPeerId(roomId: string): string | undefined {
@@ -312,7 +325,7 @@ export class PeerRelayTopology {
       !connectedPeerIds.has(peerId) ||
       candidate.parentPeerId !== null ||
       candidate.childPeerIds.length !== 0 ||
-      candidate.downstreamEdges !== 1 ||
+      candidate.downstreamEdges === 0 ||
       room.hostChildPeerIds.length !== downstreamCapacity(room, hostPeerId)
     ) {
       return;
@@ -410,7 +423,10 @@ function findReassignmentParent(
   return undefined;
 }
 
-function downstreamCapacity(room: RelayRoom, peerId: string): number {
+function downstreamCapacity(
+  room: RelayRoom,
+  peerId: string,
+): RelayDownstreamEdges {
   return room.hostPeerId === peerId
     ? 2
     : (room.viewers.get(peerId)?.downstreamEdges ?? 0);

@@ -285,9 +285,8 @@ remains protected in either case.
 
 A viewer's `LOW` request is advisory and must be authenticated, session-bound,
 rate-limited, deduplicated, and corroborated by sender transport/encode and
-viewer receive/decode stats. UA or device-model detection is not quality
-evidence; the current mobile/iPad heuristic remains restricted to relay
-capacity. A valid report may affect confirmed topology eligibility; it does not
+viewer receive/decode stats. UA or device-model detection is not quality or
+relay-capacity evidence. A valid report may affect confirmed topology eligibility; it does not
 command built-in WebRTC/LiveKit media adaptation.
 
 The application must not stably retain a confirmed `FALLBACK` parent. For a

@@ -185,6 +185,7 @@ export const DEFAULT_QUALITY_SETTINGS = {
 export const relayDownstreamEdgesSchema = z.union([
   z.literal(0),
   z.literal(1),
+  z.literal(2),
 ]);
 export type RelayDownstreamEdges = z.infer<typeof relayDownstreamEdgesSchema>;
 

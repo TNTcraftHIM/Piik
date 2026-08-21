@@ -27,8 +27,9 @@ credentials are not participant-wide ICE configuration and are never added to
 ordinary peer connections by default. HTTPS/WSS remains TLS/TCP and is outside
 this media policy. Every non-server endpoint has at most two active
 downstream media edges; its upstream receive edge does not consume that upload
-budget. The current browser relay remains stricter at one child until its
-re-encode and resource gates pass.
+budget. The current source candidate gives every ordinary Web relay that same
+two-child hard limit without a UA or visibility policy; production remains at
+one until this candidate ships.
 
 TURN and SFU occupy different layers. A selected TURN candidate continuously
 relays media for its authorized ICE edge; it is not a handshake helper or a
@@ -134,19 +135,18 @@ one-use state, fanout, and quotas bound the bearer. LiveKit publisher/subscriber
 ICE remains a separate participant-wide domain.
 
 Every viewer starts with zero relay capacity for each authenticated session. A
-peer-assisted Web client explicitly advertises either zero or one downstream
-edge; conservative UA-CH/user-agent detection reports mobile and iPad clients as
-leaves and desktop-class browsers as one-child relays. The controller uses this
-binary capability only for future admission and recovery. Withdrawing capacity
-does not proactively migrate an otherwise healthy existing edge.
+peer-assisted Web client then explicitly advertises two downstream edges; there
+is no UA-, device-, or visibility-based branch. The controller accepts bounded
+capacity values from zero through two for admission and recovery. Withdrawing
+capacity does not proactively migrate an otherwise healthy existing edge.
 
 The source now implements one narrow admission exception to sticky assignment.
 On an active peer-only route with no SFU publication or pending prepare, a
 connected, childless Viewer that has no upstream or failed-parent history and
-advertises one relay slot may replace the oldest connected, childless,
-zero-capacity Host child when both Host slots are full. That leaf becomes the
-new relay's only child. The synchronous change preserves Host fanout two,
-browser fanout one and the depth bound, advances one route revision, and clears
+advertises relay capacity may replace the oldest connected, childless,
+zero-capacity Host child when both Host slots are full. That leaf becomes one
+child of the new relay. The synchronous change preserves Host and browser
+fanout at two, advances one route revision, and clears
 both changed upstream connection generations. Host-side reconciliation closes
 the stale child edge before starting the replacement. No healthy routed
 candidate, quality score, timer, global parent penalty, or periodic rebalance is
@@ -225,7 +225,7 @@ Minimal protocol additions:
 
 - optional `sfuStandbyUrl` in a peer-assisted authenticated snapshot, only when
   the server has complete LiveKit fallback configuration;
-- `relay-capacity { downstreamEdges: 0 | 1 }` from an authenticated
+- `relay-capacity { downstreamEdges: 0 | 1 | 2 }` from an authenticated
   peer-assisted viewer;
 - `route-update { revision, phase: "prepare" | "active", assignment }`;
 - `sfu-config { revision, url, token }`;
@@ -535,7 +535,8 @@ boundary is actually configured and the UI must not claim E2EE.
 
 - Every non-server endpoint stays at or below two active downstream media edges
   across prepare, commit, rollback, reconnect, and stale-message sequences;
-  current browser relays stay at one child until separately accepted.
+  the current Web candidate uses the same two-child bound and never admits a
+  third edge.
 - Only necessary roots or explicitly admitted exceptional viewers receive SFU
   media and the configured central egress budget is never exceeded.
 - A reliable SFU root continues to serve bounded peer descendants. Normal

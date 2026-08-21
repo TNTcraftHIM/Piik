@@ -37,7 +37,7 @@ describe("peer-assisted client assignment", () => {
       limitMediaAssignment(assignment, MAX_VIEWER_MEDIA_CHILDREN),
     ).toEqual({
       parentPeerId: "parent_12345678",
-      childPeerIds: ["child_12345678"],
+      childPeerIds: ["child_12345678", "child_abcdefgh"],
     });
   });
 

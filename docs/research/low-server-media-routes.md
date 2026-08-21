@@ -140,8 +140,8 @@ only STUN candidates. The controller may authorize one failed edge to rebuild
 relay-only after SFU/UDP; LiveKit participant transport remains separate. An SFU is a topology node.
 Screener uses it as a virtual
 parent for one or two roots, not as an automatic all-viewer fanout service.
-After media reaches a root, the deterministic sticky subtree, host/root fanout
-at most two, browser fanout one, maximum depth, and bounded failure radius still
+After media reaches a root, the deterministic sticky subtree, current host/root
+and browser fanout at most two, maximum depth, and bounded failure radius still
 apply. Only the absence of any reliable relay root permits a necessary viewer
 to consume one of the same one or two root slots with zero descendants.
 
@@ -393,7 +393,7 @@ lost.
 | Route | Where copies are emitted | Endpoint cost | Current disposition |
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per viewer | Host upload and sender pipelines grow with viewers | Keep for one or two viewers |
-| Fixed two-chain browser relay | Host emits at most two copies; each relay emits at most one | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current default-off, maximum-eight-viewer spike |
+| Bounded browser relay DAG | Host and each Web relay emit at most two copies | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current capacity-two source candidate, maximum-eight-viewer gate |
 | Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
 | SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; local SFU/UDP and active Host-ingress relay function pass, while public-room/performance evidence remains open |
