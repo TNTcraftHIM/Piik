@@ -106,6 +106,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     useState<SignalConnectionState>("offline");
   const [statusText, setStatusText] = useState("正在连接");
   const [hostOnline, setHostOnline] = useState(false);
+  const [hostPaused, setHostPaused] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
   const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
@@ -163,12 +164,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   function clearParticipantPresence(): void {
     setParticipantPresence(null);
+    setHostPaused(false);
   }
 
   function clearHostPresence(): void {
     setParticipantPresence((current) =>
       current?.filter((participant) => participant.role !== "host") ?? null,
     );
+    setHostPaused(false);
   }
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -830,6 +833,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
         setHostOnline(message.hostOnline);
+        setHostPaused(message.hostPaused ?? false);
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
           void viewerRelay?.updateProfile(currentQualitySettings);
@@ -1019,6 +1023,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (message.type === "host-status") {
         currentHostOnline = message.online;
         setHostOnline(message.online);
+        setHostPaused(message.paused);
         if (!message.online && !peerRef.current?.isConnected()) {
           setStatusText("等待开始分享");
         } else if (message.online && !peerRef.current?.isConnected()) {
@@ -1425,7 +1430,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <span>{statusText}</span>
             </div>
           )}
-          {playbackBlocked && remoteStream && (
+          {playbackBlocked && remoteStream && !hostPaused && (
             <button
               type="button"
               className="play-overlay"
@@ -1434,6 +1439,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <Play size={22} fill="currentColor" aria-hidden="true" />
               播放
             </button>
+          )}
+          {hostOnline && hostPaused && (
+            <div className="stage-overlay" role="status">
+              分享者已暂停
+            </div>
           )}
         </section>
 

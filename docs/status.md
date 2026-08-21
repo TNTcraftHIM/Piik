@@ -14,7 +14,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 
 ## Current Snapshot
 
-- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced and automatic codec; clarity/fluid plus H.264/VP8 stay explicit, with codec locked during a share. Browser degradation and Host SFU A+B remain open.
+- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced and automatic codec; clarity/fluid plus H.264/VP8 stay explicit, with codec locked during a share. Browser degradation and Host SFU A+B remain open; pause notice is source-only.
 - Production `screener-v3` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
 - Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Status and details stay neutral before media proof; current evidence labels green P2P/yellow `SFU fallback`, while relay evidence adds `TURN` plus only a locally observed protocol.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.

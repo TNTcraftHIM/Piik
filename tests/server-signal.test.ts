@@ -445,6 +445,7 @@ async function authenticate(
     viewerPresence?: true;
     viewerPasswordSettings?: true;
     viewerPassword?: string;
+    sharingPaused?: boolean;
   } = {},
 ) {
   client.socket.send(
@@ -458,6 +459,9 @@ async function authenticate(
             token: room.hostToken,
             clientId,
             ...(shareGeneration ? { shareGeneration } : {}),
+            ...(presence.sharingPaused !== undefined
+              ? { sharingPaused: presence.sharingPaused }
+              : {}),
             ...(presence.viewerPresence ? { viewerPresence: true } : {}),
             ...(presence.viewerPasswordSettings
               ? { viewerPasswordSettings: true }
@@ -1896,6 +1900,124 @@ describe("WebSocket signaling", () => {
     expect(await viewer.inbox.next("host-status")).toEqual({
       type: "host-status",
       online: true,
+      paused: false,
+    });
+  });
+
+  it("snapshots intentional pause across Viewer replacement and clears it on resume and stop", async () => {
+    const harness = await startHarness();
+    const shareGeneration = "pause_share_generation_12345678";
+    const host = await openClient(harness.webSocketUrl);
+    let activeHost = host;
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "pause-host-client",
+      1,
+      shareGeneration,
+    );
+    expect(hostAuth).not.toHaveProperty("hostPaused");
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "pause-viewer-client",
+    );
+    expect(viewerAuth.hostPaused).toBe(false);
+    await host.inbox.next("peer-joined");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-sharing-paused",
+        shareGeneration,
+        paused: true,
+      }),
+    );
+    expect(await viewer.inbox.next("host-status")).toEqual({
+      type: "host-status",
+      online: true,
+      paused: true,
+    });
+
+    await closeClient(host);
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: false,
+      paused: false,
+    });
+    activeHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      activeHost,
+      harness.room,
+      "host",
+      "pause-host-client",
+      1,
+      shareGeneration,
+      { sharingPaused: true },
+    );
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: true,
+    });
+
+    const replacement = await openClient(harness.webSocketUrl);
+    const replacementAuth = await authenticate(
+      replacement,
+      harness.room,
+      "viewer",
+      "pause-viewer-client",
+    );
+    expect(replacementAuth.hostPaused).toBe(true);
+
+    activeHost.socket.send(
+      JSON.stringify({
+        type: "set-sharing-paused",
+        shareGeneration,
+        paused: false,
+      }),
+    );
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
+    });
+
+    activeHost.socket.send(
+      JSON.stringify({
+        type: "set-sharing-paused",
+        shareGeneration,
+        paused: true,
+      }),
+    );
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      paused: true,
+    });
+    activeHost.socket.send(
+      JSON.stringify({ type: "stop-sharing", shareGeneration }),
+    );
+    await replacement.inbox.next("sharing-stopped");
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: false,
+      paused: false,
+    });
+
+    const nextHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      nextHost,
+      harness.room,
+      "host",
+      "pause-host-client",
+      1,
+      "next_pause_share_generation_12345678",
+    );
+    await replacement.inbox.next("sharing-stopped");
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: false,
+      paused: false,
+    });
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
     });
   });
 

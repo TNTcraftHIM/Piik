@@ -407,6 +407,33 @@ describe("client signaling protocol", () => {
     );
   });
 
+  it("keeps intentional pause updates strict and generation-bound", () => {
+    const update = {
+      type: "set-sharing-paused",
+      shareGeneration: "share_generation_12345678",
+      paused: true,
+    };
+    expect(clientMessageSchema.safeParse(update).success).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ ...update, shareGeneration: undefined })
+        .success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({ ...update, paused: "true" }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "host-status",
+        online: true,
+        paused: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({ type: "host-status", online: true })
+        .success,
+    ).toBe(false);
+  });
+
   it("accepts only strict, bounded quality settings", () => {
     expect(
       clientMessageSchema.safeParse({

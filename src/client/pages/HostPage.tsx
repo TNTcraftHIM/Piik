@@ -720,6 +720,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     sharingPausedRef.current = nextPaused;
     setSharingPaused(nextPaused);
+    signalRef.current?.setSharingPaused(nextPaused);
     setNotice(nextPaused ? "音视频分享已暂停" : "音视频分享已恢复");
   }
 
@@ -1210,6 +1211,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           token: activeRoom.hostToken,
           clientId: hostClientId,
           shareGeneration,
+          sharingPaused: false,
           viewerPresence: true,
           viewerPasswordSettings: true,
           displayName: initialDisplayName,

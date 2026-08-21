@@ -495,6 +495,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       token: tokenSchema,
       clientId: opaqueIdSchema,
       shareGeneration: opaqueIdSchema.optional(),
+      sharingPaused: z.boolean().optional(),
       viewerPresence: z.literal(true).optional(),
       viewerPasswordSettings: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
@@ -593,6 +594,13 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
+      type: z.literal("set-sharing-paused"),
+      shareGeneration: opaqueIdSchema,
+      paused: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("stop-sharing"),
       shareGeneration: opaqueIdSchema.optional(),
     })
@@ -621,6 +629,7 @@ const authenticatedMessageShape = {
   roomExpiresAt: z.string().datetime().nullable(),
   maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   hostOnline: z.boolean(),
+  hostPaused: z.boolean().optional(),
   connectionId: opaqueIdSchema.nullable(),
   viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   iceConfig: iceConfigSchema,
@@ -744,6 +753,7 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("host-status"),
       online: z.boolean(),
+      paused: z.boolean(),
     })
     .strict(),
   z
