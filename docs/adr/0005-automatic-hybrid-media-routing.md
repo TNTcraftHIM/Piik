@@ -459,18 +459,18 @@ mobile, or resource evidence. Chrome reported `candidateType=prflx` for the same
 local candidate; the standards-bounded interpretation and raw-counter summary
 are retained in the linked research rather than normalized away.
 
-### Deferred Optimization And Source-Only Follow-Up
+### Deferred Optimization And Deployment Boundary
 
-These items are not deployed runtime behavior; source-only status is called out
-explicitly:
+Current deployment status is explicit:
 
 - A room in which the Host and every possible root are restricted may require
   several server-fed exceptional edges. Any such extension requires a per-room
   selected-relay and central-egress admission cap; it must wait or fail at that
   cap rather than become unbounded server fanout.
-- Bounded healthy SFU-to-peer reselection is accepted below. The first
-  source-only slice is implemented for one SFU root and its existing baseline
-  parent; it is not deployed or browser-canary evidence.
+- Bounded healthy SFU-to-peer reselection is accepted below. The one-root slice
+  and its existing baseline parent are deployed in exact `6ccb516a`; browser,
+  media, and production-route evidence remain unverified. Relay-capacity
+  transition `0 -> 1` and multi-root healthy reselection are not implemented.
 
 #### Bounded Healthy SFU Reselection
 
