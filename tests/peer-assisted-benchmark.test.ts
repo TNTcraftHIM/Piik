@@ -219,7 +219,11 @@ describe("peer topology loopback configuration", () => {
 
   it("deduplicates configured viewer counts without changing their order", () => {
     expect(parseViewerCounts("8, 3,3,1")).toEqual([8, 3, 1]);
-    expect(() => parseViewerCounts("9")).toThrow(/1 to 8/);
+  });
+
+  it("accepts the room viewer ceiling and rejects values above it", () => {
+    expect(parseViewerCounts("16")).toEqual([16]);
+    expect(() => parseViewerCounts("17")).toThrow(/1 to 16/);
   });
 
   it("requires recovery to target one selected case", () => {

@@ -1,8 +1,9 @@
 # Peer-Assisted Media Research
 
 - Research date: 2026-08-21
-- Scope: one game-screen broadcaster, at most eight trusted viewers, host media fanout at most two
-- Status: historical evidence plus the current capacity-two source candidate;
+- Scope: one game-screen broadcaster, explicit admission up to sixteen trusted
+  viewers, with the retained resource/quality gate at eight
+- Status: historical evidence plus the current bounded source candidate;
   accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
   the room-`1` rollout boundary; retained SFU media remains unverified.
 
@@ -260,6 +261,17 @@ configures only its local server and gate. A 2026-08-22 Chrome 151 two-second
 smoke passed with three Viewers at Host2/relay1 and six at Host3/relay3, with all
 Viewers decoding. This is not a production-default, SFU-capacity, or resource claim.
 
+A 2026-08-22 Windows Chrome 151.0.7922.138 headless loopback then ran sixteen
+Viewers for two seconds at 720p30 with cap2 and cap3. Both runs had all sixteen
+Viewers decoding and no fatal/check failure. Cap2 peaked at Host2/relay2 with
+depth four and a 1,167 ms maximum first-decode diagnostic; cap3 peaked at
+Host3/relay3 with depth three and 977 ms. Final samples were only 320x180 at
+9-10 fps. The 8-core/16-thread Ryzen 7 9700X runner had 47.1 GiB RAM and 13.7
+GiB free after the runs, but no process CPU, GPU, NIC, or peak-memory totals were
+captured. This proves the explicit admission, bounded topology, and decode paths
+only; resource, visual quality, endurance, heterogeneous networks, and the
+separate 20-viewer gate remain open.
+
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
 striping. Those mechanisms are intentionally excluded: needing them is a reason
@@ -315,11 +327,12 @@ longer has that room boundary. There is no mobile/iPad, UA, or visibility branch
 This historical gate assumed default-off configuration through
 `PEER_ASSISTED_MEDIA=false`; current production enables the controller for all
 rooms.
-It cannot be enabled above eight viewers and uses the existing standard WebRTC
-screen stream, current Chrome/Edge as the controlled relay cohort, Android
-Chrome and iOS Safari as compatibility observations, at most two children per
-viewer, and at most eight viewers. It may carry the
-existing screen-audio track when the browser provides one. SVC/simulcast,
+It uses the existing standard WebRTC screen stream, current Chrome/Edge as the
+controlled relay cohort, Android Chrome and iOS Safari as compatibility
+observations, and the configured downstream edge cap. The runner accepts the
+shared room admission ceiling of sixteen while the representative
+resource/quality gate remains at eight. It may carry the existing screen-audio
+track when the browser provides one. SVC/simulcast,
 custom encoded transport, FEC changes, multi-tree striping, transcoding,
 background mobile relay, and the later ADR-0005 SFU controller are outside this
 historical browser-relay gate.
