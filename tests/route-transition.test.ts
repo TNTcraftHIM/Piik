@@ -1206,6 +1206,136 @@ describe("ViewerSfuRoute", () => {
     expect(activatePeer).not.toHaveBeenCalledWith(peer);
   });
 
+  it("prepares a second peer without replacing the active peer before commit", async () => {
+    const prepared: Array<{ parent: string | null; revision?: number }> = [];
+    const activatePeer = vi.fn();
+    const route = new ViewerSfuRoute({
+      activatePeer,
+      preparePeer: (assignment, revision) => prepared.push({
+        parent: assignment?.upstream.kind === "peer"
+          ? assignment.upstream.peerId
+          : null,
+        ...(revision === undefined ? {} : { revision }),
+      }),
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+    const oldPeer = peerAssignment("old-parent");
+    const newPeer = peerAssignment("new-parent");
+
+    route.accept({ revision: 1, phase: "active", assignment: oldPeer });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(oldPeer));
+    activatePeer.mockClear();
+    route.accept({ revision: 2, phase: "prepare", assignment: newPeer });
+    expect(prepared.at(-1)).toEqual({ parent: "new-parent", revision: 2 });
+    expect(activatePeer).not.toHaveBeenCalled();
+
+    route.accept({ revision: 3, phase: "active", assignment: oldPeer });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(oldPeer));
+    expect(activatePeer).not.toHaveBeenCalledWith(newPeer, 2);
+  });
+
+  it("reports an active failure instead of promoting a failed ready peer probe", async () => {
+    const sent: ClientMessage[] = [];
+    const activatePeer = vi.fn(() => true);
+    const route = new ViewerSfuRoute({
+      activatePeer,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: (message) => { sent.push(message); return true; },
+    });
+    const oldPeer = peerAssignment("old-parent");
+    const newPeer = peerAssignment("new-parent");
+
+    route.accept({ revision: 1, phase: "active", assignment: oldPeer });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(oldPeer));
+    activatePeer.mockClear();
+    route.accept({ revision: 2, phase: "prepare", assignment: newPeer });
+    expect(route.reportPeerProbeFailure("new-parent", "failed-probe", true)).toBe(true);
+    expect(sent).toContainEqual({ type: "route-failed", revision: 2,
+      phase: "prepare", connectionId: "failed-probe" });
+
+    route.accept({ revision: 2, phase: "active", assignment: newPeer });
+    await vi.waitFor(() => expect(sent).toContainEqual({ type: "route-failed",
+      revision: 2, phase: "active", connectionId: "failed-probe" }));
+    expect(activatePeer).not.toHaveBeenCalled();
+  });
+
+  it("blocks promotion when a ready probe fails after active is accepted", async () => {
+    const sent: ClientMessage[] = [];
+    const activatePeer = vi.fn(() => true);
+    const route = new ViewerSfuRoute({
+      activatePeer,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: (message) => { sent.push(message); return true; },
+    });
+    const oldPeer = peerAssignment("old-parent");
+    const newPeer = peerAssignment("new-parent");
+
+    route.accept({ revision: 1, phase: "active", assignment: oldPeer });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(oldPeer));
+    activatePeer.mockClear();
+    route.accept({ revision: 2, phase: "prepare", assignment: newPeer });
+    route.accept({ revision: 2, phase: "active", assignment: newPeer });
+    expect(route.reportPeerProbeFailure("new-parent", "accepted-failed-probe", true)).toBe(true);
+    await vi.waitFor(() => expect(sent).toContainEqual({ type: "route-failed",
+      revision: 2, phase: "active", connectionId: "accepted-failed-probe" }));
+    expect(activatePeer).not.toHaveBeenCalled();
+  });
+
+  it("clears a failed peer probe tombstone on rollback", async () => {
+    const sent: ClientMessage[] = [];
+    const prepared: Array<{ parent: string | null; revision?: number }> = [];
+    const route = new ViewerSfuRoute({
+      activatePeer: () => true,
+      preparePeer: (assignment, revision) => prepared.push({
+        parent: assignment?.upstream.kind === "peer"
+          ? assignment.upstream.peerId
+          : null,
+        ...(revision === undefined ? {} : { revision }),
+      }),
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: (message) => { sent.push(message); return true; },
+    });
+    const oldPeer = peerAssignment("old-parent");
+
+    route.accept({ revision: 1, phase: "active", assignment: oldPeer });
+    route.accept({ revision: 2, phase: "prepare", assignment: peerAssignment("new-parent") });
+    route.reportPeerProbeFailure("new-parent", "rolled-back-probe", true);
+    route.accept({ revision: 3, phase: "active", assignment: oldPeer });
+    await vi.waitFor(() => expect(prepared.at(-1)).toEqual({ parent: "old-parent" }));
+    expect(sent).not.toContainEqual(expect.objectContaining({
+      phase: "active", connectionId: "rolled-back-probe",
+    }));
+  });
+
+  it("clears a failed peer probe tombstone on authoritative resync", async () => {
+    const sent: ClientMessage[] = [];
+    const activatePeer = vi.fn(() => true);
+    const route = new ViewerSfuRoute({
+      activatePeer,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: (message) => { sent.push(message); return true; },
+    });
+    const oldPeer = peerAssignment("old-parent");
+    const newPeer = peerAssignment("new-parent");
+
+    route.accept({ revision: 1, phase: "active", assignment: oldPeer });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(oldPeer));
+    route.accept({ revision: 2, phase: "prepare", assignment: newPeer });
+    route.reportPeerProbeFailure("new-parent", "resynced-probe", true);
+    activatePeer.mockClear();
+    await route.resyncAuthoritative({ revision: 2, phase: "active", assignment: newPeer });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(newPeer));
+    expect(sent).not.toContainEqual(expect.objectContaining({
+      phase: "active", connectionId: "resynced-probe",
+    }));
+  });
+
   it("requests provisional peer teardown on a newer SFU rollback", async () => {
     const prepared: Array<{ parent: string | null; revision?: number }> = [];
     const { route, subscriber } = await activateViewerSfuRoute({

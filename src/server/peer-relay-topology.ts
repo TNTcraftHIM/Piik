@@ -244,7 +244,44 @@ export class PeerRelayTopology {
     connectedPeerIds: ReadonlySet<string>,
     excludedParentPeerIds: ReadonlySet<string>,
     maxDepth = MAX_PEER_RELAY_DEPTH,
+    requiredParentPeerId?: string,
   ): MediaAssignmentChange[] | undefined {
+    const parentPeerId = this.findViewerReassignmentParent(
+      roomId,
+      peerId,
+      connectedPeerIds,
+      excludedParentPeerIds,
+      maxDepth,
+    );
+    if (!parentPeerId || (requiredParentPeerId && parentPeerId !== requiredParentPeerId)) {
+      return undefined;
+    }
+
+    const room = this.rooms.get(roomId);
+    const viewer = room?.viewers.get(peerId);
+    if (!room || !viewer) {
+      return undefined;
+    }
+
+    const before = snapshot(room);
+    this.detach(room, peerId, viewer.parentPeerId);
+    viewer.parentPeerId = parentPeerId;
+    const children = childPeerIds(room, parentPeerId);
+    children.push(peerId);
+    children.sort(
+      (left, right) =>
+        room.viewers.get(left)!.order - room.viewers.get(right)!.order,
+    );
+    return changedAssignments(before, snapshot(room));
+  }
+
+  findViewerReassignmentParent(
+    roomId: string,
+    peerId: string,
+    connectedPeerIds: ReadonlySet<string>,
+    excludedParentPeerIds: ReadonlySet<string>,
+    maxDepth = MAX_PEER_RELAY_DEPTH,
+  ): string | undefined {
     const room = this.rooms.get(roomId);
     const viewer = room?.viewers.get(peerId);
     if (
@@ -269,20 +306,7 @@ export class PeerRelayTopology {
       subtreePeerIds,
       maxDepth - subtreeHeight - 1,
     );
-    if (!parentPeerId || parentPeerId === viewer.parentPeerId) {
-      return undefined;
-    }
-
-    const before = snapshot(room);
-    this.detach(room, peerId, viewer.parentPeerId);
-    viewer.parentPeerId = parentPeerId;
-    const children = childPeerIds(room, parentPeerId);
-    children.push(peerId);
-    children.sort(
-      (left, right) =>
-        room.viewers.get(left)!.order - room.viewers.get(right)!.order,
-    );
-    return changedAssignments(before, snapshot(room));
+    return parentPeerId === viewer.parentPeerId ? undefined : parentPeerId;
   }
 
   isParentOf(roomId: string, parentPeerId: string, childPeerId: string): boolean {

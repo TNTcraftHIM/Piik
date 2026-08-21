@@ -165,6 +165,8 @@ export class SignalingServer {
           this.connectionIdsByViewer.get(
             viewerConnectionKey(roomId, viewerPeerId),
           ),
+        setConnectionId: (roomId, viewerPeerId, connectionId) =>
+          this.setViewerConnectionId(roomId, viewerPeerId, connectionId),
         deleteConnectionId: (roomId, viewerPeerId) =>
           this.deleteViewerConnectionId(roomId, viewerPeerId),
         getShareGeneration: (roomId) => this.shareGenerationsByRoom.get(roomId),
@@ -1319,7 +1321,10 @@ export class SignalingServer {
       return;
     }
 
-    if (description?.type === "offer") {
+    if (
+      description?.type === "offer" &&
+      selectedEdgeAuthorized !== "probe"
+    ) {
       this.setViewerConnectionId(
         source.roomId,
         targetPeerId,

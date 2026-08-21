@@ -67,6 +67,7 @@ export class ViewerSfuRoute {
   private active: ViewerSubscriberSlot | null = null;
   private recovery: { revision: number; refreshed: boolean } | null = null;
   private peerProbeRevision: number | null = null;
+  private failedPeerProbe: { revision: number; parentPeerId: string; connectionId: string } | null = null;
   private healthySfuWindows: number | null = null;
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
@@ -91,12 +92,15 @@ export class ViewerSfuRoute {
     if (previousRevision !== update.revision) {
       this.recovery = null;
       this.peerProbeRevision = null;
+      this.failedPeerProbe = null;
       this.healthySfuWindows = null;
     }
     if (update.phase === "prepare") {
+      const mediaUpstream = this.route.getMediaAssignment()?.upstream;
       if (
         update.assignment.upstream.kind === "peer" &&
-        this.route.getMediaAssignment()?.upstream.kind === "sfu"
+        (mediaUpstream?.kind !== "peer" ||
+          mediaUpstream.peerId !== update.assignment.upstream.peerId)
       ) {
         this.peerProbeRevision = update.revision;
         this.events.preparePeer?.(update.assignment, update.revision);
@@ -136,6 +140,7 @@ export class ViewerSfuRoute {
     if (this.closed) {
       return "stale";
     }
+    this.peerProbeRevision = this.failedPeerProbe = null;
     if (!this.active && !this.pending) {
       const result = this.accept(update, false);
       if (result !== "stale") {
@@ -147,7 +152,6 @@ export class ViewerSfuRoute {
     this.resyncing = true;
     this.route.reset();
     this.recovery = null;
-    this.peerProbeRevision = null;
     this.healthySfuWindows = null;
     const pending = this.pending;
     const active = this.active;
@@ -305,6 +309,16 @@ export class ViewerSfuRoute {
     );
   }
 
+  reportPeerProbeFailure(parentPeerId: string, connectionId: string, ready: boolean): boolean {
+    const revision = this.peerProbeRevision, phase = this.route.getPhase();
+    const upstream = this.route.getPlannedAssignment()?.upstream;
+    if (revision === null || phase === null ||
+      upstream?.kind !== "peer" || upstream.peerId !== parentPeerId) return false;
+    if (ready) this.failedPeerProbe = { revision, parentPeerId, connectionId };
+    this.events.send({ type: "route-failed", revision, phase, connectionId });
+    return true;
+  }
+
   armHealthySfuReselection(revision: number): void {
     if (
       this.route.getRevision() === revision &&
@@ -324,6 +338,7 @@ export class ViewerSfuRoute {
     this.route.reset();
     this.recovery = null;
     this.peerProbeRevision = null;
+    this.failedPeerProbe = null;
     this.healthySfuWindows = null;
     this.events.preparePeer?.(null);
     await this.queueTransition(async () => {
@@ -384,6 +399,15 @@ export class ViewerSfuRoute {
       }
 
       const probeRevision = this.peerProbeRevision;
+      const failedProbe = this.failedPeerProbe;
+      if (failedProbe?.revision === token.revision &&
+        assignment.upstream.kind === "peer" &&
+        assignment.upstream.peerId === failedProbe.parentPeerId) {
+        this.failedPeerProbe = null;
+        this.events.send({ type: "route-failed", revision: token.revision,
+          phase: "active", connectionId: failedProbe.connectionId });
+        return;
+      }
       const promoted =
         probeRevision === token.revision
           ? await this.events.activatePeer(assignment, token.revision)
