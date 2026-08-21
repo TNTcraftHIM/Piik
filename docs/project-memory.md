@@ -15,7 +15,7 @@ Last updated: 2026-08-21
 - Site access protects room creation, Host publication, and every code-only Viewer entry. A valid room-scoped fragment grant bypasses that site gate; otherwise site access is checked before public-watch or a private room password. Persist neither raw credential; keep accounts, ACLs, users, and session tables out.
 - Keep decisions, snapshots, research, code, `AGENTS.md`, and `.codex/` in Git; rewrite memory/status in place. Research current primary sources before material work and reject speculative machinery.
 - Migrate client, server, and deployment atomically. After a canary, delete superseded config/wire/parsers/tests; do not retain compatibility layers, dual writes, or a second architecture without a current consumer. Git history owns the old implementation.
-- Autonomously deploy each coherent low-risk milestone after narrow tests, independent review, one full gate, CI and rollback preflight. Keep protocol/database migrations atomic rather than folding them into routine UI/media updates.
+- Deploy coherent milestones after narrow tests, independent review, one local full gate, and rollback preflight. Actions are only for a necessary final main/release gate; migrations stay atomic.
 
 ## Current Recommendation
 
@@ -43,8 +43,9 @@ Last updated: 2026-08-21
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production at `https://share.bonfire.icu` is exact `6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137`; its 957,434-byte artifact SHA-256 is `89ff05dbd4d642ed8364a1e230b26b6f4e1dab5a879a0d40a14364e3a26a5cf7`. Cutover was 2,755.457 ms lock/551.381 ms stop-health/478.335 ms switch-health. Rollbacks are `ecc794d`, then `16f6eab` and `22119b9`.
-- Active SFU Viewers use LiveKit state/stats, not P2P waiting/ICE-unknown placeholders. Exact route/topology and `balanced` defaults are deployed. Windows Native stays source-only.
+- Production is exact `691863e1720ebbee1b5368f29e94f05b3710ccf8`; artifact 605,904 bytes/SHA-256 `7e751c0bf7c97bc7d23edb1e37441fb6c55d90a0cd80647b778fdb5b1ee28bae`; cutover 3,376.021 ms lock/669.678 ms stop-health/604.174 ms switch-health; rollbacks `6634cb9`, `ecc794d`, `16f6eab`.
+- Web keeps one SFU stream, clears unavailable video, shows authoritative pending/P2P/SFU and actual-only TURN, labels paused preview, and drops signals to a grace-retained offline current-edge target. Shared entry/nickname UI is live; Native remains source-only.
+- Per-share P2P-only debug is generation-bound and blocks SFU/selected TURN. Web relay is cap2 with one upstream; child3 rejects and no UA/visibility split exists.
 - Four services are active/running at `NRestarts=0`; local/public health are 200. SQLite v3 has five rooms, SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600.
 - Production keeps ordinary ICE STUN-only, SFU roots <=2, selected-edge UDP TTL 120, and one pending/answered `peer-selected` attempt per room excluding Host ingress. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` evidence proves active Host ingress only.
 - Production requires the independent site-access secret through `SITE_ACCESS_PASSWORD`. Its stateless cookie authorizes creation/Host and permits code-only Viewer attempts; valid private fragment grants remain direct. Public-watch accepts site access plus code, while private code-only entry additionally requires the room password. The env, endpoint, cookie, and nginx limiter naming migrated atomically; anonymous failures stay neutral, and there are no accounts/JWT/session rows.
@@ -52,7 +53,7 @@ Last updated: 2026-08-21
 - ADR-0005 rejects `PEER_ASSISTED_ROOM_IDS`; `PEER_ASSISTED_MEDIA=true` enables every room and ordinary peers stay STUN-only. Initial or active Host ingress may consume one bound relay-only grant; ready/abort clears it and failure restores peer baseline. Stale room-ID config fails startup; `screener-v2` is the only deployed wire.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
 - Deployed Web uses LiveKit 2.22.0 `q,h`. Chrome 151 proves local SFU/UDP and, separately, active selected TURN/UDP Host ingress against production media services with Viewer frame progress and clean stop. Initial/peer-selected relay, BWE, and C+B remain open.
-- The current local source candidate gives every ordinary Web Viewer two relay slots. A Chrome 151 synthetic 720p30 run with five Viewers kept Host/relay fanout at two, advanced both children of one relay by 80 decoded frames and about 1.1 MB each, decoded at every Viewer, and stopped without fatal error. This is bounded functional evidence only; production remains one-slot until the candidate ships.
+- Chrome 151 five-Viewer 720p30 cap2 evidence: Host/relay fanout two; both relay children +80 decoded frames/~1.1 MB; every Viewer decoded; clean stop. Functional only; resource and heterogeneous-network behavior remain open.
 
 ## Provisional Quality Targets
 

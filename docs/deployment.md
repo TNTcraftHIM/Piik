@@ -20,31 +20,33 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137`
+Production currently runs exact `691863e1720ebbee1b5368f29e94f05b3710ccf8`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. The 957,434-byte artifact has SHA-256
-`89ff05dbd4d642ed8364a1e230b26b6f4e1dab5a879a0d40a14364e3a26a5cf7`.
-The 2026-08-21T03:53:23Z UTC cutover held the deployment lock for 2,755.457 ms;
-local health returned 551.381 ms after service stop (478.335 ms after the symlink
+integrity. The 605,904-byte artifact has SHA-256
+`7e751c0bf7c97bc7d23edb1e37441fb6c55d90a0cd80647b778fdb5b1ee28bae`.
+The 2026-08-21T06:00:00Z UTC cutover held the deployment lock for 3,376.021 ms;
+local health returned 669.678 ms after service stop (604.174 ms after the symlink
 switch). Screener, LiveKit, coturn, and nginx are active/running with
 observed `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
 service owner/mode `screener:screener`/0600 and SHA-256
 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`.
-`SITE_ACCESS_PASSWORD`,
-`/api/site-access`, and the nginx limiter replaced their retired Host-admission
-names in the prior access cutover; this release preserved the environment hash
-and the old endpoint remains 404. Exact
-`ecc794d6f01ff8e90cc07a267d221daaac8da9e1` is the immediate rollback target;
-exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767` and
-`22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` remain secondary and tertiary.
-This release gives active SFU Viewers LiveKit connection state/stats instead of
-P2P waiting/ICE-unknown placeholders. Details show P2P or SFU and add TURN only
-for an actually selected relay candidate; exact-upstream presence feeds the
-on-demand Host topology. The release also requests a 128,000 bit/s screen-audio send
-ceiling on P2P/relay and LiveKit SFU, disables SFU DTX, and uses `balanced` for
-recommended profiles and advanced defaults. The browser still owns degradation,
-and the audio value is a requested/read-back ceiling rather than an audible-quality
-or stereo guarantee. The selected-edge UDP tuple remains configured with TTL 120.
+The immutable release is `/opt/screener/releases/691863e1720e`; backup
+`/opt/screener/backups/691863e1720e-precutover-20260821T060000Z` preserves the
+database, environment, artifact digest, and exact previous target. Exact
+`6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137` is the immediate rollback target;
+exact `ecc794d6f01ff8e90cc07a267d221daaac8da9e1` and
+`16f6eab27bdfb1c15cdbd814a35864f4f18be767` remain secondary and tertiary.
+This release keeps one stable SFU subscriber stream, clears unavailable SFU
+video state, shows authoritative pending/P2P/SFU routes while requiring media
+evidence for connected status, and labels TURN only for an actual relay. It adds
+the Host local-preview pause notice and suppresses current-edge signals to a
+grace-retained offline target. The shared room-entry and adjacent nickname UI,
+a generation-bound Host-only P2P diagnostic, and two downstream slots for every
+ordinary Web relay are deployed; a third child remains rejected. The production
+STUN/SFU/selected-edge configuration and the database were unchanged.
+Fresh exact-source acceptance passed typecheck, 32 test files/469 tests, both
+builds, repository hygiene, UTF-8 archive verification, and zero cross-release
+regular-file inodes.
 This cutover triggered no browser, media, SFU, TURN, or performance canary and
 remains exact-source, build, configuration, and deployment evidence.
 A separate earlier local Screener canary using exact `16f6eab` source and the
@@ -132,7 +134,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `6634cb9` release with one
+selected-edge TURN config/wire is deployed in the current `691863e` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
@@ -516,7 +518,7 @@ Run these checks from real external networks before calling the deployment usabl
    and the selected-pair stats report a non-relay path when direct ICE succeeds.
 3. On a normal room, exhaust a peer route and verify the host plus at
    most two necessary roots select LiveKit UDP 7882. Peer descendants stay on
-   ordinary direct UDP and host/relay downstream caps remain two/one.
+   ordinary direct UDP and host/relay downstream caps remain two/two.
 4. Force one controller-eligible edge past SFU/UDP and verify only that edge gets
    the short-lived TURN server plus relay policy and selects TURN/UDP. Ordinary
    peer PCs must stay STUN-only. Then block all UDP and verify bounded recovery
