@@ -11,14 +11,13 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-The user previously accepted `balanced` as the recommended-profile and advanced
-default. Later field feedback reported default blur and apparently overcorrected
-fluid behavior, so the user explicitly superseded that decision: current source
-returns those defaults to clarity-first `maintain-resolution`, while `balanced`
-and `maintain-framerate` remain explicit choices. Independently, the P2P
-answer-time whole-profile workaround rested on confounded evidence and is
-removed below. These preferences still leave actual degradation to the browser;
-Screener observes readback and stats.
+The user accepted `balanced` as the recommended-profile and advanced default.
+A previous iteration temporarily returned those defaults to clarity-first after
+field feedback, but that overcorrection is superseded: current source uses
+`balanced`, while `maintain-resolution` and `maintain-framerate` remain explicit
+choices. Independently, the P2P answer-time whole-profile workaround rested on
+confounded evidence and is removed below. These preferences still leave actual
+degradation to the browser; Screener observes readback and stats.
 
 The inspected Chromium/libwebrtc source chain makes a screen-only shortcut
 especially unsafe to assume for Screener. The JavaScript `motion` hint reaches
@@ -150,13 +149,14 @@ A 2026-08-21 report says that selecting fluid preference on an SFU path could
 retain low received FPS without reducing the visible resolution. This is not
 proof that the preference was ignored: `maintain-framerate` is a degradation
 tradeoff rather than an FPS target. It is also not evidence of SFU temporal
-downlayering on Screener's current H.264 `q,h` publication. Pinned LiveKit
-server 1.13.5 installs a temporal selector for VP8, but its H.264/H.265 path
-installs only the simulcast spatial selector. A `HIGH` ceiling may therefore
-let current H.264 BWE choose the lower-resolution `q` representation, not a
-lower temporal layer at the same resolution. When resolution remains stable,
-classify the case in A/B/C order: capture FPS, Host publisher outbound FPS and
-limitation, then Viewer inbound FPS and decode.
+downlayering: the current codec is left to automatic negotiation unless the Host
+explicitly selects one. Pinned LiveKit server 1.13.5 installs a temporal selector
+for VP8, but its H.264/H.265 path installs only the simulcast spatial selector.
+With H.264 selected, a `HIGH` ceiling may therefore let BWE choose the
+lower-resolution `q` representation, not a lower temporal layer at the same
+resolution. When resolution remains stable, classify the case in A/B/C order:
+capture FPS, Host publisher outbound FPS and limitation, then Viewer inbound FPS
+and decode.
 
 Pinned LiveKit client 2.22.0 keeps three relevant pieces of state. Its public
 `LocalVideoTrack.setDegradationPreference()` updates the saved preference used
@@ -190,20 +190,23 @@ bundled into the lifecycle repair.
 
 RFC 7742 requires WebRTC browsers to implement both VP8 and H.264 Constrained
 Baseline, while W3C `setCodecPreferences()` lets the application reorder the
-browser's negotiated codec set. The smallest Web policy is therefore to place
-all advertised H.264 entries first and retain the complete repair and fallback
-list. If H.264 capability is absent or the API rejects the preference, leave the
-browser default unchanged. LiveKit publication requests H.264 only when the
-sender advertises it, falls back to VP8 otherwise, and keeps `backupCodec=false`;
-there is no parallel backup-codec publication.
+browser's negotiated codec set. The smallest Web policy is automatic by default:
+do not override browser/LiveKit negotiation. Advanced settings can explicitly
+place every advertised H.264 or VP8 entry first while retaining the complete
+repair and fallback list. A missing capability or rejected preference leaves the
+browser default unchanged. LiveKit likewise keeps its default codec for
+`automatic`, overrides it only for an explicit selection, and retains
+`backupCodec=false`; there is no parallel backup-codec publication.
 
-H.264 is the accepted product preference because its mature cross-device hardware
-encode/decode paths address the observed VP8 software-path cost and are more
-valuable here than VP8's royalty-free implementation model. This does not claim
-an intrinsic bitrate win for every implementation or scene; actual outbound
-codec/profile and decoded stats remain the result truth. The choice also does not
-prove shared encode: separate browser PeerConnections may construct separate
-encoders, and the SFU intentionally publishes exactly the existing `q,h` H.264
+H.264 remains an explicit option because mature cross-device hardware
+encode/decode paths may avoid an observed VP8 software-path cost. A controlled
+Web comparison also found that forcing H.264 could lower downstream FPS with the
+current browser configuration, so the product does not force either codec by
+default. Neither observation proves an intrinsic bitrate or efficiency win for
+every implementation or scene; actual outbound codec/profile, encoder
+implementation and decoded stats remain the result truth. A codec choice also
+does not prove shared encode: separate browser PeerConnections may construct
+separate encoders, and the SFU still publishes only the configured `q,h`
 representations.
 
 Open-source distribution is not itself a patent-license exemption. This Web
@@ -212,7 +215,7 @@ ships no H.264 codec binary or new codec dependency, so licensing uncertainty is
 not a runtime blocker for the preference. Bundling a codec implementation or
 changing the distribution/service model still requires a separate license review.
 
-This reversible standard preference is gated by focused ordering, fallback and
+These reversible standard preferences are gated by focused ordering, fallback and
 interoperability tests, not by an exhaustive CPU/GPU/game matrix on one ordinary
 PC. Primary specifications, maintained implementation behavior, representative
 target-device observations and sanitized production stats drive product choices.
@@ -422,8 +425,8 @@ simulcast encoding. `RemoteTrackPublication.setVideoQuality(HIGH)` sets a
 per-subscriber spatial-quality ceiling. Server 1.13.5 derives requested
 spatial/temporal maxima from quality, dimensions and FPS, but applies them
 through codec-specific selectors: VP8 has temporal selection, while H.264/H.265
-simulcast is spatial-only. The current H.264 candidate can adapt each SFU
-downtrack between `q,h` spatial representations and recover it independently.
+simulcast is spatial-only. When H.264 is selected, the candidate can adapt each
+SFU downtrack between `q,h` spatial representations and recover it independently.
 Server Dynacast
 takes the maximum quality requested across subscribers and subscriber nodes,
 then enables every quality at or below that maximum; a `HIGH` root therefore
@@ -600,18 +603,19 @@ resolution, frame rate, or bitrate.
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
 - The video track keeps `contentHint = "motion"`; recommended profiles and the
-  advanced initial value use clarity-first `maintain-resolution`, with explicit
-  `balanced` and `maintain-framerate` choices. None promises an emitted
-  resolution or rate.
+  advanced initial value use `balanced`, with explicit `maintain-resolution`
+  and `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
 - The folded “advanced video” panel accepts only 720p/1080p/1440p, integer
-  15-60 fps, 2-12 Mbps, and the three preferences. It exposes no audio quality
-  controls and is not renamed in the screen-audio slice. Display capture does
+  15-60 fps, 2-12 Mbps, the three preferences, and Automatic/H.264/VP8. Codec
+  selection is locked during a share and applies to the next one. It exposes no
+  audio quality controls and is not renamed in the screen-audio slice. Display capture does
   not standardize channel-count or sample-rate control; the portable audio
-  `maxBitrate` field remains only a 128 kbps ceiling. The one accepted peer
-  exception is a structured Viewer-answer Opus `stereo=1` receive preference,
-  paired with pinned LiveKit's explicit high-quality stereo/forceStereo option.
+  `maxBitrate` field remains only a 128 kbps ceiling. The accepted peer
+  exception is a structured Viewer-answer Opus
+  `stereo=1;maxaveragebitrate=128000` receive contract, paired with pinned
+  LiveKit's explicit high-quality stereo/forceStereo option.
   DTX stays fixed off, RED retains the pinned SDK default, and FEC remains
   browser/SDK negotiation, not a control or custom adaptation algorithm. The
   full boundary is recorded in `docs/research/browser-screen-audio-quality.md`.
@@ -628,7 +632,7 @@ resolution, frame rate, or bitrate.
   black video and silence without closing the room or media connection.
 
 The deployed implementation deliberately stops at manual bounded controls. It
-adds no composite score, periodic adjustment, codec forcing, SDP bitrate
+adds no composite score, periodic adjustment, automatic codec forcing, SDP bitrate
 manipulation, or scene detector. Three consecutive samples of one non-`none` native
 `qualityLimitationReason` produce one explanatory warning; a reason change or
 recovery resets it and never triggers a media action.

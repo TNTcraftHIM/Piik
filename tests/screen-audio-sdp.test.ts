@@ -25,7 +25,7 @@ function answerSdp(opusFmtp: string | null = "minptime=10;useinbandfec=1"): stri
 }
 
 describe("preferScreenAudioStereo", () => {
-  it("adds one exact stereo token without changing FEC or video fmtp", () => {
+  it("adds exact stereo and bitrate tokens without changing FEC or video fmtp", () => {
     const result = preferScreenAudioStereo({
       type: "answer",
       sdp: answerSdp("minptime=10;useinbandfec=1;x-stereo=keep"),
@@ -34,7 +34,8 @@ describe("preferScreenAudioStereo", () => {
 
     expect(session.media[0]?.fmtp).toContainEqual({
       payload: 111,
-      config: "minptime=10;useinbandfec=1;x-stereo=keep;stereo=1",
+      config:
+        "minptime=10;useinbandfec=1;x-stereo=keep;stereo=1;maxaveragebitrate=128000",
     });
     expect(session.media[1]?.fmtp).toEqual([
       { payload: 96, config: "packetization-mode=1;profile-level-id=42e01f" },
@@ -42,14 +43,16 @@ describe("preferScreenAudioStereo", () => {
     expect(preferScreenAudioStereo(result)).toEqual(result);
   });
 
-  it("replaces only an exact stereo token", () => {
+  it("replaces only exact stereo and bitrate tokens", () => {
     const result = preferScreenAudioStereo({
       type: "answer",
-      sdp: answerSdp("stereo=0;x-stereo=0;minptime=10"),
+      sdp: answerSdp(
+        "stereo=0;x-stereo=0;maxaveragebitrate=64000;x-maxaveragebitrate=keep",
+      ),
     });
 
     expect(parse(result.sdp!).media[0]?.fmtp[0]?.config).toBe(
-      "stereo=1;x-stereo=0;minptime=10",
+      "stereo=1;x-stereo=0;maxaveragebitrate=128000;x-maxaveragebitrate=keep",
     );
   });
 
@@ -61,7 +64,7 @@ describe("preferScreenAudioStereo", () => {
 
     expect(parse(result.sdp!).media[0]?.fmtp).toContainEqual({
       payload: 111,
-      config: "stereo=1",
+      config: "stereo=1;maxaveragebitrate=128000",
     });
   });
 
@@ -79,6 +82,7 @@ describe("preferScreenAudioStereo", () => {
 
     expect(audio[0]?.fmtp[0]?.config).toBe("stereo=0");
     expect(audio[1]?.fmtp[0]?.config).toContain("stereo=1");
+    expect(audio[1]?.fmtp[0]?.config).toContain("maxaveragebitrate=128000");
   });
 
   it.each([
@@ -101,6 +105,15 @@ describe("preferScreenAudioStereo", () => {
         sdp: answerSdp().replace(
           "a=fmtp:111 minptime=10;useinbandfec=1",
           "a=fmtp:111 minptime=10\r\na=fmtp:111 useinbandfec=1",
+        ),
+      },
+    ],
+    [
+      "duplicate target parameter",
+      {
+        type: "answer",
+        sdp: answerSdp(
+          "stereo=0;maxaveragebitrate=64000;MAXAVERAGEBITRATE=96000",
         ),
       },
     ],

@@ -2,9 +2,10 @@
 
 Accessed: 2026-08-21
 
-Status: the route-consistent screen-media default is source-complete; production
-still has a 128 kbps ceiling without an explicit P2P or SFU stereo contract, and
-audible route evidence remains open.
+Status: the current integration base has route-consistent peer/SFU stereo and a
+128 kbps sender ceiling, but peer answers still omit `maxaveragebitrate`, leaving
+full-band stereo at libwebrtc's 64 kbps initial codec target. This slice adds the
+matching 128 kbps receiver maximum; audible production evidence remains open.
 
 ## Scope And Decision
 
@@ -23,8 +24,8 @@ plumbing as quality controls:
 - treat an audio track as optional and warn before publishing when none exists;
 - preserve returned audio through source changes, picture pause, P2P, relay, and
   configured SFU routes;
-- keep a `128000` bit/s sender ceiling, Opus stereo receive preference and DTX
-  off consistently across Web peer and SFU routes;
+- keep a `128000` bit/s sender ceiling, matching Opus stereo/maximum-average-
+  bitrate receive parameters, and DTX off across Web peer and SFU routes;
 - let the browser's existing WebRTC congestion control reduce actual audio and
   video traffic; do not add an application audio adaptation loop;
 - expose no channel-count, sample-rate, codec, bitrate, stereo, DTX, RED, or FEC
@@ -48,13 +49,15 @@ contract. It must not turn movie or game audio into a voice-processed source.
 
 ## Deployed Reports And Echo Boundary
 
-Users report that current production
-`6ccb516a47261054f91dfa2fafa408d39ced59fc` still sounds poor for movie/video
-screen audio. That exact release has the 128 kbps ceiling described
-above but no explicit stereo contract on peer or SFU routes, making mono
-negotiation the strongest code-level candidate. It remains a diagnosis, not an
-audible-quality measurement; capture scope, actual fmtp/bitrate, loss, jitter
-and concealment still need the existing read-only diagnostics.
+Users reported that production
+`6ccb516a47261054f91dfa2fafa408d39ced59fc` sounded poor for movie/video screen
+audio. That exact release had the 128 kbps ceiling described above but no
+explicit stereo contract. The current integration base has since added peer/SFU
+stereo, but its peer answers still omit `maxaveragebitrate`; inspected libwebrtc
+therefore starts full-band stereo at 64 kbps. This is the strongest remaining
+code-level candidate, not an audible-quality measurement: capture scope, actual
+fmtp/bitrate, loss, jitter and concealment still need the existing read-only
+diagnostics.
 
 The earlier delayed self-echo report on `769de201f7cc` has a different boundary:
 a viewer's voice is rendered by a separate voice application on the Host,
@@ -95,7 +98,7 @@ constraints added to `getDisplayMedia()`.
 | Voice-app exclusion | `restrictOwnAudio` concerns audio produced by the document that invoked capture; `suppressLocalAudioPlayback` concerns local playback of a captured browser surface | The app may observe whether a returned track exists, not which OS processes it contains | Excluding Discord, KOOK, WeChat, notifications, or any other independent process from system audio | Web keeps video-only available and warns that system audio may include calls/notifications; it does not claim isolation |
 | Capture channels | The Screen Capture specification does not list generic `channelCount` as applicable to display audio | `track.getSettings().channelCount` may describe the returned track when the browser supplies it | That the app controlled the value, or that the RTP encoder sends stereo | Observe only in a future diagnostic; absent means unknown |
 | Capture sample rate | The Screen Capture specification does not list generic `sampleRate` as applicable to display audio | `track.getSettings().sampleRate` may be present in an implementation | The Opus mode, RTP clock semantics, receiver output rate, or end-to-end fidelity | Observe only in a future diagnostic; absent means unknown |
-| RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio | A following `getParameters()` can show the applied ceiling; outbound byte deltas show actual traffic | A target, minimum, audible improvement, or Opus `maxaveragebitrate`; other limits may keep traffic lower | Request a fixed 128 kbps ceiling, read it back, and retain actual bitrate as the acceptance fact |
+| RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio; Opus `maxaveragebitrate` advertises the receiver's maximum | A following `getParameters()` can show the applied sender ceiling; negotiated fmtp shows the receiver maximum; outbound byte deltas show actual traffic | A minimum, audible improvement, or moment-to-moment rate; congestion may keep traffic lower | Pair the 128 kbps sender ceiling with the same Opus receive maximum and retain actual bitrate as the acceptance fact |
 | Codec | The user agent chooses among negotiated send codecs unless a separately negotiated codec selection is available | `RTCCodecStats.mimeType` and `sdpFmtpLine` identify the codec and negotiated format parameters in use | That Opus was selected before stats exist, or that negotiated preferences describe actual content | Label only observed negotiated data; do not force a codec |
 | Stereo | No stable sender parameter controls Opus stereo; RFC 7587 defines `stereo` as the receiver's one-way preference | Capture settings and negotiated codec/fmtp data can be inspected separately | Capture channel count and `opus/48000/2` do not prove encoded stereo | Use one bounded Opus answer transform on the declared Chrome/Edge baseline; no user control or inferred badge |
 | DTX | The current WebRTC `RTCRtpEncodingParameters` dictionary has no `dtx` member; RFC 7587 defaults absent `usedtx` to `0` | No portable standard sender readback proves DTX operation | A deprecated browser field or SDK option is not a cross-browser contract | Keep peer default-off and set LiveKit `dtx: false`; no user control |
@@ -162,20 +165,25 @@ behavior.
 
 Current libwebrtc source calculates the default full-band Opus bitrate as
 32 kbps times the negotiated channel count. It derives two encoded channels
-only from `stereo=1`; otherwise it configures one. That matches the narrow
-Chrome observation, whose ordinary offer had no stereo fmtp and sent about
-32 kbps. It is an implementation-level explanation for the tested default,
-not a portable stereo or bitrate contract.
+only from `stereo=1`, so stereo without `maxaveragebitrate` starts from a
+64 kbps codec bitrate. `RTCRtpSender.maxBitrate=128000` only caps the allocator;
+it does not raise that codec configuration. When present, libwebrtc maps the
+negotiated `maxaveragebitrate` value into the Opus encoder bitrate config before
+normal congestion adaptation. This is implementation evidence for the current
+Chrome/Edge baseline, while the RFC still defines the parameter as a receiver
+maximum rather than a minimum or continuous bitrate guarantee.
 
-This makes the current poor movie/music report unsurprising. Production and the
-pre-slice source set a 128 kbps sender ceiling, but their Web peer negotiation
-does not ask the receiving Viewer to accept stereo. The SFU publisher sets the
-same ceiling and `dtx: false`, but its options merge with LiveKit 2.22.0 room
-defaults, including `forceStereo: false` and `red: true`; an explicit false
-overrides LiveKit's track-settings stereo heuristic. The strongest current
-code-level cause is therefore a mono-by-default contract, not evidence that
-WebRTC congestion control is broken. Capture/source loss, packet loss, jitter
-and concealment can still degrade audio and remain separate diagnostic facts.
+The poor movie/music report against production `6ccb516` is consistent with its
+historical state. That release and its pre-stereo source set a 128 kbps sender
+ceiling, but Web peer negotiation did not request stereo; the SFU publisher set
+`dtx: false` while inheriting `forceStereo: false` and `red: true`. That
+mono-by-default contract is no longer current. The present integration base
+already upserts peer `stereo=1` and publishes SFU audio with `forceStereo: true`,
+`dtx: false`, and RED retained. Its remaining peer-specific gap is the absent
+`maxaveragebitrate`: libwebrtc starts stereo at 64 kbps despite the 128 kbps
+sender ceiling. This slice adds the matching receiver maximum. Capture/source
+loss, packet loss, jitter and concealment can still degrade audio and remain
+separate diagnostic facts.
 
 ## Reference Implementations
 
@@ -194,8 +202,9 @@ No code was copied. All repositories were inspected at pinned commits on
   `forceStereo: false`; its named presets include stereo music at 64 kbps and
   high-quality stereo music at 128 kbps. Per-track options merge after those
   defaults. Its stereo-only `??=` fallback disables DTX/RED only if still
-  undefined, which the pinned room defaults are not. Screener's pre-slice source
-  overrode DTX but not `forceStereo` or RED, yielding mono, DTX off and RED on.
+  undefined, which the pinned room defaults are not. Screener's historical
+  pre-stereo source overrode DTX but not `forceStereo` or RED, yielding mono,
+  DTX off and RED on.
 - lib-jitsi-meet, Apache-2.0, commit
   [`63a04ec`](https://github.com/jitsi/lib-jitsi-meet/tree/63a04ecabd972ea75e877f9ba12086c13cb68210):
   [`mungeOpus()`](https://github.com/jitsi/lib-jitsi-meet/blob/63a04ecabd972ea75e877f9ba12086c13cb68210/modules/RTC/TPCUtils.ts#L871-L929)
@@ -274,7 +283,7 @@ control:
    with direct dependencies on MIT-licensed `sdp-transform` 2.15.0 and its
    TypeScript declarations. Select the single non-rejected audio media section,
    resolve its Opus payload from structured `rtp` entries, and idempotently
-   upsert only `stereo=1` in that payload's fmtp before both
+   upsert `stereo=1` plus `maxaveragebitrate=128000` in that payload's fmtp before both
    `setLocalDescription()` and signaling the same description. Preserve every
    other media section, codec, fmtp key and session attribute. Empty SDP, no
    unambiguous active audio/Opus payload, multiple active audio sections,
@@ -285,11 +294,11 @@ control:
    `createAnswer()` remains usable by `setLocalDescription()`.
 3. Do not add `sprop-stereo`: RFC 7587 defines it as a sender-likelihood hint,
    not the receiver preference that permits the remote encoder to send stereo,
-   and offer/answer parameters are orthogonal. Do not add `usedtx=0` or
-   `maxaveragebitrate=128000` either: absent `usedtx` already means off, absent
-   `maxaveragebitrate` already uses the corresponding Opus mode's recommended
-   maximum, and `RTCRtpSender.maxBitrate` remains Screener's send ceiling. Keep
-   the browser's existing `useinbandfec` negotiation untouched.
+   and offer/answer parameters are orthogonal. Do not add `usedtx=0`; absent
+   `usedtx` already means off. `maxaveragebitrate=128000` is the receiver maximum
+   matching Screener's sender ceiling and pinned LiveKit preset, not a minimum;
+   stock congestion control can still lower actual traffic. Keep the browser's
+   existing `useinbandfec` negotiation untouched.
 4. For SFU publication use LiveKit 2.22.0
    `AudioPresets.musicHighQualityStereo`, `forceStereo: true` and `dtx: false`.
    Do not override the pinned room default `red: true`. RED and Opus in-band FEC
@@ -320,10 +329,11 @@ fix; the stable stream already deployed is the A/V synchronization baseline.
 The implementation budget is deliberately bounded to dependency
 manifest/lockfile entries, one SDP helper, `ViewerPeer` answer wiring, SFU
 publisher options, focused unit/integration tests and the owning docs. Parser
-tests cover CRLF serialization, an existing/missing fmtp line, unknown fmtp
-preservation, idempotence, payload-number lookup, rejected/non-audio sections,
-and identity-preserving fallback for empty SDP, no/ambiguous Opus and parser
-exceptions. Peer tests prove the exact selected answer is both applied and
+tests cover CRLF serialization, an existing/missing fmtp line, exact stereo and
+bitrate replacement, unknown fmtp preservation, idempotence, payload-number
+lookup, rejected/non-audio sections, and identity-preserving fallback for empty
+SDP, no/ambiguous Opus, duplicate targets, and parser exceptions. Peer tests
+prove the exact selected answer is both applied and
 signaled on initial/restart/rebuild paths; SFU tests assert the three explicit
 options and absence of a RED override. One Chrome/Edge left/right fixture checks
 channel correctness and a P2P/SFU route switch checks the persistent stream;
