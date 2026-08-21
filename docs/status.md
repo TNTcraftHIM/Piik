@@ -4,7 +4,7 @@ Last updated: 2026-08-22
 
 ## Phase
 
-Production is exact `083c111437485064a766368944a7938b79e07365` at `https://share.bonfire.icu`, release `083c11143748`, wire `screener-v5`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. `screener`, LiveKit, coturn, and nginx are active; local/public health are green and `screener` has `NRestarts=0`. The previous `27ad90ddf9f8` release remains the rollback target.
+Production is exact `083c111437485064a766368944a7938b79e07365` at `https://share.bonfire.icu`, release `083c11143748`, wire `screener-v5`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. `screener`, LiveKit, coturn, and nginx are active; local/public health are green and `screener` has `NRestarts=0`. The previous `27ad90ddf9f8` release is the rollback target.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. No browser/media/SFU/TURN/performance canary ran; exact-`16f6eab` Host-ingress proof is separate.
 Stable SFU, route/transport truth, preview notice, entry/nickname UI, selected-edge lease authority, and corroborated bad-relay demotion are live. `MAX_PEER_RELAY_DOWNSTREAM_EDGES` is unset, so Web endpoints use the parameterized default of two. Native is source-only.
 
@@ -14,7 +14,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 
 ## Current Snapshot
 
-- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced, automatic codec, and 128 kbps screen audio. Clarity/fluid plus H.264/VP8 stay explicit. Source adds 64/128/256 kbps audio presets under Share advanced settings; codec and audio quality are locked during a share. Browser degradation, audible route proof, and Host SFU A+B remain open.
+- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced, automatic codec, and 128 kbps screen audio. Clarity/fluid plus H.264/VP8 stay explicit. The source candidate adds 64/128/256 kbps audio presets under Share advanced settings; codec and audio quality are locked during a share. Browser degradation, audible route proof, and Host SFU A+B remain open.
 - Deployed `screener-v5` admits private fragment grants directly; code-only Viewers need site access, and private rooms additionally need their password. Credentials remain unstored. Web presence fields remain opt-in and Native does not subscribe to them.
 - Deployed UI has nickname editing, room entry, Viewer roster, duplicate-only ID suffixes, pause notice, and session-bound SFU first-media truth that clears on track/route/session loss. P2P/SFU/TURN labels require evidence. Guarded relay evidence reaches opted-in Web Host rosters without Host-local transport claims or false parent-edge proof.
 - Native v5 is source-only (memory rooms, 300s reclaim); it does not subscribe to Web presence, accepts the shared absolute three-child bound, and fails unsupported SFU/selected ingress boundedly. Production uses the default endpoint cap of two.
@@ -41,7 +41,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 
 ## Unverified Boundaries
 
-- The `6ccb516a` cutover ran no browser/media/SFU/TURN/performance canary. Earlier `16f6eab` proof covers Host ingress only; healthy reselection, audible quality, last mile, external cohorts, resources/performance and game blur remain open.
+- The `083c11143748` cutover has service/health proof but no browser/media/SFU/TURN/performance canary. Earlier `16f6eab` proof covers Host ingress only; healthy reselection, audible quality, last mile, external cohorts, resources/performance and game blur remain open.
 - Mobile is Viewer-only. Its persistent audible media element keeps media/signaling active while the page lives; iOS lock-screen, reclamation and background reconnection remain device gates. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Production startup blur remains open. One local Chrome synthetic same-`balanced` A/B kept route/PC/SSRC/track and coincided with 720p -> 1080p without loss/freeze, but natural ramp prevents causal, production, or SFU proof.
