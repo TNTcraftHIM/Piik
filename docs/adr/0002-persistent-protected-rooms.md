@@ -1,6 +1,6 @@
 # ADR-0002: Persistent Rooms And Scoped Viewer Access
 
-- Status: Accepted; room access deployed, site-access ordering source-only
+- Status: Accepted; access boundary deployed, local privacy gate source-only
 - Date: 2026-08-19
 
 ## Context
@@ -237,11 +237,23 @@ SQLite or participates in authorization, routing, or quality decisions.
 
 ## Implementation Status
 
-The deployed 2026-08-20 boundary implements the single-version v2 runtime,
-private/public room policy, fragment consumption, room passwords and
-commit-first grant teardown on SQLite v3. The current source-only candidate adds
-the ordered site-access check for every code-only Viewer and atomically renames
-the environment, HTTP endpoint, cookie, Web/Native consumers and nginx limiter.
-Focused tests cover valid grant direct entry, public/password denial without
-site access, public/password entry with site access, config fail-fast and the
-Native wire contract. Deployment and production request/log inspection remain.
+The deployed boundary implements the single-version v2 runtime, ordered site
+access for code-only Viewers, private/public room policy, fragment consumption,
+room passwords, and commit-first grant teardown on SQLite v3.
+
+The source-only `npm run gate:access-privacy` gate builds the current Web client,
+uses an ephemeral real-Chrome context against a loopback persistent room, and
+reports only fixed booleans and counts. It proves that the fragment is consumed
+through `replaceState` before `DOMContentLoaded`, the grant appears only under
+that room's `sessionStorage` key, and the run's site password plus grant do not
+appear in observed request/referrer records, the tracked nginx combined-log
+model, or captured application diagnostics. None of those values or the room
+password appears raw in temporary SQLite files. The room password enters at the
+RoomStore boundary, so this gate makes no claim about its browser/WebSocket/log
+ingress. It also runs the complete signaling test file containing the strong
+rotate/revoke media-edge teardown case.
+
+This local headless gate neither reads production credentials nor inspects a
+production request log, nginx log, service journal, database, or headful browser.
+Those exact-environment checks and a production rotation/revoke remain separate
+acceptance work.

@@ -310,6 +310,17 @@ Only `POST /api/site-access` accepts the site access secret in an
 `__Host-` name. The cookie contains no account or server-side session ID. There
 is no account database, JWT, session map, or logout endpoint.
 
+Before an access-boundary release, set `CHROME_PATH` to a local Chrome or
+Chromium executable and run `npm run gate:access-privacy`. The gate creates only
+a loopback room and temporary SQLite/profile state, navigates the fragment
+through CDP rather than a process argument, disposes its ephemeral browser
+context, and emits only fixed booleans and counts. It also checks the tracked
+nginx logging shape and runs the complete signaling suite containing the strong
+rotate/revoke teardown case. The room password enters only at the RoomStore
+boundary, so this run proves its raw SQLite non-persistence, not its WebSocket or
+log ingress. It never connects to production or accepts a production credential;
+exact production request/nginx/journal/database inspection remains separate.
+
 nginx limits this exact endpoint per source at `5r/m` with `burst=5 nodelay` and
 returns 429 when exhausted. The limiter uses nginx shared memory; do not add the
 secret, Authorization header, request body, or a new source-address field to

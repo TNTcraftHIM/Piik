@@ -16,7 +16,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 ## Current Snapshot
 
 - Capture precedes room creation; source/quality changes and AV pause preserve peers. Recommended profiles and advanced defaults use `balanced`; clarity/fluid remain explicit. P2P reapplies the selected profile after each answer on the same sender; the browser still owns degradation and stats/readback expose it.
-- Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and the site-access cookie are deployed atomically; raw credentials are never stored.
+- Production `screener-v2` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
 - Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Status and details stay neutral before media proof; current evidence labels green P2P/yellow `SFU fallback`, while relay evidence adds `TURN` plus only a locally observed protocol.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
 - Production is roots <=2/Web relay <=2; every Web Viewer keeps one upstream and bounded sticky recovery, while child3 is rejected. Room `1` is historical; HTTPS/WSS is TLS/TCP.
@@ -32,7 +32,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 - Chrome 151 loopback proves H.264 negotiation/decode interoperability, not performance. Production orders H.264 first and keeps browser repair/fallback codecs.
 - Native WGC/MF used no browser capture/encoder. One Chrome Viewer rendered 203 1280x720 frames and received 500 Opus packets; process/LUID-correlated `VideoEncode` was nonzero, with no fatal/encoder errors.
 - Native Win11 audio is source-only/default-off: target isolation was 4018x and one Viewer got 495 Opus packets. Download, game sync, Win10, and other routes remain open.
-- Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
+- Local gate proves pre-DOM fragment clearing, room-scoped session isolation, no site/grant transport-log hits, and no raw room-password SQLite sentinel; rotate/revoke tests pass. Headless loopback only.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
 - Production caps pending/answered `peer-selected` at one per room; Host ingress is independent. Focused admission/release/rollback/STUN-only tests pass; earlier Chrome proves active Host-ingress function only.
 - Exact `1331fbdd` passed fresh typecheck, builds, hygiene and 32 files/473 tests. Bounded runtime, UTF-8 artifact, inode and deploy gates preserved config/nft/DB hashes and four zero-restart services.
@@ -46,7 +46,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 - ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.
 - Production fanout is Host2/Viewer2 and rejects child3. Relay resource behavior remains open.
 - Active SFU already publishes `q,h`; only BWE/resource/zero-child/root gates are unverified. No local per-leaf UDP shaper; resume with Linux `tc` or public canary, never CDP. Web P2P/SVC shortcuts remain no-go.
-- Headful fragment-to-sessionStorage consumption, invitation rotation after migration, and request/log leak inspection remain production UX gates. Accounts stay out.
+- Access remains unverified headfully and in production: fragment consumption, invitation rotation/revoke, and exact request/nginx/journal/SQLite leak inspection. The source gate is loopback-only; accounts stay out.
 - Structure debt: split `HybridMediaRouter`, `HostPage`, `SignalingServer`, and `ViewerPage` only at proven consumer boundaries, never by file length.
 
 ## Next Milestone
