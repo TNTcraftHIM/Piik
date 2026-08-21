@@ -30,7 +30,7 @@ function stateFromStatus(status: SiteAccessStatus): AccessState {
 function readableError(error: unknown): string {
   return error instanceof Error && error.message
     ? error.message
-    : "无法连接验证服务，请重试";
+    : "无法连接站点访问服务，请重试";
 }
 
 export function App() {
@@ -86,7 +86,7 @@ function SiteAccessGate({
     const submittedPassword = password;
     setPassword("");
     if (!submittedPassword.trim()) {
-      setAccess({ kind: "required", error: "请输入访问密码" });
+      setAccess({ kind: "required", error: "请输入站点口令" });
       return;
     }
 
@@ -100,7 +100,7 @@ function SiteAccessGate({
         kind: "required",
         error:
           error instanceof ApiError && error.status === 401
-            ? "访问密码不正确，请重试"
+            ? "站点口令不正确，请重试"
             : readableError(error),
       });
     } finally {
@@ -118,7 +118,7 @@ function SiteAccessGate({
     return (
       <HostPage
         onAuthorizationRequired={() =>
-          setAccess({ kind: "required", error: "验证已失效，请重新登录" })
+          setAccess({ kind: "required", error: "站点访问已失效，请重新验证" })
         }
       />
     );
@@ -130,11 +130,11 @@ function SiteAccessGate({
         {access.kind === "checking" ? (
           <div className="access-loading" role="status">
             <LoaderCircle size={20} className="spin" aria-hidden="true" />
-            正在验证
+            正在验证站点访问
           </div>
         ) : access.kind === "unavailable" ? (
           <section className="access-panel" aria-labelledby="access-heading">
-            <h1 id="access-heading">暂时无法验证</h1>
+            <h1 id="access-heading">暂时无法验证站点访问</h1>
             <p className="access-error" role="alert">
               {access.message}
             </p>
@@ -149,11 +149,11 @@ function SiteAccessGate({
         ) : (
           <form className="access-panel" onSubmit={(event) => void submit(event)}>
             <div>
-              <h1>访问验证</h1>
-              <p className="section-meta">请输入访问口令</p>
+              <h1>站点访问</h1>
+              <p className="section-meta">请输入站点口令</p>
             </div>
             <label className="token-field">
-              <span>访问口令</span>
+              <span>站点口令</span>
               <span className="input-with-icon">
                 <KeyRound size={16} aria-hidden="true" />
                 <input
@@ -176,7 +176,7 @@ function SiteAccessGate({
               type="submit"
               disabled={submitting}
             >
-              {submitting ? "正在验证" : "进入"}
+              {submitting ? "正在验证" : "进入站点"}
             </button>
           </form>
         )}

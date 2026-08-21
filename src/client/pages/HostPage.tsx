@@ -34,6 +34,7 @@ import {
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
 import { RoomCode } from "../components/RoomCode";
+import { RoomCodeEntry } from "../components/RoomCodeEntry";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
   MediaRouteBadge,
@@ -228,6 +229,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [sharingPaused, setSharingPaused] = useState(false);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
+  const [joiningRoom, setJoiningRoom] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -992,7 +994,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordDraft("");
       if (action) {
         setNotice(
-          action === "remove" ? "访问密码已移除" : "访问密码已更新",
+          action === "remove" ? "房间密码已移除" : "房间密码已更新",
         );
       }
       return;
@@ -1212,7 +1214,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               isCurrentGeneration(generation) &&
               signalRef.current === signal
             ) {
-              endSharing("验证已失效，请重新登录", false);
+              endSharing("站点访问已失效，请重新验证", false);
               onAuthorizationRequired?.();
             }
           },
@@ -1449,7 +1451,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       !viewerPasswordSchema.safeParse(password).success
     ) {
       setNotice(
-        `访问密码只需 1-${MAX_VIEWER_PASSWORD_LENGTH} 个可见字符`,
+        `房间密码只需 1-${MAX_VIEWER_PASSWORD_LENGTH} 个可见字符`,
       );
       return;
     }
@@ -1458,7 +1460,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       phase !== "live" ||
       !signalRef.current?.send({ type: "set-viewer-password", password })
     ) {
-      setNotice("开始分享并连接后才能修改访问密码");
+      setNotice("开始分享并连接后才能修改房间密码");
       return;
     }
     viewerPasswordActionRef.current = password === null ? "remove" : "set";
@@ -1482,7 +1484,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDisplayNameError(null);
     setEditingDisplayName(false);
     if (!signalRef.current?.setDisplayName(saved)) {
-      setNotice("开始分享并连接后才能修改显示名");
+      setNotice("开始分享并连接后才能修改昵称");
     }
   }
 
@@ -1585,7 +1587,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             <label
               htmlFor={editingDisplayName ? "host-display-name" : undefined}
             >
-              显示名
+              昵称
             </label>
             {editingDisplayName ? (
               <>
@@ -1605,8 +1607,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <button
                   type="submit"
                   className="icon-button"
-                  title="保存显示名"
-                  aria-label="保存显示名"
+                  title="保存昵称"
+                  aria-label="保存昵称"
                   disabled={displayNameDraft === displayName}
                 >
                   <Save size={17} />
@@ -1615,7 +1617,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   type="button"
                   className="icon-button"
                   title="取消编辑"
-                  aria-label="取消编辑显示名"
+                  aria-label="取消编辑昵称"
                   onClick={() => {
                     setDisplayNameDraft(displayName);
                     setDisplayNameError(null);
@@ -1631,8 +1633,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <button
                   type="button"
                   className="icon-button"
-                  title="编辑显示名"
-                  aria-label="编辑显示名"
+                  title="编辑昵称"
+                  aria-label="编辑昵称"
                   onClick={() => {
                     setDisplayNameDraft(displayName);
                     setDisplayNameError(null);
@@ -1680,7 +1682,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     className="entry-action"
                     type="button"
                     title="开始分享屏幕"
-                    onClick={() => void startSharing()}
+                    onClick={() => {
+                      setJoiningRoom(false);
+                      void startSharing();
+                    }}
                   >
                     <MonitorUp size={18} aria-hidden="true" />
                     开始分享
@@ -1688,14 +1693,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   <span className="entry-divider" aria-hidden="true">
                     或
                   </span>
-                  <a
+                  <button
                     className="entry-action"
-                    href="/join"
+                    type="button"
                     title="输入房间码加入观看"
+                    aria-expanded={joiningRoom}
+                    aria-controls="host-room-code-entry"
+                    onClick={() => setJoiningRoom((current) => !current)}
                   >
                     <Hash size={18} aria-hidden="true" />
                     加入房间
-                  </a>
+                  </button>
+                  {joiningRoom && (
+                    <RoomCodeEntry
+                      id="host-room-code-entry"
+                      autoFocus
+                      inline
+                    />
+                  )}
                 </div>
               </div>
             ) : (
@@ -1979,7 +1994,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     changeViewerPassword(viewerPasswordDraft);
                   }}
                 >
-                  <label htmlFor="viewer-password">访问密码</label>
+                  <label htmlFor="viewer-password">房间密码</label>
                   <span className="input-with-icon">
                     <KeyRound size={16} aria-hidden="true" />
                     <input
@@ -2000,9 +2015,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   <button
                     className="icon-button"
                     type="submit"
-                    title={viewerPasswordEnabled ? "更改访问密码" : "设置访问密码"}
+                    title={viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
                     aria-label={
-                      viewerPasswordEnabled ? "更改访问密码" : "设置访问密码"
+                      viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"
                     }
                     disabled={
                       viewerPasswordUpdating ||
@@ -2016,8 +2031,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     <button
                       className="icon-button"
                       type="button"
-                      title="移除访问密码"
-                      aria-label="移除访问密码"
+                      title="移除房间密码"
+                      aria-label="移除房间密码"
                       disabled={viewerPasswordUpdating || phase !== "live"}
                       onClick={() => changeViewerPassword(null)}
                     >

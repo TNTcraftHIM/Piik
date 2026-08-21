@@ -877,7 +877,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         if (message.code === "INVALID_TOKEN") {
           clearViewerGrant(roomId);
           if (!viewerGrant && viewerPasswordAttempt) {
-            setViewerPasswordError("访问验证失败，请重试");
+            setViewerPasswordError("无法加入房间，请重试");
           }
           setStatusText("邀请无效或已失效");
           return;
@@ -1033,7 +1033,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           {accessState === "checking" ? (
             <div className="access-loading" role="status">
               <LoaderCircle size={20} className="spin" aria-hidden="true" />
-              正在验证
+              正在加入房间
             </div>
           ) : viewerGrant ? (
             <section className="access-panel">
@@ -1042,11 +1042,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           ) : (
             <form className="access-panel" onSubmit={submitViewerPassword}>
               <div>
-                <h1>访问验证</h1>
-                <p className="section-meta">请输入访问密码</p>
+                <h1>加入房间</h1>
+                <p className="section-meta">请输入当前房间的密码</p>
               </div>
               <label className="token-field">
-                <span>访问密码</span>
+                <span>房间密码</span>
                 <span className="input-with-icon">
                   <KeyRound size={16} aria-hidden="true" />
                   <input
@@ -1068,7 +1068,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 </p>
               )}
               <button className="button button-primary" type="submit">
-                进入
+                加入
               </button>
             </form>
           )}
@@ -1126,7 +1126,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           <label
             htmlFor={editingDisplayName ? "viewer-display-name" : undefined}
           >
-            显示名
+            昵称
           </label>
           {editingDisplayName ? (
             <>
@@ -1146,8 +1146,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <button
                 type="submit"
                 className="icon-button"
-                title="保存显示名"
-                aria-label="保存显示名"
+                title="保存昵称"
+                aria-label="保存昵称"
                 disabled={displayNameDraft === displayName}
               >
                 <Save size={17} />
@@ -1156,7 +1156,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 type="button"
                 className="icon-button"
                 title="取消编辑"
-                aria-label="取消编辑显示名"
+                aria-label="取消编辑昵称"
                 onClick={() => {
                   setDisplayNameDraft(displayName);
                   setDisplayNameError(null);
@@ -1172,8 +1172,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <button
                 type="button"
                 className="icon-button"
-                title="编辑显示名"
-                aria-label="编辑显示名"
+                title="编辑昵称"
+                aria-label="编辑昵称"
                 onClick={() => {
                   setDisplayNameDraft(displayName);
                   setDisplayNameError(null);
