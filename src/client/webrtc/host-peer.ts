@@ -2,6 +2,7 @@ import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import type { QualityProfile } from "../media/quality";
 import {
+  configureScreenAudioSender,
   configureVideoSender,
   senderParameterWarning,
 } from "../media/quality";
@@ -121,10 +122,10 @@ export class HostPeer {
       streams: [this.stream],
     }).sender;
     await this.enqueueSenderMutation(async () => {
-      if (this.disposed || !this.videoSender) {
+      if (this.disposed || !this.videoSender || !this.audioSender) {
         return false;
       }
-      return this.configureSender(this.videoSender);
+      return this.configureSender(this.videoSender, this.audioSender);
     });
     if (!(await this.createOffer(false)) || this.disposed) {
       return false;
@@ -175,7 +176,7 @@ export class HostPeer {
         this.limitationReason = null;
         this.limitationSamples = 0;
         this.snapshot = { ...this.snapshot, metrics: { ...EMPTY_METRICS } };
-        await this.configureSender(videoSender);
+        await this.configureSender(videoSender, audioSender);
         this.snapshot = { ...this.snapshot, error: null };
         this.emit();
         return true;
@@ -410,12 +411,18 @@ export class HostPeer {
     this.emit();
   }
 
-  private async configureSender(sender: RTCRtpSender): Promise<boolean> {
+  private async configureSender(
+    sender: RTCRtpSender,
+    audioSender?: RTCRtpSender,
+  ): Promise<boolean> {
     try {
       const senderParameters = await configureVideoSender(
         sender,
         this.desiredProfile,
       );
+      if (audioSender?.track) {
+        await configureScreenAudioSender(audioSender);
+      }
       if (this.disposed) {
         return false;
       }

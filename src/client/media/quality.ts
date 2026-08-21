@@ -22,13 +22,13 @@ export const QUALITY_PROFILES = {
     resolution: "1080p",
     maxFramerate: 30,
     maxBitrate: 5_000_000,
-    degradationPreference: "maintain-resolution",
+    degradationPreference: "balanced",
   },
   "720p30": {
     resolution: "720p",
     maxFramerate: 30,
     maxBitrate: 3_000_000,
-    degradationPreference: "maintain-resolution",
+    degradationPreference: "balanced",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
@@ -73,6 +73,7 @@ export interface TwoLayerVideoSenderParameterReadback {
 }
 
 export const SCREEN_SHARE_LOW_SCALE = 2;
+export const SCREEN_AUDIO_MAX_BITRATE = 128_000;
 
 export function screenShareLowBitrate(profile: QualityProfile): number {
   return Math.max(150_000, Math.floor(profile.maxBitrate / 4));
@@ -270,6 +271,18 @@ export async function configureVideoSender(
   await sender.setParameters(parameters);
   const applied = readVideoSenderParameters(sender.getParameters(), true);
   return senderParameterReadback(requested, applied);
+}
+
+export async function configureScreenAudioSender(
+  sender: RTCRtpSender,
+): Promise<number | null> {
+  const parameters = sender.getParameters();
+  if (parameters.encodings.length === 0) {
+    parameters.encodings = [{}];
+  }
+  parameters.encodings[0]!.maxBitrate = SCREEN_AUDIO_MAX_BITRATE;
+  await sender.setParameters(parameters);
+  return sender.getParameters().encodings[0]?.maxBitrate ?? null;
 }
 
 export async function configureTwoLayerVideoSender(

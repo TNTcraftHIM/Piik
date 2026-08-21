@@ -2,7 +2,7 @@
 
 Accessed: 2026-08-21
 
-Status: standard music hint accepted; user-facing codec controls remain no-go.
+Status: fixed 128 kbps send ceiling accepted; user-facing codec controls remain no-go.
 
 ## Scope And Decision
 
@@ -16,21 +16,24 @@ The Web sender keeps the current minimal behavior:
 - request audio with `audio: true`;
 - request window audio for a selected window and offer system audio for a full
   display;
-- mark returned audio tracks with `contentHint = "music"`;
+- retain `contentHint = "music"` only as source intent, with no quality claim;
 - treat an audio track as optional and warn before publishing when none exists;
 - preserve returned audio through source changes, picture pause, P2P, relay, and
   configured SFU routes;
-- expose no channel-count, sample-rate, Opus bitrate, stereo, DTX, or FEC
-  quality control; and
+- apply a fixed `128000` bit/s ceiling to each browser audio sender at initial
+  binding and source replacement, and the same audio preset with DTX disabled
+  when publishing through the pinned LiveKit SDK;
+- expose no channel-count, sample-rate, Opus bitrate, stereo, DTX, or FEC user
+  control; and
 - expose local, read-only audio RTP diagnostics without treating negotiated
   codec fields as source-quality facts.
 
-The music hint is not a codec or quality mode. No codec-quality control is
-justified yet. In particular, Screener will not add
-application-owned SDP munging or a control whose value cannot be separated into
-requested, applied, negotiated, and observed states using standard APIs. The
-deployed reports below do justify an explicit source-scope acceptance gate and
-a later native process-audio candidate; neither is a bitrate knob.
+The music hint is metadata, not a codec or quality mode. Chromium accepts and
+reads it back, but the inspected libwebrtc audio-track interface has no matching
+content-hint input to the Opus encoder. Screener therefore does not credit the
+hint with a quality change. The fixed ceiling is a measured product default,
+not a user control or a reason to add application-owned SDP munging. Requested,
+applied, negotiated, and observed states remain separate.
 
 ## Deployed Reports And Echo Boundary
 
@@ -53,28 +56,50 @@ audio scoped as intended in that browser environment. Current source requests
 the source-appropriate window and full-display audio choices. This is one
 environment observation, not a cross-browser source guarantee.
 
+## Voice-Processing Boundary
+
+Current Chromium constraint-selection tests cover tab, system, and desktop as
+content-capture sources. With no explicit processing constraint, all three
+select disabled WebRTC echo cancellation and `false` for automatic gain
+control, noise suppression, experimental noise suppression, high-pass filter,
+and experimental automatic gain control. `disable_local_echo` is a separate
+local-playback behavior and is not an audio-processing effect. Screener only
+requests display audio and does not opt these content tracks into microphone
+processing.
+
+This rules out default mic-style voice processing as the source-supported
+explanation for the current Chrome result. It remains Chromium implementation
+evidence rather than a portable browser guarantee; a runtime regression would
+need track settings or an isolated capture fixture, not speculative processing
+constraints added to `getDisplayMedia()`.
+
 ## Standard API Boundary
 
 | Concern | Standard request or control | Honest readback | What it does not prove | Current product action |
 | --- | --- | --- | --- | --- |
 | Audio presence | `getDisplayMedia({ audio: true, video: ... })` expresses interest | `stream.getAudioTracks().length` proves only whether a track was returned | The browser may still return video only; a track does not identify system, window, tab, or selected-game audio | Keep the existing presence check and visible no-audio warning |
 | Audio source choice | `windowAudio: "window"` asks for window audio and `systemAudio: "include"` offers system audio for monitor surfaces; a user agent may ignore either hint | There is no standard audio-source category readback corresponding to those hints | The selected audio scope, per-application isolation, or cross-browser availability | Let the picker expose the source-appropriate option without adding an inferred source label |
-| Content intent | `track.contentHint = "music"` asks the media pipeline to treat the returned audio as music | The assigned hint can be read back | A codec, bitrate, stereo mode, or guarantee that browser processing changed | Apply the hint without presenting it as a quality preset |
+| Content intent | `track.contentHint = "music"` records the source intent | The assigned hint can be read back | A codec, bitrate, stereo mode, or evidence that current Chromium changed Opus encoding | Keep it as metadata only; do not use it as a quality acceptance signal |
 | Voice-app exclusion | `restrictOwnAudio` concerns audio produced by the document that invoked capture; `suppressLocalAudioPlayback` concerns local playback of a captured browser surface | The app may observe whether a returned track exists, not which OS processes it contains | Excluding Discord, KOOK, WeChat, notifications, or any other independent process from system audio | Web keeps video-only available and warns that system audio may include calls/notifications; it does not claim isolation |
 | Capture channels | The Screen Capture specification does not list generic `channelCount` as applicable to display audio | `track.getSettings().channelCount` may describe the returned track when the browser supplies it | That the app controlled the value, or that the RTP encoder sends stereo | Observe only in a future diagnostic; absent means unknown |
 | Capture sample rate | The Screen Capture specification does not list generic `sampleRate` as applicable to display audio | `track.getSettings().sampleRate` may be present in an implementation | The Opus mode, RTP clock semantics, receiver output rate, or end-to-end fidelity | Observe only in a future diagnostic; absent means unknown |
-| RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio | A following `getParameters()` can show the applied ceiling; outbound byte deltas show actual traffic | A target, minimum, quality increase, or Opus `maxaveragebitrate`; other limits may keep traffic lower | Do not add a control without a measured need to reduce audio bandwidth |
+| RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio | A following `getParameters()` can show the applied ceiling; outbound byte deltas show actual traffic | A target, minimum, audible improvement, or Opus `maxaveragebitrate`; other limits may keep traffic lower | Request a fixed 128 kbps ceiling, read it back, and retain actual bitrate as the acceptance fact |
 | Codec | The user agent chooses among negotiated send codecs unless a separately negotiated codec selection is available | `RTCCodecStats.mimeType` and `sdpFmtpLine` identify the codec and negotiated format parameters in use | That Opus was selected before stats exist, or that negotiated preferences describe actual content | Label only observed negotiated data; do not force a codec |
 | Stereo | No stable sender parameter controls Opus stereo | Capture settings and negotiated codec/fmtp data can be inspected separately | Capture channel count does not prove encoded stereo; `opus/48000/2` does not prove stereo content | No control and no inferred stereo badge |
 | DTX | The current WebRTC `RTCRtpEncodingParameters` dictionary has no `dtx` member | No portable standard sender readback proves DTX operation | A deprecated, non-standard browser field or SDK option is not a cross-browser contract | No control |
 | FEC | There is no direct, portable audio FEC on/off sender parameter | Negotiated codec/fmtp data and inbound `fecPacketsReceived`/`fecBytesReceived` may provide evidence after use | Negotiation does not prove recovery occurred; zero counters do not prove FEC was disabled | No control; retain stats only as future diagnostic evidence |
 
-The one technically portable write, audio `maxBitrate`, is not a quality-up
-knob. The WebRTC specification defines it as a maximum and allows other limits
-to constrain the sender further. It also warns that an audio ceiling below the
-chosen encoding's needs may require playback to stop. Leaving it unset already
-avoids an application-imposed ceiling, so adding a higher value cannot promise
-better game audio.
+The WebRTC specification defines audio `maxBitrate` as a maximum and allows
+other limits to constrain the sender further. A narrow Chrome 151 local
+loopback on 2026-08-21 used a complex synthetic 48 kHz, two-channel source and
+`contentHint = "music"`. With no sender ceiling, the offer selected
+`audio/opus` with `minptime=10;useinbandfec=1` and sent 32.21 kbps over the
+four-second measurement window. The same fixture with only
+`encodings[0].maxBitrate = 128000` read back `128000` and sent 127.91 kbps;
+the offer and fmtp were unchanged. This establishes that the standard setter
+materially changed Chrome's encoder budget for that fixture. It does not prove
+an audible improvement, stereo, a target bitrate, or equivalent behavior in
+another browser or under congestion.
 
 ## Capture And Browser Compatibility
 
@@ -127,6 +152,13 @@ API that merely exposes the negotiated `sdpFmtpLine` can report those facts,
 but does not provide a portable setter or prove the encoder's moment-to-moment
 behavior.
 
+Current libwebrtc source calculates the default full-band Opus bitrate as
+32 kbps times the negotiated channel count. It derives two encoded channels
+only from `stereo=1`; otherwise it configures one. That matches the narrow
+Chrome observation, whose ordinary offer had no stereo fmtp and sent about
+32 kbps. It is an implementation-level explanation for the tested default,
+not a portable stereo or bitrate contract.
+
 ## Reference Implementations
 
 No code was copied. All repositories were inspected at pinned commits on
@@ -140,7 +172,10 @@ No code was copied. All repositories were inspected at pinned commits on
   `RTCRtpEncodingParameters.maxBitrate`, but stereo/DTX/RED also travel in
   LiveKit signaling. Its transport then
   [munges Opus bitrate fmtp](https://github.com/livekit/client-sdk-js/blob/0a2110d39904a06722a0c4d1ddbb9390bb06ad4d/src/room/PCTransport.ts#L269-L333)
-  in SDP.
+  in SDP. The pinned 2.22.0 SDK models `audioPreset` as a `maxBitrate`, defaults
+  music to 48 kbps, and keeps `forceStereo` separate. Screener uses its
+  supported preset surface at 128 kbps with DTX disabled and leaves stereo to
+  actual negotiation.
 - lib-jitsi-meet, Apache-2.0, commit
   [`63a04ec`](https://github.com/jitsi/lib-jitsi-meet/tree/63a04ecabd972ea75e877f9ba12086c13cb68210):
   [`mungeOpus()`](https://github.com/jitsi/lib-jitsi-meet/blob/63a04ecabd972ea75e877f9ba12086c13cb68210/modules/RTC/TPCUtils.ts#L871-L929)
@@ -293,6 +328,11 @@ Add a user-facing audio setting only when all of these are true:
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C Web Audio](https://www.w3.org/TR/webaudio-1.1/)
 - [W3C WebCodecs Opus registration](https://www.w3.org/TR/webcodecs-opus-codec-registration/)
+- [libwebrtc Opus encoder](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/audio_coding/codecs/opus/audio_encoder_opus.cc)
+- [libwebrtc media-track interface](https://webrtc.googlesource.com/src/+/refs/heads/main/api/media_stream_interface.h)
+- [Chromium `MediaStreamTrack` content hint](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_track_impl.cc)
+- [Chromium content-capture audio defaults](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/content/renderer/media/stream/media_stream_constraints_util_audio_unittest.cc)
+- [LiveKit 2.22.0 track options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
 - [RFC 7587: RTP Payload Format for Opus](https://www.rfc-editor.org/rfc/rfc7587.html)
 - [RFC 7874: WebRTC Audio Codec and Processing Requirements](https://www.rfc-editor.org/rfc/rfc7874.html)
 - [Discord Go Live architecture](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)

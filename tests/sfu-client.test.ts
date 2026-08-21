@@ -266,7 +266,7 @@ const qualityProfile = {
   resolution: "1080p",
   maxFramerate: 60,
   maxBitrate: 8_000_000,
-  degradationPreference: "maintain-resolution",
+  degradationPreference: "balanced",
 } as const;
 
 function track(kind: "video" | "audio", id: string): MediaStreamTrack {
@@ -420,10 +420,11 @@ describe("SfuPublisher", () => {
           },
         }),
       ],
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
     });
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
+      audioPreset: { maxBitrate: 128_000 },
       dtx: false,
     });
     expect(sender.setParameters).toHaveBeenCalledOnce();
@@ -446,14 +447,14 @@ describe("SfuPublisher", () => {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
-        degradationPreference: "maintain-resolution",
+        degradationPreference: "balanced",
         scalabilityMode: null,
       },
       applied: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
-        degradationPreference: "maintain-resolution",
+        degradationPreference: "balanced",
         scalabilityMode: null,
       },
       mismatches: [],
@@ -675,6 +676,24 @@ describe("SfuPublisher", () => {
     expect(localTrack.currentTrack).toBe(previousVideo);
   });
 
+  it("uses the screen audio preset when a replacement adds audio", async () => {
+    const publisher = new SfuPublisher();
+    const audio = track("audio", "audio-2");
+    await publisher.connect(connection);
+    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    const room = livekit.state.rooms[0];
+
+    await expect(
+      publisher.replaceStream(stream(track("video", "video-2"), audio)),
+    ).resolves.toBe(true);
+
+    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
+      source: Track.Source.ScreenShareAudio,
+      audioPreset: { maxBitrate: 128_000 },
+      dtx: false,
+    });
+  });
+
   it("reapplies and retains the current sender settings after replacing video", async () => {
     const publisher = new SfuPublisher();
     await publisher.connect(connection);
@@ -689,7 +708,7 @@ describe("SfuPublisher", () => {
     expect(publisher.getSenderParameters()?.requested).toMatchObject({
       maxBitrate: 8_000_000,
       maxFramerate: 60,
-      degradationPreference: "maintain-resolution",
+      degradationPreference: "balanced",
     });
   });
 
