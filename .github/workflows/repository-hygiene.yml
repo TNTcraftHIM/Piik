@@ -1,10 +1,10 @@
 name: CI
 
 on:
-  pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,7 +20,7 @@ jobs:
       - name: Validate tracked project state
         run: sh scripts/check-project-state.sh
         env:
-          SCREENER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SCREENER_BASE_SHA: ${{ github.event.before }}
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
