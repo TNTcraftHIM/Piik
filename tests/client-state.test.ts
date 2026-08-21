@@ -1423,6 +1423,7 @@ describe("WebRTC stats parsing", () => {
       frameHeight: 1_080,
       intervalPacketsReceived: 1_500,
       intervalPacketsLost: 2,
+      packetLossPercent: (2 / 1_502) * 100,
       intervalFramesDecoded: 120,
       intervalDecodeMs: 2.5,
       codec: "video/H264",
@@ -1431,6 +1432,249 @@ describe("WebRTC stats parsing", () => {
       scalabilityMode: null,
     });
     expect(JSON.stringify(stable)).not.toContain("sprop-parameter-sets");
-    expect(correctedLoss.intervalPacketsLost).toBeNull();
+    expect(correctedLoss).toMatchObject({
+      intervalPacketsLost: null,
+      packetLossPercent: null,
+    });
+  });
+
+  it("reports verified inbound audio codec and interval transport facts", async () => {
+    const report = (
+      timestamp: number,
+      videoPacketsReceived: number,
+      videoPacketsLost: number,
+      audioBytesReceived: number,
+      audioPacketsReceived: number,
+      audioPacketsLost: number,
+      audioCodecTransportId = "transport",
+    ) =>
+      new Map<string, unknown>([
+        [
+          "transport",
+          { id: "transport", type: "transport", timestamp },
+        ],
+        [
+          "video-codec",
+          {
+            id: "video-codec",
+            type: "codec",
+            timestamp,
+            transportId: "transport",
+            mimeType: "video/VP8",
+          },
+        ],
+        [
+          "audio-codec",
+          {
+            id: "audio-codec",
+            type: "codec",
+            timestamp,
+            transportId: audioCodecTransportId,
+            mimeType: "audio/opus",
+            clockRate: 48_000,
+            channels: 2,
+            sdpFmtpLine: "minptime=10;useinbandfec=1",
+          },
+        ],
+        [
+          "video-inbound",
+          {
+            id: "video-inbound",
+            type: "inbound-rtp",
+            timestamp,
+            kind: "video",
+            ssrc: 101,
+            transportId: "transport",
+            codecId: "video-codec",
+            bytesReceived: timestamp * 10,
+            packetsReceived: videoPacketsReceived,
+            packetsLost: videoPacketsLost,
+            framesDecoded: timestamp / 20,
+          },
+        ],
+        [
+          "audio-inbound",
+          {
+            id: "audio-inbound",
+            type: "inbound-rtp",
+            timestamp,
+            kind: "audio",
+            ssrc: 202,
+            trackIdentifier: "shared-audio",
+            transportId: "transport",
+            codecId: "audio-codec",
+            bytesReceived: audioBytesReceived,
+            packetsReceived: audioPacketsReceived,
+            packetsLost: audioPacketsLost,
+            jitter: 0.003,
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+    const reports = [
+      report(1_000, 100, 5, 10_000, 1_000, 5),
+      report(3_000, 190, 15, 50_000, 1_180, 10),
+      report(5_000, 190, 15, 50_000, 1_180, 10, "other-transport"),
+    ];
+    const connection = {
+      getStats: async () => reports.shift()!,
+    } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
+
+    const first = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const stable = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+    const zeroDenominator = await collectConnectionMetrics(
+      connection,
+      "receive",
+      accumulator,
+    );
+
+    expect(first).toMatchObject({
+      packetLossPercent: null,
+      audioBitrateKbps: null,
+      audioPacketLossPercent: null,
+      audioJitterMs: 3,
+      audioCodec: "audio/opus",
+      audioCodecClockRate: 48_000,
+      audioCodecChannels: 2,
+      audioCodecParameters: "minptime=10;useinbandfec=1",
+    });
+    expect(stable.packetLossPercent).toBeCloseTo(10);
+    expect(stable.audioBitrateKbps).toBeCloseTo(160);
+    expect(stable.audioPacketLossPercent).toBeCloseTo((5 / 185) * 100);
+    expect(zeroDenominator).toMatchObject({
+      packetLossPercent: null,
+      audioBitrateKbps: 0,
+      audioPacketLossPercent: null,
+      audioCodec: null,
+      audioCodecClockRate: null,
+      audioCodecChannels: null,
+      audioCodecParameters: null,
+    });
+  });
+
+  it("uses linked remote inbound counters for outbound audio loss", async () => {
+    const report = (
+      timestamp: number,
+      audioBytesSent: number,
+      packetsReceived: number | undefined,
+      packetsLost: number | undefined,
+    ) =>
+      new Map<string, unknown>([
+        [
+          "transport",
+          { id: "transport", type: "transport", timestamp },
+        ],
+        [
+          "video-outbound",
+          {
+            id: "video-outbound",
+            type: "outbound-rtp",
+            timestamp,
+            kind: "video",
+            ssrc: 101,
+            bytesSent: timestamp * 10,
+            packetsSent: timestamp / 10,
+            framesEncoded: timestamp / 20,
+          },
+        ],
+        [
+          "audio-codec",
+          {
+            id: "audio-codec",
+            type: "codec",
+            timestamp,
+            transportId: "transport",
+            mimeType: "audio/opus",
+            clockRate: 48_000,
+            channels: 2,
+          },
+        ],
+        [
+          "audio-outbound",
+          {
+            id: "audio-outbound",
+            type: "outbound-rtp",
+            timestamp,
+            kind: "audio",
+            ssrc: 202,
+            transportId: "transport",
+            codecId: "audio-codec",
+            remoteId: "audio-remote-inbound",
+            bytesSent: audioBytesSent,
+          },
+        ],
+        [
+          "audio-remote-inbound",
+          {
+            id: "audio-remote-inbound",
+            type: "remote-inbound-rtp",
+            timestamp,
+            kind: "audio",
+            packetsReceived,
+            packetsLost,
+            jitter: 0.004,
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+    const firstReport = report(1_000, 20_000, 500, 1);
+    (firstReport as unknown as Map<string, unknown>).delete(
+      "audio-remote-inbound",
+    );
+    const reports = [
+      firstReport,
+      report(3_000, 50_000, 500, 1),
+      report(5_000, 80_000, 650, 4),
+      report(7_000, 110_000, 50, 1),
+      report(9_000, 140_000, 200, undefined),
+    ];
+    const connection = {
+      getStats: async () => reports.shift()!,
+    } as unknown as RTCPeerConnection;
+    const accumulator = createStatsAccumulator();
+
+    await collectConnectionMetrics(connection, "send", accumulator);
+    const remoteAppeared = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+    );
+    const stable = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+    );
+    const reset = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+    );
+    const missing = await collectConnectionMetrics(
+      connection,
+      "send",
+      accumulator,
+    );
+
+    expect(remoteAppeared).toMatchObject({
+      audioBitrateKbps: 120,
+      audioPacketLossPercent: null,
+    });
+    expect(stable).toMatchObject({
+      audioBitrateKbps: 120,
+      audioJitterMs: 4,
+      audioCodec: "audio/opus",
+      audioCodecClockRate: 48_000,
+      audioCodecChannels: 2,
+    });
+    expect(stable.audioPacketLossPercent).toBeCloseTo((3 / 153) * 100);
+    expect(reset.audioPacketLossPercent).toBeNull();
+    expect(missing.audioPacketLossPercent).toBeNull();
   });
 });

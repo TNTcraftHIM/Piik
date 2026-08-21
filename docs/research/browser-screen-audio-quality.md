@@ -19,9 +19,11 @@ The Web sender keeps the current minimal behavior:
 - mark returned audio tracks with `contentHint = "music"`;
 - treat an audio track as optional and warn before publishing when none exists;
 - preserve returned audio through source changes, picture pause, P2P, relay, and
-  configured SFU routes; and
+  configured SFU routes;
 - expose no channel-count, sample-rate, Opus bitrate, stereo, DTX, or FEC
-  quality control.
+  quality control; and
+- expose local, read-only audio RTP diagnostics without treating negotiated
+  codec fields as source-quality facts.
 
 The music hint is not a codec or quality mode. No codec-quality control is
 justified yet. In particular, Screener will not add
@@ -128,7 +130,7 @@ behavior.
 ## Reference Implementations
 
 No code was copied. All repositories were inspected at pinned commits on
-2026-08-19.
+2026-08-19 and their cited source pages were rechecked on 2026-08-21.
 
 - LiveKit client-sdk-js, Apache-2.0, commit
   [`0a2110d`](https://github.com/livekit/client-sdk-js/tree/0a2110d39904a06722a0c4d1ddbb9390bb06ad4d):
@@ -155,19 +157,39 @@ The Apache and MIT implementations support the same conclusion: a library can
 offer product-specific audio modes, but the stereo/DTX/FEC/Opus-fmtp portion is
 not equivalent to a portable browser sender control.
 
-## Honest Future Diagnostics
+Discord and Oopz have a narrower evidence boundary:
 
-If audio diagnostics become necessary, keep four layers separate:
+- Discord's official Go Live architecture says its native client captures the
+  selected process and child-process audio with OS-specific APIs and sends
+  audio and video in separate RTP packets. Discord's public Voice protocol
+  requires Opus at the protocol boundary and distinguishes a `Soundshare`
+  speaking bit, but neither source publishes the exact negotiated/runtime
+  audio parameters for each consumer Go Live session. This is useful native
+  product evidence, not a preset Screener can copy or an excuse to infer codec
+  state without stats.
+- The retained read-only
+  [Oopz 0.87.425 package inspection](./native-shared-encode-sender.md) found a native Agora
+  RTC library, while its public help center does not publish screen-share audio
+  codec, bitrate, stereo, DTX, or FEC settings. Those artifacts do not prove
+  the codec or parameters used by a live Oopz session.
+
+## Honest Diagnostics Contract
+
+Audio diagnostics keep four layers separate:
 
 1. **Capture:** track absent/present, plus `channelCount` and `sampleRate` only
    when the browser returns numeric values.
 2. **Requested/applied:** an RTP ceiling only if Screener actually calls
    `setParameters()`, followed by immediate `getParameters()` readback.
-3. **Negotiated:** the in-use codec MIME type and bounded derived fmtp evidence
-   from `RTCCodecStats`, labelled as negotiated parameters rather than actual
-   stereo/DTX/FEC; raw SDP/fmtp is not uploaded or persisted.
-4. **Observed:** interval audio bitrate from byte deltas and receiver FEC
-   counters when implemented; missing values remain unknown.
+3. **Negotiated:** current local details follow the unique audio RTP object's
+   `codecId` to a same-transport `RTCCodecStats` and display MIME type, clock
+   rate, channels and bounded fmtp as negotiated fields. Raw SDP/stats/fmtp are
+   not uploaded or persisted.
+4. **Observed:** current local details derive interval audio bitrate from byte
+   deltas and interval loss from `lostDelta / (receivedDelta + lostDelta)`, and
+   display reported jitter. The first sample, changed identity, reset, negative
+   delta, zero denominator or absent field is unknown. Concealment, jitter
+   buffer and FEC counters remain an acceptance-matrix follow-up.
 
 Never substitute `48000`, `2`, `false`, or `0` for an unavailable field.
 
@@ -273,6 +295,9 @@ Add a user-facing audio setting only when all of these are true:
 - [W3C WebCodecs Opus registration](https://www.w3.org/TR/webcodecs-opus-codec-registration/)
 - [RFC 7587: RTP Payload Format for Opus](https://www.rfc-editor.org/rfc/rfc7587.html)
 - [RFC 7874: WebRTC Audio Codec and Processing Requirements](https://www.rfc-editor.org/rfc/rfc7874.html)
+- [Discord Go Live architecture](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
+- [Discord Voice protocol](https://docs.discord.com/developers/topics/voice-connections)
+- [Oopz help center](https://help.oopz.cn/)
 - [MDN `getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [MDN `MediaTrackSettings.channelCount`](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackSettings/channelCount)
 - [MDN Browser Compatibility Data: `MediaDevices`](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)

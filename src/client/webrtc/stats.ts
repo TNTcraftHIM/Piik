@@ -14,6 +14,7 @@ export interface StatsAccumulator {
   mediaId: string | null;
   ssrc: number | null;
   trackIdentifier: string | null;
+  lossSourceId: string | null;
   bytes: number | null;
   frames: number | null;
   timestamp: number | null;
@@ -27,6 +28,14 @@ export interface StatsAccumulator {
   previousTotalFreezesDuration: number | null;
   previousRetransmittedPackets: number | null;
   previousRetransmittedBytes: number | null;
+  audioMediaId: string | null;
+  audioSsrc: number | null;
+  audioTrackIdentifier: string | null;
+  audioLossSourceId: string | null;
+  audioBytes: number | null;
+  audioTimestamp: number | null;
+  previousAudioPacketsReceived: number | null;
+  previousAudioPacketsLost: number | null;
 }
 
 export interface StatsMediaSelector {
@@ -38,6 +47,7 @@ export function createStatsAccumulator(): StatsAccumulator {
     mediaId: null,
     ssrc: null,
     trackIdentifier: null,
+    lossSourceId: null,
     bytes: null,
     frames: null,
     timestamp: null,
@@ -51,6 +61,14 @@ export function createStatsAccumulator(): StatsAccumulator {
     previousTotalFreezesDuration: null,
     previousRetransmittedPackets: null,
     previousRetransmittedBytes: null,
+    audioMediaId: null,
+    audioSsrc: null,
+    audioTrackIdentifier: null,
+    audioLossSourceId: null,
+    audioBytes: null,
+    audioTimestamp: null,
+    previousAudioPacketsReceived: null,
+    previousAudioPacketsLost: null,
   };
 }
 
@@ -90,6 +108,24 @@ function intervalAverageMs(
   return frameDelta > 0 && timeDelta >= 0
     ? (timeDelta / frameDelta) * 1_000
     : null;
+}
+
+export function packetLossPercentFromDeltas(
+  packetsReceivedDelta: number | null,
+  packetsLostDelta: number | null,
+): number | null {
+  if (
+    packetsReceivedDelta === null ||
+    packetsLostDelta === null ||
+    !Number.isFinite(packetsReceivedDelta) ||
+    !Number.isFinite(packetsLostDelta) ||
+    packetsReceivedDelta < 0 ||
+    packetsLostDelta < 0
+  ) {
+    return null;
+  }
+  const packetDelta = packetsReceivedDelta + packetsLostDelta;
+  return packetDelta > 0 ? (packetsLostDelta / packetDelta) * 100 : null;
 }
 
 function numberValue(record: StatsRecord | null, key: string): number | null {
@@ -132,11 +168,12 @@ function mediaRecord(
   report: RTCStatsReport,
   direction: "send" | "receive",
   selector: StatsMediaSelector | null,
+  kind: "audio" | "video" = "video",
 ): StatsRecord | null {
   const expectedType = direction === "send" ? "outbound-rtp" : "inbound-rtp";
   const isExpectedMedia = (record: StatsRecord): boolean =>
     record.type === expectedType &&
-    record.kind === "video" &&
+    record.kind === kind &&
     record.isRemote !== true;
 
   const candidates: StatsRecord[] = [];
@@ -200,17 +237,19 @@ function selectedCandidatePair(
 function linkedRemoteInbound(
   report: RTCStatsReport,
   outbound: StatsRecord | null,
+  kind: "audio" | "video" = "video",
 ): StatsRecord | null {
   const remote = getRecord(report, stringValue(outbound, "remoteId"));
-  return remote?.type === "remote-inbound-rtp" && remote.kind === "video"
+  return remote?.type === "remote-inbound-rtp" && remote.kind === kind
     ? remote
     : null;
 }
 
-function linkedVideoCodec(
+function linkedMediaCodec(
   report: RTCStatsReport,
   media: StatsRecord | null,
   transport: StatsRecord | null,
+  kind: "audio" | "video",
 ): StatsRecord | null {
   const codec = getRecord(report, stringValue(media, "codecId"));
   const mimeType = stringValue(codec, "mimeType");
@@ -218,7 +257,7 @@ function linkedVideoCodec(
     transport !== null &&
     stringValue(codec, "transportId") === transport.id &&
     mimeType !== null &&
-    /^video\/[A-Za-z0-9.+-]{1,32}$/i.test(mimeType)
+    new RegExp(`^${kind}\\/[A-Za-z0-9.+-]{1,32}$`, "i").test(mimeType)
     ? codec
     : null;
 }
@@ -229,6 +268,21 @@ function deriveCodecEvidence(codec: StatsRecord | null) {
     mimeType,
     stringValue(codec, "sdpFmtpLine"),
   );
+}
+
+function positiveIntegerValue(
+  record: StatsRecord | null,
+  key: string,
+): number | null {
+  const value = numberValue(record, key);
+  return value !== null && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function audioCodecParameters(codec: StatsRecord | null): string | null {
+  const value = stringValue(codec, "sdpFmtpLine");
+  return value !== null && value.length <= 512 && /^[\x20-\x7e]+$/.test(value)
+    ? value
+    : null;
 }
 
 function scalabilityModeValue(media: StatsRecord | null): string | null {
@@ -276,13 +330,19 @@ export async function collectConnectionMetrics(
   const trackIdentifier = media
     ? mediaTrackIdentifier(report, media, direction)
     : null;
+  const remoteInbound =
+    direction === "send" ? linkedRemoteInbound(report, media) : null;
+  const lossSource = direction === "send" ? remoteInbound : media;
+  const lossSourceId = lossSource?.id ?? null;
   const sameMedia =
     mediaId !== null &&
     mediaId === previous.mediaId &&
     ssrc === previous.ssrc &&
     trackIdentifier === previous.trackIdentifier;
-  const remoteInbound =
-    direction === "send" ? linkedRemoteInbound(report, media) : null;
+  const sameLossSource =
+    sameMedia &&
+    lossSourceId !== null &&
+    lossSourceId === previous.lossSourceId;
   const bytesKey = direction === "send" ? "bytesSent" : "bytesReceived";
   const bytes = numberValue(media, bytesKey);
   const framesKey = direction === "send" ? "framesEncoded" : "framesDecoded";
@@ -291,11 +351,8 @@ export async function collectConnectionMetrics(
   const framesEncoded = numberValue(media, "framesEncoded");
   const framesDecoded = numberValue(media, "framesDecoded");
   const packetsSent = numberValue(media, "packetsSent");
-  const packetsReceived = numberValue(media, "packetsReceived");
-  const packetsLost = numberValue(
-    direction === "send" ? remoteInbound : media,
-    "packetsLost",
-  );
+  const packetsReceived = numberValue(lossSource, "packetsReceived");
+  const packetsLost = numberValue(lossSource, "packetsLost");
   const totalEncodeTime = numberValue(media, "totalEncodeTime");
   const totalDecodeTime = numberValue(media, "totalDecodeTime");
   const framesDropped = numberValue(media, "framesDropped");
@@ -354,14 +411,13 @@ export async function collectConnectionMetrics(
           sampleWindowMs !== null ? previous.frames : null,
         )
       : null;
+  const lossPacketsReceivedDelta = intervalDelta(
+    packetsReceived,
+    previous.previousPacketsReceived,
+    sampleWindowMs !== null && sameLossSource,
+  );
   const intervalPacketsReceived =
-    direction === "receive"
-      ? intervalDelta(
-          packetsReceived,
-          previous.previousPacketsReceived,
-          sampleWindowMs !== null,
-        )
-      : null;
+    direction === "receive" ? lossPacketsReceivedDelta : null;
   const intervalPacketsSent =
     direction === "send"
       ? intervalDelta(
@@ -375,7 +431,7 @@ export async function collectConnectionMetrics(
       ? intervalDelta(
           packetsLost,
           previous.previousPacketsLost,
-          sampleWindowMs !== null,
+          sampleWindowMs !== null && sameLossSource,
         )
       : null;
   const intervalFramesDecoded =
@@ -414,6 +470,7 @@ export async function collectConnectionMetrics(
   previous.mediaId = mediaId;
   previous.ssrc = ssrc;
   previous.trackIdentifier = trackIdentifier;
+  previous.lossSourceId = lossSourceId;
   previous.bytes = bytes;
   previous.frames = frames;
   previous.timestamp = timestamp;
@@ -428,8 +485,75 @@ export async function collectConnectionMetrics(
   previous.previousRetransmittedPackets = retransmittedPackets;
   previous.previousRetransmittedBytes = retransmittedBytes;
 
-  const linkedCodec = linkedVideoCodec(report, media, transport);
+  const linkedCodec = linkedMediaCodec(report, media, transport, "video");
   const codecEvidence = deriveCodecEvidence(linkedCodec);
+  const audio = mediaRecord(report, direction, null, "audio");
+  const audioTransport = transportRecord(report, audio);
+  const audioRemoteInbound =
+    direction === "send"
+      ? linkedRemoteInbound(report, audio, "audio")
+      : null;
+  const audioLossSource = direction === "send" ? audioRemoteInbound : audio;
+  const audioMediaId = audio?.id ?? null;
+  const audioSsrc = numberValue(audio, "ssrc");
+  const audioTrackIdentifier = audio
+    ? mediaTrackIdentifier(report, audio, direction)
+    : null;
+  const audioLossSourceId = audioLossSource?.id ?? null;
+  const sameAudio =
+    audioMediaId !== null &&
+    audioMediaId === previous.audioMediaId &&
+    audioSsrc === previous.audioSsrc &&
+    audioTrackIdentifier === previous.audioTrackIdentifier;
+  const sameAudioLossSource =
+    sameAudio &&
+    audioLossSourceId !== null &&
+    audioLossSourceId === previous.audioLossSourceId;
+  const audioBytes = numberValue(
+    audio,
+    direction === "send" ? "bytesSent" : "bytesReceived",
+  );
+  const audioTimestamp = numberValue(audio, "timestamp");
+  const audioSampleWindowMs =
+    sameAudio &&
+    audioTimestamp !== null &&
+    previous.audioTimestamp !== null &&
+    audioTimestamp > previous.audioTimestamp
+      ? audioTimestamp - previous.audioTimestamp
+      : null;
+  const audioPacketsReceived = numberValue(audioLossSource, "packetsReceived");
+  const audioPacketsLost = numberValue(audioLossSource, "packetsLost");
+  const audioPacketsReceivedDelta = intervalDelta(
+    audioPacketsReceived,
+    previous.previousAudioPacketsReceived,
+    audioSampleWindowMs !== null && sameAudioLossSource,
+  );
+  const audioPacketsLostDelta = intervalDelta(
+    audioPacketsLost,
+    previous.previousAudioPacketsLost,
+    audioSampleWindowMs !== null && sameAudioLossSource,
+  );
+  const audioBitrateKbps =
+    audioSampleWindowMs !== null &&
+    audioBytes !== null &&
+    previous.audioBytes !== null &&
+    audioBytes >= previous.audioBytes
+      ? ((audioBytes - previous.audioBytes) * 8) / audioSampleWindowMs
+      : null;
+  previous.audioMediaId = audioMediaId;
+  previous.audioSsrc = audioSsrc;
+  previous.audioTrackIdentifier = audioTrackIdentifier;
+  previous.audioLossSourceId = audioLossSourceId;
+  previous.audioBytes = audioBytes;
+  previous.audioTimestamp = audioTimestamp;
+  previous.previousAudioPacketsReceived = audioPacketsReceived;
+  previous.previousAudioPacketsLost = audioPacketsLost;
+  const linkedAudioCodec = linkedMediaCodec(
+    report,
+    audio,
+    audioTransport,
+    "audio",
+  );
   const width = numberValue(media, "frameWidth");
   const height = numberValue(media, "frameHeight");
   const iceProtocol =
@@ -471,6 +595,10 @@ export async function collectConnectionMetrics(
     intervalPacketsSent,
     intervalPacketsReceived,
     intervalPacketsLost,
+    packetLossPercent: packetLossPercentFromDeltas(
+      lossPacketsReceivedDelta,
+      intervalPacketsLost,
+    ),
     jitterMs:
       numberValue(direction === "send" ? remoteInbound : media, "jitter") !== null
         ? numberValue(direction === "send" ? remoteInbound : media, "jitter")! *
@@ -487,6 +615,19 @@ export async function collectConnectionMetrics(
     codec: codecEvidence.codec,
     codecProfile: codecEvidence.profile,
     codecParameters: codecEvidence.parameters,
+    audioBitrateKbps,
+    audioPacketLossPercent: packetLossPercentFromDeltas(
+      audioPacketsReceivedDelta,
+      audioPacketsLostDelta,
+    ),
+    audioJitterMs:
+      numberValue(audioLossSource, "jitter") !== null
+        ? numberValue(audioLossSource, "jitter")! * 1_000
+        : null,
+    audioCodec: stringValue(linkedAudioCodec, "mimeType"),
+    audioCodecClockRate: positiveIntegerValue(linkedAudioCodec, "clockRate"),
+    audioCodecChannels: positiveIntegerValue(linkedAudioCodec, "channels"),
+    audioCodecParameters: audioCodecParameters(linkedAudioCodec),
     scalabilityMode:
       direction === "send" ? scalabilityModeValue(media) : null,
     encoderImplementation: stringValue(media, "encoderImplementation"),

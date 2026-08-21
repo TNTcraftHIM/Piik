@@ -33,6 +33,7 @@ export interface ConnectionMetrics {
   intervalPacketsSent: number | null;
   intervalPacketsReceived: number | null;
   intervalPacketsLost: number | null;
+  packetLossPercent: number | null;
   jitterMs: number | null;
   framesDropped: number | null;
   intervalFramesDecoded: number | null;
@@ -44,6 +45,13 @@ export interface ConnectionMetrics {
   codec: string | null;
   codecProfile: string | null;
   codecParameters: string | null;
+  audioBitrateKbps: number | null;
+  audioPacketLossPercent: number | null;
+  audioJitterMs: number | null;
+  audioCodec: string | null;
+  audioCodecClockRate: number | null;
+  audioCodecChannels: number | null;
+  audioCodecParameters: string | null;
   scalabilityMode: string | null;
   encoderImplementation: string | null;
   powerEfficientEncoder: boolean | null;
@@ -90,6 +98,7 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   intervalPacketsSent: null,
   intervalPacketsReceived: null,
   intervalPacketsLost: null,
+  packetLossPercent: null,
   jitterMs: null,
   framesDropped: null,
   intervalFramesDecoded: null,
@@ -101,6 +110,13 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   codec: null,
   codecProfile: null,
   codecParameters: null,
+  audioBitrateKbps: null,
+  audioPacketLossPercent: null,
+  audioJitterMs: null,
+  audioCodec: null,
+  audioCodecClockRate: null,
+  audioCodecChannels: null,
+  audioCodecParameters: null,
   scalabilityMode: null,
   encoderImplementation: null,
   powerEfficientEncoder: null,

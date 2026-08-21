@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { qualityLimitationSummary } from "../src/client/components/connection-details.ts";
+import {
+  formatPacketLossPercent,
+  qualityLimitationSummary,
+} from "../src/client/components/connection-details.ts";
 import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
 
 function snapshot(qualityWarning: string | null): PeerSnapshot {
@@ -25,5 +28,12 @@ describe("progressive connection details", () => {
       ]),
     ).toBe("持续受带宽限制，浏览器正在降低画面质量");
     expect(qualityLimitationSummary([snapshot(null)])).toBeNull();
+  });
+
+  it("formats interval packet loss without inventing unknown values", () => {
+    expect(formatPacketLossPercent(1.25)).toBe("1.3%");
+    expect(formatPacketLossPercent(0)).toBe("0.0%");
+    expect(formatPacketLossPercent(null)).toBe("未知");
+    expect(formatPacketLossPercent(Number.NaN)).toBe("未知");
   });
 });

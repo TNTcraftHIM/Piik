@@ -241,6 +241,7 @@ describe("viewer quality evidence", () => {
       resolution: "1920x1080",
       bitrateKbps: 7_500,
       packetsLost: 2,
+      packetLossPercent: (2 / 1_502) * 100,
       framesDropped: 1,
       intervalFramesDecoded: 120,
       intervalFramesDropped: 1,

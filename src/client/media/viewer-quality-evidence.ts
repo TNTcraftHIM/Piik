@@ -13,6 +13,7 @@ import {
   type ConnectionMetrics,
   type PeerSnapshot,
 } from "../types";
+import { packetLossPercentFromDeltas } from "../webrtc/stats";
 
 type ViewerQualityEvidence = Extract<
   ServerMessage,
@@ -236,6 +237,10 @@ export function metricsFromQualityEvidence(
     packetsLost: metrics.packetsLostDelta,
     intervalPacketsReceived: metrics.packetsReceivedDelta,
     intervalPacketsLost: metrics.packetsLostDelta,
+    packetLossPercent: packetLossPercentFromDeltas(
+      metrics.packetsReceivedDelta,
+      metrics.packetsLostDelta,
+    ),
     jitterMs: metrics.jitterMs,
     framesDropped: metrics.framesDroppedDelta,
     intervalFramesDecoded: metrics.framesDecodedDelta,
