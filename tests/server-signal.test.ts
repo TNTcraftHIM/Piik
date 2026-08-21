@@ -31,7 +31,8 @@ const defaultQualitySettings = {
   resolution: "1080p",
   maxFramerate: 60,
   maxBitrate: 8_000_000,
-  degradationPreference: "maintain-resolution",
+  degradationPreference: "balanced",
+  videoCodec: "automatic",
 } as const;
 const balancedQualitySettings = {
   resolution: "1080p",
@@ -6877,6 +6878,7 @@ describe("WebSocket signaling", () => {
     oldClient.socket.send(
       JSON.stringify({
         type: "authenticate",
+        protocol: "screener-v2",
         roomId: "999999999999",
         role: "viewer",
         clientId: "old-client",
@@ -6884,10 +6886,9 @@ describe("WebSocket signaling", () => {
     );
 
     expect(await oldClient.inbox.next("error")).toMatchObject({
-      code: "AUTH_REQUIRED",
-      message: "页面版本已更新，请刷新后重试",
+      code: "INVALID_MESSAGE",
     });
-    expect(await closed).toEqual({ code: 4001, reason: "Protocol mismatch" });
+    expect(await closed).toEqual({ code: 1008, reason: "Invalid message" });
   });
 
   it("rejects an invalid upgrade request target without stopping the server", async () => {

@@ -14,7 +14,6 @@ import {
   type QualityProfile,
   type VideoSenderParameterReadback,
 } from "../media/quality";
-import { preferredVideoCodec } from "../webrtc/video-codec-preference";
 
 export interface SfuConnectionConfig {
   url: string;
@@ -611,7 +610,9 @@ function videoPublishOptions(
   const highResolution = QUALITY_RESOLUTIONS[profile.resolution];
   return {
     backupCodec: false,
-    videoCodec: preferredVideoCodec(),
+    ...(!profile.videoCodec || profile.videoCodec === "automatic"
+      ? {}
+      : { videoCodec: profile.videoCodec }),
     simulcast: true,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,

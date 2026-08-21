@@ -4,6 +4,7 @@ import {
   type QualityProfileId,
   type QualityResolution,
   type QualitySettings,
+  type VideoCodecPreference,
 } from "../../shared/protocol";
 import { displayMediaOptions } from "./audio-capture";
 
@@ -12,6 +13,7 @@ export type {
   QualityProfileId,
   QualityResolution,
   QualitySettings,
+  VideoCodecPreference,
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
@@ -22,13 +24,15 @@ export const QUALITY_PROFILES = {
     resolution: "1080p",
     maxFramerate: 30,
     maxBitrate: 5_000_000,
-    degradationPreference: "maintain-resolution",
+    degradationPreference: "balanced",
+    videoCodec: "automatic",
   },
   "720p30": {
     resolution: "720p",
     maxFramerate: 30,
     maxBitrate: 3_000_000,
-    degradationPreference: "maintain-resolution",
+    degradationPreference: "balanced",
+    videoCodec: "automatic",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
@@ -52,6 +56,12 @@ export const DEGRADATION_PREFERENCE_LABELS = {
   balanced: "平衡",
   "maintain-framerate": "流畅优先",
 } as const satisfies Record<DegradationPreference, string>;
+
+export const VIDEO_CODEC_PREFERENCE_LABELS = {
+  automatic: "自动",
+  h264: "H.264",
+  vp8: "VP8",
+} as const satisfies Record<VideoCodecPreference, string>;
 
 export interface VideoSenderParameterValues {
   maxBitrate: number | null;
@@ -87,7 +97,8 @@ export function qualitySettingsEqual(
     left.resolution === right.resolution &&
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
-    left.degradationPreference === right.degradationPreference
+    left.degradationPreference === right.degradationPreference &&
+    (left.videoCodec ?? "automatic") === (right.videoCodec ?? "automatic")
   );
 }
 
@@ -95,7 +106,13 @@ export function matchingQualityProfileId(
   settings: QualitySettings,
 ): QualityProfileId | null {
   for (const id of Object.keys(QUALITY_PROFILES) as QualityProfileId[]) {
-    if (qualitySettingsEqual(settings, QUALITY_PROFILES[id])) {
+    const profile = QUALITY_PROFILES[id];
+    if (
+      settings.resolution === profile.resolution &&
+      settings.maxFramerate === profile.maxFramerate &&
+      settings.maxBitrate === profile.maxBitrate &&
+      settings.degradationPreference === profile.degradationPreference
+    ) {
       return id;
     }
   }

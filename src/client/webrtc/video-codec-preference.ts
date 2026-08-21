@@ -1,4 +1,4 @@
-export type PreferredVideoCodec = "h264" | "vp8";
+import type { VideoCodecPreference } from "../../shared/protocol";
 
 function videoCodecs(): RTCRtpCodec[] {
   if (typeof RTCRtpSender === "undefined") {
@@ -7,27 +7,29 @@ function videoCodecs(): RTCRtpCodec[] {
   return RTCRtpSender.getCapabilities?.("video")?.codecs ?? [];
 }
 
-function isH264(codec: RTCRtpCodec): boolean {
-  return codec.mimeType.toLowerCase() === "video/h264";
-}
-
-export function preferredVideoCodec(): PreferredVideoCodec {
-  return videoCodecs().some(isH264) ? "h264" : "vp8";
-}
-
-export function preferH264(transceiver: RTCRtpTransceiver): boolean {
-  if (typeof transceiver.setCodecPreferences !== "function") {
-    return false;
+export function applyVideoCodecPreference(
+  transceiver: RTCRtpTransceiver,
+  preference: VideoCodecPreference | undefined,
+): boolean {
+  const resolvedPreference = preference ?? "automatic";
+  if (
+    resolvedPreference === "automatic" ||
+    typeof transceiver.setCodecPreferences !== "function"
+  ) {
+    return resolvedPreference === "automatic";
   }
   const codecs = videoCodecs();
-  const h264 = codecs.filter(isH264);
-  if (h264.length === 0) {
+  const mimeType = `video/${resolvedPreference}`;
+  const preferred = codecs.filter(
+    (codec) => codec.mimeType.toLowerCase() === mimeType,
+  );
+  if (preferred.length === 0) {
     return false;
   }
   try {
     transceiver.setCodecPreferences([
-      ...h264,
-      ...codecs.filter((codec) => !isH264(codec)),
+      ...preferred,
+      ...codecs.filter((codec) => codec.mimeType.toLowerCase() !== mimeType),
     ]);
     return true;
   } catch {

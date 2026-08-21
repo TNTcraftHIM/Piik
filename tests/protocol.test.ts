@@ -30,6 +30,11 @@ const qualitySettings = {
   degradationPreference: "maintain-resolution",
 } as const;
 
+const qualitySettingsWithCodec = {
+  ...qualitySettings,
+  videoCodec: "h264",
+} as const;
+
 const qualityEvidence = {
   type: "viewer-quality-evidence",
   guard: {
@@ -141,7 +146,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
-        protocol: "screener-v0",
+        protocol: "screener-v2",
         roomId,
         role: "viewer",
         clientId: "client_12345678",
@@ -409,6 +414,12 @@ describe("client signaling protocol", () => {
         qualitySettings,
       }).success,
     ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-settings",
+        qualitySettings: qualitySettingsWithCodec,
+      }).success,
+    ).toBe(true);
     for (const invalid of [
       { ...qualitySettings, resolution: "2160p" },
       { ...qualitySettings, maxFramerate: 14 },
@@ -418,6 +429,7 @@ describe("client signaling protocol", () => {
       { ...qualitySettings, maxBitrate: 12_000_001 },
       { ...qualitySettings, maxBitrate: 5_000_000.5 },
       { ...qualitySettings, degradationPreference: "automatic" },
+      { ...qualitySettings, videoCodec: "vp9" },
       { ...qualitySettings, codec: "video/VP9" },
     ]) {
       expect(
