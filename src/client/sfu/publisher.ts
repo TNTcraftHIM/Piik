@@ -610,6 +610,9 @@ function videoPublishOptions(
   const highResolution = QUALITY_RESOLUTIONS[profile.resolution];
   return {
     backupCodec: false,
+    ...(!profile.videoCodec || profile.videoCodec === "automatic"
+      ? {}
+      : { videoCodec: profile.videoCodec }),
     simulcast: true,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,

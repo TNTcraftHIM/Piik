@@ -7,7 +7,7 @@ Last updated: 2026-08-21
 Production at `https://share.bonfire.icu` is exact `6ccb516a47261054f91dfa2fafa408d39ced59fc`; immutable source/dist artifacts are 619,674/358,621 bytes, with hashes in deployment.
 Cutover: 2,048 ms lock/1,272 ms stop-health/888 ms switch-health. SQLite v3/five rooms has SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services are active/running at `NRestarts=0`; rollbacks are `1331fbdd`, then `261e980` and `691863e`.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
-Stable SFU, route/transport truth, preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only. Production prefers H.264 with negotiated VP8 fallback.
+Stable SFU, route/transport truth, preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only. The controlled production A/B uses browser/LiveKit codec defaults; explicit codec controls are source-complete.
 
 ## Execution Principle
 
@@ -15,7 +15,7 @@ Parallel flagship work; minimum relevant checks and rollback proof. Research plu
 
 ## Current Snapshot
 
-- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are clarity-first; balanced/fluid stay explicit. P2P writes before offer or explicit changes, never on answer. The SFU lifecycle candidate retains sender/SDK/restart/republish options with rollback. Browser degradation and Host SFU A+B remain open.
+- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced and automatic codec; clarity/fluid plus H.264/VP8 stay explicit, with codec locked during a share. Browser degradation and Host SFU A+B remain open.
 - Production `screener-v2` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
 - Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Status and details stay neutral before media proof; current evidence labels green P2P/yellow `SFU fallback`, while relay evidence adds `TURN` plus only a locally observed protocol.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.

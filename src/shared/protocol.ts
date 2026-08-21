@@ -5,7 +5,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v2";
+export const SIGNALING_PROTOCOL = "screener-v3";
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
@@ -166,12 +166,22 @@ export type DegradationPreference = z.infer<
   typeof degradationPreferenceSchema
 >;
 
+export const videoCodecPreferenceSchema = z.enum([
+  "automatic",
+  "h264",
+  "vp8",
+]);
+export type VideoCodecPreference = z.infer<
+  typeof videoCodecPreferenceSchema
+>;
+
 export const qualitySettingsSchema = z
   .object({
     resolution: qualityResolutionSchema,
     maxFramerate: z.number().int().min(15).max(60),
     maxBitrate: z.number().int().min(2_000_000).max(12_000_000),
     degradationPreference: degradationPreferenceSchema,
+    videoCodec: videoCodecPreferenceSchema.optional(),
   })
   .strict();
 export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
@@ -179,7 +189,8 @@ export const DEFAULT_QUALITY_SETTINGS = {
   resolution: "1080p",
   maxFramerate: 60,
   maxBitrate: 8_000_000,
-  degradationPreference: "maintain-resolution",
+  degradationPreference: "balanced",
+  videoCodec: "automatic",
 } as const satisfies QualitySettings;
 
 export const relayDownstreamEdgesSchema = z.union([

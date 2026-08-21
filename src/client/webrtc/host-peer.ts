@@ -15,6 +15,7 @@ import {
   collectConnectionMetrics,
   createStatsAccumulator,
 } from "./stats";
+import { applyVideoCodecPreference } from "./video-codec-preference";
 
 const MAX_PENDING_CANDIDATES = 64;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
@@ -113,10 +114,15 @@ export class HostPeer {
       return false;
     }
     const audioTrack = this.stream.getAudioTracks()[0] ?? null;
-    this.videoSender = this.connection.addTransceiver(videoTrack, {
+    const videoTransceiver = this.connection.addTransceiver(videoTrack, {
       direction: "sendonly",
       streams: [this.stream],
-    }).sender;
+    });
+    applyVideoCodecPreference(
+      videoTransceiver,
+      this.desiredProfile.videoCodec,
+    );
+    this.videoSender = videoTransceiver.sender;
     this.audioSender = this.connection.addTransceiver(audioTrack ?? "audio", {
       direction: "sendonly",
       streams: [this.stream],
