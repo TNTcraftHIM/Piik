@@ -1,6 +1,6 @@
 # Realtime Screen-Share Quality Adaptation
 
-- Research date: 2026-08-19
+- Research date: 2026-08-21
 - Scope: realtime game screen sharing in the browser
 - Status: implementation input; real-device quality remains unverified
 
@@ -87,6 +87,51 @@ because its effective default is 1.0. Likewise, the current 3/5/8 Mbps values
 are ceilings rather than targets. Raising them cannot repair CPU or bandwidth
 limitation and should only follow evidence that the encoder is already pinned
 to the ceiling while spare transport capacity remains.
+
+## Initial Balanced Lifecycle Evidence
+
+On 2026-08-21 one bounded local Chrome 151 run used exact source `b447ab6`, a
+synthetic 1920x1080 at 60 fps capture, and one direct UDP Viewer. After the
+initial connection had existed for about 22 seconds, the Host outbound and
+Viewer inbound were both 1280x720 at 57 fps and about 7.03 Mbps. The sender
+reported `qualityLimitationReason=bandwidth`, despite about 12.59 Mbps of
+available outgoing bitrate. Reapplying the identical 1080p60 `balanced` setting
+through the real Host control produced 1920x1080 at 55 fps and about 7.11 Mbps
+after 5.2 seconds, with the limitation cleared. Both ends reported zero packet
+loss and no Viewer freeze.
+
+The route revision, PeerConnection identity, RTP SSRC, RTP stats object, and
+track identifier all remained unchanged. This rules out a new route, sender,
+or capture generation as the source of that observed transition. It does not
+prove visual quality, production behavior, or SFU behavior. Earlier samples in
+the same run remained at 640x360 through roughly 20 seconds and reached 720p in
+the two-second window immediately before the control action, so continued
+stock BWE ramp-up remains a causal confound. No second browser run was made.
+The Host control applies same-track capture constraints before updating sender
+parameters, so this run also cannot isolate those two standard calls.
+
+Static review does not support the simpler claim that Chromium discards every
+pre-negotiation `setParameters()` call. Current libwebrtc stores sender init
+parameters while no SSRC exists and transfers them into the negotiated sender.
+The observed transition followed the same-setting action, but this single run
+cannot attribute it to sender lifecycle or the reapply itself. The bounded
+implementation change refreshes the same video-sender profile after each
+accepted answer, serialized with existing sender mutations. It
+changes no track, PeerConnection, ceiling, degradation preference, or room
+setting and adds no periodic controller. A post-change real-capture P2P check
+must still confirm that the negotiated sender reapply, without a new capture
+generation, clears the reported startup condition.
+
+This evidence does not justify an SFU change. The current SFU publisher always
+publishes the ordered `q,h` pair when an SFU route is active and configures its
+sender after SDK publication. The pinned client publication defaults to
+`HIGH`, and Screener also requests a `HIGH` subscriber ceiling immediately
+after subscribing. A low SFU receive layer can still be a valid server BWE
+choice. Diagnose that case by correlating publisher high-layer stats with the
+Viewer's actual inbound layer; do not infer a missing `HIGH` request or change
+the application policy without those measurements. LiveKit's pinned client
+also contains an SDP start-bitrate mitigation for initial video blur, but
+Screener's accepted boundary forbids adding application SDP bitrate hacks.
 
 The same production release is also reported to reduce game-stream frame rate
 and consume noticeable Host resources. That report applies only to deployed
@@ -338,11 +383,13 @@ hardware encoder, game FPS/p1 low, CPU/GPU, interval encode cost, upload, and
 per-layer byte budgets. Before default enablement, a separate root-with-children
 gate must inject an autonomous downshift, observe `suspect`, evacuate after
 bounded confirmation, and limit temporary descendant impact; no confirmed
-`FALLBACK` root may retain children. At `main` commit `13b8dad`, Screener's
-default-off publisher configures exactly two ordered `q`/`f` encodings, leaves
-Dynacast at `false`, disables backup-codec publication, and its subscriber sets
-a `HIGH` ceiling after subscribing. This is implemented configuration, not
-browser or performance evidence. The subscriber also does not attach a
+`FALLBACK` root may retain children. Screener's current publisher always
+configures exactly two ordered `q`/`h` encodings whenever an SFU publication is
+active, leaves Dynacast at `false`, disables backup-codec publication, and its
+subscriber sets a `HIGH` ceiling after subscribing. The publication is not
+behind a separate quality flag; its per-subscriber BWE and resource acceptance
+gates remain unverified. This is implemented configuration, not browser or
+performance evidence. The subscriber also does not attach a
 `RemoteTrack`, so SDK `adaptiveStream` is not directly usable without changing
 that ownership; built-in SFU bandwidth adaptation does not depend on enabling
 that feature. If built-in selection fails the product gates, test explicit
@@ -504,6 +551,10 @@ resolution, frame rate, or bitrate.
 - Every sender update derives from `getParameters()`, calls `setParameters()`,
   then reads requested/applied bitrate, frame rate, scale, and preference.
   Rejection or browser rewriting is visible rather than console-only.
+- A P2P sender receives that update before its first offer and once more after
+  each accepted answer. The negotiated reapply uses the current selected
+  profile and existing sender; it neither rebuilds the connection nor changes
+  the browser-owned degradation decision.
 - One strict room setting is last-wins for current/future peer relays and the
   configured SFU publisher. Ordinary P2P keeps that state local and does not add
   it to the authenticated wire.
@@ -596,6 +647,7 @@ is a separate optimization.
 - [MDN `RTCRtpSender.setParameters()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
 - [Chromium `motion` to libwebrtc `kFluid` bridge](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc)
 - [libwebrtc `motion`/`kFluid` sender classification](https://webrtc.googlesource.com/src/+/3b1eab8a69cb5078befb021c5492d3f204a7d6a2/pc/rtp_sender.cc)
+- [libwebrtc pre-negotiation sender parameter storage](https://webrtc.googlesource.com/src/+/refs/heads/main/pc/rtp_sender.cc)
 - [libwebrtc encoder content-type selection](https://webrtc.googlesource.com/src/+/9caef2a8b88f389af10cee841732c42a98d3d45d/media/engine/webrtc_video_engine.cc)
 - [libwebrtc conditional screen-share degradation mapping](https://webrtc.googlesource.com/src/+/refs/heads/main/video/video_stream_encoder.cc)
 - [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
@@ -606,6 +658,7 @@ is a separate optimization.
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit client 2.22.0 SVC defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
 - [LiveKit client 2.22.0 screen-share SVC override](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
+- [LiveKit client 2.22.0 start-bitrate negotiation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/PCTransport.ts)
 - [LiveKit client 2.22.0 SVC encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit client 2.22.0 subscriber quality control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/RemoteTrackPublication.ts)
 - [LiveKit server 1.13.5 per-subscriber layer application](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscribedtrack.go)

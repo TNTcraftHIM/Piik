@@ -480,6 +480,37 @@ describe("HostPeer source replacement", () => {
     });
   });
 
+  it("reapplies the selected video profile after the answer", async () => {
+    const video = createTrack("video", "video");
+    const audio = createTrack("audio", "audio");
+    const peer = createPeer(createStream(video, audio));
+
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
+
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      description: { type: "answer", sdp: "test-answer" },
+    });
+
+    expect(connection.remoteDescription).toMatchObject({
+      type: "answer",
+      sdp: "test-answer",
+    });
+    expect(connection.senders[0]?.track).toBe(video);
+    expect(connection.senders[0]?.replaceTrack).not.toHaveBeenCalled();
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(
+      connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      degradationPreference: "balanced",
+      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+    });
+    expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
+  });
+
   it("serializes initial sender configuration with a live profile update", async () => {
     const peer = createPeer(
       createStream(
