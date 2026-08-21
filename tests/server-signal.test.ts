@@ -282,6 +282,161 @@ async function correlateParentEdgeQualityEvidence(
   return viewerEvidence;
 }
 
+async function startRelayRelativeFpsFixture(
+  prefix: string,
+  now: () => number,
+  options: {
+    alternateRelayCapacity?: 0 | 1;
+    onSfuTokenIssue?: () => void;
+    sfu?: boolean;
+  } = {},
+) {
+  const harness = options.sfu
+    ? await startSfuHarness({
+        now,
+        tokenIssuer: {
+          issueToken: async ({ peerId }) => {
+            options.onSfuTokenIssue?.();
+            return `token-${peerId}`;
+          },
+        },
+      })
+    : await startHarness({ peerAssistedMedia: true, now });
+  const host = await openClient(harness.webSocketUrl);
+  const hostAuth = peerAssisted(
+    await authenticate(host, harness.room, "host", `${prefix}-host`),
+  );
+  const parent = await openClient(harness.webSocketUrl);
+  const parentAuth = peerAssisted(
+    await authenticate(parent, harness.room, "viewer", `${prefix}-parent`, 1),
+  );
+  const alternate = await openClient(harness.webSocketUrl);
+  const alternateAuth = peerAssisted(
+    await authenticate(
+      alternate,
+      harness.room,
+      "viewer",
+      `${prefix}-alternate`,
+      options.alternateRelayCapacity ?? 1,
+    ),
+  );
+  const child = await openClient(harness.webSocketUrl);
+  const childAuth = peerAssisted(
+    await authenticate(child, harness.room, "viewer", `${prefix}-child`, 0),
+  );
+  expect(parentAuth.routeAssignment.upstream).toEqual({
+    kind: "peer",
+    peerId: hostAuth.peerId,
+  });
+  expect(alternateAuth.routeAssignment.upstream).toEqual({
+    kind: "peer",
+    peerId: hostAuth.peerId,
+  });
+  expect(childAuth.routeAssignment.upstream).toEqual({
+    kind: "peer",
+    peerId: parentAuth.peerId,
+  });
+
+  const parentConnectionId = `${prefix}_parent_connection`;
+  host.socket.send(
+    JSON.stringify({
+      type: "signal",
+      targetPeerId: parentAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: parentConnectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }),
+  );
+  await parent.inbox.next("signal");
+
+  const childConnectionId = `${prefix}_child_connection`;
+  parent.socket.send(
+    JSON.stringify({
+      type: "signal",
+      targetPeerId: childAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: childConnectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }),
+  );
+  await child.inbox.next("signal");
+
+  return {
+    alternate,
+    alternateAuth,
+    child,
+    childAuth,
+    childConnectionId,
+    harness,
+    host,
+    hostAuth,
+    parent,
+    parentAuth,
+    parentConnectionId,
+    routeRevision: childAuth.routeRevision,
+  };
+}
+
+async function correlateRelayParentInboundFps(
+  fixture: Awaited<ReturnType<typeof startRelayRelativeFpsFixture>>,
+  framesPerSecond: number,
+) {
+  fixture.parent.socket.send(
+    JSON.stringify(
+      viewerQualityEvidenceWithMetrics(
+        fixture.parentConnectionId,
+        fixture.routeRevision,
+        0,
+        { framesPerSecond },
+      ),
+    ),
+  );
+  while (true) {
+    const evidence = await fixture.host.inbox.next("viewer-quality-evidence");
+    if (evidence.viewerPeerId !== fixture.parentAuth.peerId) {
+      continue;
+    }
+    fixture.host.socket.send(
+      JSON.stringify({
+        type: "parent-edge-quality-evidence",
+        viewerPeerId: evidence.viewerPeerId,
+        guard: evidence.guard,
+        viewerSequence: evidence.sequence,
+        proof: { kind: "sending", packetsSentDelta: 1_500 },
+      }),
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    return;
+  }
+}
+
+async function correlateRelayChildFps(
+  fixture: Awaited<ReturnType<typeof startRelayRelativeFpsFixture>>,
+  sequence: number,
+  framesPerSecond: number,
+) {
+  fixture.child.socket.send(
+    JSON.stringify(
+      viewerQualityEvidenceWithMetrics(
+        fixture.childConnectionId,
+        fixture.routeRevision,
+        sequence,
+        { framesPerSecond },
+      ),
+    ),
+  );
+  await correlateParentEdgeQualityEvidence(fixture.parent, {
+    kind: "sender-limited",
+    packetsSentDelta: 1_500,
+    reason: "bandwidth",
+  });
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
 async function startSfuHarness(options: {
   tokenIssuer: SfuTokenIssuer;
   selectedEdgeTurn?: boolean;
@@ -3003,6 +3158,354 @@ describe("WebSocket signaling", () => {
       peerId: unrelatedParentAuth.peerId,
     });
     acceptedParentEvidence.mockRestore();
+  });
+
+  it("does not treat a 30 FPS relay child as bad against a 60 FPS setting", async () => {
+    let now = 90_000;
+    const fixture = await startRelayRelativeFpsFixture(
+      "relative_same_fps",
+      () => now,
+    );
+    await correlateRelayParentInboundFps(fixture, 30);
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      await correlateRelayChildFps(fixture, sequence, 30);
+      now += 2_000;
+    }
+    await expect(
+      fixture.child.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
+  it("moves a relay child after three corroborated relative-FPS windows", async () => {
+    let now = 110_000;
+    const fixture = await startRelayRelativeFpsFixture(
+      "relative_peer_move",
+      () => now,
+    );
+    await correlateRelayParentInboundFps(fixture, 30);
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      await correlateRelayChildFps(fixture, sequence, 10);
+      now += 2_000;
+    }
+    const moved = await nextActiveRouteAfter(
+      fixture.child,
+      fixture.routeRevision,
+    );
+    expect(moved.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.alternateAuth.peerId,
+    });
+
+    const failedAlternateConnection = "relative_peer_move_failed_alternate";
+    fixture.alternate.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: fixture.childAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: failedAlternateConnection,
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await fixture.child.inbox.next("signal");
+    fixture.child.socket.send(
+      JSON.stringify({
+        type: "route-failed",
+        revision: moved.revision,
+        phase: "active",
+        connectionId: failedAlternateConnection,
+      }),
+    );
+    const recovered = await nextActiveRouteAfter(fixture.child, moved.revision);
+    expect(recovered.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
+    });
+  });
+
+  it("keeps the old relay edge when relative FPS has no alternate peer", async () => {
+    let now = 130_000;
+    let issuedSfuTokens = 0;
+    const fixture = await startRelayRelativeFpsFixture(
+      "relative_no_alternate",
+      () => now,
+      {
+        alternateRelayCapacity: 0,
+        onSfuTokenIssue: () => {
+          issuedSfuTokens += 1;
+        },
+        sfu: true,
+      },
+    );
+    await correlateRelayParentInboundFps(fixture, 30);
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      await correlateRelayChildFps(fixture, sequence, 10);
+      now += 2_000;
+    }
+    await expect(
+      fixture.child.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+    await expect(
+      fixture.child.inbox.next("sfu-config", 40),
+    ).rejects.toThrow("Timed out");
+    await expect(fixture.child.inbox.next("error", 40)).rejects.toThrow(
+      "Timed out",
+    );
+    expect(issuedSfuTokens).toBe(0);
+
+    const activeConnectionId = "relative_no_alternate_still_active";
+    fixture.parent.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: fixture.childAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: activeConnectionId,
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await fixture.child.inbox.next("signal")).toMatchObject({
+      fromPeerId: fixture.parentAuth.peerId,
+    });
+
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      fixture.child.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            activeConnectionId,
+            fixture.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(fixture.parent);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      now += 2_000;
+    }
+    const prepare = await nextPreparedRoute(fixture.child);
+    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(await fixture.child.inbox.next("sfu-config")).toMatchObject({
+      revision: prepare.revision,
+    });
+    expect(issuedSfuTokens).toBeGreaterThan(0);
+  });
+
+  it("does not apply relative-FPS reparenting to a Host-direct edge", async () => {
+    let now = 150_000;
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      now: () => now,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "relative_host_direct_host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "relative_host_direct_viewer",
+        0,
+      ),
+    );
+    const alternate = await openClient(harness.webSocketUrl);
+    const alternateAuth = peerAssisted(
+      await authenticate(
+        alternate,
+        harness.room,
+        "viewer",
+        "relative_host_direct_alternate",
+        1,
+      ),
+    );
+    await nextActiveRouteRevision(viewer, alternateAuth.routeRevision);
+    expect(viewerAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "relative_host_direct_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      viewer.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "relative_host_direct_connection",
+            alternateAuth.routeRevision,
+            sequence,
+            { framesPerSecond: 10 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(host);
+      now += 2_000;
+    }
+    await expect(viewer.inbox.next("route-update", 40)).rejects.toThrow(
+      "Timed out",
+    );
+  });
+
+  it("requires fresh correlated inbound FPS from the relay parent", async () => {
+    let now = 170_000;
+    const fixture = await startRelayRelativeFpsFixture(
+      "relative_parent_freshness",
+      () => now,
+    );
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      await correlateRelayChildFps(fixture, sequence, 10);
+      now += 2_000;
+    }
+    await expect(
+      fixture.child.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+
+    await correlateRelayParentInboundFps(fixture, 30);
+    now += 5_001;
+    for (let sequence = 3; sequence < 6; sequence += 1) {
+      await correlateRelayChildFps(fixture, sequence, 10);
+      now += 2_000;
+    }
+    await expect(
+      fixture.child.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
+  it.each(["connection", "revision", "session"] as const)(
+    "rejects relative FPS after the relay parent's %s identity changes",
+    async (changedIdentity) => {
+      let now = 180_000;
+      const prefix = `relative_parent_${changedIdentity}`;
+      const fixture = await startRelayRelativeFpsFixture(prefix, () => now);
+      await correlateRelayParentInboundFps(fixture, 30);
+      let routeRevision = fixture.routeRevision;
+
+      if (changedIdentity === "connection") {
+        fixture.host.socket.send(
+          JSON.stringify({
+            type: "signal",
+            targetPeerId: fixture.parentAuth.peerId,
+            payload: {
+              kind: "description",
+              connectionId: `${prefix}_replacement_connection`,
+              description: { type: "offer", sdp: "v=0\r\n" },
+            },
+          }),
+        );
+        await fixture.parent.inbox.next("signal");
+      } else if (changedIdentity === "revision") {
+        const extra = await openClient(fixture.harness.webSocketUrl);
+        const extraAuth = peerAssisted(
+          await authenticate(
+            extra,
+            fixture.harness.room,
+            "viewer",
+            `${prefix}-extra`,
+            0,
+          ),
+        );
+        routeRevision = extraAuth.routeRevision;
+        await nextActiveRouteRevision(fixture.child, routeRevision);
+      } else {
+        const replacement = await openClient(fixture.harness.webSocketUrl);
+        const replacementAuth = peerAssisted(
+          await authenticate(
+            replacement,
+            fixture.harness.room,
+            "viewer",
+            `${prefix}-parent`,
+            1,
+          ),
+        );
+        expect(replacementAuth.peerId).toBe(fixture.parentAuth.peerId);
+        routeRevision = replacementAuth.routeRevision;
+        fixture.parent = replacement;
+      }
+
+      for (let sequence = 0; sequence < 3; sequence += 1) {
+        fixture.child.socket.send(
+          JSON.stringify(
+            viewerQualityEvidenceWithMetrics(
+              fixture.childConnectionId,
+              routeRevision,
+              sequence,
+              { framesPerSecond: 10 },
+            ),
+          ),
+        );
+        await correlateParentEdgeQualityEvidence(fixture.parent, {
+          kind: "sender-limited",
+          packetsSentDelta: 1_500,
+          reason: "bandwidth",
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        now += 2_000;
+      }
+      await expect(
+        fixture.child.inbox.next("route-update", 40),
+      ).rejects.toThrow("Timed out");
+    },
+  );
+
+  it("keeps severe zero-decode quality fallback eligible for SFU", async () => {
+    let now = 190_000;
+    const harness = await startSfuHarness({
+      now: () => now,
+      tokenIssuer: { issueToken: async ({ peerId }) => `token-${peerId}` },
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "severe_sfu_host"),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(viewer, harness.room, "viewer", "severe_sfu_viewer", 0),
+    );
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "severe_sfu_connection",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    await viewer.inbox.next("signal");
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      viewer.socket.send(
+        JSON.stringify(
+          viewerQualityEvidenceWithMetrics(
+            "severe_sfu_connection",
+            viewerAuth.routeRevision,
+            sequence,
+            { framesDecodedDelta: 0 },
+          ),
+        ),
+      );
+      await correlateParentEdgeQualityEvidence(host);
+      now += 2_000;
+    }
+    const prepare = await nextPreparedRoute(viewer);
+    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(await viewer.inbox.next("sfu-config")).toMatchObject({
+      revision: prepare.revision,
+    });
+    expect(hostAuth.routeAssignment.upstream).toEqual({ kind: "none" });
   });
 
   it("reparents only a viewer subtree after three hard quality windows", async () => {

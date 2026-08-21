@@ -1,10 +1,10 @@
 # Current Status
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 ## Phase
 
-Production is exact `4ee2f27f3f3e0882ae6f9d970fef1cf3b6fb1f7b` at `https://share.bonfire.icu`, release `4ee2f27f3f3e`, wire `screener-v4`; rollback is release `3d75e7b88635`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services and local/public health are green.
+Production is exact `25b725fdfcccc181a22ef020d77f5668470ba636` at `https://share.bonfire.icu`, release `25b725fdfccc`, wire `screener-v4`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services and local/public health are green.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. No browser/media/SFU/TURN/performance canary ran; exact-`16f6eab` Host-ingress proof is separate.
 Stable SFU, route/transport truth, preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only. The controlled production A/B uses browser/LiveKit codec defaults; explicit codec controls are source-complete.
 
@@ -20,7 +20,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 - Native v4 is source-only (memory rooms, 300s reclaim); it does not subscribe to Web presence, follows authenticated direct-child assignments up to two, and fails unsupported SFU/selected ingress boundedly.
 - Production is roots/Web relay <=2; every Viewer has one upstream and rejects child3. One-root healthy-SFU MBB is deployed but media-unverified; capacity `0 -> 1`, multi-root and browser gates remain open. Room `1` is historical; HTTPS/WSS is TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
-- Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
+- C+B reparenting remains uncalibrated. Source compares relay-child FPS with fresh parent input and tries peers only; no candidate keeps the old edge. This correction is not deployed. Admission rescue stays deterministic.
 
 ## Verified Evidence
 
