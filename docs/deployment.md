@@ -20,26 +20,33 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `ecc794d6f01ff8e90cc07a267d221daaac8da9e1`
+Production currently runs exact `6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. The 951,317-byte artifact has SHA-256
-`22c82d0e06f34abb746ee9e652821deebeea0174643b31ec6e21e159933f5431`.
-The 2026-08-21T02:37:28Z UTC cutover held the deployment lock for 2,646.166 ms;
-local health returned 425.531 ms after service stop (364.286 ms after the symlink
+integrity. The 957,434-byte artifact has SHA-256
+`89ff05dbd4d642ed8364a1e230b26b6f4e1dab5a879a0d40a14364e3a26a5cf7`.
+The 2026-08-21T03:53:23Z UTC cutover held the deployment lock for 2,755.457 ms;
+local health returned 551.381 ms after service stop (478.335 ms after the symlink
 switch). Screener, LiveKit, coturn, and nginx are active/running with
 observed `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
-service owner/mode and database hash preserved. `SITE_ACCESS_PASSWORD`,
+service owner/mode `screener:screener`/0600 and SHA-256
+`aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`.
+`SITE_ACCESS_PASSWORD`,
 `/api/site-access`, and the nginx limiter replaced their retired Host-admission
 names in the prior access cutover; this release preserved the environment hash
 and the old endpoint remains 404. Exact
-`16f6eab27bdfb1c15cdbd814a35864f4f18be767`
-is the immediate rollback target; exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`
-remains a secondary rollback.
-This release deploys the window/full-display audio picker hints, audio `music`
-hint, interval A/V loss percentages, audio codec/format/bitrate/jitter details,
-and the one-per-room `peer-selected` attempt cap excluding Host ingress. The
-selected-edge UDP tuple remains configured with TTL 120. This cutover triggered
-no browser, TURN, SFU, or other media canary and remains configuration evidence.
+`ecc794d6f01ff8e90cc07a267d221daaac8da9e1` is the immediate rollback target;
+exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767` and
+`22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` remain secondary and tertiary.
+This release gives active SFU Viewers LiveKit connection state/stats instead of
+P2P waiting/ICE-unknown placeholders. Details show P2P or SFU and add TURN only
+for an actually selected relay candidate; exact-upstream presence feeds the
+on-demand Host topology. The release also requests a 128,000 bit/s screen-audio send
+ceiling on P2P/relay and LiveKit SFU, disables SFU DTX, and uses `balanced` for
+recommended profiles and advanced defaults. The browser still owns degradation,
+and the audio value is a requested/read-back ceiling rather than an audible-quality
+or stereo guarantee. The selected-edge UDP tuple remains configured with TTL 120.
+This cutover triggered no browser, media, SFU, TURN, or performance canary and
+remains exact-source, build, configuration, and deployment evidence.
 A separate earlier local Screener canary using exact `16f6eab` source and the
 production LiveKit/coturn tuple later proved active Host-ingress relay function
 without using the production application room or database; it is not
@@ -125,7 +132,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `c27df22` release with one
+selected-edge TURN config/wire is deployed in the current `6634cb9` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
@@ -351,216 +358,6 @@ maintenance boundary. If rollback is required, stop the v2 service, preserve the
 v2 database separately for diagnosis, restore the exact v1 backup with service
 ownership and mode `0600`, verify integrity and `user_version = 1`, and only then
 start the old binary. Never point the old binary at the migrated v2 file.
-
-Production completed this migration at 2026-08-20 03:06 +08 on exact
-`bbe4654a7a9b`; its artifact SHA-256 is
-`3C09AF81BCE68B51DD9E36E1C253A880D8D6F24BB498A090CF815AB196C392AA`.
-A stopped, read-only-verified v1 backup retained all four rooms;
-the v2 integrity/schema and locked-private digest checks passed, including room
-`1`. site access and a cookie-free private Viewer denial also passed. An
-earlier artifact attempt was rolled back after hard-linked dependencies let a
-permission change make the rollback release unreadable for 3m11s; the final release has an
-independent dependency tree and zero shared regular-file inodes.
-
-The code-only initial-connect recovery deployed at 2026-08-20 09:40 +08 on
-exact `89e6d7649169`; its artifact SHA-256 is
-`39B62039FCFB05281F78FCF85C964C520E2BB2FE5661ADA4758D598A7DF6CEC1`.
-Health returned in 1.09 seconds, the v2 database still contained four rooms and
-room `1`, and environment, nginx, and LiveKit state were unchanged. At 09:37 a
-bare `systemctl is-active` treated the expected stopped state as an error under
-strict shell and caused an immediate healthy rollback; no new application had
-failed. The later explicit `ActiveState` sequence completed successfully.
-
-The admission-policy and anonymous-entry cutover deployed between
-2026-08-20 11:13:42 and 11:13:43 +08 on exact
-`05f98d10ecd174427fc969f3ba2d510f12c74eb3`; its artifact SHA-256 is
-`FF938E8D59428F08B3F162DEA6DCF842A4705A94D3153967814CCE9AD6CBD94D`.
-The full gate passed 25 test files/369 tests before the atomic code/environment
-switch. Health and the built asset returned 200; SQLite v2 with four rooms
-including room `1` and zero Screener/LiveKit restarts were preserved. Chrome
-kept all four anonymous entry routes neutral until authorization; the current admission key returned 200,
-while the former and an incorrect key returned 401. Rolling this cutover back
-requires exact `89e6d7649169` together with its environment backup at
-`/etc/screener/backups/05f98d10-precutover-20260820T110654+0800`.
-
-One failed validation assertion printed the stateless admission cookie only in
-the operator's private test output. It did not enter the repository, service
-logs, shell history, release artifact, browser profile, or temporary files. No
-value is retained here; the cookie has no server-side state and expires within
-12 hours.
-
-Local quality reparenting deployed between 2026-08-20 11:41:22 and 11:41:23
-+08 on exact `d4bc421828c4b74f55195723aace290ffc0e5f9d`; its artifact SHA-256 is
-`3F8CF25F8D989CBDF38DBBCAC4A261C349E44B72D274A944B877540056171A08`.
-The immutable release is `/opt/screener/releases/d4bc421828c4`, its upload is
-`/opt/screener/uploads/screener-d4bc421828c4.tar.gz`, and the pre-switch target
-record is `/opt/screener/backups/current-before-d4bc421828c4.txt`.
-The gate passed 25 test files/378 tests, typecheck and both builds. The 760ms
-code-only switch kept health and `index-YdNLg2E8.js` at 200, SQLite integrity
-and four rooms including room `1`, Screener/LiveKit restarts at 0/0, and
-environment/nginx/LiveKit hashes unchanged. Its immediate rollback is
-`05f98d10ecd1` with the same environment and SQLite v2. A pre-cutover inode gate
-caught two internal esbuild hard links; hash-equal copy replacement broke them
-before the switch, so no running or rollback release was affected.
-At 11:44:15 +08 Screener and LiveKit were still active/running with zero restarts,
-used 39,198,720 and 79,269,888 bytes, and had no error-priority journal entries
-or cgroup high/max/OOM events; host available memory was 373,469,184 bytes.
-No quality/reparent log or real-room trigger appeared, so this verifies the
-deployed code and containment, not reparenting behavior.
-
-Viewer presence plus deterministic relay-admission rescue switched from
-`2026-08-20T15:33:21.720345870+08:00` to health-ready at
-`2026-08-20T15:33:22.282829810+08:00`; its gate finished at
-`2026-08-20T15:33:23.051172737+08:00` on exact
-`31bee238bc1e901e823f34e50737e202dc4b04bf`. The 889,710-byte immutable upload
-is `/opt/screener/uploads/screener-31bee238bc1e-20260820T071907Z.zip` with
-SHA-256 `C759A33A50EC3E272F07BCC00F2043CA0042446078472CAFA66CBD406EC925D9`,
-and the active release is `/opt/screener/releases/31bee238bc1e`.
-The gate passed 28 test files/421 tests and both builds. Restart-to-health took
-560.607 ms; 20 ms probing observed 437.137 ms unavailable. External health,
-the asset hash, three neutral entry routes, SQLite integrity/version 2/four
-rooms including room `1`, and the exact revision passed. Screener, LiveKit,
-coturn, and nginx remained active with zero automatic restarts; only Screener
-had the one planned restart. Environment, nginx, LiveKit, coturn, firewall,
-listeners, exact-room/SFU caps, and disabled application TURN tuple were
-unchanged.
-At the `2026-08-20T15:39:07.082219441+08:00` audit, Screener used 38,031,360
-bytes with zero cgroup low/high/max/OOM events. The pre-cutover rollback is exact
-`7fea60ef6f2ad14a9ac1c23a89a523d91bbb97e4` with
-`/opt/screener/backups/31bee238bc1e-precutover-20260820T073321Z`.
-No temporary symlink, deployment process, browser profile, or held deployment
-lock remained; the immutable upload, active release, and backups are retained.
-No real room triggered admission rescue, so this verifies deployment and
-rollback readiness, not the new route transition or media quality.
-
-The sole Host display-name cutover attempt used exact source
-`61a87ae47e38abc943cef47b3d7318bb51bf86d6` and artifact
-`screener-61a87ae47e38abc943cef47b3d7318bb51bf86d6-20260820T143538Z.tar.gz`
-(883597 bytes, SHA-256
-`d5b4d6cc567ba96ce37f8eb9934dd5822c64dc084796047d5f6d6217e2e74acb`). It ran at
-`2026-08-20T16:09Z`; the prepare-to-release switch and health gate passed, but a
-post-cutover assertion compared against stale `NRestarts=31` data and triggered
-automatic rollback. The application and database were not the cause. Rollback
-left `fdd14ba0d9b5` active and healthy, with SQLite v3 retaining four rooms
-including room `1`; the current Screener, LiveKit, coturn, and nginx services
-each report `NRestarts=0`. Host display-name remains source-only/not deployed.
-No selected-edge TURN enablement occurred.
-
-The all-room routing and selected-edge configuration cutover used exact source
-`cf149df2411798cd632cc92a562b0a35146e0c1b` and immutable artifact
-`screener-cf149df2411798cd632cc92a562b0a35146e0c1b-20260820T173812Z-git.tar.gz`
-(893,953 bytes, SHA-256
-`80918716aefdbb958289b06b6f31551b78dbbaf7fb0f16980eb38d127e158e14`). The
-single lock-held run started at 2026-08-20T17:48:24.554Z and finished at
-2026-08-20T17:48:33.809Z (9,256.904 ms). Screener stopped at
-17:48:29.425Z, the symlink switched at 17:48:29.478Z, and local health was
-ready at 17:48:29.988Z: 562.657 ms from stop, or 509.983 ms from switch.
-The two transient local connection-refused probes were within that normal
-restart window; no browser or media benchmark was run.
-
-The final release removed `PEER_ASSISTED_ROOM_IDS`, set
-`PEER_ASSISTED_MEDIA=true` for every room, and configured one selected-edge
-TURN/UDP URL with a 120-second TTL. Ordinary peer ICE remained STUN-only; the
-coturn, nginx, LiveKit, firewall, and listener baselines were preserved, while
-the application environment changed only for the selected tuple and retained
-root ownership and mode 0600. Local/public health, the built asset, three neutral
-routes, and the anonymous site-access boolean passed. SQLite v3 integrity,
-owner/mode, checksum, five-room count, and room `1` were unchanged.
-Screener, LiveKit, coturn, and nginx were active/running with
-`NRestarts=0` at the final audit. The selected-edge tuple was not exercised
-by a real TURN session and no SFU frame or quality result was claimed.
-
-This release also carries the Web Host display-name path and the best-effort
-window-scoped display-audio request hint. Native H.264 opt-in source remains
-available in the repository, but no packaged native sender was deployed; VP8
-remains the Web default. The prior stale `NRestarts=31` rollback is historical
-evidence only, and the final wrapper records restart counts without asserting
-an obsolete baseline.
-
-The subsequent flagship cutover used exact source
-`c27df2235ecc0be17816f642ca49028e30380a34` and immutable artifact
-`screener-c27df2235ecc0be17816f642ca49028e30380a34-20260820T190108Z-git.tar.gz`
-(912,999 bytes, SHA-256
-`1c7f06e2608414f0a4facf8577c8b49a8fefb831e20826c0e23fa0d1e85240d6`).
-The one lock-held cutover ran from 2026-08-20T19:03:10.569Z to
-19:03:11.232Z: 662 ms total, 552 ms from service stop to local health, and
-543 ms from symlink switch to local health. The environment and SQLite
-checksums were unchanged; SQLite v3 retained five rooms including room `1`
-with owner/mode `screener:screener`/0600. Local/public health, the built asset,
-root, and room route returned 200, all four services remained active/running,
-and exact `cf149df2411798cd632cc92a562b0a35146e0c1b` became the rollback release.
-No browser, TURN, SFU, or media canary was run, so this is deployment/config
-evidence only.
-
-The LiveKit two-layer RID fix cutover used exact source
-`22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` and immutable artifact
-`screener-22119b907d3cf03ce8b06d6fb4596ce1a26fedd7-20260820T221200Z-git.tar.gz`
-(660,626 bytes, SHA-256
-`3cbd8f6be82fa615fa2861ff1be0eba6c98f3f7d9acb73a0ba5c21a2ff4c661c`).
-The exact source passed typecheck, both builds, and 30 test files/440 tests.
-The one lock-held cutover completed at 2026-08-20T22:17:44.589825032Z;
-the lock was held for 1,695.676 ms, stop-to-health took 507.877 ms, and
-symlink-to-health took 479.483 ms. The release and its immediate
-`fd76277b05d4` rollback share zero regular-file inodes.
-
-Environment, nginx, LiveKit, coturn, nftables, listener, and SQLite hashes were
-unchanged. SQLite v3 retained five rooms including room `1` with owner/mode
-`screener:screener`/0600. Local/public health, root, room `1`, the built asset,
-site-access status, and the retired-endpoint 404 passed; all four services were
-active/running with their observed `NRestarts=0`. No browser, SFU media, TURN,
-or performance canary ran. This deploys the `q,h` guard and preserves exact
-`fd76277b05d491af8840b28f3132b7ff445d3cbe` as the rollback release; the one-SFU-
-root functional evidence remains the separate localhost Chrome run.
-
-The pending Host-ingress retry cutover used exact source
-`16f6eab27bdfb1c15cdbd814a35864f4f18be767` and immutable artifact
-`screener-16f6eab27bdfb1c15cdbd814a35864f4f18be767-20260820T233516Z-git.tar.gz`
-(1,027,423 bytes, SHA-256
-`74e0274ab11a162cb9dd4be1c34bb6b639e2ea76005969c30ae3a1daa656742f`).
-Fresh `npm ci` plus the exact-source gate passed typecheck, both builds, and 30
-test files/445 tests. The one lock-held cutover completed at
-2026-08-20T23:45:02.296255986Z; the lock was held for 10,237.892 ms,
-stop-to-health took 640.561 ms, and symlink-to-health took 570.188 ms. The new
-release and exact `22119b907d3c` rollback share zero regular-file inodes.
-
-Environment, nginx, LiveKit, coturn, nftables, listener, and SQLite hashes were
-unchanged. SQLite v3 retained five rooms including room `1` with owner/mode
-`screener:screener`/0600. Local/public health, root, room `1`, the built asset,
-site-access status, and the retired-endpoint 404 passed; all four services were
-active/running with their observed `NRestarts=0`. Backup
-`/opt/screener/backups/16f6eab27bdf-precutover-20260820T234457Z` retains the
-prior environment, database, and exact current target. This deploys the one-use
-initial/active Host-ingress selected retry; no browser, SFU media, TURN relay,
-or performance canary ran during that cutover. The later post-deploy functional
-canary is recorded above and does not change this cutover record.
-
-The Web audio, A/V diagnostics, and per-room selected-last-mile cap cutover used
-exact source `ecc794d6f01ff8e90cc07a267d221daaac8da9e1` and immutable artifact
-`screener-ecc794d6f01ff8e90cc07a267d221daaac8da9e1-20260821T022454Z-git.tar.gz`
-(951,317 bytes, SHA-256
-`22c82d0e06f34abb746ee9e652821deebeea0174643b31ec6e21e159933f5431`).
-Fresh exact-source `npm ci` plus `npm run check` passed typecheck, both builds,
-and 30 test files/452 tests. The lock-held cutover ran from
-2026-08-21T02:37:28.219189514Z to 02:37:30.865127203Z: 2,646.166 ms total,
-425.531 ms from service stop to local health, and 364.286 ms from symlink switch
-to local health. The release and exact `16f6eab27bdf` rollback share zero
-regular-file inodes.
-
-Environment, nginx, LiveKit, coturn, nftables, listener, and SQLite hashes were
-unchanged. SQLite v3 retained five rooms including room `1`, owner/mode
-`screener:screener`/0600, and SHA-256
-`6762f92759258278ec13c6acb69e1f0fa6f9247d798a917b419748c3b54341b6`.
-Local/public health, root, room `1`, the exact built asset, site-access status,
-and retired-endpoint 404 passed; all four services were active/running with
-observed `NRestarts=0`. The all-room controller retained an SFU-root cap of two,
-ordinary STUN-only ICE, and one selected-edge UDP tuple at TTL 120. Source
-inspection confirmed at most one pending/answered `peer-selected` attempt per
-room while `host-sfu-ingress` remains independent. Backup
-`/opt/screener/backups/ecc794d6f01f-precutover-20260821T023728Z` preserves the
-exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767` rollback; exact
-`22119b907d3cf03ce8b06d6fb4596ce1a26fedd7` remains secondary. This rollout ran
-no browser, media, SFU, TURN, or performance canary; the earlier exact-`16f6eab`
-Host-ingress functional evidence was not rerun.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently

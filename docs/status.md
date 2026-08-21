@@ -4,10 +4,10 @@ Last updated: 2026-08-21
 
 ## Phase
 
-Production at `https://share.bonfire.icu` is exact `ecc794d6f01ff8e90cc07a267d221daaac8da9e1`; artifact 951,317 bytes, SHA-256 `22c82d0e06f34abb746ee9e652821deebeea0174643b31ec6e21e159933f5431`.
-Cutover: 2,646.166 ms lock/425.531 ms stop-health/364.286 ms switch-health; SQLite v3/five rooms/four active services, observed `NRestarts=0`. Rollback is exact `16f6eab`; `22119b9` remains secondary.
-Ordinary ICE is STUN-only; all-room limits are SFU roots <=2 and one `peer-selected` attempt excluding Host ingress; selected UDP TTL is 120. This rollout ran no media canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
-Web window/system-audio and music hints, interval A/V loss%, and audio codec/format/bitrate/jitter are deployed. Native stays source-only; Web defaults VP8.
+Production at `https://share.bonfire.icu` is exact `6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137`; artifact 957,434 bytes, SHA-256 `89ff05dbd4d642ed8364a1e230b26b6f4e1dab5a879a0d40a14364e3a26a5cf7`.
+Cutover: 2,755.457 ms lock/551.381 ms stop-health/478.335 ms switch-health. SQLite v3/five rooms has SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services are active/running at `NRestarts=0`; rollbacks are `ecc794d`, then `16f6eab` and `22119b9`.
+Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
+SFU Viewers use LiveKit state/stats, not P2P waiting/ICE-unknown placeholders; details label P2P/SFU and TURN only for an actual relay. Exact topology, a 128,000 bit/s audio ceiling and `balanced` defaults are deployed. The ceiling is not a quality/stereo guarantee. Native stays source-only; Web defaults VP8.
 
 ## Execution Principle
 
@@ -17,13 +17,11 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 
 - Capture precedes room creation; source/quality changes and AV pause preserve peers. Recommended profiles and advanced defaults use `balanced`; clarity/fluid remain explicit. The browser chooses degradation; readback/stats report actual behavior.
 - Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and the site-access cookie are deployed atomically; raw credentials are never stored.
-- Source UI: adjacent nickname edit, distinct site/room prompts, shared inline/`/join` room-code form; production has prior UI. Presence exposes exact upstream/topology.
+- Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared inline/`/join` room-code form; production still has the prior UI. Deployed presence exposes exact active upstream/topology and remains control-plane-only.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
-- Production `q,h` is deployed; an exact-source/production-media canary proves active Host ingress without production app/DB.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
-- Web roster, audio picker/music hints, interval A/V loss%, and audio codec/format/bitrate/jitter are deployed.
 
 ## Verified Evidence
 
@@ -37,12 +35,11 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
 - Production caps pending/answered `peer-selected` at one per room; Host ingress is independent. Focused admission/release/rollback/STUN-only tests pass; earlier Chrome proves active Host-ingress function only.
-- Host names, Web audio, all-room routing, Host selected ingress and AV/audio diagnostics are active. Retained hidden-tab media counters progressed; audible/mobile proof remains open.
-- Exact `ecc794d` passed typecheck, builds and 452 tests. Deploy preserved config/network/SQLite hashes; SQLite v3/five rooms, routes/assets/SiteAccess and four zero-restart services passed. Rollback is `16f6eab`; `22119b9` is secondary.
+- Exact `6634cb9` passed typecheck, both builds, hygiene and 31 test files/459 tests from fresh inputs. Deployment preserved configuration hashes; DB, local/public health, root/room/asset/SiteAccess, retired-endpoint 404 and four zero-restart services passed.
 
 ## Unverified Boundaries
 
-- The `ecc794d` cutover ran no browser/media/TURN canary. Earlier exact-`16f6eab` proof covers active Host ingress only; initial/peer last mile, external cohorts, admission rescue, quality/resources/performance and game blur remain open.
+- The `6634cb9` cutover ran no browser/media/SFU/TURN/performance canary. Earlier `16f6eab` proof covers Host ingress only; audible quality, last mile, external cohorts, admission rescue, resources/performance and game blur remain open.
 - Mobile is Viewer-only. Its persistent audible media element keeps media/signaling active while the page lives; iOS lock-screen, reclamation and background reconnection remain device gates. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
