@@ -20,9 +20,9 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `93e4681915768db0bf3b0165c0fd9ec3f54f95c8`
-from `/opt/screener/releases/93e468191576`; immediate rollback is
-`/opt/screener/releases/66eb33717193`. Local and public health return 200;
+Production currently runs exact `01a77ae331ded864819003b532695470d7777e7d`
+from `/opt/screener/releases/01a77ae331de`; immediate rollback is
+`/opt/screener/releases/93e468191576`. Local and public health return 200;
 Screener, LiveKit, coturn, and nginx are active, and Screener reports
 `NRestarts=0`.
 
@@ -30,16 +30,17 @@ The current release deploys the bounded pre-share health/WSS/STUN self-check,
 privacy-safe click-only diagnostic JSON export, room admission default eight
 with explicit limits from one through sixteen, and peer-quality MBB. One
 ordinary Viewer with a peer or SFU upstream may own the provisional child;
-Host provisional children remain open. Production keeps its two-edge endpoint
-default; the next source release clamps Host to two and an
-ordinary Browser Viewer to one. The retained capacity-two/cap3 sixteen-Viewer
+Host provisional children remain open. The endpoint-cap environment is unset,
+so the production default yields Host two and ordinary Browser Viewer one; the
+wire remains unchanged. The retained capacity-two/cap3 sixteen-Viewer
 and resource runs are historical ordinary-PC experiments only and do not define
 release policy or close performance gates.
-The cutover used audited tree `848f1588000006d91546468abae858bf027929e6`,
+The cutover used audited tree `746fadb809b09199d4511cb99f5d34b99687a209`,
 an independent production dependency tree with zero shared regular-file inodes,
-and byte-identical public client assets. A no-room Chrome 151 canary passed
-health, WSS open/close, STUN-only configuration, and `srflx` gathering in 2.49
-seconds; it did not exercise room media, route migration, SFU, or TURN.
+and byte-identical public client assets. The prior `93e4681` no-room Chrome 151
+canary passed health, WSS open/close, STUN-only configuration, and `srflx`
+gathering in 2.49 seconds; it was not rerun for `01a77ae` and did not exercise
+room media, route migration, SFU, or TURN.
 
 ## Topology and prerequisites
 
@@ -129,7 +130,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `93e468191576` release with one
+selected-edge TURN config/wire is deployed in the current `01a77ae331de` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
@@ -536,7 +537,8 @@ Run these checks from real external networks before calling the deployment usabl
    and the selected-pair stats report a non-relay path when direct ICE succeeds.
 3. On a normal room, exhaust a peer route and verify the host plus at
    most two necessary roots select LiveKit UDP 7882. Peer descendants stay on
-   ordinary direct UDP and host/relay downstream caps remain two/two.
+   ordinary direct UDP and Host/ordinary Browser Viewer downstream caps remain
+   two/one.
 4. Force one controller-eligible edge past SFU/UDP and verify only that edge gets
    the short-lived TURN server plus relay policy and selects TURN/UDP. Ordinary
    peer PCs must stay STUN-only. Then block all UDP and verify bounded recovery

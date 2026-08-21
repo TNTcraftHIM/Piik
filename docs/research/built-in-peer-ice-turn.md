@@ -83,11 +83,14 @@ coherent controller-owned change with a current consumer:
 - a complete default-off deployment tuple with an independent secret, one
   explicit TURN/UDP URI, bounded TTL, quota, bandwidth, and relay-port limits;
 - issuance only after the current edge exhausts direct/peer UDP and SFU/UDP;
-- one in-memory attempt bound to room/share generation, viewer and parent
+- one in-memory negotiating attempt bound to room/share generation, viewer and parent
   sessions, route revision, the replaced connection, and a server-generated new
   connection identity;
-- at most one pending or answered `peer-selected` attempt per room, with the
-  separate Host-to-SFU ingress attempt excluded from that last-mile cap;
+- at most one `peer-selected` lease per room across negotiating and answered
+  states, with the separate Host-to-SFU ingress attempt excluded from that
+  last-mile cap; negotiation is serialized with other soft migrations, while an
+  answered exact lease is active transport and may coexist with an unrelated
+  soft migration under route carry revalidation;
 - coordinated parent and child rebuild for exactly that edge, using relay-only
   ICE only on the new connection;
 - revalidation at grant, rebuild, ready, failure, timeout, route change,

@@ -100,9 +100,12 @@ LiveKit/coturn tuple proves the active Host/SFU relay route; initial Host ingres
 and `peer-selected` relay media remain open.
 The wire has two explicit edge kinds: `peer-selected` for the last-mile failed
 peer edge and `host-sfu-ingress` for a restricted Host-to-SFU retry. Ordinary
-Peer ICE remains STUN-only. Each room admits at most one pending or answered
-`peer-selected` attempt; `host-sfu-ingress` is an independent source transport
-attempt and does not consume that last-mile admission slot.
+Peer ICE remains STUN-only. Each room admits at most one `peer-selected` lease
+across its negotiating and answered states; `host-sfu-ingress` is an independent
+source transport attempt and does not consume that last-mile admission slot. A
+negotiating lease is a selected-edge migration attempt. After answer it becomes
+the exact edge's long-lived active transport authority, not a room-wide
+migration lock.
 
 The current runtime removes the old all-room coturn contract. Production
 requires STUN and authenticated ICE snapshots contain only STUN servers in
@@ -541,14 +544,17 @@ healthy room. Only these discrete events open one opportunity:
    windows with positive current-generation RTP and decoded-frame progress.
 2. A connected Viewer advertises relay capacity transitioning from zero to one.
 
-One room owns at most one peer migration attempt: either one healthy probe or
-one pending/answered `peer-selected` attempt. It may overlap active media only
-when `Host peer children + active SFU publication + probe <= 2` and `browser
-relay children + probe <= 1`. Without a free slot the opportunity is consumed
-and the active route is left unchanged. The probe is bound to the current
-share/publication, active and pending revisions, root, parent and Host sessions,
-and one pinned connection ID. Signaling from any other pair or generation fails
-closed.
+One room owns at most one soft peer migration attempt. A healthy or quality
+probe and a negotiating `peer-selected` lease are serialized. An answered exact
+edge lease is active transport and may coexist with an unrelated soft migration;
+each route change first revalidates its share, endpoint sessions, topology and
+parent downstream budget, then sends the carry grant before active route
+authority. A soft probe may overlap active media only when `Host peer children +
+active SFU publication + probe <= 2` and `browser relay children + probe <= 1`.
+Without a free slot the opportunity is consumed and the active route is left
+unchanged. The probe is bound to the current share/publication, active and
+pending revisions, root, parent and Host sessions, and one pinned connection
+ID. Signaling from any other pair or generation fails closed.
 
 During prepare the Viewer keeps rendering SFU while the existing peer parent
 creates one provisional edge. ICE `connected` is insufficient. The Viewer

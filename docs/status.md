@@ -6,10 +6,10 @@ This file is the current execution index. Load [verification status](./verificat
 
 ## Production
 
-- `https://share.bonfire.icu` runs exact `93e4681915768db0bf3b0165c0fd9ec3f54f95c8`, release `93e468191576`, wire `screener-v5`; `66eb33717193` is the rollback release.
+- `https://share.bonfire.icu` runs exact `01a77ae331ded864819003b532695470d7777e7d`, release `01a77ae331de`, wire `screener-v5`; `93e468191576` is the rollback release.
 - `screener`, LiveKit, coturn, and nginx are active, local/public health return 200, and `screener` has `NRestarts=0`. SQLite remains schema v3 with five rooms and mode 0600.
-- Ordinary ICE is STUN-only. Production allows SFU roots <=2, one `peer-selected` attempt excluding Host ingress, selected UDP TTL 120, room admission default eight with explicit limits from one through sixteen, and two downstream edges per Web endpoint. `MAX_PEER_RELAY_DOWNSTREAM_EDGES` is unset, so that release's parameterized default is active. The next source release changes the endpoint policy to Host2/ordinary Browser Viewer1 without changing the wire.
-- Stable SFU, route/transport truth, pause notices, entry/nickname UI, selected-edge lease authority, corroborated bad-relay demotion, Share audio presets, local media-path diagnostics, pre-share self-check, privacy-safe diagnostic export, and peer-quality MBB are live. A candidate ordinary Viewer may have a peer or SFU upstream; Host provisional children and sibling MBB remain open. Native remains source-only.
+- Ordinary ICE is STUN-only. Production allows SFU roots <=2, one `peer-selected` lease across negotiating and answered states excluding Host ingress, selected UDP TTL 120, and room admission default eight with explicit limits from one through sixteen. `MAX_PEER_RELAY_DOWNSTREAM_EDGES` is unset, so effective downstream capacity is Host2/ordinary Browser Viewer1; active, provisional, selected, and Host SFU publication edges count. The wire remains `screener-v5`.
+- Stable SFU, route/transport truth, pause notices, entry/nickname UI, selected-edge lease authority, corroborated bad-relay handling, Share audio presets, local media-path diagnostics, pre-share self-check, privacy-safe diagnostic export, and peer-quality MBB are live. An ordinary Viewer with a peer or SFU upstream may own one provisional child; Host provisional children and sibling MBB remain open. Native remains source-only.
 
 ## Current Product Snapshot
 
