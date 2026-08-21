@@ -66,7 +66,7 @@ import {
   writeHostRoom,
 } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
-import { labelViewerPresence } from "../lib/viewer-presence";
+import { labelViewerParticipants } from "../lib/viewer-presence";
 import {
   applyCaptureProfile,
   captureDisplay,
@@ -275,15 +275,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     [peerSnapshots],
   );
   const viewers = useMemo(
-    () =>
-      labelViewerPresence(
-        participantPresence.filter(
-          (participant): participant is Extract<
-            ParticipantPresenceEntry,
-            { role: "viewer" }
-          > => participant.role === "viewer",
-        ),
-      ),
+    () => labelViewerParticipants(participantPresence),
     [participantPresence],
   );
   const hostPresence = useMemo(
@@ -728,6 +720,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     sharingPausedRef.current = nextPaused;
     setSharingPaused(nextPaused);
+    signalRef.current?.setSharingPaused(nextPaused);
     setNotice(nextPaused ? "音视频分享已暂停" : "音视频分享已恢复");
   }
 
@@ -1218,6 +1211,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           token: activeRoom.hostToken,
           clientId: hostClientId,
           shareGeneration,
+          sharingPaused: false,
           viewerPresence: true,
           viewerPasswordSettings: true,
           displayName: initialDisplayName,
@@ -2169,11 +2163,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               const hasCurrentQualityEvidence =
                 viewer.upstream.kind === "peer" &&
                 qualityEvidence?.parentPeerId === viewer.upstream.peerId;
+              const hasCurrentSfuEvidence =
+                viewer.upstream.kind === "sfu" &&
+                viewer.sfuMediaReady === true;
               const hasCurrentRouteEvidence =
-                hasPeerRouteEvidence(snapshot) || hasCurrentQualityEvidence;
+                hasPeerRouteEvidence(snapshot) ||
+                hasCurrentQualityEvidence ||
+                hasCurrentSfuEvidence;
               const hasCurrentConnectionEvidence =
                 snapshot?.connectionState === "connected" ||
-                hasCurrentQualityEvidence;
+                hasCurrentQualityEvidence ||
+                hasCurrentSfuEvidence;
               const viewerState =
                 hasCurrentConnectionEvidence
                   ? "connected"

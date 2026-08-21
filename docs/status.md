@@ -4,20 +4,20 @@ Last updated: 2026-08-21
 
 ## Phase
 
-Production is exact `7dd38fc39ce8e91b913b1f45e053c00e0520f3b9` at `https://share.bonfire.icu`, release `7dd38fc39ce8`, wire `screener-v3`; rollback is `f7d667c4d32d`. SQLite v3/five rooms retains SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services and local/public health are green.
-Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
+Production is exact `20cb1bdb2be3c7c254508623fa2bcfbd9a6d61c2` at `https://share.bonfire.icu`, release `20cb1bdb2be3`, wire `screener-v3`; rollback is release `7dd38fc39ce8`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services and local/public health are green.
+Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. No browser/media/SFU/TURN/performance canary ran; exact-`16f6eab` Host-ingress proof is separate.
 Stable SFU, route/transport truth, preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only. The controlled production A/B uses browser/LiveKit codec defaults; explicit codec controls are source-complete.
 
 ## Execution Principle
 
-Parallel flagship work; minimum relevant checks and rollback proof. Research plus target-device/production evidence drives performance decisions; ordinary-PC synthetic runs prove only correctness/interoperability. Active text is current; Git owns history; delete no-consumer layers.
+Parallel flagship work; use minimum relevant checks and rollback proof. Target-device/production evidence drives performance decisions; ordinary-PC synthetic runs prove only correctness/interoperability. Git owns history; delete no-consumer layers.
 
 ## Current Snapshot
 
-- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced and automatic codec; clarity/fluid plus H.264/VP8 stay explicit, with codec locked during a share. Browser degradation and Host SFU A+B remain open.
-- Production `screener-v3` admits private fragment grants directly. Code-only Viewers need site access, then public rooms accept the code while private rooms also require their password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and its cookie are deployed atomically; raw credentials are never stored.
-- Source UI uses adjacent nickname editing, distinct site/room prompts, and a shared room-code form. Status and details stay neutral before media proof; current evidence labels green P2P/yellow `SFU fallback`, while relay evidence adds `TURN` plus only a locally observed protocol.
-- Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
+- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced and automatic codec; clarity/fluid plus H.264/VP8 stay explicit, with codec locked during a share. Browser degradation and Host SFU A+B remain open; pause notice is source-only.
+- Deployed `screener-v3` admits private fragment grants directly; code-only Viewers need site access, and private rooms additionally need their password. Credentials remain unstored. This atomic source candidate moves Web and source-only Native authentication together to `screener-v4` for Web-only presence fields.
+- Source UI has nickname editing and room entry. Status/details stay neutral before proof. An undeployed SFU-roster candidate carries session-bound first-media truth in presence and clears it on track/route/session loss; P2P/SFU/TURN labels require evidence. Browser proof is open.
+- Native v4 is source-only (memory rooms, 300s reclaim); it does not subscribe to Web presence, follows authenticated direct-child assignments up to two, and fails unsupported SFU/selected ingress boundedly.
 - Production is roots/Web relay <=2; every Viewer has one upstream and rejects child3. One-root healthy-SFU MBB is deployed but media-unverified; capacity `0 -> 1`, multi-root and browser gates remain open. Room `1` is historical; HTTPS/WSS is TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.

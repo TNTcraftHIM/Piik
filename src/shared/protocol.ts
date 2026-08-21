@@ -5,7 +5,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v3";
+export const SIGNALING_PROTOCOL = "screener-v4";
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
@@ -84,6 +84,7 @@ export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
       peerId: opaqueIdSchema,
       displayName: displayNameSchema,
       upstream: mediaRouteUpstreamSchema,
+      sfuMediaReady: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -97,6 +98,7 @@ export const viewerPresenceEntrySchema = z
     peerId: opaqueIdSchema,
     displayName: displayNameSchema,
     upstream: mediaRouteUpstreamSchema,
+    sfuMediaReady: z.literal(true).optional(),
   })
   .strict();
 export type ViewerPresenceEntry = z.infer<typeof viewerPresenceEntrySchema>;
@@ -495,6 +497,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       token: tokenSchema,
       clientId: opaqueIdSchema,
       shareGeneration: opaqueIdSchema.optional(),
+      sharingPaused: z.boolean().optional(),
       viewerPresence: z.literal(true).optional(),
       viewerPasswordSettings: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
@@ -559,6 +562,12 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
+      type: z.literal("route-media-unavailable"),
+      revision: mediaRouteRevisionSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("route-failed"),
       revision: mediaRouteRevisionSchema,
       phase: mediaRoutePhaseSchema,
@@ -593,6 +602,13 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
+      type: z.literal("set-sharing-paused"),
+      shareGeneration: opaqueIdSchema,
+      paused: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("stop-sharing"),
       shareGeneration: opaqueIdSchema.optional(),
     })
@@ -621,6 +637,7 @@ const authenticatedMessageShape = {
   roomExpiresAt: z.string().datetime().nullable(),
   maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   hostOnline: z.boolean(),
+  hostPaused: z.boolean().optional(),
   connectionId: opaqueIdSchema.nullable(),
   viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   iceConfig: iceConfigSchema,
@@ -744,6 +761,7 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("host-status"),
       online: z.boolean(),
+      paused: z.boolean(),
     })
     .strict(),
   z

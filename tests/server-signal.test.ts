@@ -445,6 +445,7 @@ async function authenticate(
     viewerPresence?: true;
     viewerPasswordSettings?: true;
     viewerPassword?: string;
+    sharingPaused?: boolean;
   } = {},
 ) {
   client.socket.send(
@@ -458,6 +459,9 @@ async function authenticate(
             token: room.hostToken,
             clientId,
             ...(shareGeneration ? { shareGeneration } : {}),
+            ...(presence.sharingPaused !== undefined
+              ? { sharingPaused: presence.sharingPaused }
+              : {}),
             ...(presence.viewerPresence ? { viewerPresence: true } : {}),
             ...(presence.viewerPasswordSettings
               ? { viewerPasswordSettings: true }
@@ -696,10 +700,19 @@ async function failSingleViewerDirect(
   webSocketUrl: string,
   room: CreatedRoom,
   prefix: string,
+  hostPresence = false,
 ) {
   const host = await openClient(webSocketUrl);
   const hostAuth = peerAssisted(
-    await authenticate(host, room, "host", `${prefix}-host`, 1, `${prefix}-share`),
+    await authenticate(
+      host,
+      room,
+      "host",
+      `${prefix}-host`,
+      1,
+      `${prefix}-share`,
+      hostPresence ? { viewerPresence: true } : {},
+    ),
   );
   const viewer = await openClient(webSocketUrl);
   const viewerAuth = peerAssisted(
@@ -729,8 +742,14 @@ async function activateSingleViewerSfu(
   webSocketUrl: string,
   room: CreatedRoom,
   prefix: string,
+  hostPresence = false,
 ) {
-  const direct = await failSingleViewerDirect(webSocketUrl, room, prefix);
+  const direct = await failSingleViewerDirect(
+    webSocketUrl,
+    room,
+    prefix,
+    hostPresence,
+  );
   const { host, viewer } = direct;
   const hostPrepare = await nextPreparedRoute(host);
   const viewerPrepare = await nextPreparedRoute(viewer);
@@ -1261,6 +1280,55 @@ describe("WebSocket signaling", () => {
       (message) => hostPresenceEntry(message)?.displayName === "改名后的分享者",
     );
     expect(hostPresenceEntry(renamedHost)?.peerId).toBe(hostAuth.peerId);
+  });
+
+  it("replaces an opted-in Viewer roster after another Viewer leaves", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "viewer-roster-host");
+
+    const subscriber = await openClient(harness.webSocketUrl);
+    const subscriberAuth = await authenticate(
+      subscriber,
+      harness.room,
+      "viewer",
+      "viewer-roster-subscriber",
+      1,
+      undefined,
+      { viewerPresence: true, displayName: "订阅者" },
+    );
+    await nextViewerPresenceMatching(
+      subscriber,
+      (message) => viewerPresenceEntries(message).length === 1,
+    );
+
+    const other = await openClient(harness.webSocketUrl);
+    const otherAuth = await authenticate(
+      other,
+      harness.room,
+      "viewer",
+      "viewer-roster-other",
+      1,
+      undefined,
+      { displayName: "另一位" },
+    );
+    const joined = await nextViewerPresenceMatching(
+      subscriber,
+      (message) => viewerPresenceEntries(message).length === 2,
+    );
+    expect(viewerPresenceEntries(joined).map((viewer) => viewer.peerId)).toEqual([
+      subscriberAuth.peerId,
+      otherAuth.peerId,
+    ]);
+
+    await closeClient(other);
+    const left = await nextViewerPresenceMatching(
+      subscriber,
+      (message) => viewerPresenceEntries(message).length === 1,
+    );
+    expect(viewerPresenceEntries(left).map((viewer) => viewer.peerId)).toEqual([
+      subscriberAuth.peerId,
+    ]);
   });
 
   it("clears a disconnected Host name and publishes the replacement name", async () => {
@@ -1847,6 +1915,124 @@ describe("WebSocket signaling", () => {
     expect(await viewer.inbox.next("host-status")).toEqual({
       type: "host-status",
       online: true,
+      paused: false,
+    });
+  });
+
+  it("snapshots intentional pause across Viewer replacement and clears it on resume and stop", async () => {
+    const harness = await startHarness();
+    const shareGeneration = "pause_share_generation_12345678";
+    const host = await openClient(harness.webSocketUrl);
+    let activeHost = host;
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "pause-host-client",
+      1,
+      shareGeneration,
+    );
+    expect(hostAuth).not.toHaveProperty("hostPaused");
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "pause-viewer-client",
+    );
+    expect(viewerAuth.hostPaused).toBe(false);
+    await host.inbox.next("peer-joined");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-sharing-paused",
+        shareGeneration,
+        paused: true,
+      }),
+    );
+    expect(await viewer.inbox.next("host-status")).toEqual({
+      type: "host-status",
+      online: true,
+      paused: true,
+    });
+
+    await closeClient(host);
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: false,
+      paused: false,
+    });
+    activeHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      activeHost,
+      harness.room,
+      "host",
+      "pause-host-client",
+      1,
+      shareGeneration,
+      { sharingPaused: true },
+    );
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: true,
+    });
+
+    const replacement = await openClient(harness.webSocketUrl);
+    const replacementAuth = await authenticate(
+      replacement,
+      harness.room,
+      "viewer",
+      "pause-viewer-client",
+    );
+    expect(replacementAuth.hostPaused).toBe(true);
+
+    activeHost.socket.send(
+      JSON.stringify({
+        type: "set-sharing-paused",
+        shareGeneration,
+        paused: false,
+      }),
+    );
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
+    });
+
+    activeHost.socket.send(
+      JSON.stringify({
+        type: "set-sharing-paused",
+        shareGeneration,
+        paused: true,
+      }),
+    );
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      paused: true,
+    });
+    activeHost.socket.send(
+      JSON.stringify({ type: "stop-sharing", shareGeneration }),
+    );
+    await replacement.inbox.next("sharing-stopped");
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: false,
+      paused: false,
+    });
+
+    const nextHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      nextHost,
+      harness.room,
+      "host",
+      "pause-host-client",
+      1,
+      "next_pause_share_generation_12345678",
+    );
+    await replacement.inbox.next("sharing-stopped");
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: false,
+      paused: false,
+    });
+    expect(await replacement.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
     });
   });
 
@@ -3776,6 +3962,235 @@ describe("WebSocket signaling", () => {
     );
     expect((await firstViewer.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
     await foreignViewer.inbox.expectNone(30);
+  });
+
+  it("ignores SFU media assertions on an active peer route", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        issueToken: async ({ peerId }) => `token-${peerId}`,
+      },
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(
+      await authenticate(
+        host,
+        harness.room,
+        "host",
+        "peer-media-state-host",
+        1,
+        "peer-media-state-share",
+        { viewerPresence: true },
+      ),
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "peer-media-state-viewer",
+      ),
+    );
+    expect(viewerAuth.routeAssignment.upstream.kind).toBe("peer");
+
+    for (const message of [
+      {
+        type: "route-ready",
+        revision: viewerAuth.routeRevision,
+        phase: "active",
+      },
+      {
+        type: "route-media-unavailable",
+        revision: viewerAuth.routeRevision,
+      },
+    ]) {
+      viewer.socket.send(JSON.stringify(message));
+    }
+
+    const replacementHost = await openClient(harness.webSocketUrl);
+    const replacementAuth = peerAssisted(
+      await authenticate(
+        replacementHost,
+        harness.room,
+        "host",
+        "peer-media-state-host",
+        1,
+        "peer-media-state-share",
+        { viewerPresence: true },
+      ),
+    );
+    expect(replacementAuth.peerId).toBe(hostAuth.peerId);
+    const presence = await nextViewerPresenceMatching(
+      replacementHost,
+      (message) =>
+        viewerPresenceEntries(message).some(
+          (entry) => entry.peerId === viewerAuth.peerId,
+        ),
+    );
+    expect(
+      viewerPresenceEntries(presence).find(
+        (entry) => entry.peerId === viewerAuth.peerId,
+      ),
+    ).toMatchObject({ upstream: viewerAuth.routeAssignment.upstream });
+    expect(
+      viewerPresenceEntries(presence).find(
+        (entry) => entry.peerId === viewerAuth.peerId,
+      )?.sfuMediaReady,
+    ).toBeUndefined();
+  });
+
+  it("reports and revokes current SFU Viewer media readiness", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        issueToken: async ({ peerId }) => `token-${peerId}`,
+      },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "sfu-media-ready",
+      true,
+    );
+    const findViewer = (
+      message: Extract<ServerMessage, { type: "viewer-presence" }>,
+    ) =>
+      viewerPresenceEntries(message).find(
+        (entry) => entry.peerId === active.viewerAuth.peerId,
+      );
+    const initiallyUnready = await nextViewerPresenceMatching(
+      active.host,
+      (message) => findViewer(message)?.upstream.kind === "sfu",
+    );
+    expect(findViewer(initiallyUnready)?.sfuMediaReady).toBeUndefined();
+
+    active.viewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: active.revision - 1,
+        phase: "active",
+      }),
+    );
+    const replacementHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      replacementHost,
+      harness.room,
+      "host",
+      "sfu-media-ready-host",
+      1,
+      "sfu-media-ready-share",
+      { viewerPresence: true },
+    );
+    const afterStaleReady = await nextViewerPresenceMatching(
+      replacementHost,
+      (message) => findViewer(message)?.upstream.kind === "sfu",
+    );
+    expect(findViewer(afterStaleReady)?.sfuMediaReady).toBeUndefined();
+
+    active.viewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: active.revision,
+        phase: "active",
+      }),
+    );
+    const ready = await nextViewerPresenceMatching(
+      replacementHost,
+      (message) => findViewer(message)?.sfuMediaReady === true,
+    );
+    expect(findViewer(ready)).toMatchObject({
+      upstream: { kind: "sfu" },
+      sfuMediaReady: true,
+    });
+
+    active.viewer.socket.send(
+      JSON.stringify({
+        type: "route-media-unavailable",
+        revision: active.revision - 1,
+      }),
+    );
+    const replayHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      replayHost,
+      harness.room,
+      "host",
+      "sfu-media-ready-host",
+      1,
+      "sfu-media-ready-share",
+      { viewerPresence: true },
+    );
+    const replayed = await nextViewerPresenceMatching(
+      replayHost,
+      (message) => findViewer(message)?.sfuMediaReady === true,
+    );
+    expect(findViewer(replayed)?.sfuMediaReady).toBe(true);
+
+    active.viewer.socket.send(
+      JSON.stringify({
+        type: "route-media-unavailable",
+        revision: active.revision,
+      }),
+    );
+    const unavailable = await nextViewerPresenceMatching(
+      replayHost,
+      (message) => {
+        const viewer = findViewer(message);
+        return viewer?.upstream.kind === "sfu" && !viewer.sfuMediaReady;
+      },
+    );
+    expect(findViewer(unavailable)?.sfuMediaReady).toBeUndefined();
+
+    active.viewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: active.revision,
+        phase: "active",
+      }),
+    );
+    await nextViewerPresenceMatching(
+      replayHost,
+      (message) => findViewer(message)?.sfuMediaReady === true,
+    );
+
+    const replacementViewer = await openClient(harness.webSocketUrl);
+    const replacementViewerAuth = peerAssisted(
+      await authenticate(
+        replacementViewer,
+        harness.room,
+        "viewer",
+        "sfu-media-ready-viewer",
+      ),
+    );
+    expect(replacementViewerAuth).toMatchObject({
+      peerId: active.viewerAuth.peerId,
+      routeRevision: active.revision,
+      routeAssignment: { upstream: { kind: "sfu" } },
+    });
+    const afterViewerSessionChange = await nextViewerPresenceMatching(
+      replayHost,
+      (message) => {
+        const viewer = findViewer(message);
+        return viewer?.upstream.kind === "sfu" && !viewer.sfuMediaReady;
+      },
+    );
+    expect(findViewer(afterViewerSessionChange)?.sfuMediaReady).toBeUndefined();
+
+    replacementViewer.socket.send(
+      JSON.stringify({
+        type: "route-ready",
+        revision: replacementViewerAuth.routeRevision,
+        phase: "active",
+      }),
+    );
+    await nextViewerPresenceMatching(
+      replayHost,
+      (message) => findViewer(message)?.sfuMediaReady === true,
+    );
+
+    await closeClient(replacementViewer);
+    await nextViewerPresenceMatching(
+      replayHost,
+      (message) => findViewer(message) === undefined,
+    );
   });
 
   it("reparents failed peer edges before committing a bounded SFU fallback", async () => {
@@ -6878,7 +7293,7 @@ describe("WebSocket signaling", () => {
     oldClient.socket.send(
       JSON.stringify({
         type: "authenticate",
-        protocol: "screener-v2",
+        protocol: "screener-v3",
         roomId: "999999999999",
         role: "viewer",
         clientId: "old-client",

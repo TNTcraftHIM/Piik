@@ -175,9 +175,11 @@ rollback to the old binary stops the service and restores that backup rather
 than retaining dual-schema runtime code.
 
 Display names and roster presentation remain a separate change: browser
-`localStorage` plus current-room memory only, displayed with at least six
-characters of room-scoped `peerId` and extended on collision. Neither enters
-SQLite or participates in authorization, routing, or quality decisions.
+`localStorage` plus current-room memory only. A unique display name is shown
+without an identifier; duplicate names append the shortest room-scoped
+`peerId` suffix (at least six characters, extended only when needed). Neither
+the name nor suffix enters SQLite or participates in authorization, routing, or
+quality decisions.
 
 ## Consequences
 

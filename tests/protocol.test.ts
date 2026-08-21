@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -72,6 +75,20 @@ const parentEdgeQualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
+  it("keeps the Native sender on the same signaling version", () => {
+    const nativeWire = readFileSync(
+      join(
+        import.meta.dirname,
+        "../native/sender/internal/remote/wire.go",
+      ),
+      "utf8",
+    );
+
+    expect(nativeWire).toContain(
+      `signalingProtocol  = "${SIGNALING_PROTOCOL}"`,
+    );
+  });
+
   it("accepts only the fixed provisional Host lease", () => {
     expect(
       createRoomRequestSchema.parse({ viewerPolicy: "private-link" }),
@@ -146,7 +163,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
-        protocol: "screener-v2",
+        protocol: "screener-v3",
         roomId,
         role: "viewer",
         clientId: "client_12345678",
@@ -407,6 +424,33 @@ describe("client signaling protocol", () => {
     );
   });
 
+  it("keeps intentional pause updates strict and generation-bound", () => {
+    const update = {
+      type: "set-sharing-paused",
+      shareGeneration: "share_generation_12345678",
+      paused: true,
+    };
+    expect(clientMessageSchema.safeParse(update).success).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ ...update, shareGeneration: undefined })
+        .success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({ ...update, paused: "true" }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "host-status",
+        online: true,
+        paused: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({ type: "host-status", online: true })
+        .success,
+    ).toBe(false);
+  });
+
   it("accepts only strict, bounded quality settings", () => {
     expect(
       clientMessageSchema.safeParse({
@@ -636,6 +680,12 @@ describe("client signaling protocol", () => {
     ).toBe(true);
     expect(
       clientMessageSchema.safeParse({
+        type: "route-media-unavailable",
+        revision: 7,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
         type: "route-failed",
         revision: 7,
         phase: "active",
@@ -654,6 +704,12 @@ describe("client signaling protocol", () => {
         type: "route-ready",
         revision: -1,
         phase: "prepare",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-media-unavailable",
+        revision: -1,
       }).success,
     ).toBe(false);
     expect(
@@ -761,9 +817,21 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({
         type: "viewer-presence",
-        viewers: [viewer],
+        viewers: [
+          {
+            ...viewer,
+            upstream: { kind: "sfu" },
+            sfuMediaReady: true,
+          },
+        ],
       }).success,
     ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-presence",
+        viewers: [{ ...viewer, sfuMediaReady: false }],
+      }).success,
+    ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         type: "viewer-presence",

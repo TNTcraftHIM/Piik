@@ -72,6 +72,12 @@ interface ViewerQualityEvidenceGate {
   parentEvidenceAccepted: boolean;
 }
 
+interface ViewerMediaReadyState {
+  sessionId: string;
+  revision: number;
+  sfuPublicationGeneration: string;
+}
+
 export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
@@ -106,8 +112,13 @@ export class SignalingServer {
     string,
     ViewerQualityEvidenceGate
   >();
+  private readonly viewerMediaReadyByRoom = new Map<
+    string,
+    Map<string, ViewerMediaReadyState>
+  >();
   private readonly qualitySettingsByRoom = new Map<string, QualitySettings>();
   private readonly shareGenerationsByRoom = new Map<string, string>();
+  private readonly pausedShareGenerationsByRoom = new Map<string, string>();
   private readonly deferredViewerPresenceRooms = new Set<string>();
   private readonly hybridMediaRouter?: HybridMediaRouter;
   private readonly now: () => number;
@@ -155,7 +166,26 @@ export class SignalingServer {
         deleteConnectionId: (roomId, viewerPeerId) =>
           this.deleteViewerConnectionId(roomId, viewerPeerId),
         getShareGeneration: (roomId) => this.shareGenerationsByRoom.get(roomId),
-        onActiveRouteChanged: (roomId) => this.sendViewerPresence(roomId),
+        onActiveRouteChanged: (roomId) => {
+          this.viewerMediaReadyByRoom.delete(roomId);
+          this.sendViewerPresence(roomId);
+        },
+        onViewerMediaState: (
+          roomId,
+          viewerPeerId,
+          viewerSessionId,
+          revision,
+          sfuPublicationGeneration,
+          ready,
+        ) =>
+          this.updateViewerMediaState(
+            roomId,
+            viewerPeerId,
+            viewerSessionId,
+            revision,
+            sfuPublicationGeneration,
+            ready,
+          ),
         now: this.now,
       });
     }
@@ -216,7 +246,9 @@ export class SignalingServer {
     this.viewerGraceTimers.clear();
     this.hybridMediaRouter?.close();
     this.viewerQualityEvidenceGates.clear();
+    this.viewerMediaReadyByRoom.clear();
     this.shareGenerationsByRoom.clear();
+    this.pausedShareGenerationsByRoom.clear();
     this.options.server.off("upgrade", this.upgradeHandler);
 
     for (const socket of this.webSocketServer.clients) {
@@ -433,6 +465,14 @@ export class SignalingServer {
         this.stopSharing(participant.roomId);
       }
       this.shareGenerationsByRoom.set(participant.roomId, shareGeneration);
+      if (message.sharingPaused === true) {
+        this.pausedShareGenerationsByRoom.set(
+          participant.roomId,
+          shareGeneration,
+        );
+      } else {
+        this.pausedShareGenerationsByRoom.delete(participant.roomId);
+      }
     }
     state.authenticated = {
       roomId: participant.roomId,
@@ -494,6 +534,14 @@ export class SignalingServer {
       roomExpiresAt: participant.expiresAt,
       maxViewers: this.options.roomStore.maxViewersPerRoom,
       hostOnline: participant.hostOnline,
+      ...(participant.role === "viewer"
+        ? {
+            hostPaused:
+              participant.hostOnline &&
+              this.pausedShareGenerationsByRoom.get(participant.roomId) ===
+                this.shareGenerationsByRoom.get(participant.roomId),
+          }
+        : {}),
       connectionId,
       viewerPeerIds: [...participant.viewerPeerIds],
       iceConfig: this.iceConfig(),
@@ -545,7 +593,13 @@ export class SignalingServer {
 
     if (participant.role === "host") {
       for (const viewer of connectedViewers) {
-        this.sendToSession(viewer.sessionId, { type: "host-status", online: true });
+        this.sendToSession(viewer.sessionId, {
+          type: "host-status",
+          online: true,
+          paused:
+            this.pausedShareGenerationsByRoom.get(participant.roomId) ===
+            shareGeneration,
+        });
         if (!this.isHybridMediaEnabled()) {
           this.send(socket, { type: "peer-joined", peerId: viewer.peerId });
         }
@@ -667,6 +721,19 @@ export class SignalingServer {
           message,
         );
         return;
+      case "route-media-unavailable":
+        if (!this.isHybridMediaEnabled()) {
+          this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
+          return;
+        }
+        this.hybridMediaRouter!.handleRouteMediaUnavailable(
+          {
+            ...authenticated,
+            sessionId: this.socketStates.get(socket)!.sessionId,
+          },
+          message,
+        );
+        return;
       case "route-failed":
         if (!this.isHybridMediaEnabled()) {
           this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
@@ -758,6 +825,44 @@ export class SignalingServer {
         });
         return;
       }
+      case "set-sharing-paused":
+        if (authenticated.role !== "host") {
+          this.sendError(socket, "FORBIDDEN", "Only the host may pause sharing");
+          return;
+        }
+        const pauseSocketState = this.socketStates.get(socket);
+        const connectedHost = this.options.roomStore.getConnectedHost(
+          authenticated.roomId,
+        );
+        if (
+          !pauseSocketState ||
+          connectedHost?.sessionId !== pauseSocketState.sessionId ||
+          authenticated.shareGeneration === null ||
+          this.shareGenerationsByRoom.get(authenticated.roomId) !==
+            authenticated.shareGeneration ||
+          message.shareGeneration !== authenticated.shareGeneration
+        ) {
+          socket.close(4001, "Sharing generation replaced");
+          return;
+        }
+        if (message.paused) {
+          this.pausedShareGenerationsByRoom.set(
+            authenticated.roomId,
+            authenticated.shareGeneration,
+          );
+        } else {
+          this.pausedShareGenerationsByRoom.delete(authenticated.roomId);
+        }
+        for (const viewer of this.options.roomStore.getConnectedViewers(
+          authenticated.roomId,
+        )) {
+          this.sendToSession(viewer.sessionId, {
+            type: "host-status",
+            online: true,
+            paused: message.paused,
+          });
+        }
+        return;
       case "stop-sharing":
         if (authenticated.role !== "host") {
           this.sendError(socket, "FORBIDDEN", "Only the host may stop sharing");
@@ -1295,7 +1400,11 @@ export class SignalingServer {
       for (const viewer of this.options.roomStore.getConnectedViewers(
         disconnected.roomId,
       )) {
-        this.sendToSession(viewer.sessionId, { type: "host-status", online: false });
+        this.sendToSession(viewer.sessionId, {
+          type: "host-status",
+          online: false,
+          paused: false,
+        });
       }
       this.sendViewerPresence(disconnected.roomId);
       return;
@@ -1337,13 +1446,18 @@ export class SignalingServer {
   }
 
   private stopSharing(roomId: string): void {
+    this.pausedShareGenerationsByRoom.delete(roomId);
     this.clearRoomConnectionIds(roomId);
     if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.stopRoom(roomId);
     }
     for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
       this.sendToSession(viewer.sessionId, { type: "sharing-stopped" });
-      this.sendToSession(viewer.sessionId, { type: "host-status", online: false });
+      this.sendToSession(viewer.sessionId, {
+        type: "host-status",
+        online: false,
+        paused: false,
+      });
     }
   }
 
@@ -1359,6 +1473,7 @@ export class SignalingServer {
     }
     this.qualitySettingsByRoom.delete(roomId);
     this.shareGenerationsByRoom.delete(roomId);
+    this.pausedShareGenerationsByRoom.delete(roomId);
     for (const sessionId of abandoned.sessionIds) {
       const socket = this.socketsBySessionId.get(sessionId);
       if (!socket) {
@@ -1378,6 +1493,7 @@ export class SignalingServer {
       }
       this.qualitySettingsByRoom.delete(expired.roomId);
       this.shareGenerationsByRoom.delete(expired.roomId);
+      this.pausedShareGenerationsByRoom.delete(expired.roomId);
       for (const sessionId of expired.sessionIds) {
         const socket = this.socketsBySessionId.get(sessionId);
         if (!socket) {
@@ -1464,6 +1580,21 @@ export class SignalingServer {
       return;
     }
 
+    const connectedViewers = this.options.roomStore.getConnectedViewers(roomId);
+    const currentSessions = new Map(
+      connectedViewers.map((viewer) => [viewer.peerId, viewer.sessionId]),
+    );
+    const readyByViewer = this.viewerMediaReadyByRoom.get(roomId);
+    if (readyByViewer) {
+      for (const [viewerPeerId, ready] of readyByViewer) {
+        if (currentSessions.get(viewerPeerId) !== ready.sessionId) {
+          readyByViewer.delete(viewerPeerId);
+        }
+      }
+      if (readyByViewer.size === 0) {
+        this.viewerMediaReadyByRoom.delete(roomId);
+      }
+    }
     const viewers: ParticipantPresenceEntry[] = [];
     const host = this.options.roomStore.getConnectedHost(roomId);
     const hostSocket = host
@@ -1488,7 +1619,7 @@ export class SignalingServer {
       });
     }
 
-    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+    for (const viewer of connectedViewers) {
       const viewerSocket = this.socketsBySessionId.get(viewer.sessionId);
       const viewerState = viewerSocket
         ? this.socketStates.get(viewerSocket)?.authenticated
@@ -1501,19 +1632,34 @@ export class SignalingServer {
       ) {
         continue;
       }
+      const upstream = this.isHybridMediaEnabled()
+        ? this.hybridMediaRouter!.getViewerRouteUpstream(roomId, viewer.peerId)
+        : host
+          ? { kind: "peer" as const, peerId: host.peerId }
+          : { kind: "none" as const };
+      const ready = readyByViewer?.get(viewer.peerId);
+      const sfuMediaReady =
+        upstream.kind === "sfu" &&
+        ready?.sessionId === viewer.sessionId &&
+        this.hybridMediaRouter!.viewerSfuMediaStateIsCurrent(
+          roomId,
+          viewer.peerId,
+          ready.revision,
+          ready.sfuPublicationGeneration,
+        );
+      if (ready && !sfuMediaReady) {
+        readyByViewer?.delete(viewer.peerId);
+      }
       viewers.push({
         role: "viewer",
         peerId: viewer.peerId,
         displayName: viewerState.displayName,
-        upstream: this.isHybridMediaEnabled()
-          ? this.hybridMediaRouter!.getViewerRouteUpstream(
-              roomId,
-              viewer.peerId,
-            )
-          : host
-            ? { kind: "peer", peerId: host.peerId }
-            : { kind: "none" },
+        upstream,
+        ...(sfuMediaReady ? { sfuMediaReady: true as const } : {}),
       });
+    }
+    if (readyByViewer?.size === 0) {
+      this.viewerMediaReadyByRoom.delete(roomId);
     }
 
     const message = { type: "viewer-presence" as const, viewers };
@@ -1521,7 +1667,7 @@ export class SignalingServer {
     if (hostSocket && hostState?.viewerPresence) {
       recipients.add(hostSocket);
     }
-    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+    for (const viewer of connectedViewers) {
       const viewerSocket = this.socketsBySessionId.get(viewer.sessionId);
       const viewerState = viewerSocket
         ? this.socketStates.get(viewerSocket)?.authenticated
@@ -1537,6 +1683,44 @@ export class SignalingServer {
       }
     }
     recipients.forEach((socket) => this.send(socket, message));
+  }
+
+  private updateViewerMediaState(
+    roomId: string,
+    viewerPeerId: string,
+    viewerSessionId: string,
+    revision: number,
+    sfuPublicationGeneration: string,
+    ready: boolean,
+  ): void {
+    let readyByViewer = this.viewerMediaReadyByRoom.get(roomId);
+    if (ready) {
+      readyByViewer ??= new Map<string, ViewerMediaReadyState>();
+      readyByViewer.set(viewerPeerId, {
+        sessionId: viewerSessionId,
+        revision,
+        sfuPublicationGeneration,
+      });
+      this.viewerMediaReadyByRoom.set(roomId, readyByViewer);
+    } else {
+      if (!readyByViewer) {
+        return;
+      }
+      const current = readyByViewer.get(viewerPeerId);
+      if (
+        !current ||
+        current.sessionId !== viewerSessionId ||
+        current.revision !== revision ||
+        current.sfuPublicationGeneration !== sfuPublicationGeneration
+      ) {
+        return;
+      }
+      readyByViewer.delete(viewerPeerId);
+      if (readyByViewer.size === 0) {
+        this.viewerMediaReadyByRoom.delete(roomId);
+      }
+    }
+    this.sendViewerPresence(roomId);
   }
 
   private sendToSession(sessionId: string, message: ServerMessage): void {
@@ -1617,6 +1801,7 @@ export class SignalingServer {
   }
 
   private clearRoomConnectionIds(roomId: string): void {
+    this.viewerMediaReadyByRoom.delete(roomId);
     const prefix = `${roomId}:`;
     for (const key of this.connectionIdsByViewer.keys()) {
       if (key.startsWith(prefix)) {

@@ -27,6 +27,7 @@ interface ViewerSubscriberSlot {
   subscriber: ViewerSubscriberTransport;
   connected: boolean;
   activated: boolean;
+  mediaAvailable: boolean;
   failed: boolean;
   activationToken: RouteOperationToken | null;
 }
@@ -125,9 +126,14 @@ export class ViewerSfuRoute {
   async resyncAuthoritative(
     update: RouteUpdateInput,
   ): Promise<RouteUpdateResult> {
-    const result = this.accept(update, false);
-    if (result !== "stale" || this.closed) {
-      return result;
+    if (this.closed) {
+      return "stale";
+    }
+    if (!this.active && !this.pending) {
+      const result = this.accept(update, false);
+      if (result !== "stale") {
+        return result;
+      }
     }
 
     const resyncGeneration = ++this.resyncGeneration;
@@ -250,6 +256,7 @@ export class ViewerSfuRoute {
       subscriber,
       connected: false,
       activated: false,
+      mediaAvailable: false,
       failed: false,
       activationToken: null,
     };
@@ -436,7 +443,12 @@ export class ViewerSfuRoute {
     if (this.active === slot) {
       const assignment = this.route.getMediaAssignment();
       if (assignment?.upstream.kind === "sfu") {
+        const recovered = !slot.mediaAvailable;
+        slot.mediaAvailable = true;
         this.events.onSfuStream(stream, assignment, false);
+        if (recovered) {
+          this.ready(slot.revision, "active");
+        }
       }
       return;
     }
@@ -460,6 +472,7 @@ export class ViewerSfuRoute {
       return;
     }
     this.recovery = null;
+    slot.mediaAvailable = true;
     this.events.onSfuStream(stream, assignment, true);
     if (previous && previous !== slot) {
       try {
@@ -485,7 +498,20 @@ export class ViewerSfuRoute {
     ) {
       return;
     }
+    const changed = slot.mediaAvailable !== available;
+    slot.mediaAvailable = available;
     this.events.onSfuVideoAvailability?.(available);
+    if (!changed) {
+      return;
+    }
+    if (available) {
+      this.ready(slot.revision, "active");
+    } else {
+      this.events.send({
+        type: "route-media-unavailable",
+        revision: slot.revision,
+      });
+    }
   }
 
   private commitMedia(token: RouteOperationToken, acknowledge: boolean): void {
@@ -493,7 +519,11 @@ export class ViewerSfuRoute {
       return;
     }
     this.recovery = null;
-    if (acknowledge) {
+    const assignment = this.route.getMediaAssignment();
+    if (
+      acknowledge &&
+      (assignment?.upstream.kind !== "sfu" || this.active?.mediaAvailable === true)
+    ) {
       this.ready(token.revision, "active");
     }
   }

@@ -39,6 +39,7 @@ import { viewerRouteEvidence } from "../components/status-badge-model";
 import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
+import { labelViewerParticipants } from "../lib/viewer-presence";
 import type { QualitySettings } from "../media/quality";
 import {
   ParentEdgeQualityEvidenceReporter,
@@ -105,6 +106,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     useState<SignalConnectionState>("offline");
   const [statusText, setStatusText] = useState("正在连接");
   const [hostOnline, setHostOnline] = useState(false);
+  const [hostPaused, setHostPaused] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
   const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
@@ -124,10 +126,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
-  const [hostPresence, setHostPresence] = useState<Extract<
-    ParticipantPresenceEntry,
-    { role: "host" }
-  > | null>(null);
+  const [participantPresence, setParticipantPresence] = useState<
+    ParticipantPresenceEntry[] | null
+  >(null);
   const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
   const [viewerPasswordError, setViewerPasswordError] = useState<string | null>(
     null,
@@ -146,6 +147,32 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       ),
     [peerSnapshot, relaySnapshot],
   );
+  const hostPresence = useMemo(
+    () =>
+      participantPresence?.find(
+        (participant): participant is Extract<
+          ParticipantPresenceEntry,
+          { role: "host" }
+        > => participant.role === "host",
+      ) ?? null,
+    [participantPresence],
+  );
+  const viewers = useMemo(
+    () => labelViewerParticipants(participantPresence ?? []),
+    [participantPresence],
+  );
+
+  function clearParticipantPresence(): void {
+    setParticipantPresence(null);
+    setHostPaused(false);
+  }
+
+  function clearHostPresence(): void {
+    setParticipantPresence((current) =>
+      current?.filter((participant) => participant.role !== "host") ?? null,
+    );
+    setHostPaused(false);
+  }
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
@@ -240,7 +267,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setAssignedRoute(null);
           clearViewerSfuRoute();
           clearPeerState();
-          setHostPresence(null);
+          clearParticipantPresence();
           if (!viewerAuthenticated) {
             setAccessState("denied");
           }
@@ -253,7 +280,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             setAssignedRoute(null);
             clearViewerSfuRoute();
             clearPeerState();
-            setHostPresence(null);
+            clearParticipantPresence();
             viewerAuthenticated = false;
             setAccessState("denied");
             setStatusText("邀请无效或已失效");
@@ -806,6 +833,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
         setHostOnline(message.hostOnline);
+        setHostPaused(message.hostPaused ?? false);
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
           void viewerRelay?.updateProfile(currentQualitySettings);
@@ -995,6 +1023,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (message.type === "host-status") {
         currentHostOnline = message.online;
         setHostOnline(message.online);
+        setHostPaused(message.paused);
         if (!message.online && !peerRef.current?.isConnected()) {
           setStatusText("等待开始分享");
         } else if (message.online && !peerRef.current?.isConnected()) {
@@ -1003,14 +1032,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "viewer-presence") {
-        setHostPresence(
-          message.viewers.find(
-            (participant): participant is Extract<
-              ParticipantPresenceEntry,
-              { role: "host" }
-            > => participant.role === "host",
-          ) ?? null,
-        );
+        setParticipantPresence(message.viewers);
         return;
       }
       if (message.type === "sharing-stopped") {
@@ -1019,7 +1041,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentHostOnline = false;
         clearViewerSfuRoute();
         clearPeerState();
-        setHostPresence(null);
+        clearHostPresence();
         setHostOnline(false);
         setStatusText("等待开始分享");
         return;
@@ -1039,7 +1061,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setAssignedRoute(null);
         clearViewerSfuRoute();
         clearPeerState();
-        setHostPresence(null);
+        clearParticipantPresence();
         setStatusText("邀请已失效，请向分享者获取新链接");
         signal.stop();
         return;
@@ -1051,7 +1073,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setAssignedRoute(null);
         clearViewerSfuRoute();
         clearPeerState();
-        setHostPresence(null);
+        clearParticipantPresence();
         setStatusText(message.reason === "expired" ? "房间已过期" : "房间已关闭");
         signal.stop();
         return;
@@ -1059,7 +1081,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (message.type === "error") {
         if (message.code === "PEER_NOT_FOUND" && !currentHostOnline) {
           clearPeerState();
-          setHostPresence(null);
+          clearHostPresence();
           setStatusText("等待开始分享");
           return;
         }
@@ -1075,7 +1097,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setAssignedRoute(null);
           clearViewerSfuRoute();
           clearPeerState();
-          setHostPresence(null);
+          clearParticipantPresence();
           viewerAuthenticated = false;
           setAccessState("denied");
         }
@@ -1104,7 +1126,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       sfuStandbyPrewarmer?.dispose();
       signal.stop();
-      setHostPresence(null);
+      clearParticipantPresence();
       if (signalRef.current === signal) {
         signalRef.current = null;
       }
@@ -1408,7 +1430,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <span>{statusText}</span>
             </div>
           )}
-          {playbackBlocked && remoteStream && (
+          {playbackBlocked && remoteStream && !hostPaused && (
             <button
               type="button"
               className="play-overlay"
@@ -1417,6 +1439,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <Play size={22} fill="currentColor" aria-hidden="true" />
               播放
             </button>
+          )}
+          {hostOnline && hostPaused && (
+            <div className="stage-overlay" role="status">
+              分享者已暂停
+            </div>
           )}
         </section>
 
@@ -1471,6 +1498,25 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             </button>
           </div>
         </div>
+
+        {participantPresence && (
+          <section
+            className="viewer-roster"
+            aria-labelledby="viewer-roster-heading"
+          >
+            <div className="viewer-roster-heading">
+              <h2 id="viewer-roster-heading">观看者</h2>
+              <span>在线 {viewers.length}</span>
+            </div>
+            <ul className="viewer-roster-list">
+              {viewers.map((viewer) => (
+                <li key={viewer.peerId} title={viewer.label}>
+                  {viewer.label}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <ConnectionDetailsToggle
           checked={showConnectionDetails}

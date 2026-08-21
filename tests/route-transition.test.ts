@@ -1161,13 +1161,17 @@ describe("ViewerSfuRoute", () => {
 
   it("retries a sticky authoritative SFU route only after stable decoded RTP", async () => {
     const healthy: number[] = [];
+    const messages: ClientMessage[] = [];
     let subscriber!: ReturnType<typeof createFakeSubscriber>;
     const route = new ViewerSfuRoute({
       activatePeer: () => undefined,
       reconcileSfuChildren: () => undefined,
       onSfuStream: () => undefined,
       onHealthySfu: (revision) => healthy.push(revision),
-      send: () => true,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
       createSubscriber: (events) => {
         subscriber = createFakeSubscriber(events, [], "subscriber");
         return subscriber;
@@ -1182,7 +1186,17 @@ describe("ViewerSfuRoute", () => {
     route.armHealthySfuReselection(7);
     await route.acceptConfig(sfuConfig(7));
     await vi.waitFor(() => expect(subscriber.activate).toHaveBeenCalledOnce());
+    expect(messages).not.toContainEqual({
+      type: "route-ready",
+      revision: 7,
+      phase: "active",
+    });
     subscriber.events.onStream({} as MediaStream);
+    expect(messages).toContainEqual({
+      type: "route-ready",
+      revision: 7,
+      phase: "active",
+    });
     subscriber.events.onStats?.({
       intervalPacketsReceived: 4,
       intervalFramesDecoded: 0,
@@ -1205,7 +1219,7 @@ describe("ViewerSfuRoute", () => {
     expect(healthy).toEqual([7]);
   });
 
-  it("switches on first SFU video and forwards loss across SFU revision reuse", async () => {
+  it("switches on first SFU video and forwards loss across same-publication revision reuse", async () => {
     const log: string[] = [];
     const messages: ClientMessage[] = [];
     const peerAssignments: ParticipantRouteAssignment[] = [];
@@ -1302,16 +1316,40 @@ describe("ViewerSfuRoute", () => {
     subscribers[0]?.events.onVideoAvailability?.(false);
     subscribers[0]?.events.onVideoAvailability?.(true);
     expect(videoAvailability).toEqual([false, true]);
+    expect(messages).toContainEqual({
+      type: "route-media-unavailable",
+      revision: 2,
+    });
+    expect(
+      messages.filter(
+        (message) =>
+          message.type === "route-ready" &&
+          message.revision === 2 &&
+          message.phase === "active",
+      ),
+    ).toHaveLength(2);
 
+    const revisionThreeAssignment = sfuAssignment(["other-child"]);
     route.accept({
       revision: 3,
       phase: "active",
-      assignment: sfuAssignment(["other-child"]),
+      assignment: revisionThreeAssignment,
     });
+    await vi.waitFor(() =>
+      expect(messages).toContainEqual({
+        type: "route-ready",
+        revision: 3,
+        phase: "active",
+      }),
+    );
     expect(subscribers).toHaveLength(1);
     expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
     subscribers[0]?.events.onVideoAvailability?.(false);
     expect(videoAvailability).toEqual([false, true, false]);
+    expect(messages).toContainEqual({
+      type: "route-media-unavailable",
+      revision: 3,
+    });
 
     route.accept({
       revision: 4,
@@ -1327,6 +1365,11 @@ describe("ViewerSfuRoute", () => {
     await vi.waitFor(() => expect(subscribers[1]?.disconnect).toHaveBeenCalled());
     expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
     expect(streams).toHaveLength(1);
+    expect(messages).not.toContainEqual({
+      type: "route-ready",
+      revision: 5,
+      phase: "active",
+    });
 
     await route.disconnect();
     expect(sfuUpdates).toEqual([metrics, null]);
@@ -1336,6 +1379,92 @@ describe("ViewerSfuRoute", () => {
     expect(sfuUpdates).toEqual([metrics, null]);
     expect(sfuStates).toEqual(["reconnecting"]);
     expect(videoAvailability).toEqual([false, true, false]);
+  });
+
+  it("rebuilds an authoritative SFU route before proving a replaced publication", async () => {
+    const log: string[] = [];
+    const messages: ClientMessage[] = [];
+    const resetMedia = vi.fn();
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    const route = new ViewerSfuRoute({
+      activatePeer: () => undefined,
+      resetMedia,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(
+          events,
+          log,
+          `subscriber-${subscribers.length + 1}`,
+        );
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+    const assignment = sfuAssignment();
+
+    route.accept({ revision: 1, phase: "prepare", assignment });
+    await route.acceptConfig(sfuConfig(1));
+    route.accept({ revision: 1, phase: "active", assignment });
+    await vi.waitFor(() =>
+      expect(subscribers[0]?.activate).toHaveBeenCalledOnce(),
+    );
+    subscribers[0]?.events.onStream({} as MediaStream);
+    messages.length = 0;
+    log.length = 0;
+
+    await expect(
+      route.resyncAuthoritative({
+        revision: 2,
+        phase: "active",
+        assignment,
+      }),
+    ).resolves.toBe("accepted");
+
+    expect(resetMedia).toHaveBeenCalledOnce();
+    expect(log).toEqual([
+      "subscriber-1:deactivate",
+      "subscriber-1:disconnect",
+    ]);
+    expect(messages).not.toContainEqual({
+      type: "route-ready",
+      revision: 2,
+      phase: "active",
+    });
+
+    await route.acceptConfig(sfuConfig(2));
+    await vi.waitFor(() =>
+      expect(subscribers[1]?.activate).toHaveBeenCalledOnce(),
+    );
+    expect(subscribers).toHaveLength(2);
+    expect(messages).not.toContainEqual({
+      type: "route-ready",
+      revision: 2,
+      phase: "active",
+    });
+
+    subscribers[1]?.events.onStream({} as MediaStream);
+    expect(messages).toContainEqual({
+      type: "route-ready",
+      revision: 2,
+      phase: "active",
+    });
+
+    messages.length = 0;
+    route.accept({ revision: 3, phase: "active", assignment });
+    await vi.waitFor(() =>
+      expect(messages).toContainEqual({
+        type: "route-ready",
+        revision: 3,
+        phase: "active",
+      }),
+    );
+    expect(subscribers).toHaveLength(2);
+    expect(subscribers[1]?.deactivate).not.toHaveBeenCalled();
   });
 
   it("disconnects a subscriber whose connect completes after rollback", async () => {

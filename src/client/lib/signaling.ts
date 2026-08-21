@@ -114,6 +114,21 @@ export class SignalingClient {
     return this.setDisplayName(displayName);
   }
 
+  setSharingPaused(paused: boolean): boolean {
+    if (this.identity.role !== "host") {
+      return false;
+    }
+    this.identity.sharingPaused = paused;
+    if (!this.identity.shareGeneration) {
+      return false;
+    }
+    return this.send({
+      type: "set-sharing-paused",
+      shareGeneration: this.identity.shareGeneration,
+      paused,
+    });
+  }
+
   sendThenStop(message: ClientMessage): void {
     if (this.stopped) {
       return;

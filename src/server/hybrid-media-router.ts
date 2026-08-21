@@ -161,6 +161,14 @@ export interface HybridMediaRouterOptions {
   deleteConnectionId: (roomId: string, viewerPeerId: string) => void;
   getShareGeneration: (roomId: string) => string | undefined;
   onActiveRouteChanged?: (roomId: string) => void;
+  onViewerMediaState?: (
+    roomId: string,
+    viewerPeerId: string,
+    viewerSessionId: string,
+    revision: number,
+    sfuPublicationGeneration: string,
+    ready: boolean,
+  ) => void;
   now?: () => number;
 }
 
@@ -471,6 +479,20 @@ export class HybridMediaRouter {
       return { kind: "peer", peerId: assignment.upstream.peerId };
     }
     return { kind: "sfu" };
+  }
+
+  viewerSfuMediaStateIsCurrent(
+    roomId: string,
+    viewerPeerId: string,
+    revision: number,
+    sfuPublicationGeneration: string,
+  ): boolean {
+    const active = this.mediaRouteControllers.get(roomId)?.getActiveRoute();
+    return Boolean(
+      active?.revision === revision &&
+        active.assignments.get(viewerPeerId)?.upstream.kind === "sfu" &&
+        active.sfu.publicationGeneration === sfuPublicationGeneration,
+    );
   }
 
   handleViewerQualityEvidence(input: ForwardedViewerQualityEvidence): void {
@@ -850,6 +872,10 @@ export class HybridMediaRouter {
       return;
     }
     if (message.phase === "active") {
+      if (participant.role === "viewer") {
+        this.notifyViewerMediaState(participant, message.revision, true);
+        return;
+      }
       const active = controller.getActiveRoute();
       if (
         active.revision === message.revision &&
@@ -917,6 +943,47 @@ export class HybridMediaRouter {
 
     controller.ready(participant.peerId, message.revision, "prepare");
     this.commitPendingRoute(participant.roomId, message.revision);
+  }
+
+  handleRouteMediaUnavailable(
+    participant: AuthenticatedRouteParticipant,
+    message: Extract<ClientMessage, { type: "route-media-unavailable" }>,
+  ): void {
+    this.notifyViewerMediaState(participant, message.revision, false);
+  }
+
+  private notifyViewerMediaState(
+    participant: AuthenticatedRouteParticipant,
+    revision: number,
+    ready: boolean,
+  ): void {
+    if (
+      participant.role !== "viewer" ||
+      this.connectedPeer(participant.roomId, participant.peerId)?.sessionId !==
+        participant.sessionId
+    ) {
+      return;
+    }
+    const active = this.mediaRouteControllers
+      .get(participant.roomId)
+      ?.getActiveRoute();
+    const assignment = active?.assignments.get(participant.peerId);
+    if (
+      !active ||
+      active.revision !== revision ||
+      assignment?.upstream.kind !== "sfu" ||
+      active.sfu.publicationGeneration === null
+    ) {
+      return;
+    }
+    this.options.onViewerMediaState?.(
+      participant.roomId,
+      participant.peerId,
+      participant.sessionId,
+      revision,
+      active.sfu.publicationGeneration,
+      ready,
+    );
   }
 
   handleRouteFailed(
