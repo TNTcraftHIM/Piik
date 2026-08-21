@@ -102,7 +102,7 @@
 
 ## 自动化
 
-- `.githooks/pre-commit` 和 CI 调用 `scripts/check-project-state.sh`；原生 Windows 可运行等价的 `scripts/check-project-state.ps1`。两份入口共享 `scripts/required-project-paths.txt`，检查 whitespace、必需文件、Git 跟踪状态和上下文文件上限。
+- `.githooks/pre-commit` 和 CI 调用 `scripts/check-project-state.sh`；原生 Windows 可运行等价的 `scripts/check-project-state.ps1`。两份入口共享 `scripts/required-project-paths.txt`，检查 whitespace、清单内必需文件的 Git 跟踪状态和上下文文件上限。
 - `.github/workflows/repository-hygiene.yml` 在 push/PR 上运行 tracked POSIX 入口。
 - hook 只做快速、确定、可复现的检查；需要工程判断的内容留给评审和测试。
 - 新脚本必须有明确当前用途、跨平台入口、失败信息和 CI 调用方。没有现实使用者的 hook 或框架不进入仓库。

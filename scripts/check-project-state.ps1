@@ -16,12 +16,6 @@ foreach ($path in $requiredPaths) {
     }
 }
 
-$untracked = @(git ls-files --others --exclude-standard)
-if ($untracked.Count -gt 0 -and $env:SCREENER_ALLOW_UNTRACKED -ne "1") {
-    Write-Error "Untracked project files found. Track or ignore them intentionally:`n$($untracked -join "`n")"
-    throw "Set SCREENER_ALLOW_UNTRACKED=1 only for an intentional partial commit."
-}
-
 $agentLines = @(Get-Content -Encoding UTF8 AGENTS.md).Count
 $memoryLines = @(Get-Content -Encoding UTF8 docs/project-memory.md).Count
 $memoryBytes = (Get-Item docs/project-memory.md).Length

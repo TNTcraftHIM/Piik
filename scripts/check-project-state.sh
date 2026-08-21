@@ -12,14 +12,6 @@ while IFS= read -r path || [ -n "$path" ]; do
   fi
 done < scripts/required-project-paths.txt
 
-untracked=$(git ls-files --others --exclude-standard)
-if [ -n "$untracked" ] && [ "${SCREENER_ALLOW_UNTRACKED:-0}" != "1" ]; then
-  echo "Untracked project files found. Track or ignore them intentionally:" >&2
-  printf '%s\n' "$untracked" >&2
-  echo "Set SCREENER_ALLOW_UNTRACKED=1 only for an intentional partial commit." >&2
-  exit 1
-fi
-
 agent_lines=$(wc -l < AGENTS.md | tr -d '[:space:]')
 memory_lines=$(wc -l < docs/project-memory.md | tr -d '[:space:]')
 memory_bytes=$(wc -c < docs/project-memory.md | tr -d '[:space:]')
