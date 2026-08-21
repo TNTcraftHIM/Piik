@@ -255,6 +255,11 @@ no fatal error. The run proves the two-child control path and bound on local
 Chrome only. It does not prove shared encoding, CPU/GPU cost, visual quality,
 games, mobile resources, public networking, or endurance.
 
+The loopback runner retains cap2 by default; `BENCHMARK_EXPECTED_ENDPOINT_CAP=3`
+configures only its local server and gate. A 2026-08-22 Chrome 151 two-second
+smoke passed with three Viewers at Host2/relay1 and six at Host3/relay3, with all
+Viewers decoding. This is not a production-default, SFU-capacity, or resource claim.
+
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
 striping. Those mechanisms are intentionally excluded: needing them is a reason

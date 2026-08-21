@@ -6,7 +6,11 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import WebSocket from "ws";
-import type { ParticipantRouteAssignment } from "../src/shared/protocol";
+import {
+  DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+  type ParticipantRouteAssignment,
+} from "../src/shared/protocol";
 import {
   createScreenerServer,
   type ScreenerServer,
@@ -30,6 +34,7 @@ type PageRole = "host" | "viewer";
 export interface BenchmarkConfig {
   chromePath: string;
   viewerCounts: number[];
+  expectedEndpointCap: number;
   profileId: ProfileId;
   durationMs: number;
   settleMs: number;
@@ -358,6 +363,22 @@ function parseBoolean(value: string | undefined, fallback: boolean, name: string
   throw new Error(`${name} must be true, false, 1, or 0`);
 }
 
+export function parseExpectedEndpointCap(value: string | undefined): number {
+  const parsed = value?.trim()
+    ? Number(value)
+    : DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES ||
+    parsed > MAX_PEER_RELAY_DOWNSTREAM_EDGES
+  ) {
+    throw new Error(
+      `BENCHMARK_EXPECTED_ENDPOINT_CAP must be an integer from ${DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES} to ${MAX_PEER_RELAY_DOWNSTREAM_EDGES}`,
+    );
+  }
+  return parsed;
+}
+
 export function parseBenchmarkConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): BenchmarkConfig {
@@ -395,6 +416,9 @@ export function parseBenchmarkConfig(
   return {
     chromePath,
     viewerCounts,
+    expectedEndpointCap: parseExpectedEndpointCap(
+      environment.BENCHMARK_EXPECTED_ENDPOINT_CAP,
+    ),
     profileId,
     durationMs:
       parseNumber(
@@ -694,7 +718,12 @@ export function buildRunChecks(
   summary: NonNullable<BenchmarkRun["summary"]>,
   viewerCount: number,
   profileId: ProfileId,
+  expectedEndpointCap = DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
 ): RunCheck[] {
+  const endpointCapObserved =
+    summary.maxHostAssignedChildren === expectedEndpointCap &&
+    (viewerCount < expectedEndpointCap * 2 ||
+      summary.maxRelayActiveMediaEdges === expectedEndpointCap);
   const sfuConsistencyCheck: RunCheck = summary.sfuPublicationObserved
     ? {
         name: "sfu-route-consistency",
@@ -712,22 +741,33 @@ export function buildRunChecks(
   return [
     {
       name: "host-active-media-edges",
-      passed: summary.maxHostActiveMediaEdges <= 2,
+      passed: summary.maxHostActiveMediaEdges <= expectedEndpointCap,
       actual: summary.maxHostActiveMediaEdges,
-      expected: "<= 2",
+      expected: `<= ${expectedEndpointCap}`,
     },
     {
       name: "host-assigned-children",
-      passed: summary.maxHostAssignedChildren <= 2,
+      passed: summary.maxHostAssignedChildren <= expectedEndpointCap,
       actual: summary.maxHostAssignedChildren,
-      expected: "<= 2",
+      expected: `<= ${expectedEndpointCap}`,
     },
     {
       name: "relay-active-media-edges",
-      passed: summary.maxRelayActiveMediaEdges <= 2,
+      passed: summary.maxRelayActiveMediaEdges <= expectedEndpointCap,
       actual: summary.maxRelayActiveMediaEdges,
-      expected: "<= 2",
+      expected: `<= ${expectedEndpointCap}`,
     },
+    ...(expectedEndpointCap > DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES &&
+    viewerCount >= expectedEndpointCap
+      ? [
+          {
+            name: "endpoint-cap-observed",
+            passed: endpointCapObserved,
+            actual: endpointCapObserved,
+            expected: `${expectedEndpointCap} Host children and required relay fanout`,
+          },
+        ]
+      : []),
     {
       name: "all-viewers-decoded",
       passed: summary.everyViewerDecoded,
@@ -752,20 +792,23 @@ export function buildRunChecks(
   ];
 }
 
-export function buildRecoveryCheck(recovery: RecoveryResult): RunCheck {
+export function buildRecoveryCheck(
+  recovery: RecoveryResult,
+  expectedEndpointCap = DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+): RunCheck {
   const passed =
     recovery.triggered &&
     recovery.error === undefined &&
     recovery.recoveredAtEpochMs !== undefined &&
     recovery.maxHostActiveMediaEdges !== undefined &&
-    recovery.maxHostActiveMediaEdges <= 2 &&
+    recovery.maxHostActiveMediaEdges <= expectedEndpointCap &&
     recovery.maxHostAssignedChildren !== undefined &&
-    recovery.maxHostAssignedChildren <= 2;
+    recovery.maxHostAssignedChildren <= expectedEndpointCap;
   return {
     name: "relay-recovery-correctness",
     passed,
     actual: passed,
-    expected: "decoded frames resume with host media edges and assigned children <= 2",
+    expected: `decoded frames resume with host media edges and assigned children <= ${expectedEndpointCap}`,
   };
 }
 
@@ -777,6 +820,7 @@ export function buildBenchmarkInitScript(options: {
   width: number;
   height: number;
   frameRate: number;
+  expectedEndpointCap: number;
 }): string {
   const serialized = JSON.stringify(options);
   return `(() => {
@@ -835,7 +879,7 @@ export function buildBenchmarkInitScript(options: {
       }
       if (
         !Array.isArray(value.childPeerIds) ||
-        value.childPeerIds.length > 2 ||
+        value.childPeerIds.length > options.expectedEndpointCap ||
         !value.childPeerIds.every(isOpaqueId) ||
         new Set(value.childPeerIds).size !== value.childPeerIds.length ||
         (value.sfuPublicationGeneration !== null &&
@@ -2030,6 +2074,7 @@ async function runCase(
       width: captureResolution.width,
       height: captureResolution.height,
       frameRate: capture.maxFramerate,
+      expectedEndpointCap: config.expectedEndpointCap,
     };
     const hostPage = await createPage(cdp, baseUrl, {
       ...commonInit,
@@ -2088,7 +2133,12 @@ async function runCase(
     samples.push(await samplePages(cdp, pages, measurementStartedAt));
 
     const summary = summarizeSamples(samples, viewerCount);
-    const checks = buildRunChecks(summary, viewerCount, config.profileId);
+    const checks = buildRunChecks(
+      summary,
+      viewerCount,
+      config.profileId,
+      config.expectedEndpointCap,
+    );
     if (config.qualityControlSmoke && viewerCount >= 3) {
       const qualityControl = await runQualityControlSmoke(
         cdp,
@@ -2129,7 +2179,7 @@ async function runCase(
         config.recoveryTimeoutMs,
         signal,
       );
-      checks.push(buildRecoveryCheck(recovery));
+      checks.push(buildRecoveryCheck(recovery, config.expectedEndpointCap));
     }
     return {
       viewerCount,
@@ -2211,6 +2261,7 @@ export async function main(): Promise<number> {
     },
     configuration: {
       viewerCounts: config.viewerCounts,
+      expectedEndpointCap: config.expectedEndpointCap,
       profileId: config.profileId,
       durationMs: config.durationMs,
       settleMs: config.settleMs,
@@ -2266,6 +2317,7 @@ export async function main(): Promise<number> {
       ALLOWED_ORIGINS: baseUrl,
       ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "true",
+      MAX_PEER_RELAY_DOWNSTREAM_EDGES: String(config.expectedEndpointCap),
       MAX_VIEWERS_PER_ROOM: String(Math.max(...config.viewerCounts)),
       STUN_URLS: "",
     });
