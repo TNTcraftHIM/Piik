@@ -195,6 +195,14 @@ leaf-only。
 - [MDN `getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [W3C Screen Capture](https://w3c.github.io/mediacapture-screen-share/)
 
+### Viewer 后台播放边界
+
+当前 Viewer 使用一个持续存在、可听的 `<video autoplay playsinline>`，播放被浏览器拦截时保留显式用户手势入口；信令心跳由服务端 WebSocket ping 和浏览器原生 pong 完成。Chrome 把可听媒体、WebRTC 和 WebSocket 视为后台保留连接的活动，并允许隐藏页节流视觉更新；页面若被系统冻结或回收，Web 应用本身不能继续执行。WebKit 也会在页面可听时保留 iOS Web 进程。产品契约覆盖已经开始的音频和连接；隐藏页面的视频合成只代表呈现层。
+
+一轮保留的 Chrome 151 双 Viewer 结果与该边界一致：后台标签页的 inbound、decoded 和 Opus RTP 计数继续增长，`requestVideoFrameCallback` 保持不变；前台 Viewer 的逐帧回调正常增长。这只证明该受控桌面样本的接收、解码和音频包连续性，不是可听性或手机生命周期证明。iOS 锁屏、页面回收，以及后台期间换父或重连后出现的新媒体仍进入真机矩阵；LiveKit 的 Safari issue 也区分了持续播放的既有音轨与后台新建音频元素。
+
+来源（访问于 2026-08-21）：[Chrome background tabs](https://developer.chrome.com/blog/background_tabs)、[Chrome Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)、[WebKit audible-page process assertion](https://bugs.webkit.org/show_bug.cgi?id=173932)、[WHATWG media elements](https://html.spec.whatwg.org/multipage/media.html)、[LiveKit Safari background audio issue #1751](https://github.com/livekit/client-sdk-js/issues/1751)。
+
 ### Viewer 向电视输出边界
 
 截至 2026-08-21，Remote Playback API 仍不能作为 live WebRTC 的可移植输出契约。

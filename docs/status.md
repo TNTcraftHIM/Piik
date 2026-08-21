@@ -37,13 +37,13 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
 - Source caps pending/answered `peer-selected` at one per room, excluding Host ingress. Focused tests cover admission/release/rollback/STUN-only; exact-source Chrome proves active TURN/UDP media, Viewer progress, Host edge one and stop zero. Functional only.
-- Host names/window audio/all-room routing/Host selected ingress are active. New AV stats pass 42 focused tests/typecheck; this is not audible proof.
-- Exact `16f6eab` passed typecheck, both builds and 30 files/445 tests. Deploy preserved all recorded config/network/SQLite hashes; DB, routes, services, endpoints, site access, and old-endpoint 404 passed. It triggered no TURN/SFU session. Rollback is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`; `fd76277b05d491af8840b28f3132b7ff445d3cbe` remains secondary.
+- Host names/window audio/all-room routing/Host selected ingress are active. AV stats pass 42 tests/typecheck; a retained Chrome 151 dual-Viewer sample kept hidden-tab inbound/decode/Opus counters moving while its presentation callback stayed flat. Audible/mobile proof remains open.
+- Exact `16f6eab` passed typecheck, builds and 445 tests; deploy preserved config/network/SQLite/services/routes. Rollback is `22119b9`; `fd76277` remains secondary.
 
 ## Unverified Boundaries
 
 - The cutover is config evidence; the separate canary closes active Host-ingress relay/frame/cap/stop function. Initial ingress, peer last mile, external cohorts, admission rescue, quality/resources/performance, and game blur remain open.
-- Mobile remains Viewer leaf-only. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
+- Mobile is Viewer-only. Its persistent audible media element keeps media/signaling active while the page lives; iOS lock-screen, reclamation and background reconnection remain device gates. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
 - ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.
