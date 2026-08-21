@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-const validHostAuthenticated = `{"type":"authenticated","protocol":"screener-v2","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`
+const validHostAuthenticated = `{"type":"authenticated","protocol":"screener-v4","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`
 
-const validPeerAssistedHostAuthenticated = `{"type":"authenticated","protocol":"screener-v2","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":["viewer-1","viewer-2"],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678","mediaMode":"peer-assisted","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1","viewer-2"]},"routeRevision":7,"routeAssignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1","viewer-2"],"sfuPublicationGeneration":null},"qualitySettings":{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution"}}`
+const validPeerAssistedHostAuthenticated = `{"type":"authenticated","protocol":"screener-v4","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":["viewer-1","viewer-2"],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678","mediaMode":"peer-assisted","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1","viewer-2"]},"routeRevision":7,"routeAssignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1","viewer-2"],"sfuPublicationGeneration":null},"qualitySettings":{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","videoCodec":"automatic"}}`
 
 func TestMarshalHostSignalShapes(t *testing.T) {
 	mid := "0"

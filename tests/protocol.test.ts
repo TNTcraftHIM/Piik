@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -72,6 +75,20 @@ const parentEdgeQualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
+  it("keeps the Native sender on the same signaling version", () => {
+    const nativeWire = readFileSync(
+      join(
+        import.meta.dirname,
+        "../native/sender/internal/remote/wire.go",
+      ),
+      "utf8",
+    );
+
+    expect(nativeWire).toContain(
+      `signalingProtocol  = "${SIGNALING_PROTOCOL}"`,
+    );
+  });
+
   it("accepts only the fixed provisional Host lease", () => {
     expect(
       createRoomRequestSchema.parse({ viewerPolicy: "private-link" }),

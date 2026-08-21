@@ -126,15 +126,14 @@ export class ViewerSfuRoute {
   async resyncAuthoritative(
     update: RouteUpdateInput,
   ): Promise<RouteUpdateResult> {
-    const acknowledgeCurrentSfuMedia =
-      update.phase === "active" &&
-      update.assignment.upstream.kind === "sfu" &&
-      this.active?.activated === true &&
-      !this.active.failed &&
-      this.active.mediaAvailable;
-    const result = this.accept(update, acknowledgeCurrentSfuMedia);
-    if (result !== "stale" || this.closed) {
-      return result;
+    if (this.closed) {
+      return "stale";
+    }
+    if (!this.active && !this.pending) {
+      const result = this.accept(update, false);
+      if (result !== "stale") {
+        return result;
+      }
     }
 
     const resyncGeneration = ++this.resyncGeneration;
