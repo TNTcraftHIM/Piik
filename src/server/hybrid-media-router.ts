@@ -33,6 +33,7 @@ const VIEWER_QUALITY_BAD_WINDOWS_TO_REASSIGN = 3;
 const VIEWER_QUALITY_EVIDENCE_GAP_MS = 5_000;
 const VIEWER_QUALITY_REASSIGN_COOLDOWN_MS = 30_000;
 const VIEWER_QUALITY_FREEZE_RATIO = 0.5;
+const VIEWER_QUALITY_RELAY_FPS_RATIO = 2 / 3;
 const VIEWER_QUALITY_MIN_LOSS_PACKETS = 100;
 const VIEWER_QUALITY_HIGH_LOSS_RATIO = 0.3;
 interface PendingRoutePreparation {
@@ -104,6 +105,7 @@ interface HealthySfuReselectionProbe {
 }
 
 interface QualityRouteIntentGuard {
+  kind: ViewerQualityBadWindowKind;
   viewerSessionId: string;
   connectionId: string;
   routeRevision: number;
@@ -111,6 +113,8 @@ interface QualityRouteIntentGuard {
   parentSessionId: string;
   exclusionOwnedByQuality: boolean;
 }
+
+type ViewerQualityBadWindowKind = "severe" | "relative-fps";
 
 interface ViewerQualityEvidenceState {
   viewerSessionId: string;
@@ -120,6 +124,11 @@ interface ViewerQualityEvidenceState {
   routeRevision: number;
   lastCorrelatedAtMs: number | null;
   badWindowCount: number;
+  badWindowKind: ViewerQualityBadWindowKind | null;
+  lastCorrelatedFps: {
+    correlatedAtMs: number;
+    framesPerSecond: number | null;
+  } | null;
   pendingViewerEvidence: {
     acceptedAtMs: number;
     evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>;
@@ -227,6 +236,10 @@ export class HybridMediaRouter {
     string,
     ViewerQualityEvidenceState
   >();
+  private readonly heldQualityParentExclusionsByViewer = new Map<
+    string,
+    { parentPeerId: string; parentSessionId: string; expiresAtMs: number }
+  >();
   private readonly roomQualityMigrationCooldownUntilMs = new Map<
     string,
     number
@@ -274,11 +287,13 @@ export class HybridMediaRouter {
     this.relayCapacitySessionsByRoom.clear();
     this.sfuDisabledRoomIds.clear();
     this.viewerQualityEvidenceStates.clear();
+    this.heldQualityParentExclusionsByViewer.clear();
     this.roomQualityMigrationCooldownUntilMs.clear();
   }
 
   connectParticipant(input: AuthenticatedRouteParticipant): HybridAuthenticationState {
     this.clearRoomViewerQualityEvidenceStates(input.roomId);
+    this.clearHeldQualityParentExclusion(input.roomId, input.peerId);
     this.clearSfuRefreshesForPeer(input.roomId, input.peerId);
     if (input.role === "viewer") {
       const connectionKey = viewerConnectionKey(input.roomId, input.peerId);
@@ -552,6 +567,10 @@ export class HybridMediaRouter {
         ? previous.lastCorrelatedAtMs
         : null,
       badWindowCount: canContinueStreak ? previous.badWindowCount : 0,
+      badWindowKind: canContinueStreak ? previous.badWindowKind : null,
+      lastCorrelatedFps: sameIdentity
+        ? previous?.lastCorrelatedFps ?? null
+        : null,
       pendingViewerEvidence: { acceptedAtMs: now, evidence },
     });
   }
@@ -603,12 +622,18 @@ export class HybridMediaRouter {
       now - pending.acceptedAtMs > VIEWER_QUALITY_EVIDENCE_GAP_MS
     ) {
       state.badWindowCount = 0;
+      state.badWindowKind = null;
       state.lastCorrelatedAtMs = null;
       return;
     }
+    state.lastCorrelatedFps = {
+      correlatedAtMs: now,
+      framesPerSecond: pending.evidence.metrics.framesPerSecond,
+    };
     const cooldownUntil = this.roomQualityMigrationCooldownUntilMs.get(roomId);
     if (cooldownUntil !== undefined && now < cooldownUntil) {
       state.badWindowCount = 0;
+      state.badWindowKind = null;
       state.lastCorrelatedAtMs = now;
       return;
     }
@@ -618,22 +643,37 @@ export class HybridMediaRouter {
     const existingIntent = this.viewerRouteIntentsByRoom
       .get(roomId)
       ?.get(viewerPeerId);
+    this.pruneHeldQualityParentExclusion(roomId, viewerPeerId, now);
     const failedParents = this.failedParentPeerIdsByViewer.get(connectionKey);
     if (existingIntent || failedParents?.has(edge.parentPeerId)) {
       state.badWindowCount = 0;
+      state.badWindowKind = null;
       state.lastCorrelatedAtMs = now;
       return;
     }
 
-    const hardBad =
-      isHardBadViewerQualityWindow(pending.evidence) &&
-      isHardBadParentEdgeQualityProof(evidence.proof);
-    state.badWindowCount = hardBad
-      ? state.lastCorrelatedAtMs !== null &&
+    const hardParentProof = isHardBadParentEdgeQualityProof(evidence.proof);
+    const badWindowKind = !hardParentProof
+      ? null
+      : isHardBadViewerQualityWindow(pending.evidence)
+        ? "severe"
+        : this.isHardBadRelativeRelayFpsWindow(
+              roomId,
+              edge.parentPeerId,
+              parentSessionId,
+              pending.evidence,
+              now,
+            )
+          ? "relative-fps"
+          : null;
+    state.badWindowCount = badWindowKind
+      ? state.badWindowKind === badWindowKind &&
+        state.lastCorrelatedAtMs !== null &&
         now - state.lastCorrelatedAtMs <= VIEWER_QUALITY_EVIDENCE_GAP_MS
         ? state.badWindowCount + 1
         : 1
       : 0;
+    state.badWindowKind = badWindowKind;
     state.lastCorrelatedAtMs = now;
     if (state.badWindowCount < VIEWER_QUALITY_BAD_WINDOWS_TO_REASSIGN) {
       return;
@@ -656,6 +696,7 @@ export class HybridMediaRouter {
       sfuAttempts: 0,
       unavailableReported: false,
       qualityGuard: {
+        kind: badWindowKind!,
         viewerSessionId,
         connectionId: evidence.guard.connectionId,
         routeRevision: evidence.guard.routeRevision,
@@ -666,6 +707,46 @@ export class HybridMediaRouter {
     });
     this.viewerQualityEvidenceStates.delete(connectionKey);
     this.drainViewerRouteIntents(roomId);
+  }
+
+  private isHardBadRelativeRelayFpsWindow(
+    roomId: string,
+    parentPeerId: string,
+    parentSessionId: string,
+    childEvidence: Extract<
+      ServerMessage,
+      { type: "viewer-quality-evidence" }
+    >,
+    now: number,
+  ): boolean {
+    const parentState = this.viewerQualityEvidenceStates.get(
+      viewerConnectionKey(roomId, parentPeerId),
+    );
+    const correlated = parentState?.lastCorrelatedFps;
+    const parentEdge = this.resolveActivePeerEdge(roomId, parentPeerId);
+    if (
+      this.options.roomStore.getConnectedViewer(roomId, parentPeerId)
+        ?.sessionId !== parentSessionId ||
+      !parentState ||
+      !correlated ||
+      parentState.viewerSessionId !== parentSessionId ||
+      parentEdge?.parentPeerId !== parentState.parentPeerId ||
+      parentEdge.revision !== parentState.routeRevision ||
+      this.options.getConnectionId(roomId, parentPeerId) !==
+        parentState.connectionId ||
+      now < correlated.correlatedAtMs ||
+      now - correlated.correlatedAtMs > VIEWER_QUALITY_EVIDENCE_GAP_MS
+    ) {
+      return false;
+    }
+    const childFps = childEvidence.metrics.framesPerSecond;
+    const parentInboundFps = correlated.framesPerSecond;
+    return (
+      childFps !== null &&
+      parentInboundFps !== null &&
+      parentInboundFps > 0 &&
+      childFps < parentInboundFps * VIEWER_QUALITY_RELAY_FPS_RATIO
+    );
   }
 
   setViewerRelayCapacity(
@@ -1128,13 +1209,34 @@ export class HybridMediaRouter {
     ) {
       return;
     }
+    const now = this.options.now?.() ?? Date.now();
+    this.pruneHeldQualityParentExclusion(
+      participant.roomId,
+      participant.peerId,
+      now,
+    );
+    const heldQualityParent =
+      this.heldQualityParentExclusionsByViewer.get(connectionKey);
+    const heldQualityFailure =
+      heldQualityParent?.parentPeerId === assignment.upstream.peerId;
+    if (heldQualityFailure) {
+      this.heldQualityParentExclusionsByViewer.delete(connectionKey);
+    } else if (heldQualityParent) {
+      this.clearHeldQualityParentExclusion(
+        participant.roomId,
+        participant.peerId,
+      );
+    }
 
     let failedParents = this.failedParentPeerIdsByViewer.get(connectionKey);
     if (!failedParents) {
       failedParents = new Set();
       this.failedParentPeerIdsByViewer.set(connectionKey, failedParents);
     }
-    if (failedParents.has(assignment.upstream.peerId)) {
+    if (
+      failedParents.has(assignment.upstream.peerId) &&
+      !heldQualityFailure
+    ) {
       const existingIntent = this.viewerRouteIntentsByRoom
         .get(participant.roomId)
         ?.get(participant.peerId);
@@ -1796,6 +1898,11 @@ export class HybridMediaRouter {
         roomId,
         viewerPeerId,
       );
+      this.pruneHeldQualityParentExclusion(
+        roomId,
+        viewerPeerId,
+        this.options.now?.() ?? Date.now(),
+      );
       const controller = this.mediaRouteControllers.get(roomId);
       const assignment = controller
         ?.getActiveRoute()
@@ -1899,12 +2006,26 @@ export class HybridMediaRouter {
         if (changes) {
           if (intent.qualityGuard) {
             this.startRoomQualityMigrationCooldown(roomId);
-            this.releaseQualityOwnedParentExclusion(
-              roomId,
-              viewerPeerId,
-              intent,
-              intent.qualityGuard,
-            );
+            if (intent.qualityGuard.kind === "relative-fps") {
+              this.heldQualityParentExclusionsByViewer.set(
+                viewerConnectionKey(roomId, viewerPeerId),
+                {
+                  parentPeerId: intent.qualityGuard.parentPeerId,
+                  parentSessionId: intent.qualityGuard.parentSessionId,
+                  expiresAtMs:
+                    (this.options.now?.() ?? Date.now()) +
+                    VIEWER_QUALITY_REASSIGN_COOLDOWN_MS,
+                },
+              );
+              intent.qualityGuard.exclusionOwnedByQuality = false;
+            } else {
+              this.releaseQualityOwnedParentExclusion(
+                roomId,
+                viewerPeerId,
+                intent,
+                intent.qualityGuard,
+              );
+            }
           }
           intents.delete(viewerPeerId);
           this.clearChangedConnectionIds(roomId, changes);
@@ -1912,6 +2033,11 @@ export class HybridMediaRouter {
           this.sendMediaAssignmentChanges(roomId, changes);
           continue;
         }
+      }
+
+      if (intent.qualityGuard?.kind === "relative-fps") {
+        this.discardQualityIntent(roomId, viewerPeerId, intent);
+        continue;
       }
 
       if (
@@ -2033,6 +2159,44 @@ export class HybridMediaRouter {
     const connectionKey = viewerConnectionKey(roomId, viewerPeerId);
     const failedParents = this.failedParentPeerIdsByViewer.get(connectionKey);
     failedParents?.delete(guard.parentPeerId);
+    if (failedParents?.size === 0) {
+      this.failedParentPeerIdsByViewer.delete(connectionKey);
+    }
+  }
+
+  private pruneHeldQualityParentExclusion(
+    roomId: string,
+    viewerPeerId: string,
+    now: number,
+  ): void {
+    if (!Number.isFinite(now)) {
+      return;
+    }
+    const connectionKey = viewerConnectionKey(roomId, viewerPeerId);
+    const held = this.heldQualityParentExclusionsByViewer.get(connectionKey);
+    if (
+      !held ||
+      (now < held.expiresAtMs &&
+        this.connectedPeer(roomId, held.parentPeerId)?.sessionId ===
+          held.parentSessionId)
+    ) {
+      return;
+    }
+    this.clearHeldQualityParentExclusion(roomId, viewerPeerId);
+  }
+
+  private clearHeldQualityParentExclusion(
+    roomId: string,
+    viewerPeerId: string,
+  ): void {
+    const connectionKey = viewerConnectionKey(roomId, viewerPeerId);
+    const held = this.heldQualityParentExclusionsByViewer.get(connectionKey);
+    if (!held) {
+      return;
+    }
+    this.heldQualityParentExclusionsByViewer.delete(connectionKey);
+    const failedParents = this.failedParentPeerIdsByViewer.get(connectionKey);
+    failedParents?.delete(held.parentPeerId);
     if (failedParents?.size === 0) {
       this.failedParentPeerIdsByViewer.delete(connectionKey);
     }
@@ -2857,6 +3021,11 @@ export class HybridMediaRouter {
         this.failedParentPeerIdsByViewer.delete(key);
       }
     }
+    for (const key of this.heldQualityParentExclusionsByViewer.keys()) {
+      if (key.startsWith(prefix)) {
+        this.heldQualityParentExclusionsByViewer.delete(key);
+      }
+    }
   }
 
   private clearRoomMediaRouteState(roomId: string): void {
@@ -2940,6 +3109,7 @@ export class HybridMediaRouter {
     roomId: string,
     peerId: string,
   ): void {
+    this.clearHeldQualityParentExclusion(roomId, peerId);
     const intents = this.viewerRouteIntentsByRoom.get(roomId);
     for (const [viewerPeerId, intent] of [...(intents ?? [])]) {
       if (
@@ -3016,6 +3186,7 @@ function sameQualityRouteIntentGuard(
   right: QualityRouteIntentGuard,
 ): boolean {
   return (
+    left.kind === right.kind &&
     left.viewerSessionId === right.viewerSessionId &&
     left.connectionId === right.connectionId &&
     left.routeRevision === right.routeRevision &&

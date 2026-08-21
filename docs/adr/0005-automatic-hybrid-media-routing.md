@@ -168,8 +168,13 @@ child generation. A parent consumes a stats sample only once per child and
 current connection, using the existing finite monotonic stats timestamp; its
 DOMHighResTimeStamp-derived window is rounded before the one-to-five-second
 bound is checked. Viewer C may wait pending, but the router advances the streak
-only when that C has a hard receive predicate and B independently reports one
-of the two hard sender predicates. Both inputs are WebRTC stats gathered by
+only when B independently reports one of the two hard sender predicates and C
+is either severe or relatively degraded. Severe remains freeze, zero decode,
+or high loss. Relative degradation applies only below a Viewer relay parent:
+the parent's own most recent C must already be correlated, current for its
+session, route and connection, no older than five seconds, and the child's FPS
+must be below two-thirds of that actual inbound FPS. It never compares C with
+the room's configured FPS ceiling. Both inputs are WebRTC stats gathered by
 stock browsers at separate endpoints; parent remote loss originates in RTCP.
 This is cross-endpoint corroboration, not cryptographic independence or defense
 against colluding authenticated participants. Raw stats, addresses, candidates,
@@ -377,19 +382,23 @@ The first controller reacts only to discrete events:
 - unsupported route capability;
 - a hard bounded-send-queue overflow on a future encoded-object route; or
 - three consecutive, current-identity correlated Viewer C/parent B windows in
-  which C has a hard receive predicate (freeze duration at least 50% of the
-  sample window, positive received RTP with zero decoded frames, or at least
-  100 received-plus-lost packets with loss at least 30%) and B independently
-  reports `cpu`/`bandwidth` sender limitation or at least 100 sent packets with
-  RTCP-reported remote loss divided by sent packets at least 30%.
+  which B reports `cpu`/`bandwidth` sender limitation or at least 100 sent
+  packets with RTCP-reported remote loss divided by sent packets at least 30%,
+  and C either has the existing severe freeze/zero-decode/high-loss predicate
+  or, below a Viewer relay parent, receives less than two-thirds of that
+  parent's fresh correlated inbound FPS.
 
 It does not combine RTT, bitrate, geography, or a synthetic health score; the
 exact sender-limitation enum is a predicate, not an encoder score. Either side
-alone is diagnostic-only. C may be stored before B arrives, but only the hard
-pair advances the streak. Healthy or ambiguous correlated windows clear it. A Viewer or parent session,
+alone is diagnostic-only. C may be stored before B arrives, but only one
+unchanged severe or relative pair advances its own streak. Healthy or ambiguous
+correlated windows clear it. A Viewer or parent session,
 connection ID, route revision or parent identity change also resets it, as does
-an evidence gap over five seconds. A successful peer reassignment or started
-SFU prepare creates one 30-second room migration budget. Viewer/session churn
+an evidence gap over five seconds. Severe evidence retains the existing bounded
+peer/SFU/TURN ladder. Relative-FPS evidence tries only another peer; if none is
+eligible, the old active edge stays and no route, SFU, TURN, or room cooldown is
+created. A successful peer reassignment or started severe SFU prepare creates
+one 30-second room migration budget. Viewer/session churn
 cannot bypass that budget; removal, disconnect, authorization or generation
 change clears per-edge evidence and intent state, while room stop/delete clears
 the room budget. A quality-created intent retains its Viewer/parent sessions,
@@ -397,13 +406,16 @@ connection, revision and parent guard through every drain, peer change, SFU
 prepare and commit boundary. Pending SFU work also retains the exact originating
 intent identity: missing, replaced or changed guards abort before grants or
 commit, while a genuine `route-failed` may explicitly take over that same
-intent as the ordinary failure owner. Stale work and successful peer migration
-release only the quality-owned temporary parent exclusion; a real
-`route-failed` exclusion remains owned by the failure path. The W3C stats
+intent as the ordinary failure owner. A successful relative-FPS move holds its
+old parent for 30 seconds, or until that parent session changes, to avoid a soft
+bounce. A real `route-failed` is stronger evidence: it releases that soft hold,
+hard-excludes the current failed parent and may immediately reuse the old
+playable parent. Other successful quality moves release their temporary
+exclusion. The W3C stats
 definitions establish the counter meanings and their WebRTC 1.0 example uses
 30% loss as a likely culprit; they do not
-prescribe Screener's route policy. Therefore 50%, 100 packets, three windows,
-five seconds and 30 seconds are conservative candidate constants pending
+prescribe Screener's route policy. Therefore 50%, two-thirds FPS, 100 packets,
+three windows, five seconds and 30 seconds are conservative candidate constants pending
 production calibration, not claimed optimums. Measurements may change them
 only through a reviewed change.
 ADR-0007's `HIGH`/`FALLBACK` quality state is separate and does not become a

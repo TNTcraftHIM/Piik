@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 ## Confirmed Intent
 
@@ -28,7 +28,7 @@ Last updated: 2026-08-21
 - Mobile endpoints are Web Viewer-only. Current Android/iOS browsers do not expose Web Host capture; AirPlay/system mirroring is Viewer-local output.
 - ADR-0005: direct/peer UDP -> bounded SFU roots -> selected-edge TURN. The deployed controller caps pending/answered `peer-selected` at one per room; Host ingress is independent. A pre-`ecc794d` exact-source/production-media canary proves active Host ingress only. Ordinary peers stay STUN-only.
 - `PEER_ASSISTED_MEDIA=true` enables isolated all-room controllers; room `1` is historical. Keep sticky P2P and one recovery attempt per layer. Deployed healthy-SFU MBB covers one root and retained parent after reauth/recovery, gated by media proof, Host2/browser1 overlap and cooldown. It excludes `peer-selected`; active-SFU loss aborts into normal recovery. Capacity `0 -> 1`, multi-root and browser gates remain open.
-- C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
+- C+B reparenting stays edge-local: severe uses fallback; relative relay FPS uses fresh parent evidence and peers only. No scoring or global penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Screen audio: Web capture requests speech processing off and ideal stereo; peer answers use `stereo=1;maxaveragebitrate=128000`; SFU uses 128 kbps stereo/`forceStereo`, DTX off, RED retained. Proof open; no audio UI; voice and Native stay separate.
@@ -43,7 +43,7 @@ Last updated: 2026-08-21
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production: exact `4ee2f27f3f3e0882ae6f9d970fef1cf3b6fb1f7b`, release `4ee2f27f3f3e`, Web wire `screener-v4`; rollback `3d75e7b88635`.
+- Production: exact `25b725fdfcccc181a22ef020d77f5668470ba636`, release `25b725fdfccc`, Web wire `screener-v4`.
 - Web keeps one SFU stream, clears unavailable video, exposes evidence-backed routes/transports and paused preview, and drops signals to a grace-retained offline current-edge target. Routing is automatic; entry/nickname UI is live; Native remains source-only.
 - Web relay is cap2 with one upstream; child3 rejects and no UA/visibility split exists.
 - Deployed relay evidence reaches opted-in Host rosters; direct proof stays local-edge-only.

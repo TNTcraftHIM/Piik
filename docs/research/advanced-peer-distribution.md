@@ -193,10 +193,13 @@ carries a null placeholder. One current connection cannot reuse the same
 `sampleTimestampMs` for multiple C sequences; fractional stats windows are
 rounded before applying the protocol bounds. The
 server accepts one B from the bound parent session and generation. The router
-may retain C while awaiting B, but advances only when the correlated pair has a
-hard C receive predicate and a hard B sender predicate. `sending`, either
-report alone, and healthy or ambiguous pairs reset or do not advance the
-streak.
+may retain C while awaiting B, but advances only when B is hard and C is either
+severe or relatively degraded. The relative case exists only below a Viewer
+relay: the relay's own latest correlated C must still match its session, active
+route and connection and be at most five seconds old; the child must receive
+less than two-thirds of that actual inbound FPS. The configured FPS ceiling is
+not evidence. `sending`, either report alone, and healthy or ambiguous pairs
+reset or do not advance the streak.
 It holds at most one pending/streak state per connected Viewer and one room
 cooldown, with no timer, weighted score or global parent-capacity decision.
 
@@ -205,21 +208,25 @@ of the one-to-five-second window; positive received-packet delta with zero
 decoded frames; or at least 100 received-plus-lost packets with loss at least
 30%. Parent B must independently report the exact `cpu`/`bandwidth` sender
 limitation or at least 100 sent packets with remote loss divided by sent packets
-at least 30%. Three consecutive dual-hard-bad windows are required. A healthy
-or incomplete correlated window, any Viewer/parent session, connection, route
-revision or parent change, or a gap over five seconds clears the streak. A
-successful peer move or started SFU prepare spends a 30-second room migration
+at least 30%. Three consecutive windows of the same severe or relative kind are
+required. A healthy or incomplete correlated window, any Viewer/parent session,
+connection, route revision or parent change, or a gap over five seconds clears
+the streak. Severe evidence retains the existing fallback ladder. Relative FPS
+tries another peer only; no candidate keeps the old edge without SFU, TURN, an
+error, or room cooldown. A successful peer move or started severe SFU prepare
+spends a 30-second room migration
 budget, so a new public Viewer identity cannot bypass it. Per-edge state clears
 on authentication/generation change, disconnect/removal and route replacement;
 room stop/delete also clears the cooldown.
 
-An SFU preparation created by quality retains the exact originating intent and
+An SFU preparation created by severe quality retains the exact originating intent and
 its full Viewer/parent session, connection and revision guard until grants and
 commit finish. Missing, replaced or changed intent state aborts and releases
 only its quality-owned parent exclusion. A real `route-failed` can take over
-that same intent without losing its exclusion; a successful peer move releases
-the quality-only exclusion so a later real failure after reattachment remains
-actionable.
+that same intent without losing its exclusion. A successful relative move holds
+the old parent for 30 seconds or until its session changes. A real active-route
+failure overrides that soft hold, hard-excludes the current failed parent, and
+allows the old playable peer to take over immediately.
 
 W3C defines outbound `packetsSent` as the local cumulative RTP packet count.
 `remote-inbound-rtp.packetsLost` is remote receiver data delivered by RTCP and
@@ -233,7 +240,8 @@ Viewer-side
 `packetsReceived`, `packetsLost`, `framesDecoded`, `freezeCount` and
 `totalFreezesDuration`; its WebRTC 1.0 diagnostic example treats loss over 30%
 as a likely culprit. It does not define route-migration thresholds. The 50%
-freeze share, 100-packet floor, three windows, five-second gap and 30-second
+freeze share, two-thirds FPS ratio, 100-packet floor, three windows,
+five-second gap and 30-second
 cooldown are falsifiable candidate constants for production calibration, not
 standards-derived or claimed optimum values.
 
@@ -244,8 +252,9 @@ bad: the remote-loss value is that child's RTCP report and
 server implementation deliberately reduces published-track and subscribed-
 downtrack quality to a participant-wide minimum; that aggregate is useful for
 conferencing UI but is not a directional P2P parent score. Screener consequently
-excludes only the failed parent for the affected Viewer-rooted subtree and
-releases the quality-owned exclusion after a successful move.
+excludes only the affected edge parent. Alternate-parent selection remains
+deterministic breadth-first; preferring recent healthy candidates over unknown
+candidates is a later make-before-break slice, not a score in this correction.
 
 With host and current browser-relay degree two, deterministic breadth-first
 assignment keeps eight viewers to depth three. A tree for `N` viewers
