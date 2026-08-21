@@ -32,6 +32,7 @@ import {
   type ViewerAccessPolicy,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
+import { ConnectionSelfCheck } from "../components/ConnectionSelfCheck";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
 import { RoomCode } from "../components/RoomCode";
 import { RoomCodeEntry } from "../components/RoomCodeEntry";
@@ -1881,6 +1882,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </div>
             )}
           </div>
+
+          {(phase === "idle" || phase === "ended" || phase === "error") && (
+            <ConnectionSelfCheck />
+          )}
 
           {showConnectionDetails && details && stream && (
             <div className="capture-strip" aria-label="实际捕获参数">

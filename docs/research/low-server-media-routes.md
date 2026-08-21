@@ -351,6 +351,25 @@ old connection or ICE-restart history from being attributed to a new route.
 Use opaque generations only. This is a bounded diagnostic manifest, not a
 backend telemetry schema or controller input.
 
+### Pre-Share Self-Check Boundary
+
+A temporary, unpaired `RTCPeerConnection` can create a data channel, set its
+local offer, and inspect only `RTCIceCandidate.type`. Gathering a `srflx`
+candidate proves that the browser received a STUN response for this generation;
+it proves neither a usable peer candidate pair nor bandwidth, latency, NAT type,
+or media quality. A same-origin WebSocket open followed by immediate close proves
+only the signaling handshake. Neither probe creates a Screener room or media
+edge, and both discard their temporary resources.
+
+Pinned LiveKit `Room.prepareConnection(url)` without a token performs an HTTP
+`HEAD`; it does not establish ICE/UDP. A real LiveKit transport requires a token
+and participant connection, which would create the room/SFU state this pre-share
+check deliberately avoids. The UI therefore reports configured SFU as unknown
+until an actual controller-selected route proves current-generation media. The
+public, `no-store` self-check config returns only the existing STUN-only
+`iceConfig` and an SFU-configured boolean. It returns no SFU or TURN URL, token,
+username, credential, address, candidate, or selected-edge grant.
+
 ## SFU/UDP And Selected-Edge TURN
 
 Every ordinary bounded peer `RTCPeerConnection` uses STUN-only ICE. Failure

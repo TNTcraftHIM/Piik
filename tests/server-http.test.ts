@@ -377,6 +377,39 @@ describe("room HTTP API", () => {
 });
 
 describe("server HTTP listener and health", () => {
+  it("serves only non-secret connection self-check configuration", async () => {
+    const baseUrl = await start(
+      testConfig({
+        peerAssistedMedia: true,
+        stunUrls: ["stun:stun.example.test:3478"],
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+          maxSfuRootsPerRoom: 2,
+        },
+      }),
+      { sfuTokenIssuer: { issueToken: async () => "unused-test-token" } },
+    );
+
+    const response = await fetch(`${baseUrl}/api/connection-self-check`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await response.json()).toEqual({
+      iceConfig: {
+        iceServers: [{ urls: ["stun:stun.example.test:3478"] }],
+      },
+      sfuConfigured: true,
+    });
+
+    const rejected = await fetch(`${baseUrl}/api/connection-self-check`, {
+      method: "POST",
+    });
+    expect(rejected.status).toBe(405);
+    expect(rejected.headers.get("allow")).toBe("GET");
+  });
+
   it("starts with an injected optional SFU token issuer", async () => {
     const baseUrl = await start(
       testConfig({

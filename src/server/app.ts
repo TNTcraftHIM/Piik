@@ -10,6 +10,7 @@ import {
 } from "../shared/protocol.js";
 import { SiteAccess } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
+import { createIceConfig } from "./ice.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import { RoomDatabase } from "./room-database.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
@@ -225,6 +226,21 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, { status: "ok" });
+    return;
+  }
+
+  if (url.pathname === "/api/connection-self-check") {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    if (request.method !== "GET") {
+      response.setHeader("Allow", "GET");
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    sendJson(response, 200, {
+      iceConfig: createIceConfig({ stunUrls: config.stunUrls }),
+      sfuConfigured: config.livekitFallback !== undefined,
+    });
     return;
   }
 
