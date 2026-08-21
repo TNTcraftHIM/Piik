@@ -1176,10 +1176,17 @@ h3 {
 
 .viewer-roster-heading {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+}
+
+.viewer-roster-heading > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .viewer-roster-heading h2 {
@@ -1190,6 +1197,15 @@ h3 {
 .viewer-roster-heading span {
   color: var(--faint);
   font-size: 12px;
+}
+
+.viewer-roster .topology-view {
+  max-width: 100%;
+  max-height: min(42vh, 320px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-block: 6px;
+  overscroll-behavior: contain;
 }
 
 .viewer-roster-list {

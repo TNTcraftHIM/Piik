@@ -3,21 +3,37 @@ import type {
   ViewerPresenceEntry,
 } from "../../shared/protocol";
 
-export interface LabeledViewerPresence extends ViewerPresenceEntry {
+interface PresenceIdentity {
+  peerId: string;
+  displayName: string;
+}
+
+interface PresenceLabel {
   peerIdSuffix: string;
   label: string;
 }
 
+type LabeledPresence<T extends PresenceIdentity> = T & PresenceLabel;
+type HostPresenceEntry = Extract<ParticipantPresenceEntry, { role: "host" }>;
+
+export type LabeledViewerPresence = LabeledPresence<ViewerPresenceEntry>;
+export type LabeledHostPresence = LabeledPresence<HostPresenceEntry>;
+
+export interface LabeledParticipantSnapshot {
+  host: LabeledHostPresence | null;
+  viewers: LabeledViewerPresence[];
+}
+
 const MIN_PEER_ID_SUFFIX_LENGTH = 6;
 
-export function labelViewerPresence(
-  viewers: readonly ViewerPresenceEntry[],
-): LabeledViewerPresence[] {
+function labelPresence<T extends PresenceIdentity>(
+  entries: readonly T[],
+): LabeledPresence<T>[] {
   const nameCounts = new Map<string, number>();
-  viewers.forEach((viewer) => {
+  entries.forEach((entry) => {
     nameCounts.set(
-      viewer.displayName,
-      (nameCounts.get(viewer.displayName) ?? 0) + 1,
+      entry.displayName,
+      (nameCounts.get(entry.displayName) ?? 0) + 1,
     );
   });
   const duplicateNames = new Set(
@@ -25,18 +41,18 @@ export function labelViewerPresence(
       .filter(([, count]) => count > 1)
       .map(([displayName]) => displayName),
   );
-  const suffixLengths = viewers.map((viewer) =>
-    Math.min(MIN_PEER_ID_SUFFIX_LENGTH, viewer.peerId.length),
+  const suffixLengths = entries.map((entry) =>
+    Math.min(MIN_PEER_ID_SUFFIX_LENGTH, entry.peerId.length),
   );
 
   while (true) {
     const collisions = new Map<string, number[]>();
-    viewers.forEach((viewer, index) => {
-      if (!duplicateNames.has(viewer.displayName)) {
+    entries.forEach((entry, index) => {
+      if (!duplicateNames.has(entry.displayName)) {
         return;
       }
-      const suffix = viewer.peerId.slice(-suffixLengths[index]);
-      const key = `${viewer.displayName}\u0000${suffix}`;
+      const suffix = entry.peerId.slice(-suffixLengths[index]);
+      const key = `${entry.displayName}\u0000${suffix}`;
       const indexes = collisions.get(key) ?? [];
       indexes.push(index);
       collisions.set(key, indexes);
@@ -47,7 +63,7 @@ export function labelViewerPresence(
         continue;
       }
       for (const index of indexes) {
-        if (suffixLengths[index] < viewers[index].peerId.length) {
+        if (suffixLengths[index] < entries[index].peerId.length) {
           suffixLengths[index] += 1;
           extended = true;
         }
@@ -58,25 +74,43 @@ export function labelViewerPresence(
     }
   }
 
-  return viewers.map((viewer, index) => {
-    const peerIdSuffix = viewer.peerId.slice(-suffixLengths[index]);
+  return entries.map((entry, index) => {
+    const peerIdSuffix = entry.peerId.slice(-suffixLengths[index]);
     return {
-      ...viewer,
+      ...entry,
       peerIdSuffix,
-      label: duplicateNames.has(viewer.displayName)
-        ? `${viewer.displayName} (${peerIdSuffix})`
-        : viewer.displayName,
+      label: duplicateNames.has(entry.displayName)
+        ? `${entry.displayName} (${peerIdSuffix})`
+        : entry.displayName,
     };
   });
+}
+
+export function labelViewerPresence(
+  viewers: readonly ViewerPresenceEntry[],
+): LabeledViewerPresence[] {
+  return labelPresence(viewers);
+}
+
+export function labelParticipantSnapshot(
+  participants: readonly ParticipantPresenceEntry[],
+): LabeledParticipantSnapshot {
+  const labeled = labelPresence(participants);
+  return {
+    host:
+      labeled.find(
+        (participant): participant is LabeledHostPresence =>
+          participant.role === "host",
+      ) ?? null,
+    viewers: labeled.filter(
+      (participant): participant is LabeledViewerPresence =>
+        participant.role === "viewer",
+    ),
+  };
 }
 
 export function labelViewerParticipants(
   participants: readonly ParticipantPresenceEntry[],
 ): LabeledViewerPresence[] {
-  return labelViewerPresence(
-    participants.filter(
-      (participant): participant is ViewerPresenceEntry =>
-        participant.role === "viewer",
-    ),
-  );
+  return labelParticipantSnapshot(participants).viewers;
 }
