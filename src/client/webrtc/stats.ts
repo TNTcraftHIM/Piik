@@ -40,6 +40,31 @@ export interface StatsAccumulator {
 
 export interface StatsMediaSelector {
   trackIdentifier: string | null;
+  rid?: string | null;
+}
+
+export function captureMetrics(
+  track: MediaStreamTrack,
+): Pick<
+  ConnectionMetrics,
+  "captureWidth" | "captureHeight" | "captureFramesPerSecond"
+> {
+  try {
+    const settings = track.getSettings();
+    const finite = (value: unknown): number | null =>
+      typeof value === "number" && Number.isFinite(value) ? value : null;
+    return {
+      captureWidth: finite(settings.width),
+      captureHeight: finite(settings.height),
+      captureFramesPerSecond: finite(settings.frameRate),
+    };
+  } catch {
+    return {
+      captureWidth: null,
+      captureHeight: null,
+      captureFramesPerSecond: null,
+    };
+  }
 }
 
 export function createStatsAccumulator(): StatsAccumulator {
@@ -194,13 +219,14 @@ function mediaRecord(
     }
   });
   const selectedTrackIdentifier = selector?.trackIdentifier ?? null;
-  const narrowed = selectedTrackIdentifier !== null
-    ? candidates.filter(
-        (candidate) =>
-          mediaTrackIdentifier(report, candidate, direction) ===
-          selectedTrackIdentifier,
-      )
-    : candidates;
+  const selectedRid = selector?.rid ?? null;
+  const narrowed = candidates.filter(
+    (candidate) =>
+      (selectedTrackIdentifier === null ||
+        mediaTrackIdentifier(report, candidate, direction) ===
+          selectedTrackIdentifier) &&
+      (selectedRid === null || stringValue(candidate, "rid") === selectedRid),
+  );
   return narrowed.length === 1 ? narrowed[0]! : null;
 }
 

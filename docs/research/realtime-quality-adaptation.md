@@ -310,7 +310,14 @@ The repository implements the local host A+B foundation: same-tick capture
 settings plus one uniquely matched outbound RTP sample, explicit sample/media
 identity and adjacent deltas, `remoteId` linkage, and the selected path reached
 through that RTP stream's transport. Source replacement blocks sampling and
-invalidates in-flight generations.
+invalidates in-flight generations. Direct/relay edges bind that evidence to the
+current track and PeerConnection. The Host SFU publisher also samples only its
+active LiveKit sender's `h` representation and binds the result again to the
+current publication generation; replacement, profile reset, retirement,
+disconnect, and authoritative resync clear the old identity before another
+sample can appear. The Host details UI renders that source once as `SFU 发送`,
+not once per SFU-fed Viewer. This is local diagnostics only: it creates no wire,
+score, selector, or media action.
 
 Authenticated Viewer C is also implemented for each current ordinary or
 peer-assisted P2P hop. A viewer sends one nullable, sanitized aggregate window
@@ -704,6 +711,7 @@ is a separate optimization.
 
 - [W3C MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
+- [W3C Media Capture and Streams `getSettings()`](https://www.w3.org/TR/mediacapture-streams/#dom-mediastreamtrack-getsettings)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
 - [W3C WebRTC codec preferences](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver-setcodecpreferences)
 - [RFC 7742 WebRTC video codec requirements](https://www.rfc-editor.org/rfc/rfc7742.html)
@@ -744,6 +752,7 @@ is a separate optimization.
 - [LiveKit server 1.13.5 per-subscriber layer application](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscribedtrack.go)
 - [LiveKit server 1.13.5 codec-specific layer selectors](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
 - [LiveKit client 2.22.0 Dynacast and saved degradation preference](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
+- [LiveKit client 2.22.0 local sender stats](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalTrack.ts)
 - [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
 - [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
 - [LiveKit server 1.13.5 release assets and checksums](https://github.com/livekit/livekit/releases/tag/v1.13.5)

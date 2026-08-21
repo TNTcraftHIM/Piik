@@ -11,7 +11,10 @@ import {
 import { HostSfuRoute } from "../src/client/media/host-sfu-route.ts";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
-import type { ConnectionMetrics } from "../src/client/types.ts";
+import {
+  EMPTY_METRICS,
+  type ConnectionMetrics,
+} from "../src/client/types.ts";
 
 const peerAssignment = (
   parentPeerId: string,
@@ -232,6 +235,76 @@ describe("MediaRouteTransition", () => {
 });
 
 describe("HostSfuRoute", () => {
+  it("exposes only current active publication stats and clears retired evidence", async () => {
+    const updates: Array<
+      Parameters<NonNullable<ConstructorParameters<typeof HostSfuRoute>[0]["onPublisherUpdate"]>>[0]
+    > = [];
+    const statsCallbacks: Array<(metrics: ConnectionMetrics | null) => void> = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: () => true,
+      onPublisherUpdate: (snapshot) => updates.push(snapshot),
+      createPublisher: (_onDisconnected, onStats) => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        statsCallbacks.push(onStats);
+        return publisher;
+      },
+    });
+    const metrics = {
+      ...EMPTY_METRICS,
+      trackIdentifier: "screen-a",
+      framesPerSecond: 60,
+    };
+    const generationA = hostAssignment("generation-a");
+    route.accept({ revision: 1, phase: "prepare", assignment: generationA });
+    await route.acceptConfig(sfuConfig(1));
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: generationA,
+    });
+
+    statsCallbacks[0]?.(metrics);
+    expect(updates.at(-1)).toMatchObject({
+      metrics: { trackIdentifier: "screen-a", framesPerSecond: 60 },
+    });
+
+    const generationB = hostAssignment("generation-b");
+    route.accept({ revision: 2, phase: "prepare", assignment: generationB });
+    await route.acceptConfig(sfuConfig(2));
+    await route.acceptAndWait({
+      revision: 2,
+      phase: "active",
+      assignment: generationB,
+    });
+    expect(updates.at(-1)).toBeNull();
+
+    statsCallbacks[0]?.({ ...metrics, framesPerSecond: 1 });
+    expect(updates.at(-1)).toBeNull();
+    statsCallbacks[1]?.({
+      ...metrics,
+      trackIdentifier: "screen-b",
+      framesPerSecond: 30,
+    });
+    expect(updates.at(-1)).toMatchObject({
+      metrics: { trackIdentifier: "screen-b", framesPerSecond: 30 },
+    });
+
+    await route.resyncAuthoritative({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment(null),
+    });
+    expect(updates.at(-1)).toBeNull();
+  });
+
   it("settles authoritative activation before exposing its quality warning", async () => {
     const publisher = {
       ...createFakePublisher([], "publisher"),

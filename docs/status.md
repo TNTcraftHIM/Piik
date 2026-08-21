@@ -27,7 +27,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 
 - Chrome 151 synthetic `1/3/5/8` and 720p30 runs kept bounded fanout/decoding. A five-Viewer cap2 run had one relay serve two children (+80 decoded frames/~1.1 MB each), all decoded and no fatal. Functional only.
 - Chrome 151 + local LiveKit 1.13.5/client 2.22.0 SFU/UDP passed after `q,f` -> `q,h`: one root, decoded 3 -> 23, rendered 26, Host edge one, clean leaves, no TURN. Functional only.
-- Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
+- Host A+B/P2P Viewer C are sanitized, generation-bound/read-only. Source adds Host-local current SFU `h` snapshot, cleared on identity change; SFU C stays fail-closed/unverified.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Chrome 151 loopback proves H.264 negotiation/decode interoperability, not performance. Production orders H.264 first and keeps browser repair/fallback codecs.
 - Native WGC/MF used no browser capture/encoder. One Chrome Viewer rendered 203 1280x720 frames and received 500 Opus packets; process/LUID-correlated `VideoEncode` was nonzero, with no fatal/encoder errors.

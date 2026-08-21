@@ -9,6 +9,7 @@ import {
   type SfuConnectionConfig,
   type SfuPublisherFailureStage,
 } from "../sfu/publisher";
+import type { ConnectionMetrics } from "../types";
 import type {
   QualityProfile,
   VideoSenderParameterReadback,
@@ -44,12 +45,21 @@ interface HostPublisherSlot {
   selectedEdgeTurn: boolean;
 }
 
+export interface HostSfuPublisherSnapshot {
+  metrics: ConnectionMetrics;
+  senderParameters: VideoSenderParameterReadback | null;
+}
+
 interface HostSfuRouteEvents {
   getStream: () => MediaStream | null;
   getProfile: () => QualityProfile;
   reconcileChildren: (childPeerIds: string[]) => void;
   send: (message: ClientMessage) => boolean;
-  createPublisher?: (onDisconnected: () => void) => HostPublisherTransport;
+  onPublisherUpdate?: (snapshot: HostSfuPublisherSnapshot | null) => void;
+  createPublisher?: (
+    onDisconnected: () => void,
+    onStats: (metrics: ConnectionMetrics | null) => void,
+  ) => HostPublisherTransport;
 }
 
 export class HostSfuRoute {
@@ -138,6 +148,7 @@ export class HostSfuRoute {
     const active = this.active;
     this.pending = null;
     this.active = null;
+    this.events.onPublisherUpdate?.(null);
     if (pending) {
       pending.failed = true;
     }
@@ -208,8 +219,14 @@ export class HostSfuRoute {
     this.clearPending();
     let slot: HostPublisherSlot;
     const publisher =
-      this.events.createPublisher?.(() => this.handleFailure(slot)) ??
-      new SfuPublisher({ onDisconnected: () => this.handleFailure(slot) });
+      this.events.createPublisher?.(
+        () => this.handleFailure(slot),
+        (metrics) => this.handlePublisherStats(slot, metrics),
+      ) ??
+      new SfuPublisher({
+        onDisconnected: () => this.handleFailure(slot),
+        onStats: (metrics) => this.handlePublisherStats(slot, metrics),
+      });
     const selectedEdgeTurn =
       this.selectedEdgeTurn?.revision === message.revision &&
       this.selectedEdgeTurn.publicationGeneration === publicationGeneration &&
@@ -329,6 +346,7 @@ export class HostSfuRoute {
       if (!slot) {
         return;
       }
+      this.events.onPublisherUpdate?.(null);
       this.active = null;
       await disconnectPublisher(slot.publisher);
       this.handleFailure(slot);
@@ -351,6 +369,7 @@ export class HostSfuRoute {
       const active = this.active;
       this.pending = null;
       this.active = null;
+      this.events.onPublisherUpdate?.(null);
       if (active?.active) {
         await active.publisher.deactivate().catch(() => false);
       }
@@ -548,6 +567,7 @@ export class HostSfuRoute {
       return;
     }
     const active = this.active;
+    this.events.onPublisherUpdate?.(null);
     this.active = null;
     if (active.active) {
       await active.publisher.deactivate().catch(() => false);
@@ -566,6 +586,7 @@ export class HostSfuRoute {
       this.pending = null;
     }
     if (wasActive) {
+      this.events.onPublisherUpdate?.(null);
       this.active = null;
     }
 
@@ -629,6 +650,29 @@ export class HostSfuRoute {
 
   private ready(revision: number, phase: MediaRoutePhase): void {
     this.events.send({ type: "route-ready", revision, phase });
+  }
+
+  private handlePublisherStats(
+    slot: HostPublisherSlot,
+    metrics: ConnectionMetrics | null,
+  ): void {
+    if (
+      metrics === null ||
+      this.closed ||
+      slot.failed ||
+      !slot.active ||
+      this.active !== slot ||
+      !this.currentActiveToken(slot)
+    ) {
+      if (metrics === null && this.active === slot) {
+        this.events.onPublisherUpdate?.(null);
+      }
+      return;
+    }
+    this.events.onPublisherUpdate?.({
+      metrics: { ...metrics },
+      senderParameters: slot.publisher.getSenderParameters?.() ?? null,
+    });
   }
 }
 

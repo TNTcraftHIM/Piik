@@ -76,8 +76,14 @@ export function StatsGrid({
         label={direction === "send" ? "发送码率" : "接收码率"}
         value={`${readableNumber(metrics.bitrateKbps)} kbps`}
       />
-      <Metric label="帧率" value={`${readableNumber(metrics.framesPerSecond, 1)} fps`} />
-      <Metric label="分辨率" value={metrics.resolution ?? "未知"} />
+      <Metric
+        label={direction === "send" ? "发送帧率" : "接收帧率"}
+        value={`${readableNumber(metrics.framesPerSecond, 1)} fps`}
+      />
+      <Metric
+        label={direction === "send" ? "发送分辨率" : "接收分辨率"}
+        value={metrics.resolution ?? "未知"}
+      />
       <Metric label="RTT" value={`${readableNumber(metrics.rttMs)} ms`} title="网络往返时间" />
       <Metric
         label="视频丢包率"
@@ -157,6 +163,18 @@ export function StatsGrid({
       )}
       {direction === "send" ? (
         <>
+          <Metric
+            label="实际捕获"
+            value={
+              metrics.captureWidth !== null && metrics.captureHeight !== null
+                ? `${metrics.captureWidth}x${metrics.captureHeight} · ${readableNumber(
+                    metrics.captureFramesPerSecond,
+                    1,
+                  )} fps`
+                : "未知"
+            }
+            title="浏览器实际捕获设置"
+          />
           {metrics.scalabilityMode && (
             <Metric label="当前流伸缩模式" value={metrics.scalabilityMode} />
           )}

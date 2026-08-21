@@ -86,7 +86,10 @@ import {
   type VideoCodecPreference,
   VIDEO_CODEC_PREFERENCE_LABELS,
 } from "../media/quality";
-import { HostSfuRoute } from "../media/host-sfu-route";
+import {
+  HostSfuRoute,
+  type HostSfuPublisherSnapshot,
+} from "../media/host-sfu-route";
 import {
   ParentEdgeQualityEvidenceReporter,
 } from "../media/parent-edge-quality-evidence";
@@ -232,6 +235,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
   );
+  const [sfuPublisherSnapshot, setSfuPublisherSnapshot] =
+    useState<HostSfuPublisherSnapshot | null>(null);
   const [participantPresence, setParticipantPresence] = useState<
     ParticipantPresenceEntry[]
   >([]);
@@ -406,6 +411,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         isCurrentGeneration(generation) && hostSfuRouteRef.current === route
           ? signalRef.current?.send(message) === true
           : false,
+      onPublisherUpdate: (snapshot) => {
+        if (
+          isCurrentGeneration(generation) &&
+          hostSfuRouteRef.current === route
+        ) {
+          setSfuPublisherSnapshot(snapshot);
+        }
+      },
     });
     hostSfuRouteRef.current = route;
     return route;
@@ -414,6 +427,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function clearHostSfuRoute(): void {
     const route = hostSfuRouteRef.current;
     hostSfuRouteRef.current = null;
+    setSfuPublisherSnapshot(null);
     sfuStandbyPrewarmerRef.current?.setUrl(null);
     void route?.disconnect();
   }
@@ -466,6 +480,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
+    setSfuPublisherSnapshot(null);
     sfuStandbyPrewarmerRef.current?.setUrl(null);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -2315,6 +2330,21 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           )}
 
           <div className="viewer-list">
+            {showConnectionDetails && sfuPublisherSnapshot && (
+              <article className="viewer-item" aria-label="SFU 发送详情">
+                <div className="viewer-item-heading">
+                  <div>
+                    <h3>SFU 发送</h3>
+                    <MediaRouteBadge route="sfu" />
+                  </div>
+                </div>
+                <StatsGrid
+                  metrics={sfuPublisherSnapshot.metrics}
+                  direction="send"
+                  senderParameters={sfuPublisherSnapshot.senderParameters}
+                />
+              </article>
+            )}
             {viewers.map((viewer) => {
               const snapshot =
                 viewer.upstream.kind === "peer" &&

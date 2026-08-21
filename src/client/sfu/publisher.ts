@@ -17,6 +17,13 @@ import {
   type ScreenAudioQuality,
   type VideoSenderParameterReadback,
 } from "../media/quality";
+import type { ConnectionMetrics } from "../types";
+import {
+  captureMetrics,
+  collectConnectionMetricsFromReport,
+  createStatsAccumulator,
+  type StatsAccumulator,
+} from "../webrtc/stats";
 
 export interface SfuConnectionConfig {
   url: string;
@@ -27,6 +34,7 @@ export interface SfuConnectionConfig {
 
 interface PublisherEvents {
   onDisconnected?: () => void;
+  onStats?: (metrics: ConnectionMetrics | null) => void;
 }
 
 export type SfuPublisherFailureStage =
@@ -47,6 +55,13 @@ interface PublishedVideoConfiguration {
   warning: string | null;
 }
 
+interface PublisherStatsIdentity {
+  video: PublishedTrack;
+  sender: RTCRtpSender;
+  rawTrack: MediaStreamTrack;
+  accumulator: StatsAccumulator;
+}
+
 type LiveKit = typeof import("livekit-client");
 type PublisherState =
   | "idle"
@@ -56,6 +71,7 @@ type PublisherState =
   | "disconnected";
 
 const roomDisconnects = new WeakMap<Room, Promise<void>>();
+const STATS_INTERVAL_MS = 2_000;
 
 export class SfuPublisher {
   private room: Room | null = null;
@@ -70,6 +86,10 @@ export class SfuPublisher {
   private generation = 0;
   private operationTail: Promise<void> = Promise.resolve();
   private terminalNotified = false;
+  private statsVideo: PublishedTrack | null = null;
+  private statsIdentity: PublisherStatsIdentity | null = null;
+  private statsInFlight: PublisherStatsIdentity | null = null;
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly events: PublisherEvents = {}) {}
 
@@ -184,6 +204,7 @@ export class SfuPublisher {
         this.retainSenderParameters(videoConfiguration);
         this.failureStage = null;
         this.state = "active";
+        this.startStats(video);
         return true;
       } catch (error) {
         if (this.owns(room, generation)) {
@@ -205,6 +226,7 @@ export class SfuPublisher {
       if (this.state === "prepared") {
         return true;
       }
+      this.stopStats();
 
       const video = this.video;
       const audio = this.audio;
@@ -257,6 +279,7 @@ export class SfuPublisher {
       const previousAudio = this.audio;
       let videoReplaceAttempted = false;
       let audioReplaceAttempted = false;
+      this.stopStats();
 
       try {
         videoReplaceAttempted = true;
@@ -304,6 +327,7 @@ export class SfuPublisher {
           previousAudio.rawTrack = nextAudioTrack;
         }
         this.retainSenderParameters(videoConfiguration);
+        this.startStats(previousVideo);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
@@ -350,6 +374,7 @@ export class SfuPublisher {
               failureWarning,
               videoConfiguration.warning,
             );
+            this.startStats(previousVideo);
           }
           return false;
         } catch (rollbackError) {
@@ -381,6 +406,7 @@ export class SfuPublisher {
       ) {
         return false;
       }
+      this.stopStats();
 
       try {
         const videoConfiguration = await configurePublishedVideo(
@@ -394,6 +420,7 @@ export class SfuPublisher {
         }
         this.profile = profile;
         this.retainSenderParameters(videoConfiguration);
+        this.startStats(video);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
@@ -418,6 +445,7 @@ export class SfuPublisher {
             failureWarning,
             videoConfiguration.warning,
           );
+          this.startStats(video);
           return false;
         } catch (rollbackError) {
           if (this.owns(room, generation)) {
@@ -489,6 +517,7 @@ export class SfuPublisher {
       return null;
     }
     ++this.generation;
+    this.stopStats();
     this.state = "disconnected";
     const room = this.room;
     this.room = null;
@@ -523,6 +552,96 @@ export class SfuPublisher {
   ): void {
     this.senderParameters = configuration.readback;
     this.qualityWarning = configuration.warning;
+  }
+
+  private startStats(video: PublishedTrack): void {
+    this.stopStats();
+    this.statsVideo = video;
+    this.statsTimer = setInterval(() => {
+      void this.updateStats(video);
+    }, STATS_INTERVAL_MS);
+  }
+
+  private async updateStats(video: PublishedTrack): Promise<void> {
+    if (
+      this.state !== "active" ||
+      this.statsVideo !== video ||
+      this.video !== video
+    ) {
+      return;
+    }
+    const sender = video.publication.videoTrack?.sender;
+    if (!sender || sender.track !== video.rawTrack) {
+      this.resetStatsIdentity();
+      return;
+    }
+    let identity = this.statsIdentity;
+    if (
+      !identity ||
+      identity.video !== video ||
+      identity.sender !== sender ||
+      identity.rawTrack !== video.rawTrack
+    ) {
+      this.resetStatsIdentity();
+      identity = {
+        video,
+        sender,
+        rawTrack: video.rawTrack,
+        accumulator: createStatsAccumulator(),
+      };
+      this.statsIdentity = identity;
+    }
+    if (this.statsInFlight === identity) {
+      return;
+    }
+    this.statsInFlight = identity;
+    try {
+      const report = await identity.sender.getStats();
+      if (
+        this.state !== "active" ||
+        this.statsIdentity !== identity ||
+        this.video !== identity.video ||
+        identity.video.rawTrack !== identity.rawTrack ||
+        identity.video.publication.videoTrack?.sender !== identity.sender ||
+        identity.sender.track !== identity.rawTrack
+      ) {
+        return;
+      }
+      const metrics = {
+        ...collectConnectionMetricsFromReport(
+          report,
+          "send",
+          identity.accumulator,
+          { trackIdentifier: identity.rawTrack.id, rid: "h" },
+        ),
+        ...captureMetrics(identity.rawTrack),
+      };
+      this.events.onStats?.(metrics);
+    } catch {
+      // Stats are observational and must never disrupt active SFU media.
+    } finally {
+      if (this.statsInFlight === identity) {
+        this.statsInFlight = null;
+      }
+    }
+  }
+
+  private stopStats(): void {
+    if (this.statsTimer !== null) {
+      clearInterval(this.statsTimer);
+      this.statsTimer = null;
+    }
+    this.statsVideo = null;
+    this.statsInFlight = null;
+    this.resetStatsIdentity();
+  }
+
+  private resetStatsIdentity(): void {
+    const hadIdentity = this.statsIdentity !== null;
+    this.statsIdentity = null;
+    if (hadIdentity) {
+      this.events.onStats?.(null);
+    }
   }
 }
 

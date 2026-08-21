@@ -9,10 +9,10 @@ import {
 } from "../media/quality";
 import {
   EMPTY_METRICS,
-  type ConnectionMetrics,
   type PeerSnapshot,
 } from "../types";
 import {
+  captureMetrics,
   collectConnectionMetrics,
   createStatsAccumulator,
 } from "./stats";
@@ -28,38 +28,6 @@ type SignalCandidate = Extract<
 interface HostPeerEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate: (snapshot: PeerSnapshot) => void;
-}
-
-type CaptureMetrics = Pick<
-  ConnectionMetrics,
-  "captureWidth" | "captureHeight" | "captureFramesPerSecond"
->;
-
-function captureMetrics(track: MediaStreamTrack): CaptureMetrics {
-  if (typeof track.getSettings !== "function") {
-    return {
-      captureWidth: null,
-      captureHeight: null,
-      captureFramesPerSecond: null,
-    };
-  }
-
-  try {
-    const settings = track.getSettings();
-    const finiteNumber = (value: unknown): number | null =>
-      typeof value === "number" && Number.isFinite(value) ? value : null;
-    return {
-      captureWidth: finiteNumber(settings.width),
-      captureHeight: finiteNumber(settings.height),
-      captureFramesPerSecond: finiteNumber(settings.frameRate),
-    };
-  } catch {
-    return {
-      captureWidth: null,
-      captureHeight: null,
-      captureFramesPerSecond: null,
-    };
-  }
 }
 
 export class HostPeer {
