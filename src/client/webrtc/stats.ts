@@ -354,6 +354,25 @@ function positiveIntegerValue(
   return value !== null && Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function candidateAddressValue(record: StatsRecord | null): string | null {
+  const value = stringValue(record, "address");
+  return value !== null &&
+    value.length <= 255 &&
+    !/[\u0000-\u0020\u007f]/.test(value)
+    ? value
+    : null;
+}
+
+function candidatePortValue(record: StatsRecord | null): number | null {
+  const value = numberValue(record, "port");
+  return value !== null &&
+    Number.isInteger(value) &&
+    value > 0 &&
+    value <= 65_535
+    ? value
+    : null;
+}
+
 function audioCodecParameters(codec: StatsRecord | null): string | null {
   const value = stringValue(codec, "sdpFmtpLine");
   return value !== null && value.length <= 512 && /^[\x20-\x7e]+$/.test(value)
@@ -749,6 +768,10 @@ export function collectConnectionMetricsFromReport(
     localRelayProtocol,
     localCandidateType: localType,
     remoteCandidateType: remoteType,
+    localCandidateAddress: candidateAddressValue(localCandidate),
+    localCandidatePort: candidatePortValue(localCandidate),
+    remoteCandidateAddress: candidateAddressValue(remoteCandidate),
+    remoteCandidatePort: candidatePortValue(remoteCandidate),
     rttMs:
       numberValue(pair, "currentRoundTripTime") !== null
         ? numberValue(pair, "currentRoundTripTime")! * 1_000

@@ -38,6 +38,21 @@ function preferenceLabel(value: number | string): string {
   return labels[String(value)] ?? String(value);
 }
 
+function candidateEndpoint(
+  address: string | null,
+  port: number | null,
+): string | null {
+  if (address === null || port === null) {
+    return null;
+  }
+  const host =
+    address.includes(":") &&
+    !(address.startsWith("[") && address.endsWith("]"))
+      ? `[${address}]`
+      : address;
+  return `${host}:${port}`;
+}
+
 function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="metric" title={title}>
@@ -76,6 +91,14 @@ export function StatsGrid({
     metrics.audioConcealedSamplesPercent,
     metrics.intervalAudioConcealmentEvents,
   ].some((value) => value !== null);
+  const localCandidateEndpoint = candidateEndpoint(
+    metrics.localCandidateAddress,
+    metrics.localCandidatePort,
+  );
+  const remoteCandidateEndpoint = candidateEndpoint(
+    metrics.remoteCandidateAddress,
+    metrics.remoteCandidatePort,
+  );
 
   const primaryMetrics = (
     <>
@@ -127,6 +150,20 @@ export function StatsGrid({
             : `${readableNumber(metrics.jitterMs, 1)} ms`
         }
       />
+      {localCandidateEndpoint && (
+        <Metric
+          label="本地候选地址"
+          value={localCandidateEndpoint}
+          title={localCandidateEndpoint}
+        />
+      )}
+      {remoteCandidateEndpoint && (
+        <Metric
+          label="远端候选地址"
+          value={remoteCandidateEndpoint}
+          title={remoteCandidateEndpoint}
+        />
+      )}
       <Metric label="视频 Codec" value={metrics.codec ?? "未知"} />
       {metrics.codecProfile && (
         <Metric label="视频 Codec profile token" value={metrics.codecProfile} />

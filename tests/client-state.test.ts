@@ -828,10 +828,14 @@ describe("WebRTC stats parsing", () => {
       entry("local-a", "local-candidate", {
         candidateType: "host",
         protocol: "udp",
+        address: "192.0.2.10",
+        port: 50_000,
       }),
       entry("remote-candidate-a", "remote-candidate", {
         candidateType: "srflx",
         protocol: "udp",
+        address: "2001:db8::10",
+        port: 50_001,
       }),
       entry("local-z", "local-candidate", {
         candidateType: "relay",
@@ -924,6 +928,10 @@ describe("WebRTC stats parsing", () => {
       selectedCandidatePairId: "pair-a",
       path: "direct",
       iceProtocol: "udp",
+      localCandidateAddress: "192.0.2.10",
+      localCandidatePort: 50_000,
+      remoteCandidateAddress: "2001:db8::10",
+      remoteCandidatePort: 50_001,
       packetsLost: 2,
       jitterMs: 4,
       rttMs: 20,
@@ -939,6 +947,22 @@ describe("WebRTC stats parsing", () => {
     });
     expect(JSON.stringify(metrics)).not.toContain("sprop-parameter-sets");
     expect(JSON.stringify(metrics)).not.toContain("x-google-start-bitrate");
+
+    report.get("remote-candidate-a")!.address = null;
+    delete report.get("remote-candidate-a")!.port;
+    expect(
+      await collectConnectionMetrics(connection, "send", accumulator, {
+        trackIdentifier: "capture-track-a",
+      }),
+    ).toMatchObject({
+      selectedCandidatePairId: "pair-a",
+      localCandidateAddress: "192.0.2.10",
+      localCandidatePort: 50_000,
+      remoteCandidateAddress: null,
+      remoteCandidatePort: null,
+    });
+    report.get("remote-candidate-a")!.address = "2001:db8::10";
+    report.get("remote-candidate-a")!.port = 50_001;
 
     report.get("transport-a")!.selectedCandidatePairId = "pair-z";
     const wrongTransportPair = await collectConnectionMetrics(

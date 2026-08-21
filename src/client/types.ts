@@ -24,6 +24,10 @@ export interface ConnectionMetrics {
   localRelayProtocol: string | null;
   localCandidateType: string | null;
   remoteCandidateType: string | null;
+  localCandidateAddress: string | null;
+  localCandidatePort: number | null;
+  remoteCandidateAddress: string | null;
+  remoteCandidatePort: number | null;
   rttMs: number | null;
   bitrateKbps: number | null;
   availableOutgoingKbps: number | null;
@@ -98,6 +102,10 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   localRelayProtocol: null,
   localCandidateType: null,
   remoteCandidateType: null,
+  localCandidateAddress: null,
+  localCandidatePort: null,
+  remoteCandidateAddress: null,
+  remoteCandidatePort: null,
   rttMs: null,
   bitrateKbps: null,
   availableOutgoingKbps: null,
