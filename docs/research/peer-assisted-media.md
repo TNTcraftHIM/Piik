@@ -1,8 +1,9 @@
 # Peer-Assisted Media Research
 
 - Research date: 2026-08-21
-- Scope: one game-screen broadcaster, at most eight trusted viewers, host media fanout at most two
-- Status: historical evidence plus the current capacity-two source candidate;
+- Scope: one game-screen broadcaster, explicit admission up to sixteen trusted
+  viewers, with the retained resource/quality gate at eight
+- Status: historical evidence plus the current bounded source candidate;
   accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
   the room-`1` rollout boundary; retained SFU media remains unverified.
 
@@ -260,6 +261,25 @@ configures only its local server and gate. A 2026-08-22 Chrome 151 two-second
 smoke passed with three Viewers at Host2/relay1 and six at Host3/relay3, with all
 Viewers decoding. This is not a production-default, SFU-capacity, or resource claim.
 
+A 2026-08-22 Windows Chrome 151.0.7922.138 headless loopback then ran sixteen
+Viewers for two seconds at 720p30 with cap2 and cap3. Both runs had all sixteen
+Viewers decoding and no fatal/check failure. Cap2 peaked at Host2/relay2 with
+depth four and a 1,167 ms maximum first-decode diagnostic; cap3 peaked at
+Host3/relay3 with depth three and 977 ms. Final samples were only 320x180 at
+9-10 fps. The 8-core/16-thread Ryzen 7 9700X runner had 47.1 GiB RAM and 13.7
+GiB free after the runs, but no process CPU, GPU, NIC, or peak-memory totals were
+captured. This proves the explicit admission, bounded topology, and decode paths
+only; resource, visual quality, endurance, heterogeneous networks, and the
+separate 20-viewer gate remain open.
+
+A same-machine 2026-08-22 Chrome 151 follow-up ran sixteen Viewers for ten seconds at 720p30 and introduced report schema v2; sender means are unweighted connected sender-sample means, while encode cost is weighted by guarded interval frame deltas.
+Cap2 passed at Host2/relay2 with 2 Host and 14 relay senders: Host/relay bitrate was 1,716/1,748 kbps, FPS 11.17/11.20, available outgoing 5,393/5,704 kbps, and encode cost 2.086/2.048 ms per frame.
+Cap3 passed at Host3/relay3 with 3 Host and 13 relay senders: the same fields were 1,589/1,638 kbps, 10.83/10.87 FPS, 5,474/5,956 kbps, and 2.071/2.126 ms per frame.
+Both runs observed only 320x180 and 480x270; every Host limitation sample was `bandwidth`, every relay sample was `none`, and maximum first-decode diagnostics were 1,071/1,021 ms for cap2/cap3.
+[CDP `SystemInfo.getProcessInfo`](https://chromedevtools.github.io/devtools-protocol/tot/SystemInfo/) exposes process type, PID, and cumulative CPU seconds, but no resident-set field; v2 therefore reports peak RSS as `null` and rejects intervals when the exact type/PID set changes or any counter retreats.
+Cap2 measured 221.4% aggregate Chromium CPU (250.7% peak) over two valid and three rejected intervals; cap3 measured 209.8% (246.9% peak) over four valid and one rejected interval. Multicore totals may exceed 100%.
+The different valid coverage and one short run per arm forbid a cap2/cap3 CPU ranking. CDP cannot attribute these all-process totals to an individual Host or relay page, and this ordinary-PC synthetic run does not close the resource, game-quality, endurance, mobile, or 20-viewer gates.
+
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
 striping. Those mechanisms are intentionally excluded: needing them is a reason
@@ -315,11 +335,12 @@ longer has that room boundary. There is no mobile/iPad, UA, or visibility branch
 This historical gate assumed default-off configuration through
 `PEER_ASSISTED_MEDIA=false`; current production enables the controller for all
 rooms.
-It cannot be enabled above eight viewers and uses the existing standard WebRTC
-screen stream, current Chrome/Edge as the controlled relay cohort, Android
-Chrome and iOS Safari as compatibility observations, at most two children per
-viewer, and at most eight viewers. It may carry the
-existing screen-audio track when the browser provides one. SVC/simulcast,
+It uses the existing standard WebRTC screen stream, current Chrome/Edge as the
+controlled relay cohort, Android Chrome and iOS Safari as compatibility
+observations, and the configured downstream edge cap. The runner accepts the
+shared room admission ceiling of sixteen while the representative
+resource/quality gate remains at eight. It may carry the existing screen-audio
+track when the browser provides one. SVC/simulcast,
 custom encoded transport, FEC changes, multi-tree striping, transcoding,
 background mobile relay, and the later ADR-0005 SFU controller are outside this
 historical browser-relay gate.

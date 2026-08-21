@@ -620,6 +620,12 @@ h3 {
   color: var(--text);
 }
 
+.connection-details-toggle > label {
+  display: inline-flex;
+  gap: 9px;
+  align-items: center;
+}
+
 .connection-details-toggle input {
   width: 18px;
   height: 18px;

@@ -42,15 +42,11 @@ not be read as requiring users to select a topology or rejecting automatic
 cross-mode fallback as a product goal.
 
 The experiment is gated by `PEER_ASSISTED_MEDIA`, which defaults to `false`.
-Enabling it requires `MAX_VIEWERS_PER_ROOM` at or below eight; larger configured
-rooms fail configuration rather than silently running a different topology.
-A required non-empty `PEER_ASSISTED_ROOM_IDS` deployment allowlist restricts
-the experiment to exact valid room IDs. Non-allowlisted rooms use the current
-ordinary P2P authenticated wire, signaling, quality behavior, and lifecycle and
-must never enter `HybridMediaRouter`. Missing, blank, invalid, empty-list-entry,
-or duplicate values fail startup when the experiment is enabled; there is no
-all-room fail-open. This exact-room gate is temporary validation scope and adds
-no UI, percentage rollout, or routing score.
+When enabled, it applies to every room. `MAX_VIEWERS_PER_ROOM` remains one
+shared admission limit: it defaults to eight and accepts explicit values from
+one through sixteen. The upper admission bound is not a media-capacity or
+performance claim. The removed `PEER_ASSISTED_ROOM_IDS` allowlist fails startup;
+there is no second rollout mode, UI selector, percentage rollout, or route score.
 
 The signaling server assigns a sticky, bounded DAG with a deterministic
 breadth-first walk. The host and each ordinary Web viewer currently have
@@ -127,9 +123,10 @@ Chrome and Edge form the controlled relay cohort; Android Chrome and iOS Safari
 remain compatibility observations. ADR-0005 now gives every ordinary Web
 Viewer the same two-edge capacity without UA or visibility detection. Mobile
 resource behavior remains unverified, but does not define a separate route
-class. This depth-three gate remains an eight-viewer experiment; it cannot
-authorize the accepted 20-viewer default. That later release requires a separate
-20-viewer matrix or bounded central exceptions.
+class. The resource/quality gate remains an eight-viewer experiment. A separate
+sixteen-viewer loopback may prove only admission, bounded topology, and decode
+function; neither result can authorize a 20-viewer default. That later release
+requires a separate 20-viewer matrix or bounded central exceptions.
 
 The proposal advances only if every condition holds:
 

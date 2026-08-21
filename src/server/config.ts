@@ -16,7 +16,6 @@ const MIN_SELECTED_EDGE_TURN_SECRET_BYTES = 32;
 const MAX_SELECTED_EDGE_TURN_SECRET_BYTES = 128;
 const MIN_SELECTED_EDGE_TURN_TTL_SECONDS = 60;
 const MAX_SELECTED_EDGE_TURN_TTL_SECONDS = 10 * 60;
-const MAX_PEER_ASSISTED_VIEWERS = 8;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const DEFAULT_MAX_SFU_ROOTS_PER_ROOM = 2;
 const MAX_SFU_ROOTS_PER_ROOM = 2;
@@ -390,12 +389,6 @@ export function loadConfig(
   if (nodeEnv === "production" && stunUrls.length === 0) {
     throw new Error("STUN is required in production");
   }
-  if (peerAssistedMedia && maxViewersPerRoom > MAX_PEER_ASSISTED_VIEWERS) {
-    throw new Error(
-      "PEER_ASSISTED_MEDIA currently supports at most 8 viewers per room",
-    );
-  }
-
   return {
     nodeEnv,
     port,

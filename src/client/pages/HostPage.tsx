@@ -49,6 +49,7 @@ import { TopologyView } from "../components/TopologyView";
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
 import { ApiError, createRoom } from "../lib/api";
 import { createOpaqueId } from "../lib/opaque-id";
+import { downloadDiagnosticReport, type DiagnosticConnectionInput } from "../lib/diagnostic-export";
 import {
   defaultHostDisplayName,
   readDisplayName,
@@ -308,6 +309,45 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       ) ?? null,
     [participantPresence],
   );
+  const diagnosticConnections: DiagnosticConnectionInput[] = [];
+  if (sfuPublisherSnapshot) {
+    diagnosticConnections.push({
+      scope: "host-sfu",
+      route: "sfu",
+      direction: "send",
+      metrics: sfuPublisherSnapshot.metrics,
+    });
+  }
+  for (const viewer of viewers) {
+    const snapshot =
+      viewer.upstream.kind === "peer" &&
+      viewer.upstream.peerId ===
+        (hostPresence?.peerId ?? hostPeerIdRef.current)
+        ? peerSnapshots.get(viewer.peerId)
+        : undefined;
+    if (snapshot && hasPeerRouteEvidence(snapshot)) {
+      diagnosticConnections.push({
+        scope: "viewer-edge",
+        route: "p2p",
+        direction: "send",
+        connectionState: snapshot.connectionState,
+        iceConnectionState: snapshot.iceConnectionState,
+        metrics: snapshot.metrics,
+      });
+    }
+    const evidence = viewerQualityEvidence.get(viewer.peerId);
+    if (
+      viewer.upstream.kind === "peer" &&
+      evidence?.parentPeerId === viewer.upstream.peerId
+    ) {
+      diagnosticConnections.push({
+        scope: "viewer-edge",
+        route: "p2p",
+        direction: "receive",
+        metrics: metricsFromQualityEvidence(evidence),
+      });
+    }
+  }
   const selectedQualityProfileId = useMemo(
     () => matchingQualityProfileId(qualitySettings),
     [qualitySettings],
@@ -1910,6 +1950,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <ConnectionDetailsToggle
             checked={showConnectionDetails}
             onChange={setShowConnectionDetails}
+            onExport={diagnosticConnections.length > 0
+              ? () => downloadDiagnosticReport("host", diagnosticConnections)
+              : undefined}
           />
 
           <div className="setup-controls">
