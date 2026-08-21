@@ -149,6 +149,69 @@ This distinction follows TURN's allocation/relay role in RFC 8656 and the media
 topology boundary in RFC 7667. A relay candidate proves transport for one edge;
 it is not evidence that an SFU topology would be cheaper or faster.
 
+## Hard NAT And UDP-Blocked Boundary
+
+"Symmetric NAT" is legacy shorthand. The actionable properties are endpoint-
+independent versus endpoint-dependent mapping and filtering, whether outbound
+UDP reaches a public server, and whether a public IPv6 path exists. CGNAT names
+an operator topology, not one mapping behavior: RFC 6888 inherits the UDP NAT
+behavior requirements and recommends endpoint-independent filtering. Cellular
+networks can add translation layers, short-lived state, strict filtering, and
+network changes, but their selected ICE path must be measured.
+
+| Network condition | Honest WebRTC boundary | Screener consequence |
+| --- | --- | --- |
+| Endpoint-independent mapping with UDP | Full ICE can check host, server-reflexive, and peer-reflexive paths | Keep direct/peer UDP first |
+| One endpoint-dependent mapper | Coordinated checks can sometimes create a peer-reflexive path; success is not guaranteed | Exhaust the existing bounded restart/rebuild/alternate-parent steps |
+| Both peer endpoints use endpoint-dependent mapping | A direct peer path is not reliable; RFC 8835 requires TURN support for this case | A public SFU/UDP connection can still feed one or two roots when outbound UDP works; an eligible edge may then use selected TURN/UDP |
+| All outbound UDP is blocked | Direct ICE/TCP can help only when its TCP candidate is reachable; TURN/TCP or TURN/TLS gives each browser an outbound connection to a public relay | Current tracked LiveKit and selected-edge examples deliberately disable these transports, so the present result is bounded failure |
+| Wi-Fi/cellular or address change | Old mappings and candidate pairs can become invalid | Use a new opaque generation and bounded ICE restart/rebuild, then re-run the same priority ladder |
+
+Peer-reflexive discovery records an address only after a connectivity check
+succeeds; it does not cross two incompatible mappings by itself. An SFU remains
+a virtual parent and TURN remains transport for one selected edge. A restricted
+Host may therefore reach the SFU directly or through selected TURN, the SFU may
+serve one or two roots, and those roots may still serve peer descendants. If
+every endpoint needs a server path, the existing root, exceptional-viewer, and
+egress caps must bound it.
+
+ICE/TCP, TURN/TCP, and TURN/TLS solve different failures. ICE/TCP attempts a
+direct TCP candidate pair and inherits TCP simultaneous-open, NAT, firewall, and
+browser limitations. TURN/TCP or TURN/TLS instead carries the client-to-relay
+leg over outbound TCP; the relay-to-peer leg may still be UDP. TCP avoids a UDP
+block but adds head-of-line blocking and can amplify latency during packet loss.
+"UDP/TCP hybrid" means selection or fallback between candidate pairs, not
+striping or duplicating one media flow across both.
+
+The next two browser-first candidates worth isolated measurement are:
+
+1. Add dual-stack reachability for Web, STUN, SFU, and TURN. A public IPv6 pair
+   avoids IPv4 NAT, while ICE still handles IPv6 firewalls and IPv4 fallback.
+2. Compare pinned LiveKit 1.13.5 SFU ICE/TCP with a separately authenticated
+   TURN/TLS selected-edge path. The pinned server exposes `rtc.tcp_port`,
+   `allow_tcp_fallback`, and TURN/TLS; the tracked example sets `tcp_port: 0`,
+   `allow_tcp_fallback: false`, and no LiveKit TURN. TURN/TLS on 443 is an L4
+   TLS service with certificate and port constraints, not HTTPS.
+
+The acceptance matrix is EIM/EIM, one endpoint-dependent mapper, two endpoint-
+dependent mappers including cellular-to-cellular, all UDP blocked, and a Wi-Fi
+to-cellular change. Record only sanitized selected transport, generation, time
+to first decoded frame, loss, RTT, bitrate, and relay/SFU bytes. Keep credentials
+short-lived and edge-scoped and retain allocation, relay-port, and egress caps.
+
+Port prediction, birthday probing, PCP/NAT-PMP/UPnP, multi-socket probing, and
+explicit TCP simultaneous-open require native or router control; WebRTC exposes
+no raw-socket, port-allocation, or gateway-mapping API. RFC 5128 documents their
+sensitivity to random allocation, unrelated traffic, NAT layers, OS TCP state,
+and RST handling. In Tailscale's idealized analysis, one hard/one easy NAT with
+256 openings and probes reaches about 64%, while two hard NATs reach about 0.01%
+after one side opens 256 sockets and the other sends 2,048 probes over roughly
+20 seconds; about 99.9% would require roughly 170,000 probes per side. The scan-
+like traffic can exhaust mapping quotas. libp2p DCUtR instead starts with a relay
+and synchronizes a direct attempt; it improves native timing but cannot remove
+relay for incompatible mappings. Screener should measure ICE outcomes and keep
+its bounded relay rather than add a NAT classifier.
+
 ## Privacy-Safe ICE Evidence Candidate
 
 Start with locally retained, redacted `webrtc-internals` as manual ground truth.
@@ -412,6 +475,13 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
 - [RTP Topologies, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667.html) and
   [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html) - IETF standards
   under IETF Trust terms.
+- [UDP NAT behavior, RFC 4787](https://www.rfc-editor.org/rfc/rfc4787.html),
+  [P2P across NATs, RFC 5128](https://www.rfc-editor.org/rfc/rfc5128.html),
+  [ICE-TCP, RFC 6544](https://www.rfc-editor.org/rfc/rfc6544.html),
+  [PCP, RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html), and
+  [CGN requirements, RFC 6888](https://www.rfc-editor.org/rfc/rfc6888.html) -
+  mapping, filtering, prediction, simultaneous-open, gateway-control, and CGN
+  resource boundaries.
 - [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html) - the relay is
   transport for client/peer traffic, not a room distribution topology.
 - [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2)
@@ -459,6 +529,10 @@ Primary sources checked on 2026-08-19 and 2026-08-21:
   and [official usage](https://github.com/livekit/client-sdk-js#usage) -
   Apache-2.0; API behavior and RID construction were inspected, with no source
   copied.
+- [libp2p DCUtR](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md) and
+  [2025 DCUtR measurement](https://arxiv.org/abs/2510.27500) - native relay-assisted evidence, not a browser-WebRTC success rate.
+- [Tailscale NAT traversal](https://tailscale.com/blog/how-nat-traversal-works) and
+  [2025 hard-NAT probing](https://tailscale.com/blog/nat-traversal-improvements-pt-1) - native operational references; no code copied.
 - [Grozev, *Towards a Scalable Video Conferencing System*](https://publication-theses.unistra.fr/public/theses_doctorat/2019/Grozev_Boris_2019_ED269.pdf)
   - one Jitsi profiling breakdown, not a coturn/LiveKit cross-system CPU ratio.
 
