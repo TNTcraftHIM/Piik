@@ -1102,6 +1102,16 @@ describe("ViewerRelay downstream ownership", () => {
       iceTransportPolicy: "relay",
     }]);
     const selectedConnection = FakePeerConnection.latest!;
+    expect(
+      relay.startSelectedEdgeTurn(
+        { ...selectedGrant, revision: 8 },
+        "selected-parent",
+        7,
+      ),
+    ).toBe(true);
+    expect(FakePeerConnection.latest).toBe(selectedConnection);
+    expect(sendSignal).toHaveBeenCalledOnce();
+    relay.acceptActiveRevision(8);
     relay.setChildren(["sibling-child"]);
     expect(selectedConnection.connectionState).not.toBe("closed");
     expect(siblingConnection.connectionState).toBe("connected");
@@ -1116,7 +1126,7 @@ describe("ViewerRelay downstream ownership", () => {
         kind: "candidate",
         connectionId: "selected-connection-new",
         candidate: pendingCandidate,
-      }, 7),
+      }, 8),
     ).resolves.toBe(true);
     expect(selectedConnection.addedIceCandidates).toEqual([]);
     await expect(
@@ -1124,7 +1134,7 @@ describe("ViewerRelay downstream ownership", () => {
         kind: "description",
         connectionId: "selected-connection-new",
         description: { type: "answer", sdp: "selected-answer" },
-      }, 7),
+      }, 8),
     ).resolves.toBe(true);
     expect(selectedConnection.remoteDescription?.type).toBe("answer");
     expect(selectedConnection.addedIceCandidates).toEqual([pendingCandidate]);
@@ -1133,7 +1143,7 @@ describe("ViewerRelay downstream ownership", () => {
         kind: "candidate",
         connectionId: "selected-connection-new",
         candidate: null,
-      }, 7),
+      }, 8),
     ).resolves.toBe(true);
     expect(selectedConnection.addedIceCandidates).toEqual([
       pendingCandidate,
@@ -1144,24 +1154,27 @@ describe("ViewerRelay downstream ownership", () => {
         kind: "candidate",
         connectionId: "selected-connection-new",
         candidate: null,
-      }, 6),
+      }, 7),
     ).resolves.toBe(false);
     await expect(
       relay.acceptSignal("selected-child", {
         kind: "candidate",
         connectionId: oldConnectionId,
         candidate: null,
-      }, 7),
+      }, 8),
     ).resolves.toBe(false);
     expect(
       relay.startSelectedEdgeTurn(
-        selectedEdgeTurn(
-          "selected-child",
-          "selected-connection-new",
-          "selected-connection-replacement",
-        ),
+        {
+          ...selectedEdgeTurn(
+            "selected-child",
+            "selected-connection-new",
+            "selected-connection-replacement",
+          ),
+          revision: 9,
+        },
         "selected-parent",
-        7,
+        9,
       ),
     ).toBe(true);
     await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledTimes(2));
@@ -1170,17 +1183,54 @@ describe("ViewerRelay downstream ownership", () => {
     expect(replacementConnection.connectionState).not.toBe("closed");
     expect(FakePeerConnection.activeCount).toBe(2);
     expect(FakePeerConnection.peakActiveCount).toBe(2);
-    relay.clearSelectedEdgeTurn();
+    relay.acceptActiveRevision(9);
     expect(replacementConnection.connectionState).toBe("closed");
     await expect(
       relay.acceptSignal("selected-child", {
         kind: "candidate",
         connectionId: "selected-connection-replacement",
         candidate: null,
-      }, 7),
+      }, 9),
     ).resolves.toBe(false);
     expect(FakePeerConnection.activeCount).toBe(1);
     expect(FakePeerConnection.peakActiveCount).toBe(2);
+    relay.dispose();
+  });
+
+  it("reports a selected child whose relay-only offer fails", async () => {
+    const onSelectedEdgeFailed = vi.fn();
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true, onSelectedEdgeFailed },
+    );
+    relay.setChildren(["selected-child"]);
+    relay.setStream(createStream(createTrack("video", "selected-video"), null));
+    await vi.waitFor(() => expect(relay.getSnapshot()).not.toBeNull());
+    const oldConnectionId = relay.getSnapshot()!.connectionId;
+    relay.setChildren([]);
+    FakePeerConnection.offersFailing = 1;
+
+    expect(
+      relay.startSelectedEdgeTurn(
+        selectedEdgeTurn(
+          "selected-child",
+          oldConnectionId,
+          "selected-failed-connection",
+        ),
+        "selected-parent",
+        7,
+      ),
+    ).toBe(true);
+    await vi.waitFor(() =>
+      expect(onSelectedEdgeFailed).toHaveBeenCalledWith(
+        "selected-child",
+        "selected-failed-connection",
+        7,
+      ),
+    );
+    expect(relay.getSnapshot("selected-child")).toBeNull();
+    expect(FakePeerConnection.latest?.connectionState).toBe("closed");
     relay.dispose();
   });
 

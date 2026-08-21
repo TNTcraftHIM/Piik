@@ -117,6 +117,12 @@ type SelectedEdgeTurn = Extract<
   ServerMessage,
   { type: "selected-edge-turn"; edgeKind: "peer-selected" }
 >;
+interface ActiveSelectedHostChild {
+  peerId: string;
+  connectionId: string;
+  currentRouteRevision: number;
+  pendingCarryRevision: number | null;
+}
 
 interface CaptureDetails {
   resolution: string;
@@ -251,6 +257,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
   const retiredConnectionsRef = useRef(new Map<string, string>());
+  const selectedHostChildRef = useRef<ActiveSelectedHostChild | null>(null);
   const hostPeerIdRef = useRef<string | null>(null);
   const viewerQualityEvidenceRef = useRef(
     new Map<string, ViewerQualityEvidence>(),
@@ -347,6 +354,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
       retiredConnectionsRef.current.clear();
+      selectedHostChildRef.current = null;
       hostPeerIdRef.current = null;
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
         window.clearTimeout(timer),
@@ -450,6 +458,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
     retiredConnectionsRef.current.clear();
+    selectedHostChildRef.current = null;
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
@@ -761,6 +770,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       retiredConnectionsRef.current.set(peerId, peer.connectionId);
       peer.dispose();
     }
+    if (selectedHostChildRef.current?.peerId === peerId) {
+      selectedHostChildRef.current = null;
+    }
     peersRef.current.delete(peerId);
     setPeerSnapshots((current) => {
       const next = new Map(current);
@@ -794,6 +806,25 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
 
+    const reportSelectedTurnFailure = (connectionId: string): void => {
+      const selected = selectedHostChildRef.current;
+      if (
+        !selectedTurn ||
+        selected?.peerId !== peerId ||
+        selected.connectionId !== connectionId ||
+        !isCurrentGeneration(generation) ||
+        signalRef.current !== signal
+      ) {
+        return;
+      }
+      signal.send({
+        type: "route-failed",
+        revision: selected.currentRouteRevision,
+        phase: "active",
+        connectionId,
+      });
+    };
+
     let peer: HostPeer;
     peer = new HostPeer(
       peerId,
@@ -811,6 +842,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             peersRef.current.get(peerId) === peer
           ) {
             if (selectedTurn && snapshot.connectionState === "failed") {
+              reportSelectedTurnFailure(peer.connectionId);
               removePeer(peerId);
               return;
             }
@@ -827,6 +859,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       started = await peer.start();
     } catch (error) {
       if (peersRef.current.get(peerId) === peer) {
+        reportSelectedTurnFailure(peer.connectionId);
         removePeer(peerId);
       }
       throw error;
@@ -835,6 +868,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
 
+    reportSelectedTurnFailure(peer.connectionId);
     removePeer(peerId);
     if (selectedTurn || !isCurrentGeneration(generation) || attempt >= 1) {
       return;
@@ -896,9 +930,20 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     childPeerIds: string[],
     generation: number,
   ): void {
+    const selected = selectedHostChildRef.current;
+    const selectedIsCurrent =
+      selected?.currentRouteRevision === activeRouteRevisionRef.current &&
+      peersRef.current.get(selected.peerId)?.connectionId ===
+        selected.connectionId;
+    const effectiveChildPeerIds = selectedIsCurrent
+      ? [...new Set([...childPeerIds, selected.peerId])]
+      : childPeerIds;
+    if (selected && !selectedIsCurrent) {
+      selectedHostChildRef.current = null;
+    }
     reconcileBoundedMediaChildren(
       peersRef.current.keys(),
-      childPeerIds,
+      effectiveChildPeerIds,
       MAX_HOST_MEDIA_CHILDREN,
       removePeer,
       (peerId) => {
@@ -920,6 +965,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
+      const selected = selectedHostChildRef.current;
+      if (selected) {
+        removePeer(selected.peerId);
+      }
       hostPeerIdRef.current = message.peerId;
       setViewerAccessUpdating(false);
       clearAllViewerQualityEvidence();
@@ -982,6 +1031,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         return;
       }
       const current = peersRef.current.get(message.viewerPeerId);
+      const selected = selectedHostChildRef.current;
+      if (
+        peerAssistedRef.current &&
+        message.parentPeerId === hostPeerIdRef.current &&
+        selected?.peerId === message.viewerPeerId &&
+        selected.connectionId === message.newConnectionId &&
+        current?.connectionId === selected.connectionId &&
+        message.revision >= selected.currentRouteRevision
+      ) {
+        selected.currentRouteRevision = message.revision;
+        selected.pendingCarryRevision = message.revision;
+        return;
+      }
       const oldConnectionId =
         current?.connectionId ??
         retiredConnectionsRef.current.get(message.viewerPeerId);
@@ -995,6 +1057,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         if (current) {
           removePeer(message.viewerPeerId);
         }
+        selectedHostChildRef.current = {
+          peerId: message.viewerPeerId,
+          connectionId: message.newConnectionId,
+          currentRouteRevision: message.revision,
+          pendingCarryRevision: null,
+        };
         void startPeer(message.viewerPeerId, generation, 0, message);
       }
       return;
@@ -1039,6 +1107,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "route-update") {
       if (peerAssistedRef.current) {
+        if (message.phase === "active") {
+          const selected = selectedHostChildRef.current;
+          if (selected?.pendingCarryRevision === message.revision) {
+            selected.pendingCarryRevision = null;
+          } else if (selected) {
+            removePeer(selected.peerId);
+          }
+        }
         if (
           message.phase === "active" &&
           message.revision !== activeRouteRevisionRef.current

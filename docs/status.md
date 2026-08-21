@@ -21,6 +21,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 - Production roots/Web relay <=2; Viewer upstream1, child3 rejected. One-root healthy-SFU MBB is deployed/media-unverified; source defers one cooldown ready for expiry reproof. Capacity `0 -> 1`, multi-root and browser gates remain open. Room `1` is historical; HTTPS/WSS is TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - C+B reparenting remains uncalibrated. Production compares relay-child FPS with fresh parent input and tries peers only; no candidate keeps the old edge. Admission rescue stays deterministic.
+- Source-only selected-TURN work separates immutable grant revision from current route authority: unrelated revisions may carry only the same in-budget edge, while topology/session/share/budget loss revokes it before active authority. Browser and production proof remain open.
 
 ## Verified Evidence
 

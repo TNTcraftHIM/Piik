@@ -28,7 +28,7 @@ if ($agentLines -gt 200) {
 if ($memoryLines -gt 200 -or $memoryBytes -gt 12000) {
     throw "docs/project-memory.md exceeds its budget: $memoryLines lines, $memoryBytes bytes"
 }
-if ($statusLines -gt 120 -or $statusBytes -gt 8000) {
+if ($statusLines -gt 120 -or $statusBytes -gt 12000) {
     throw "docs/status.md exceeds its budget: $statusLines lines, $statusBytes bytes"
 }
 

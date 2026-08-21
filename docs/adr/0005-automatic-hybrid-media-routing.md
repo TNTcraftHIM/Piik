@@ -127,9 +127,13 @@ server currently retries a failed edge through the deterministic peer topology;
 only an exhausted peer route can request an SFU branch root. The target keeps
 healthy routes sticky but may select SFU directly when admission has no eligible
 peer path. Optional TURN is controller-selected only after that SFU/UDP attempt
-fails. The authorization must bind the current room/share generation, viewer and
-parent sessions, route revision, and replaced/new connection identities; stale,
-replayed, participant-wide, or unselected attempts fail closed. Coturn still
+fails. The authorization binds the room/share generation, viewer and parent
+sessions, grant revision, and replaced/new connection identities. After answer,
+the signed grant revision stays immutable while the controller tracks the current
+route revision separately. An unrelated route revision may carry the exact edge
+only while its sessions, topology, share generation, and parent downstream
+budget remain current; carry authority must precede the active route update.
+Stale, replayed, participant-wide, over-budget, or unselected attempts fail closed. Coturn still
 validates only HMAC and expiry, so application generation checks, short TTL,
 one-use state, fanout, and quotas bound the bearer. LiveKit publisher/subscriber
 ICE remains a separate participant-wide domain.

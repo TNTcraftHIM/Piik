@@ -11,6 +11,11 @@ import { MAX_VIEWER_MEDIA_CHILDREN } from "./media-assignment";
 interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
+  onSelectedEdgeFailed?: (
+    childPeerId: string,
+    connectionId: string,
+    revision: number,
+  ) => void;
 }
 type SelectedEdgeTurn = Extract<
   ServerMessage,
@@ -20,6 +25,7 @@ interface SelectedChildConnection {
   peerId: string;
   connectionId: string;
   revision: number;
+  pendingCarryRevision: number | null;
 }
 
 export class ViewerRelay {
@@ -60,6 +66,17 @@ export class ViewerRelay {
       currentPeer?.connectionId ??
       this.retiredConnections.get(message.viewerPeerId);
     const selected = this.selectedChildConnection;
+    if (
+      selected?.peerId === message.viewerPeerId &&
+      selected.connectionId === message.newConnectionId &&
+      currentPeer?.connectionId === selected.connectionId &&
+      message.parentPeerId === parentPeerId &&
+      message.revision >= selected.revision
+    ) {
+      selected.revision = message.revision;
+      selected.pendingCarryRevision = message.revision;
+      return true;
+    }
     const retainedChildPeerIds = selected
       ? this.childPeerIds.filter((peerId) => peerId !== selected.peerId)
       : this.childPeerIds;
@@ -86,6 +103,7 @@ export class ViewerRelay {
       peerId: message.viewerPeerId,
       connectionId: message.newConnectionId,
       revision: message.revision,
+      pendingCarryRevision: null,
     };
     this.startPeer(message.viewerPeerId, stream, 0, message);
     return true;
@@ -101,6 +119,18 @@ export class ViewerRelay {
       (peerId) => peerId !== selected.peerId,
     );
     this.disposePeer(selected.peerId);
+  }
+
+  acceptActiveRevision(revision: number): void {
+    const selected = this.selectedChildConnection;
+    if (!selected) {
+      return;
+    }
+    if (selected.pendingCarryRevision === revision) {
+      selected.pendingCarryRevision = null;
+      return;
+    }
+    this.clearSelectedEdgeTurn();
   }
 
   setChildren(childPeerIds: readonly string[]): void {
@@ -330,7 +360,7 @@ export class ViewerRelay {
             snapshot.connectionId === peer.connectionId
           ) {
             if (selectedTurn && snapshot.connectionState === "failed") {
-              this.disposePeer(childPeerId);
+              this.failSelectedChild(childPeerId, peer.connectionId);
               return;
             }
             this.snapshots.set(childPeerId, {
@@ -352,6 +382,10 @@ export class ViewerRelay {
         if (started || this.peers.get(childPeerId) !== peer) {
           return;
         }
+        if (selectedTurn) {
+          this.failSelectedChild(childPeerId, peer.connectionId);
+          return;
+        }
         this.disposePeer(childPeerId);
         if (
           !selectedTurn &&
@@ -365,6 +399,22 @@ export class ViewerRelay {
           }, 500);
         }
       });
+  }
+
+  private failSelectedChild(childPeerId: string, connectionId: string): void {
+    const selected = this.selectedChildConnection;
+    if (
+      selected?.peerId !== childPeerId ||
+      selected.connectionId !== connectionId
+    ) {
+      return;
+    }
+    this.events.onSelectedEdgeFailed?.(
+      childPeerId,
+      connectionId,
+      selected.revision,
+    );
+    this.disposePeer(childPeerId);
   }
 
   private disposePeers(): void {

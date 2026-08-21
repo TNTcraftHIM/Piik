@@ -6,6 +6,7 @@ import {
   MAX_HOST_MEDIA_CHILDREN,
   MAX_VIEWER_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
+  retainSelectedMediaParent,
   viewerRestartMessage,
   viewerSignalMessage,
 } from "../src/client/webrtc/media-assignment.ts";
@@ -57,6 +58,21 @@ describe("peer-assisted client assignment", () => {
       "start:kept-child",
       "start:new-child",
     ]);
+  });
+
+  it("updates selected Viewer children without replacing its retained parent", () => {
+    expect(
+      retainSelectedMediaParent(
+        {
+          parentPeerId: null,
+          childPeerIds: ["new-child_12345678"],
+        },
+        "selected-parent_12345678",
+      ),
+    ).toEqual({
+      parentPeerId: "selected-parent_12345678",
+      childPeerIds: ["new-child_12345678"],
+    });
   });
 
   it("leaves ordinary viewer signaling untargeted", () => {

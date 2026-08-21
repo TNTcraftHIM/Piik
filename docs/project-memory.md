@@ -68,7 +68,7 @@ These are measurement gates, not performance claims.
 
 - Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
 - Whether ADR-0004 passes re-encoding, depth-three/eight-viewer latency, reparenting, silent-partition, and representative resource gates.
-- Selected-edge: active Host-ingress function passes; initial ingress, `peer-selected`, expiry/failure, mobile, resource and bandwidth gates remain. The bearer is non-revocable until expiry; performance follows later and Media TCP is out.
+- Selected-edge: Host ingress works; initial ingress, `peer-selected`, expiry/failure, mobile/resource/bandwidth gates remain. Coturn bearer lasts to expiry; the app lease ends on edge/session/share/budget loss. Media TCP is out.
 - Exact mobile Viewer lifecycle behavior across autoplay, rotation, iOS lock-screen/page reclamation, background reconnection and network changes.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.

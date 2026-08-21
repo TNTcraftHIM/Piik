@@ -69,6 +69,7 @@ import type {
 import {
   limitMediaAssignment,
   MAX_VIEWER_MEDIA_CHILDREN,
+  retainSelectedMediaParent,
   viewerRestartMessage,
   viewerSignalMessage,
 } from "../webrtc/media-assignment";
@@ -88,6 +89,11 @@ type SelectedEdgeTurn = Extract<
   ServerMessage,
   { type: "selected-edge-turn"; edgeKind: "peer-selected" }
 >;
+interface ActiveSelectedEdgeTurn {
+  grant: SelectedEdgeTurn;
+  currentRouteRevision: number;
+  pendingCarryRevision: number | null;
+}
 interface SfuUpstreamState {
   connectionState: "connected" | "reconnecting";
   metrics: ConnectionMetrics | null;
@@ -230,7 +236,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       parentPeerId: string;
       connectionId: string;
     } | null = null;
-    let selectedEdgeTurn: SelectedEdgeTurn | null = null;
+    let selectedEdgeTurn: ActiveSelectedEdgeTurn | null = null;
     const messageAuthority = new ViewerMessageAuthority();
     let sfuStandbyPrewarmer: SfuStandbyPrewarmer | null = null;
     let relayChildEvidenceCurrent: ViewerQualityEvidence | null = null;
@@ -362,6 +368,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   payload,
                 })
               : false,
+          onSelectedEdgeFailed: (
+            _childPeerId,
+            connectionId,
+            revision,
+          ) => {
+            if (active && peerAssisted) {
+              signal.send({
+                type: "route-failed",
+                revision,
+                phase: "active",
+                connectionId,
+              });
+            }
+          },
           onUpdate: (snapshot) => {
             if (active) {
               setRelaySnapshot(snapshot);
@@ -682,7 +702,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       const peer = new ViewerPeer(
         selectedEdgeTurn
-          ? { iceServers: [selectedEdgeTurn.iceServer] }
+          ? { iceServers: [selectedEdgeTurn.grant.iceServer] }
           : currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
@@ -760,12 +780,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               return true;
             }
             if (
-              selectedEdgeTurn?.parentPeerId === parentPeerId &&
-              selectedEdgeTurn.newConnectionId === connectionId
+              selectedEdgeTurn?.grant.parentPeerId === parentPeerId &&
+              selectedEdgeTurn.grant.newConnectionId === connectionId
             ) {
               signal.send({
                 type: "route-failed",
-                revision: selectedEdgeTurn.revision,
+                revision: selectedEdgeTurn.currentRouteRevision,
                 phase: "active",
                 connectionId,
               });
@@ -792,7 +812,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
+        const hadSelectedUpstream = selectedEdgeTurn !== null;
         selectedEdgeTurn = null;
+        if (hadSelectedUpstream) {
+          clearUpstreamState();
+        }
+        viewerRelay?.clearSelectedEdgeTurn();
         viewerAuthenticated = true;
         setAccessState("ready");
         setViewerPasswordDraft("");
@@ -908,6 +933,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           return;
         }
         if (
+          selectedEdgeTurn?.grant.parentPeerId === message.parentPeerId &&
+          selectedEdgeTurn.grant.viewerPeerId === message.viewerPeerId &&
+          selectedEdgeTurn.grant.newConnectionId === message.newConnectionId &&
+          message.revision >= selectedEdgeTurn.currentRouteRevision
+        ) {
+          selectedEdgeTurn.currentRouteRevision = message.revision;
+          selectedEdgeTurn.pendingCarryRevision = message.revision;
+          return;
+        }
+        if (
           message.revision !== currentRouteRevision ||
           Date.parse(message.expiresAt) <= Date.now()
         ) {
@@ -922,7 +957,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         ) {
           return;
         }
-        selectedEdgeTurn = message;
+        selectedEdgeTurn = {
+          grant: message,
+          currentRouteRevision: message.revision,
+          pendingCarryRevision: null,
+        };
         clearViewerSfuRoute();
         clearUpstreamState();
         acceptAssignedRoute(message.revision, {
@@ -938,17 +977,43 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "route-update") {
         if (peerAssisted) {
-          if (message.phase === "active") {
-            if (message.revision !== currentRouteRevision) {
-              viewerRelay?.clearSelectedEdgeTurn();
-            }
-            if (selectedEdgeTurn?.revision !== message.revision) {
-              selectedEdgeTurn = null;
+          if (
+            message.phase === "active" &&
+            message.revision >= currentRouteRevision
+          ) {
+            viewerRelay?.acceptActiveRevision(message.revision);
+            if (selectedEdgeTurn) {
+              if (
+                selectedEdgeTurn.pendingCarryRevision === message.revision
+              ) {
+                selectedEdgeTurn.pendingCarryRevision = null;
+              } else {
+                selectedEdgeTurn = null;
+                clearUpstreamState();
+              }
             }
             if (message.revision !== currentRouteRevision) {
               clearRelayChildEvidence();
             }
             currentRouteRevision = message.revision;
+            if (selectedEdgeTurn) {
+              applyMediaAssignment(
+                {
+                  parentPeerId: selectedEdgeTurn.grant.parentPeerId,
+                  childPeerIds: message.assignment.childPeerIds,
+                },
+                true,
+              );
+              acceptAssignedRoute(
+                message.revision,
+                {
+                  kind: "peer",
+                  peerId: selectedEdgeTurn.grant.parentPeerId,
+                },
+                "active",
+              );
+              return;
+            }
           }
           const result = ensureViewerSfuRoute().accept(message);
           if (result !== "stale") {
@@ -973,7 +1038,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "media-assignment") {
         if (peerAssisted && !viewerSfuRoute) {
-          applyMediaAssignment(message.mediaAssignment);
+          applyMediaAssignment(
+            selectedEdgeTurn
+              ? retainSelectedMediaParent(
+                  message.mediaAssignment,
+                  selectedEdgeTurn.grant.parentPeerId,
+                )
+              : message.mediaAssignment,
+            selectedEdgeTurn !== null,
+          );
         }
         return;
       }
@@ -1046,6 +1119,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "sharing-stopped") {
+        selectedEdgeTurn = null;
         setSfuStandbyUrl(null);
         setAssignedRoute(null);
         currentHostOnline = false;

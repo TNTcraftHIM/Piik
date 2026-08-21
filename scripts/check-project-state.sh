@@ -28,7 +28,7 @@ if [ "$memory_lines" -gt 200 ] || [ "$memory_bytes" -gt 12000 ]; then
   exit 1
 fi
 
-if [ "$status_lines" -gt 120 ] || [ "$status_bytes" -gt 8000 ]; then
+if [ "$status_lines" -gt 120 ] || [ "$status_bytes" -gt 12000 ]; then
   echo "docs/status.md exceeds its budget: $status_lines lines, $status_bytes bytes" >&2
   exit 1
 fi

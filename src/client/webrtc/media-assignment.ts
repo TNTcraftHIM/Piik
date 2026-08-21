@@ -17,6 +17,16 @@ export function limitMediaAssignment(
   };
 }
 
+export function retainSelectedMediaParent(
+  assignment: MediaAssignment,
+  parentPeerId: string,
+): MediaAssignment {
+  return {
+    parentPeerId,
+    childPeerIds: assignment.childPeerIds,
+  };
+}
+
 export function reconcileBoundedMediaChildren(
   currentPeerIds: Iterable<string>,
   nextChildPeerIds: readonly string[],
