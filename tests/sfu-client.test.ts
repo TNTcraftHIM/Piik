@@ -218,6 +218,7 @@ const livekit = vi.hoisted(() => {
   };
 
   const AudioPresets = {
+    musicStereo: { maxBitrate: 64_000 },
     musicHighQualityStereo: { maxBitrate: 128_000 },
   } as const;
 
@@ -500,6 +501,33 @@ describe("SfuPublisher", () => {
     expect(room.disconnect).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["saver", 64_000],
+    ["music", 128_000],
+    ["very-high", 256_000],
+  ] as const)("maps the %s audio preset to %i bps", async (screenAudioQuality, bitrate) => {
+    const publisher = new SfuPublisher();
+    const video = track("video", `video-${screenAudioQuality}`);
+    const audio = track("audio", `audio-${screenAudioQuality}`);
+    await publisher.connect(connection);
+
+    await expect(
+      publisher.activate(stream(video, audio), {
+        ...qualityProfile,
+        screenAudioQuality,
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      livekit.state.rooms[0]?.localParticipant.publishTrack,
+    ).toHaveBeenNthCalledWith(2, audio, {
+      source: Track.Source.ScreenShareAudio,
+      audioPreset: { maxBitrate: bitrate },
+      forceStereo: true,
+      dtx: false,
+    });
+  });
+
   it.each(["h264", "vp8"] as const)(
     "passes an explicit %s preference to the SFU publisher",
     async (videoCodec) => {
@@ -584,6 +612,27 @@ describe("SfuPublisher", () => {
     );
     expect(room.localParticipant.publishTrack).toHaveBeenCalledOnce();
     expect(publisher.getQualityWarning()).toBeNull();
+  });
+
+  it("rejects an audio preset change while the share is active", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(
+      stream(track("video", "video-1"), track("audio", "audio-1")),
+      { ...qualityProfile, screenAudioQuality: "saver" },
+    );
+    const room = livekit.state.rooms[0];
+    const videoPublication = room.localParticipant.publications[0];
+
+    await expect(
+      publisher.updateProfile({
+        ...qualityProfile,
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(false);
+
+    expect(videoPublication.track.sender.setParameters).toHaveBeenCalledOnce();
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
   });
 
   it("retains the active profile for LiveKit track restart and republish", async () => {
@@ -905,7 +954,10 @@ describe("SfuPublisher", () => {
     const publisher = new SfuPublisher();
     const audio = track("audio", "audio-2");
     await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
+    await publisher.activate(stream(track("video", "video-1")), {
+      ...qualityProfile,
+      screenAudioQuality: "very-high",
+    });
     const room = livekit.state.rooms[0];
 
     await expect(
@@ -914,7 +966,7 @@ describe("SfuPublisher", () => {
 
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 128_000 },
+      audioPreset: { maxBitrate: 256_000 },
       forceStereo: true,
       dtx: false,
     });

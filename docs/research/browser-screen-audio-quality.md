@@ -2,11 +2,13 @@
 
 Accessed: 2026-08-21
 
-Status: peer and SFU routes already use stereo and a 128 kbps target, but users
+Status: peer and SFU routes already use stereo and a 128 kbps default, but users
 still report speech-gated movie/game audio, including on a phone connected
 directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
-local speech processing unless the request disables it. This slice makes that
-source request explicit; target-device audible proof remains open.
+local speech processing unless the request disables it. The source request is
+explicit, and Share advanced settings now provide bounded 64/128/256 kbps
+sender ceilings across P2P, browser relay, and SFU. Target-device audible proof
+remains open.
 
 ## Scope And Decision
 
@@ -15,8 +17,8 @@ browser `RTCPeerConnection`. It does not decide whether the product ultimately
 needs Windows per-application capture; that remains a separate native-sender
 requirement.
 
-The product keeps one screen-media audio mode rather than exposing codec
-plumbing as quality controls:
+The product keeps one screen-media audio mode and exposes only three bounded
+sender ceilings rather than codec plumbing:
 
 - request audio with echo cancellation, noise suppression, automatic gain, and
   voice isolation disabled, while preferring two capture channels;
@@ -26,12 +28,12 @@ plumbing as quality controls:
 - treat an audio track as optional and warn before publishing when none exists;
 - preserve returned audio through source changes, picture pause, P2P, relay, and
   configured SFU routes;
-- keep a `128000` bit/s sender ceiling, matching Opus stereo/maximum-average-
-  bitrate receive parameters, and DTX off across Web peer and SFU routes;
+- offer 64/128/256 kbps sender ceilings, default 128 kbps, with one 256 kbps
+  Opus receive maximum and DTX off across Web peer and SFU routes;
 - let the browser's existing WebRTC congestion control reduce actual audio and
   video traffic; do not add an application audio adaptation loop;
-- expose no channel-count, sample-rate, codec, bitrate, stereo, DTX, RED, or FEC
-  user control; and
+- expose no channel-count, sample-rate, codec, stereo, DTX, RED, FEC, arbitrary
+  bitrate slider, or application-owned adaptation control; and
 - expose local, read-only audio RTP diagnostics without treating negotiated
   codec fields as source-quality facts.
 
@@ -39,15 +41,17 @@ The music hint is metadata, not a codec or quality mode. Chromium accepts and
 reads it back, but the inspected libwebrtc audio-track interface has no matching
 content-hint input to the Opus encoder. Screener therefore does not credit the
 hint with a quality change. RFC 7587 and the pinned LiveKit presets, rather than
-an ordinary-PC benchmark, define the 128 kbps ceiling: the RFC places full-band
+an ordinary-PC benchmark, define the 128 kbps default: the RFC places full-band
 stereo music in a 64--128 kbps sweet spot, and LiveKit 2.22.0 names 128 kbps
 `musicHighQualityStereo`. Requested, applied, negotiated, and observed states
 remain separate.
 
-There is no audio setting or panel rename in this slice. Screen capture has one
-reasonable media default, while a future microphone/voice feature would be a
-separate track and processing path with its own AEC/noise-suppression/DTX
-contract. It must not turn movie or game audio into a voice-processed source.
+The advanced panel is named Share advanced settings. Its audio choice is locked
+while sharing because peer SDP and SFU publication options are established for
+that share; video-only ceiling changes remain live. A future microphone/voice
+feature remains a separate track and processing path with its own
+AEC/noise-suppression/DTX contract. It must not turn movie or game audio into a
+voice-processed source.
 
 ## Deployed Reports And Echo Boundary
 
@@ -107,7 +111,7 @@ turn optional screen audio into a hard capture gate.
 | Source processing | Current Chromium accepts EC/NS/AGC/voice-isolation constraints on web display audio | Corresponding `track.getSettings()` fields can confirm values when exposed | Portable support, or that a missing field means false | Request all four off for movie/game audio and verify the target Host settings |
 | Capture channels | Current Chromium accepts `channelCount: { ideal: 2 }`; the Screen Capture specification does not make it portable | `track.getSettings().channelCount` may describe the returned track when exposed | That every source/browser can supply stereo, or that RTP sends stereo | Prefer two without using `exact`; keep negotiated Opus truth separate |
 | Capture sample rate | The Screen Capture specification does not list generic `sampleRate` as applicable to display audio | `track.getSettings().sampleRate` may be present in an implementation | The Opus mode, RTP clock semantics, receiver output rate, or end-to-end fidelity | Observe only in a future diagnostic; absent means unknown |
-| RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio; Opus `maxaveragebitrate` advertises the receiver's maximum | A following `getParameters()` can show the applied sender ceiling; negotiated fmtp shows the receiver maximum; outbound byte deltas show actual traffic | A minimum, audible improvement, or moment-to-moment rate; congestion may keep traffic lower | Pair the 128 kbps sender ceiling with the same Opus receive maximum and retain actual bitrate as the acceptance fact |
+| RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio; Opus `maxaveragebitrate` advertises the receiver's maximum | A following `getParameters()` can show the applied sender ceiling; negotiated fmtp shows the receiver maximum; outbound byte deltas show actual traffic | A minimum, audible improvement, or moment-to-moment rate; congestion may keep traffic lower | Apply the selected 64/128/256 kbps sender ceiling, advertise one 256 kbps receive maximum, and retain actual bitrate as the acceptance fact |
 | Codec | The user agent chooses among negotiated send codecs unless a separately negotiated codec selection is available | `RTCCodecStats.mimeType` and `sdpFmtpLine` identify the codec and negotiated format parameters in use | That Opus was selected before stats exist, or that negotiated preferences describe actual content | Label only observed negotiated data; do not force a codec |
 | Stereo | No stable sender parameter controls Opus stereo; RFC 7587 defines `stereo` as the receiver's one-way preference | Capture settings and negotiated codec/fmtp data can be inspected separately | Capture channel count and `opus/48000/2` do not prove encoded stereo | Use one bounded Opus answer transform on the declared Chrome/Edge baseline; no user control or inferred badge |
 | DTX | The current WebRTC `RTCRtpEncodingParameters` dictionary has no `dtx` member; RFC 7587 defaults absent `usedtx` to `0` | No portable standard sender readback proves DTX operation | A deprecated browser field or SDK option is not a cross-browser contract | Keep peer default-off and set LiveKit `dtx: false`; no user control |
@@ -286,14 +290,15 @@ browser congestion control:
 
 1. Request display audio with echo cancellation, noise suppression, automatic
    gain, and voice isolation disabled plus ideal two-channel capture. Keep
-   `contentHint = "music"` as metadata, one audio track and the existing 128 kbps
-   sender ceiling. Do not force a sample rate or add Web Audio mixing,
+   `contentHint = "music"` as metadata and one audio track. Apply the selected
+   64/128/256 kbps sender ceiling, defaulting missing/legacy state to 128 kbps.
+   Do not force a sample rate or add Web Audio mixing,
    resampling, a second representation or a new rate controller.
 2. On every Web Viewer answer, including ICE restart/rebuild answers, parse SDP
    with direct dependencies on MIT-licensed `sdp-transform` 2.15.0 and its
    TypeScript declarations. Select the single non-rejected audio media section,
    resolve its Opus payload from structured `rtp` entries, and idempotently
-   upsert `stereo=1` plus `maxaveragebitrate=128000` in that payload's fmtp before both
+   upsert `stereo=1` plus `maxaveragebitrate=256000` in that payload's fmtp before both
    `setLocalDescription()` and signaling the same description. Preserve every
    other media section, codec, fmtp key and session attribute. Empty SDP, no
    unambiguous active audio/Opus payload, multiple active audio sections,
@@ -305,12 +310,13 @@ browser congestion control:
 3. Do not add `sprop-stereo`: RFC 7587 defines it as a sender-likelihood hint,
    not the receiver preference that permits the remote encoder to send stereo,
    and offer/answer parameters are orthogonal. Do not add `usedtx=0`; absent
-   `usedtx` already means off. `maxaveragebitrate=128000` is the receiver maximum
-   matching Screener's sender ceiling and pinned LiveKit preset, not a minimum;
-   stock congestion control can still lower actual traffic. Keep the browser's
+   `usedtx` already means off. `maxaveragebitrate=256000` is the receiver maximum
+   covering all three sender ceilings, not a minimum or current target; stock
+   congestion control can still lower actual traffic. Keep the browser's
    existing `useinbandfec` negotiation untouched.
-4. For SFU publication use LiveKit 2.22.0
-   `AudioPresets.musicHighQualityStereo`, `forceStereo: true` and `dtx: false`.
+4. For SFU publication map 64 kbps to LiveKit 2.22.0
+   `AudioPresets.musicStereo`, 128 kbps to `musicHighQualityStereo`, and 256 kbps
+   to an explicit preset; retain `forceStereo: true` and `dtx: false`.
    Do not override the pinned room default `red: true`. RED and Opus in-band FEC
    are distinct repair mechanisms; retaining one neither proves, replaces nor
    disables the other, and no FEC switch is exposed or reimplemented.
@@ -323,8 +329,9 @@ otherwise change channel behavior. Native/Pion sender routes retain their own
 explicit encoded-track contract and need a focused compatibility check before
 claiming the same result.
 
-At the fixed ceiling, audio contributes at most 128 kbps RTP payload per active
-outbound edge, or 256 kbps for the current two-child endpoint cap, excluding
+At the default ceiling, audio contributes at most 128 kbps RTP payload per
+active outbound edge, or 256 kbps for the current two-child endpoint cap. The
+explicit highest preset doubles those bounds to 256/512 kbps, excluding
 RTP/SRTP/UDP/IP overhead. A Host SFU publication contributes one such ingress;
 each root/peer forward still sends its own copy. This is small beside the
 current 3--8 Mbps video presets, but stereo can use more encoder work and
@@ -428,14 +435,14 @@ only one post-SFU connectivity smoke. Correlate capture settings, negotiated cod
 actual outbound/inbound bitrate, loss, jitter, concealment, jitter buffer, and
 A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 
-## UI And Voice Revisit Gate
+## UI And Voice Boundary
 
-Do not rename “高级视频设置” or add an audio control in this slice. One screen
-media default is simpler and the browser already adapts actual traffic below
-the ceiling. Revisit a single bounded “省流/高保真” choice only if sanitized
-production stats establish that 128 kbps audio materially blocks a real target
-network while video adaptation cannot preserve the core path. Do not expose
-sample rate, channel count, codec, DTX, RED, FEC or an arbitrary bitrate slider.
+Share advanced settings offers exactly 64/128/256 kbps and defaults to 128.
+The choice is locked for the active share and follows the same room-memory
+quality settings through P2P, browser relay, and SFU. It remains a sender
+ceiling, not a guaranteed or constant bitrate. Do not expose sample rate,
+channel count, codec, DTX, RED, FEC, an arbitrary slider, or a second audio
+adaptation loop.
 
 If microphone voice enters scope, treat it as a separate source/track with an
 independent privacy, AEC, noise-suppression, gain and DTX design. Oopz's public

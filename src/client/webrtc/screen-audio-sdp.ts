@@ -1,10 +1,10 @@
 import { parse, parsePayloads, write } from "sdp-transform";
 
-import { SCREEN_AUDIO_MAX_BITRATE } from "../media/quality";
+import { SCREEN_AUDIO_RECEIVE_MAX_BITRATE } from "../media/quality";
 
 const OPUS_RECEIVE_PREFERENCES = {
   stereo: "1",
-  maxaveragebitrate: String(SCREEN_AUDIO_MAX_BITRATE),
+  maxaveragebitrate: String(SCREEN_AUDIO_RECEIVE_MAX_BITRATE),
 } as const;
 const OPUS_RECEIVE_FMTP = Object.entries(OPUS_RECEIVE_PREFERENCES)
   .map(([name, value]) => `${name}=${value}`)

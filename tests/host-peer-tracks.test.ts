@@ -453,7 +453,15 @@ describe("HostPeer source replacement", () => {
   it("reserves send-only video and audio senders and replaces both tracks", async () => {
     const oldVideo = createTrack("video", "old-video");
     const oldAudio = createTrack("audio", "old-audio");
-    const peer = createPeer(createStream(oldVideo, oldAudio));
+    const peer = createPeer(
+      createStream(oldVideo, oldAudio),
+      () => undefined,
+      { iceServers: [] },
+      {
+        ...QUALITY_PROFILES["720p30"],
+        screenAudioQuality: "very-high",
+      },
+    );
 
     await expect(peer.start()).resolves.toBe(true);
     const connection = FakePeerConnection.latest!;
@@ -474,8 +482,8 @@ describe("HostPeer source replacement", () => {
     expect(connection.transceiverInputs).toHaveLength(2);
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
-      128_000,
-      128_000,
+      256_000,
+      256_000,
     ]);
   });
 
@@ -540,6 +548,16 @@ describe("HostPeer source replacement", () => {
       degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
+    expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
+
+    await expect(
+      peer.updateProfile({
+        ...QUALITY_PROFILES["1080p60"],
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(false);
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
   });
 
   it("accepts an answer without reapplying the selected profile", async () => {
@@ -1546,5 +1564,48 @@ describe("ViewerRelay downstream ownership", () => {
       degradationPreference: "balanced",
       encodings: [{ maxBitrate: 10_500_000, maxFramerate: 45 }],
     });
+  });
+
+  it("retains the locked audio preset for current and future children", async () => {
+    const lockedProfile = {
+      ...QUALITY_PROFILES["1080p60"],
+      screenAudioQuality: "saver",
+    } as const;
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      lockedProfile,
+      { sendSignal: () => true },
+    );
+    relay.setChildren(["first-audio-child"]);
+    relay.setStream(
+      createStream(
+        createTrack("video", "relay-video"),
+        createTrack("audio", "relay-audio"),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.latest?.senders[1]?.appliedMaxBitrates).toEqual([
+        64_000,
+      ]),
+    );
+    const firstConnection = FakePeerConnection.latest!;
+
+    await expect(
+      relay.updateProfile({
+        ...lockedProfile,
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(false);
+    expect(firstConnection.senders[1]?.appliedMaxBitrates).toEqual([64_000]);
+
+    relay.setChildren(["second-audio-child"]);
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.latest).not.toBe(firstConnection),
+    );
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.latest?.senders[1]?.appliedMaxBitrates).toEqual([
+        64_000,
+      ]),
+    );
   });
 });

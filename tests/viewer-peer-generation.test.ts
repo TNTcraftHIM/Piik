@@ -224,7 +224,7 @@ describe("ViewerPeer connection generations", () => {
       expect(description).toEqual(expect.objectContaining({
         type: "answer",
         sdp: expect.stringContaining(
-          "a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=128000",
+          "a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=256000",
         ),
       }));
       expect(answers[index]?.description.sdp).toBe(description.sdp);

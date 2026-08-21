@@ -4,6 +4,7 @@ import type { QualityProfile } from "../media/quality";
 import {
   configureScreenAudioSender,
   configureVideoSender,
+  resolveScreenAudioQuality,
   senderParameterWarning,
 } from "../media/quality";
 import {
@@ -194,7 +195,11 @@ export class HostPeer {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    if (this.disposed) {
+    if (
+      this.disposed ||
+      resolveScreenAudioQuality(profile.screenAudioQuality) !==
+        resolveScreenAudioQuality(this.desiredProfile.screenAudioQuality)
+    ) {
       return Promise.resolve(false);
     }
     this.desiredProfile = profile;
@@ -427,7 +432,10 @@ export class HostPeer {
         this.desiredProfile,
       );
       if (audioSender?.track) {
-        await configureScreenAudioSender(audioSender);
+        await configureScreenAudioSender(
+          audioSender,
+          this.desiredProfile.screenAudioQuality,
+        );
       }
       if (this.disposed) {
         return false;

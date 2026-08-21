@@ -36,6 +36,7 @@ const qualitySettings = {
 const qualitySettingsWithCodec = {
   ...qualitySettings,
   videoCodec: "h264",
+  screenAudioQuality: "music",
 } as const;
 
 const qualityEvidence = {
@@ -464,6 +465,18 @@ describe("client signaling protocol", () => {
         qualitySettings: qualitySettingsWithCodec,
       }).success,
     ).toBe(true);
+    for (const screenAudioQuality of [
+      "saver",
+      "music",
+      "very-high",
+    ] as const) {
+      expect(
+        clientMessageSchema.safeParse({
+          type: "set-quality-settings",
+          qualitySettings: { ...qualitySettings, screenAudioQuality },
+        }).success,
+      ).toBe(true);
+    }
     for (const invalid of [
       { ...qualitySettings, resolution: "2160p" },
       { ...qualitySettings, maxFramerate: 14 },
@@ -474,6 +487,8 @@ describe("client signaling protocol", () => {
       { ...qualitySettings, maxBitrate: 5_000_000.5 },
       { ...qualitySettings, degradationPreference: "automatic" },
       { ...qualitySettings, videoCodec: "vp9" },
+      { ...qualitySettings, screenAudioQuality: "lossless" },
+      { ...qualitySettings, screenAudioQuality: 960_000 },
       { ...qualitySettings, codec: "video/VP9" },
     ]) {
       expect(

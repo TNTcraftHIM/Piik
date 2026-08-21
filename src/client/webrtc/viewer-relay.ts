@@ -3,7 +3,10 @@ import type {
   ServerMessage,
   SignalPayload,
 } from "../../shared/protocol";
-import type { QualityProfile } from "../media/quality";
+import {
+  resolveScreenAudioQuality,
+  type QualityProfile,
+} from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
 import { MAX_VIEWER_MEDIA_CHILDREN } from "./media-assignment";
@@ -177,7 +180,12 @@ export class ViewerRelay {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    if (this.disposed) {
+    if (
+      this.disposed ||
+      (this.stream !== null &&
+        resolveScreenAudioQuality(profile.screenAudioQuality) !==
+          resolveScreenAudioQuality(this.desiredProfile.screenAudioQuality))
+    ) {
       return Promise.resolve(false);
     }
     this.desiredProfile = profile;

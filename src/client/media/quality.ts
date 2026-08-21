@@ -4,6 +4,7 @@ import {
   type QualityProfileId,
   type QualityResolution,
   type QualitySettings,
+  type ScreenAudioQuality,
   type VideoCodecPreference,
 } from "../../shared/protocol";
 import { displayMediaOptions } from "./audio-capture";
@@ -13,6 +14,7 @@ export type {
   QualityProfileId,
   QualityResolution,
   QualitySettings,
+  ScreenAudioQuality,
   VideoCodecPreference,
 } from "../../shared/protocol";
 
@@ -26,6 +28,7 @@ export const QUALITY_PROFILES = {
     maxBitrate: 5_000_000,
     degradationPreference: "balanced",
     videoCodec: "automatic",
+    screenAudioQuality: "music",
   },
   "720p30": {
     resolution: "720p",
@@ -33,6 +36,7 @@ export const QUALITY_PROFILES = {
     maxBitrate: 3_000_000,
     degradationPreference: "balanced",
     videoCodec: "automatic",
+    screenAudioQuality: "music",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
@@ -63,6 +67,21 @@ export const VIDEO_CODEC_PREFERENCE_LABELS = {
   vp8: "VP8",
 } as const satisfies Record<VideoCodecPreference, string>;
 
+export const SCREEN_AUDIO_QUALITY_LABELS = {
+  saver: "64 kbps 省流",
+  music: "128 kbps 音乐默认",
+  "very-high": "256 kbps 极高音质",
+} as const satisfies Record<ScreenAudioQuality, string>;
+
+export const DEFAULT_SCREEN_AUDIO_QUALITY: ScreenAudioQuality = "music";
+export const SCREEN_AUDIO_BITRATES = {
+  saver: 64_000,
+  music: 128_000,
+  "very-high": 256_000,
+} as const satisfies Record<ScreenAudioQuality, number>;
+export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE =
+  SCREEN_AUDIO_BITRATES["very-high"];
+
 export interface VideoSenderParameterValues {
   maxBitrate: number | null;
   maxFramerate: number | null;
@@ -83,7 +102,18 @@ export interface TwoLayerVideoSenderParameterReadback {
 }
 
 export const SCREEN_SHARE_LOW_SCALE = 2;
-export const SCREEN_AUDIO_MAX_BITRATE = 128_000;
+
+export function resolveScreenAudioQuality(
+  quality: ScreenAudioQuality | undefined,
+): ScreenAudioQuality {
+  return quality ?? DEFAULT_SCREEN_AUDIO_QUALITY;
+}
+
+export function screenAudioBitrate(
+  quality: ScreenAudioQuality | undefined,
+): number {
+  return SCREEN_AUDIO_BITRATES[resolveScreenAudioQuality(quality)];
+}
 
 export function screenShareLowBitrate(profile: QualityProfile): number {
   return Math.max(150_000, Math.floor(profile.maxBitrate / 4));
@@ -98,7 +128,9 @@ export function qualitySettingsEqual(
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
     left.degradationPreference === right.degradationPreference &&
-    (left.videoCodec ?? "automatic") === (right.videoCodec ?? "automatic")
+    (left.videoCodec ?? "automatic") === (right.videoCodec ?? "automatic") &&
+    resolveScreenAudioQuality(left.screenAudioQuality) ===
+      resolveScreenAudioQuality(right.screenAudioQuality)
   );
 }
 
@@ -292,12 +324,13 @@ export async function configureVideoSender(
 
 export async function configureScreenAudioSender(
   sender: RTCRtpSender,
+  quality?: ScreenAudioQuality,
 ): Promise<number | null> {
   const parameters = sender.getParameters();
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
   }
-  parameters.encodings[0]!.maxBitrate = SCREEN_AUDIO_MAX_BITRATE;
+  parameters.encodings[0]!.maxBitrate = screenAudioBitrate(quality);
   await sender.setParameters(parameters);
   return sender.getParameters().encodings[0]?.maxBitrate ?? null;
 }

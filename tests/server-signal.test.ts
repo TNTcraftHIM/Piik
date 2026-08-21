@@ -33,18 +33,21 @@ const defaultQualitySettings = {
   maxBitrate: 8_000_000,
   degradationPreference: "balanced",
   videoCodec: "automatic",
+  screenAudioQuality: "music",
 } as const;
 const balancedQualitySettings = {
   resolution: "1080p",
   maxFramerate: 30,
   maxBitrate: 5_000_000,
   degradationPreference: "balanced",
+  screenAudioQuality: "saver",
 } as const;
 const lowQualitySettings = {
   resolution: "720p",
   maxFramerate: 30,
   maxBitrate: 3_000_000,
   degradationPreference: "maintain-resolution",
+  screenAudioQuality: "very-high",
 } as const;
 let runningServer: ScreenerServer | undefined;
 
