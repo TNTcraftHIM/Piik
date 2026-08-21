@@ -54,7 +54,13 @@ describe("realtime quality controls", () => {
         height: { ideal: 1080, max: 1080 },
         frameRate: { ideal: 30, max: 30 },
       },
-      audio: true,
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        voiceIsolation: false,
+        channelCount: { ideal: 2 },
+      },
       systemAudio: "include",
       windowAudio: "window",
     });
