@@ -4,10 +4,10 @@ Last updated: 2026-08-21
 
 ## Phase
 
-Production at `https://share.bonfire.icu` is exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767`; artifact 1,027,423 bytes, SHA-256 `74e0274ab11a162cb9dd4be1c34bb6b639e2ea76005969c30ae3a1daa656742f`.
-Cutover: 10,238 ms lock/641 ms stop-health/570 ms switch-health; SQLite v3/five rooms/four active services, observed `NRestarts=0`. Initial Host-ingress retry is deployed; mobile endpoints are Web Viewer-only.
-Ordinary ICE is STUN-only; all rooms use bounded peer/SFU-UDP plus selected-edge UDP TTL 120. Room `1` is historical. An exact-source/production-media canary proves active Host-ingress relay only.
-Web names/audio hint are deployed. Native WGC/MF/package is source-only; Web defaults VP8.
+Production at `https://share.bonfire.icu` is exact `ecc794d6f01ff8e90cc07a267d221daaac8da9e1`; artifact 951,317 bytes, SHA-256 `22c82d0e06f34abb746ee9e652821deebeea0174643b31ec6e21e159933f5431`.
+Cutover: 2,646.166 ms lock/425.531 ms stop-health/364.286 ms switch-health; SQLite v3/five rooms/four active services, observed `NRestarts=0`. Rollback is exact `16f6eab`; `22119b9` remains secondary.
+Ordinary ICE is STUN-only; all-room limits are SFU roots <=2 and one `peer-selected` attempt excluding Host ingress; selected UDP TTL is 120. This rollout ran no media canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
+Web window/system-audio and music hints, interval A/V loss%, and audio codec/format/bitrate/jitter are deployed. Native stays source-only; Web defaults VP8.
 
 ## Execution Principle
 
@@ -23,7 +23,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Production `q,h` is deployed; an exact-source/production-media canary proves active Host ingress without production app/DB.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
-- Web roster names are deployed. Source window/system audio, music hint, interval AV loss% and audio codec/bitrate/jitter details await deploy.
+- Web roster, audio picker/music hints, interval A/V loss%, and audio codec/format/bitrate/jitter are deployed.
 
 ## Verified Evidence
 
@@ -36,13 +36,13 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Native Win11 audio is source-only/default-off: target isolation was 4018x and one Viewer got 495 Opus packets. Download, game sync, Win10, and other routes remain open.
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
-- Source caps pending/answered `peer-selected` at one per room, excluding Host ingress. Focused tests cover admission/release/rollback/STUN-only; exact-source Chrome proves active TURN/UDP media, Viewer progress, Host edge one and stop zero. Functional only.
-- Host names/window audio/all-room routing/Host selected ingress are active. AV stats pass 42 tests/typecheck; a retained Chrome 151 dual-Viewer sample kept hidden-tab inbound/decode/Opus counters moving while its presentation callback stayed flat. Audible/mobile proof remains open.
-- Exact `16f6eab` passed typecheck, builds and 445 tests; deploy preserved config/network/SQLite/services/routes. Rollback is `22119b9`; `fd76277` remains secondary.
+- Production caps pending/answered `peer-selected` at one per room; Host ingress is independent. Focused admission/release/rollback/STUN-only tests pass; earlier Chrome proves active Host-ingress function only.
+- Host names, Web audio, all-room routing, Host selected ingress and AV/audio diagnostics are active. Retained hidden-tab media counters progressed; audible/mobile proof remains open.
+- Exact `ecc794d` passed typecheck, builds and 452 tests. Deploy preserved config/network/SQLite hashes; SQLite v3/five rooms, routes/assets/SiteAccess and four zero-restart services passed. Rollback is `16f6eab`; `22119b9` is secondary.
 
 ## Unverified Boundaries
 
-- The cutover is config evidence; the separate canary closes active Host-ingress relay/frame/cap/stop function. Initial ingress, peer last mile, external cohorts, admission rescue, quality/resources/performance, and game blur remain open.
+- The `ecc794d` cutover ran no browser/media/TURN canary. Earlier exact-`16f6eab` proof covers active Host ingress only; initial/peer last mile, external cohorts, admission rescue, quality/resources/performance and game blur remain open.
 - Mobile is Viewer-only. Its persistent audible media element keeps media/signaling active while the page lives; iOS lock-screen, reclamation and background reconnection remain device gates. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
