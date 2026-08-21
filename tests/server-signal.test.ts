@@ -319,6 +319,7 @@ async function startRelayRelativeFpsFixture(
     onSfuTokenIssue?: () => void;
     prepareTimeoutMs?: number;
     hostFirstCandidate?: boolean;
+    hostShareGeneration?: string;
     secondChild?: boolean;
     selectedEdgeTurn?: boolean;
     sfu?: boolean;
@@ -339,7 +340,14 @@ async function startRelayRelativeFpsFixture(
     : await startHarness({ peerAssistedMedia: true, now });
   const host = await openClient(harness.webSocketUrl);
   const hostAuth = peerAssisted(
-    await authenticate(host, harness.room, "host", `${prefix}-host`),
+    await authenticate(
+      host,
+      harness.room,
+      "host",
+      `${prefix}-host`,
+      1,
+      options.hostShareGeneration,
+    ),
   );
   const parent = await openClient(harness.webSocketUrl);
   const parentAuth = peerAssisted(
@@ -568,6 +576,42 @@ async function confirmRelayChildSevere(
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     if (sequence < 2) advanceWindow();
   }
+}
+
+async function prepareHostParentQualityProbe(
+  fixture: Awaited<ReturnType<typeof startRelayRelativeFpsFixture>>,
+  advanceWindow: () => void,
+  connectionId: string,
+) {
+  fixture.alternate.socket.close();
+  const [current] = await Promise.all([
+    nextActiveRouteAfter(fixture.child, fixture.routeRevision),
+    nextActiveRouteAfter(fixture.parent, fixture.routeRevision),
+    nextActiveRouteAfter(fixture.host, fixture.routeRevision),
+  ]);
+  fixture.routeRevision = current.revision;
+  await confirmRelayChildSevere(
+    fixture,
+    fixture.child,
+    fixture.childConnectionId,
+    advanceWindow,
+  );
+  const [viewerPrepare, hostPrepare] = await Promise.all([
+    nextPreparedRoute(fixture.child),
+    nextPreparedRoute(fixture.host),
+  ]);
+  expect(viewerPrepare.assignment.upstream).toEqual({
+    kind: "peer",
+    peerId: fixture.hostAuth.peerId,
+  });
+  expect(hostPrepare.revision).toBe(viewerPrepare.revision);
+  await sendTestOffer(
+    fixture.host,
+    fixture.child,
+    fixture.childAuth.peerId,
+    connectionId,
+  );
+  return { viewerPrepare, hostPrepare };
 }
 
 async function reconnectRelayQualityEdges(
@@ -1117,6 +1161,92 @@ async function activateSingleViewerSfu(
     nextActiveRouteRevision(viewer, viewerPrepare.revision),
   ]);
   return { ...direct, revision: viewerPrepare.revision };
+}
+
+async function prepareSfuHostParentQualityProbe(
+  harness: SignalHarness,
+  active: Awaited<ReturnType<typeof activateSingleViewerSfu>>,
+  prefix: string,
+  advanceWindow: () => void,
+) {
+  active.viewer.socket.send(JSON.stringify({
+    type: "relay-capacity",
+    downstreamEdges: 1,
+  }));
+  const hostFiller = await openClient(harness.webSocketUrl);
+  await authenticate(
+    hostFiller,
+    harness.room,
+    "viewer",
+    `${prefix}-filler`,
+    0,
+  );
+  const parent = await openClient(harness.webSocketUrl);
+  const parentAuth = peerAssisted(await authenticate(
+    parent,
+    harness.room,
+    "viewer",
+    `${prefix}-parent`,
+    1,
+  ));
+  expect(parentAuth.routeAssignment.upstream).toEqual({
+    kind: "peer",
+    peerId: active.viewerAuth.peerId,
+  });
+  const child = await openClient(harness.webSocketUrl);
+  const childAuth = peerAssisted(await authenticate(
+    child,
+    harness.room,
+    "viewer",
+    `${prefix}-child`,
+    0,
+  ));
+  expect(childAuth.routeAssignment.upstream).toEqual({
+    kind: "peer",
+    peerId: parentAuth.peerId,
+  });
+  hostFiller.socket.close();
+  const current = await nextActiveRouteAfter(child, childAuth.routeRevision);
+  await Promise.all([
+    nextActiveRouteRevision(active.host, current.revision),
+    nextActiveRouteRevision(active.viewer, current.revision),
+    nextActiveRouteRevision(parent, current.revision),
+  ]);
+
+  await sendTestOffer(
+    active.viewer,
+    parent,
+    parentAuth.peerId,
+    `${prefix}_parent_connection`,
+  );
+  const childConnectionId = `${prefix}_child_connection`;
+  await sendTestOffer(parent, child, childAuth.peerId, childConnectionId);
+  for (let sequence = 0; sequence < 3; sequence += 1) {
+    child.socket.send(JSON.stringify(viewerQualityEvidenceWithMetrics(
+      childConnectionId,
+      current.revision,
+      sequence,
+      { framesDecodedDelta: 0 },
+    )));
+    await correlateParentEdgeQualityEvidence(parent);
+    advanceWindow();
+  }
+  const [childPrepare, hostPrepare] = await Promise.all([
+    nextPreparedRoute(child),
+    nextPreparedRoute(active.host),
+  ]);
+  expect(childPrepare.assignment.upstream).toEqual({
+    kind: "peer",
+    peerId: active.hostAuth.peerId,
+  });
+  expect(hostPrepare.revision).toBe(childPrepare.revision);
+  return {
+    child,
+    childPrepare,
+    current,
+    hostPrepare,
+    parentAuth,
+  };
 }
 
 async function activateTwoFailedViewerSfuRoots(
@@ -3553,13 +3683,20 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("probes an eligible peer Viewer rather than the Host", async () => {
+  it("uses an eligible Host as the provisional peer parent", async () => {
     let now = 120_000;
     const fixture = await startRelayRelativeFpsFixture(
       "quality_skip_host",
       () => now,
-      { alternateRelayCapacity: 1 },
+      { alternateRelayCapacity: 0 },
     );
+    fixture.alternate.socket.close();
+    const [current] = await Promise.all([
+      nextActiveRouteAfter(fixture.child, fixture.routeRevision),
+      nextActiveRouteAfter(fixture.parent, fixture.routeRevision),
+      nextActiveRouteAfter(fixture.host, fixture.routeRevision),
+    ]);
+    fixture.routeRevision = current.revision;
     const advanceWindow = () => { now += 2_000; };
     await confirmRelayChildSevere(
       fixture,
@@ -3569,28 +3706,29 @@ describe("WebSocket signaling", () => {
     );
     const moved = await completePreparedPeerMigration(
       fixture.child,
-      fixture.alternate,
+      fixture.host,
       fixture.childAuth.peerId,
-      fixture.alternateAuth.peerId,
+      fixture.hostAuth.peerId,
       fixture.routeRevision,
-      "quality_skip_host_probe",
+      "quality_host_probe",
     );
-    expect(await nextActiveRouteRevision(fixture.host, moved.revision)).toMatchObject({
-      phase: "active",
-    });
     expect(moved.assignment.upstream).toEqual({
       kind: "peer",
-      peerId: fixture.alternateAuth.peerId,
+      peerId: fixture.hostAuth.peerId,
     });
   });
 
-  it("keeps the old edge when no eligible Viewer alternate exists", async () => {
+  it("keeps the old edge when the Host upload budget is already full", async () => {
     let now = 125_000;
     const fixture = await startRelayRelativeFpsFixture(
       "quality_only_host",
       () => now,
       { alternateRelayCapacity: 0 },
     );
+    await Promise.all([
+      nextActiveRouteRevision(fixture.host, fixture.routeRevision),
+      nextActiveRouteRevision(fixture.alternate, fixture.routeRevision),
+    ]);
     const advanceWindow = () => { now += 2_000; };
     await confirmRelayChildSevere(
       fixture,
@@ -3601,6 +3739,298 @@ describe("WebSocket signaling", () => {
     await expect(fixture.child.inbox.next("route-update", 40)).rejects.toThrow(
       "Timed out",
     );
+  });
+
+  it("rolls a Host-parent probe back only for its exact revision and connection", async () => {
+    let now = 126_000;
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_host_exact_failure",
+      () => now,
+      { alternateRelayCapacity: 0 },
+    );
+    const probeConnectionId = "quality_host_exact_failure_probe";
+    const { viewerPrepare } = await prepareHostParentQualityProbe(
+      fixture,
+      () => { now += 2_000; },
+      probeConnectionId,
+    );
+
+    for (const [revision, connectionId] of [
+      [viewerPrepare.revision - 1, probeConnectionId],
+      [viewerPrepare.revision, `${probeConnectionId}-wrong`],
+    ] as const) {
+      fixture.child.socket.send(JSON.stringify({
+        type: "route-failed",
+        revision,
+        phase: "prepare",
+        connectionId,
+      }));
+    }
+    await Promise.all([
+      expect(
+        fixture.child.inbox.next("route-update", 40),
+      ).rejects.toThrow("Timed out"),
+      expect(
+        fixture.host.inbox.next("route-update", 40),
+      ).rejects.toThrow("Timed out"),
+    ]);
+
+    fixture.child.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: viewerPrepare.revision,
+      phase: "prepare",
+      connectionId: probeConnectionId,
+    }));
+    const [viewerRollback, hostRollback] = await Promise.all([
+      nextActiveRouteAfter(fixture.child, viewerPrepare.revision),
+      nextActiveRouteAfter(fixture.host, viewerPrepare.revision),
+    ]);
+    expect(viewerRollback.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
+    });
+    expect(hostRollback.revision).toBe(viewerRollback.revision);
+    await expect(
+      sendTestOffer(
+        fixture.parent,
+        fixture.child,
+        fixture.childAuth.peerId,
+        "quality_host_exact_failure_old_edge",
+      ),
+    ).resolves.toMatchObject({ fromPeerId: fixture.parentAuth.peerId });
+  });
+
+  it("invalidates a Host-parent probe when the Host session is replaced", async () => {
+    let now = 127_000;
+    const shareGeneration = "quality_host_session_share";
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_host_session",
+      () => now,
+      { alternateRelayCapacity: 0, hostShareGeneration: shareGeneration },
+    );
+    const { viewerPrepare } = await prepareHostParentQualityProbe(
+      fixture,
+      () => { now += 2_000; },
+      "quality_host_session_probe",
+    );
+    const oldClosed = new Promise<number>((resolve) =>
+      fixture.host.socket.once("close", (code) => resolve(code)),
+    );
+    const replacement = await openClient(fixture.harness.webSocketUrl);
+    const replacementAuth = peerAssisted(await authenticate(
+      replacement,
+      fixture.harness.room,
+      "host",
+      "quality_host_session-host",
+      1,
+      shareGeneration,
+    ));
+    expect(await oldClosed).toBe(4001);
+    expect(replacementAuth.peerId).toBe(fixture.hostAuth.peerId);
+    expect(replacementAuth.routeRevision).toBeGreaterThan(viewerPrepare.revision);
+    expect(replacementAuth.routeAssignment.childPeerIds).not.toContain(
+      fixture.childAuth.peerId,
+    );
+    const rollback = await nextActiveRouteAfter(
+      fixture.child,
+      viewerPrepare.revision,
+    );
+    expect(rollback.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
+    });
+
+    fixture.child.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: viewerPrepare.revision,
+      phase: "prepare",
+    }));
+    await expect(
+      fixture.child.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
+  it("invalidates a Host-parent probe when a new share generation starts", async () => {
+    let now = 127_500;
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_host_share",
+      () => now,
+      {
+        alternateRelayCapacity: 0,
+        hostShareGeneration: "quality_host_share_a",
+      },
+    );
+    const { viewerPrepare } = await prepareHostParentQualityProbe(
+      fixture,
+      () => { now += 2_000; },
+      "quality_host_share_probe",
+    );
+    const oldClosed = new Promise<number>((resolve) =>
+      fixture.host.socket.once("close", (code) => resolve(code)),
+    );
+    const replacement = await openClient(fixture.harness.webSocketUrl);
+    const replacementAuth = peerAssisted(await authenticate(
+      replacement,
+      fixture.harness.room,
+      "host",
+      "quality_host_share-host",
+      1,
+      "quality_host_share_b",
+    ));
+    expect(await oldClosed).toBe(4001);
+    expect(replacementAuth.peerId).toBe(fixture.hostAuth.peerId);
+    expect(replacementAuth.routeAssignment.childPeerIds).not.toContain(
+      fixture.childAuth.peerId,
+    );
+    await fixture.child.inbox.next("sharing-stopped");
+    const nextShareRoute = await nextActiveRouteRevision(
+      fixture.child,
+      replacementAuth.routeRevision,
+    );
+    expect(nextShareRoute.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
+    });
+
+    fixture.child.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: viewerPrepare.revision,
+      phase: "prepare",
+    }));
+    fixture.child.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: viewerPrepare.revision,
+      phase: "prepare",
+      connectionId: "quality_host_share_probe",
+    }));
+    await expect(
+      fixture.child.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
+  it("counts an answered Host selected overlay against a quality-probe slot", async () => {
+    let now = 128_000;
+    const harness = await startSfuHarness({
+      now: () => now,
+      tokenIssuer: {
+        async issueToken({ peerId }) { return `token-${peerId}`; },
+      },
+      selectedEdgeTurn: true,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "quality-host-selected-budget",
+    );
+    active.viewer.socket.send(JSON.stringify({
+      type: "relay-capacity",
+      downstreamEdges: 1,
+    }));
+    const hostFiller = await openClient(harness.webSocketUrl);
+    const hostFillerAuth = peerAssisted(await authenticate(
+      hostFiller,
+      harness.room,
+      "viewer",
+      "quality-host-selected-budget-filler",
+      0,
+    ));
+    expect(hostFillerAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.hostAuth.peerId,
+    });
+    const parent = await openClient(harness.webSocketUrl);
+    const parentAuth = peerAssisted(await authenticate(
+      parent,
+      harness.room,
+      "viewer",
+      "quality-host-selected-budget-parent",
+      1,
+    ));
+    expect(parentAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.viewerAuth.peerId,
+    });
+    const child = await openClient(harness.webSocketUrl);
+    const childAuth = peerAssisted(await authenticate(
+      child,
+      harness.room,
+      "viewer",
+      "quality-host-selected-budget-child",
+      0,
+    ));
+    expect(childAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentAuth.peerId,
+    });
+
+    hostFiller.socket.close();
+    const current = await nextActiveRouteAfter(child, childAuth.routeRevision);
+    await Promise.all([
+      nextActiveRouteRevision(active.host, current.revision),
+      nextActiveRouteRevision(active.viewer, current.revision),
+      nextActiveRouteRevision(parent, current.revision),
+    ]);
+    const grant = await startPeerSelectedTurn(
+      active.viewer,
+      active.host,
+      current.revision,
+    );
+    active.host.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: active.viewerAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: grant.newConnectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }));
+    await active.viewer.inbox.next("signal");
+    active.viewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: active.hostAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: grant.newConnectionId,
+        description: { type: "answer", sdp: "v=0\r\n" },
+      },
+    }));
+    await active.host.inbox.next("signal");
+
+    await sendTestOffer(
+      active.viewer,
+      parent,
+      parentAuth.peerId,
+      "quality_host_selected_budget_parent_connection",
+    );
+    const childConnectionId = "quality_host_selected_budget_child_connection";
+    await sendTestOffer(parent, child, childAuth.peerId, childConnectionId);
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      child.socket.send(JSON.stringify(viewerQualityEvidenceWithMetrics(
+        childConnectionId,
+        current.revision,
+        sequence,
+        { framesDecodedDelta: 0 },
+      )));
+      await correlateParentEdgeQualityEvidence(parent);
+      now += 2_000;
+    }
+    await expect(child.inbox.next("route-update", 40)).rejects.toThrow(
+      "Timed out",
+    );
+
+    active.host.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: active.viewerAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: grant.newConnectionId,
+        candidate: null,
+      },
+    }));
+    await expect(active.viewer.inbox.next("signal")).resolves.toMatchObject({
+      fromPeerId: active.hostAuth.peerId,
+      payload: { connectionId: grant.newConnectionId },
+    });
   });
 
   it("uses a capable SFU root as the provisional peer parent", async () => {
@@ -6372,6 +6802,171 @@ describe("WebSocket signaling", () => {
     expect(await active.host.inbox.next("sfu-config")).toMatchObject({
       revision: hostRollback.revision,
     });
+  });
+
+  it("does not let a soft Host-parent probe swallow active SFU publication failure", async () => {
+    let now = 205_000;
+    const harness = await startSfuHarness({
+      now: () => now,
+      tokenIssuer: {
+        async issueToken({ peerId }) { return `token-${peerId}`; },
+      },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "quality-host-sfu-loss",
+    );
+    const { child, childPrepare, current, hostPrepare, parentAuth } =
+      await prepareSfuHostParentQualityProbe(
+        harness,
+        active,
+        "quality_host_sfu_loss",
+        () => { now += 2_000; },
+      );
+
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: current.revision,
+      phase: "prepare",
+      connectionId: null,
+    }));
+    await expect(child.inbox.next("route-update", 40)).rejects.toThrow(
+      "Timed out",
+    );
+
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: hostPrepare.revision,
+      phase: "prepare",
+      connectionId: null,
+    }));
+    const [childBaseline, firstHostRecovery] = await Promise.all([
+      nextActiveRouteAfter(child, childPrepare.revision),
+      nextActiveRouteAfter(active.host, hostPrepare.revision),
+    ]);
+    const hostBaseline = firstHostRecovery.assignment.sfuPublicationGeneration === null
+      ? firstHostRecovery
+      : await nextActiveRouteAfter(active.host, firstHostRecovery.revision);
+    expect(childBaseline.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentAuth.peerId,
+    });
+    expect(hostBaseline.assignment.sfuPublicationGeneration).toBeNull();
+  });
+
+  it("bounds selected ingress after active Host SFU failure during a soft probe", async () => {
+    try {
+      let now = 208_000;
+      const harness = await startSfuHarness({
+        now: () => now,
+        tokenIssuer: {
+          async issueToken({ peerId }) { return `token-${peerId}`; },
+        },
+        selectedEdgeTurn: true,
+      });
+      const active = await activateSingleViewerSfu(
+        harness.webSocketUrl,
+        harness.room,
+        "quality-host-selected-timeout",
+      );
+      const { child, childPrepare, hostPrepare, parentAuth } =
+        await prepareSfuHostParentQualityProbe(
+          harness,
+          active,
+          "quality_host_selected_timeout",
+          () => { now += 2_000; },
+        );
+
+      vi.useFakeTimers();
+      active.host.socket.send(JSON.stringify({
+        type: "route-failed",
+        revision: hostPrepare.revision,
+        phase: "prepare",
+        connectionId: null,
+      }));
+      const [childRollback, hostRollback, grant] = await Promise.all([
+        nextActiveRouteAfter(child, childPrepare.revision),
+        nextActiveRouteAfter(active.host, hostPrepare.revision),
+        active.host.inbox.next("selected-edge-turn"),
+      ]);
+      expect(childRollback.assignment.upstream).toEqual({
+        kind: "peer",
+        peerId: parentAuth.peerId,
+      });
+      expect(hostRollback.revision).toBe(hostPrepare.revision + 1);
+      expect(hostRollback.assignment.sfuPublicationGeneration).toBeTruthy();
+      expect(grant).toMatchObject({
+        edgeKind: "host-sfu-ingress",
+        revision: hostRollback.revision,
+      });
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(active.host.inbox.next("error")).resolves.toMatchObject({
+        code: "PEER_NOT_FOUND",
+        message: "Selected SFU relay ingress timed out",
+      });
+      await expect(
+        nextActiveRouteAfter(active.host, hostRollback.revision),
+      ).resolves.toMatchObject({
+        revision: hostRollback.revision + 1,
+        assignment: { sfuPublicationGeneration: null },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not let a soft Host-parent probe swallow active selected ingress failure", async () => {
+    let now = 210_000;
+    const harness = await startSfuHarness({
+      now: () => now,
+      tokenIssuer: {
+        async issueToken({ peerId }) { return `token-${peerId}`; },
+      },
+      selectedEdgeTurn: true,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "quality-selected-host-loss",
+    );
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: active.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    const ingress = await active.host.inbox.next("selected-edge-turn");
+    active.host.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: active.revision,
+      phase: "active",
+    }));
+
+    const { child, childPrepare, current, hostPrepare } =
+      await prepareSfuHostParentQualityProbe(
+        harness,
+        active,
+        "quality_selected_host",
+        () => { now += 2_000; },
+      );
+
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: current.revision,
+      phase: "active",
+      connectionId: ingress.newConnectionId,
+    }));
+    const [childBaseline, firstHostRecovery] = await Promise.all([
+      nextActiveRouteAfter(child, childPrepare.revision),
+      nextActiveRouteAfter(active.host, hostPrepare.revision),
+    ]);
+    const hostBaseline = firstHostRecovery.assignment.sfuPublicationGeneration === null
+      ? firstHostRecovery
+      : await nextActiveRouteAfter(active.host, firstHostRecovery.revision);
+    expect(childBaseline.assignment.upstream.kind).toBe("peer");
+    expect(hostBaseline.assignment.sfuPublicationGeneration).toBeNull();
   });
 
   it("keeps ordinary intent when topology abort fills the overlap slot", async () => {
