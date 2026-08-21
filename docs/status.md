@@ -56,6 +56,7 @@ Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
 Ordinary peers stay STUN-only; initial ingress, `peer-selected`, and healthy-reselection browser gates remain open.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
+Stereo: open.
 
 ## Blockers And Decisions
 
