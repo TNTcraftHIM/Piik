@@ -182,7 +182,7 @@ export class ViewerPeer {
         iceServers: iceConfig.iceServers,
       });
     } catch (error) {
-      this.setError(error, "更新 ICE 配置失败");
+      this.setError(error, "更新网络配置失败");
     }
   }
 

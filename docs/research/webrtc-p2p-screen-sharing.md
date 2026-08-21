@@ -318,7 +318,7 @@ WebRTC 媒体本身使用 DTLS-SRTP 加密，但 direct P2P 仍可能让这组�
 - `qualityLimitationReason` 和各原因累计时长
 - jitter buffer delay、decode time 和 total packet send delay
 
-`RTCIceCandidateStats.protocol` 表示 ICE candidate 的 UDP/TCP；只有本地 relay candidate 的 `relayProtocol` 才表示本端到 TURN 的 UDP/TCP/TLS。规范要求远端 candidate 不暴露 `relayProtocol`，所以本端只能确认远端使用 relay，不能从 `remoteCandidate.protocol` 推断其 TURN 传输。首版分别展示 ICE protocol 与本地 TURN protocol，不为补齐远端字段扩展信令或遥测。
+`RTCIceCandidateStats.protocol` 是内部候选传输字段；只有本地 relay candidate 的 `relayProtocol` 才能确认本端到 TURN 的实际传输。规范不向远端暴露 `relayProtocol`，所以不能从 `remoteCandidate.protocol` 推断远端 TURN 传输。当前详情以 `P2P`/`SFU fallback` 表示媒体方式，直连只显示实际 `protocol`，relay 先显示 `TURN`，仅本地 relay 再附加 `/UDP` 等实际值；candidate type 单列为候选路径，不为补齐远端字段扩展信令或遥测。
 
 WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件，并使用画面时间码或高速摄像机测量玻璃到玻璃延迟。60 fps 的单帧周期是 16.7 ms，端到端延迟还包含采集等待、编码、单程网络、jitter buffer、解码和显示。
 

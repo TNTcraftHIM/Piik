@@ -1176,7 +1176,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <>
                 <MediaRouteBadge route={routePresentation.route} />
                 {routeMetrics?.path === "relay" && (
-                  <PathBadge path="relay" />
+                  <PathBadge metrics={routeMetrics} />
                 )}
               </>
             )}
@@ -1362,7 +1362,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             <div className="viewer-transport-heading">
               <MediaRouteBadge route={routePresentation.route} />
               {routeMetrics?.path === "relay" && (
-                <PathBadge path="relay" />
+                <PathBadge metrics={routeMetrics} />
               )}
             </div>
             {routeMetrics && (

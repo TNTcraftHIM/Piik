@@ -85,7 +85,7 @@ export function StatsGrid({
         }
       />
       <Metric
-        label="ICE 传输"
+        label="传输协议"
         value={metrics.iceProtocol?.toUpperCase() ?? "未知"}
       />
       {metrics.localCandidateType === "relay" && (
@@ -95,7 +95,7 @@ export function StatsGrid({
         />
       )}
       <Metric
-        label="候选"
+        label="候选路径"
         value={`${metrics.localCandidateType ?? "?"} / ${metrics.remoteCandidateType ?? "?"}`}
         title="本地 / 远端候选类型"
       />
