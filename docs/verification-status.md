@@ -8,11 +8,11 @@ This is the demand-loaded ledger for cross-cutting validation evidence and open 
 
 ## Deployment Evidence
 
-- Production runs exact `66eb337171931edaf5d621600c3803a186cf85ac`, release `66eb33717193`, with `d315d333e0a8` retained for rollback. A post-deploy no-room Chrome canary passed health, unauthenticated WSS open/close, and STUN `srflx` gathering without logging candidate data; room media, SFU, TURN, and performance remain unverified.
+- Production runs exact `93e4681915768db0bf3b0165c0fd9ec3f54f95c8`, release `93e468191576`, with `66eb33717193` retained for rollback. Its audited runtime tree has no regular-file inode shared with rollback, and all public client assets matched the local build byte-for-byte. A post-deploy no-room Chrome 151 canary passed health, unauthenticated WSS open/close, STUN-only configuration, and `srflx` gathering in 2.49 seconds without logging candidate data; room media, route migration, SFU, TURN, and performance remain unverified.
 - Local/public health return 200; `screener`, LiveKit, coturn, and nginx are active; `screener` reports zero restarts. SQLite v3 has five rooms, SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner `screener:screener`, and mode 0600.
 - Room admission defaults to eight and accepts explicit limits from one through sixteen. The endpoint-cap environment is unset, so Web endpoints use the parameterized default of two. Ordinary peer ICE stays STUN-only, SFU roots stay <=2, and selected-edge UDP authority is bounded to one pending/answered `peer-selected` attempt per room excluding Host ingress.
 - Share audio presets and local-only Host SFU, codec/encoder, A/V, and selected-candidate diagnostics are deployed. Their target-browser field availability and actual media values remain unverified.
-- The bounded pre-share self-check, privacy-safe local JSON export, and peer-quality MBB v1 are deployed. MBB v1 accepts only an ordinary peer-upstream Viewer candidate; Host/SFU-root provisional children and sibling MBB remain open. Real-route behavior remains part of the routing gate.
+- The bounded pre-share self-check, privacy-safe local JSON export, and peer-quality MBB are deployed. An ordinary Viewer with a peer or SFU upstream may own the provisional child; Host provisional children and sibling MBB remain open. Real-route behavior remains part of the routing gate.
 - Earlier exact-`16f6eab` evidence proves active Host ingress only; it does not prove the current release, initial Viewer ingress, healthy reselection, last-mile quality, or TURN performance.
 
 ## Retained Functional Evidence
