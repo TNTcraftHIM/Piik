@@ -31,7 +31,7 @@ Last updated: 2026-08-21
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
-- Screen audio: peer answers use `stereo=1;maxaveragebitrate=128000`; SFU uses 128 kbps stereo/`forceStereo`, DTX off, RED retained. Other SDP/FEC stays browser-owned; one stream; production proof open; no audio UI; voice separate; Native source-only.
+- Screen audio: Web capture requests speech processing off and ideal stereo; peer answers use `stereo=1;maxaveragebitrate=128000`; SFU uses 128 kbps stereo/`forceStereo`, DTX off, RED retained. Proof open; no audio UI; voice and Native stay separate.
 - Presence reports active upstream for topology; assignment alone never proves media. A Web SFU Viewer becomes connected only after session-bound first media; track/route/session loss clears it. Status/details stay neutral until current P2P/SFU/TURN evidence. Names stay socket/localStorage-only; Native remains outside.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
@@ -43,10 +43,10 @@ Last updated: 2026-08-21
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production: exact `3d75e7b886350852d08027eb2d3c460f36a791e4`, release `3d75e7b88635`, Web wire `screener-v4`; rollback `20cb1bdb2be3`.
+- Production: exact `4ee2f27f3f3e0882ae6f9d970fef1cf3b6fb1f7b`, release `4ee2f27f3f3e`, Web wire `screener-v4`; rollback `3d75e7b88635`.
 - Web keeps one SFU stream, clears unavailable video, exposes evidence-backed routes/transports and paused preview, and drops signals to a grace-retained offline current-edge target. Routing is automatic; entry/nickname UI is live; Native remains source-only.
 - Web relay is cap2 with one upstream; child3 rejects and no UA/visibility split exists.
-- Source candidate: validated relay Viewer evidence reaches opted-in Web Host rosters; direct proof stays local-edge-only. Not deployed.
+- Deployed relay evidence reaches opted-in Host rosters; direct proof stays local-edge-only.
 - Four services are active/running at `NRestarts=0`; local/public health are 200. SQLite v3 has five rooms, SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600.
 - Production keeps ordinary ICE STUN-only, SFU roots <=2, selected-edge UDP TTL 120, and one pending/answered `peer-selected` attempt per room excluding Host ingress. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` evidence proves active Host ingress only.
 - Production requires independent `SITE_ACCESS_PASSWORD`: its stateless cookie authorizes creation/Host and code-only Viewer attempts; private grants stay direct, while public/private code entry needs site access alone/plus room password. Env/endpoint/cookie/nginx naming migrated atomically; failures remain neutral; there are no accounts/JWT/session rows. Local `gate:access-privacy` proves fragment isolation, site/grant transport-log absence, and raw room-password SQLite absence; room-password WebSocket/log ingress and live/headful evidence remain open.

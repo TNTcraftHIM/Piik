@@ -4,7 +4,7 @@ Last updated: 2026-08-21
 
 ## Phase
 
-Production is exact `3d75e7b886350852d08027eb2d3c460f36a791e4` at `https://share.bonfire.icu`, release `3d75e7b88635`, wire `screener-v4`; rollback is release `20cb1bdb2be3`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services and local/public health are green.
+Production is exact `4ee2f27f3f3e0882ae6f9d970fef1cf3b6fb1f7b` at `https://share.bonfire.icu`, release `4ee2f27f3f3e`, wire `screener-v4`; rollback is release `3d75e7b88635`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services and local/public health are green.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. No browser/media/SFU/TURN/performance canary ran; exact-`16f6eab` Host-ingress proof is separate.
 Stable SFU, route/transport truth, preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only. The controlled production A/B uses browser/LiveKit codec defaults; explicit codec controls are source-complete.
 
@@ -16,7 +16,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 
 - Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced and automatic codec; clarity/fluid plus H.264/VP8 stay explicit, with codec locked during a share. Browser degradation and Host SFU A+B remain open.
 - Deployed `screener-v4` admits private fragment grants directly; code-only Viewers need site access, and private rooms additionally need their password. Credentials remain unstored. Web presence fields remain opt-in and Native does not subscribe to them.
-- Deployed UI has nickname editing, room entry, Viewer roster, duplicate-only ID suffixes, pause notice, and session-bound SFU first-media truth that clears on track/route/session loss. P2P/SFU/TURN labels require evidence. A source candidate gives an opted-in Web Host guarded evidence for relayed Viewers without Host-local transport claims or false parent-edge proof.
+- Deployed UI has nickname editing, room entry, Viewer roster, duplicate-only ID suffixes, pause notice, and session-bound SFU first-media truth that clears on track/route/session loss. P2P/SFU/TURN labels require evidence. Guarded relay evidence reaches opted-in Web Host rosters without Host-local transport claims or false parent-edge proof.
 - Native v4 is source-only (memory rooms, 300s reclaim); it does not subscribe to Web presence, follows authenticated direct-child assignments up to two, and fails unsupported SFU/selected ingress boundedly.
 - Production is roots/Web relay <=2; every Viewer has one upstream and rejects child3. One-root healthy-SFU MBB is deployed but media-unverified; capacity `0 -> 1`, multi-root and browser gates remain open. Room `1` is historical; HTTPS/WSS is TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
@@ -55,7 +55,7 @@ Recovery uses one ICE restart, one same-parent rebuild, one alternate peer, then
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
 Ordinary peers stay STUN-only; initial ingress, `peer-selected`, and healthy-reselection browser gates remain open.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
-Peer/SFU stereo targets 128 kbps in production; user route comparison remains. Next: codec-lock explanation, then existing-stats H.264 encoder follow-up.
+Screen-audio candidate disables Chromium speech APM and prefers stereo before 128 kbps peer/SFU; verify Host settings and direct routes.
 
 ## Blockers And Decisions
 

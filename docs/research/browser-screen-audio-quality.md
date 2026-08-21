@@ -2,10 +2,11 @@
 
 Accessed: 2026-08-21
 
-Status: the current integration base has route-consistent peer/SFU stereo and a
-128 kbps sender ceiling, but peer answers still omit `maxaveragebitrate`, leaving
-full-band stereo at libwebrtc's 64 kbps initial codec target. This slice adds the
-matching 128 kbps receiver maximum; audible production evidence remains open.
+Status: peer and SFU routes already use stereo and a 128 kbps target, but users
+still report speech-gated movie/game audio, including on a phone connected
+directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
+local speech processing unless the request disables it. This slice makes that
+source request explicit; target-device audible proof remains open.
 
 ## Scope And Decision
 
@@ -17,7 +18,8 @@ requirement.
 The product keeps one screen-media audio mode rather than exposing codec
 plumbing as quality controls:
 
-- request audio with `audio: true`;
+- request audio with echo cancellation, noise suppression, automatic gain, and
+  voice isolation disabled, while preferring two capture channels;
 - request window audio for a selected window and offer system audio for a full
   display;
 - retain `contentHint = "music"` only as source intent, with no quality claim;
@@ -49,15 +51,13 @@ contract. It must not turn movie or game audio into a voice-processed source.
 
 ## Deployed Reports And Echo Boundary
 
-Users reported that production
+Users first reported that production
 `6ccb516a47261054f91dfa2fafa408d39ced59fc` sounded poor for movie/video screen
-audio. That exact release had the 128 kbps ceiling described above but no
-explicit stereo contract. The current integration base has since added peer/SFU
-stereo, but its peer answers still omit `maxaveragebitrate`; inspected libwebrtc
-therefore starts full-band stereo at 64 kbps. This is the strongest remaining
-code-level candidate, not an audible-quality measurement: capture scope, actual
-fmtp/bitrate, loss, jitter and concealment still need the existing read-only
-diagnostics.
+audio. Later source and production revisions added peer/SFU stereo and the
+matching `maxaveragebitrate=128000`, but the speech-gated sound remained. A
+phone Viewer connected directly through the SFU reproduced it, so browser-relay
+decode/re-encode is a route-specific amplifier rather than the common cause.
+The shared Host capture path runs before direct P2P, SFU and peer-relay routes.
 
 The earlier delayed self-echo report on `769de201f7cc` has a different boundary:
 a viewer's voice is rendered by a separate voice application on the Host,
@@ -73,30 +73,39 @@ environment observation, not a cross-browser source guarantee.
 
 ## Voice-Processing Boundary
 
-Current Chromium constraint-selection tests cover tab, system, and desktop as
-content-capture sources. With no explicit processing constraint, all three
-select disabled WebRTC echo cancellation and `false` for automatic gain
-control, noise suppression, experimental noise suppression, high-pass filter,
-and experimental automatic gain control. `disable_local_echo` is a separate
-local-playback behavior and is not an audio-processing effect. Screener only
-requests display audio and does not opt these content tracks into microphone
-processing.
+The earlier conclusion that Chromium content capture defaults all speech
+processing off incorrectly generalized extension `tabCapture`/`desktopCapture`
+tests to the Web Screen Capture API. Chromium M142 restored separate defaults
+after a regression and now classifies ordinary web `getDisplayMedia()` as
+`kOther`, not `kExtensionScreenShare`. Without explicit constraints, that path
+selects browser-decided echo cancellation and defaults noise suppression and
+automatic gain control on. Its processed candidate also defaults to one channel.
 
-This rules out default mic-style voice processing as the source-supported
-explanation for the current Chrome result. It remains Chromium implementation
-evidence rather than a portable browser guarantee; a runtime regression would
-need track settings or an isolated capture fixture, not speculative processing
-constraints added to `getDisplayMedia()`.
+This is real source processing, not just settings metadata:
+`MakeForDisplayCapture()` creates a local WebRTC audio-processing module and
+uses PeerConnection playout as the echo reference. Setting `contentHint` to
+`music` after capture does not rewrite those source properties; current Blink's
+WebRTC audio sink has no matching handler, and libwebrtc's Opus encoder retains
+a TODO for content-hint use.
+
+The Chrome/Edge capture request therefore supplies bare `false` constraints for
+echo cancellation, noise suppression, automatic gain, and voice isolation, plus
+`channelCount: { ideal: 2 }`. These are post-selection preferences, not source
+picker restrictions or cross-browser guarantees. The declared Host baseline
+accepts them; a browser may ignore unsupported dictionary members. No `exact`,
+`min`, `advanced`, or fixed sample rate is requested, so this change does not
+turn optional screen audio into a hard capture gate.
 
 ## Standard API Boundary
 
 | Concern | Standard request or control | Honest readback | What it does not prove | Current product action |
 | --- | --- | --- | --- | --- |
-| Audio presence | `getDisplayMedia({ audio: true, video: ... })` expresses interest | `stream.getAudioTracks().length` proves only whether a track was returned | The browser may still return video only; a track does not identify system, window, tab, or selected-game audio | Keep the existing presence check and visible no-audio warning |
+| Audio presence | A `MediaTrackConstraints` audio dictionary expresses interest | `stream.getAudioTracks().length` proves only whether a track was returned | The browser may still return video only; a track does not identify system, window, tab, or selected-game audio | Keep the existing presence check and visible no-audio warning |
 | Audio source choice | `windowAudio: "window"` asks for window audio and `systemAudio: "include"` offers system audio for monitor surfaces; a user agent may ignore either hint | There is no standard audio-source category readback corresponding to those hints | The selected audio scope, per-application isolation, or cross-browser availability | Let the picker expose the source-appropriate option without adding an inferred source label |
 | Content intent | `track.contentHint = "music"` records the source intent | The assigned hint can be read back | A codec, bitrate, stereo mode, or evidence that current Chromium changed Opus encoding | Keep it as metadata only; do not use it as a quality acceptance signal |
 | Voice-app exclusion | `restrictOwnAudio` concerns audio produced by the document that invoked capture; `suppressLocalAudioPlayback` concerns local playback of a captured browser surface | The app may observe whether a returned track exists, not which OS processes it contains | Excluding Discord, KOOK, WeChat, notifications, or any other independent process from system audio | Web keeps video-only available and warns that system audio may include calls/notifications; it does not claim isolation |
-| Capture channels | The Screen Capture specification does not list generic `channelCount` as applicable to display audio | `track.getSettings().channelCount` may describe the returned track when the browser supplies it | That the app controlled the value, or that the RTP encoder sends stereo | Observe only in a future diagnostic; absent means unknown |
+| Source processing | Current Chromium accepts EC/NS/AGC/voice-isolation constraints on web display audio | Corresponding `track.getSettings()` fields can confirm values when exposed | Portable support, or that a missing field means false | Request all four off for movie/game audio and verify the target Host settings |
+| Capture channels | Current Chromium accepts `channelCount: { ideal: 2 }`; the Screen Capture specification does not make it portable | `track.getSettings().channelCount` may describe the returned track when exposed | That every source/browser can supply stereo, or that RTP sends stereo | Prefer two without using `exact`; keep negotiated Opus truth separate |
 | Capture sample rate | The Screen Capture specification does not list generic `sampleRate` as applicable to display audio | `track.getSettings().sampleRate` may be present in an implementation | The Opus mode, RTP clock semantics, receiver output rate, or end-to-end fidelity | Observe only in a future diagnostic; absent means unknown |
 | RTP send bitrate | `RTCRtpSender.setParameters()` can set `encodings[].maxBitrate` for audio; Opus `maxaveragebitrate` advertises the receiver's maximum | A following `getParameters()` can show the applied sender ceiling; negotiated fmtp shows the receiver maximum; outbound byte deltas show actual traffic | A minimum, audible improvement, or moment-to-moment rate; congestion may keep traffic lower | Pair the 128 kbps sender ceiling with the same Opus receive maximum and retain actual bitrate as the acceptance fact |
 | Codec | The user agent chooses among negotiated send codecs unless a separately negotiated codec selection is available | `RTCCodecStats.mimeType` and `sdpFmtpLine` identify the codec and negotiated format parameters in use | That Opus was selected before stats exist, or that negotiated preferences describe actual content | Label only observed negotiated data; do not force a codec |
@@ -116,10 +125,13 @@ actual traffic and congestion behavior remain runtime observations.
 
 The Screen Capture Working Draft says constraints are applied only after the
 user chooses a surface and that `getUserMedia()` constraints do not apply to
-display tracks unless this specification lists them. The only audio
-constrainable properties it currently lists are `restrictOwnAudio` and
-`suppressLocalAudioPlayback`; neither controls fidelity. It explicitly permits
-a browser to return no audio despite an audio request.
+display tracks unless this specification lists them. The only portable audio
+properties it currently lists are `restrictOwnAudio` and
+`suppressLocalAudioPlayback`; neither controls fidelity. Chromium's processing
+and channel behavior is therefore an implementation contract for the declared
+Chrome/Edge Host baseline. The specification also explicitly permits a browser
+to return no audio despite an audio request and rejects `advanced` or `min`/
+`exact` display constraints; this request uses none of them.
 
 MDN browser-compatibility data on the access date reports:
 
@@ -173,17 +185,13 @@ normal congestion adaptation. This is implementation evidence for the current
 Chrome/Edge baseline, while the RFC still defines the parameter as a receiver
 maximum rather than a minimum or continuous bitrate guarantee.
 
-The poor movie/music report against production `6ccb516` is consistent with its
-historical state. That release and its pre-stereo source set a 128 kbps sender
-ceiling, but Web peer negotiation did not request stereo; the SFU publisher set
-`dtx: false` while inheriting `forceStereo: false` and `red: true`. That
-mono-by-default contract is no longer current. The present integration base
-already upserts peer `stereo=1` and publishes SFU audio with `forceStereo: true`,
-`dtx: false`, and RED retained. Its remaining peer-specific gap is the absent
-`maxaveragebitrate`: libwebrtc starts stereo at 64 kbps despite the 128 kbps
-sender ceiling. This slice adds the matching receiver maximum. Capture/source
-loss, packet loss, jitter and concealment can still degrade audio and remain
-separate diagnostic facts.
+The poor movie/music report against production `6ccb516` began under a
+historical mono negotiation contract, but it remained after the current source
+added peer `stereo=1;maxaveragebitrate=128000` and SFU `forceStereo: true`,
+128 kbps, DTX off, and RED retained. Those encoder settings cannot restore PCM
+already changed or collapsed to mono by the Host capture processor. Loss,
+jitter and concealment remain separate diagnostic facts, but direct SFU
+reproduction makes source processing the first reversible correction.
 
 ## Reference Implementations
 
@@ -273,12 +281,14 @@ Never substitute `48000`, `2`, `false`, or `0` for an unavailable field.
 
 ## Minimal Route-Consistent Runtime Slice
 
-The source-complete runtime slice changes negotiation, not capture or congestion
-control:
+The route-consistent runtime covers capture and negotiation without replacing
+browser congestion control:
 
-1. Keep `contentHint = "music"`, one audio track and the existing 128 kbps
-   sender ceiling. Do not add Web Audio mixing, resampling, a second audio
-   representation or a new rate controller.
+1. Request display audio with echo cancellation, noise suppression, automatic
+   gain, and voice isolation disabled plus ideal two-channel capture. Keep
+   `contentHint = "music"` as metadata, one audio track and the existing 128 kbps
+   sender ceiling. Do not force a sample rate or add Web Audio mixing,
+   resampling, a second representation or a new rate controller.
 2. On every Web Viewer answer, including ICE restart/rebuild answers, parse SDP
    with direct dependencies on MIT-licensed `sdp-transform` 2.15.0 and its
    TypeScript declarations. Select the single non-rejected audio media section,
@@ -443,7 +453,9 @@ be copied into Screener's screen-media path.
 - [libwebrtc Opus encoder](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/audio_coding/codecs/opus/audio_encoder_opus.cc)
 - [libwebrtc media-track interface](https://webrtc.googlesource.com/src/+/refs/heads/main/api/media_stream_interface.h)
 - [Chromium `MediaStreamTrack` content hint](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/media_stream_track_impl.cc)
-- [Chromium content-capture audio defaults](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/content/renderer/media/stream/media_stream_constraints_util_audio_unittest.cc)
+- [Chromium web display-audio constraint selection](https://github.com/chromium/chromium/blob/3620c35de32f20cfb11d0a616227c44750e31c67/third_party/blink/renderer/modules/mediastream/media_stream_constraints_util_audio.cc)
+- [Chromium M142 display-audio default restoration](https://chromium.googlesource.com/chromium/src/+/b059fa325c6da901f1b0b6afd9e736d67f62960e)
+- [Chromium display-capture audio processing](https://github.com/chromium/chromium/blob/0d07b03783490c156526384073fb5e97e7463e77/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc)
 - [LiveKit 2.22.0 track options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
 - [LiveKit 2.22.0 publish defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts)
 - [LiveKit 2.22.0 local publication](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
