@@ -403,6 +403,47 @@ h3 {
   content: "";
 }
 
+.connection-self-check {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  justify-items: start;
+}
+
+.connection-self-check-results {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 14px;
+}
+
+.connection-self-check-result {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 16px 58px minmax(0, 1fr);
+  gap: 5px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.connection-self-check-result svg {
+  color: var(--faint);
+}
+
+.connection-self-check-result.is-passed svg {
+  color: var(--green);
+}
+
+.connection-self-check-result.is-failed svg {
+  color: var(--red);
+}
+
+.connection-self-check-result span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .room-code-entry.is-inline {
   display: grid;
   min-width: 0;
@@ -1336,6 +1377,10 @@ h3 {
 }
 
 @media (max-width: 520px) {
+  .connection-self-check-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .room-code-entry.is-inline {
     grid-column: 1 / -1;
   }
