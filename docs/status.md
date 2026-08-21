@@ -17,7 +17,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 
 - Capture precedes room creation; source/quality changes and AV pause preserve peers. Recommended profiles and advanced defaults use `balanced`; clarity/fluid remain explicit. The browser chooses degradation; readback/stats report actual behavior.
 - Production access is `screener-v2`: a valid private fragment grant enters directly; every code-only Viewer must first hold site access, after which public-watch accepts the code and private rooms still require their room password. `SITE_ACCESS_PASSWORD`, `/api/site-access`, and the site-access cookie are deployed atomically; raw credentials are never stored.
-- Web Hosts can set their local/session display name, and the current release advertises it through the existing presence wire. The name is not an account identity.
+- Web Host names are session-local. Presence now exposes exact active upstream for P2P/SFU details and an on-demand Host topology; production still has the prior roster UI.
 - Native v2 is source-only (memory rooms, 300s reclaim); it follows authenticated direct-child assignments up to two and fails unsupported SFU/selected ingress boundedly.
 - PR #44's STUN-only/SFU-UDP router and token-free fallback prewarm are process-enabled for all normal rooms: roots <=2, browser relay <=1, bounded failure. Room `1` is historical smoke; mobile/iPad viewers are leaves, healthy edges sticky, and HTTPS/WSS stays TLS/TCP.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.

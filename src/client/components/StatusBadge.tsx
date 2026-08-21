@@ -1,5 +1,4 @@
 import { CircleAlert, Radio, Wifi, WifiOff } from "lucide-react";
-import type { ViewerMediaTopology } from "../../shared/protocol";
 import type {
   MediaPath,
   SignalConnectionState,
@@ -37,14 +36,15 @@ export function SignalStatusBadge({
 export function PeerStatusBadge({
   state,
 }: {
-  state: RTCPeerConnectionState | "reconnecting" | "waiting";
+  state: RTCPeerConnectionState | "reconnecting" | "waiting" | "assigned";
 }) {
   const labels: Record<
-    RTCPeerConnectionState | "reconnecting" | "waiting",
+    RTCPeerConnectionState | "reconnecting" | "waiting" | "assigned",
     BadgeProps
   > = {
     waiting: { tone: "neutral", label: "等待开始分享" },
     reconnecting: { tone: "warning", label: "正在恢复" },
+    assigned: { tone: "neutral", label: "线路已分配" },
     new: { tone: "neutral", label: "准备中" },
     connecting: { tone: "neutral", label: "正在连接" },
     connected: { tone: "good", label: "已连接" },
@@ -89,21 +89,6 @@ export function MediaRouteBadge({ route }: { route: "p2p" | "sfu" }) {
     />
   );
 }
-
-export function TopologyBadge({
-  topology,
-}: {
-  topology: ViewerMediaTopology;
-}) {
-  const values: Record<ViewerMediaTopology, BadgeProps> = {
-    "host-direct": { tone: "good", label: "Host 直连" },
-    "peer-relay": { tone: "warning", label: "Peer 中转" },
-    sfu: { tone: "warning", label: "SFU fallback" },
-    pending: { tone: "neutral", label: "连接中" },
-  };
-  return <Badge {...values[topology]} />;
-}
-
 export function WarningBanner({ children }: { children: React.ReactNode }) {
   return (
     <div className="notice notice-warning" role="status">

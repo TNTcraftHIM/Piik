@@ -726,7 +726,7 @@ describe("server signaling protocol", () => {
       role: "viewer",
       peerId: "viewer_12345678",
       displayName: "小明",
-      mediaTopology: "peer-relay",
+      upstream: { kind: "peer", peerId: "viewer_parent_12345678" },
     } as const;
     expect(
       serverMessageSchema.safeParse({
@@ -738,6 +738,12 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         type: "viewer-presence",
         viewers: [viewer, viewer],
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "viewer-presence",
+        viewers: [{ ...viewer, mediaTopology: "peer-relay" }],
       }).success,
     ).toBe(false);
     expect(
@@ -755,7 +761,7 @@ describe("server signaling protocol", () => {
             role: "host",
             peerId: "host_12345678",
             displayName: "分享者",
-            mediaTopology: "host",
+            upstream: { kind: "none" },
           },
         ],
       }).success,

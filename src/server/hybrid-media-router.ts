@@ -4,12 +4,12 @@ import {
   MAX_MEDIA_ROUTE_REVISION,
   type ClientMessage,
   type MediaAssignment,
+  type MediaRouteUpstream,
   type ParentEdgeQualityProof,
   type ParticipantRouteAssignment,
   type RelayDownstreamEdges,
   type Role,
   type ServerMessage,
-  type ViewerMediaTopology,
 } from "../shared/protocol.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SelectedEdgeTurnConfig } from "./config.js";
@@ -417,24 +417,21 @@ export class HybridMediaRouter {
     };
   }
 
-  getViewerMediaTopology(
+  getViewerRouteUpstream(
     roomId: string,
     viewerPeerId: string,
-  ): ViewerMediaTopology {
+  ): MediaRouteUpstream {
     const assignment = this.mediaRouteControllers
       .get(roomId)
       ?.getActiveRoute()
       .assignments.get(viewerPeerId);
     if (!assignment || assignment.upstream.kind === "none") {
-      return "pending";
+      return { kind: "none" };
     }
-    if (assignment.upstream.kind === "sfu") {
-      return "sfu";
+    if (assignment.upstream.kind === "peer") {
+      return { kind: "peer", peerId: assignment.upstream.peerId };
     }
-    return assignment.upstream.peerId ===
-      this.peerRelayTopology.getHostPeerId(roomId)
-      ? "host-direct"
-      : "peer-relay";
+    return { kind: "sfu" };
   }
 
   handleViewerQualityEvidence(input: ForwardedViewerQualityEvidence): void {
