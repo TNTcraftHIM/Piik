@@ -14,8 +14,9 @@ ADR-0004's bounded peer topology and ADR-0005's automatic controller are
 process-enabled for all normal rooms when configured; room `1` is only the
 historical production smoke. ADR-0005 accepts the target
 direct/peer UDP -> SFU-root UDP -> optional authenticated selected-edge TURN
-ladder. Ordinary peer ICE remains STUN-only; the selected-edge config/wire is
-not implemented or deployed and still requires isolated acceptance gates.
+ladder. Ordinary peer ICE remains STUN-only. Production has a complete selected-
+edge tuple, and an exact-source Host-to-SFU selected TURN/UDP canary passed;
+initial-ingress, peer-selected, external-cohort, and performance gates remain.
 
 ## Context
 
@@ -31,7 +32,7 @@ Use separate control and media planes:
 - Ordinary peer connections use STUN-only ICE. After direct/peer UDP and the bounded SFU/UDP virtual-parent path fail, ADR-0005 permits an optional authenticated TURN attempt for only the controller-selected exceptional edge. TURN/TCP or TURN/TLS remains a separately gated restrictive-network enhancement.
 - Candidate and route selection is independent per edge. A room may simultaneously contain direct, SFU-root, and one selected relayed edge without moving healthy peers onto the server.
 - The deployed MVP broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise. A newer product target caps host media fanout at two; the current implementation does not satisfy that target above two viewers, and Proposed ADR-0004 owns the isolated experiment rather than silently changing this accepted baseline.
-- An SFU is not the default whole-room path. Closed PR #12's explicit whole-room mode is superseded by merged PR #17's automatic fallback. Production enables only a room-`1` exact smoke; current code selects SFU after peer recovery, but retained media and broad rollout remain unverified. ADR-0005 owns the bounded-root target.
+- An SFU is not the default whole-room path. The automatic controller is enabled for all configured normal rooms; local SFU/UDP media and active Host-ingress selected TURN/UDP function pass, while public-room and performance evidence remain open. ADR-0005 owns the bounded-root target.
 
 ## Consequences
 
