@@ -30,9 +30,11 @@ The current release deploys the bounded pre-share health/WSS/STUN self-check,
 privacy-safe click-only diagnostic JSON export, room admission default eight
 with explicit limits from one through sixteen, and peer-quality MBB. One
 ordinary Viewer with a peer or SFU upstream may own the provisional child;
-Host provisional children remain open. Production keeps the two-edge endpoint
-default. The retained sixteen-Viewer and resource runs are ordinary-PC
-functional evidence only and do not justify cap3 or close performance gates.
+Host provisional children remain open. Production keeps its two-edge endpoint
+default; the next source release clamps Host to two and an
+ordinary Browser Viewer to one. The retained capacity-two/cap3 sixteen-Viewer
+and resource runs are historical ordinary-PC experiments only and do not define
+release policy or close performance gates.
 The cutover used audited tree `848f1588000006d91546468abae858bf027929e6`,
 an independent production dependency tree with zero shared regular-file inodes,
 and byte-identical public client assets. A no-room Chrome 151 canary passed
@@ -254,11 +256,15 @@ Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
 limit, not evidence that the publisher can sustain that many streams.
-`MAX_PEER_RELAY_DOWNSTREAM_EDGES` defaults to 2 and accepts 1 through 3. It is
-the hard per-endpoint peer upload budget; an active Host SFU publication also
-uses one Host edge. Web and Native advertise an absolute ability of three, but
-the server always clamps assignments to this deployment value. It does not
-change the separate SFU root limit.
+`MAX_PEER_RELAY_DOWNSTREAM_EDGES` defaults to 2 and accepts only 1 or 2. It can
+tighten but cannot lift release policy: effective Host capacity is
+`min(value, 2)` and effective ordinary Browser Viewer capacity is
+`min(value, 1)`. Active/provisional/selected physical downstream overlays count,
+and an active Host SFU publication uses one Host edge; ordinary upstream receive
+does not. The current Browser advertises one. The unchanged protocol accepts
+`0/1/2/3` only as a future capability envelope, so an old or malicious Viewer
+advertising two or three remains effectively one. This setting does not change
+the separate SFU root limit, which remains at most two.
 
 The three `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the

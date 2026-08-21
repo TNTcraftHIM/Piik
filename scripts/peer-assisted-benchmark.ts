@@ -7,8 +7,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import WebSocket from "ws";
 import {
+  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
-  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   type ParticipantRouteAssignment,
 } from "../src/shared/protocol";
@@ -373,11 +374,11 @@ export function parseExpectedEndpointCap(value: string | undefined): number {
     : DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES;
   if (
     !Number.isSafeInteger(parsed) ||
-    parsed < DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES ||
-    parsed > MAX_PEER_RELAY_DOWNSTREAM_EDGES
+    parsed < 1 ||
+    parsed > CURRENT_HOST_MEDIA_EDGE_LIMIT
   ) {
     throw new Error(
-      `BENCHMARK_EXPECTED_ENDPOINT_CAP must be an integer from ${DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES} to ${MAX_PEER_RELAY_DOWNSTREAM_EDGES}`,
+      `BENCHMARK_EXPECTED_ENDPOINT_CAP must be an integer from 1 to ${CURRENT_HOST_MEDIA_EDGE_LIMIT}`,
     );
   }
   return parsed;
@@ -846,10 +847,10 @@ export function buildRunChecks(
   profileId: ProfileId,
   expectedEndpointCap = DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
 ): RunCheck[] {
-  const endpointCapObserved =
-    summary.maxHostAssignedChildren === expectedEndpointCap &&
-    (viewerCount < expectedEndpointCap * 2 ||
-      summary.maxRelayActiveMediaEdges === expectedEndpointCap);
+  const expectedViewerCap = Math.min(
+    expectedEndpointCap,
+    CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+  );
   const sfuConsistencyCheck: RunCheck = summary.sfuPublicationObserved
     ? {
         name: "sfu-route-consistency",
@@ -879,21 +880,10 @@ export function buildRunChecks(
     },
     {
       name: "relay-active-media-edges",
-      passed: summary.maxRelayActiveMediaEdges <= expectedEndpointCap,
+      passed: summary.maxRelayActiveMediaEdges <= expectedViewerCap,
       actual: summary.maxRelayActiveMediaEdges,
-      expected: `<= ${expectedEndpointCap}`,
+      expected: `<= ${expectedViewerCap}`,
     },
-    ...(expectedEndpointCap > DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES &&
-    viewerCount >= expectedEndpointCap
-      ? [
-          {
-            name: "endpoint-cap-observed",
-            passed: endpointCapObserved,
-            actual: endpointCapObserved,
-            expected: `${expectedEndpointCap} Host children and required relay fanout`,
-          },
-        ]
-      : []),
     {
       name: "all-viewers-decoded",
       passed: summary.everyViewerDecoded,
@@ -952,6 +942,9 @@ export function buildBenchmarkInitScript(options: {
   return `(() => {
     if (globalThis.__SCREENER_BENCHMARK__) return;
     const options = ${serialized};
+    const expectedRoleCap = options.role === "host"
+      ? options.expectedEndpointCap
+      : Math.min(options.expectedEndpointCap, ${CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT});
     if (options.clearHostRoom) {
       try { localStorage.removeItem("screener:host-room:v1"); } catch {}
     }
@@ -1005,7 +998,7 @@ export function buildBenchmarkInitScript(options: {
       }
       if (
         !Array.isArray(value.childPeerIds) ||
-        value.childPeerIds.length > options.expectedEndpointCap ||
+        value.childPeerIds.length > expectedRoleCap ||
         !value.childPeerIds.every(isOpaqueId) ||
         new Set(value.childPeerIds).size !== value.childPeerIds.length ||
         (value.sfuPublicationGeneration !== null &&

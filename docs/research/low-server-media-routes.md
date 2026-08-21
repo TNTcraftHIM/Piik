@@ -141,9 +141,9 @@ only STUN candidates. The controller may authorize one failed edge to rebuild
 relay-only after SFU/UDP; LiveKit participant transport remains separate. An SFU is a topology node.
 Screener uses it as a virtual
 parent for one or two roots, not as an automatic all-viewer fanout service.
-After media reaches a root, the deterministic sticky subtree, current host/root
-and browser fanout at most two, maximum depth, and bounded failure radius still
-apply. Only the absence of any reliable relay root permits a necessary viewer
+After media reaches a root, the deterministic sticky subtree, current Host
+fanout at most two, ordinary Browser Viewer/root fanout at most one, maximum
+depth, and bounded failure radius still apply. Only the absence of any reliable relay root permits a necessary viewer
 to consume one of the same one or two root slots with zero descendants.
 
 This distinction follows TURN's allocation/relay role in RFC 8656 and the media

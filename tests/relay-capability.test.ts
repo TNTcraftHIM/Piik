@@ -5,10 +5,10 @@ import {
 } from "../src/client/media/relay-capability.ts";
 
 describe("browser relay capability", () => {
-  it("advertises the bounded browser maximum to a peer-assisted server", () => {
+  it("advertises the current one-child browser release capacity", () => {
     expect(relayCapacityMessageForBrowser(true)).toEqual({
       type: "relay-capacity",
-      downstreamEdges: 3,
+      downstreamEdges: 1,
     });
   });
 

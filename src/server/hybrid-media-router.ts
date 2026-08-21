@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 
 import {
+  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   MAX_MEDIA_ROUTE_REVISION,
   type ClientMessage,
   type MediaAssignment,
@@ -230,6 +232,7 @@ export interface AuthenticatedRouteParticipant {
 
 export class HybridMediaRouter {
   private readonly peerRelayTopology: PeerRelayTopology;
+  private readonly maxHostMediaEdges: number;
   private readonly mediaRouteControllers = new Map<
     string,
     MediaRouteController
@@ -285,6 +288,10 @@ export class HybridMediaRouter {
   constructor(private readonly options: HybridMediaRouterOptions) {
     this.peerRelayTopology = new PeerRelayTopology(
       options.maxPeerRelayDownstreamEdges,
+    );
+    this.maxHostMediaEdges = Math.min(
+      options.maxPeerRelayDownstreamEdges,
+      CURRENT_HOST_MEDIA_EDGE_LIMIT,
     );
     const fallback = options.sfuFallback;
     if (options.selectedEdgeTurn && !fallback) {
@@ -982,8 +989,8 @@ export class HybridMediaRouter {
     const capacity = Math.min(
       this.peerRelayTopology.getDownstreamCapacity(roomId, parentPeerId),
       parentPeerId === hostPeerId
-        ? this.options.maxPeerRelayDownstreamEdges
-        : 1,
+        ? this.maxHostMediaEdges
+        : CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
     );
     if (
       !host ||
@@ -1004,7 +1011,7 @@ export class HybridMediaRouter {
       hostPeerId,
       null,
       [],
-      this.options.maxPeerRelayDownstreamEdges,
+      this.maxHostMediaEdges,
     );
     const rootAssignment = assignments.get(participant.peerId)!;
     const parentAssignment = assignments.get(parentPeerId)!;
@@ -2048,7 +2055,7 @@ export class HybridMediaRouter {
       hostPeerId,
       null,
       [],
-      this.options.maxPeerRelayDownstreamEdges,
+      this.maxHostMediaEdges,
     );
     const revision = controller.reconcileBaseline({
       assignments,
@@ -2083,7 +2090,7 @@ export class HybridMediaRouter {
       hostPeerId,
       null,
       [],
-      this.options.maxPeerRelayDownstreamEdges,
+      this.maxHostMediaEdges,
     );
     const revision = controller.reconcileBaseline({
       assignments,
@@ -2690,7 +2697,7 @@ export class HybridMediaRouter {
       return "unavailable";
     }
 
-    if (host.childPeerIds.length > 1) {
+    if (host.childPeerIds.length > this.maxHostMediaEdges - 1) {
       const budgetRootPeerId =
         requestedAssignment.upstream.kind === "peer"
           ? findHostBranchRoot(active.assignments, failedPeerId, hostPeerId)
@@ -2726,7 +2733,7 @@ export class HybridMediaRouter {
       rootPeerIds.length > fallback.maxRoots ||
       !host ||
       host.childPeerIds.length + 1 >
-        this.options.maxPeerRelayDownstreamEdges
+        this.maxHostMediaEdges
     ) {
       this.sendError(
         sourceSessionId,
@@ -3321,7 +3328,7 @@ export class HybridMediaRouter {
       hostPeerId,
       previousSfu?.publicationGeneration ?? null,
       rootPeerIds,
-      this.options.maxPeerRelayDownstreamEdges,
+      this.maxHostMediaEdges,
     );
     if (!controller && initialRevision === 0 && assignments.size > 1) {
       initialRevision = 1;
@@ -3330,7 +3337,7 @@ export class HybridMediaRouter {
     if (!controller) {
       controller = new MediaRouteController({
         hostPeerId,
-        maxEndpointMediaEdges: this.options.maxPeerRelayDownstreamEdges,
+        maxEndpointMediaEdges: this.maxHostMediaEdges,
         assignments,
         revision: initialRevision,
         sfuPublicationGeneration:

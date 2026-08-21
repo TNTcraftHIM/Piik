@@ -1,6 +1,6 @@
 # Peer-Assisted Media Research
 
-- Research date: 2026-08-21
+- Research date: 2026-08-22
 - Scope: one game-screen broadcaster, explicit admission up to sixteen trusted
   viewers, with the retained resource/quality gate at eight
 - Status: historical evidence plus the current bounded source candidate;
@@ -10,12 +10,15 @@
 ## Conclusion
 
 Peer-assisted forwarding can cap the broadcaster at one or two outgoing media
-edges without making an SFU carry every viewer's traffic. The smallest credible
-experiment uses only standard WebRTC media:
+edges without making an SFU carry every viewer's traffic. The current release
+policy allows at most two Host physical media edges and one ordinary Browser
+Viewer downstream edge. The earlier capacity-two Browser relay work below is a
+historical experiment, not release policy. The smallest credible path uses only
+standard WebRTC media:
 
 1. the browser host sends its screen stream to at most two first-level viewers;
-2. each viewer may add the received remote `MediaStreamTrack` values to at most
-   two downstream `RTCPeerConnection` instances; and
+2. each ordinary Browser Viewer may add the received remote `MediaStreamTrack`
+   values to at most one downstream `RTCPeerConnection`; and
 3. the signaling server assigns one active upstream per viewer in a bounded,
    deterministic breadth-first DAG.
 
@@ -98,6 +101,35 @@ Sources:
 - [W3C WebRTC `addTrack` and sender model](https://www.w3.org/TR/webrtc/) (accessed 2026-08-21)
 - [WebRTC remote-stream forwarding primitives](https://webrtc.org/getting-started/remote-streams) (accessed 2026-08-21)
 
+### Server Authority And Current Release Clamp
+
+The WebRTC 1.0 sender model associates transmission with an individual
+`RTCRtpSender`; it does not turn a client-declared fanout value into server
+authority. Pion's maintained `TrackLocalStaticRTP` similarly maintains multiple
+bindings and writes a packet per bound downstream context. These sources support
+counting each physical downstream sender/edge, including an overlapping
+provisional or selected replacement, rather than treating a logical route as one
+upload. OWASP's server-side input-validation guidance treats client input as
+untrusted and requires semantic validation in the trusted service.
+
+The resulting Screener policy is an engineering inference: authenticate role
+first, then compute effective Host capacity as `min(deployment, 2)` and ordinary
+Browser Viewer capacity as `min(deployment, 1)`. A Viewer advertisement of two
+or three remains syntactically valid for the unchanged future protocol envelope,
+but cannot authorize a second current-release child. Host SFU publication and
+active/provisional/selected physical overlays consume Host upload budget;
+ordinary upstream receive does not. No UA or visibility classification is used.
+The Web client independently clamps received child assignments to Host two or
+Viewer one before opening physical peer connections. That client check limits
+damage from a server regression, but does not replace authenticated server
+authority or promote the protocol envelope into release policy.
+
+Sources, accessed 2026-08-22:
+
+- [W3C WebRTC 1.0 Recommendation](https://www.w3.org/TR/webrtc/)
+- [OWASP Input Validation Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html)
+- [Pion `TrackLocalStaticRTP` bindings](https://github.com/pion/webrtc/blob/main/track_local_static.go)
+
 ### Encoded DataChannel Relay, Rejected For The First Spike
 
 WebCodecs accepts and emits `EncodedVideoChunk` values but defines no network
@@ -167,9 +199,9 @@ a sticky, bounded DAG selected by one breadth-first walk. Here, one media edge
 means one downstream `RTCPeerConnection` carrying the shared stream; a later
 controller-selected TURN rebuild does not change the edge count.
 
-- the host and every ordinary Web viewer currently have capacity for at most two
-  children;
-- each endpoint's child count is a hard invariant and never exceeds two,
+- the historical experiment gave the host and every ordinary Web viewer capacity
+  for at most two children;
+- that experiment's endpoint child count was a hard invariant and never exceeded two,
   including joins, reconnects, and reparenting;
 - candidate parents are ordered by depth and server join sequence, and the
   first connected node with a free slot is selected;
@@ -256,12 +288,17 @@ no fatal error. The run proves the two-child control path and bound on local
 Chrome only. It does not prove shared encoding, CPU/GPU cost, visual quality,
 games, mobile resources, public networking, or endurance.
 
-The loopback runner retains cap2 by default; `BENCHMARK_EXPECTED_ENDPOINT_CAP=3`
-configures only its local server and gate. A 2026-08-22 Chrome 151 two-second
+The historical loopback runner used cap2 by default;
+`BENCHMARK_EXPECTED_ENDPOINT_CAP=3` configured only its local server and gate.
+The current runner no longer admits cap3 because it verifies release policy.
+A 2026-08-22 Chrome 151 two-second
 smoke passed with three Viewers at Host2/relay1 and six at Host3/relay3, with all
-Viewers decoding. This is not a production-default, SFU-capacity, or resource claim.
+Viewers decoding. This was an experimental control-path result, not a
+release-policy, production-default, SFU-capacity, or resource claim.
 
-A 2026-08-22 Windows Chrome 151.0.7922.138 headless loopback then ran sixteen
+The following cap2/cap3 results are retained historical experiments and must not
+be used to lift the Host2/Browser Viewer1 release policy. A 2026-08-22 Windows
+Chrome 151.0.7922.138 headless loopback ran sixteen
 Viewers for two seconds at 720p30 with cap2 and cap3. Both runs had all sixteen
 Viewers decoding and no fatal/check failure. Cap2 peaked at Host2/relay2 with
 depth four and a 1,167 ms maximum first-decode diagnostic; cap3 peaked at
@@ -311,11 +348,11 @@ Sources:
 
 ## Resource Model
 
-For observed encoded bitrate `B`, `N` viewers, and the current two host/viewer
-slots:
+For observed encoded bitrate `B`, `N` viewers, and the current Host2/Browser
+Viewer1 release limits:
 
 - host upload is at most approximately `2 * B`, plus transport overhead;
-- each relay upload is at most approximately `2 * B`;
+- each Browser Viewer relay upload is at most approximately `B`;
 - aggregate viewer delivery still requires approximately `N * B` across hosts,
   relays, and any TURN paths; and
 - signaling/STUN carry negligible media traffic, while a TURN path still incurs
@@ -327,7 +364,7 @@ the deployment ceiling.
 The standalone ADR-0004 spike has no runtime capability flag and relies on
 controlled join order. The accepted ADR-0005 controller starts every viewer at
 zero, then the current Web client advertises an explicit per-session capacity
-of two. The first production smoke scoped it to room `1`; current production no
+of one. The first production smoke scoped it to room `1`; current production no
 longer has that room boundary. There is no mobile/iPad, UA, or visibility branch.
 
 ## Bounded Spike And Gates

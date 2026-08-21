@@ -236,17 +236,12 @@ describe("peer topology loopback configuration", () => {
     ).toThrow(/selected viewer count/);
   });
 
-  it("keeps cap2 by default and accepts only an explicit cap3 expectation", () => {
+  it("keeps Host cap2 by default and permits only deployment tightening", () => {
     expect(parseExpectedEndpointCap(undefined)).toBe(2);
-    for (const value of ["1", "2.5", "4"]) {
-      expect(() => parseExpectedEndpointCap(value)).toThrow(/integer from 2 to 3/);
+    expect(parseExpectedEndpointCap("1")).toBe(1);
+    for (const value of ["0", "2.5", "3", "4"]) {
+      expect(() => parseExpectedEndpointCap(value)).toThrow(/integer from 1 to 2/);
     }
-    expect(
-      parseBenchmarkConfig({
-        CHROME_PATH: "chrome",
-        BENCHMARK_EXPECTED_ENDPOINT_CAP: "3",
-      }).expectedEndpointCap,
-    ).toBe(3);
   });
 
   it("requires a relay-sized case for the optional quality control smoke", () => {
@@ -372,11 +367,11 @@ describe("peer topology loopback observations", () => {
     expect(summary.browserProcessResources.averageCpuUtilizationPercent).toBeCloseTo(50);
   });
 
-  it("requires an explicit cap3 run to exercise cap3 fanout", () => {
+  it("checks Host cap2 and Browser Viewer cap1 independently", () => {
     const initial = [
-      page("host", "host", 3, 0),
-      ...Array.from({ length: 6 }, (_, index) =>
-        page("viewer", `viewer-${index + 1}`, index === 0 ? 3 : 0, 1),
+      page("host", "host", 2, 0),
+      ...Array.from({ length: 3 }, (_, index) =>
+        page("viewer", `viewer-${index + 1}`, index === 0 ? 1 : 0, 1),
       ),
     ];
     const final = structuredClone(initial);
@@ -388,18 +383,18 @@ describe("peer topology loopback observations", () => {
         { atEpochMs: 2_000, elapsedMs: 0, pages: initial },
         { atEpochMs: 4_000, elapsedMs: 2_000, pages: final },
       ],
-      6,
+      3,
     );
-    const checks = buildRunChecks(summary, 6, "720p30", 3);
-    expect(checks.find((check) => check.name === "endpoint-cap-observed")?.passed).toBe(true);
-    const underused = {
+    const checks = buildRunChecks(summary, 3, "720p30", 2);
+    expect(checks.find((check) => check.name === "host-assigned-children")?.passed).toBe(true);
+    expect(checks.find((check) => check.name === "relay-active-media-edges")?.passed).toBe(true);
+    const overused = {
       ...summary,
-      maxHostAssignedChildren: 2,
       maxRelayActiveMediaEdges: 2,
     };
     expect(
-      buildRunChecks(underused, 6, "720p30", 3).find(
-        (check) => check.name === "endpoint-cap-observed",
+      buildRunChecks(overused, 3, "720p30", 2).find(
+        (check) => check.name === "relay-active-media-edges",
       )?.passed,
     ).toBe(false);
   });

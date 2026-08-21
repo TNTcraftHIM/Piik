@@ -1,5 +1,5 @@
 import {
-  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
   type ClientMessage,
 } from "../../shared/protocol";
 
@@ -16,6 +16,6 @@ export function relayCapacityMessageForBrowser(
   }
   return {
     type: "relay-capacity",
-    downstreamEdges: MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+    downstreamEdges: CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
   };
 }

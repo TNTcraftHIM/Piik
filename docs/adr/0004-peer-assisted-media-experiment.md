@@ -26,6 +26,9 @@ plane.
 
 This ADR does not accept peer-assisted media for production. It proposes one
 bounded experiment that must either meet explicit gates or be removed.
+Historical cap2/cap3 loopback measurements under this ADR are experimental
+evidence only. ADR-0005 owns the current release policy: Host at most two,
+ordinary Browser Viewer at most one, with server-authoritative role clamps.
 
 ## Proposed Experiment
 
@@ -48,9 +51,10 @@ one through sixteen. The upper admission bound is not a media-capacity or
 performance claim. The removed `PEER_ASSISTED_ROOM_IDS` allowlist fails startup;
 there is no second rollout mode, UI selector, percentage rollout, or route score.
 
-The signaling server assigns a sticky, bounded DAG with a deterministic
-breadth-first walk. The host and each ordinary Web viewer currently have
-capacity for at most two children. Candidate parents are ordered by depth and
+The signaling server assigned a sticky, bounded DAG with a deterministic
+breadth-first walk. This historical experiment gave the host and each ordinary
+Web viewer capacity for at most two children; it is not the current release
+policy. Candidate parents were ordered by depth and
 server-issued join sequence. Joining a viewer does not move existing assignments except for
 ADR-0005's bounded admission rescue: an unassigned relay may replace
 the oldest childless zero-capacity Host leaf when both Host slots are full. If a
@@ -60,8 +64,8 @@ capability, or quality scoring is added.
 
 For this ADR, one media edge is one downstream `RTCPeerConnection` carrying the
 shared stream. Using TURN for that connection does not alter the edge count. The
-current two-child endpoint limit is a hard invariant across join, reconnect,
-reparent, and recovery paths. If the deterministic topology has no connected
+experiment's two-child endpoint limit was a hard invariant across join,
+reconnect, reparent, and recovery paths. If the deterministic topology had no connected
 eligible parent, the viewer remains admitted but waits without media until a
 slot becomes reachable; it must not create a third host connection.
 Each logical edge still uses its own ICE process. In the repository candidate,
@@ -101,7 +105,7 @@ route-controller ADR owns cross-mode fallback.
 
 ## Shared Encoding Boundary
 
-The browser spike may encode once for each of the host's one or two seed
+The historical browser spike may encode once for each of the host's one or two seed
 connections because browsers do not guarantee cross-connection encoder reuse.
 Each viewer relay also performs one downstream encode per child, currently up
 to two. This is tolerated only for the experiment and must be measured honestly.
@@ -121,7 +125,7 @@ combinations, plus any advanced combination proposed for production, with
 controlled per-edge RTT at or below 40 ms and loss at or below 1%. Current
 Chrome and Edge form the controlled relay cohort; Android Chrome and iOS Safari
 remain compatibility observations. ADR-0005 now gives every ordinary Web
-Viewer the same two-edge capacity without UA or visibility detection. Mobile
+Viewer the same experimental two-edge capacity without UA or visibility detection. Mobile
 resource behavior remains unverified, but does not define a separate route
 class. The resource/quality gate remains an eight-viewer experiment. A separate
 sixteen-viewer loopback may prove only admission, bounded topology, and decode
@@ -171,7 +175,7 @@ does not cancel the separate planned
 native shared-encode sender, and that sender cannot be used to mark an otherwise
 failed browser-relay topology as passing.
 
-Passing the gate does not change this ADR to Accepted. It permits a separate ADR
+Passing the gate did not change this ADR to Accepted. It permitted a separate ADR
 to propose a production design, including broader game-audio/A-V verification,
 automatic bounded relay policy, and privacy disclosure. The native shared-encode sender
 is the independent planned work described above, not a reward for passing this
