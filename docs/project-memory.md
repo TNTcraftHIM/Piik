@@ -20,6 +20,7 @@ Last updated: 2026-08-21
 ## Current Recommendation
 
 - Keep desktop Chrome/Edge and the responsive Web viewer as the baseline. Validate Android Chrome and iOS Safari as leaves.
+- Keep Viewer playback on one persistent, user-started audible media element while hidden. Continuity evidence uses media/connection counters; hidden video composition is presentation-only, and iOS lock-screen, reclamation and background reconnection remain device gates.
 - Use direct host P2P for one or two viewers, then the bounded controller for every room when `PEER_ASSISTED_MEDIA=true`. Room `1` is historical smoke, not a runtime gate; resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile evidence remain separate.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
@@ -69,7 +70,7 @@ These are measurement gates, not performance claims.
 - Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
 - Selected-edge: active Host-ingress function passes; initial ingress, `peer-selected`, expiry/failure, mobile, resource and bandwidth gates remain. The bearer is non-revocable until expiry; performance follows later and Media TCP is out.
-- Exact mobile Viewer lifecycle behavior across autoplay, rotation, backgrounding and network changes.
+- Exact mobile Viewer lifecycle behavior across autoplay, rotation, iOS lock-screen/page reclamation, background reconnection and network changes.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
 - Whether voice chat ever enters scope or Screener stays complementary to an existing voice application.
