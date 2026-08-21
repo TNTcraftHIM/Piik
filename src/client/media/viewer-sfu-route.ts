@@ -34,8 +34,9 @@ interface ViewerSubscriberSlot {
 interface ViewerSfuRouteEvents {
   activatePeer: (
     assignment: ParticipantRouteAssignment,
-  ) => void | Promise<void>;
-  preparePeer?: (assignment: ParticipantRouteAssignment | null) => void;
+    revision?: number,
+  ) => boolean | void | Promise<boolean | void>;
+  preparePeer?: (assignment: ParticipantRouteAssignment | null, revision?: number) => void;
   resetMedia?: () => void;
   reconcileSfuChildren: (childPeerIds: string[]) => void;
   onSfuStream: (
@@ -46,6 +47,7 @@ interface ViewerSfuRouteEvents {
   onSfuVideoAvailability?: (available: boolean) => void;
   onSfuUpdate?: (metrics: ConnectionMetrics | null) => void;
   onSfuState?: (state: "connected" | "reconnecting") => void;
+  onHealthySfu?: (revision: number) => void;
   send: (message: ClientMessage) => boolean;
   createSubscriber?: (
     events: {
@@ -63,6 +65,8 @@ export class ViewerSfuRoute {
   private pending: ViewerSubscriberSlot | null = null;
   private active: ViewerSubscriberSlot | null = null;
   private recovery: { revision: number; refreshed: boolean } | null = null;
+  private peerProbeRevision: number | null = null;
+  private healthySfuWindows: number | null = null;
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
   private resyncing = false;
@@ -81,8 +85,20 @@ export class ViewerSfuRoute {
     }
     if (previousRevision !== update.revision) {
       this.recovery = null;
+      this.peerProbeRevision = null;
+      this.healthySfuWindows = null;
     }
     if (update.phase === "prepare") {
+      if (
+        update.assignment.upstream.kind === "peer" &&
+        this.route.getMediaAssignment()?.upstream.kind === "sfu"
+      ) {
+        this.peerProbeRevision = update.revision;
+        this.events.preparePeer?.(update.assignment, update.revision);
+      }
+      if (update.assignment.upstream.kind !== "sfu") {
+        this.events.reconcileSfuChildren(update.assignment.childPeerIds);
+      }
       if (this.pending?.revision !== update.revision) {
         this.clearPending();
       }
@@ -96,7 +112,9 @@ export class ViewerSfuRoute {
     if (!token) {
       return result;
     }
-    this.preparePeer(update.assignment);
+    if (this.peerProbeRevision !== update.revision) {
+      this.preparePeer(update.assignment);
+    }
     if (this.resyncing) {
       return result;
     }
@@ -116,6 +134,8 @@ export class ViewerSfuRoute {
     this.resyncing = true;
     this.route.reset();
     this.recovery = null;
+    this.peerProbeRevision = null;
+    this.healthySfuWindows = null;
     const pending = this.pending;
     const active = this.active;
     this.pending = null;
@@ -197,11 +217,27 @@ export class ViewerSfuRoute {
       onStats: (metrics: ConnectionMetrics) => {
         if (this.active === slot && !slot.failed) {
           this.events.onSfuUpdate?.(metrics);
+          if (this.healthySfuWindows !== null && this.healthySfuWindows >= 0) {
+            if (
+              (metrics.intervalPacketsReceived ?? 0) <= 0 ||
+              (metrics.intervalFramesDecoded ?? 0) <= 0
+            ) {
+              this.healthySfuWindows = null;
+            } else if (++this.healthySfuWindows === 2) {
+              this.healthySfuWindows = null;
+              this.events.onHealthySfu?.(slot.revision);
+            }
+          }
         }
       },
       onState: (state: "connected" | "reconnecting") => {
         if (this.active === slot && !slot.failed) {
           this.events.onSfuState?.(state);
+          if (state === "reconnecting") {
+            this.healthySfuWindows = -1;
+          } else if (this.healthySfuWindows === -1) {
+            this.healthySfuWindows = 0;
+          }
         }
       },
       onDisconnected: () => this.handleFailure(slot),
@@ -255,6 +291,15 @@ export class ViewerSfuRoute {
     );
   }
 
+  armHealthySfuReselection(revision: number): void {
+    if (
+      this.route.getRevision() === revision &&
+      this.route.getPlannedAssignment()?.upstream.kind === "sfu"
+    ) {
+      this.healthySfuWindows = 0;
+    }
+  }
+
   async disconnect(): Promise<void> {
     if (this.closed) {
       return;
@@ -264,6 +309,8 @@ export class ViewerSfuRoute {
     this.resyncing = false;
     this.route.reset();
     this.recovery = null;
+    this.peerProbeRevision = null;
+    this.healthySfuWindows = null;
     this.events.preparePeer?.(null);
     await this.queueTransition(async () => {
       const pending = this.pending;
@@ -322,6 +369,15 @@ export class ViewerSfuRoute {
         return;
       }
 
+      const probeRevision = this.peerProbeRevision;
+      const promoted =
+        probeRevision === token.revision
+          ? await this.events.activatePeer(assignment, token.revision)
+          : false;
+      if (probeRevision === token.revision && promoted !== true) {
+        return;
+      }
+      this.peerProbeRevision = null;
       this.clearPending();
       if (this.active) {
         await this.retireActive();
@@ -329,7 +385,9 @@ export class ViewerSfuRoute {
       if (!this.route.owns(token, "active")) {
         return;
       }
-      await this.events.activatePeer(assignment);
+      if (!promoted) {
+        await this.events.activatePeer(assignment);
+      }
       if (!this.route.owns(token, "active")) {
         return;
       }

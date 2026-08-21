@@ -119,6 +119,26 @@ function createFakeSubscriber(
   };
 }
 
+async function activateViewerSfuRoute(
+  events: ConstructorParameters<typeof ViewerSfuRoute>[0],
+  log: string[] = [],
+) {
+  let subscriber!: ReturnType<typeof createFakeSubscriber>;
+  const route = new ViewerSfuRoute({
+    ...events,
+    createSubscriber: (subscriberEvents) => {
+      subscriber = createFakeSubscriber(subscriberEvents, log, "subscriber");
+      return subscriber;
+    },
+  });
+  route.accept({ revision: 1, phase: "prepare", assignment: sfuAssignment() });
+  await route.acceptConfig(sfuConfig(1));
+  route.accept({ revision: 1, phase: "active", assignment: sfuAssignment() });
+  await vi.waitFor(() => expect(subscriber.activate).toHaveBeenCalledOnce());
+  subscriber.events.onStream({} as MediaStream);
+  return { route, subscriber };
+}
+
 describe("MediaRouteTransition", () => {
   it("keeps current media through prepare and until an active SFU video track", () => {
     const route = new MediaRouteTransition();
@@ -268,6 +288,99 @@ describe("HostSfuRoute", () => {
         connectionId: null,
       },
     ]);
+  });
+
+  it("reports the pending peer revision when the active publisher fails", async () => {
+    const messages: ClientMessage[] = [];
+    const publisher = createFakePublisher([], "publisher");
+    let disconnectActive!: () => void;
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: (onDisconnected) => {
+        disconnectActive = onDisconnected;
+        return publisher;
+      },
+    });
+    const active = hostAssignment("generation-a");
+    route.accept({ revision: 1, phase: "prepare", assignment: active });
+    await route.acceptConfig(sfuConfig(1));
+    route.accept({ revision: 1, phase: "active", assignment: active });
+    await vi.waitFor(() => expect(publisher.activate).toHaveBeenCalledOnce());
+
+    messages.length = 0;
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment(null, ["viewer-root"]),
+    });
+    disconnectActive();
+
+    expect(messages).toEqual([{
+      type: "route-failed",
+      revision: 2,
+      phase: "prepare",
+      connectionId: null,
+    }]);
+  });
+
+  it("reports the selected ingress connection when it fails during peer prepare", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const failures: Array<() => void> = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: (onDisconnected) => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        failures.push(onDisconnected);
+        return publisher;
+      },
+    });
+    const active = hostAssignment("generation-a");
+    route.accept({ revision: 1, phase: "prepare", assignment: active });
+    await route.acceptConfig(sfuConfig(1));
+    route.accept({ revision: 1, phase: "active", assignment: active });
+    await vi.waitFor(() => expect(publishers[0]?.activate).toHaveBeenCalledOnce());
+    failures[0]();
+    messages.length = 0;
+
+    expect(route.startSelectedEdgeTurn(hostSfuIngressGrant())).toBe(true);
+    await vi.waitFor(() =>
+      expect(messages).toContainEqual({
+        type: "route-ready",
+        revision: 1,
+        phase: "active",
+      }),
+    );
+    messages.length = 0;
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment(null, ["viewer-root"]),
+    });
+    failures[1]();
+
+    expect(messages).toEqual([{
+      type: "route-failed",
+      revision: 2,
+      phase: "prepare",
+      connectionId: "selected-connection-new",
+    }]);
   });
 
   it("applies a host-SFU selected grant only to a relay-only publisher", async () => {
@@ -862,6 +975,34 @@ describe("ViewerSfuRoute", () => {
     ]);
   });
 
+  it("reports the pending peer revision when the active subscriber fails", async () => {
+    const messages: ClientMessage[] = [];
+    const { route, subscriber } = await activateViewerSfuRoute({
+      activatePeer: () => undefined,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+    });
+
+    messages.length = 0;
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: peerAssignment("host-peer"),
+    });
+    subscriber.events.onDisconnected();
+
+    expect(messages).toEqual([{
+      type: "route-failed",
+      revision: 2,
+      phase: "prepare",
+      connectionId: null,
+    }]);
+  });
+
   it("buffers an assigned parent offer until SFU fallback retirement completes", async () => {
     const log: string[] = [];
     const bufferedSignals: string[] = [];
@@ -943,6 +1084,125 @@ describe("ViewerSfuRoute", () => {
       "peer:host-peer",
     ]);
     expect(deliveredSignals).toEqual(["early-offer"]);
+  });
+
+  it("promotes a proven peer probe before retiring active SFU media", async () => {
+    const log: string[] = [];
+    let probeReady = false;
+    const prepared: Array<{ parent: string | null; revision?: number }> = [];
+    const activatePeer = vi.fn(
+      async (assignment: ParticipantRouteAssignment, revision?: number) => {
+        const parent = assignment.upstream.kind === "peer"
+          ? assignment.upstream.peerId
+          : assignment.upstream.kind;
+        log.push(`peer:${parent}:${revision ?? "active"}`);
+        return revision === undefined ? undefined : probeReady;
+      },
+    );
+    const { route, subscriber } = await activateViewerSfuRoute({
+      activatePeer,
+      preparePeer: (assignment, revision) => prepared.push({
+        parent: assignment?.upstream.kind === "peer"
+          ? assignment.upstream.peerId
+          : null,
+        ...(revision === undefined ? {} : { revision }),
+      }),
+      reconcileSfuChildren: (children) => log.push(`children:${children.join(",")}`),
+      onSfuStream: () => undefined,
+      send: () => true,
+    }, log);
+    log.length = 0;
+
+    const peer = peerAssignment("host-peer", ["relay-child"]);
+    route.accept({ revision: 2, phase: "prepare", assignment: peer });
+    expect(prepared).toContainEqual({ parent: "host-peer", revision: 2 });
+    expect(log).toContain("children:relay-child");
+    expect(subscriber.deactivate).not.toHaveBeenCalled();
+
+    route.accept({ revision: 2, phase: "active", assignment: peer });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(peer, 2));
+    expect(subscriber.deactivate).not.toHaveBeenCalled();
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+
+    probeReady = true;
+    route.accept({ revision: 2, phase: "active", assignment: peer });
+    await vi.waitFor(() => expect(subscriber.disconnect).toHaveBeenCalledOnce());
+    expect(log.indexOf("peer:host-peer:2")).toBeLessThan(
+      log.indexOf("subscriber:deactivate"),
+    );
+    expect(activatePeer).not.toHaveBeenCalledWith(peer);
+  });
+
+  it("requests provisional peer teardown on a newer SFU rollback", async () => {
+    const prepared: Array<{ parent: string | null; revision?: number }> = [];
+    const { route, subscriber } = await activateViewerSfuRoute({
+      activatePeer: () => undefined,
+      preparePeer: (assignment, revision) => prepared.push({
+        parent: assignment?.upstream.kind === "peer"
+          ? assignment.upstream.peerId
+          : null,
+        ...(revision === undefined ? {} : { revision }),
+      }),
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: peerAssignment("host-peer"),
+    });
+    expect(prepared.at(-1)).toEqual({ parent: "host-peer", revision: 2 });
+    route.accept({ revision: 3, phase: "active", assignment: sfuAssignment() });
+    expect(prepared.at(-1)).toEqual({ parent: null });
+    expect(subscriber.deactivate).not.toHaveBeenCalled();
+  });
+
+  it("retries a sticky authoritative SFU route only after stable decoded RTP", async () => {
+    const healthy: number[] = [];
+    let subscriber!: ReturnType<typeof createFakeSubscriber>;
+    const route = new ViewerSfuRoute({
+      activatePeer: () => undefined,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      onHealthySfu: (revision) => healthy.push(revision),
+      send: () => true,
+      createSubscriber: (events) => {
+        subscriber = createFakeSubscriber(events, [], "subscriber");
+        return subscriber;
+      },
+    });
+
+    await route.resyncAuthoritative({
+      revision: 7,
+      phase: "active",
+      assignment: sfuAssignment(),
+    });
+    route.armHealthySfuReselection(7);
+    await route.acceptConfig(sfuConfig(7));
+    await vi.waitFor(() => expect(subscriber.activate).toHaveBeenCalledOnce());
+    subscriber.events.onStream({} as MediaStream);
+    subscriber.events.onStats?.({
+      intervalPacketsReceived: 4,
+      intervalFramesDecoded: 0,
+    } as ConnectionMetrics);
+    subscriber.events.onStats?.({
+      intervalPacketsReceived: 4,
+      intervalFramesDecoded: 3,
+    } as ConnectionMetrics);
+    expect(healthy).toEqual([]);
+
+    route.armHealthySfuReselection(7);
+    subscriber.events.onStats?.({
+      intervalPacketsReceived: 4,
+      intervalFramesDecoded: 3,
+    } as ConnectionMetrics);
+    subscriber.events.onStats?.({
+      intervalPacketsReceived: 2,
+      intervalFramesDecoded: 1,
+    } as ConnectionMetrics);
+    expect(healthy).toEqual([7]);
   });
 
   it("switches on first SFU video and forwards loss across SFU revision reuse", async () => {

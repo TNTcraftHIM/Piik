@@ -608,7 +608,13 @@ describe("client signaling protocol", () => {
     },
   );
 
-  it("accepts bounded route acknowledgements, failures, and SFU refreshes", () => {
+  it("accepts bounded route acknowledgements, failures, and SFU recovery events", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "sfu-reselection-ready",
+        revision: 7,
+      }).success,
+    ).toBe(true);
     expect(
       clientMessageSchema.safeParse({
         type: "route-ready",
@@ -649,6 +655,12 @@ describe("client signaling protocol", () => {
       clientMessageSchema.safeParse({
         type: "refresh-sfu",
         revision: 1.5,
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "sfu-reselection-ready",
+        revision: -1,
       }).success,
     ).toBe(false);
   });

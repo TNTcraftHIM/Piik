@@ -75,10 +75,12 @@ export function viewerRouteEvidence(
   if (upstream.kind === "peer") {
     const matchingPeer = peer?.peerId === upstream.peerId ? peer : null;
     const hasMatchingPeerEvidence = hasPeerRouteEvidence(matchingPeer);
-    return {
-      route: hasMatchingPeerEvidence ? "p2p" : null,
-      evidence: hasMatchingPeerEvidence ? matchingPeer : null,
-    };
+    if (hasMatchingPeerEvidence) {
+      return { route: "p2p", evidence: matchingPeer };
+    }
+    return sfu
+      ? { route: "sfu", evidence: sfu }
+      : { route: null, evidence: null };
   }
   return { route: null, evidence: null };
 }

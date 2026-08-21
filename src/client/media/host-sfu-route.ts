@@ -97,6 +97,9 @@ export class HostSfuRoute {
       }
       if (update.assignment.sfuPublicationGeneration === null) {
         this.clearPending();
+        if (this.route.getMediaAssignment()?.sfuPublicationGeneration) {
+          this.events.reconcileChildren(update.assignment.childPeerIds);
+        }
       }
       return result;
     }

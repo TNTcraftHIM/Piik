@@ -1,10 +1,10 @@
 # Advanced Peer Distribution
 
-- Research date: 2026-08-19
+- Research date: 2026-08-21
 - Scope: at most eight trusted viewers, sub-second interactive media, endpoint
   downstream fanout at most two, and minimal central-server media egress
-- Status: bounded C+B local reparenting is deployed for one exact room and the
-  deterministic admission-rescue slice is implemented source-only; advanced
+- Status: bounded C+B local reparenting and admission rescue are deployed;
+  one-root healthy SFU reselection is implemented source-only; advanced
   encoded-media routes remain isolated candidates
 
 ## Terms
@@ -364,16 +364,33 @@ retain bounded peer descendants. A viewer that cannot attach behind any healthy
 root may be separately admitted only under the explicit `E`/central-egress cap;
 this is an exceptional compatibility budget, not unbounded whole-room fanout.
 The SFU/UDP and optional selected-edge TURN transport accounting lives in
-[Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005's current
-controller remains failure-only, while its accepted target also handles
-admission with no eligible peer path; neither changes the sticky local
-reparenting candidate above.
+[Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005's deployed
+controller handles failure and bounded admission; the current source also has
+the one-root healthy-reselection slice described below. None changes the sticky
+local reparenting candidate above.
 
 The controller must be automatic and invisible. It uses explicit capability
 bits, route revisions, media generations, edge budgets, and discrete failures;
 it does not expose topology choices to host or viewers. Initial hard triggers
 are capacity, maximum depth, ICE/media failure, unsupported codec, and bounded
 send-queue overflow. Measurements may later justify additional triggers.
+
+For healthy SFU-to-peer reselection, W3C inbound RTP counters expose the needed
+bounded observations: `packetsReceived` counts received RTP packets and
+`framesDecoded` counts successfully decoded video frames. Neither ICE state nor
+a track object alone proves decodable progress. Pinned LiveKit client 2.22.0
+already exposes reconnecting/reconnected room events, so recovery is a discrete
+trigger; no network-type poll or new timer is required. The current source arms
+the same two-window gate when a refreshed signaling session receives an
+authoritative sticky SFU assignment. This avoids immediately reversing an
+ordinary peer-to-SFU fallback, whose initial authenticated assignment was peer.
+
+The overlap edge is physical: an active Host SFU publication consumes one of
+the Host's two downstream media edges while the provisional peer offer consumes
+the other. A browser parent remains limited to one downstream edge during this
+probe even if its normal advertised relay capacity is two. Failed or stale
+probes restore the prior controller revision without writing ordinary
+failed-parent state.
 
 Use make-before-break when a downstream slot is free. With all two slots in
 use, strict fanout means break-before-make; zero interruption, no standby, and a
@@ -383,7 +400,7 @@ also requires a media/data heartbeat near 100-200 ms rather than the current
 
 ## Sources And License Boundary
 
-Sources checked on 2026-08-20:
+Sources checked on 2026-08-20 and 2026-08-21:
 
 - [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/),
   [Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/),
@@ -421,6 +438,8 @@ Sources checked on 2026-08-20:
   [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html), and
   [LiveKit SFU](https://docs.livekit.io/reference/internals/livekit-sfu/) -
   observable path boundaries and the centralized low-latency alternative.
+- [LiveKit client 2.22 room events](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
+  - pinned reconnect/reconnected behavior; no implementation source was copied.
 - [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html) - per-edge relay
   transport rather than a room topology.
 - [MOQT draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) and

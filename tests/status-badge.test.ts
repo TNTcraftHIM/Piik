@@ -56,6 +56,13 @@ describe("route status badges", () => {
       route: "sfu",
       evidence: sfu,
     });
+    expect(
+      viewerRouteEvidence(
+        { kind: "peer", peerId: "new-parent" },
+        peerSnapshot,
+        sfu,
+      ),
+    ).toEqual({ route: "sfu", evidence: sfu });
   });
 
   it("requires a connected peer or an observed selected path", () => {

@@ -459,20 +459,72 @@ mobile, or resource evidence. Chrome reported `candidateType=prflx` for the same
 local candidate; the standards-bounded interpretation and raw-counter summary
 are retained in the linked research rather than normalized away.
 
-### Deferred Optimization
+### Deferred Optimization And Source-Only Follow-Up
 
-These items are not current runtime behavior:
+These items are not deployed runtime behavior; source-only status is called out
+explicitly:
 
 - A room in which the Host and every possible root are restricted may require
   several server-fed exceptional edges. Any such extension requires a per-room
   selected-relay and central-egress admission cap; it must wait or fail at that
   cap rather than become unbounded server fanout.
-- ICE restart and connection rebuild already recover failed edges after Wi-Fi,
-  cellular, or similar network changes. A healthy fallback path remains sticky:
-  the current controller does not proactively move it back when a new Viewer
-  offers a better peer route or the old network recovers. Any later preference
-  migration must be triggered by a discrete event, observe cooldown, and move
-  only the affected Viewer-rooted subtree.
+- Bounded healthy SFU-to-peer reselection is accepted below. The first
+  source-only slice is implemented for one SFU root and its existing baseline
+  parent; it is not deployed or browser-canary evidence.
+
+#### Bounded Healthy SFU Reselection
+
+Production release `6634cb9` was observed on 2026-08-21 to retain an SFU route
+after network recovery or a short page refresh. A same-tab refresh retains the
+room-scoped `clientId`, while the five-second disconnect grace retains peer and
+route identity, so reauthentication legitimately receives the sticky SFU
+assignment. Grace expiry removes that root and lets a later join start from the
+peer baseline.
+
+Healthy reselection is event-driven and room-bounded. It must not poll
+`navigator.connection`, run a periodic route score, or globally rebalance a
+healthy room. Only these discrete events open one opportunity:
+
+1. An active SFU root receives an authoritative SFU assignment on a new
+   signaling session or reports LiveKit recovery, followed by two bounded stats
+   windows with positive current-generation RTP and decoded-frame progress.
+2. A connected Viewer advertises relay capacity transitioning from zero to one.
+
+One room owns at most one peer migration attempt: either one healthy probe or
+one pending/answered `peer-selected` attempt. It may overlap active media only
+when `Host peer children + active SFU publication + probe <= 2` and `browser
+relay children + probe <= 1`. Without a free slot the opportunity is consumed
+and the active route is left unchanged. The probe is bound to the current
+share/publication, active and pending revisions, root, parent and Host sessions,
+and one pinned connection ID. Signaling from any other pair or generation fails
+closed.
+
+During prepare the Viewer keeps rendering SFU while the existing peer parent
+creates one provisional edge. ICE `connected` is insufficient. The Viewer
+requires a live video track, positive inbound RTP and positive decoded frames,
+then revalidates all of that immediately before promotion. The controller
+commits that root/subtree atomically and retires SFU only after proof. A probe
+failure sent before commit aborts without adding failed-parent state; if the
+proven edge fails after server commit, the existing active-edge recovery path
+runs rather than leaving server and Viewer on different routes.
+
+Timeout, stale generation, participant/session replacement, room stop or
+deletion aborts the provisional route. Abort keeps the active SFU assignment
+and descendants, deletes the provisional connection identity, and does not
+consume an ordinary route-failure intent. The Viewer disposes the provisional
+peer connection and buffered signals before accepting rollback. Active-SFU loss
+first aborts the probe instead of being swallowed. If the active Viewer
+subscriber or Host publisher reports a real pending-revision `prepare`
+failure, only the exact current SFU owner may abort. Ordinary transport uses a
+null connection; selected Host ingress must match its activated connection
+identity. The rollback active revision then drives the existing one-refresh
+recovery. Success and abort share the room's 30-second migration cooldown.
+
+The implemented source slice deliberately handles exactly one active SFU root
+and only its parent retained in the deterministic peer baseline. The accepted
+capacity `0 -> 1` trigger and deterministic selection among multiple SFU roots
+remain follow-ups. No timer/polling trigger, global score, new dependency,
+ordinary-peer TURN grant, or second route controller was added.
 
 The bounded cost model and privacy-safe ICE fields
 live in [Low-Server-Cost Media Routes](../research/low-server-media-routes.md).

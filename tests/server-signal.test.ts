@@ -864,6 +864,13 @@ async function failActiveSfuRoot(client: TestClient, revision: number) {
   }));
 }
 
+function requestHealthyReselection(client: TestClient, revision: number): void {
+  client.socket.send(JSON.stringify({
+    type: "sfu-reselection-ready",
+    revision,
+  }));
+}
+
 async function startPeerSelectedTurn(
   viewer: TestClient,
   parent: TestClient,
@@ -4140,7 +4147,458 @@ describe("WebSocket signaling", () => {
     expect(viewerGrant.oldConnectionId).toBe(direct.oldConnectionId);
   });
 
-  it("uses one selected TURN edge after a Viewer SFU refresh is exhausted", async () => {
+  it("commits one healthy SFU root probe only after the peer edge is proven", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      maxRoots: 1,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-commit",
+    );
+
+    requestHealthyReselection(active.viewer, active.revision - 1);
+    await expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+    requestHealthyReselection(active.viewer, active.revision);
+    const [rootPrepare, hostPrepare] = await Promise.all([
+      nextPreparedRoute(active.viewer),
+      nextPreparedRoute(active.host),
+    ]);
+    expect(rootPrepare.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.hostAuth.peerId,
+    });
+    expect(hostPrepare.assignment).toMatchObject({
+      childPeerIds: [active.viewerAuth.peerId],
+      sfuPublicationGeneration: null,
+    });
+
+    requestHealthyReselection(active.viewer, active.revision);
+    active.viewer.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: rootPrepare.revision,
+      phase: "prepare",
+    }));
+    await expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+
+    const connectionId = "healthy-commit-probe";
+    active.host.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: active.viewerAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }));
+    expect(await active.viewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: active.hostAuth.peerId,
+      payload: { connectionId },
+    });
+    active.viewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: active.hostAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: `${connectionId}-stale`,
+        description: { type: "answer", sdp: "v=0\r\n" },
+      },
+    }));
+    expect((await active.viewer.inbox.next("error")).code).toBe("FORBIDDEN");
+    active.viewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: active.hostAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId,
+        description: { type: "answer", sdp: "v=0\r\n" },
+      },
+    }));
+    await active.host.inbox.next("signal");
+    active.viewer.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: rootPrepare.revision,
+      phase: "prepare",
+    }));
+    const [rootActive, hostActive] = await Promise.all([
+      nextActiveRouteRevision(active.viewer, rootPrepare.revision),
+      nextActiveRouteRevision(active.host, hostPrepare.revision),
+    ]);
+    expect(rootActive.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.hostAuth.peerId,
+    });
+    expect(hostActive.assignment.sfuPublicationGeneration).toBeNull();
+
+    active.viewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: rootActive.revision,
+      phase: "active",
+      connectionId,
+    }));
+    const [rootRecovery, hostRecovery] = await Promise.all([
+      nextPreparedRoute(active.viewer),
+      nextPreparedRoute(active.host),
+    ]);
+    expect(rootRecovery.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(hostRecovery.assignment.sfuPublicationGeneration).toBeTruthy();
+  });
+
+  it("rolls a failed healthy probe back to SFU and applies room cooldown", async () => {
+    let now = 50_000;
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      prepareTimeoutMs: 200,
+      now: () => now,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-rollback",
+    );
+    requestHealthyReselection(active.viewer, active.revision);
+    const [rootPrepare] = await Promise.all([
+      nextPreparedRoute(active.viewer),
+      nextPreparedRoute(active.host),
+    ]);
+    const connectionId = "healthy-rollback-probe";
+    active.host.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: active.viewerAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }));
+    await active.viewer.inbox.next("signal");
+    active.viewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: rootPrepare.revision,
+      phase: "prepare",
+      connectionId,
+    }));
+    const [rootRollback, hostRollback] = await Promise.all([
+      nextActiveRouteAfter(active.viewer, rootPrepare.revision),
+      nextActiveRouteAfter(active.host, rootPrepare.revision),
+    ]);
+    expect(rootRollback.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(hostRollback.assignment.sfuPublicationGeneration).toBeTruthy();
+
+    requestHealthyReselection(active.viewer, rootRollback.revision);
+    await expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+    now += 30_001;
+    requestHealthyReselection(active.viewer, rootRollback.revision);
+    const retried = await nextPreparedRoute(active.viewer);
+    expect(retried.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.hostAuth.peerId,
+    });
+    const timedOut = await nextActiveRouteAfter(active.viewer, retried.revision);
+    expect(timedOut.assignment.upstream).toEqual({ kind: "sfu" });
+  });
+
+  it("does not swallow active SFU loss while a healthy probe is pending", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-active-loss",
+    );
+    requestHealthyReselection(active.viewer, active.revision);
+    const pending = await nextPreparedRoute(active.viewer);
+    await nextPreparedRoute(active.host);
+    active.viewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: active.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    let recovered = await nextActiveRouteAfter(active.viewer, pending.revision);
+    if (recovered.assignment.upstream.kind === "sfu") {
+      recovered = await nextActiveRouteAfter(active.viewer, recovered.revision);
+    }
+    expect(recovered.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.hostAuth.peerId,
+    });
+  });
+
+  it.each(["viewer", "host"] as const)(
+    "aborts a healthy probe when the active %s SFU transport sends its prepare failure",
+    async (failedRole) => {
+      const harness = await startSfuHarness({
+        tokenIssuer: {
+          async issueToken({ peerId }) { return `token-${peerId}`; },
+        },
+      });
+      const active = await activateSingleViewerSfu(
+        harness.webSocketUrl,
+        harness.room,
+        `healthy-${failedRole}-prepare-loss`,
+      );
+      requestHealthyReselection(active.viewer, active.revision);
+      const [rootPrepare, hostPrepare] = await Promise.all([
+        nextPreparedRoute(active.viewer),
+        nextPreparedRoute(active.host),
+      ]);
+      const failedClient = failedRole === "viewer" ? active.viewer : active.host;
+      const failedPrepare = failedRole === "viewer" ? rootPrepare : hostPrepare;
+
+      failedClient.socket.send(JSON.stringify({
+        type: "route-failed",
+        revision: active.revision,
+        phase: "prepare",
+        connectionId: null,
+      }));
+      await Promise.all([
+        expect(
+          active.viewer.inbox.next("route-update", 40),
+        ).rejects.toThrow("Timed out"),
+        expect(
+          active.host.inbox.next("route-update", 40),
+        ).rejects.toThrow("Timed out"),
+      ]);
+
+      failedClient.socket.send(JSON.stringify({
+        type: "route-failed",
+        revision: failedPrepare.revision,
+        phase: "prepare",
+        connectionId: null,
+      }));
+      const [rootRollback, hostRollback] = await Promise.all([
+        nextActiveRouteAfter(active.viewer, failedPrepare.revision),
+        nextActiveRouteAfter(active.host, failedPrepare.revision),
+      ]);
+      expect(rootRollback.assignment.upstream).toEqual({ kind: "sfu" });
+      expect(hostRollback.assignment.sfuPublicationGeneration).toBeTruthy();
+
+      failedClient.socket.send(JSON.stringify({
+        type: "refresh-sfu",
+        revision: rootRollback.revision,
+      }));
+      expect(await failedClient.inbox.next("sfu-config")).toMatchObject({
+        revision: rootRollback.revision,
+      });
+    },
+  );
+
+  it("recovers when active selected Host ingress fails during healthy prepare", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken({ peerId }) { return `token-${peerId}`; },
+      },
+      selectedEdgeTurn: true,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-selected-host-loss",
+    );
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: active.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    const ingress = await active.host.inbox.next("selected-edge-turn");
+    expect(ingress.edgeKind).toBe("host-sfu-ingress");
+    active.host.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: active.revision,
+      phase: "active",
+    }));
+
+    requestHealthyReselection(active.viewer, active.revision);
+    const [rootPrepare, hostPrepare] = await Promise.all([
+      nextPreparedRoute(active.viewer),
+      nextPreparedRoute(active.host),
+    ]);
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: active.revision,
+      phase: "prepare",
+      connectionId: ingress.newConnectionId,
+    }));
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: hostPrepare.revision,
+      phase: "prepare",
+      connectionId: `${ingress.newConnectionId}-wrong`,
+    }));
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: hostPrepare.revision,
+      phase: "prepare",
+      connectionId: null,
+    }));
+    await Promise.all([
+      expect(
+        active.viewer.inbox.next("route-update", 40),
+      ).rejects.toThrow("Timed out"),
+      expect(
+        active.host.inbox.next("route-update", 40),
+      ).rejects.toThrow("Timed out"),
+    ]);
+
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: hostPrepare.revision,
+      phase: "prepare",
+      connectionId: ingress.newConnectionId,
+    }));
+    const [rootRollback, hostRollback] = await Promise.all([
+      nextActiveRouteAfter(active.viewer, rootPrepare.revision),
+      nextActiveRouteAfter(active.host, hostPrepare.revision),
+    ]);
+    expect(rootRollback.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(hostRollback.assignment.sfuPublicationGeneration).toBeTruthy();
+
+    active.host.socket.send(JSON.stringify({
+      type: "refresh-sfu",
+      revision: hostRollback.revision,
+    }));
+    expect(await active.host.inbox.next("sfu-config")).toMatchObject({
+      revision: hostRollback.revision,
+    });
+  });
+
+  it("keeps ordinary intent when topology abort fills the overlap slot", async () => {
+    const reselections = vi.spyOn(
+      HybridMediaRouter.prototype,
+      "handleHealthySfuReselection",
+    );
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-no-slot",
+    );
+    requestHealthyReselection(active.viewer, active.revision);
+    await nextPreparedRoute(active.viewer);
+    await nextPreparedRoute(active.host);
+    const leaf = await openClient(harness.webSocketUrl);
+    const leafAuth = peerAssisted(await authenticate(
+      leaf,
+      harness.room,
+      "viewer",
+      "healthy-no-slot-leaf",
+      0,
+    ));
+    expect(leafAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.hostAuth.peerId,
+    });
+    const rootActive = await nextActiveRouteRevision(
+      active.viewer,
+      leafAuth.routeRevision,
+    );
+    await nextActiveRouteRevision(active.host, leafAuth.routeRevision);
+    const router = reselections.mock.instances.at(-1) as unknown as {
+      viewerRouteIntentsByRoom: Map<string, Map<string, { sfuAttempts: number }>>;
+    };
+    const intent = router.viewerRouteIntentsByRoom
+      .get(harness.room.roomId)
+      ?.get(active.viewerAuth.peerId);
+    expect(intent?.sfuAttempts).toBe(1);
+    reselections.mockRestore();
+    requestHealthyReselection(active.viewer, rootActive.revision);
+    await expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+    await expect(active.host.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+  });
+
+  it("keeps a browser parent to one downstream edge during overlap", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+    });
+    const peers = await prepareFallbackForTwoViewers(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-relay-budget",
+      undefined,
+      { viewerParentSibling: true },
+    );
+    for (const [client, revision] of [
+      [peers.host, peers.hostPrepare.revision],
+      [peers.failedViewer, peers.rootPrepare.revision],
+    ] as const) client.socket.send(JSON.stringify({
+      type: "route-ready", revision, phase: "prepare",
+    }));
+    const [activeRoot, activeParent] = await Promise.all([
+      nextActiveRouteRevision(peers.failedViewer, peers.rootPrepare.revision),
+      nextActiveRouteRevision(peers.rootViewer, peers.rootPrepare.revision),
+    ]);
+    expect(activeParent.assignment.childPeerIds).toEqual([
+      peers.rootSiblingAuth!.peerId,
+    ]);
+    expect(activeRoot.assignment.upstream).toEqual({ kind: "sfu" });
+    requestHealthyReselection(peers.failedViewer, activeRoot.revision);
+    await expect(peers.failedViewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+  });
+
+  it("cleans a healthy probe across Viewer session replacement and stop", async () => {
+    let now = 90_000;
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      now: () => now,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-session",
+    );
+    requestHealthyReselection(active.viewer, active.revision);
+    const [oldPrepare] = await Promise.all([
+      nextPreparedRoute(active.viewer),
+      nextPreparedRoute(active.host),
+    ]);
+    const oldClosed = new Promise<void>((resolve) =>
+      active.viewer.socket.once("close", () => resolve()),
+    );
+    const replacement = await openClient(harness.webSocketUrl);
+    const replacementAuth = peerAssisted(await authenticate(
+      replacement,
+      harness.room,
+      "viewer",
+      "healthy-session-viewer",
+    ));
+    await oldClosed;
+    expect(replacementAuth.routeRevision).toBeGreaterThan(oldPrepare.revision);
+    expect(replacementAuth.routeAssignment.upstream).toEqual({ kind: "sfu" });
+    const hostRollback = await nextActiveRouteAfter(active.host, oldPrepare.revision);
+    expect(hostRollback.assignment.sfuPublicationGeneration).toBeTruthy();
+
+    replacement.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: oldPrepare.revision,
+      phase: "prepare",
+    }));
+    requestHealthyReselection(replacement, replacementAuth.routeRevision);
+    await expect(replacement.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+    now += 30_001;
+    requestHealthyReselection(replacement, replacementAuth.routeRevision);
+    const replacementPrepare = await nextPreparedRoute(replacement);
+    await nextPreparedRoute(active.host);
+
+    active.host.socket.send(JSON.stringify({
+      type: "stop-sharing",
+      shareGeneration: "healthy-session-share",
+    }));
+    await replacement.inbox.next("sharing-stopped");
+    replacement.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: replacementPrepare.revision,
+      phase: "prepare",
+    }));
+    await expect(replacement.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
+  });
+
+  it("keeps selected TURN exclusive with healthy probes until failure", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
       selectedEdgeTurn: true,
@@ -4175,6 +4633,10 @@ describe("WebSocket signaling", () => {
       iceServer: { urls: ["turn:turn.example.test:3478?transport=udp"] },
     });
     expect(viewerGrant.newConnectionId).not.toBe(direct.oldConnectionId);
+    requestHealthyReselection(direct.viewer, direct.revision);
+    await expect(
+      direct.viewer.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
     direct.host.socket.send(JSON.stringify({
       type: "signal",
       targetPeerId: direct.viewerAuth.peerId,
@@ -4198,6 +4660,10 @@ describe("WebSocket signaling", () => {
       },
     }));
     await direct.host.inbox.next("signal");
+    requestHealthyReselection(direct.viewer, direct.revision);
+    await expect(
+      direct.viewer.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
     direct.viewer.socket.send(JSON.stringify({
       type: "route-failed",
       revision: direct.revision,
@@ -4208,6 +4674,54 @@ describe("WebSocket signaling", () => {
     await expect(
       direct.viewer.inbox.next("selected-edge-turn", 40),
     ).rejects.toThrow("Timed out");
+  });
+
+  it("keeps a healthy probe exclusive when an SFU refresh token fails", async () => {
+    let failRefresh = false;
+    let failedRefreshes = 0;
+    const harness = await startSfuHarness({
+      tokenIssuer: {
+        async issueToken({ peerId }) {
+          if (failRefresh) {
+            failedRefreshes += 1;
+            throw new Error("refresh failed");
+          }
+          return `token-${peerId}`;
+        },
+      },
+      selectedEdgeTurn: true,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "healthy-refresh-failure",
+    );
+    requestHealthyReselection(active.viewer, active.revision);
+    await Promise.all([
+      nextPreparedRoute(active.viewer),
+      nextPreparedRoute(active.host),
+    ]);
+
+    failRefresh = true;
+    active.viewer.socket.send(JSON.stringify({
+      type: "refresh-sfu",
+      revision: active.revision,
+    }));
+    await vi.waitFor(() => expect(failedRefreshes).toBe(1));
+    await Promise.all([
+      expect(
+        active.viewer.inbox.next("selected-edge-turn", 40),
+      ).rejects.toThrow("Timed out"),
+      expect(
+        active.host.inbox.next("selected-edge-turn", 40),
+      ).rejects.toThrow("Timed out"),
+      expect(
+        active.viewer.inbox.next("route-update", 40),
+      ).rejects.toThrow("Timed out"),
+      expect(
+        active.host.inbox.next("route-update", 40),
+      ).rejects.toThrow("Timed out"),
+    ]);
   });
 
   it("admits only one pending peer-selected TURN attempt per room", async () => {

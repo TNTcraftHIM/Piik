@@ -535,6 +535,12 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
+      type: z.literal("sfu-reselection-ready"),
+      revision: mediaRouteRevisionSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("route-ready"),
       revision: mediaRouteRevisionSchema,
       phase: mediaRoutePhaseSchema,

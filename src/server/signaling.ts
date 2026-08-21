@@ -653,6 +653,16 @@ export class SignalingServer {
           message.downstreamEdges,
         );
         return;
+      case "sfu-reselection-ready":
+        if (!this.isHybridMediaEnabled()) {
+          this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
+          return;
+        }
+        this.hybridMediaRouter!.handleHealthySfuReselection(
+          { ...authenticated, sessionId: this.socketStates.get(socket)!.sessionId },
+          message.revision,
+        );
+        return;
       case "route-ready":
         if (!this.isHybridMediaEnabled()) {
           this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
