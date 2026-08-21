@@ -403,6 +403,25 @@ h3 {
   content: "";
 }
 
+.room-code-entry.is-inline {
+  display: grid;
+  min-width: 0;
+  grid-column: 3;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.room-code-entry.is-inline .access-error {
+  grid-column: 1 / -1;
+}
+
+.room-code-submit {
+  width: 44px;
+  min-height: 44px;
+  grid-column: 2;
+  grid-row: 1;
+}
+
 .capture-strip {
   display: flex;
   min-height: 34px;
@@ -1020,6 +1039,16 @@ h3 {
   grid-template-columns: auto minmax(0, 1fr) 40px 40px;
 }
 
+.viewer-name-control:not(.is-editing) {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+}
+
+.viewer-name-control:not(.is-editing) .viewer-name-value {
+  flex: 0 1 auto;
+}
+
 .viewer-name-control label {
   color: var(--muted);
   font-size: 12px;
@@ -1198,6 +1227,10 @@ h3 {
 }
 
 @media (max-width: 520px) {
+  .room-code-entry.is-inline {
+    grid-column: 1 / -1;
+  }
+
   .viewer-title-row {
     flex-wrap: wrap;
   }
