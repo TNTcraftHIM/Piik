@@ -1,5 +1,6 @@
 import type { ConnectionMetrics } from "../types";
 import type { VideoSenderParameterReadback } from "../media/quality";
+import { formatPacketLossPercent } from "./connection-details";
 
 function readableNumber(value: number | null, digits = 0): string {
   return value === null || !Number.isFinite(value) ? "未知" : value.toFixed(digits);
@@ -71,7 +72,10 @@ export function StatsGrid({
       <Metric label="帧率" value={`${readableNumber(metrics.framesPerSecond, 1)} fps`} />
       <Metric label="分辨率" value={metrics.resolution ?? "未知"} />
       <Metric label="RTT" value={`${readableNumber(metrics.rttMs)} ms`} title="网络往返时间" />
-      <Metric label="丢包" value={readableNumber(metrics.packetsLost)} />
+      <Metric
+        label="视频丢包率"
+        value={formatPacketLossPercent(metrics.packetLossPercent)}
+      />
       <Metric
         label={direction === "send" ? "可用上行" : "抖动"}
         value={
@@ -95,12 +99,46 @@ export function StatsGrid({
         value={`${metrics.localCandidateType ?? "?"} / ${metrics.remoteCandidateType ?? "?"}`}
         title="本地 / 远端候选类型"
       />
-      <Metric label="Codec" value={metrics.codec ?? "未知"} />
+      <Metric label="视频 Codec" value={metrics.codec ?? "未知"} />
       {metrics.codecProfile && (
-        <Metric label="Codec profile token" value={metrics.codecProfile} />
+        <Metric label="视频 Codec profile token" value={metrics.codecProfile} />
       )}
       {metrics.codecParameters && (
-        <Metric label="Codec 协商参数" value={metrics.codecParameters} />
+        <Metric label="视频 Codec 协商参数" value={metrics.codecParameters} />
+      )}
+      <Metric
+        label={direction === "send" ? "音频发送码率" : "音频接收码率"}
+        value={`${readableNumber(metrics.audioBitrateKbps)} kbps`}
+      />
+      <Metric
+        label="音频丢包率"
+        value={formatPacketLossPercent(metrics.audioPacketLossPercent)}
+      />
+      <Metric
+        label="音频抖动"
+        value={`${readableNumber(metrics.audioJitterMs, 1)} ms`}
+      />
+      <Metric label="音频 Codec" value={metrics.audioCodec ?? "未知"} />
+      {metrics.audioCodecClockRate !== null && (
+        <Metric
+          label="音频 RTP 时钟"
+          value={`${metrics.audioCodecClockRate} Hz`}
+          title="Codec 协商时钟，不代表采集源采样率"
+        />
+      )}
+      {metrics.audioCodecChannels !== null && (
+        <Metric
+          label="音频 Codec 声道"
+          value={String(metrics.audioCodecChannels)}
+          title="Codec 协商声道字段，不证明音源或有效载荷为立体声"
+        />
+      )}
+      {metrics.audioCodecParameters && (
+        <Metric
+          label="音频 Codec 协商参数"
+          value={metrics.audioCodecParameters}
+          title={`协商参数：${metrics.audioCodecParameters}；不证明编码器当前启用了对应模式`}
+        />
       )}
       {direction === "send" ? (
         <>

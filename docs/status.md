@@ -23,7 +23,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - Production includes LiveKit's two-layer `q,h` sender guard; its functional media proof remains local, not production.
 - Room `1` C+B reparenting remains uncalibrated. Deployed admission rescue promotes an unassigned one-slot relay over the oldest childless zero-capacity Host leaf, with no scores or periodic optimization.
-- Web roster has Host names. Source requests window/system audio by surface and uses the music hint; the full-display change awaits deploy.
+- Web roster names are deployed. Source window/system audio, music hint, interval AV loss% and audio codec/bitrate/jitter details await deploy.
 
 ## Verified Evidence
 
@@ -37,7 +37,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
 - Production includes initial/active selected Host ingress and peer last-mile; focused tests cover exactly-once retry, cleanup, rollback, and ordinary STUN-only. No relay media ran.
-- Host names, the window-audio hint, all-room routing, and all-room Host selected ingress are active; the stale restart assertion is historical only.
+- Host names/window audio/all-room routing/Host selected ingress are active. New AV stats pass 42 focused tests/typecheck; this is not audible proof.
 - Exact `16f6eab` passed typecheck, both builds and 30 files/445 tests. Deploy preserved all recorded config/network/SQLite hashes; DB, routes, services, endpoints, site access, and old-endpoint 404 passed. It triggered no TURN/SFU session. Rollback is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`; `fd76277b05d491af8840b28f3132b7ff445d3cbe` remains secondary.
 
 ## Unverified Boundaries

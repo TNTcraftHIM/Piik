@@ -53,7 +53,7 @@ Last updated: 2026-08-21
 - Chrome 151 synthetic topology/quality runs kept fanout 2/1 and decoding; one relay close recovered in 5.32 seconds. Control evidence only.
 - Deployed Web source uses LiveKit 2.22.0's two-layer `q,h` layout. Local Chrome 151/LiveKit 1.13.5 kept one SFU/UDP root with growing inbound/decoded/rendered counters, clean leaves and no TURN. Production SFU media, zero-child BWE, and calibrated C+B loss remain open.
 - C+B uses three hard-bad pairs, one-use samples and guarded intent/cooldown. Deployed admission rescue moves the oldest childless zero-capacity Host leaf below an unassigned one-slot relay in one revision; no score/timer/global rebalance. Deployment passed, but no real room triggered it.
-- Web names/window audio are deployed; current source adds full-display system audio and the music hint. Native WGC/MF remains source-only: 203 rendered frames, 500 Opus packets, and matched PID/LUID `VideoEncode`. VP8 remains the Web default.
+- Web names/window audio are deployed; source adds full-display system audio, music hint, interval AV loss% and audio codec/bitrate/jitter details. Native WGC/MF remains source-only: 203 rendered frames, 500 Opus packets, matched PID/LUID `VideoEncode`. New Web audio work is undeployed; VP8 remains default.
 
 ## Provisional Quality Targets
 
