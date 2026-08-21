@@ -1105,13 +1105,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   : (peerSnapshot?.connectionState ?? "waiting")
               }
             />
-            {sfuUpstream ? (
-              <MediaRouteBadge route="sfu" />
-            ) : showConnectionDetails &&
-              peerSnapshot &&
-              peerSnapshot.metrics.path !== "unknown" ? (
-              <PathBadge path={peerSnapshot.metrics.path} />
-            ) : null}
+            {showConnectionDetails && (sfuUpstream || peerSnapshot) && (
+              <>
+                <MediaRouteBadge route={sfuUpstream ? "sfu" : "p2p"} />
+                {(sfuUpstream?.metrics ?? peerSnapshot?.metrics)?.path === "relay" && <PathBadge path="relay" />}
+              </>
+            )}
           </div>
         </div>
 
@@ -1293,9 +1292,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             <h2 id="stats-heading">连接数据</h2>
             <div className="viewer-transport-heading">
               <MediaRouteBadge route="p2p" />
-              {peerSnapshot.metrics.path !== "unknown" && (
-                <PathBadge path={peerSnapshot.metrics.path} />
-              )}
+              {peerSnapshot.metrics.path === "relay" && <PathBadge path="relay" />}
             </div>
             <StatsGrid metrics={peerSnapshot.metrics} direction="receive" />
           </section>
@@ -1305,10 +1302,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             <h2 id="sfu-stats-heading">连接数据</h2>
             <div className="viewer-transport-heading">
               <MediaRouteBadge route="sfu" />
-              {sfuUpstream.metrics &&
-                sfuUpstream.metrics.path !== "unknown" && (
-                  <PathBadge path={sfuUpstream.metrics.path} />
-                )}
+              {sfuUpstream.metrics?.path === "relay" && <PathBadge path="relay" />}
             </div>
             {sfuUpstream.metrics && (
               <StatsGrid metrics={sfuUpstream.metrics} direction="receive" />

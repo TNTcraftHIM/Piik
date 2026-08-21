@@ -25,6 +25,7 @@ import {
   shouldReconnectSignaling,
   SignalingClient,
 } from "../src/client/lib/signaling.ts";
+import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
 import { labelViewerPresence } from "../src/client/lib/viewer-presence.ts";
 import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import { createStatsAccumulator, collectConnectionMetrics } from "../src/client/webrtc/stats.ts";
@@ -59,19 +60,19 @@ describe("browser-local display name", () => {
         role: "viewer",
         peerId: "viewer_AAAAAAsuffix",
         displayName: "同名",
-        mediaTopology: "host-direct",
+        upstream: { kind: "peer", peerId: "host_12345678" },
       },
       {
         role: "viewer",
         peerId: "viewer_BBBBBBsuffix",
         displayName: "同名",
-        mediaTopology: "peer-relay",
+        upstream: { kind: "peer", peerId: "viewer_AAAAAAsuffix" },
       },
       {
         role: "viewer",
         peerId: "viewer_independent",
         displayName: "朋友",
-        mediaTopology: "sfu",
+        upstream: { kind: "sfu" },
       },
     ]);
 
@@ -80,6 +81,42 @@ describe("browser-local display name", () => {
     expect(labeled[0].peerIdSuffix).not.toBe(labeled[1].peerIdSuffix);
     expect(labeled[2].peerIdSuffix).toHaveLength(6);
     expect(labeled[0].label).toContain("同名 (");
+  });
+
+  it("derives exact peer and SFU branches without guessing orphaned routes", () => {
+    const viewer = (
+      peerId: string,
+      upstream:
+        | { kind: "none" }
+        | { kind: "sfu" }
+        | { kind: "peer"; peerId: string },
+    ) => ({ role: "viewer" as const, peerId, displayName: peerId, upstream });
+    const topology = deriveParticipantTopology(
+      "host_12345678",
+      labelViewerPresence([
+        viewer("viewer_root_1", { kind: "peer", peerId: "host_12345678" }),
+        viewer("viewer_child_1", { kind: "peer", peerId: "viewer_root_1" }),
+        viewer("viewer_sfu_1", { kind: "sfu" }),
+        viewer("viewer_sfu_child", {
+          kind: "peer",
+          peerId: "viewer_sfu_1",
+        }),
+        viewer("viewer_pending", { kind: "none" }),
+        viewer("viewer_orphan", { kind: "peer", peerId: "viewer_offline" }),
+      ]),
+    );
+
+    expect(topology.peerRoots[0].viewer.peerId).toBe("viewer_root_1");
+    expect(topology.peerRoots[0].children[0].viewer.peerId).toBe(
+      "viewer_child_1",
+    );
+    expect(topology.sfuRoots[0].children[0].viewer.peerId).toBe(
+      "viewer_sfu_child",
+    );
+    expect(topology.pending.map((entry) => entry.peerId)).toEqual([
+      "viewer_pending",
+      "viewer_orphan",
+    ]);
   });
 });
 

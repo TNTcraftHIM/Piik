@@ -32,7 +32,7 @@ Last updated: 2026-08-21
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Web requests window audio and offers system audio for full displays; both are browser hints. Returned tracks use the `music` hint. Native Win11 process audio stays source-only; one Viewer got 495 Opus packets.
-- Viewer-local names and the opt-in Web participant roster remain control-plane-only. Web Host names are deployed in the current release and stay socket/localStorage-only; Native remains outside the capability boundary.
+- Presence is control-plane-only and exposes the exact active upstream for Host diagnostics; it does not create media. Web Host names stay socket/localStorage-only; Native remains outside the capability boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
 

@@ -51,19 +51,23 @@ export const displayNameSchema = z
   });
 export type DisplayName = z.infer<typeof displayNameSchema>;
 
-export const viewerMediaTopologySchema = z.enum([
-  "host-direct",
-  "peer-relay",
-  "sfu",
-  "pending",
-]);
-export type ViewerMediaTopology = z.infer<typeof viewerMediaTopologySchema>;
-
 const opaqueIdSchema = z
   .string()
   .min(8)
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
+
+export const mediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }).strict(),
+  z
+    .object({
+      kind: z.literal("peer"),
+      peerId: opaqueIdSchema,
+    })
+    .strict(),
+  z.object({ kind: z.literal("sfu") }).strict(),
+]);
+export type MediaRouteUpstream = z.infer<typeof mediaRouteUpstreamSchema>;
 
 export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
   z
@@ -71,7 +75,7 @@ export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
       role: z.literal("host"),
       peerId: opaqueIdSchema,
       displayName: displayNameSchema,
-      mediaTopology: z.literal("host"),
+      upstream: z.object({ kind: z.literal("none") }).strict(),
     })
     .strict(),
   z
@@ -79,7 +83,7 @@ export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
       role: z.literal("viewer"),
       peerId: opaqueIdSchema,
       displayName: displayNameSchema,
-      mediaTopology: viewerMediaTopologySchema,
+      upstream: mediaRouteUpstreamSchema,
     })
     .strict(),
 ]);
@@ -92,7 +96,7 @@ export const viewerPresenceEntrySchema = z
     role: z.literal("viewer"),
     peerId: opaqueIdSchema,
     displayName: displayNameSchema,
-    mediaTopology: viewerMediaTopologySchema,
+    upstream: mediaRouteUpstreamSchema,
   })
   .strict();
 export type ViewerPresenceEntry = z.infer<typeof viewerPresenceEntrySchema>;
@@ -331,18 +335,6 @@ export const mediaRouteRevisionSchema = z
 
 export const mediaRoutePhaseSchema = z.enum(["prepare", "active"]);
 export type MediaRoutePhase = z.infer<typeof mediaRoutePhaseSchema>;
-
-export const mediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }).strict(),
-  z
-    .object({
-      kind: z.literal("peer"),
-      peerId: opaqueIdSchema,
-    })
-    .strict(),
-  z.object({ kind: z.literal("sfu") }).strict(),
-]);
-export type MediaRouteUpstream = z.infer<typeof mediaRouteUpstreamSchema>;
 
 export const sfuPublicationGenerationSchema = opaqueIdSchema;
 

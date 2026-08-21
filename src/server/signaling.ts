@@ -1480,7 +1480,7 @@ export class SignalingServer {
         role: "host",
         peerId: host.peerId,
         displayName: hostState.displayName,
-        mediaTopology: "host",
+        upstream: { kind: "none" },
       });
     }
 
@@ -1501,12 +1501,14 @@ export class SignalingServer {
         role: "viewer",
         peerId: viewer.peerId,
         displayName: viewerState.displayName,
-        mediaTopology: this.isHybridMediaEnabled()
-          ? this.hybridMediaRouter!.getViewerMediaTopology(
+        upstream: this.isHybridMediaEnabled()
+          ? this.hybridMediaRouter!.getViewerRouteUpstream(
               roomId,
               viewer.peerId,
             )
-        : "host-direct",
+          : host
+            ? { kind: "peer", peerId: host.peerId }
+            : { kind: "none" },
       });
     }
 

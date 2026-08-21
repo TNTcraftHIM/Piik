@@ -1077,7 +1077,7 @@ describe("WebSocket signaling", () => {
   it("reports every online Viewer without expanding the Host media fanout", async () => {
     const harness = await startHarness({ peerAssistedMedia: true });
     const host = await openClient(harness.webSocketUrl);
-    await authenticate(
+    const hostAuth = await authenticate(
       host,
       harness.room,
       "host",
@@ -1111,7 +1111,9 @@ describe("WebSocket signaling", () => {
       (message) =>
         viewerPresenceEntries(message).length === 3 &&
         viewerPresenceEntries(message).some(
-          (viewer) => viewer.mediaTopology === "peer-relay",
+          (viewer) =>
+            viewer.upstream.kind === "peer" &&
+            viewer.upstream.peerId !== hostAuth.peerId,
         ),
     );
     expect(viewerPresenceEntries(full).map((viewer) => viewer.displayName)).toEqual([
@@ -1121,9 +1123,23 @@ describe("WebSocket signaling", () => {
     ]);
     expect(
       viewerPresenceEntries(full).filter(
-        (viewer) => viewer.mediaTopology === "host-direct",
+        (viewer) =>
+          viewer.upstream.kind === "peer" &&
+          viewer.upstream.peerId === hostAuth.peerId,
       ),
     ).toHaveLength(2);
+    const relay = viewerPresenceEntries(full).find(
+      (viewer) =>
+        viewer.upstream.kind === "peer" &&
+        viewer.upstream.peerId !== hostAuth.peerId,
+    )!;
+    const relayParentPeerId =
+      relay.upstream.kind === "peer" ? relay.upstream.peerId : null;
+    expect(
+      viewerPresenceEntries(full).some(
+        (viewer) => viewer.peerId === relayParentPeerId,
+      ),
+    ).toBe(true);
 
     viewers[2].socket.send(
       JSON.stringify({ type: "set-display-name", displayName: "后来改名" }),
@@ -1165,7 +1181,7 @@ describe("WebSocket signaling", () => {
       role: "host",
       peerId: hostAuth.peerId,
       displayName: "原始分享者",
-      mediaTopology: "host",
+      upstream: { kind: "none" },
     });
 
     const viewer = await openClient(harness.webSocketUrl);
@@ -1227,7 +1243,7 @@ describe("WebSocket signaling", () => {
     await firstHost.inbox.next("viewer-presence");
 
     const viewer = await openClient(harness.webSocketUrl);
-    await authenticate(
+    const viewerAuth = await authenticate(
       viewer,
       harness.room,
       "viewer",
@@ -1248,6 +1264,9 @@ describe("WebSocket signaling", () => {
       (message) => hostPresenceEntry(message) === undefined,
     );
     expect(offline.viewers.some((entry) => entry.role === "host")).toBe(false);
+    expect(viewerPresenceEntries(offline)).toMatchObject([
+      { peerId: viewerAuth.peerId, upstream: { kind: "none" } },
+    ]);
 
     const replacement = await openClient(harness.webSocketUrl);
     const replacementAuth = await authenticate(
@@ -1272,7 +1291,7 @@ describe("WebSocket signaling", () => {
   it("publishes one empty Viewer roster after ordinary rotate and revoke", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);
-    await authenticate(
+    const hostAuth = await authenticate(
       host,
       harness.room,
       "host",
@@ -1303,7 +1322,7 @@ describe("WebSocket signaling", () => {
         role: "viewer",
         peerId: firstViewerAuth.peerId,
         displayName: "第一位",
-        mediaTopology: "host-direct",
+        upstream: { kind: "peer", peerId: hostAuth.peerId },
       },
     ]);
 
@@ -5804,7 +5823,7 @@ describe("WebSocket signaling", () => {
   it("replaces the same client presence once without leave churn", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 40 });
     const host = await openClient(harness.webSocketUrl);
-    await authenticate(
+    const hostAuth = await authenticate(
       host,
       harness.room,
       "host",
@@ -5832,7 +5851,7 @@ describe("WebSocket signaling", () => {
         role: "viewer",
         peerId: originalAuth.peerId,
         displayName: "旧会话",
-        mediaTopology: "host-direct",
+        upstream: { kind: "peer", peerId: hostAuth.peerId },
       },
     ]);
 
@@ -5858,7 +5877,7 @@ describe("WebSocket signaling", () => {
         role: "viewer",
         peerId: originalAuth.peerId,
         displayName: "新会话",
-        mediaTopology: "host-direct",
+        upstream: { kind: "peer", peerId: hostAuth.peerId },
       },
     ]);
     await host.inbox.expectNone(70);
@@ -6030,7 +6049,7 @@ describe("WebSocket signaling", () => {
   it("keeps media identity through grace while presence returns once", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 500 });
     const firstHost = await openClient(harness.webSocketUrl);
-    await authenticate(
+    const firstHostAuth = await authenticate(
       firstHost,
       harness.room,
       "host",
@@ -6060,7 +6079,7 @@ describe("WebSocket signaling", () => {
         role: "viewer",
         peerId: firstViewerAuth.peerId,
         displayName: "短线重连",
-        mediaTopology: "host-direct",
+        upstream: { kind: "peer", peerId: firstHostAuth.peerId },
       },
     ]);
     firstHost.socket.send(
@@ -6120,7 +6139,7 @@ describe("WebSocket signaling", () => {
         role: "viewer",
         peerId: firstViewerAuth.peerId,
         displayName: "短线重连",
-        mediaTopology: "host-direct",
+        upstream: { kind: "peer", peerId: secondHostAuth.peerId },
       },
     ]);
     await secondHost.inbox.expectNone(30);

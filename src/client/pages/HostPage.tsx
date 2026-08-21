@@ -7,6 +7,7 @@ import {
   LockKeyhole,
   Maximize2,
   MonitorUp,
+  Network,
   Pause,
   Pencil,
   Play,
@@ -35,13 +36,14 @@ import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
 import { RoomCode } from "../components/RoomCode";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
+  MediaRouteBadge,
   PathBadge,
   PeerStatusBadge,
   SignalStatusBadge,
-  TopologyBadge,
   WarningBanner,
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
+import { TopologyView } from "../components/TopologyView";
 import { ApiError, createRoom } from "../lib/api";
 import { createOpaqueId } from "../lib/opaque-id";
 import {
@@ -225,6 +227,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
+  const [showTopology, setShowTopology] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -281,15 +284,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           { role: "host" }
         > => participant.role === "host",
       ) ?? null,
-    [participantPresence],
-  );
-  const hostDirectViewerCount = useMemo(
-    () =>
-      participantPresence.filter(
-        (participant) =>
-          participant.role === "viewer" &&
-          participant.mediaTopology === "host-direct",
-      ).length,
     [participantPresence],
   );
   const selectedQualityProfileId = useMemo(
@@ -1523,7 +1517,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </div>
               <p className="section-meta">
                 {phase === "live"
-                  ? `${viewers.length}/${maxViewers ?? "-"} 人在线 · ${hostDirectViewerCount} 条 Host 直连`
+                  ? `${viewers.length}/${maxViewers ?? "-"} 人在线`
                   : phase === "starting"
                     ? "正在连接"
                     : phase === "ended" && room
@@ -2040,35 +2034,65 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <div className="viewer-panel-heading">
             <div>
               <h2 id="viewer-heading">观看者</h2>
-              <span>
-                在线 {viewers.length}/{maxViewers ?? "-"} · Host 直连{" "}
-                {hostDirectViewerCount}
-              </span>
+              <span>在线 {viewers.length}/{maxViewers ?? "-"}</span>
             </div>
-            <Users size={18} aria-hidden="true" />
+            <button
+              className="icon-button"
+              type="button"
+              title={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
+              aria-label={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
+              aria-controls="room-topology"
+              aria-expanded={showTopology}
+              onClick={() => setShowTopology((current) => !current)}
+            >
+              <Network size={17} aria-hidden="true" />
+            </button>
           </div>
+
+          {showTopology && (
+            <TopologyView
+              hostPeerId={hostPresence?.peerId ?? hostPeerIdRef.current}
+              hostLabel={hostPresence?.displayName ?? displayName}
+              viewers={viewers}
+            />
+          )}
 
           <div className="viewer-list">
             {viewers.map((viewer) => {
-              const snapshot = peerSnapshots.get(viewer.peerId);
+              const snapshot =
+                viewer.upstream.kind === "peer" &&
+                viewer.upstream.peerId ===
+                  (hostPresence?.peerId ?? hostPeerIdRef.current)
+                  ? peerSnapshots.get(viewer.peerId)
+                  : undefined;
               const qualityEvidence = viewerQualityEvidence.get(viewer.peerId);
+              const viewerState =
+                snapshot?.connectionState === "connected" || qualityEvidence
+                  ? "connected"
+                  : snapshot?.connectionState ??
+                    (viewer.upstream.kind === "none"
+                      ? "connecting"
+                      : "assigned");
               return (
                 <article className="viewer-item" key={viewer.peerId}>
                   <div className="viewer-item-heading">
                     <div>
                       <h3 title={viewer.label}>{viewer.label}</h3>
-                      {snapshot && (
-                        <PeerStatusBadge state={snapshot.connectionState} />
+                      <PeerStatusBadge state={viewerState} />
+                    </div>
+                  </div>
+                  {showConnectionDetails && viewer.upstream.kind !== "none" && (
+                    <div className="viewer-transport-heading">
+                      <MediaRouteBadge
+                        route={viewer.upstream.kind === "peer" ? "p2p" : "sfu"}
+                      />
+                      {snapshot?.metrics.path === "relay" && (
+                        <PathBadge path="relay" />
                       )}
                     </div>
-                    <TopologyBadge topology={viewer.mediaTopology} />
-                  </div>
+                  )}
                   {showConnectionDetails && snapshot && (
                     <>
-                      <div className="viewer-transport-heading">
-                        <span>Host 本机传输</span>
-                        <PathBadge path={snapshot.metrics.path} />
-                      </div>
                       <StatsGrid
                         metrics={snapshot.metrics}
                         direction="send"
