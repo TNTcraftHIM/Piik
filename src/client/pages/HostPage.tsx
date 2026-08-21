@@ -66,7 +66,7 @@ import {
   writeHostRoom,
 } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
-import { labelViewerParticipants } from "../lib/viewer-presence";
+import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import {
   applyCaptureProfile,
   captureDisplay,
@@ -277,8 +277,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     () => Array.from(peerSnapshots.values()),
     [peerSnapshots],
   );
-  const viewers = useMemo(
-    () => labelViewerParticipants(participantPresence),
+  const { host: labeledHostPresence, viewers } = useMemo(
+    () => labelParticipantSnapshot(participantPresence),
     [participantPresence],
   );
   const hostPresence = useMemo(
@@ -2157,7 +2157,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           {showTopology && (
             <TopologyView
               hostPeerId={hostPresence?.peerId ?? hostPeerIdRef.current}
-              hostLabel={hostPresence?.displayName ?? displayName}
+              hostLabel={labeledHostPresence?.label ?? displayName}
               viewers={viewers}
             />
           )}

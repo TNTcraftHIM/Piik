@@ -28,6 +28,7 @@ import {
 } from "../src/client/lib/signaling.ts";
 import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
 import {
+  labelParticipantSnapshot,
   labelViewerParticipants,
   labelViewerPresence,
 } from "../src/client/lib/viewer-presence.ts";
@@ -159,6 +160,35 @@ describe("browser-local display name", () => {
     expect(labeled.map((viewer) => viewer.label)).toEqual([
       "朋友甲",
       "朋友乙",
+    ]);
+  });
+
+  it("labels Host and Viewer name collisions before splitting roles", () => {
+    const labeled = labelParticipantSnapshot([
+      {
+        role: "host",
+        peerId: "host_123456",
+        displayName: "同名",
+        upstream: { kind: "none" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer_654321",
+        displayName: "同名",
+        upstream: { kind: "peer", peerId: "host_123456" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer_789012",
+        displayName: "唯一名称",
+        upstream: { kind: "sfu" },
+      },
+    ]);
+
+    expect(labeled.host?.label).toBe("同名 (123456)");
+    expect(labeled.viewers.map((viewer) => viewer.label)).toEqual([
+      "同名 (654321)",
+      "唯一名称",
     ]);
   });
 

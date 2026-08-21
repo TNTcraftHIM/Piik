@@ -2,6 +2,7 @@ import {
   KeyRound,
   LoaderCircle,
   Maximize2,
+  Network,
   Pencil,
   Play,
   RefreshCw,
@@ -35,11 +36,12 @@ import {
   WarningBanner,
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
+import { TopologyView } from "../components/TopologyView";
 import { viewerRouteEvidence } from "../components/status-badge-model";
 import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
-import { labelViewerParticipants } from "../lib/viewer-presence";
+import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import type { QualitySettings } from "../media/quality";
 import {
   ParentEdgeQualityEvidenceReporter,
@@ -122,6 +124,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     DEFAULT_VIEWER_VOLUME_STATE,
   );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
+  const [showTopology, setShowTopology] = useState(false);
   const [displayName, setDisplayName] = useState(() => readDisplayName());
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
@@ -157,8 +160,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       ) ?? null,
     [participantPresence],
   );
-  const viewers = useMemo(
-    () => labelViewerParticipants(participantPresence ?? []),
+  const { host: labeledHostPresence, viewers } = useMemo(
+    () => labelParticipantSnapshot(participantPresence ?? []),
     [participantPresence],
   );
 
@@ -1505,9 +1508,31 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             aria-labelledby="viewer-roster-heading"
           >
             <div className="viewer-roster-heading">
-              <h2 id="viewer-roster-heading">观看者</h2>
-              <span>在线 {viewers.length}</span>
+              <div>
+                <h2 id="viewer-roster-heading">观看者</h2>
+                <span>在线 {viewers.length}</span>
+              </div>
+              {labeledHostPresence && (
+                <button
+                  className="icon-button"
+                  type="button"
+                  title={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
+                  aria-label={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
+                  aria-controls="room-topology"
+                  aria-expanded={showTopology}
+                  onClick={() => setShowTopology((current) => !current)}
+                >
+                  <Network size={17} aria-hidden="true" />
+                </button>
+              )}
             </div>
+            {showTopology && labeledHostPresence && (
+              <TopologyView
+                hostPeerId={labeledHostPresence.peerId}
+                hostLabel={labeledHostPresence.label}
+                viewers={viewers}
+              />
+            )}
             <ul className="viewer-roster-list">
               {viewers.map((viewer) => (
                 <li key={viewer.peerId} title={viewer.label}>
