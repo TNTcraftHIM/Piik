@@ -308,6 +308,8 @@ describe("peer topology loopback observations", () => {
     expect(summary.everyViewerDecoded).toBe(true);
     expect(summary.firstFrames[0]?.decodedAfterAuthenticateMs).toBe(600);
     expect(summary.maxFirstDecodedAfterAuthenticateMs).toBe(600);
+    expect(summary.senderEvidence.host.bitrateKbps.mean).toBeNull();
+    expect(summary.browserProcessResources.measuredCpuTimeSeconds).toBeNull();
     expect(
       summary.finalTopology.every(
         (entry) =>
@@ -315,6 +317,59 @@ describe("peer topology loopback observations", () => {
           JSON.stringify(lowQualitySettings),
       ),
     ).toBe(true);
+  });
+
+  it("summarizes identified sender evidence and rejects reset process intervals", () => {
+    const makePages = (bitrate: number, fps: number, intervalFrames: number | null, intervalTime: number | null, reason: string) => {
+      const pages = [page("host", "host", 1, 0), page("viewer", "viewer-1", 1, 1)];
+      pages[0]!.connections[0]!.send = {
+        rtpStatsId: "host-rtp",
+        bitrateKbps: bitrate,
+        framesPerSecond: fps,
+        resolution: fps === 25 ? "640x360" : "1280x720",
+        availableOutgoingKbps: bitrate * 4,
+        intervalFramesEncoded: intervalFrames,
+        intervalEncodeTimeMs: intervalTime,
+        qualityLimitationReason: reason,
+      };
+      pages[1]!.connections[0]!.send = {
+        ...pages[0]!.connections[0]!.send,
+        rtpStatsId: "relay-rtp",
+        bitrateKbps: bitrate / 2,
+      };
+      return pages;
+    };
+    const processSample = (browserCpu: number, rendererCpu: number) => ({ processes: [
+      { type: "browser", id: 1, cpuTimeSeconds: browserCpu }, { type: "renderer", id: 2, cpuTimeSeconds: rendererCpu },
+    ] });
+    const summary = summarizeSamples(
+      [
+        { atEpochMs: 2_000, elapsedMs: 0, pages: makePages(1_000, 25, null, null, "none"), browserProcesses: processSample(10, 2) },
+        { atEpochMs: 4_000, elapsedMs: 2_000, pages: makePages(1_200, 30, 20, 40, "none"), browserProcesses: processSample(10.4, 2.6) },
+        { atEpochMs: 6_000, elapsedMs: 4_000, pages: makePages(1_400, 30, 30, 75, "cpu"), browserProcesses: processSample(9, 3) },
+      ],
+      1,
+    );
+
+    expect(summary.senderEvidence.host).toMatchObject({
+      uniqueSenderCount: 1,
+      unknownIdentitySamples: 0,
+      bitrateKbps: { sampleCount: 3, min: 1_000, max: 1_400, mean: 1_200 },
+      framesPerSecond: { sampleCount: 3, min: 25, max: 30 },
+      resolutions: ["1280x720", "640x360"],
+      encodeIntervals: { sampleCount: 2, framesEncoded: 50, encodeTimeMs: 115 },
+      qualityLimitationReasonSamples: { none: 2, cpu: 1 },
+    });
+    expect(summary.senderEvidence.host.encodeIntervals.meanEncodeMsPerFrame).toBe(2.3);
+    expect(summary.senderEvidence.relay.bitrateKbps.mean).toBe(600);
+    expect(summary.browserProcessResources).toMatchObject({
+      validCpuIntervals: 1,
+      invalidCpuIntervals: 1,
+      measuredWallTimeSeconds: 2,
+      peakResidentSetBytes: null,
+    });
+    expect(summary.browserProcessResources.measuredCpuTimeSeconds).toBeCloseTo(1);
+    expect(summary.browserProcessResources.averageCpuUtilizationPercent).toBeCloseTo(50);
   });
 
   it("requires an explicit cap3 run to exercise cap3 fanout", () => {

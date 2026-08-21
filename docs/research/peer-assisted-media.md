@@ -272,6 +272,14 @@ captured. This proves the explicit admission, bounded topology, and decode paths
 only; resource, visual quality, endurance, heterogeneous networks, and the
 separate 20-viewer gate remain open.
 
+A same-machine 2026-08-22 Chrome 151 follow-up ran sixteen Viewers for ten seconds at 720p30 and introduced report schema v2; sender means are unweighted connected sender-sample means, while encode cost is weighted by guarded interval frame deltas.
+Cap2 passed at Host2/relay2 with 2 Host and 14 relay senders: Host/relay bitrate was 1,716/1,748 kbps, FPS 11.17/11.20, available outgoing 5,393/5,704 kbps, and encode cost 2.086/2.048 ms per frame.
+Cap3 passed at Host3/relay3 with 3 Host and 13 relay senders: the same fields were 1,589/1,638 kbps, 10.83/10.87 FPS, 5,474/5,956 kbps, and 2.071/2.126 ms per frame.
+Both runs observed only 320x180 and 480x270; every Host limitation sample was `bandwidth`, every relay sample was `none`, and maximum first-decode diagnostics were 1,071/1,021 ms for cap2/cap3.
+[CDP `SystemInfo.getProcessInfo`](https://chromedevtools.github.io/devtools-protocol/tot/SystemInfo/) exposes process type, PID, and cumulative CPU seconds, but no resident-set field; v2 therefore reports peak RSS as `null` and rejects intervals when the exact type/PID set changes or any counter retreats.
+Cap2 measured 221.4% aggregate Chromium CPU (250.7% peak) over two valid and three rejected intervals; cap3 measured 209.8% (246.9% peak) over four valid and one rejected interval. Multicore totals may exceed 100%.
+The different valid coverage and one short run per arm forbid a cap2/cap3 CPU ranking. CDP cannot attribute these all-process totals to an individual Host or relay page, and this ordinary-PC synthetic run does not close the resource, game-quality, endurance, mobile, or 20-viewer gates.
+
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
 striping. Those mechanisms are intentionally excluded: needing them is a reason
