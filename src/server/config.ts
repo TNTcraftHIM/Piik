@@ -202,7 +202,7 @@ function parseStunUrlList(value: string | undefined): string[] {
   });
 }
 
-function parseSelectedEdgeTurn(
+export function parseSelectedEdgeTurn(
   environment: NodeJS.ProcessEnv,
 ): SelectedEdgeTurnConfig | undefined {
   const names = [

@@ -20,6 +20,7 @@
     "vitest.config.ts",
     "scripts/native-one-viewer-gate.ts",
     "scripts/native-one-viewer-ledger.ts",
+    "scripts/turn-allocation-gate.ts",
     "tests"
   ]
 }
