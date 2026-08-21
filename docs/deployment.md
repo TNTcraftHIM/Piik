@@ -235,6 +235,7 @@ To make automatic SFU fallback capacity available, add the complete tuple:
 
 ```dotenv
 PEER_ASSISTED_MEDIA=true
+MAX_PEER_RELAY_DOWNSTREAM_EDGES=2
 LIVEKIT_URL=wss://share.example.com
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
@@ -283,6 +284,11 @@ Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
 limit, not evidence that the publisher can sustain that many streams.
+`MAX_PEER_RELAY_DOWNSTREAM_EDGES` defaults to 2 and accepts 1 through 3. It is
+the hard per-endpoint peer upload budget; an active Host SFU publication also
+uses one Host edge. Web and Native advertise an absolute ability of three, but
+the server always clamps assignments to this deployment value. It does not
+change the separate SFU root limit.
 
 The three `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the

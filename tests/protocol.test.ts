@@ -516,6 +516,12 @@ describe("client signaling protocol", () => {
         type: "relay-capacity",
         downstreamEdges: 3,
       }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "relay-capacity",
+        downstreamEdges: 4,
+      }).success,
     ).toBe(false);
     expect(
       clientMessageSchema.safeParse({
@@ -934,7 +940,8 @@ describe("server signaling protocol", () => {
           childPeerIds: [
             "viewer_12345678",
             "viewer_87654321",
-            "viewer_overflow",
+            "viewer_third_1234",
+            "viewer_overflow_1",
           ],
         },
       }).success,
@@ -1015,7 +1022,8 @@ describe("server signaling protocol", () => {
         childPeerIds: [
           "child_12345678",
           "child_87654321",
-          "child_overflow",
+          "child_third_1234",
+          "child_overflow_1",
         ],
       }).success,
     ).toBe(false);

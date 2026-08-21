@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-const validHostAuthenticated = `{"type":"authenticated","protocol":"screener-v4","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`
+const validHostAuthenticated = `{"type":"authenticated","protocol":"screener-v5","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`
 
-const validPeerAssistedHostAuthenticated = `{"type":"authenticated","protocol":"screener-v4","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":["viewer-1","viewer-2"],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678","mediaMode":"peer-assisted","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1","viewer-2"]},"routeRevision":7,"routeAssignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1","viewer-2"],"sfuPublicationGeneration":null},"qualitySettings":{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","videoCodec":"automatic"}}`
+const validPeerAssistedHostAuthenticated = `{"type":"authenticated","protocol":"screener-v5","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":["viewer-1","viewer-2","viewer-3"],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678","mediaMode":"peer-assisted","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1","viewer-2","viewer-3"]},"routeRevision":7,"routeAssignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1","viewer-2","viewer-3"],"sfuPublicationGeneration":null},"qualitySettings":{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","videoCodec":"automatic"}}`
 
 func TestMarshalHostSignalShapes(t *testing.T) {
 	mid := "0"
@@ -69,15 +69,15 @@ func TestDecodePeerAssistedHostAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !message.PeerAssisted || message.RouteRevision != 7 || len(message.MediaAssignment.ChildPeerIDs) != 2 {
+	if !message.PeerAssisted || message.RouteRevision != 7 || len(message.MediaAssignment.ChildPeerIDs) != 3 {
 		t.Fatalf("peer-assisted authentication = %+v", message)
 	}
 }
 
 func TestDecodePeerAssistedHostAuthenticationRejectsInvalidAuthority(t *testing.T) {
 	tests := map[string]func(map[string]any){
-		"third-child": func(message map[string]any) {
-			children := []any{"viewer-1", "viewer-2", "viewer-3"}
+		"fourth-child": func(message map[string]any) {
+			children := []any{"viewer-1", "viewer-2", "viewer-3", "viewer-4"}
 			message["mediaAssignment"].(map[string]any)["childPeerIds"] = children
 			message["routeAssignment"].(map[string]any)["childPeerIds"] = children
 		},

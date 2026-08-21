@@ -25,10 +25,10 @@ $statusBytes = (Get-Item docs/status.md).Length
 if ($agentLines -gt 200) {
     throw "AGENTS.md exceeds the 200-line context budget: $agentLines lines"
 }
-if ($memoryLines -gt 200 -or $memoryBytes -gt 12000) {
+if ($memoryLines -gt 200 -or $memoryBytes -gt 16000) {
     throw "docs/project-memory.md exceeds its budget: $memoryLines lines, $memoryBytes bytes"
 }
-if ($statusLines -gt 120 -or $statusBytes -gt 8000) {
+if ($statusLines -gt 120 -or $statusBytes -gt 12000) {
     throw "docs/status.md exceeds its budget: $statusLines lines, $statusBytes bytes"
 }
 

@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	maxHostEdges          = 2
+	maxHostEdges          = 3
 	maxRemoteResponse     = 64 << 10
 	remoteRequestTimeout  = 10 * time.Second
 	signalWriteTimeout    = 5 * time.Second

@@ -12,6 +12,7 @@ describe("server configuration", () => {
     expect(config.stunUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
+    expect(config.maxPeerRelayDownstreamEdges).toBe(2);
     expect(config.livekitFallback).toBeUndefined();
     expect(config.selectedEdgeTurn).toBeUndefined();
   });
@@ -215,6 +216,28 @@ describe("server configuration", () => {
       "PEER_ASSISTED_MEDIA currently supports at most 8 viewers per room",
     );
   });
+
+  it.each(["1", "2", "3"])(
+    "accepts a bounded peer relay downstream limit of %s",
+    (maxPeerRelayDownstreamEdges) => {
+      expect(
+        loadConfig({
+          MAX_PEER_RELAY_DOWNSTREAM_EDGES: maxPeerRelayDownstreamEdges,
+        }).maxPeerRelayDownstreamEdges,
+      ).toBe(Number(maxPeerRelayDownstreamEdges));
+    },
+  );
+
+  it.each(["0", "4", "1.5"])(
+    "rejects an invalid peer relay downstream limit of %s",
+    (maxPeerRelayDownstreamEdges) => {
+      expect(() =>
+        loadConfig({
+          MAX_PEER_RELAY_DOWNSTREAM_EDGES: maxPeerRelayDownstreamEdges,
+        }),
+      ).toThrow("MAX_PEER_RELAY_DOWNSTREAM_EDGES");
+    },
+  );
 
   it("enables the hybrid controller for every room when selected", () => {
     expect(loadConfig({ PEER_ASSISTED_MEDIA: "true" }).peerAssistedMedia).toBe(

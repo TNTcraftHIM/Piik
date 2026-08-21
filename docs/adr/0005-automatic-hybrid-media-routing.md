@@ -127,18 +127,23 @@ server currently retries a failed edge through the deterministic peer topology;
 only an exhausted peer route can request an SFU branch root. The target keeps
 healthy routes sticky but may select SFU directly when admission has no eligible
 peer path. Optional TURN is controller-selected only after that SFU/UDP attempt
-fails. The authorization must bind the current room/share generation, viewer and
-parent sessions, route revision, and replaced/new connection identities; stale,
-replayed, participant-wide, or unselected attempts fail closed. Coturn still
+fails. The authorization binds the room/share generation, viewer and parent
+sessions, grant revision, and replaced/new connection identities. After answer,
+the signed grant revision stays immutable while the controller tracks the current
+route revision separately. An unrelated route revision may carry the exact edge
+only while its sessions, topology, share generation, and parent downstream
+budget remain current; carry authority must precede the active route update.
+Stale, replayed, participant-wide, over-budget, or unselected attempts fail closed. Coturn still
 validates only HMAC and expiry, so application generation checks, short TTL,
 one-use state, fanout, and quotas bound the bearer. LiveKit publisher/subscriber
 ICE remains a separate participant-wide domain.
 
 Every viewer starts with zero relay capacity for each authenticated session. A
-peer-assisted Web client then explicitly advertises two downstream edges; there
-is no UA-, device-, or visibility-based branch. The controller accepts bounded
-capacity values from zero through two for admission and recovery. Withdrawing
-capacity does not proactively migrate an otherwise healthy existing edge.
+peer-assisted client advertises its absolute ability of three downstream edges;
+there is no UA-, device-, or visibility-based branch. The controller clamps the
+advertisement to `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, which defaults to two and
+accepts one through three. Withdrawing capacity does not proactively migrate an
+otherwise healthy existing edge.
 
 The source now implements one narrow admission exception to sticky assignment.
 On an active peer-only route with no SFU publication or pending prepare, a
@@ -338,7 +343,12 @@ change or the current share stops. A new sharing generation starts from the
 cheapest available UDP route. The controller does not continuously rebalance
 healthy media. The bounded quality candidate changes only the Viewer-rooted
 subtree whose current parent-to-child edge produced three consecutive hard-bad
-windows; it does not withdraw that parent's global relay capacity.
+windows. One confirmed child remains edge-local. Two distinct confirmed
+children under the same Viewer parent session and share generation within five
+seconds temporarily make that parent relay-ineligible (effective capacity zero)
+for 30 seconds; its advertised capacity is unchanged. The triggering edge still
+follows its own intent: relative FPS is peer-only, while severe evidence retains
+the ordinary peer, SFU, selected-edge TURN, then bounded-failure ladder.
 
 The authenticated standby is not a transport: it has no grant and never joins a
 room. During route prepare the current implementation warms only an unpublishing/unsubscribed
@@ -611,10 +621,9 @@ boundary is actually configured and the UI must not claim E2EE.
 
 ## Acceptance Gates
 
-- Every non-server endpoint stays at or below two active downstream media edges
-  across prepare, commit, rollback, reconnect, and stale-message sequences;
-  the current Web candidate uses the same two-child bound and never admits a
-  third edge.
+- Every non-server endpoint stays at or below the configured one-through-three
+  downstream edge budget across prepare, commit, rollback, reconnect, and
+  stale-message sequences; production keeps the default two.
 - Only necessary roots or explicitly admitted exceptional viewers receive SFU
   media and the configured central egress budget is never exceeded.
 - A reliable SFU root continues to serve bounded peer descendants. Normal
