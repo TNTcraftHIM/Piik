@@ -8,6 +8,7 @@ import {
   createStatsAccumulator,
   type StatsAccumulator,
 } from "./stats";
+import { preferScreenAudioStereo } from "./screen-audio-sdp";
 
 const MAX_PENDING_CANDIDATES = 64;
 const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
@@ -101,7 +102,7 @@ export class ViewerPeer {
         if (!this.isCurrentConnection(connection, connectionId)) {
           return;
         }
-        const answer = await connection.createAnswer();
+        const answer = preferScreenAudioStereo(await connection.createAnswer());
         if (!this.isCurrentConnection(connection, connectionId)) {
           return;
         }

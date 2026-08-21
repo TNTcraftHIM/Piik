@@ -554,14 +554,16 @@ resolution, frame rate, or bitrate.
   and `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
-- The folded advanced panel accepts only 720p/1080p/1440p, integer 15-60 fps,
-  2-12 Mbps, and the three preferences. It exposes no audio quality controls.
-  Display capture does not standardize channel-count or sample-rate control;
-  the portable audio `maxBitrate` field is only a ceiling, though the fixed
-  128 kbps value materially raised Chrome's encoder budget in one narrow
-  fixture; stereo, DTX, and FEC require negotiated fmtp/codec behavior that has
-  no portable sender setter. The full boundary is recorded in
-  `docs/research/browser-screen-audio-quality.md`.
+- The folded “advanced video” panel accepts only 720p/1080p/1440p, integer
+  15-60 fps, 2-12 Mbps, and the three preferences. It exposes no audio quality
+  controls and is not renamed in the screen-audio slice. Display capture does
+  not standardize channel-count or sample-rate control; the portable audio
+  `maxBitrate` field remains only a 128 kbps ceiling. The one accepted peer
+  exception is a structured Viewer-answer Opus `stereo=1` receive preference,
+  paired with pinned LiveKit's explicit high-quality stereo/forceStereo option.
+  DTX stays fixed off, RED retains the pinned SDK default, and FEC remains
+  browser/SDK negotiation, not a control or custom adaptation algorithm. The
+  full boundary is recorded in `docs/research/browser-screen-audio-quality.md`.
 - Every sender update derives from `getParameters()`, calls `setParameters()`,
   then reads requested/applied bitrate, frame rate, scale, and preference.
   Rejection or browser rewriting is visible rather than console-only.
@@ -597,8 +599,10 @@ CPU/GPU cost, public networks, or sustained behavior.
 - No copied x264 CRF/preset recipe in the browser path.
 - No forced codec order until target hardware measurements identify the actual
   power-efficient encoder.
-- No channel-count, sample-rate, Opus bitrate, stereo, DTX, or FEC control, and
-  no inference of actual stereo or sample rate from `opus/48000/2`.
+- No channel-count, sample-rate, codec, arbitrary bitrate, stereo, DTX, RED or
+  FEC control, and no inference of actual stereo or sample rate from
+  `opus/48000/2`. Screen media uses one route-consistent stereo contract;
+  microphone voice, if ever accepted, remains a separate track and policy.
 - No promise that all browsers honor `applyConstraints` or degradation
   preference identically.
 - No automatic composite quality score or periodic profile controller before

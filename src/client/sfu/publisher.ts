@@ -8,7 +8,6 @@ import type {
 import {
   configureTwoLayerVideoSender,
   QUALITY_RESOLUTIONS,
-  SCREEN_AUDIO_MAX_BITRATE,
   SCREEN_SHARE_LOW_SCALE,
   screenShareLowBitrate,
   senderParameterWarning,
@@ -169,7 +168,7 @@ export class SfuPublisher {
             room,
             audioTrack,
             sdk.Track.Source.ScreenShareAudio,
-            audioPublishOptions(),
+            audioPublishOptions(sdk),
           );
           if (!this.owns(room, generation)) {
             return false;
@@ -280,7 +279,7 @@ export class SfuPublisher {
             room,
             nextAudioTrack,
             sdk.Track.Source.ScreenShareAudio,
-            audioPublishOptions(),
+            audioPublishOptions(sdk),
           );
           if (!this.owns(room, generation)) {
             return false;
@@ -607,9 +606,10 @@ function videoPublishOptions(
   };
 }
 
-function audioPublishOptions(): TrackPublishOptions {
+function audioPublishOptions(sdk: LiveKit): TrackPublishOptions {
   return {
-    audioPreset: { maxBitrate: SCREEN_AUDIO_MAX_BITRATE },
+    audioPreset: sdk.AudioPresets.musicHighQualityStereo,
+    forceStereo: true,
     dtx: false,
   };
 }
