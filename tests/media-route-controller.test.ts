@@ -11,7 +11,6 @@ const DIRECT_ROOT = "viewer_direct_12345678";
 const SFU_ROOT_A = "viewer_sfu_a_12345678";
 const SFU_ROOT_B = "viewer_sfu_b_12345678";
 const THIRD_CHILD = "viewer_third_12345678";
-const FOURTH_CHILD = "viewer_fourth_12345678";
 const GENERATION_A = "generation_a_12345678";
 const GENERATION_B = "generation_b_12345678";
 
@@ -279,7 +278,7 @@ describe("MediaRouteController", () => {
     ).toThrow("SFU roots and publication generation must be active together");
   });
 
-  it("supports an explicit three-edge endpoint budget without admitting four", () => {
+  it("does not let an explicit three-edge setting lift release role limits", () => {
     const threeHostChildren = new Map<string, ParticipantRouteAssignment>([
       [
         HOST,
@@ -292,47 +291,71 @@ describe("MediaRouteController", () => {
       [SFU_ROOT_A, assignment({ kind: "peer", peerId: HOST })],
       [THIRD_CHILD, assignment({ kind: "peer", peerId: HOST })],
     ]);
-    const expanded = new MediaRouteController({
-      hostPeerId: HOST,
-      assignments: threeHostChildren,
-      maxEndpointMediaEdges: 3,
-    });
-    expect(expanded.hostActiveMediaEdges()).toBe(3);
+    expect(() =>
+      new MediaRouteController({
+        hostPeerId: HOST,
+        assignments: threeHostChildren,
+        maxEndpointMediaEdges: 3,
+      }),
+    ).toThrow("Participant active media edge budget exceeded");
 
-    const viewerWithThreeChildren = new Map<string, ParticipantRouteAssignment>([
+    const viewerWithTwoChildren = new Map<string, ParticipantRouteAssignment>([
       [HOST, assignment({ kind: "none" }, [DIRECT_ROOT])],
       [
         DIRECT_ROOT,
         assignment(
           { kind: "peer", peerId: HOST },
-          [SFU_ROOT_A, SFU_ROOT_B, THIRD_CHILD],
+          [SFU_ROOT_A, SFU_ROOT_B],
         ),
       ],
       [SFU_ROOT_A, assignment({ kind: "peer", peerId: DIRECT_ROOT })],
       [SFU_ROOT_B, assignment({ kind: "peer", peerId: DIRECT_ROOT })],
-      [THIRD_CHILD, assignment({ kind: "peer", peerId: DIRECT_ROOT })],
     ]);
-    expect(() => controller(viewerWithThreeChildren)).toThrow(
-      "Participant active media edge budget exceeded",
-    );
-
-    const fourHostEdges = new Map(threeHostChildren);
-    fourHostEdges.set(
-      HOST,
-      assignment(
-        { kind: "none" },
-        [DIRECT_ROOT, SFU_ROOT_A, THIRD_CHILD],
-        GENERATION_A,
-      ),
-    );
-    fourHostEdges.set(FOURTH_CHILD, assignment({ kind: "sfu" }));
     expect(() =>
       new MediaRouteController({
         hostPeerId: HOST,
-        assignments: fourHostEdges,
+        assignments: viewerWithTwoChildren,
+        maxEndpointMediaEdges: 3,
+      }),
+    ).toThrow("Participant active media edge budget exceeded");
+
+    const publicationAtHostLimit = new Map<string, ParticipantRouteAssignment>([
+      [
+        HOST,
+        assignment({ kind: "none" }, [DIRECT_ROOT], GENERATION_A),
+      ],
+      [DIRECT_ROOT, assignment({ kind: "peer", peerId: HOST })],
+      [SFU_ROOT_A, assignment({ kind: "sfu" })],
+    ]);
+    const allowed = new MediaRouteController({
+      hostPeerId: HOST,
+      assignments: publicationAtHostLimit,
+      maxEndpointMediaEdges: 3,
+      sfuPublicationGeneration: GENERATION_A,
+      sfuRootPeerIds: [SFU_ROOT_A],
+    });
+    expect(allowed.hostActiveMediaEdges()).toBe(2);
+
+    const publicationOverHostLimit = new Map(publicationAtHostLimit);
+    publicationOverHostLimit.set(
+      HOST,
+      assignment(
+        { kind: "none" },
+        [DIRECT_ROOT, THIRD_CHILD],
+        GENERATION_A,
+      ),
+    );
+    publicationOverHostLimit.set(
+      THIRD_CHILD,
+      assignment({ kind: "peer", peerId: HOST }),
+    );
+    expect(() =>
+      new MediaRouteController({
+        hostPeerId: HOST,
+        assignments: publicationOverHostLimit,
         maxEndpointMediaEdges: 3,
         sfuPublicationGeneration: GENERATION_A,
-        sfuRootPeerIds: [FOURTH_CHILD],
+        sfuRootPeerIds: [SFU_ROOT_A],
       }),
     ).toThrow("Host active media edge budget exceeded");
   });

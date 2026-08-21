@@ -1,4 +1,6 @@
 import {
+  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_MEDIA_ROUTE_REVISION,
   MAX_PEER_RELAY_DOWNSTREAM_EDGES,
@@ -61,19 +63,28 @@ export class MediaRouteController {
   private pendingRoute: StoredPendingRoute | undefined;
   private latestRevision: number;
   private readonly hostPeerId: string;
-  private readonly maxEndpointMediaEdges: number;
+  private readonly maxHostMediaEdges: number;
+  private readonly maxViewerMediaEdges: number;
 
   constructor(options: MediaRouteControllerOptions) {
     this.hostPeerId = options.hostPeerId;
-    this.maxEndpointMediaEdges =
+    const deploymentMediaEdgeLimit =
       options.maxEndpointMediaEdges ?? DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES;
     if (
-      !Number.isSafeInteger(this.maxEndpointMediaEdges) ||
-      this.maxEndpointMediaEdges < 1 ||
-      this.maxEndpointMediaEdges > MAX_PEER_RELAY_DOWNSTREAM_EDGES
+      !Number.isSafeInteger(deploymentMediaEdgeLimit) ||
+      deploymentMediaEdgeLimit < 1 ||
+      deploymentMediaEdgeLimit > MAX_PEER_RELAY_DOWNSTREAM_EDGES
     ) {
       throw new Error("Endpoint media edge budget is invalid");
     }
+    this.maxHostMediaEdges = Math.min(
+      deploymentMediaEdgeLimit,
+      CURRENT_HOST_MEDIA_EDGE_LIMIT,
+    );
+    this.maxViewerMediaEdges = Math.min(
+      deploymentMediaEdgeLimit,
+      CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+    );
     const revision = options.revision ?? 0;
     assertRevision(revision);
     this.activeRoute = createRoute(
@@ -82,7 +93,8 @@ export class MediaRouteController {
       options.sfuPublicationGeneration ?? null,
       options.sfuRootPeerIds ?? [],
       this.hostPeerId,
-      this.maxEndpointMediaEdges,
+      this.maxHostMediaEdges,
+      this.maxViewerMediaEdges,
     );
     this.latestRevision = revision;
   }
@@ -116,7 +128,8 @@ export class MediaRouteController {
         : input.sfuPublicationGeneration,
       input.sfuRootPeerIds ?? this.activeRoute.sfu.rootPeerIds,
       this.hostPeerId,
-      this.maxEndpointMediaEdges,
+      this.maxHostMediaEdges,
+      this.maxViewerMediaEdges,
     );
     if (hasSameTopology(route, this.activeRoute)) {
       return undefined;
@@ -139,7 +152,8 @@ export class MediaRouteController {
       input.sfuPublicationGeneration ?? null,
       input.sfuRootPeerIds ?? [],
       this.hostPeerId,
-      this.maxEndpointMediaEdges,
+      this.maxHostMediaEdges,
+      this.maxViewerMediaEdges,
     );
     const expectedParticipantIds = new Set(input.expectedParticipantIds);
     if (expectedParticipantIds.size > MAX_PARTICIPANTS_PER_ROOM) {
@@ -207,7 +221,7 @@ export class MediaRouteController {
 
   hostActiveMediaEdges(): number {
     const edgeCount = hostMediaEdges(this.activeRoute, this.hostPeerId);
-    if (edgeCount > this.maxEndpointMediaEdges) {
+    if (edgeCount > this.maxHostMediaEdges) {
       throw new Error("Host active media edge budget exceeded");
     }
     return edgeCount;
@@ -227,7 +241,8 @@ function createRoute(
   publicationGeneration: string | null,
   rootPeerIds: readonly string[],
   hostPeerId: string,
-  maxEndpointMediaEdges: number,
+  maxHostMediaEdges: number,
+  maxViewerMediaEdges: number,
 ): RoomMediaRoute {
   assertRevision(revision);
   if (
@@ -253,14 +268,20 @@ function createRoute(
       rootPeerIds: [...rootPeerIds],
     },
   };
-  assertRouteInvariants(route, hostPeerId, maxEndpointMediaEdges);
+  assertRouteInvariants(
+    route,
+    hostPeerId,
+    maxHostMediaEdges,
+    maxViewerMediaEdges,
+  );
   return route;
 }
 
 function assertRouteInvariants(
   route: RoomMediaRoute,
   hostPeerId: string,
-  maxEndpointMediaEdges: number,
+  maxHostMediaEdges: number,
+  maxViewerMediaEdges: number,
 ): void {
   const hostAssignment = route.assignments.get(hostPeerId);
   if (!hostAssignment) {
@@ -290,7 +311,9 @@ function assertRouteInvariants(
   }
 
   for (const [peerId, assignment] of route.assignments) {
-    if (assignment.childPeerIds.length > maxEndpointMediaEdges) {
+    const downstreamEdgeLimit =
+      peerId === hostPeerId ? maxHostMediaEdges : maxViewerMediaEdges;
+    if (assignment.childPeerIds.length > downstreamEdgeLimit) {
       throw new Error("Participant active media edge budget exceeded");
     }
     if (
@@ -337,7 +360,7 @@ function assertRouteInvariants(
   }
 
   assertAcyclicPeerEdges(route.assignments);
-  if (hostMediaEdges(route, hostPeerId) > maxEndpointMediaEdges) {
+  if (hostMediaEdges(route, hostPeerId) > maxHostMediaEdges) {
     throw new Error("Host active media edge budget exceeded");
   }
 }

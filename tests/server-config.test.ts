@@ -227,7 +227,7 @@ describe("server configuration", () => {
     ).toThrow("MAX_VIEWERS_PER_ROOM");
   });
 
-  it.each(["1", "2", "3"])(
+  it.each(["1", "2"])(
     "accepts a bounded peer relay downstream limit of %s",
     (maxPeerRelayDownstreamEdges) => {
       expect(
@@ -238,7 +238,7 @@ describe("server configuration", () => {
     },
   );
 
-  it.each(["0", "4", "1.5"])(
+  it.each(["0", "3", "4", "1.5"])(
     "rejects an invalid peer relay downstream limit of %s",
     (maxPeerRelayDownstreamEdges) => {
       expect(() =>

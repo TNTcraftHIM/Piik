@@ -202,9 +202,9 @@ not evidence. `sending`, either report alone, and healthy or ambiguous pairs
 reset or do not advance the streak.
 It holds at most one pending/streak state per connected Viewer and one room
 cooldown, with no timer or weighted score. One confirmed child event stays
-edge-local. A separate bounded corroboration can suspend one Viewer relay's
-server-owned eligibility only after two distinct children confirm under the
-same parent session and share within five seconds.
+edge-local. The two-distinct-child corroboration logic is retained only for a
+future accepted Viewer-capacity tier; current ordinary Browser Viewer capacity
+one makes that state unreachable in release routing.
 
 The conservative Viewer C hard predicates are: freeze duration at least half
 of the one-to-five-second window; positive received-packet delta with zero
@@ -260,7 +260,7 @@ standards-derived or claimed optimum values.
 One correlated pair still attributes a problem only to its current
 parent-to-child edge generation: remote loss comes from that child and
 `qualityLimitationReason` belongs to one outbound stream. Screener therefore
-keeps a single event edge-local. Two independently confirmed current children
+keeps a single event edge-local. In a future accepted capacity-two tier, two independently confirmed current children
 within five seconds are instead treated as bounded corroboration to pause that
 Viewer parent's relay eligibility for 30 seconds, not as proof of device-wide
 quality or a numeric score. The client-advertised capacity remains intact; new
@@ -273,8 +273,8 @@ preferring recent healthy candidates remains later. The triggering child now
 uses bounded make-before-break; converting the quarantined parent's remaining
 children from their existing immediate reassignment is a separate slice.
 
-With host and current browser-relay degree two, deterministic breadth-first
-assignment keeps eight viewers to depth three. A tree for `N` viewers
+With current Host degree two and Browser Viewer degree one, deterministic
+assignment forms at most two bounded chains. A tree for `N` viewers
 still has `N` media edges, approximately `N*B` useful upload in aggregate, and
 approximately `2B` host upload once both roots are used. Local reparenting does
 not reduce either bandwidth quantity. Reordering an already balanced healthy
@@ -291,8 +291,8 @@ host -> new relay -> existing leaf
 host -> other root
 ```
 
-This admits the waiting viewer while keeping host and browser-relay fanout at
-two. The router permits it only on an active peer-only route with no SFU
+This admits the waiting viewer while keeping Host fanout at two and Browser
+Viewer fanout at one. The router permits it only on an active peer-only route with no SFU
 publication or pending prepare, when the connected candidate currently has no
 upstream or children, offers relay capacity, and has no failed-parent
 history. The host must have exactly two children and the chosen child must be a
@@ -319,8 +319,9 @@ move only one affected subtree, use separate enter and recovery thresholds plus
 a cooldown, and disable proactive moves for the share after repeated rollback.
 
 Use make-before-break only when the new parent has a free downstream media slot
-and every affected endpoint remains within its current limit: host, Web relay,
-and native relay at most two. Admission rescue
+and every affected endpoint remains within its current release limit: Host at
+most two, ordinary Browser Viewer at most one. A future native role requires its
+own accepted limit. Admission rescue
 starts with both host slots occupied, so it is break-before-make: retire the
 chosen host-to-leaf media edge before activating host-to-new-relay media. A
 control-only `RTCPeerConnection` may prewarm ICE but cannot prove media uplink:

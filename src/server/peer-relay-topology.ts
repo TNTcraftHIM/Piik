@@ -3,6 +3,8 @@ import type {
   RelayDownstreamEdges,
 } from "../shared/protocol.js";
 import {
+  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_PEER_RELAY_DOWNSTREAM_EDGES,
 } from "../shared/protocol.js";
@@ -30,25 +32,36 @@ interface RelayViewer {
 interface RelayRoom {
   hostPeerId?: string;
   hostChildPeerIds: string[];
-  maxDownstreamEdges: RelayDownstreamEdges;
+  maxHostDownstreamEdges: RelayDownstreamEdges;
+  maxViewerDownstreamEdges: RelayDownstreamEdges;
   viewers: Map<string, RelayViewer>;
   nextOrder: number;
 }
 
 export class PeerRelayTopology {
   private readonly rooms = new Map<string, RelayRoom>();
+  private readonly maxHostDownstreamEdges: RelayDownstreamEdges;
+  private readonly maxViewerDownstreamEdges: RelayDownstreamEdges;
 
   constructor(
-    private readonly maxDownstreamEdges: RelayDownstreamEdges =
+    deploymentDownstreamEdgeLimit: RelayDownstreamEdges =
       DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   ) {
     if (
-      !Number.isSafeInteger(maxDownstreamEdges) ||
-      maxDownstreamEdges < 1 ||
-      maxDownstreamEdges > MAX_PEER_RELAY_DOWNSTREAM_EDGES
+      !Number.isSafeInteger(deploymentDownstreamEdgeLimit) ||
+      deploymentDownstreamEdgeLimit < 1 ||
+      deploymentDownstreamEdgeLimit > MAX_PEER_RELAY_DOWNSTREAM_EDGES
     ) {
       throw new Error("Peer relay downstream limit is invalid");
     }
+    this.maxHostDownstreamEdges = Math.min(
+      deploymentDownstreamEdgeLimit,
+      CURRENT_HOST_MEDIA_EDGE_LIMIT,
+    );
+    this.maxViewerDownstreamEdges = Math.min(
+      deploymentDownstreamEdgeLimit,
+      CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+    );
   }
 
   setHost(
@@ -122,7 +135,7 @@ export class PeerRelayTopology {
     const before = snapshot(room);
     const boundedDownstreamEdges = Math.min(
       downstreamEdges,
-      this.maxDownstreamEdges,
+      room.maxViewerDownstreamEdges,
     );
     const previousDownstreamEdges = viewer.downstreamEdges;
     viewer.downstreamEdges = boundedDownstreamEdges;
@@ -325,7 +338,8 @@ export class PeerRelayTopology {
     if (!room) {
       room = {
         hostChildPeerIds: [],
-        maxDownstreamEdges: this.maxDownstreamEdges,
+        maxHostDownstreamEdges: this.maxHostDownstreamEdges,
+        maxViewerDownstreamEdges: this.maxViewerDownstreamEdges,
         viewers: new Map(),
         nextOrder: 0,
       };
@@ -505,7 +519,7 @@ function advertisedDownstreamCapacity(
   peerId: string,
 ): RelayDownstreamEdges {
   return room.hostPeerId === peerId
-    ? room.maxDownstreamEdges
+    ? room.maxHostDownstreamEdges
     : (room.viewers.get(peerId)?.downstreamEdges ?? 0);
 }
 

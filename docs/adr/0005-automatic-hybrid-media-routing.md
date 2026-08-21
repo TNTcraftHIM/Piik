@@ -25,11 +25,14 @@ or two SFU roots. Only after the SFU/UDP path also fails may the same controller
 authorize one short-lived TURN attempt for the current exceptional edge. TURN
 credentials are not participant-wide ICE configuration and are never added to
 ordinary peer connections by default. HTTPS/WSS remains TLS/TCP and is outside
-this media policy. Every non-server endpoint has at most two active
-downstream media edges; its upstream receive edge does not consume that upload
-budget. The current source candidate gives every ordinary Web relay that same
-two-child hard limit without a UA or visibility policy; production remains at
-one until this candidate ships.
+this media policy. The current release policy gives the Host at most two active
+downstream physical media edges and an ordinary Browser Viewer at most one; an
+upstream receive edge does not consume that upload budget. Active and
+provisional peer children, selected-edge overlays, and the Host SFU publication
+all count. The server derives the effective limit from the authenticated role,
+so an old or malicious Viewer advertising two or three cannot bypass one. A
+deployment may tighten Host/Viewer below `2/1`, but cannot raise either limit.
+There is no UA or visibility policy.
 
 TURN and SFU occupy different layers. A selected TURN candidate continuously
 relays media for its authorized ICE edge; it is not a handshake helper or a
@@ -138,20 +141,24 @@ validates only HMAC and expiry, so application generation checks, short TTL,
 one-use state, fanout, and quotas bound the bearer. LiveKit publisher/subscriber
 ICE remains a separate participant-wide domain.
 
-Every viewer starts with zero relay capacity for each authenticated session. A
-peer-assisted client advertises its absolute ability of three downstream edges;
-there is no UA-, device-, or visibility-based branch. The controller clamps the
-advertisement to `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, which defaults to two and
-accepts one through three. Withdrawing capacity does not proactively migrate an
-otherwise healthy existing edge.
+Every viewer starts with zero relay capacity for each authenticated session.
+The current Browser client advertises one downstream edge. The unchanged wire
+continues to parse `0 | 1 | 2 | 3` only as a future capability envelope; it is
+not current route authority. The controller clamps all Browser Viewer
+advertisements to one before topology assignment, including old-client values
+two and three. `MAX_PEER_RELAY_DOWNSTREAM_EDGES` defaults to two and accepts one
+or two as a deployment tightening input: effective Host capacity is
+`min(config, 2)` and effective Browser Viewer capacity is `min(config, 1)`.
+Withdrawing capacity does not proactively migrate an otherwise healthy existing
+edge. There is no UA-, device-, or visibility-based branch.
 
 The source now implements one narrow admission exception to sticky assignment.
 On an active peer-only route with no SFU publication or pending prepare, a
 connected, childless Viewer that has no upstream or failed-parent history and
 advertises relay capacity may replace the oldest connected, childless,
 zero-capacity Host child when both Host slots are full. That leaf becomes one
-child of the new relay. The synchronous change preserves Host and browser
-fanout at two, advances one route revision, and clears
+child of the new relay. The synchronous change preserves Host fanout at two and
+Browser Viewer fanout at one, advances one route revision, and clears
 both changed upstream connection generations. Host-side reconciliation closes
 the stale child edge before starting the replacement. No healthy routed
 candidate, quality score, timer, global parent penalty, or periodic rebalance is
@@ -228,13 +235,18 @@ The server mapping is authoritative. Each participant receives only its own
 assignment for that room revision; it never receives or edits the complete
 mapping. The explicit SFU publication generation prevents an old and a new
 publisher from being counted as one logical edge during commit or rollback.
+The Web execution layer independently truncates each received assignment to
+the current Host-two or Viewer-one physical-child limit before creating peer
+connections. This is defense in depth for a regressed or mismatched server;
+the wire's future capacity envelope is not client execution permission.
 
 Minimal protocol additions:
 
 - optional `sfuStandbyUrl` in a peer-assisted authenticated snapshot, only when
   the server has complete LiveKit fallback configuration;
-- `relay-capacity { downstreamEdges: 0 | 1 | 2 }` from an authenticated
-  peer-assisted viewer;
+- `relay-capacity { downstreamEdges: 0 | 1 | 2 | 3 }` from an authenticated
+  peer-assisted viewer; the range is a future wire envelope while current
+  server policy clamps an ordinary Browser Viewer to one;
 - `route-update { revision, phase: "prepare" | "active", assignment }`;
 - `sfu-config { revision, url, token }`;
 - `route-ready { revision, phase: "prepare" | "active" }`;
@@ -633,9 +645,12 @@ boundary is actually configured and the UI must not claim E2EE.
 
 ## Acceptance Gates
 
-- Every non-server endpoint stays at or below the configured one-through-three
-  downstream edge budget across prepare, commit, rollback, reconnect, and
-  stale-message sequences; production keeps the default two.
+- Across prepare, commit, rollback, reconnect, reauthentication, reconciliation,
+  and stale-message sequences, Host physical media edges stay at or below
+  `min(config, 2)` and ordinary Browser Viewer edges stay at or below
+  `min(config, 1)`. Host SFU publication and provisional/selected overlays count;
+  upstream receive does not. Config and client advertisements cannot raise the
+  release limits.
 - Only necessary roots or explicitly admitted exceptional viewers receive SFU
   media and the configured central egress budget is never exceeded.
 - A reliable SFU root continues to serve bounded peer descendants. Normal

@@ -3,10 +3,14 @@ import type {
   MediaAssignment,
   SignalPayload,
 } from "../../shared/protocol";
-import { MAX_PEER_RELAY_DOWNSTREAM_EDGES } from "../../shared/protocol";
+import {
+  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+  CURRENT_HOST_MEDIA_EDGE_LIMIT,
+} from "../../shared/protocol";
 
-export const MAX_HOST_MEDIA_CHILDREN = MAX_PEER_RELAY_DOWNSTREAM_EDGES;
-export const MAX_VIEWER_MEDIA_CHILDREN = MAX_PEER_RELAY_DOWNSTREAM_EDGES;
+export const MAX_HOST_MEDIA_CHILDREN = CURRENT_HOST_MEDIA_EDGE_LIMIT;
+export const MAX_VIEWER_MEDIA_CHILDREN =
+  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT;
 
 export function limitMediaAssignment(
   assignment: MediaAssignment,

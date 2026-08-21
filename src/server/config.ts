@@ -1,7 +1,7 @@
 import {
+  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_ICE_SERVER_URLS,
-  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   stunUrlSchema,
   turnUrlSchema,
@@ -341,7 +341,7 @@ export function loadConfig(
     DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
     "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
     1,
-    MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+    CURRENT_HOST_MEDIA_EDGE_LIMIT,
   );
   const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
   const selectedEdgeTurn = parseSelectedEdgeTurn(environment);
