@@ -7293,7 +7293,7 @@ describe("WebSocket signaling", () => {
     oldClient.socket.send(
       JSON.stringify({
         type: "authenticate",
-        protocol: "screener-v2",
+        protocol: "screener-v3",
         roomId: "999999999999",
         role: "viewer",
         clientId: "old-client",

@@ -146,7 +146,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
-        protocol: "screener-v2",
+        protocol: "screener-v3",
         roomId,
         role: "viewer",
         clientId: "client_12345678",
