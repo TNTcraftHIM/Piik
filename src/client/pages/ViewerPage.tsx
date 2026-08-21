@@ -42,6 +42,7 @@ import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
+import { downloadDiagnosticReport, type DiagnosticConnectionInput } from "../lib/diagnostic-export";
 import type { QualitySettings } from "../media/quality";
 import {
   ParentEdgeQualityEvidenceReporter,
@@ -198,6 +199,37 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     routePresentation.evidence?.connectionState ??
     (hostOnline ? "routing" : "waiting");
   const routeMetrics = routePresentation.evidence?.metrics ?? null;
+  const diagnosticConnections: DiagnosticConnectionInput[] = [];
+  if (routePresentation.route && routeMetrics) {
+    diagnosticConnections.push({
+      scope: "upstream",
+      route: routePresentation.route,
+      direction: "receive",
+      connectionState: routePresentation.evidence?.connectionState,
+      iceConnectionState: peerSnapshot && routePresentation.evidence === peerSnapshot
+        ? peerSnapshot.iceConnectionState
+        : null,
+      metrics: routeMetrics,
+    });
+  }
+  if (relaySnapshot) {
+    diagnosticConnections.push({
+      scope: "relay-edge",
+      route: "p2p",
+      direction: "send",
+      connectionState: relaySnapshot.connectionState,
+      iceConnectionState: relaySnapshot.iceConnectionState,
+      metrics: relaySnapshot.metrics,
+    });
+  }
+  if (relayChildEvidence) {
+    diagnosticConnections.push({
+      scope: "relay-edge",
+      route: "p2p",
+      direction: "receive",
+      metrics: metricsFromQualityEvidence(relayChildEvidence),
+    });
+  }
 
   function acceptAssignedRoute(
     revision: number,
@@ -1638,6 +1670,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         <ConnectionDetailsToggle
           checked={showConnectionDetails}
           onChange={setShowConnectionDetails}
+          onExport={diagnosticConnections.length > 0
+            ? () => downloadDiagnosticReport("viewer", diagnosticConnections)
+            : undefined}
         />
 
         {routePresentation.evidence === peerSnapshot && peerSnapshot?.error && (

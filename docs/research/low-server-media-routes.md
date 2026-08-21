@@ -352,6 +352,18 @@ old connection or ICE-restart history from being attributed to a new route.
 Use opaque generations only. This is a bounded diagnostic manifest, not a
 backend telemetry schema or controller input.
 
+### Local Diagnostic Export Boundary
+
+The local report is a projection of current sanitized metrics, not a serialized
+stats object or signaling snapshot. It uses a fixed field allowlist and writes
+unavailable values as `null`; selected addresses/ports, internal IDs, participant
+identity, raw SDP/candidates, media-service URLs, and credentials never enter the
+report input. The file is created only after a user click with a local JSON
+`Blob`, is not uploaded or persisted, and its object URL is explicitly revoked.
+The [W3C File API](https://www.w3.org/TR/FileAPI/) (accessed 2026-08-22) defines
+Blob URLs for locally generated downloads and requires explicit revocation to
+release their backing store.
+
 ### Pre-Share Self-Check Boundary
 
 A temporary, unpaired `RTCPeerConnection` can create a data channel, set its
