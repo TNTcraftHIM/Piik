@@ -214,22 +214,26 @@ limitation or at least 100 sent packets with remote loss divided by sent packets
 at least 30%. Three consecutive windows of the same severe or relative kind are
 required. A healthy or incomplete correlated window, any Viewer/parent session,
 connection, route revision or parent change, or a gap over five seconds clears
-the streak. Severe evidence retains the existing fallback ladder. Relative FPS
-tries another peer only; no candidate keeps the old edge without SFU, TURN, an
-error, or room cooldown. A successful peer move or started severe SFU prepare
-spends a 30-second room migration
+the streak. Severe and relative-FPS quality evidence each tries one ordinary
+peer-upstream Viewer through make-before-break; v1 skips Host and SFU roots but
+continues to later eligible Viewers. No candidate, probe failure, or timeout keeps
+the old edge without SFU, TURN, or an error. A started attempt spends a
+30-second room migration
 budget, so a new public Viewer identity cannot bypass it. Per-edge state clears
 on authentication/generation change, disconnect/removal and route replacement;
 room stop/delete also clears the cooldown.
 
-An SFU preparation created by severe quality retains the exact originating intent and
-its full Viewer/parent session, connection and revision guard until grants and
-commit finish. Missing, replaced or changed intent state aborts and releases
-only its quality-owned parent exclusion. A real `route-failed` can take over
-that same intent without losing its exclusion. A successful relative move holds
-the old parent for 30 seconds or until its session changes. A real active-route
-failure overrides that soft hold, hard-excludes the current failed parent, and
-allows the old playable peer to take over immediately.
+The candidate is bound to the exact Viewer/parent sessions, active and pending
+route revisions, share lifecycle and a separate connection ID. Signaling keeps
+the old connection ID authoritative until the Viewer proves positive RTP,
+positive decoded-frame progress and a live video track on the candidate; commit
+then changes topology, route and active connection identity together. Failure
+after ready retains the exact provisional identity until matching active or
+rollback, while another edge's authoritative failure aborts the soft probe
+before using the ordinary ladder. A
+successful relative move holds the old parent for 30 seconds or until its
+session changes. A real active-route failure remains a separate hard recovery
+trigger and can reuse an otherwise playable old parent.
 
 W3C defines outbound `packetsSent` as the local cumulative RTP packet count.
 `remote-inbound-rtp.packetsLost` is remote receiver data delivered by RTCP and
@@ -260,7 +264,9 @@ try deterministic peer reassignment and keep their old edge when none exists;
 the parent keeps its upstream and the pause itself never starts SFU or TURN.
 Host parents are excluded, while expiry, a new parent session or a new share
 restores eligibility. Alternate-parent selection remains breadth-first;
-preferring recent healthy candidates remains a later make-before-break slice.
+preferring recent healthy candidates remains later. The triggering child now
+uses bounded make-before-break; converting the quarantined parent's remaining
+children from their existing immediate reassignment is a separate slice.
 
 With host and current browser-relay degree two, deterministic breadth-first
 assignment keeps eight viewers to depth three. A tree for `N` viewers
@@ -327,10 +333,10 @@ avoid reversal during cooldown, and restore the prior deterministic route on
 rollback. Reject this candidate if it needs all-pairs probing, a continuous
 optimizer, temporary fanout above budget, self-reported geography or device
 quality, or cannot beat the unchanged route. The earlier admission-rescue case
-remains valid, while this quality slice moves only the affected Viewer-rooted
-subtree and excludes only its current failed parent through the existing
-peer-first, then SFU path. The configured selected-edge TURN attempt follows SFU
-failure; healthy paths never enter relay optimization.
+remains valid. The implemented quality slice moves only the affected
+Viewer-rooted subtree, keeps its old edge until the candidate decodes, and does
+not enter SFU or selected-edge TURN. Those transports remain available only to
+the separate real-failure route owner.
 
 ## Staged Connection Recovery Evidence
 

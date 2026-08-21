@@ -347,14 +347,16 @@ windows. One confirmed child remains edge-local. Two distinct confirmed
 children under the same Viewer parent session and share generation within five
 seconds temporarily make that parent relay-ineligible (effective capacity zero)
 for 30 seconds; its advertised capacity is unchanged. The triggering edge still
-follows its own intent: relative FPS is peer-only, while severe evidence retains
-the ordinary peer, SFU, selected-edge TURN, then bounded-failure ladder.
+follows its own intent through one peer-to-peer make-before-break attempt.
+Severe and relative-FPS quality evidence do not enter SFU or TURN; a real
+`route-failed` remains the separate owner of the ordinary failure ladder.
 
 The authenticated standby is not a transport: it has no grant and never joins a
 room. During route prepare the current implementation warms only an unpublishing/unsubscribed
 transport. Its media transition remains break-before-make: the host releases the
-replaced peer or SFU media edge before activating the new one, and a viewer
-retires its SFU subscriber before returning to peer media.
+replaced peer or SFU media edge before activating the new one. The accepted
+one-root healthy SFU probe and the peer-quality slice below are explicit bounded
+exceptions: they retain old media until current-generation receive/decode proof.
 
 ## Standby Prewarm Result
 
@@ -410,24 +412,31 @@ alone is diagnostic-only. C may be stored before B arrives, but only one
 unchanged severe or relative pair advances its own streak. Healthy or ambiguous
 correlated windows clear it. A Viewer or parent session,
 connection ID, route revision or parent identity change also resets it, as does
-an evidence gap over five seconds. Severe evidence retains the existing bounded
-peer/SFU/TURN ladder. Relative-FPS evidence tries only another peer; if none is
-eligible, the old active edge stays and no route, SFU, TURN, or room cooldown is
-created. A successful peer reassignment or started severe SFU prepare creates
+an evidence gap over five seconds. Severe and relative-FPS evidence each open at
+most one peer-to-peer make-before-break attempt. Its v1 parent is an ordinary
+Viewer whose active upstream is peer; Host and SFU-root provisional children
+remain later work, and their exclusion does not stop enumeration. The old active edge and its
+connection ID remain authoritative while the candidate uses a separate exact
+identity. The Viewer sends prepare-ready only after positive current-candidate
+RTP and decoded-frame progress plus a live video track; only then does the server
+commit the planned topology and promote the candidate connection ID. A failure
+after prepare-ready retains that exact identity until matching active authority
+is failed or rollback clears it. An unrelated authoritative route failure first
+aborts the soft probe and then immediately resumes its ordinary ladder. Failure,
+timeout, stale identity, or no eligible peer keeps the old active edge and does
+not start SFU, TURN, an error, or another migration. A started attempt creates
 one 30-second room migration budget. Viewer/session churn
 cannot bypass that budget; removal, disconnect, authorization or generation
 change clears per-edge evidence and intent state, while room stop/delete clears
 the room budget. A quality-created intent retains its Viewer/parent sessions,
-connection, revision and parent guard through every drain, peer change, SFU
-prepare and commit boundary. Pending SFU work also retains the exact originating
-intent identity: missing, replaced or changed guards abort before grants or
-commit, while a genuine `route-failed` may explicitly take over that same
-intent as the ordinary failure owner. A successful relative-FPS move holds its
+connection, revision and parent guard through prepare and commit. A successful
+relative-FPS move holds its
 old parent for 30 seconds, or until that parent session changes, to avoid a soft
 bounce. A real `route-failed` is stronger evidence: it releases that soft hold,
 hard-excludes the current failed parent and may immediately reuse the old
 playable parent. Other successful quality moves release their temporary
-exclusion. The W3C stats
+exclusion. This slice migrates only the triggering child; make-before-break for
+other children of a quarantined relay remains separate. The W3C stats
 definitions establish the counter meanings and their WebRTC 1.0 example uses
 30% loss as a likely culprit; they do not
 prescribe Screener's route policy. Therefore 50%, two-thirds FPS, 100 packets,

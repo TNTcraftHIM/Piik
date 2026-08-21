@@ -695,6 +695,50 @@ describe("PeerRelayTopology", () => {
     expect(expectValidTree(topology, "room", "host", peers.slice(1))).toBe(3);
   });
 
+  it("plans a bounded reparent without mutating until the exact parent commits", () => {
+    const topology = new PeerRelayTopology();
+    const peers = ["host", "a", "b", "c", "d", "e"];
+    topology.setHost("room", "host", connected(...peers));
+    for (const peerId of peers.slice(1)) {
+      addRelayViewer(topology, "room", peerId, connected(...peers));
+    }
+    const before = topology.getAssignments("room");
+    const excluded = new Set(["c"]);
+
+    expect(
+      topology.findViewerReassignmentParent(
+        "room",
+        "e",
+        connected(...peers),
+        excluded,
+        4,
+      ),
+    ).toBe("d");
+    expect(topology.getAssignments("room")).toEqual(before);
+    expect(
+      topology.reassignViewer(
+        "room",
+        "e",
+        connected(...peers),
+        excluded,
+        4,
+        "b",
+      ),
+    ).toBeUndefined();
+    expect(topology.getAssignments("room")).toEqual(before);
+    expect(
+      topology.reassignViewer(
+        "room",
+        "e",
+        connected(...peers),
+        excluded,
+        4,
+        "d",
+      ),
+    ).toBeDefined();
+    expect(topology.getAssignment("room", "e")?.parentPeerId).toBe("d");
+  });
+
   it("does not mutate when every bounded reparent candidate is excluded", () => {
     const topology = new PeerRelayTopology();
     topology.setHost("room", "host", connected("host", "a", "b", "c"));

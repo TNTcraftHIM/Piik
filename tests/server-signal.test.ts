@@ -313,6 +313,8 @@ async function startRelayRelativeFpsFixture(
     alternateRelayCapacity?: 0 | 1 | 2;
     issueSfuToken?: (peerId: string) => Promise<string>;
     onSfuTokenIssue?: () => void;
+    prepareTimeoutMs?: number;
+    hostFirstCandidate?: boolean;
     secondChild?: boolean;
     selectedEdgeTurn?: boolean;
     sfu?: boolean;
@@ -321,6 +323,7 @@ async function startRelayRelativeFpsFixture(
   const harness = options.sfu
       ? await startSfuHarness({
         now,
+        prepareTimeoutMs: options.prepareTimeoutMs,
         selectedEdgeTurn: options.selectedEdgeTurn,
         tokenIssuer: {
           issueToken: async ({ peerId }) => {
@@ -341,9 +344,21 @@ async function startRelayRelativeFpsFixture(
       harness.room,
       "viewer",
       `${prefix}-parent`,
-      options.secondChild ? 2 : 1,
+      options.secondChild || options.hostFirstCandidate ? 2 : 1,
     ),
   );
+  const releasedHostSlot = options.hostFirstCandidate
+    ? await openClient(harness.webSocketUrl)
+    : undefined;
+  if (releasedHostSlot) {
+    await authenticate(
+      releasedHostSlot,
+      harness.room,
+      "viewer",
+      `${prefix}-released-host-slot`,
+      0,
+    );
+  }
   const alternate = await openClient(harness.webSocketUrl);
   const alternateAuth = peerAssisted(
     await authenticate(
@@ -376,10 +391,8 @@ async function startRelayRelativeFpsFixture(
     kind: "peer",
     peerId: hostAuth.peerId,
   });
-  expect(alternateAuth.routeAssignment.upstream).toEqual({
-    kind: "peer",
-    peerId: hostAuth.peerId,
-  });
+  expect(alternateAuth.routeAssignment.upstream).toEqual({ kind: "peer",
+    peerId: options.hostFirstCandidate ? parentAuth.peerId : hostAuth.peerId });
   expect(childAuth.routeAssignment.upstream).toEqual({
     kind: "peer",
     peerId: parentAuth.peerId,
@@ -389,9 +402,19 @@ async function startRelayRelativeFpsFixture(
       ? { kind: "peer", peerId: parentAuth.peerId }
       : undefined,
   );
-  const routeRevision = secondChildAuth?.routeRevision ?? childAuth.routeRevision;
+  let routeRevision = secondChildAuth?.routeRevision ?? childAuth.routeRevision;
   if (secondChildAuth) {
     await nextActiveRouteRevision(child, routeRevision);
+  }
+  if (releasedHostSlot) {
+    releasedHostSlot.socket.close();
+    const [releasedRoute] = await Promise.all([
+      nextActiveRouteAfter(child, routeRevision),
+      nextActiveRouteAfter(host, routeRevision),
+      nextActiveRouteAfter(parent, routeRevision),
+      nextActiveRouteAfter(alternate, routeRevision),
+    ]);
+    routeRevision = releasedRoute.revision;
   }
 
   const parentConnectionId = `${prefix}_parent_connection`;
@@ -843,6 +866,44 @@ async function nextPreparedRoute(client: TestClient) {
       return message;
     }
   }
+}
+
+async function completePreparedPeerMigration(
+  viewer: TestClient,
+  newParent: TestClient,
+  viewerPeerId: string,
+  newParentPeerId: string,
+  previousRevision: number,
+  connectionId: string,
+) {
+  const [viewerPrepare, parentPrepare] = await Promise.all([
+    nextPreparedRoute(viewer),
+    nextPreparedRoute(newParent),
+  ]);
+  expect(viewerPrepare).toMatchObject({
+    phase: "prepare",
+    assignment: { upstream: { kind: "peer", peerId: newParentPeerId } },
+  });
+  expect(parentPrepare.revision).toBe(viewerPrepare.revision);
+  await sendTestOffer(newParent, viewer, viewerPeerId, connectionId);
+  viewer.socket.send(JSON.stringify({
+    type: "signal",
+    targetPeerId: newParentPeerId,
+    payload: {
+      kind: "description",
+      connectionId,
+      description: { type: "answer", sdp: "v=0\r\n" },
+    },
+  }));
+  expect(await newParent.inbox.next("signal")).toMatchObject({
+    fromPeerId: viewerPeerId,
+  });
+  viewer.socket.send(JSON.stringify({
+    type: "route-ready",
+    revision: viewerPrepare.revision,
+    phase: "prepare",
+  }));
+  return nextActiveRouteAfter(viewer, previousRevision);
 }
 
 async function nextActiveRouteRevision(client: TestClient, revision: number) {
@@ -3280,7 +3341,14 @@ describe("WebSocket signaling", () => {
       }
       now += 2_000;
     }
-    const moved = await nextActiveRouteAfter(viewer, active.revision);
+    const moved = await completePreparedPeerMigration(
+      viewer,
+      unrelatedParent,
+      viewerAuth.peerId,
+      unrelatedParentAuth.peerId,
+      active.revision,
+      "quality_guard_probe",
+    );
     expect(acceptedParentEvidence).toHaveBeenCalledTimes(3);
     expect(moved.assignment.upstream).toEqual({
       kind: "peer",
@@ -3316,34 +3384,25 @@ describe("WebSocket signaling", () => {
       await correlateRelayChildFps(fixture, sequence, 10);
       now += 2_000;
     }
-    const moved = await nextActiveRouteAfter(
+    const moved = await completePreparedPeerMigration(
       fixture.child,
+      fixture.alternate,
+      fixture.childAuth.peerId,
+      fixture.alternateAuth.peerId,
       fixture.routeRevision,
+      "relative_peer_move_probe",
     );
     expect(moved.assignment.upstream).toEqual({
       kind: "peer",
       peerId: fixture.alternateAuth.peerId,
     });
 
-    const failedAlternateConnection = "relative_peer_move_failed_alternate";
-    fixture.alternate.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: fixture.childAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId: failedAlternateConnection,
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    await fixture.child.inbox.next("signal");
     fixture.child.socket.send(
       JSON.stringify({
         type: "route-failed",
         revision: moved.revision,
         phase: "active",
-        connectionId: failedAlternateConnection,
+        connectionId: "relative_peer_move_probe",
       }),
     );
     const recovered = await nextActiveRouteAfter(fixture.child, moved.revision);
@@ -3351,6 +3410,146 @@ describe("WebSocket signaling", () => {
       kind: "peer",
       peerId: fixture.parentAuth.peerId,
     });
+  });
+
+  it("skips an eligible Host and probes the later peer Viewer", async () => {
+    let now = 120_000;
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_skip_host",
+      () => now,
+      { alternateRelayCapacity: 1, hostFirstCandidate: true },
+    );
+    const advanceWindow = () => { now += 2_000; };
+    await confirmRelayChildSevere(
+      fixture,
+      fixture.child,
+      fixture.childConnectionId,
+      advanceWindow,
+    );
+    const hostRoute = fixture.host.inbox.next("route-update");
+    const moved = await completePreparedPeerMigration(
+      fixture.child,
+      fixture.alternate,
+      fixture.childAuth.peerId,
+      fixture.alternateAuth.peerId,
+      fixture.routeRevision,
+      "quality_skip_host_probe",
+    );
+    expect(await hostRoute).toMatchObject({
+      phase: "active",
+      revision: moved.revision,
+    });
+    expect(moved.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.alternateAuth.peerId,
+    });
+  });
+
+  it("keeps the old edge when only the Host is a capable alternate", async () => {
+    let now = 125_000;
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_only_host",
+      () => now,
+      { alternateRelayCapacity: 0, hostFirstCandidate: true },
+    );
+    const advanceWindow = () => { now += 2_000; };
+    await confirmRelayChildSevere(
+      fixture,
+      fixture.child,
+      fixture.childConnectionId,
+      advanceWindow,
+    );
+    await Promise.all([
+      expect(fixture.child.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
+      expect(fixture.host.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
+      expect(fixture.alternate.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
+    ]);
+  });
+
+  it("keeps the old edge when only the Host and an SFU root are capable", async () => {
+    let now = 128_000;
+    const harness = await startSfuHarness({
+      now: () => now,
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "quality_only_host_sfu_root",
+    );
+    active.viewer.socket.send(JSON.stringify({
+      type: "relay-capacity",
+      downstreamEdges: 2,
+    }));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const hostFiller = await openClient(harness.webSocketUrl);
+    const hostFillerAuth = peerAssisted(await authenticate(
+      hostFiller, harness.room, "viewer", "quality-host-filler", 0,
+    ));
+    expect(hostFillerAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.hostAuth.peerId,
+    });
+    const parent = await openClient(harness.webSocketUrl);
+    const parentAuth = peerAssisted(await authenticate(
+      parent, harness.room, "viewer", "quality-sfu-root-parent", 1,
+    ));
+    expect(parentAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.viewerAuth.peerId,
+    });
+    const rootFiller = await openClient(harness.webSocketUrl);
+    const rootFillerAuth = peerAssisted(await authenticate(
+      rootFiller, harness.room, "viewer", "quality-root-filler", 0,
+    ));
+    expect(rootFillerAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: active.viewerAuth.peerId,
+    });
+    const child = await openClient(harness.webSocketUrl);
+    const childAuth = peerAssisted(await authenticate(
+      child, harness.room, "viewer", "quality-sfu-root-child", 0,
+    ));
+    expect(childAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: parentAuth.peerId,
+    });
+
+    const parentConnectionId = "quality_sfu_root_parent_connection";
+    await sendTestOffer(
+      active.viewer,
+      parent,
+      parentAuth.peerId,
+      parentConnectionId,
+    );
+    const childConnectionId = "quality_sfu_root_child_connection";
+    await sendTestOffer(parent, child, childAuth.peerId, childConnectionId);
+    hostFiller.socket.close();
+    const hostFreed = await nextActiveRouteAfter(child, childAuth.routeRevision);
+    rootFiller.socket.close();
+    const rootFreed = await nextActiveRouteAfter(child, hostFreed.revision);
+    await Promise.all([
+      nextActiveRouteRevision(active.host, rootFreed.revision),
+      nextActiveRouteRevision(active.viewer, rootFreed.revision),
+      nextActiveRouteRevision(parent, rootFreed.revision),
+    ]);
+
+    for (let sequence = 0; sequence < 3; sequence += 1) {
+      child.socket.send(JSON.stringify(viewerQualityEvidenceWithMetrics(
+        childConnectionId,
+        rootFreed.revision,
+        sequence,
+        { framesDecodedDelta: 0 },
+      )));
+      await correlateParentEdgeQualityEvidence(parent);
+      now += 2_000;
+    }
+    await Promise.all([
+      expect(child.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
+      expect(active.host.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
+      expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out"),
+    ]);
   });
 
   it("keeps the old relay edge when relative FPS has no alternate peer", async () => {
@@ -3414,15 +3613,16 @@ describe("WebSocket signaling", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       now += 2_000;
     }
-    const prepare = await nextPreparedRoute(fixture.child);
-    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
-    expect(await fixture.child.inbox.next("sfu-config")).toMatchObject({
-      revision: prepare.revision,
-    });
-    expect(issuedSfuTokens).toBeGreaterThan(0);
+    await expect(
+      fixture.child.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+    await expect(
+      fixture.child.inbox.next("sfu-config", 40),
+    ).rejects.toThrow("Timed out");
+    expect(issuedSfuTokens).toBe(0);
   });
 
-  it("keeps severe SFU fallback when the second child quarantines a relay", async () => {
+  it("keeps a severe child on its old edge when no peer alternate exists", async () => {
     let now = 142_000;
     const fixture = await startRelayRelativeFpsFixture(
       "relay_parent_second_severe",
@@ -3440,11 +3640,12 @@ describe("WebSocket signaling", () => {
       advanceWindow,
     );
 
-    const prepare = await nextPreparedRoute(fixture.secondChild!);
-    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
-    expect(await fixture.secondChild!.inbox.next("sfu-config")).toMatchObject({
-      revision: prepare.revision,
-    });
+    await expect(
+      fixture.secondChild!.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+    await expect(
+      fixture.secondChild!.inbox.next("sfu-config", 40),
+    ).rejects.toThrow("Timed out");
   });
 
   it("gives a severe trigger the sole alternate before evacuating siblings", async () => {
@@ -3478,9 +3679,13 @@ describe("WebSocket signaling", () => {
       advanceWindow,
     );
 
-    const triggerMoved = await nextActiveRouteAfter(
+    const triggerMoved = await completePreparedPeerMigration(
       fixture.secondChild!,
+      fixture.alternate,
+      fixture.secondChildAuth!.peerId,
+      fixture.alternateAuth.peerId,
       fixture.routeRevision,
+      "relay_parent_severe_peer_probe",
     );
     expect(triggerMoved.assignment.upstream).toEqual({
       kind: "peer",
@@ -3497,26 +3702,15 @@ describe("WebSocket signaling", () => {
     expect(issuedSfuTokens).toBe(0);
   });
 
-  it("keeps quarantine stable while severe fallback waits on selected TURN", async () => {
+  it("does not escalate soft quality recovery to SFU or selected TURN", async () => {
     let now = 144_500;
-    let releaseTokens!: () => void;
-    let markTokenStarted!: () => void;
-    const tokenBarrier = new Promise<void>((resolve) => {
-      releaseTokens = resolve;
-    });
-    const tokenStarted = new Promise<void>((resolve) => {
-      markTokenStarted = resolve;
-    });
+    let issuedSfuTokens = 0;
     const fixture = await startRelayRelativeFpsFixture(
       "relay_parent_severe_selected_turn",
       () => now,
       {
         alternateRelayCapacity: 0,
-        issueSfuToken: async () => {
-          markTokenStarted();
-          await tokenBarrier;
-          throw new Error("offline");
-        },
+        onSfuTokenIssue: () => { issuedSfuTokens += 1; },
         secondChild: true,
         selectedEdgeTurn: true,
         sfu: true,
@@ -3532,52 +3726,13 @@ describe("WebSocket signaling", () => {
       fixture.secondChildConnectionId,
       advanceWindow,
     );
-    await tokenStarted;
-
-    const takeoverConnectionId = "relay_parent_selected_turn_takeover";
-    await sendTestOffer(
-      fixture.parent,
-      fixture.secondChild!,
-      fixture.secondChildAuth!.peerId,
-      takeoverConnectionId,
-    );
-    fixture.secondChild!.socket.send(JSON.stringify({
-      type: "route-failed",
-      revision: fixture.routeRevision,
-      phase: "active",
-      connectionId: takeoverConnectionId,
-    }));
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    releaseTokens();
-
-    const [viewerGrant, parentGrant] = await Promise.all([
-      fixture.secondChild!.inbox.next("selected-edge-turn"),
-      fixture.parent.inbox.next("selected-edge-turn"),
-    ]);
-    expect(parentGrant).toEqual(viewerGrant);
-    expect(viewerGrant).toMatchObject({
-      parentPeerId: fixture.parentAuth.peerId,
-      viewerPeerId: fixture.secondChildAuth!.peerId,
-      oldConnectionId: takeoverConnectionId,
-    });
-    await Promise.all([
-      nextActiveRouteRevision(fixture.child, viewerGrant.revision),
-      nextActiveRouteRevision(fixture.secondChild!, viewerGrant.revision),
-    ]);
-
-    fixture.alternate.socket.send(JSON.stringify({
-      type: "relay-capacity",
-      downstreamEdges: 1,
-    }));
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    await Promise.all([
-      expect(fixture.child.inbox.next("route-update", 40)).rejects.toThrow(
-        "Timed out",
-      ),
-      expect(fixture.secondChild!.inbox.next("route-update", 40)).rejects.toThrow(
-        "Timed out",
-      ),
-    ]);
+    await expect(
+      fixture.secondChild!.inbox.next("sfu-config", 40),
+    ).rejects.toThrow("Timed out");
+    await expect(
+      fixture.secondChild!.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+    expect(issuedSfuTokens).toBe(0);
   });
 
   it("quarantines a relay only after two children and restores it lazily", async () => {
@@ -3666,9 +3821,13 @@ describe("WebSocket signaling", () => {
       now += 2_000;
     };
     await confirmRelayParentChildRelativeFps(fixture, 0, advanceWindow);
-    const firstMoved = await nextActiveRouteAfter(
+    const firstMoved = await completePreparedPeerMigration(
       fixture.child,
+      fixture.alternate,
+      fixture.childAuth.peerId,
+      fixture.alternateAuth.peerId,
       fixture.routeRevision,
+      "relay_parent_peer_only_probe",
     );
     expect(firstMoved.assignment.upstream).toEqual({
       kind: "peer",
@@ -3704,26 +3863,13 @@ describe("WebSocket signaling", () => {
     ).rejects.toThrow("Timed out");
   });
 
-  it("defers quarantine evacuation until a pending severe SFU prepare commits", async () => {
+  it("allows only one peer quality migration per room", async () => {
     let now = 200_000;
-    let releaseTokens!: () => void;
-    let markTokenStarted!: () => void;
-    const tokenBarrier = new Promise<void>((resolve) => {
-      releaseTokens = resolve;
-    });
-    const tokenStarted = new Promise<void>((resolve) => {
-      markTokenStarted = resolve;
-    });
     const fixture = await startRelayRelativeFpsFixture(
       "relay_parent_pending_severe",
       () => now,
       {
-        alternateRelayCapacity: 0,
-        issueSfuToken: async (peerId) => {
-          markTokenStarted();
-          await tokenBarrier;
-          return `token-${peerId}`;
-        },
+        alternateRelayCapacity: 1,
         secondChild: true,
         sfu: true,
       },
@@ -3737,53 +3883,34 @@ describe("WebSocket signaling", () => {
       fixture.childConnectionId,
       advanceWindow,
     );
-    await tokenStarted;
-
-    fixture.alternate.socket.send(JSON.stringify({
-      type: "relay-capacity",
-      downstreamEdges: 2,
-    }));
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await confirmRelayChildSevere(
       fixture,
       fixture.secondChild!,
       fixture.secondChildConnectionId,
       advanceWindow,
     );
-    releaseTokens();
-
-    const [hostPrepare, parentPrepare, childPrepare] = await Promise.all([
-      nextPreparedRoute(fixture.host),
-      nextPreparedRoute(fixture.parent),
-      nextPreparedRoute(fixture.child),
-    ]);
-    await Promise.all([
-      fixture.host.inbox.next("sfu-config"),
-      fixture.parent.inbox.next("sfu-config"),
-      fixture.child.inbox.next("sfu-config"),
-    ]);
-    expect(parentPrepare.revision).toBe(childPrepare.revision);
-    expect(hostPrepare.revision).toBe(childPrepare.revision);
-    for (const client of [fixture.host, fixture.parent, fixture.child]) {
-      client.socket.send(JSON.stringify({
-        type: "route-ready",
-        revision: childPrepare.revision,
-        phase: "prepare",
-      }));
-    }
-
-    const childActive = await nextActiveRouteRevision(
+    await expect(
+      fixture.secondChild!.inbox.next("route-update", 40),
+    ).rejects.toThrow("Timed out");
+    const childActive = await completePreparedPeerMigration(
       fixture.child,
-      childPrepare.revision,
+      fixture.alternate,
+      fixture.childAuth.peerId,
+      fixture.alternateAuth.peerId,
+      fixture.routeRevision,
+      "relay_parent_pending_probe",
     );
-    expect(childActive.assignment.upstream).toEqual({ kind: "sfu" });
-    const siblingMoved = await nextActiveRouteAfter(
-      fixture.secondChild!,
-      childPrepare.revision,
-    );
-    expect(siblingMoved.assignment.upstream).toEqual({
+    expect(childActive.assignment.upstream).toEqual({
       kind: "peer",
       peerId: fixture.alternateAuth.peerId,
+    });
+    const siblingStayed = await nextActiveRouteRevision(
+      fixture.secondChild!,
+      childActive.revision,
+    );
+    expect(siblingStayed.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
     });
   });
 
@@ -3807,9 +3934,13 @@ describe("WebSocket signaling", () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await confirmRelayParentChildRelativeFps(fixture, 1, advanceWindow);
 
-    const secondMoved = await nextActiveRouteAfter(
+    const secondMoved = await completePreparedPeerMigration(
       secondChild,
+      fixture.alternate,
+      fixture.secondChildAuth!.peerId,
+      fixture.alternateAuth.peerId,
       fixture.routeRevision,
+      "relay_parent_stale_gap_probe",
     );
     expect(secondMoved.assignment.upstream).toEqual({
       kind: "peer",
@@ -3880,9 +4011,13 @@ describe("WebSocket signaling", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       await confirmRelayParentChildRelativeFps(fixture, 1, advanceWindow);
 
-      const secondMoved = await nextActiveRouteAfter(
+      const secondMoved = await completePreparedPeerMigration(
         secondChild,
+        fixture.alternate,
+        fixture.secondChildAuth!.peerId,
+        fixture.alternateAuth.peerId,
         fixture.routeRevision,
+        `${prefix}_probe`,
       );
       expect(secondMoved.assignment.upstream).toEqual({
         kind: "peer",
@@ -4067,7 +4202,7 @@ describe("WebSocket signaling", () => {
     },
   );
 
-  it("keeps severe zero-decode quality fallback eligible for SFU", async () => {
+  it("keeps severe zero-decode quality on the old edge without an alternate", async () => {
     let now = 190_000;
     const harness = await startSfuHarness({
       now: () => now,
@@ -4107,11 +4242,12 @@ describe("WebSocket signaling", () => {
       await correlateParentEdgeQualityEvidence(host);
       now += 2_000;
     }
-    const prepare = await nextPreparedRoute(viewer);
-    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
-    expect(await viewer.inbox.next("sfu-config")).toMatchObject({
-      revision: prepare.revision,
-    });
+    await expect(viewer.inbox.next("route-update", 40)).rejects.toThrow(
+      "Timed out",
+    );
+    await expect(viewer.inbox.next("sfu-config", 40)).rejects.toThrow(
+      "Timed out",
+    );
     expect(hostAuth.routeAssignment.upstream).toEqual({ kind: "none" });
   });
 
@@ -4341,9 +4477,13 @@ describe("WebSocket signaling", () => {
       packetsSentDelta: 1_500,
       reason: "cpu",
     });
-    const movedRoot = await nextActiveRouteAfter(
+    const movedRoot = await completePreparedPeerMigration(
       subtreeRoot,
+      alternateParent,
+      subtreeRootAuth.peerId,
+      alternateParentAuth.peerId,
       subtreeLeafAuth.routeRevision,
+      "quality_route_probe",
     );
     expect(movedRoot.assignment.upstream).toEqual({
       kind: "peer",
@@ -4506,10 +4646,7 @@ describe("WebSocket signaling", () => {
     await expect(viewer.inbox.next("error", 40)).rejects.toThrow("Timed out");
     now += 2_000;
     await sendBadWindow(4);
-    expect(await viewer.inbox.next("error")).toMatchObject({
-      code: "PEER_NOT_FOUND",
-      message: "No media fallback route is available",
-    });
+    await expect(viewer.inbox.next("error", 40)).rejects.toThrow("Timed out");
     expect(viewerAuth.routeAssignment.upstream).toEqual({
       kind: "peer",
       peerId: hostAuth.peerId,
@@ -4579,216 +4716,157 @@ describe("WebSocket signaling", () => {
     now += 2_000;
     sendBadC(4);
     await correlateParentEdgeQualityEvidence(host);
-    expect(await viewer.inbox.next("error")).toMatchObject({
-      code: "PEER_NOT_FOUND",
-      message: "No media fallback route is available",
-    });
+    await expect(viewer.inbox.next("error", 40)).rejects.toThrow("Timed out");
     expect(viewerAuth.routeAssignment.upstream).toEqual({
       kind: "peer",
       peerId: hostAuth.peerId,
     });
   });
 
-  it("keeps a pending quality SFU prepare after the same intent becomes a real failure", async () => {
+  it("keeps the old edge when a peer quality probe fails", async () => {
     let now = 250_000;
-    let releaseTokens!: () => void;
-    let markTokenStarted!: () => void;
-    const tokenBarrier = new Promise<void>((resolve) => {
-      releaseTokens = resolve;
-    });
-    const tokenStarted = new Promise<void>((resolve) => {
-      markTokenStarted = resolve;
-    });
-    const harness = await startSfuHarness({
-      now: () => now,
-      tokenIssuer: {
-        async issueToken(request) {
-          markTokenStarted();
-          await tokenBarrier;
-          return `token-${request.peerId}`;
-        },
-      },
-    });
-    const host = await openClient(harness.webSocketUrl);
-    peerAssisted(
-      await authenticate(host, harness.room, "host", "quality-takeover-host"),
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_probe_failure",
+      () => now,
+      { alternateRelayCapacity: 1 },
     );
-    const viewer = await openClient(harness.webSocketUrl);
-    const viewerAuth = peerAssisted(
-      await authenticate(
-        viewer,
-        harness.room,
-        "viewer",
-        "quality-takeover-viewer",
-      ),
+    const advanceWindow = () => { now += 2_000; };
+    await confirmRelayChildSevere(
+      fixture,
+      fixture.child,
+      fixture.childConnectionId,
+      advanceWindow,
     );
-    await nextActiveRouteRevision(host, viewerAuth.routeRevision);
-    host.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: viewerAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId: "quality_takeover_connection",
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
+    const [viewerPrepare, parentPrepare] = await Promise.all([
+      nextPreparedRoute(fixture.child),
+      nextPreparedRoute(fixture.alternate),
+    ]);
+    expect(parentPrepare.revision).toBe(viewerPrepare.revision);
+    await sendTestOffer(
+      fixture.parent,
+      fixture.child,
+      fixture.childAuth.peerId,
+      fixture.childConnectionId,
     );
-    await viewer.inbox.next("signal");
-    for (let sequence = 0; sequence < 3; sequence += 1) {
-      viewer.socket.send(
-        JSON.stringify(
-          viewerQualityEvidenceWithMetrics(
-            "quality_takeover_connection",
-            viewerAuth.routeRevision,
-            sequence,
-            { framesDecodedDelta: 0 },
-          ),
-        ),
-      );
-      await correlateParentEdgeQualityEvidence(host);
-      now += 2_000;
-    }
-    await tokenStarted;
-
-    viewer.socket.send(
-      JSON.stringify({
-        type: "route-failed",
-        revision: viewerAuth.routeRevision,
-        phase: "active",
-        connectionId: "quality_takeover_connection",
-      }),
+    const probeConnectionId = "quality_probe_failure_candidate";
+    await sendTestOffer(
+      fixture.alternate,
+      fixture.child,
+      fixture.childAuth.peerId,
+      probeConnectionId,
     );
-    viewer.socket.send(
-      JSON.stringify({
-        type: "set-quality-settings",
-        qualitySettings: defaultQualitySettings,
-      }),
+    fixture.child.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: viewerPrepare.revision,
+      phase: "prepare",
+      connectionId: probeConnectionId,
+    }));
+    const rollback = await nextActiveRouteAfter(
+      fixture.child,
+      viewerPrepare.revision,
     );
-    expect(await viewer.inbox.next("error")).toMatchObject({
-      code: "FORBIDDEN",
+    expect(rollback.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
     });
-    releaseTokens();
-
-    const prepare = await nextPreparedRoute(viewer);
-    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
-    expect(await viewer.inbox.next("sfu-config")).toMatchObject({
-      revision: prepare.revision,
-    });
+    await sendTestOffer(
+      fixture.parent,
+      fixture.child,
+      fixture.childAuth.peerId,
+      "quality_probe_failure_old_edge",
+    );
   });
 
-  it("aborts a quality SFU prepare after next-generation C removes its intent", async () => {
+  it("keeps the old edge when a peer quality probe times out", async () => {
     let now = 300_000;
-    let releaseTokens!: () => void;
-    let holdTokens = true;
-    const tokenBarrier = new Promise<void>((resolve) => {
-      releaseTokens = resolve;
-    });
-    const harness = await startSfuHarness({
-      now: () => now,
-      tokenIssuer: {
-        async issueToken(request) {
-          if (holdTokens) {
-            await tokenBarrier;
-          }
-          return `token-${request.peerId}`;
-        },
+    let issuedSfuTokens = 0;
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_probe_timeout",
+      () => now,
+      {
+        alternateRelayCapacity: 1,
+        onSfuTokenIssue: () => { issuedSfuTokens += 1; },
+        prepareTimeoutMs: 20,
+        sfu: true,
       },
-    });
-    const host = await openClient(harness.webSocketUrl);
-    const hostAuth = peerAssisted(
-      await authenticate(host, harness.room, "host", "quality-guard-host"),
     );
-    const viewer = await openClient(harness.webSocketUrl);
-    const viewerAuth = peerAssisted(
-      await authenticate(
-        viewer,
-        harness.room,
-        "viewer",
-        "quality-guard-viewer",
-      ),
+    const advanceWindow = () => { now += 2_000; };
+    await confirmRelayChildSevere(
+      fixture,
+      fixture.child,
+      fixture.childConnectionId,
+      advanceWindow,
     );
-    await nextActiveRouteRevision(host, viewerAuth.routeRevision);
-
-    host.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: viewerAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId: "quality_guard_original",
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
+    const [viewerPrepare, parentPrepare] = await Promise.all([
+      nextPreparedRoute(fixture.child),
+      nextPreparedRoute(fixture.alternate),
+    ]);
+    expect(parentPrepare.revision).toBe(viewerPrepare.revision);
+    await sendTestOffer(
+      fixture.parent,
+      fixture.child,
+      fixture.childAuth.peerId,
+      fixture.childConnectionId,
     );
-    await viewer.inbox.next("signal");
-    for (let sequence = 0; sequence < 3; sequence += 1) {
-      viewer.socket.send(
-        JSON.stringify(
-          viewerQualityEvidenceWithMetrics(
-            "quality_guard_original",
-            viewerAuth.routeRevision,
-            sequence,
-            { framesDecodedDelta: 0 },
-          ),
-        ),
-      );
-      await correlateParentEdgeQualityEvidence(host);
-      now += 2_000;
-    }
-
-    host.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: viewerAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId: "quality_guard_replaced",
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    await viewer.inbox.next("signal");
-    viewer.socket.send(
-      JSON.stringify(
-        viewerQualityEvidence(
-          "quality_guard_replaced",
-          viewerAuth.routeRevision,
-          0,
-        ),
-      ),
-    );
-    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
-      guard: { connectionId: "quality_guard_replaced" },
-      sequence: 0,
-    });
-    holdTokens = false;
-    releaseTokens();
-
     const rollback = await nextActiveRouteAfter(
-      viewer,
-      viewerAuth.routeRevision,
+      fixture.child,
+      viewerPrepare.revision,
     );
-    expect(rollback.assignment).toMatchObject({
-      upstream: { kind: "peer", peerId: hostAuth.peerId },
-      sfuPublicationGeneration: null,
+    expect(rollback.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
     });
-    await expect(viewer.inbox.next("sfu-config", 40)).rejects.toThrow(
+    await expect(fixture.child.inbox.next("sfu-config", 40)).rejects.toThrow(
       "Timed out",
     );
+    expect(issuedSfuTokens).toBe(0);
+  });
 
-    viewer.socket.send(
-      JSON.stringify({
-        type: "route-failed",
-        revision: rollback.revision,
-        phase: "active",
-        connectionId: "quality_guard_replaced",
-      }),
+  it("lets another viewer hard failure preempt a soft peer probe", async () => {
+    let now = 320_000;
+    const fixture = await startRelayRelativeFpsFixture(
+      "quality_probe_hard_preemption",
+      () => now,
+      { alternateRelayCapacity: 1, secondChild: true },
     );
-    const prepare = await nextPreparedRoute(viewer);
-    expect(prepare.assignment.upstream).toEqual({ kind: "sfu" });
-    expect(await viewer.inbox.next("sfu-config")).toMatchObject({
-      revision: prepare.revision,
+    const advanceWindow = () => { now += 2_000; };
+    await confirmRelayChildSevere(
+      fixture,
+      fixture.child,
+      fixture.childConnectionId,
+      advanceWindow,
+    );
+    const [viewerPrepare, parentPrepare] = await Promise.all([
+      nextPreparedRoute(fixture.child),
+      nextPreparedRoute(fixture.alternate),
+    ]);
+    expect(parentPrepare.revision).toBe(viewerPrepare.revision);
+
+    fixture.secondChild!.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: fixture.routeRevision,
+      phase: "active",
+      connectionId: fixture.secondChildConnectionId,
+    }));
+    const [softRollback, candidateRollback, hardRollback] = await Promise.all([
+      nextActiveRouteAfter(fixture.child, viewerPrepare.revision),
+      nextActiveRouteAfter(fixture.alternate, viewerPrepare.revision),
+      nextActiveRouteAfter(fixture.secondChild!, viewerPrepare.revision),
+    ]);
+    expect(softRollback.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.parentAuth.peerId,
+    });
+    expect(candidateRollback.revision).toBe(softRollback.revision);
+    expect(hardRollback.revision).toBe(softRollback.revision);
+
+    const hardMoved = await nextActiveRouteAfter(
+      fixture.secondChild!,
+      hardRollback.revision,
+    );
+    expect(hardMoved.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: fixture.alternateAuth.peerId,
     });
   });
 
