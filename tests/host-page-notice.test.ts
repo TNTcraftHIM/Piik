@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   shouldPauseLocalPreview,
   sourceSwitchNotice,
+  videoCodecLockNotice,
 } from "../src/client/pages/host-page-notices.ts";
 
 describe("shouldPauseLocalPreview", () => {
@@ -42,5 +43,19 @@ describe("sourceSwitchNotice", () => {
         sfuWarning: null,
       }),
     ).toBe("分享来源已切换");
+  });
+});
+
+describe("videoCodecLockNotice", () => {
+  it("explains why codec controls are locked during a share", () => {
+    expect(videoCodecLockNotice("starting")).toBe(
+      "本次分享的编码已锁定，停止分享后可修改",
+    );
+    expect(videoCodecLockNotice("live")).toBe(
+      "本次分享的编码已锁定，停止分享后可修改",
+    );
+    for (const phase of ["idle", "ended", "error"]) {
+      expect(videoCodecLockNotice(phase)).toBeNull();
+    }
   });
 });

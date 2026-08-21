@@ -101,6 +101,7 @@ import {
 import {
   shouldPauseLocalPreview,
   sourceSwitchNotice,
+  videoCodecLockNotice,
 } from "./host-page-notices";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
@@ -1525,6 +1526,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         }).format(new Date(room.expiresAt))} 过期`
       : "长期有效"
     : null;
+  const codecLockNotice = videoCodecLockNotice(phase);
 
   return (
     <div className="app-shell">
@@ -1940,7 +1942,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       ))}
                     </div>
                   </fieldset>
-                  <fieldset className="control-group quality-priority">
+                  <fieldset
+                    className="control-group quality-priority"
+                    aria-describedby={
+                      codecLockNotice ? "video-codec-lock-notice" : undefined
+                    }
+                  >
                     <legend>视频编码</legend>
                     <div className="segmented-control">
                       {(
@@ -1972,6 +1979,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         </button>
                       ))}
                     </div>
+                    {codecLockNotice && (
+                      <p id="video-codec-lock-notice" className="control-note">
+                        {codecLockNotice}
+                      </p>
+                    )}
                   </fieldset>
                   <button
                     className="button button-secondary"

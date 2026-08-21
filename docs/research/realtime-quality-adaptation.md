@@ -209,6 +209,12 @@ does not prove shared encode: separate browser PeerConnections may construct
 separate encoders, and the SFU still publishes only the configured `q,h`
 representations.
 
+The retained follow-up is one direct-Viewer comparison using existing stats,
+not a new benchmark: actual codec/profile, encoder implementation, power
+efficiency, source/send/receive FPS, encode time and limitation reason. It must
+distinguish software fallback from a hardware queue or driver limit before any
+H.264-specific policy changes.
+
 Open-source distribution is not itself a patent-license exemption. This Web
 change only requests a codec already implemented by the browser/LiveKit path and
 ships no H.264 codec binary or new codec dependency, so licensing uncertainty is
