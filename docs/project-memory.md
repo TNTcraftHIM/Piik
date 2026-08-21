@@ -31,7 +31,7 @@ Last updated: 2026-08-21
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
-- Screen audio is route-consistent stereo: Viewer `stereo=1`; SFU uses 128 kbps stereo/`forceStereo`, DTX off, RED retained. Other SDP stays browser-generated; congestion/FEC and stream remain. Production proof open; no audio UI; voice separate. Native audio source-only.
+- Screen audio: peer answers use `stereo=1;maxaveragebitrate=128000`; SFU uses 128 kbps stereo/`forceStereo`, DTX off, RED retained. Other SDP/FEC stays browser-owned; one stream; production proof open; no audio UI; voice separate; Native source-only.
 - Presence reports exact active upstream and feeds Host topology; it does not prove media. Status and details stay neutral until local/current media evidence, then label P2P/SFU and actual TURN; append its protocol only from local relay stats. Web Host names stay socket/localStorage-only; Native remains outside the boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.

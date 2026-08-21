@@ -1,5 +1,15 @@
 import { parse, parsePayloads, write } from "sdp-transform";
 
+import { SCREEN_AUDIO_MAX_BITRATE } from "../media/quality";
+
+const OPUS_RECEIVE_PREFERENCES = {
+  stereo: "1",
+  maxaveragebitrate: String(SCREEN_AUDIO_MAX_BITRATE),
+} as const;
+const OPUS_RECEIVE_FMTP = Object.entries(OPUS_RECEIVE_PREFERENCES)
+  .map(([name, value]) => `${name}=${value}`)
+  .join(";");
+
 export function preferScreenAudioStereo(
   answer: RTCSessionDescriptionInit,
 ): RTCSessionDescriptionInit {
@@ -41,13 +51,13 @@ export function preferScreenAudioStereo(
       return answer;
     }
     if (formats[0]) {
-      const config = upsertStereo(formats[0].config);
+      const config = upsertOpusReceivePreferences(formats[0].config);
       if (config === null) {
         return answer;
       }
       formats[0].config = config;
     } else {
-      audio.fmtp.push({ payload, config: "stereo=1" });
+      audio.fmtp.push({ payload, config: OPUS_RECEIVE_FMTP });
     }
 
     const sdp = write(session);
@@ -57,25 +67,31 @@ export function preferScreenAudioStereo(
   }
 }
 
-function upsertStereo(config: string): string | null {
+function upsertOpusReceivePreferences(config: string): string | null {
   const parameters = config.split(";").map((parameter) => parameter.trim());
-  let stereoIndex = -1;
+  const preferenceIndexes = new Map<string, number>();
   for (const [index, parameter] of parameters.entries()) {
     const equals = parameter.indexOf("=");
     if (equals <= 0 || equals === parameter.length - 1) {
       return null;
     }
-    if (parameter.slice(0, equals).trim().toLowerCase() === "stereo") {
-      if (stereoIndex !== -1) {
+    const name = parameter.slice(0, equals).trim().toLowerCase();
+    if (Object.hasOwn(OPUS_RECEIVE_PREFERENCES, name)) {
+      if (preferenceIndexes.has(name)) {
         return null;
       }
-      stereoIndex = index;
+      preferenceIndexes.set(name, index);
     }
   }
-  if (stereoIndex === -1) {
-    parameters.push("stereo=1");
-  } else {
-    parameters[stereoIndex] = "stereo=1";
+
+  for (const [name, value] of Object.entries(OPUS_RECEIVE_PREFERENCES)) {
+    const parameter = `${name}=${value}`;
+    const index = preferenceIndexes.get(name);
+    if (index === undefined) {
+      parameters.push(parameter);
+    } else {
+      parameters[index] = parameter;
+    }
   }
   return parameters.join(";");
 }
