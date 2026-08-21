@@ -27,7 +27,7 @@ Last updated: 2026-08-22
 - Web defaults to browser/LiveKit codec negotiation; advanced settings offer Automatic, H.264, or VP8 for the next share while retaining fallback codecs and `backupCodec=false`. A codec choice neither proves hardware encoding nor shared encode. ADR-0006's browser bridge remains no-go.
 - Mobile endpoints are Web Viewer-only. Current Android/iOS browsers do not expose Web Host capture; AirPlay/system mirroring is Viewer-local output.
 - ADR-0005: direct/peer UDP -> bounded SFU roots -> selected-edge TURN. The deployed controller caps pending/answered `peer-selected` at one per room; Host ingress is independent. A pre-`ecc794d` exact-source/production-media canary proves active Host ingress only. Ordinary peers stay STUN-only.
-- `PEER_ASSISTED_MEDIA=true` enables isolated all-room controllers; room `1` is historical. Keep sticky P2P and one recovery attempt per layer. Deployed healthy-SFU MBB covers one root and retained parent after reauth/recovery, gated by media proof, Host2/browser1 overlap and cooldown. It excludes `peer-selected`; active-SFU loss aborts into normal recovery. Capacity `0 -> 1`, multi-root and browser gates remain open.
+- `PEER_ASSISTED_MEDIA=true` enables all-room controllers; room `1` is historical. One-root healthy-SFU MBB is deployed with retained parent, media proof, Host2/browser1 overlap and cooldown. A cooldown-time ready is retained; expiry needs two fresh windows. It excludes `peer-selected`; active-SFU loss uses normal recovery. Capacity `0 -> 1`, multi-root and browser gates remain open.
 - C+B reparenting stays edge-local: severe uses fallback; relative relay FPS uses fresh parent evidence and peers only. No scoring or global penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
@@ -43,7 +43,7 @@ Last updated: 2026-08-22
 ## Current Implementation
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
-- Production: exact `25b725fdfcccc181a22ef020d77f5668470ba636`, release `25b725fdfccc`, Web wire `screener-v4`.
+- Production: exact `27ad90ddf9f85d0a88a7d06fd366461622653649`, release `27ad90ddf9f8`, Web wire `screener-v4`.
 - Web keeps one SFU stream, clears unavailable video, exposes evidence-backed routes/transports and paused preview, and drops signals to a grace-retained offline current-edge target. Routing is automatic; entry/nickname UI is live; Native remains source-only.
 - Web relay is cap2 with one upstream; child3 rejects and no UA/visibility split exists.
 - Deployed relay evidence reaches opted-in Host rosters; direct proof stays local-edge-only.

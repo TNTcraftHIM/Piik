@@ -5203,8 +5203,12 @@ describe("WebSocket signaling", () => {
     expect(hostRecovery.assignment.sfuPublicationGeneration).toBeTruthy();
   });
 
-  it("rolls a failed healthy probe back to SFU and applies room cooldown", async () => {
+  it("rolls back and reasserts one healthy ready after room cooldown", async () => {
     let now = 50_000;
+    const reselections = vi.spyOn(
+      HybridMediaRouter.prototype,
+      "handleHealthySfuReselection",
+    );
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
       prepareTimeoutMs: 200,
@@ -5244,9 +5248,48 @@ describe("WebSocket signaling", () => {
     expect(rootRollback.assignment.upstream).toEqual({ kind: "sfu" });
     expect(hostRollback.assignment.sfuPublicationGeneration).toBeTruthy();
 
-    requestHealthyReselection(active.viewer, rootRollback.revision);
-    await expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
-    now += 30_001;
+    const router = reselections.mock.instances.at(-1) as
+      | HybridMediaRouter
+      | undefined;
+    const currentViewer = harness.roomStore.getConnectedViewer(
+      harness.room.roomId,
+      active.viewerAuth.peerId,
+    );
+    expect(router).toBeDefined();
+    expect(currentViewer).toBeDefined();
+    const deferredState = (router as unknown as {
+      deferredHealthySfuReselections: Map<
+        string,
+        { timer: NodeJS.Timeout | null }
+      >;
+    }).deferredHealthySfuReselections;
+    vi.useFakeTimers();
+    try {
+      router!.handleHealthySfuReselection(
+        {
+          roomId: harness.room.roomId,
+          role: "viewer",
+          peerId: active.viewerAuth.peerId,
+          sessionId: currentViewer!.sessionId,
+        },
+        rootRollback.revision,
+      );
+      const deferred = deferredState.get(harness.room.roomId);
+      expect(deferred?.timer?.hasRef()).toBe(false);
+
+      now += 30_001;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await active.viewer.inbox.next("route-update")).toMatchObject({
+        revision: rootRollback.revision,
+        phase: "active",
+        assignment: { upstream: { kind: "sfu" } },
+      });
+    } finally {
+      vi.useRealTimers();
+      reselections.mockRestore();
+    }
+
+    // The real Viewer re-proves two fresh stats windows before this second ready.
     requestHealthyReselection(active.viewer, rootRollback.revision);
     const retried = await nextPreparedRoute(active.viewer);
     expect(retried.assignment.upstream).toEqual({
@@ -5255,6 +5298,20 @@ describe("WebSocket signaling", () => {
     });
     const timedOut = await nextActiveRouteAfter(active.viewer, retried.revision);
     expect(timedOut.assignment.upstream).toEqual({ kind: "sfu" });
+
+    router!.handleHealthySfuReselection(
+      {
+        roomId: harness.room.roomId,
+        role: "viewer",
+        peerId: active.viewerAuth.peerId,
+        sessionId: currentViewer!.sessionId,
+      },
+      timedOut.revision,
+    );
+    expect(deferredState.has(harness.room.roomId)).toBe(true);
+    active.host.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    await active.viewer.inbox.next("sharing-stopped");
+    expect(deferredState.has(harness.room.roomId)).toBe(false);
   });
 
   it("does not swallow active SFU loss while a healthy probe is pending", async () => {

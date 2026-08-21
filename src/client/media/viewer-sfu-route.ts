@@ -84,6 +84,10 @@ export class ViewerSfuRoute {
     if (result === "stale") {
       return result;
     }
+    const rearmHealthySfu =
+      result === "duplicate" &&
+      update.phase === "active" &&
+      update.assignment.upstream.kind === "sfu";
     if (previousRevision !== update.revision) {
       this.recovery = null;
       this.peerProbeRevision = null;
@@ -120,6 +124,9 @@ export class ViewerSfuRoute {
       return result;
     }
     void this.queueActiveRoute(token, acknowledge);
+    if (rearmHealthySfu) {
+      this.armHealthySfuReselection(update.revision);
+    }
     return result;
   }
 
