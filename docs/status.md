@@ -5,7 +5,7 @@ Last updated: 2026-08-21
 ## Phase
 
 Production at `https://share.bonfire.icu` is exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767`; artifact 1,027,423 bytes, SHA-256 `74e0274ab11a162cb9dd4be1c34bb6b639e2ea76005969c30ae3a1daa656742f`.
-Cutover: 10,238 ms lock/641 ms stop-health/570 ms switch-health; SQLite v3/five rooms/four active services, observed `NRestarts=0`. Initial Host-ingress retry is deployed; Android remains source-only.
+Cutover: 10,238 ms lock/641 ms stop-health/570 ms switch-health; SQLite v3/five rooms/four active services, observed `NRestarts=0`. Initial Host-ingress retry is deployed; mobile endpoints are Web Viewer-only.
 Ordinary ICE is STUN-only; all rooms use the bounded peer/SFU-UDP controller and selected-edge UDP TTL 120. Room `1` is historical smoke; production SFU/TURN media remains unverified.
 Web names/audio hint are deployed. Native WGC/MF/package is source-only; Web defaults VP8.
 
@@ -43,7 +43,7 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 ## Unverified Boundaries
 
 - The `16f6eab` deploy proves process/config health only; production SFU frames, initial/active retry/failback, relay pair, admission rescue, caps, quality, and resource evidence remain open. Game-share load/blur is unclassified.
-- Mobile Web Host unsupported; Viewer leaf-only. Android 14+ direct source/default-off selected-UID audio passed six protocol tests/`assembleDebug`. No device/audible claim; mediaProjection-only background, opt-out/silence/A-V, SFU/rotation remain open. iOS deferred; TV output P2.
+- Mobile remains Viewer leaf-only. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - The former release reportedly sustained bandwidth-limited blur on a capable LAN; Host refresh recovered while Viewer refresh did not. The new deployment has not yet reproduced or cleared it.
 - ADR-0006 has one Viewer proof; two-edge/FIFO, hardware, endurance, public/downloaded-package, and browser-diversity proof remain open.

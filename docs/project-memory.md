@@ -5,7 +5,7 @@ Last updated: 2026-08-21
 ## Confirmed Intent
 
 - Build low-latency game sharing for one broadcaster and trusted friends; public or large broadcasts belong on OBS/Twitch-class services.
-- Viewers join from normal desktop/mobile browsers. Native senders may improve capture/audio without changing the Web viewer requirement.
+- Browser first. Viewers use desktop/mobile Web; an optional sender requires a proven browser capability gap.
 - Use a small central service for access, rooms, signaling, deterministic topology, STUN, observability, and bounded SFU-root capacity.
 - Minimize server bandwidth. Ordinary peer ICE is STUN-only. Failure tries restart, rebuild, alternate peer and bounded SFU/UDP roots; only then may the controller authorize short-lived TURN for one selected exceptional edge before clear failure. TURN is transport, not topology.
 - Non-server nodes have at most two downstream edges; browser relays stay at one until resource gates pass. SFU normally feeds one or two roots that retain peer descendants; separately capped server edges may serve exceptional viewers that cannot attach behind a healthy root.
@@ -24,7 +24,7 @@ Last updated: 2026-08-21
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
 - Keep experiments bounded: the standard representation sequence is below; native RTP relay, encoded-object striping, and FEC remain separate.
 - ADR-0006's historical browser-bridge canary remains no-go; VP8 stays default. Browser H.264 rendered 298/299; Native WGC/MF rendered 203 with PID/LUID-correlated `VideoEncode`. Downloaded use, multi-viewer/endurance/public proof remain open.
-- Mobile Web Host unsupported. Android 14+ source has video and default-off selected-UID playback audio; no mic/system fallback. Device A/V, rotation and SFU remain open. iOS deferred; TV output is P2.
+- Mobile endpoints are Web Viewer-only. Current Android/iOS browsers do not expose Web Host capture; AirPlay/system mirroring is Viewer-local output.
 - ADR-0005 accepts direct/peer UDP, bounded SFU roots, then selected-edge TURN. Production grants one revision-bound, one-use retry for initial/active Host ingress. The deployed tuple/control path have no production SFU/TURN media canary; participant-wide TURN stays rejected and ordinary peers stay STUN-only.
 - The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, mobile leaves and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
@@ -43,7 +43,7 @@ Last updated: 2026-08-21
 
 - The repository is one npm package using Node.js 24, React, TypeScript, Vite, native WebRTC, `ws`, Zod, Vitest, and separate coturn.
 - Production is exact `16f6eab27bdfb1c15cdbd814a35864f4f18be767` at `https://share.bonfire.icu`; its 1,027,423-byte artifact SHA-256 is `74e0274ab11a162cb9dd4be1c34bb6b639e2ea76005969c30ae3a1daa656742f`. The 2026-08-20T23:44:57Z cutover took 10,238 ms lock/641 ms stop-health/570 ms switch-health. Immediate rollback is exact `22119b907d3cf03ce8b06d6fb4596ce1a26fedd7`; exact `fd76277b05d491af8840b28f3132b7ff445d3cbe` remains secondary.
-- `main` is ahead only in Native/test evidence; Android and Native senders stay source-only. Host-ingress retry is deployed.
+- `main` is ahead only in Native/test evidence; the Windows Native sender stays source-only. Host-ingress retry is deployed.
 - The four services are active/running with observed `NRestarts=0`; local/public health are 200. SQLite v3 has five rooms including room `1`, with DB owner/mode `screener:screener`/0600.
 - Production ICE remains ordinary STUN-only. `PEER_ASSISTED_MEDIA=true` enables the controller for every normal room, and selected-edge TURN is configured for the single UDP tuple with TTL 120; the coturn daemon and nginx/LiveKit/firewall/listener baselines were unchanged. No production SFU/TURN media canary or quality claim is implied.
 - Production requires the independent site-access secret through `SITE_ACCESS_PASSWORD`. Its stateless cookie authorizes creation/Host and permits code-only Viewer attempts; valid private fragment grants remain direct. Public-watch accepts site access plus code, while private code-only entry additionally requires the room password. The env, endpoint, cookie, and nginx limiter naming migrated atomically; anonymous failures stay neutral, and there are no accounts/JWT/session rows.
@@ -69,7 +69,7 @@ These are measurement gates, not performance claims.
 - Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
 - Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
 - Whether selected-edge passes forced relay, expiry/failure, mobile, 1-GiB resource and bandwidth gates. Coturn's bearer is non-revocable until expiry; application guards and TTL only bound reuse. Performance comparison and the retained matrix follow functional landing; Media TCP is out of scope.
-- Exact mobile lifecycle behavior.
+- Exact mobile Viewer lifecycle behavior across autoplay, rotation, backgrounding and network changes.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
 - Initial deployment regions and expected mainland China, Hong Kong, and overseas network mix.
 - Whether voice chat ever enters scope or Screener stays complementary to an existing voice application.

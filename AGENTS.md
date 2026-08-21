@@ -41,6 +41,7 @@
 - Keep this root file concise and stable; put specialized rules in the closest relevant directory only when that code exists.
 - Never store raw transcripts, large logs, generated summaries, temporary plans, or facts that can be cheaply rediscovered in always-loaded memory.
 - When a fact changes, update it in place and remove conflicting text in the same change. Do not preserve obsolete guidance merely for history.
+- Remove rejected alternatives from active UI, code, comments, configuration, PR copy, and current docs. Describe current behavior by what it does; retain rationale only when it still constrains a live decision.
 
 ## Security
 
