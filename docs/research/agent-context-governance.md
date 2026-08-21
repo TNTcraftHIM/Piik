@@ -50,7 +50,7 @@ GitHub 官方流程是短分支、隔离的完整 commit、push 远端、PR 评�
 
 - 根 `AGENTS.md` 最多 200 行，只放跨任务不变量；`.codex/config.toml` 将指令发现预算固定为 32 KiB。
 - `CLAUDE.md` 只导入 `AGENTS.md`，不维护第二份规则。
-- `project-memory.md` 是最多 12 KB 的当前事实快照；`status.md` 是当前阶段快照；两者只保留最小真相集并就地更新，不追加对话、过程 TODO 或完成时间线。
+- `project-memory.md` 是最多 16 KB 的当前事实快照；`status.md` 是最多 12 KB 的 current/index，只保留生产、活跃里程碑、阻塞和明细链接。跨模块且没有自然归属的当前验证证据按需进入 `verification-status.md`；三者都就地更新，不追加对话、过程 TODO 或完成时间线。
 - 上下文按层归属：`AGENTS.md` 保存顶级约束与读取触发器；memory/status 保存当前最小快照；现行需求/设计和 ADR 保存已接受约束；research 保存证据、候选与门槛；Git/PR 保存时间线。顶层只索引深层事实，不复制正文。
 - 已接受的需求、设计变化、调研结论、可执行 TODO、阻塞和状态必须在依赖工作继续前落到对应 Git 跟踪文件。阶段边界、分支/PR/agent 交接和压缩风险是自动检查点；恢复后先重读快照和 Git 状态。
 - 非平凡变更先做一手资料调研，耐久结论才进入 `docs/research/`；大量原始资料不进入常驻 memory。

@@ -29,7 +29,7 @@ if ($memoryLines -gt 200 -or $memoryBytes -gt 16000) {
     throw "docs/project-memory.md exceeds its budget: $memoryLines lines, $memoryBytes bytes"
 }
 if ($statusLines -gt 120 -or $statusBytes -gt 12000) {
-    throw "docs/status.md exceeds its budget: $statusLines lines, $statusBytes bytes"
+    throw "docs/status.md exceeds its 120-line/12000-byte current-index budget: $statusLines lines, $statusBytes bytes. Remove completed history or move retained detail to its owning document; do not micro-compress prose."
 }
 
 git diff --check
