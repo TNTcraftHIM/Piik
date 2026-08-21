@@ -33,6 +33,7 @@ const livekit = vi.hoisted(() => {
   }
 
   class FakeSender {
+    track: MediaStreamTrack;
     parameters: RTCRtpSendParameters = {
       codecs: [],
       encodings: [{}],
@@ -40,6 +41,10 @@ const livekit = vi.hoisted(() => {
       rtcp: { cname: "fake", reducedSize: true },
       transactionId: "fake",
     };
+
+    constructor(track: MediaStreamTrack) {
+      this.track = track;
+    }
 
     readonly getParameters = vi.fn(() => this.parameters);
     readonly setParameters = vi.fn(
@@ -52,21 +57,27 @@ const livekit = vi.hoisted(() => {
         this.parameters = parameters;
       },
     );
+    readonly getStats = vi.fn(
+      async (): Promise<RTCStatsReport> =>
+        new Map() as unknown as RTCStatsReport,
+    );
   }
 
   class FakeLocalTrack {
     currentTrack: MediaStreamTrack;
-    readonly sender = new FakeSender();
+    sender: FakeSender;
     publishOptions?: Record<string, unknown>;
     savedDegradationPreference: RTCDegradationPreference | null = null;
 
     constructor(track: MediaStreamTrack) {
       this.currentTrack = track;
+      this.sender = new FakeSender(track);
     }
 
     readonly replaceTrack = vi.fn(
       async (nextTrack: MediaStreamTrack): Promise<void> => {
         this.currentTrack = nextTrack;
+        this.sender.track = nextTrack;
       },
     );
 
@@ -75,6 +86,11 @@ const livekit = vi.hoisted(() => {
         this.savedDegradationPreference = preference;
       },
     );
+
+    replaceSenderForTest(): FakeSender {
+      this.sender = new FakeSender(this.currentTrack);
+      return this.sender;
+    }
   }
 
   class FakeLocalParticipant {
@@ -302,7 +318,11 @@ const qualityProfile = {
 } as const;
 
 function track(kind: "video" | "audio", id: string): MediaStreamTrack {
-  return Object.assign(new EventTarget(), { id, kind }) as MediaStreamTrack;
+  return Object.assign(new EventTarget(), {
+    id,
+    kind,
+    getSettings: () => ({}),
+  }) as MediaStreamTrack;
 }
 
 function remoteTrack(
@@ -332,6 +352,71 @@ function receiverReport(kind: "video" | "audio"): RTCStatsReport {
       timestamp: 1_000,
       kind,
       trackIdentifier: `${kind}-1`,
+      estimatedPlayoutTimestamp: kind === "video" ? 10_000 : 10_012,
+    },
+  ]);
+}
+
+function senderReport(
+  trackId: string,
+  timestamp: number,
+  bytesSent: number,
+  framesEncoded: number,
+): RTCStatsReport {
+  return statsReport([
+    {
+      id: "video-out-low",
+      type: "outbound-rtp",
+      timestamp,
+      kind: "video",
+      rid: "q",
+      mediaSourceId: "video-source",
+      bytesSent: Math.floor(bytesSent / 4),
+      framesEncoded: Math.floor(framesEncoded / 4),
+      framesPerSecond: 15,
+      frameWidth: 960,
+      frameHeight: 540,
+      totalEncodeTime: framesEncoded * 0.002,
+      qualityLimitationReason: "none",
+    },
+    {
+      id: "video-out",
+      type: "outbound-rtp",
+      timestamp,
+      kind: "video",
+      rid: "h",
+      transportId: "transport",
+      codecId: "codec",
+      mediaSourceId: "video-source",
+      bytesSent,
+      framesEncoded,
+      framesPerSecond: 57,
+      frameWidth: 1920,
+      frameHeight: 1080,
+      totalEncodeTime: framesEncoded * 0.004,
+      qualityLimitationReason: "bandwidth",
+      encoderImplementation: "ExternalEncoder",
+      powerEfficientEncoder: true,
+    },
+    {
+      id: "video-source",
+      type: "media-source",
+      timestamp,
+      trackIdentifier: trackId,
+      framesPerSecond: 59,
+    },
+    {
+      id: "transport",
+      type: "transport",
+      timestamp,
+    },
+    {
+      id: "codec",
+      type: "codec",
+      timestamp,
+      transportId: "transport",
+      mimeType: "video/H264",
+      sdpFmtpLine: "profile-level-id=42e01f;packetization-mode=1",
     },
   ]);
 }
@@ -359,10 +444,101 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("SfuPublisher", () => {
+  it("samples only the current published sender and clears replaced evidence", async () => {
+    vi.useFakeTimers();
+    const updates: Array<ConnectionMetrics | null> = [];
+    const publisher = new SfuPublisher({
+      onStats: (metrics) => updates.push(metrics),
+    });
+    const previousVideo = track("video", "video-1");
+    previousVideo.getSettings = () => ({
+      width: 1920,
+      height: 1080,
+      frameRate: 60,
+    });
+    await publisher.connect(connection);
+    await publisher.activate(stream(previousVideo), qualityProfile);
+    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
+      .sender;
+    sender.getStats.mockResolvedValueOnce(
+      senderReport(previousVideo.id, 1_000, 100_000, 60),
+    );
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)).toMatchObject({
+      captureWidth: 1920,
+      captureHeight: 1080,
+      captureFramesPerSecond: 60,
+      trackIdentifier: previousVideo.id,
+      rtpRid: "h",
+      mediaSourceFramesPerSecond: 59,
+      framesPerSecond: 57,
+      resolution: "1920x1080",
+      codec: "video/H264",
+      codecProfile: "profile-level-id=42e01f",
+      encoderImplementation: "ExternalEncoder",
+      powerEfficientEncoder: true,
+      qualityLimitationReason: "bandwidth",
+    });
+
+    sender.getStats.mockResolvedValueOnce(
+      senderReport(previousVideo.id, 3_000, 300_000, 180),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)).toMatchObject({
+      bitrateKbps: 800,
+      intervalFramesEncoded: 120,
+      intervalEncodeTimeMs: 480,
+      intervalEncodeMs: 4,
+    });
+
+    let resolveOld!: (report: RTCStatsReport) => void;
+    sender.getStats.mockImplementationOnce(
+      () => new Promise<RTCStatsReport>((resolve) => { resolveOld = resolve; }),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    const nextVideo = track("video", "video-2");
+    nextVideo.getSettings = () => ({
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+    });
+    await expect(publisher.replaceStream(stream(nextVideo))).resolves.toBe(true);
+    expect(updates.at(-1)).toBeNull();
+    resolveOld(senderReport(previousVideo.id, 5_000, 500_000, 300));
+    await Promise.resolve();
+    expect(updates.at(-1)).toBeNull();
+
+    sender.getStats.mockResolvedValueOnce(
+      senderReport(nextVideo.id, 4_000, 400_000, 240),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)?.trackIdentifier).toBe(nextVideo.id);
+
+    const updateCount = updates.length;
+    const localTrack = livekit.state.rooms[0].localParticipant.publications[0]
+      .track;
+    const replacementSender = localTrack.replaceSenderForTest();
+    replacementSender.getStats.mockResolvedValueOnce(
+      senderReport(nextVideo.id, 6_000, 500_000, 270),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates[updateCount]).toBeNull();
+    expect(updates.at(-1)).toMatchObject({
+      trackIdentifier: nextVideo.id,
+      framesPerSecond: 57,
+    });
+
+    await publisher.deactivate();
+    expect(updates.at(-1)).toBeNull();
+  });
+
   it("prepares a connection without publishing media", async () => {
     const publisher = new SfuPublisher();
 
@@ -1270,6 +1446,7 @@ describe("SfuSubscriber", () => {
     expect(updates.at(-1)).toMatchObject({
       rtpStatsId: "video-in",
       trackIdentifier: "video-1",
+      audioVideoPlayoutDeltaMs: 12,
     });
 
     let releaseStats = (): void => undefined;

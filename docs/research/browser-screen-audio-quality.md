@@ -1,6 +1,6 @@
 # Browser Screen-Audio Quality Controls
 
-Accessed: 2026-08-21
+Accessed: 2026-08-22
 
 Status: peer and SFU routes already use stereo and a 128 kbps default, but users
 still report speech-gated movie/game audio, including on a phone connected
@@ -277,9 +277,18 @@ Audio diagnostics keep four layers separate:
    not uploaded or persisted.
 4. **Observed:** current local details derive interval audio bitrate from byte
    deltas and interval loss from `lostDelta / (receivedDelta + lostDelta)`, and
-   display reported jitter. The first sample, changed identity, reset, negative
-   delta, zero denominator or absent field is unknown. Concealment, jitter
-   buffer and FEC counters remain an acceptance-matrix follow-up.
+   display reported jitter. For the unique current inbound screen video/audio
+   pair, they also display audio-minus-video `estimatedPlayoutTimestamp`,
+   interval average jitter-buffer delay as
+   `delta(jitterBufferDelay) / delta(jitterBufferEmittedCount)`, audio concealed
+   samples as `delta(concealedSamples) / delta(totalSamplesReceived)`, and the
+   interval `concealmentEvents` count. RTP stats id, SSRC or track-identifier
+   changes rebase that media kind; a counter reset rebases the affected
+   interval. The first sample, negative delta, zero denominator, ambiguous RTP
+   object or absent field is unknown. These local-only fields are not added to
+   Viewer quality-evidence signaling or persistence. Browser availability and
+   actual route-switch synchronization remain target-device evidence; FEC
+   counters remain an acceptance-matrix follow-up.
 
 Never substitute `48000`, `2`, `false`, or `0` for an unavailable field.
 
@@ -342,6 +351,9 @@ Preserve the existing persistent Viewer `MediaStream`/media element and add or
 remove its audio/video tracks in place. Introducing a separate audio element or
 Web Audio graph would create a new clock/buffering boundary and is outside this
 fix; the stable stream already deployed is the A/V synchronization baseline.
+The local receiver diagnostic observes only `getStats()` on that existing
+route. It does not set `jitterBufferTarget`, create a clock, modify playout, add
+a wire field, or claim that a missing browser statistic is zero.
 
 The implementation budget is deliberately bounded to dependency
 manifest/lockfile entries, one SDP helper, `ViewerPeer` answer wiring, SFU

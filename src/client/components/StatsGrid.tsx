@@ -38,6 +38,21 @@ function preferenceLabel(value: number | string): string {
   return labels[String(value)] ?? String(value);
 }
 
+function candidateEndpoint(
+  address: string | null,
+  port: number | null,
+): string | null {
+  if (address === null || port === null) {
+    return null;
+  }
+  const host =
+    address.includes(":") &&
+    !(address.startsWith("[") && address.endsWith("]"))
+      ? `[${address}]`
+      : address;
+  return `${host}:${port}`;
+}
+
 function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="metric" title={title}>
@@ -69,6 +84,21 @@ export function StatsGrid({
             : ""
       }`
     : "未知";
+  const hasPlaybackEvidence = [
+    metrics.audioVideoPlayoutDeltaMs,
+    metrics.videoJitterBufferDelayMs,
+    metrics.audioJitterBufferDelayMs,
+    metrics.audioConcealedSamplesPercent,
+    metrics.intervalAudioConcealmentEvents,
+  ].some((value) => value !== null);
+  const localCandidateEndpoint = candidateEndpoint(
+    metrics.localCandidateAddress,
+    metrics.localCandidatePort,
+  );
+  const remoteCandidateEndpoint = candidateEndpoint(
+    metrics.remoteCandidateAddress,
+    metrics.remoteCandidatePort,
+  );
 
   const primaryMetrics = (
     <>
@@ -76,8 +106,14 @@ export function StatsGrid({
         label={direction === "send" ? "发送码率" : "接收码率"}
         value={`${readableNumber(metrics.bitrateKbps)} kbps`}
       />
-      <Metric label="帧率" value={`${readableNumber(metrics.framesPerSecond, 1)} fps`} />
-      <Metric label="分辨率" value={metrics.resolution ?? "未知"} />
+      <Metric
+        label={direction === "send" ? "发送帧率" : "接收帧率"}
+        value={`${readableNumber(metrics.framesPerSecond, 1)} fps`}
+      />
+      <Metric
+        label={direction === "send" ? "发送分辨率" : "接收分辨率"}
+        value={metrics.resolution ?? "未知"}
+      />
       <Metric label="RTT" value={`${readableNumber(metrics.rttMs)} ms`} title="网络往返时间" />
       <Metric
         label="视频丢包率"
@@ -114,6 +150,20 @@ export function StatsGrid({
             : `${readableNumber(metrics.jitterMs, 1)} ms`
         }
       />
+      {localCandidateEndpoint && (
+        <Metric
+          label="本地候选地址"
+          value={localCandidateEndpoint}
+          title={localCandidateEndpoint}
+        />
+      )}
+      {remoteCandidateEndpoint && (
+        <Metric
+          label="远端候选地址"
+          value={remoteCandidateEndpoint}
+          title={remoteCandidateEndpoint}
+        />
+      )}
       <Metric label="视频 Codec" value={metrics.codec ?? "未知"} />
       {metrics.codecProfile && (
         <Metric label="视频 Codec profile token" value={metrics.codecProfile} />
@@ -133,6 +183,35 @@ export function StatsGrid({
         label="音频抖动"
         value={`${readableNumber(metrics.audioJitterMs, 1)} ms`}
       />
+      {direction === "receive" && hasPlaybackEvidence && (
+        <>
+          <Metric
+            label="音视频播放差"
+            value={`${readableNumber(metrics.audioVideoPlayoutDeltaMs, 1)} ms`}
+            title="音频 estimatedPlayoutTimestamp 减视频；正值表示音频时间线领先"
+          />
+          <Metric
+            label="视频抖动缓冲"
+            value={`${readableNumber(metrics.videoJitterBufferDelayMs, 1)} ms`}
+            title="最近统计区间内已播放视频帧的平均 jitter-buffer delay"
+          />
+          <Metric
+            label="音频抖动缓冲"
+            value={`${readableNumber(metrics.audioJitterBufferDelayMs, 1)} ms`}
+            title="最近统计区间内已播放音频样本的平均 jitter-buffer delay"
+          />
+          <Metric
+            label="音频补偿样本率"
+            value={formatPacketLossPercent(metrics.audioConcealedSamplesPercent)}
+            title="最近统计区间内由接收端合成补偿的音频样本比例"
+          />
+          <Metric
+            label="音频补偿事件"
+            value={readableNumber(metrics.intervalAudioConcealmentEvents)}
+            title="最近统计区间内开始连续音频样本补偿的次数"
+          />
+        </>
+      )}
       <Metric label="音频 Codec" value={metrics.audioCodec ?? "未知"} />
       {metrics.audioCodecClockRate !== null && (
         <Metric
@@ -157,10 +236,41 @@ export function StatsGrid({
       )}
       {direction === "send" ? (
         <>
+          <Metric
+            label="捕获设置"
+            value={
+              metrics.captureWidth !== null && metrics.captureHeight !== null
+                ? `${metrics.captureWidth}x${metrics.captureHeight} · ${readableNumber(
+                    metrics.captureFramesPerSecond,
+                    1,
+                  )} fps`
+                : "未知"
+            }
+            title="MediaStreamTrack 当前设置，不代表最近一秒实际输入帧率"
+          />
+          <Metric
+            label="编码输入帧率"
+            value={`${readableNumber(metrics.mediaSourceFramesPerSecond, 1)} fps`}
+            title="media-source 最近一秒送入编码器的帧率"
+          />
+          {metrics.rtpRid && <Metric label="当前 RID" value={metrics.rtpRid} />}
           {metrics.scalabilityMode && (
             <Metric label="当前流伸缩模式" value={metrics.scalabilityMode} />
           )}
           <Metric label="编码器" value={encoder} />
+          <Metric
+            label="最近区间编码量"
+            value={
+              metrics.intervalFramesEncoded === null &&
+              metrics.intervalEncodeTimeMs === null
+                ? "未知"
+                : `${readableNumber(metrics.intervalFramesEncoded)} 帧 · ${readableNumber(
+                    metrics.intervalEncodeTimeMs,
+                    1,
+                  )} ms`
+            }
+            title="相邻样本间 framesEncoded 增量与 totalEncodeTime 增量"
+          />
           <Metric
             label="最近区间编码/帧"
             value={`${readableNumber(metrics.intervalEncodeMs, 1)} ms`}

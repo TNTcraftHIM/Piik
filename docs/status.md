@@ -4,7 +4,7 @@ Last updated: 2026-08-22
 
 ## Phase
 
-Production is exact `083c111437485064a766368944a7938b79e07365` at `https://share.bonfire.icu`, release `083c11143748`, wire `screener-v5`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. `screener`, LiveKit, coturn, and nginx are active; local/public health are green and `screener` has `NRestarts=0`. The previous `27ad90ddf9f8` release remains the rollback target.
+Production is exact `083c111437485064a766368944a7938b79e07365` at `https://share.bonfire.icu`, release `083c11143748`, wire `screener-v5`. SQLite v3/five rooms keeps SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. `screener`, LiveKit, coturn, and nginx are active; local/public health are green and `screener` has `NRestarts=0`. The previous `27ad90ddf9f8` release is the rollback target.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. No browser/media/SFU/TURN/performance canary ran; exact-`16f6eab` Host-ingress proof is separate.
 Stable SFU, route/transport truth, preview notice, entry/nickname UI, selected-edge lease authority, and corroborated bad-relay demotion are live. `MAX_PEER_RELAY_DOWNSTREAM_EDGES` is unset, so Web endpoints use the parameterized default of two. Native is source-only.
 
@@ -14,11 +14,12 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 
 ## Current Snapshot
 
-- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced, automatic codec, and 128 kbps screen audio. Clarity/fluid plus H.264/VP8 stay explicit. Source adds 64/128/256 kbps audio presets under Share advanced settings; codec and audio quality are locked during a share. Browser degradation, audible route proof, and Host SFU A+B remain open.
+- Capture precedes rooms; source/quality changes and AV pause preserve peers. Defaults are balanced, automatic codec, and 128 kbps screen audio. Clarity/fluid plus H.264/VP8 stay explicit. The source candidate adds 64/128/256 kbps audio presets under Share advanced settings; codec and audio quality are locked during a share. Browser degradation, audible route proof, and Host SFU A+B remain open.
 - Deployed `screener-v5` admits private fragment grants directly; code-only Viewers need site access, and private rooms additionally need their password. Credentials remain unstored. Web presence fields remain opt-in and Native does not subscribe to them.
 - Deployed UI has nickname editing, room entry, Viewer roster, duplicate-only ID suffixes, pause notice, and session-bound SFU first-media truth that clears on track/route/session loss. P2P/SFU/TURN labels require evidence. Guarded relay evidence reaches opted-in Web Host rosters without Host-local transport claims or false parent-edge proof.
 - Native v5 is source-only (memory rooms, 300s reclaim); it does not subscribe to Web presence, accepts the shared absolute three-child bound, and fails unsupported SFU/selected ingress boundedly. Production uses the default endpoint cap of two.
 - Production roots/Web relay <=2; Viewer upstream1. Source parameterizes endpoint cap at default2/range1-3 while SFU roots remain <=2; production stays2. One-root healthy-SFU MBB is deployed/media-unverified; source defers one cooldown ready for expiry reproof. Capacity `0 -> 1`, multi-root and browser gates remain open. Room `1` is historical; HTTPS/WSS is TLS/TCP.
+- Source-only connection details read selected-pair addresses from the current page's local stats, hide them when incomplete, and never add them to relayed evidence, signaling, server state, logs, or persistence.
 - After an answer, a generation-bound 15s initial-connect deadline enters ICE restart; success/replacement/disposal cancels it. It is deployed but not mobile-verified.
 - C+B is uncalibrated. Production compares relay-child FPS with fresh parent input; two corroborated children can pause one Viewer relay for 30s and trigger peer-only reassignment. No candidate keeps the old edge, and admission rescue remains deterministic.
 - Deployed `screener-v5` selected-TURN authority separates immutable grant revision from current route authority. Unrelated revisions may carry only the same in-budget edge, while topology/session/share/advertised-budget loss revokes it before active authority. Browser/media proof remains open.
@@ -27,7 +28,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 
 - Chrome 151 synthetic `1/3/5/8` and 720p30 runs kept bounded fanout/decoding. A five-Viewer cap2 run had one relay serve two children (+80 decoded frames/~1.1 MB each), all decoded and no fatal. Functional only.
 - Chrome 151 + local LiveKit 1.13.5/client 2.22.0 SFU/UDP passed after `q,f` -> `q,h`: one root, decoded 3 -> 23, rendered 26, Host edge one, clean leaves, no TURN. Functional only.
-- Host A+B and authenticated P2P Viewer C are sanitized, generation-bound, read-only, and fail closed for stale, ambiguous, or SFU-fed evidence; no raw media metadata is retained.
+- Host A+B/P2P Viewer C are sanitized, generation-bound/read-only. Source adds Host-local current SFU `h` snapshot, cleared on identity change; SFU C stays fail-closed/unverified.
 - The `a11a73d` built-in TURN canary is rejected: local allocation passed, but direct Host/Pion Viewer failed before forced relay. Full rollback restored STUN-only client ICE and zero allocations.
 - Chrome 151 loopback proves H.264 negotiation/decode interoperability, not performance. Production orders H.264 first and keeps browser repair/fallback codecs.
 - Native WGC/MF used no browser capture/encoder. One Chrome Viewer rendered 203 1280x720 frames and received 500 Opus packets; process/LUID-correlated `VideoEncode` was nonzero, with no fatal/encoder errors.
@@ -40,7 +41,7 @@ Parallel flagship work; use minimum relevant checks and rollback proof. Target-d
 
 ## Unverified Boundaries
 
-- The `6ccb516a` cutover ran no browser/media/SFU/TURN/performance canary. Earlier `16f6eab` proof covers Host ingress only; healthy reselection, audible quality, last mile, external cohorts, resources/performance and game blur remain open.
+- The `083c11143748` cutover has service/health proof but no browser/media/SFU/TURN/performance canary. Earlier `16f6eab` proof covers Host ingress only; healthy reselection, audible quality, last mile, external cohorts, resources/performance and game blur remain open.
 - Mobile is Viewer-only. Its persistent audible media element keeps media/signaling active while the page lives; iOS lock-screen, reclamation and background reconnection remain device gates. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Production startup blur remains open. One local Chrome synthetic same-`balanced` A/B kept route/PC/SSRC/track and coincided with 720p -> 1080p without loss/freeze, but natural ramp prevents causal, production, or SFU proof.
@@ -57,7 +58,7 @@ Recovery: ICE restart -> same parent -> alternate peer -> SFU. Source-only manua
 Native WGC/MF passed one-Viewer hardware; package download, Viewer2/FIFO and game A/V remain. Use representative target-device or production evidence for performance, not an ordinary-PC synthetic gate.
 Ordinary peers stay STUN-only; initial ingress, `peer-selected`, and healthy-reselection browser gates remain open.
 ADR-0004 still needs its resource/quality matrix; the 20-viewer gate precedes a default change. Mobile uses the same capacity and is a compatibility observation.
-Screen audio defaults to 128 kbps; the source-complete 64/128/256 kbps presets propagate through P2P, browser relay, and SFU and lock for the active share. Verify Host settings, negotiated/observed bitrate, audible quality, and route switches.
+Screen audio defaults to 128 kbps; the source-complete 64/128/256 kbps presets propagate through P2P, browser relay, and SFU and lock for the active share. A/V/jitter-buffer/concealment details are local-only in this observability branch. Verify Host settings, negotiated/observed bitrate, audible quality, synchronization evidence, and route switches.
 
 ## Blockers And Decisions
 

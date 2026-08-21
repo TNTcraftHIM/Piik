@@ -2,6 +2,7 @@
 
 - 调研日期：2026-08-18
 - 移动端采集与 Viewer 投屏能力复核：2026-08-21
+- selected candidate 地址隐私语义复核：2026-08-22
 - 目标场景：一名玩家向少量熟人私密分享，观看者可用手机/桌面浏览器加入，低延迟，尽量不消耗媒体服务器带宽
 - 结论状态：本文记录已部署 PoC 的 P2P/coturn 基线。ADR-0005 与[低服务器成本媒体路由](./low-server-media-routes.md)已取代本文早期“每条 peer edge 必带 TURN”的旗舰建议；生产后续移除了 room `1` 边界，ordinary ICE 仍为 STUN-only，selected-edge TURN 已配置但尚未完成真实媒体验收
 
@@ -318,7 +319,7 @@ WebRTC 媒体本身使用 DTLS-SRTP 加密，但 direct P2P 仍可能让这组�
 - `qualityLimitationReason` 和各原因累计时长
 - jitter buffer delay、decode time 和 total packet send delay
 
-`RTCIceCandidateStats.protocol` 是内部候选传输字段；只有本地 relay candidate 的 `relayProtocol` 才能确认本端到 TURN 的实际传输。规范不向远端暴露 `relayProtocol`，所以不能从 `remoteCandidate.protocol` 推断远端 TURN 传输。当前详情以 `P2P`/`SFU fallback` 表示媒体方式，直连只显示实际 `protocol`，relay 先显示 `TURN`，仅本地 relay 再附加 `/UDP` 等实际值；candidate type 单列为候选路径，不为补齐远端字段扩展信令或遥测。
+`RTCIceCandidateStats.protocol` 是内部候选传输字段；只有本地 relay candidate 的 `relayProtocol` 才能确认本端到 TURN 的实际传输。规范不向远端暴露 `relayProtocol`，所以不能从 `remoteCandidate.protocol` 推断远端 TURN 传输。当前详情以 `P2P`/`SFU fallback` 表示媒体方式，直连只显示实际 `protocol`，relay 先显示 `TURN`，仅本地 relay 再附加 `/UDP` 等实际值；candidate type 单列为候选路径，不为补齐远端字段扩展信令或遥测。W3C Stats 规定远端 candidate `address` 默认可为 `null`，浏览器也可按隐私策略过滤；诊断 UI 因此只读取当前本地 report 中由 media transport、`selectedCandidatePairId`、`localCandidateId`/`remoteCandidateId` 精确关联的地址与端口，缺失就保持未知，不解析 SDP 补值，也不上传、记录或持久化。
 
 WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件，并使用画面时间码或高速摄像机测量玻璃到玻璃延迟。60 fps 的单帧周期是 16.7 ms，端到端延迟还包含采集等待、编码、单程网络、jitter buffer、解码和显示。
 

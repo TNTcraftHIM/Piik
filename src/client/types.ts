@@ -12,16 +12,22 @@ export interface ConnectionMetrics {
   rtpStatsId: string | null;
   rtpSsrc: number | null;
   rtpMid: string | null;
+  rtpRid: string | null;
   trackIdentifier: string | null;
   selectedCandidatePairId: string | null;
   captureWidth: number | null;
   captureHeight: number | null;
   captureFramesPerSecond: number | null;
+  mediaSourceFramesPerSecond: number | null;
   path: MediaPath;
   iceProtocol: string | null;
   localRelayProtocol: string | null;
   localCandidateType: string | null;
   remoteCandidateType: string | null;
+  localCandidateAddress: string | null;
+  localCandidatePort: number | null;
+  remoteCandidateAddress: string | null;
+  remoteCandidatePort: number | null;
   rttMs: number | null;
   bitrateKbps: number | null;
   availableOutgoingKbps: number | null;
@@ -48,6 +54,11 @@ export interface ConnectionMetrics {
   audioBitrateKbps: number | null;
   audioPacketLossPercent: number | null;
   audioJitterMs: number | null;
+  audioVideoPlayoutDeltaMs: number | null;
+  videoJitterBufferDelayMs: number | null;
+  audioJitterBufferDelayMs: number | null;
+  audioConcealedSamplesPercent: number | null;
+  intervalAudioConcealmentEvents: number | null;
   audioCodec: string | null;
   audioCodecClockRate: number | null;
   audioCodecChannels: number | null;
@@ -55,6 +66,8 @@ export interface ConnectionMetrics {
   scalabilityMode: string | null;
   encoderImplementation: string | null;
   powerEfficientEncoder: boolean | null;
+  intervalFramesEncoded: number | null;
+  intervalEncodeTimeMs: number | null;
   intervalEncodeMs: number | null;
   intervalDecodeMs: number | null;
   qualityLimitationReason: string | null;
@@ -77,16 +90,22 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   rtpStatsId: null,
   rtpSsrc: null,
   rtpMid: null,
+  rtpRid: null,
   trackIdentifier: null,
   selectedCandidatePairId: null,
   captureWidth: null,
   captureHeight: null,
   captureFramesPerSecond: null,
+  mediaSourceFramesPerSecond: null,
   path: "unknown",
   iceProtocol: null,
   localRelayProtocol: null,
   localCandidateType: null,
   remoteCandidateType: null,
+  localCandidateAddress: null,
+  localCandidatePort: null,
+  remoteCandidateAddress: null,
+  remoteCandidatePort: null,
   rttMs: null,
   bitrateKbps: null,
   availableOutgoingKbps: null,
@@ -113,6 +132,11 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   audioBitrateKbps: null,
   audioPacketLossPercent: null,
   audioJitterMs: null,
+  audioVideoPlayoutDeltaMs: null,
+  videoJitterBufferDelayMs: null,
+  audioJitterBufferDelayMs: null,
+  audioConcealedSamplesPercent: null,
+  intervalAudioConcealmentEvents: null,
   audioCodec: null,
   audioCodecClockRate: null,
   audioCodecChannels: null,
@@ -120,6 +144,8 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   scalabilityMode: null,
   encoderImplementation: null,
   powerEfficientEncoder: null,
+  intervalFramesEncoded: null,
+  intervalEncodeTimeMs: null,
   intervalEncodeMs: null,
   intervalDecodeMs: null,
   qualityLimitationReason: null,

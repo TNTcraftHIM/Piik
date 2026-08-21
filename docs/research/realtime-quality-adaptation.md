@@ -1,6 +1,6 @@
 # Realtime Screen-Share Quality Adaptation
 
-- Research date: 2026-08-21
+- Research date: 2026-08-22
 - Scope: realtime game screen sharing in the browser
 - Status: implementation input; real-device quality remains unverified
 
@@ -209,11 +209,13 @@ does not prove shared encode: separate browser PeerConnections may construct
 separate encoders, and the SFU still publishes only the configured `q,h`
 representations.
 
-The retained follow-up is one direct-Viewer comparison using existing stats,
-not a new benchmark: actual codec/profile, encoder implementation, power
-efficiency, source/send/receive FPS, encode time and limitation reason. It must
-distinguish software fallback from a hardware queue or driver limit before any
-H.264-specific policy changes.
+The retained follow-up is one target-device H.264/VP8 comparison using these
+local diagnostics, not a new benchmark framework: actual codec/profile,
+encoder implementation, power efficiency, configured/source/send/receive FPS,
+interval encoded frames/encode time, and limitation reason. Missing
+implementation or power-efficiency fields remain unknown. No H.264 root cause
+or policy change is accepted until the controlled sample distinguishes capture
+starvation, software fallback, hardware queue/driver pressure, and congestion.
 
 Open-source distribution is not itself a patent-license exemption. This Web
 change only requests a codec already implemented by the browser/LiveKit path and
@@ -257,14 +259,16 @@ privacy boundary are owned by
 
 Verified specification facts: the W3C stats model supports the needed
 separation but does not produce the product decision itself.
-`MediaStreamTrack.getSettings()` supplies the actual
-capture dimensions/frame rate. Outbound RTP exposes emitted dimensions/FPS,
-byte and retransmission counters, encode time, target bitrate when available,
-and the current `qualityLimitationReason`; the selected candidate pair can
-expose RTT and available outgoing bitrate. Inbound RTP exposes received
-dimensions/FPS, byte/loss/jitter counters, decoded/dropped frames, and freeze
-counters when implemented. Stats members may be absent, and cumulative values
-must be compared across two samples rather than treated as interval values.
+`MediaStreamTrack.getSettings()` supplies the track's current configured
+dimensions/frame rate, not the recent frame cadence. `RTCVideoSourceStats`
+supplies the last-second FPS actually fed to the encoder. Outbound RTP exposes
+emitted dimensions/FPS, byte and retransmission counters, encode time, target
+bitrate when available, and the current `qualityLimitationReason`; the selected
+candidate pair can expose RTT and available outgoing bitrate. Inbound RTP
+exposes received dimensions/FPS, byte/loss/jitter counters, decoded/dropped
+frames, and freeze counters when implemented. Stats members may be absent, and
+cumulative values must be compared across two samples rather than treated as
+interval values.
 
 The user-facing loss value should therefore be an RTP interval loss rate, not
 the cumulative `packetsLost` counter and not a claim about UDP itself. For one
@@ -281,8 +285,8 @@ Correlate one time interval and media generation across:
 
 | Evidence | Fields |
 | --- | --- |
-| A. Host capture | actual width, height, FPS from `getSettings()` |
-| B. Host outbound | width/FPS/bitrate, target/available bitrate, interval encode time, limitation reason, path, RTT, loss/retransmission, and derived negotiated codec/profile/parameters plus applicable `scalabilityMode` |
+| A. Host capture | configured width, height, FPS from `getSettings()` plus observed `media-source` input FPS |
+| B. Host outbound | RID, width/FPS/bitrate, target/available bitrate, interval encoded frames/encode time, limitation reason, path, RTT, loss/retransmission, and derived negotiated codec/profile/parameters plus applicable `scalabilityMode` |
 | C. Viewer inbound | width/FPS/bitrate, loss, jitter, interval decode/drop/freeze, corresponding derived codec/profile/parameters/layer, and actual decode behavior |
 
 Product inference from those facts: use the following ordered classification:
@@ -306,11 +310,19 @@ device/network identifiers. Server-authoritative path and connection generations
 provide authorization and correlation; a general remote stats stream or
 telemetry pipeline is unnecessary.
 
-The repository implements the local host A+B foundation: same-tick capture
-settings plus one uniquely matched outbound RTP sample, explicit sample/media
-identity and adjacent deltas, `remoteId` linkage, and the selected path reached
-through that RTP stream's transport. Source replacement blocks sampling and
-invalidates in-flight generations.
+The repository implements the local host A+B foundation: same-tick track
+settings, linked `media-source` input FPS, and one uniquely matched outbound RTP
+sample with its RID, explicit sample/media identity and adjacent frame/encode
+time deltas, `remoteId` linkage, and the selected path reached through that RTP
+stream's transport. Source replacement blocks sampling and invalidates in-flight
+generations. Direct/relay edges bind that evidence to the
+current track and PeerConnection. The Host SFU publisher also samples only its
+active LiveKit sender's `h` representation and binds the result again to the
+current publication generation; replacement, profile reset, retirement,
+disconnect, and authoritative resync clear the old identity before another
+sample can appear. The Host details UI renders that source once as `SFU 发送`,
+not once per SFU-fed Viewer. This is local diagnostics only: it creates no wire,
+score, selector, or media action.
 
 Authenticated Viewer C is also implemented for each current ordinary or
 peer-assisted P2P hop. A viewer sends one nullable, sanitized aggregate window
@@ -704,6 +716,7 @@ is a separate optimization.
 
 - [W3C MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
+- [W3C Media Capture and Streams `getSettings()`](https://www.w3.org/TR/mediacapture-streams/#dom-mediastreamtrack-getsettings)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
 - [W3C WebRTC codec preferences](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver-setcodecpreferences)
 - [RFC 7742 WebRTC video codec requirements](https://www.rfc-editor.org/rfc/rfc7742.html)
@@ -744,6 +757,7 @@ is a separate optimization.
 - [LiveKit server 1.13.5 per-subscriber layer application](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscribedtrack.go)
 - [LiveKit server 1.13.5 codec-specific layer selectors](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
 - [LiveKit client 2.22.0 Dynacast and saved degradation preference](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalVideoTrack.ts)
+- [LiveKit client 2.22.0 local sender stats](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/LocalTrack.ts)
 - [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
 - [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
 - [LiveKit server 1.13.5 release assets and checksums](https://github.com/livekit/livekit/releases/tag/v1.13.5)

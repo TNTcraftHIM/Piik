@@ -33,6 +33,11 @@ function receiveMetrics(
     intervalPacketsReceived: 1_500,
     intervalPacketsLost: 2,
     jitterMs: 3.5,
+    audioVideoPlayoutDeltaMs: 12.5,
+    videoJitterBufferDelayMs: 24,
+    audioJitterBufferDelayMs: 18,
+    audioConcealedSamplesPercent: 1,
+    intervalAudioConcealmentEvents: 3,
     intervalFramesDecoded: 120,
     intervalFramesDropped: 1,
     intervalDecodeMs: 2.4,
@@ -100,6 +105,10 @@ describe("viewer quality evidence", () => {
         bitrateKbps: 200_000,
         intervalPacketsLost: -1,
         codecParameters: "raw fmtp; secret=value/with/slash",
+        localCandidateAddress: "192.0.2.10",
+        localCandidatePort: 50_000,
+        remoteCandidateAddress: "203.0.113.20",
+        remoteCandidatePort: 50_001,
       }),
     );
     expect(bounded?.metrics).toMatchObject({
@@ -113,6 +122,12 @@ describe("viewer quality evidence", () => {
     expect(JSON.stringify(bounded)).not.toContain("must-not-leave-the-client");
     expect(JSON.stringify(bounded)).not.toContain("scalabilityMode");
     expect(JSON.stringify(bounded)).not.toContain("L3T3_KEY");
+    expect(JSON.stringify(bounded)).not.toContain("audioVideoPlayoutDeltaMs");
+    expect(JSON.stringify(bounded)).not.toContain("JitterBufferDelayMs");
+    expect(JSON.stringify(bounded)).not.toContain("Concealed");
+    expect(JSON.stringify(bounded)).not.toContain("ConcealmentEvents");
+    expect(JSON.stringify(bounded)).not.toContain("192.0.2.10");
+    expect(JSON.stringify(bounded)).not.toContain("203.0.113.20");
   });
 
   it("rate-limits, deduplicates, and resets sequence per connection", () => {
