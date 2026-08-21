@@ -2216,6 +2216,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         metrics={snapshot.metrics}
                         direction="send"
                         senderParameters={snapshot.senderParameters}
+                        progressive
                       />
                     )}
                   {showConnectionDetails &&
@@ -2226,6 +2227,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       <StatsGrid
                         metrics={metricsFromQualityEvidence(qualityEvidence)}
                         direction="receive"
+                        progressive
                       />
                     </>
                   )}

@@ -1,3 +1,6 @@
+import { ChevronDown } from "lucide-react";
+import { useId, useState } from "react";
+
 import type { ConnectionMetrics } from "../types";
 import type { VideoSenderParameterReadback } from "../media/quality";
 import { formatPacketLossPercent } from "./connection-details";
@@ -48,11 +51,15 @@ export function StatsGrid({
   metrics,
   direction,
   senderParameters,
+  progressive = false,
 }: {
   metrics: ConnectionMetrics;
   direction: "send" | "receive";
   senderParameters?: VideoSenderParameterReadback | null;
+  progressive?: boolean;
 }) {
+  const [secondaryExpanded, setSecondaryExpanded] = useState(false);
+  const secondaryId = useId();
   const encoder = metrics.encoderImplementation
     ? `${metrics.encoderImplementation}${
         metrics.powerEfficientEncoder === true
@@ -63,8 +70,8 @@ export function StatsGrid({
       }`
     : "未知";
 
-  return (
-    <dl className="stats-grid">
+  const primaryMetrics = (
+    <>
       <Metric
         label={direction === "send" ? "发送码率" : "接收码率"}
         value={`${readableNumber(metrics.bitrateKbps)} kbps`}
@@ -75,14 +82,6 @@ export function StatsGrid({
       <Metric
         label="视频丢包率"
         value={formatPacketLossPercent(metrics.packetLossPercent)}
-      />
-      <Metric
-        label={direction === "send" ? "可用上行" : "抖动"}
-        value={
-          direction === "send"
-            ? `${readableNumber(metrics.availableOutgoingKbps)} kbps`
-            : `${readableNumber(metrics.jitterMs, 1)} ms`
-        }
       />
       <Metric
         label="传输协议"
@@ -98,6 +97,22 @@ export function StatsGrid({
         label="候选路径"
         value={`${metrics.localCandidateType ?? "?"} / ${metrics.remoteCandidateType ?? "?"}`}
         title="本地 / 远端候选类型"
+      />
+      {direction === "send" && (
+        <Metric label="质量状态" value={qualityReason(metrics.qualityLimitationReason)} />
+      )}
+    </>
+  );
+
+  const secondaryMetrics = (
+    <>
+      <Metric
+        label={direction === "send" ? "可用上行" : "抖动"}
+        value={
+          direction === "send"
+            ? `${readableNumber(metrics.availableOutgoingKbps)} kbps`
+            : `${readableNumber(metrics.jitterMs, 1)} ms`
+        }
       />
       <Metric label="视频 Codec" value={metrics.codec ?? "未知"} />
       {metrics.codecProfile && (
@@ -150,7 +165,6 @@ export function StatsGrid({
             label="最近区间编码/帧"
             value={`${readableNumber(metrics.intervalEncodeMs, 1)} ms`}
           />
-          <Metric label="质量状态" value={qualityReason(metrics.qualityLimitationReason)} />
           {senderParameters && (
             <>
               <Metric
@@ -208,6 +222,43 @@ export function StatsGrid({
           />
         </>
       )}
-    </dl>
+    </>
+  );
+
+  if (!progressive) {
+    return (
+      <dl className="stats-grid">
+        {primaryMetrics}
+        {secondaryMetrics}
+      </dl>
+    );
+  }
+
+  const toggleLabel = secondaryExpanded ? "收起更多连接指标" : "展开更多连接指标";
+  return (
+    <div className="stats-disclosure">
+      <dl className="stats-grid">{primaryMetrics}</dl>
+      <div className="stats-detail-actions">
+        <span>更多指标</span>
+        <button
+          className={`icon-button stats-detail-toggle${secondaryExpanded ? " is-expanded" : ""}`}
+          type="button"
+          title={toggleLabel}
+          aria-label={toggleLabel}
+          aria-expanded={secondaryExpanded}
+          aria-controls={secondaryId}
+          onClick={() => setSecondaryExpanded((current) => !current)}
+        >
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <dl
+        id={secondaryId}
+        className="stats-grid stats-grid-secondary"
+        hidden={!secondaryExpanded}
+      >
+        {secondaryMetrics}
+      </dl>
+    </div>
   );
 }
