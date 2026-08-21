@@ -207,6 +207,7 @@ export const DEFAULT_QUALITY_SETTINGS = {
 export const DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES = 2;
 export const CURRENT_HOST_MEDIA_EDGE_LIMIT = 2;
 export const CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT = 1;
+export const CURRENT_SFU_ROOT_LIMIT = 2;
 // The wire retains the accepted future 0/1/2/3 capability envelope. Current
 // release policy is enforced server-side by role and is intentionally lower.
 export const MAX_PEER_RELAY_DOWNSTREAM_EDGES = 3;

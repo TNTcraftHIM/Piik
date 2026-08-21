@@ -11,6 +11,7 @@ const DIRECT_ROOT = "viewer_direct_12345678";
 const SFU_ROOT_A = "viewer_sfu_a_12345678";
 const SFU_ROOT_B = "viewer_sfu_b_12345678";
 const THIRD_CHILD = "viewer_third_12345678";
+const SFU_ROOT_C = "viewer_sfu_c_12345678";
 const GENERATION_A = "generation_a_12345678";
 const GENERATION_B = "generation_b_12345678";
 
@@ -72,6 +73,65 @@ function chainedAssignments(): Map<string, ParticipantRouteAssignment> {
 }
 
 describe("MediaRouteController", () => {
+  it("SFU root invariant gate: accepts two roots, rejects a third, and charges one Host publication edge", () => {
+    const assignments = new Map<string, ParticipantRouteAssignment>([
+      [
+        HOST,
+        assignment({ kind: "none" }, [DIRECT_ROOT], GENERATION_A),
+      ],
+      [DIRECT_ROOT, assignment({ kind: "peer", peerId: HOST })],
+      [SFU_ROOT_A, assignment({ kind: "sfu" })],
+      [SFU_ROOT_B, assignment({ kind: "sfu" })],
+    ]);
+    const routes = new MediaRouteController({
+      hostPeerId: HOST,
+      assignments,
+      sfuPublicationGeneration: GENERATION_A,
+      sfuRootPeerIds: [SFU_ROOT_A, SFU_ROOT_B],
+    });
+
+    expect(routes.getActiveRoute().sfu.rootPeerIds).toEqual([
+      SFU_ROOT_A,
+      SFU_ROOT_B,
+    ]);
+    expect(routes.hostActiveMediaEdges()).toBe(2);
+
+    const excessiveRoots = new Map(assignments);
+    excessiveRoots.set(SFU_ROOT_C, assignment({ kind: "sfu" }));
+    expect(
+      () =>
+        new MediaRouteController({
+          hostPeerId: HOST,
+          assignments: excessiveRoots,
+          sfuPublicationGeneration: GENERATION_A,
+          sfuRootPeerIds: [SFU_ROOT_A, SFU_ROOT_B, SFU_ROOT_C],
+        }),
+    ).toThrow("SFU root participants must be unique and bounded");
+
+    const excessiveHostEdges = new Map(assignments);
+    excessiveHostEdges.set(
+      HOST,
+      assignment(
+        { kind: "none" },
+        [DIRECT_ROOT, SFU_ROOT_C],
+        GENERATION_A,
+      ),
+    );
+    excessiveHostEdges.set(
+      SFU_ROOT_C,
+      assignment({ kind: "peer", peerId: HOST }),
+    );
+    expect(
+      () =>
+        new MediaRouteController({
+          hostPeerId: HOST,
+          assignments: excessiveHostEdges,
+          sfuPublicationGeneration: GENERATION_A,
+          sfuRootPeerIds: [SFU_ROOT_A, SFU_ROOT_B],
+        }),
+    ).toThrow("Host active media edge budget exceeded");
+  });
+
   it("atomically commits only after every expected participant is ready", () => {
     const routes = controller();
     const revision = routes.prepare(hybridPlan())!;

@@ -162,8 +162,11 @@ evidence windows remain limited to topology eligibility and diagnostics:
    simulcast/send encodings, leaves each LiveKit root's ceiling at `HIGH`, and
    first tests built-in per-subscriber SFU bandwidth adaptation on
    zero-descendant leaf viewers. Start with deterministic two-layer publication
-   and Dynacast off; its pinned cumulative behavior can later be measured as the
-   equivalent always-on case. Screener's
+   and Dynacast off. Dynacast controls publisher-layer pausing from aggregated
+   subscriber demand; disabling it does not disable server-side per-subscriber
+   BWE or turn a `HIGH` ceiling into a guaranteed received layer. Its pinned
+   cumulative behavior can later be measured as the equivalent always-on case.
+   Screener's
    subscriber does not attach a `RemoteTrack`, so LiveKit `adaptiveStream` is not
    directly usable without changing that ownership; it is not required for the
    SFU bandwidth-adaptation candidate. Before default enablement, a separate
@@ -175,12 +178,17 @@ evidence windows remain limited to topology eligibility and diagnostics:
    P2P/`HIGH` path is unchanged, no third layer appears, the expected layer is
    actually received, and hardware encoder, game FPS/p1 low, CPU/GPU, interval
    encode cost, host upload, and `HIGH+LOW` bytes fit budget. Every active SFU
-   publication now configures exactly two ordered `q,h` encodings, leaves
-   Dynacast at its default `false`, and sets each subscriber's ceiling to
-   `HIGH`; the two-layer publication is not behind a separate quality flag.
-   Per-subscriber BWE, hardware cost, and root-with-children behavior remain
-   unverified, so no runtime performance claim follows. If the always-on cost
-   fails, test manual standard sender activation/deactivation next;
+   publication now configures exactly two ordered `q,h` encodings, constructs
+   `Room({ dynacast: false })`, disables backup-codec publication, and sets each
+   subscriber's ceiling to `HIGH`; the two-layer publication is not behind a
+   separate quality flag. Client 2.22.0 also defaults Dynacast to `false`, but
+   the explicit option prevents silent option drift and `backupCodec: false`
+   prevents the pinned multi-codec path from enabling it automatically.
+   The 2026-08-22 executable preflight verifies this configuration, retains a
+   zero-child subscriber, and rejects excess central roots. Per-subscriber BWE,
+   actual layer forwarding, hardware cost, and root-with-children behavior
+   remain unverified, so no runtime performance claim follows. If the always-on
+   cost fails, test manual standard sender activation/deactivation next;
    custom/native dual encoding follows only if built-in and manual standard
    primitives fail.
 3. **Current Web/LiveKit SVC: rejected
@@ -296,7 +304,7 @@ Negative:
 
 ## References
 
-Primary sources checked 2026-08-19:
+Primary sources checked through 2026-08-22:
 
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/)
@@ -310,8 +318,12 @@ Primary sources checked 2026-08-19:
 - [Firefox WebRTC-SVC implementation status](https://bugzilla.mozilla.org/show_bug.cgi?id=1571470)
 - [WebKit `RTCRtpEncodingParameters` WebIDL](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/Modules/mediastream/RTCRtpEncodingParameters.idl)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
+- [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
+- [LiveKit client 2.22.0 room defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts)
+- [LiveKit client 2.22.0 room and Dynacast options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/options.ts)
+- [LiveKit client 2.22.0 room option merge](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
 - [LiveKit client 2.22.0 SVC defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
-- [LiveKit client 2.22.0 screen-share SVC override](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
+- [LiveKit client 2.22.0 screen-share SVC and publish-option handling](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
 - [LiveKit client 2.22.0 SVC encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit client 2.22.0 subscriber quality control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/RemoteTrackPublication.ts)
 - [LiveKit server 1.13.5 per-subscriber layer application](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscribedtrack.go)

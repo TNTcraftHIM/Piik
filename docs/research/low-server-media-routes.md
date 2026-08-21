@@ -1,6 +1,6 @@
 # Low-Server-Cost Media Routes
 
-- Research date: 2026-08-21
+- Research date: 2026-08-22
 - Scope: one broadcaster, explicit admission up to sixteen trusted viewers,
   low latency, and bounded host media fanout
 - Status: ADR-0005 accepts STUN-only direct/peer UDP, bounded SFU/UDP roots,
@@ -79,6 +79,17 @@ prewarm, without a participant or media edge, so the A/B does not isolate those
 effects. Its roughly 86% result must not be extrapolated to a public network;
 internet DNS/TLS reuse, RTT/loss, audio, transport fallback, and browser variance
 still require measurement.
+
+The 2026-08-22 in-process `gate:sfu-root-invariants` closes the corresponding
+source-accounting preflight: controller state and LiveKit token allowlists reject
+a third normal root; an active Host SFU publication counts as one outbound media
+edge in addition to direct children; and the benchmark acceptance evaluator
+rejects either three roots or three Host media edges. A committed root with zero
+peer descendants remains selected across reauthentication; a separate client
+transition check keeps the active subscriber on a newer same-kind empty-child
+assignment. This is executable topology and accounting evidence only; without a
+LiveKit process, browser RTC stats, and packet counters it does not measure
+`B_pub`, root egress, forwarding, or congestion behavior.
 
 ## Traffic Conservation And The Impossible Triangle
 

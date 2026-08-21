@@ -476,6 +476,98 @@ describe("peer topology loopback observations", () => {
     );
   });
 
+  it("SFU root invariant gate: accepts two roots and detects excess root or Host media edges", () => {
+    const generation = "publication_generation_12345678";
+    const host = page("host", "host", 2, 0);
+    const direct = page("viewer", "viewer-1", 0, 1);
+    const firstRoot = page("viewer", "viewer-2", 0, 1);
+    const secondRoot = page("viewer", "viewer-3", 0, 1);
+    host.routeRevision = 7;
+    host.routeAssignment.childPeerIds = [direct.peerId];
+    host.routeAssignment.sfuPublicationGeneration = generation;
+    host.maxAssignedChildren = 1;
+    direct.routeRevision = 7;
+    direct.routeAssignment.upstream = {
+      kind: "peer",
+      peerId: host.peerId,
+    };
+    for (const root of [firstRoot, secondRoot]) {
+      root.routeRevision = 7;
+      root.routeAssignment.upstream = { kind: "sfu" };
+    }
+    for (const participant of [host, firstRoot, secondRoot]) {
+      markActiveRouteReady(participant);
+    }
+
+    const initial = [host, direct, firstRoot, secondRoot];
+    const final = structuredClone(initial);
+    for (const viewer of final.slice(1)) {
+      viewer.connections.at(-1)!.receiveTotals!.framesTotal = 20;
+    }
+    const summary = summarizeSamples(
+      [
+        { atEpochMs: 2_000, elapsedMs: 0, pages: initial },
+        { atEpochMs: 4_000, elapsedMs: 2_000, pages: final },
+      ],
+      3,
+    );
+    const checks = buildRunChecks(summary, 3, "720p30");
+
+    expect(summary).toMatchObject({
+      maxHostActiveMediaEdges: 2,
+      maxHostAssignedChildren: 1,
+      sfuRootCount: 2,
+      sfuPublicationCoherent: true,
+      everyViewerDecoded: true,
+    });
+    expect(
+      checks.find((check) => check.name === "sfu-route-consistency")?.passed,
+    ).toBe(true);
+    expect(
+      checks.find((check) => check.name === "host-active-media-edges")?.passed,
+    ).toBe(true);
+
+    const thirdRoot = page("viewer", "viewer-4", 0, 1);
+    thirdRoot.routeRevision = 7;
+    thirdRoot.routeAssignment.upstream = { kind: "sfu" };
+    markActiveRouteReady(thirdRoot);
+    const excessiveRootInitial = [...structuredClone(initial), thirdRoot];
+    const excessiveRootFinal = structuredClone(excessiveRootInitial);
+    for (const viewer of excessiveRootFinal.slice(1)) {
+      viewer.connections.at(-1)!.receiveTotals!.framesTotal = 20;
+    }
+    const excessiveRootSummary = summarizeSamples(
+      [
+        { atEpochMs: 2_000, elapsedMs: 0, pages: excessiveRootInitial },
+        { atEpochMs: 4_000, elapsedMs: 2_000, pages: excessiveRootFinal },
+      ],
+      4,
+    );
+    expect(excessiveRootSummary.sfuRootCount).toBe(3);
+    expect(
+      buildRunChecks(excessiveRootSummary, 4, "720p30").find(
+        (check) => check.name === "sfu-route-consistency",
+      )?.passed,
+    ).toBe(false);
+
+    const excessiveHostInitial = structuredClone(initial);
+    const excessiveHostFinal = structuredClone(final);
+    excessiveHostInitial[0]!.maxActiveOutboundMediaEdges = 3;
+    excessiveHostFinal[0]!.maxActiveOutboundMediaEdges = 3;
+    const excessiveHostSummary = summarizeSamples(
+      [
+        { atEpochMs: 2_000, elapsedMs: 0, pages: excessiveHostInitial },
+        { atEpochMs: 4_000, elapsedMs: 2_000, pages: excessiveHostFinal },
+      ],
+      3,
+    );
+    expect(
+      buildRunChecks(excessiveHostSummary, 3, "720p30").find(
+        (check) => check.name === "host-active-media-edges",
+      )?.passed,
+    ).toBe(false);
+  });
+
   it("fails SFU continuity without one same-revision Host publication", () => {
     function summarizeSfu(
       hostGeneration: string | null,

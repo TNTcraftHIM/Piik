@@ -539,13 +539,13 @@ describe("SfuPublisher", () => {
     expect(updates.at(-1)).toBeNull();
   });
 
-  it("prepares a connection without publishing media", async () => {
+  it("SFU root invariant gate: explicitly keeps Dynacast off while preparing", async () => {
     const publisher = new SfuPublisher();
 
     await expect(publisher.connect(connection)).resolves.toBe(true);
 
     const room = livekit.state.rooms[0];
-    expect(room.options).toEqual({});
+    expect(room.options).toEqual({ dynacast: false });
     expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
       autoSubscribe: false,
     });
@@ -598,7 +598,7 @@ describe("SfuPublisher", () => {
     expect(livekit.state.rooms[0]?.disconnect).toHaveBeenCalledWith(false);
   });
 
-  it("publishes one screen video and optional audio only while active", async () => {
+  it("SFU root invariant gate: publishes exactly the ordered q and h video encodings", async () => {
     const publisher = new SfuPublisher();
     const video = track("video", "video-1");
     const audio = track("audio", "audio-1");
@@ -654,6 +654,9 @@ describe("SfuPublisher", () => {
         scaleResolutionDownBy: 1,
       }),
     ]);
+    expect(
+      sender.parameters.encodings.every((encoding) => encoding.active !== false),
+    ).toBe(true);
     expect(publisher.getSenderParameters()).toEqual({
       requested: {
         maxBitrate: 8_000_000,
@@ -1226,7 +1229,7 @@ describe("SfuPublisher", () => {
 });
 
 describe("SfuSubscriber", () => {
-  it("stays inactive while prepared and selectively subscribes after activation", async () => {
+  it("SFU root invariant gate: keeps the assigned screen subscription at a HIGH ceiling", async () => {
     const gate = deferred();
     livekit.state.connectGate = gate.promise;
     const streams: Array<MediaStream | null> = [];

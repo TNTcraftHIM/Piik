@@ -7,6 +7,8 @@ const apiKey = "test-api-key";
 const apiSecret = "s".repeat(32);
 const publicationGeneration = "publication_12345678";
 const rootPeerId = "viewer_root_12345678";
+const secondRootPeerId = "viewer_root_23456789";
+const thirdRootPeerId = "viewer_root_34567890";
 
 function issuer(
   maxViewersPerRoom = 8,
@@ -21,6 +23,41 @@ function issuer(
 }
 
 describe("LiveKitTokenIssuer", () => {
+  it("SFU root invariant gate: allows exactly two roots and rejects a third", async () => {
+    const tokenIssuer = issuer();
+    await expect(
+      tokenIssuer.issueToken({
+        roomId: "42",
+        role: "host",
+        peerId: "host_peer_12345678",
+        publicationGeneration,
+        allowlistedRootPeerIds: [rootPeerId, secondRootPeerId],
+      }),
+    ).resolves.toEqual(expect.any(String));
+    await expect(
+      tokenIssuer.issueToken({
+        roomId: "42",
+        role: "viewer",
+        peerId: secondRootPeerId,
+        publicationGeneration,
+        allowlistedRootPeerIds: [rootPeerId, secondRootPeerId],
+      }),
+    ).resolves.toEqual(expect.any(String));
+    await expect(
+      tokenIssuer.issueToken({
+        roomId: "42",
+        role: "host",
+        peerId: "host_peer_12345678",
+        publicationGeneration,
+        allowlistedRootPeerIds: [
+          rootPeerId,
+          secondRootPeerId,
+          thirdRootPeerId,
+        ],
+      }),
+    ).rejects.toThrow("root allowlist is invalid");
+  });
+
   it("issues a generation-bound host token limited to screen sharing", async () => {
     const claims = await new TokenVerifier(apiKey, apiSecret).verify(
       await issuer().issueToken({

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import {
   CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
   CURRENT_HOST_MEDIA_EDGE_LIMIT,
+  CURRENT_SFU_ROOT_LIMIT,
   MAX_MEDIA_ROUTE_REVISION,
   type ClientMessage,
   type MediaAssignment,
@@ -303,7 +304,8 @@ export class HybridMediaRouter {
     if (
       !Number.isSafeInteger(fallback.maxRoots) ||
       fallback.maxRoots < 1 ||
-      fallback.maxRoots > Math.min(2, options.roomStore.maxViewersPerRoom) ||
+      fallback.maxRoots >
+        Math.min(CURRENT_SFU_ROOT_LIMIT, options.roomStore.maxViewersPerRoom) ||
       (fallback.prepareTimeoutMs !== undefined &&
         (!Number.isSafeInteger(fallback.prepareTimeoutMs) ||
           fallback.prepareTimeoutMs <= 0))
