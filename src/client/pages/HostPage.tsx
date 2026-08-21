@@ -66,7 +66,7 @@ import {
   writeHostRoom,
 } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
-import { labelViewerPresence } from "../lib/viewer-presence";
+import { labelViewerParticipants } from "../lib/viewer-presence";
 import {
   applyCaptureProfile,
   captureDisplay,
@@ -275,15 +275,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     [peerSnapshots],
   );
   const viewers = useMemo(
-    () =>
-      labelViewerPresence(
-        participantPresence.filter(
-          (participant): participant is Extract<
-            ParticipantPresenceEntry,
-            { role: "viewer" }
-          > => participant.role === "viewer",
-        ),
-      ),
+    () => labelViewerParticipants(participantPresence),
     [participantPresence],
   );
   const hostPresence = useMemo(

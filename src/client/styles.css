@@ -1122,6 +1122,47 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 
+.viewer-roster {
+  margin-top: 16px;
+  padding: 14px 0;
+  border-block: 1px solid var(--border);
+}
+
+.viewer-roster-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.viewer-roster-heading h2 {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.viewer-roster-heading span {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.viewer-roster-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.viewer-roster-list li {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .toolbar-status {
   min-width: 0;
   overflow: hidden;

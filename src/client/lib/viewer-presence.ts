@@ -1,4 +1,7 @@
-import type { ViewerPresenceEntry } from "../../shared/protocol";
+import type {
+  ParticipantPresenceEntry,
+  ViewerPresenceEntry,
+} from "../../shared/protocol";
 
 export interface LabeledViewerPresence extends ViewerPresenceEntry {
   peerIdSuffix: string;
@@ -65,4 +68,15 @@ export function labelViewerPresence(
         : viewer.displayName,
     };
   });
+}
+
+export function labelViewerParticipants(
+  participants: readonly ParticipantPresenceEntry[],
+): LabeledViewerPresence[] {
+  return labelViewerPresence(
+    participants.filter(
+      (participant): participant is ViewerPresenceEntry =>
+        participant.role === "viewer",
+    ),
+  );
 }

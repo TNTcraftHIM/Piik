@@ -1263,6 +1263,55 @@ describe("WebSocket signaling", () => {
     expect(hostPresenceEntry(renamedHost)?.peerId).toBe(hostAuth.peerId);
   });
 
+  it("replaces an opted-in Viewer roster after another Viewer leaves", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "viewer-roster-host");
+
+    const subscriber = await openClient(harness.webSocketUrl);
+    const subscriberAuth = await authenticate(
+      subscriber,
+      harness.room,
+      "viewer",
+      "viewer-roster-subscriber",
+      1,
+      undefined,
+      { viewerPresence: true, displayName: "订阅者" },
+    );
+    await nextViewerPresenceMatching(
+      subscriber,
+      (message) => viewerPresenceEntries(message).length === 1,
+    );
+
+    const other = await openClient(harness.webSocketUrl);
+    const otherAuth = await authenticate(
+      other,
+      harness.room,
+      "viewer",
+      "viewer-roster-other",
+      1,
+      undefined,
+      { displayName: "另一位" },
+    );
+    const joined = await nextViewerPresenceMatching(
+      subscriber,
+      (message) => viewerPresenceEntries(message).length === 2,
+    );
+    expect(viewerPresenceEntries(joined).map((viewer) => viewer.peerId)).toEqual([
+      subscriberAuth.peerId,
+      otherAuth.peerId,
+    ]);
+
+    await closeClient(other);
+    const left = await nextViewerPresenceMatching(
+      subscriber,
+      (message) => viewerPresenceEntries(message).length === 1,
+    );
+    expect(viewerPresenceEntries(left).map((viewer) => viewer.peerId)).toEqual([
+      subscriberAuth.peerId,
+    ]);
+  });
+
   it("clears a disconnected Host name and publishes the replacement name", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 40 });
     const firstHost = await openClient(harness.webSocketUrl);

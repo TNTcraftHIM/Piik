@@ -27,7 +27,10 @@ import {
   SignalingClient,
 } from "../src/client/lib/signaling.ts";
 import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
-import { labelViewerPresence } from "../src/client/lib/viewer-presence.ts";
+import {
+  labelViewerParticipants,
+  labelViewerPresence,
+} from "../src/client/lib/viewer-presence.ts";
 import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import { createStatsAccumulator, collectConnectionMetrics } from "../src/client/webrtc/stats.ts";
 
@@ -128,6 +131,34 @@ describe("browser-local display name", () => {
     expect(labeled.map((viewer) => viewer.label)).toEqual([
       "同名 (111111)",
       "同名 (222222)",
+    ]);
+  });
+
+  it("labels every Viewer in a participant snapshot without including the Host", () => {
+    const labeled = labelViewerParticipants([
+      {
+        role: "host",
+        peerId: "host_12345678",
+        displayName: "分享者",
+        upstream: { kind: "none" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer_111111",
+        displayName: "朋友甲",
+        upstream: { kind: "peer", peerId: "host_12345678" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer_222222",
+        displayName: "朋友乙",
+        upstream: { kind: "sfu" },
+      },
+    ]);
+
+    expect(labeled.map((viewer) => viewer.label)).toEqual([
+      "朋友甲",
+      "朋友乙",
     ]);
   });
 

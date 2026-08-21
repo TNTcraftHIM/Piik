@@ -15,3 +15,5 @@ The browser is the only durable owner of a display-name preference. The signalin
 ## Current roster presentation
 
 The live roster uses the display name alone when it is unique in the current room snapshot. When two or more participants use the same name, only those colliding entries append the shortest room-scoped `peerId` suffix that distinguishes them, starting at six characters and extending only for a suffix collision. A suffix collision between different names does not change either label. This is presentation-only; the suffix remains opaque and never participates in authorization, routing, or quality decisions.
+
+Host and Viewer pages consume the same authoritative participant snapshot. The Viewer roster renders only Viewer entries, including the local Viewer, and replaces the whole list on each snapshot so joins, leaves, renames, and reconnections do not require a second client-side membership model.
