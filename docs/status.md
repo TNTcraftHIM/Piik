@@ -4,10 +4,10 @@ Last updated: 2026-08-21
 
 ## Phase
 
-Production at `https://share.bonfire.icu` is exact `691863e1720ebbee1b5368f29e94f05b3710ccf8`; artifact 605,904 bytes, SHA-256 `7e751c0bf7c97bc7d23edb1e37441fb6c55d90a0cd80647b778fdb5b1ee28bae`.
-Cutover: 3,376.021 ms lock/669.678 ms stop-health/604.174 ms switch-health. SQLite v3/five rooms has SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services are active/running at `NRestarts=0`; rollbacks are `6634cb9`, then `ecc794d` and `16f6eab`.
+Production at `https://share.bonfire.icu` is exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777`; immutable source/dist artifacts are 604,336/354,230 bytes, with hashes in deployment.
+Cutover: 2,276.366 ms lock/703.625 ms stop-health/562.538 ms switch-health. SQLite v3/five rooms has SHA-256 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`, owner/mode `screener:screener`/0600. Four services are active/running at `NRestarts=0`; rollbacks are `691863e`, then `6634cb9` and `ecc794d`.
 Ordinary ICE is STUN-only; limits are SFU roots <=2, one `peer-selected` attempt excluding Host ingress, and selected UDP TTL 120. This rollout ran no browser/media/SFU/TURN/performance canary; earlier exact-`16f6eab` Host-ingress proof remains separate.
-Stable SFU stream/unavailable state, evidence-backed pending/P2P/SFU and actual-only TURN are in source with Host preview notice, entry/nickname UI and Web relay cap2. Native is source-only; Web defaults VP8.
+Stable SFU state, evidence-backed route/transport labels, Host preview notice, entry/nickname UI and Web relay cap2 are live. Native is source-only; Web defaults VP8.
 
 ## Execution Principle
 
@@ -35,11 +35,11 @@ Flagship; parallel; min run/smoke/rollback; benchmark later. Active UI/config/lo
 - Access protocol/config/HTTP/storage/SQLite/signaling focused tests pass, including commit-first teardown and v1 rollback.
 - Native wire/session tests enforce at most two authoritative children, no presence-created edge, stale-revision ignore, and one bounded unsupported-route failure per revision.
 - Production caps pending/answered `peer-selected` at one per room; Host ingress is independent. Focused admission/release/rollback/STUN-only tests pass; earlier Chrome proves active Host-ingress function only.
-- Exact `691863e` passed fresh typecheck, builds, hygiene and 32 files/469 tests. UTF-8 archive/shared-inode/deploy gates preserved config/nft/DB hashes and four zero-restart services.
+- Exact `261e980c` passed fresh typecheck, builds, hygiene and 32 files/470 tests. Bounded runtime, UTF-8 artifact, inode and deploy gates preserved config/nft/DB hashes and four zero-restart services.
 
 ## Unverified Boundaries
 
-- The `691863e` cutover ran no browser/media/SFU/TURN/performance canary. Earlier `16f6eab` proof covers Host ingress only; audible quality, last mile, external cohorts, admission rescue, resources/performance and game blur remain open.
+- The `261e980c` cutover ran no browser/media/SFU/TURN/performance canary. Earlier `16f6eab` proof covers Host ingress only; audible quality, last mile, external cohorts, admission rescue, resources/performance and game blur remain open.
 - Mobile is Viewer-only. Its persistent audible media element keeps media/signaling active while the page lives; iOS lock-screen, reclamation and background reconnection remain device gates. AirPlay/system mirroring is local output; live WebRTC `srcObject` has no portable in-app TV-output contract.
 - Silent partitions can wait 30 to 60 seconds for heartbeat detection before the default 5-second grace; this remains unverified.
 - Production startup blur remains open. One local Chrome synthetic same-`balanced` A/B kept route/PC/SSRC/track and coincided with 720p -> 1080p without loss/freeze, but natural ramp prevents causal, production, or SFU proof.
