@@ -26,3 +26,10 @@ export function sourceSwitchNotice({
     ? `分享来源已切换，但${peerWarning}`
     : "分享来源已切换";
 }
+
+export function shouldPauseLocalPreview(
+  visibilityState: DocumentVisibilityState,
+  hasFocus: boolean,
+): boolean {
+  return visibilityState !== "visible" || !hasFocus;
+}

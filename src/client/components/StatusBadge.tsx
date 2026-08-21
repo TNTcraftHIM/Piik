@@ -1,8 +1,9 @@
-import { CircleAlert, Radio, Wifi, WifiOff } from "lucide-react";
+import { CircleAlert, Network, Radio, Server, Wifi, WifiOff } from "lucide-react";
 import type {
   MediaPath,
   SignalConnectionState,
 } from "../types";
+import { MEDIA_ROUTE_PRESENTATION, ROUTING_STATUS_PRESENTATION } from "./status-badge-model";
 
 interface BadgeProps {
   tone: "good" | "warning" | "danger" | "neutral";
@@ -36,15 +37,15 @@ export function SignalStatusBadge({
 export function PeerStatusBadge({
   state,
 }: {
-  state: RTCPeerConnectionState | "reconnecting" | "waiting" | "assigned";
+  state: RTCPeerConnectionState | "reconnecting" | "waiting" | "routing";
 }) {
   const labels: Record<
-    RTCPeerConnectionState | "reconnecting" | "waiting" | "assigned",
+    RTCPeerConnectionState | "reconnecting" | "waiting" | "routing",
     BadgeProps
   > = {
     waiting: { tone: "neutral", label: "等待开始分享" },
     reconnecting: { tone: "warning", label: "正在恢复" },
-    assigned: { tone: "neutral", label: "线路已分配" },
+    routing: ROUTING_STATUS_PRESENTATION,
     new: { tone: "neutral", label: "准备中" },
     connecting: { tone: "neutral", label: "正在连接" },
     connected: { tone: "good", label: "已连接" },
@@ -81,12 +82,16 @@ export function PathBadge({ path }: { path: MediaPath }) {
 }
 
 export function MediaRouteBadge({ route }: { route: "p2p" | "sfu" }) {
+  const presentation = MEDIA_ROUTE_PRESENTATION[route];
+  const Icon = presentation.icon === "network" ? Network : Server;
   return (
-    <Badge
-      tone={route === "p2p" ? "good" : "neutral"}
-      label={route === "p2p" ? "P2P" : "SFU"}
+    <span
+      className={`status-badge status-${presentation.tone}`}
       title="当前媒体路径"
-    />
+    >
+      <Icon size={14} aria-hidden="true" />
+      {presentation.label}
+    </span>
   );
 }
 export function WarningBanner({ children }: { children: React.ReactNode }) {

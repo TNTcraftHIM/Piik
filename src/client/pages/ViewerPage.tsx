@@ -20,6 +20,7 @@ import {
   type IceConfig,
   type MediaAssignment,
   type ParticipantPresenceEntry,
+  type ParticipantRouteAssignment,
   type ServerMessage,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
@@ -34,6 +35,7 @@ import {
   WarningBanner,
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
+import { viewerRouteEvidence } from "../components/status-badge-model";
 import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
@@ -99,6 +101,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
   const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
+  const [assignedRoute, setAssignedRoute] = useState<{
+    revision: number;
+    upstream: ParticipantRouteAssignment["upstream"];
+  } | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [relayChildEvidence, setRelayChildEvidence] =
     useState<ViewerQualityEvidence | null>(null);
@@ -139,6 +145,26 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
   const { muted, volumePercent } = playbackVolume;
+  const routePresentation = viewerRouteEvidence(
+    assignedRoute?.upstream ?? null,
+    peerSnapshot,
+    sfuUpstream,
+  );
+  const routeConnectionState =
+    routePresentation.evidence?.connectionState ??
+    (hostOnline ? "routing" : "waiting");
+  const routeMetrics = routePresentation.evidence?.metrics ?? null;
+
+  function acceptAssignedRoute(
+    revision: number,
+    upstream: ParticipantRouteAssignment["upstream"],
+  ): void {
+    setAssignedRoute((current) =>
+      current && revision < current.revision
+        ? current
+        : { revision, upstream },
+    );
+  }
 
   useEffect(() => {
     let active = true;
@@ -203,6 +229,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           }
           messageAuthority.invalidate();
           setSfuStandbyUrl(null);
+          setAssignedRoute(null);
           clearViewerSfuRoute();
           clearPeerState();
           setHostPresence(null);
@@ -215,6 +242,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           if (active) {
             messageAuthority.invalidate();
             setSfuStandbyUrl(null);
+            setAssignedRoute(null);
             clearViewerSfuRoute();
             clearPeerState();
             setHostPresence(null);
@@ -390,6 +418,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
           }
         },
+        onSfuVideoAvailability: (available) => {
+          if (!active || viewerSfuRoute !== route || available) {
+            return;
+          }
+          setSfuUpstream(null);
+          viewerRelay?.stop();
+          setStatusText(
+            currentHostOnline ? "正在恢复连接" : "等待开始分享",
+          );
+        },
         onSfuStream: (nextStream, assignment, initialVideoStream) => {
           if (!active || viewerSfuRoute !== route) {
             return;
@@ -409,9 +447,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           relay?.setChild(currentAssignment.childPeerIds[0] ?? null);
           relay?.setStream(nextStream);
           setRemoteStream(nextStream);
-          if (initialVideoStream) {
-            setSfuUpstream({ connectionState: "connected", metrics: null });
-          }
+          setSfuUpstream(
+            (current) =>
+              current ?? { connectionState: "connected", metrics: null },
+          );
           setStatusText("正在播放");
           if (initialVideoStream) {
             peerRef.current?.dispose();
@@ -621,6 +660,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           clearRelayChildEvidence();
         }
         currentRouteRevision = nextRouteRevision;
+        setAssignedRoute(
+          nextPeerAssisted && "routeAssignment" in message
+            ? {
+                revision: message.routeRevision,
+                upstream: message.routeAssignment.upstream,
+              }
+            : null,
+        );
         const relayCapacity = relayCapacityMessageForBrowser(nextPeerAssisted);
         if (relayCapacity) {
           signal.send(relayCapacity);
@@ -704,6 +751,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         selectedEdgeTurn = message;
         clearViewerSfuRoute();
         clearUpstreamState();
+        acceptAssignedRoute(message.revision, {
+          kind: "peer",
+          peerId: message.parentPeerId,
+        });
         currentAssignment = {
           parentPeerId: message.parentPeerId,
           childPeerIds: currentAssignment.childPeerIds,
@@ -722,7 +773,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             }
             currentRouteRevision = message.revision;
           }
-          ensureViewerSfuRoute().accept(message);
+          const result = ensureViewerSfuRoute().accept(message);
+          if (result !== "stale") {
+            acceptAssignedRoute(message.revision, message.assignment.upstream);
+          }
         }
         return;
       }
@@ -814,6 +868,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "sharing-stopped") {
         setSfuStandbyUrl(null);
+        setAssignedRoute(null);
         currentHostOnline = false;
         clearViewerSfuRoute();
         clearPeerState();
@@ -834,6 +889,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setAccessState("denied");
         clearViewerGrant(roomId);
         setSfuStandbyUrl(null);
+        setAssignedRoute(null);
         clearViewerSfuRoute();
         clearPeerState();
         setHostPresence(null);
@@ -845,6 +901,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         viewerAuthenticated = false;
         setAccessState("denied");
         setSfuStandbyUrl(null);
+        setAssignedRoute(null);
         clearViewerSfuRoute();
         clearPeerState();
         setHostPresence(null);
@@ -868,6 +925,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           ].includes(message.code)
         ) {
           setSfuStandbyUrl(null);
+          setAssignedRoute(null);
           clearViewerSfuRoute();
           clearPeerState();
           setHostPresence(null);
@@ -1099,16 +1157,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           </div>
           <div className="viewer-badges">
             <PeerStatusBadge
-              state={
-                sfuUpstream
-                  ? sfuUpstream.connectionState
-                  : (peerSnapshot?.connectionState ?? "waiting")
-              }
+              state={routeConnectionState}
             />
-            {showConnectionDetails && (sfuUpstream || peerSnapshot) && (
+            {showConnectionDetails && routePresentation.route && (
               <>
-                <MediaRouteBadge route={sfuUpstream ? "sfu" : "p2p"} />
-                {(sfuUpstream?.metrics ?? peerSnapshot?.metrics)?.path === "relay" && <PathBadge path="relay" />}
+                <MediaRouteBadge route={routePresentation.route} />
+                {routeMetrics?.path === "relay" && (
+                  <PathBadge path="relay" />
+                )}
               </>
             )}
           </div>
@@ -1274,7 +1330,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           onChange={setShowConnectionDetails}
         />
 
-        {peerSnapshot?.error && (
+        {routePresentation.evidence === peerSnapshot && peerSnapshot?.error && (
           <div className="notice notice-error" role="status">
             {peerSnapshot.error}
           </div>
@@ -1287,25 +1343,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         {qualityLimitation && (
           <WarningBanner>{qualityLimitation}</WarningBanner>
         )}
-        {showConnectionDetails && peerSnapshot && (
+        {showConnectionDetails && routePresentation.route && (
           <section className="viewer-stats" aria-labelledby="stats-heading">
             <h2 id="stats-heading">连接数据</h2>
             <div className="viewer-transport-heading">
-              <MediaRouteBadge route="p2p" />
-              {peerSnapshot.metrics.path === "relay" && <PathBadge path="relay" />}
+              <MediaRouteBadge route={routePresentation.route} />
+              {routeMetrics?.path === "relay" && (
+                <PathBadge path="relay" />
+              )}
             </div>
-            <StatsGrid metrics={peerSnapshot.metrics} direction="receive" />
-          </section>
-        )}
-        {showConnectionDetails && sfuUpstream && (
-          <section className="viewer-stats" aria-labelledby="sfu-stats-heading">
-            <h2 id="sfu-stats-heading">连接数据</h2>
-            <div className="viewer-transport-heading">
-              <MediaRouteBadge route="sfu" />
-              {sfuUpstream.metrics?.path === "relay" && <PathBadge path="relay" />}
-            </div>
-            {sfuUpstream.metrics && (
-              <StatsGrid metrics={sfuUpstream.metrics} direction="receive" />
+            {routeMetrics && (
+              <StatsGrid
+                metrics={routeMetrics}
+                direction="receive"
+              />
             )}
           </section>
         )}

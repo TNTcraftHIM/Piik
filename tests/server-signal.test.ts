@@ -5503,7 +5503,7 @@ describe("WebSocket signaling", () => {
         },
       }),
     );
-    expect((await host.inbox.next("error")).code).toBe("PEER_NOT_FOUND");
+    await host.inbox.expectNone(30);
 
     const reconnectedFirstViewer = await openClient(harness.webSocketUrl);
     const reconnectedFirstAuth = peerAssisted(

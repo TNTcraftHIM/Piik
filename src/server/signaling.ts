@@ -1138,12 +1138,6 @@ export class SignalingServer {
       );
       return;
     }
-    const target = this.connectedPeer(source.roomId, targetPeerId);
-    if (!target) {
-      this.sendError(sourceSocket, "PEER_NOT_FOUND", "Target peer is not connected");
-      return;
-    }
-
     const parentToChild = this.hybridMediaRouter!.isActivePeerParentOf(
       source.roomId,
       source.peerId,
@@ -1154,6 +1148,15 @@ export class SignalingServer {
       targetPeerId,
       source.peerId,
     );
+    const target = this.connectedPeer(source.roomId, targetPeerId);
+    if (!target) {
+      if (parentToChild || childToParent) {
+        return;
+      }
+      this.sendError(sourceSocket, "PEER_NOT_FOUND", "Target peer is not connected");
+      return;
+    }
+
     const description =
       message.payload.kind === "description"
         ? message.payload.description

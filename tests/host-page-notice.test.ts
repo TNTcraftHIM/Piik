@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { sourceSwitchNotice } from "../src/client/pages/host-page-notices.ts";
+import {
+  shouldPauseLocalPreview,
+  sourceSwitchNotice,
+} from "../src/client/pages/host-page-notices.ts";
+
+describe("shouldPauseLocalPreview", () => {
+  it("distinguishes local preview suspension from active focus", () => {
+    expect(shouldPauseLocalPreview("hidden", true)).toBe(true);
+    expect(shouldPauseLocalPreview("visible", false)).toBe(true);
+    expect(shouldPauseLocalPreview("visible", true)).toBe(false);
+  });
+});
 
 describe("sourceSwitchNotice", () => {
   it("does not report success when the SFU source replacement failed", () => {

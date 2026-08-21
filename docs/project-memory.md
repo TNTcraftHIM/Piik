@@ -32,7 +32,7 @@ Last updated: 2026-08-21
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
 - Web window/system-audio requests are browser hints; tracks use `music`. P2P/relay/SFU senders request 128,000 bit/s and SFU disables DTX; this is a ceiling, not a quality/stereo guarantee. Native Win11 process audio stays source-only; one Viewer got 495 Opus packets.
-- Presence reports exact active upstream and feeds the on-demand Host topology; it never creates media. Details label P2P/SFU and show TURN only for an actual relay. Web Host names stay socket/localStorage-only; Native remains outside the boundary.
+- Presence reports exact active upstream and feeds Host topology; it does not prove media. Details may label assigned P2P/SFU before media proof and show TURN only for an actual relay; status stays pending without local/current evidence. Web Host names stay socket/localStorage-only; Native remains outside the boundary.
 - Do not add scene detection, dynamic-FPS control, or forced AV1 without negotiation, encode, game, CPU/GPU, and sender evidence.
 - ADR-0002 grant/public access, the v3 room-password migration, and Web Host display names are deployed. Names/presence remain session-only without account or roster tables.
 

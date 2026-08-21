@@ -43,12 +43,14 @@ interface ViewerSfuRouteEvents {
     assignment: ParticipantRouteAssignment,
     initialVideoStream: boolean,
   ) => void;
+  onSfuVideoAvailability?: (available: boolean) => void;
   onSfuUpdate?: (metrics: ConnectionMetrics | null) => void;
   onSfuState?: (state: "connected" | "reconnecting") => void;
   send: (message: ClientMessage) => boolean;
   createSubscriber?: (
     events: {
       onStream: (stream: MediaStream | null) => void;
+      onVideoAvailability: (available: boolean) => void;
       onStats: (metrics: ConnectionMetrics) => void;
       onState: (state: "connected" | "reconnecting") => void;
       onDisconnected: () => void;
@@ -188,6 +190,9 @@ export class ViewerSfuRoute {
         if (stream) {
           this.handleStream(slot, stream);
         }
+      },
+      onVideoAvailability: (available: boolean) => {
+        this.handleVideoAvailability(slot, available);
       },
       onStats: (metrics: ConnectionMetrics) => {
         if (this.active === slot && !slot.failed) {
@@ -407,6 +412,22 @@ export class ViewerSfuRoute {
       void disconnectSubscriber(previous.subscriber);
     }
     this.ready(token.revision, "active");
+  }
+
+  private handleVideoAvailability(
+    slot: ViewerSubscriberSlot,
+    available: boolean,
+  ): void {
+    if (
+      this.closed ||
+      this.active !== slot ||
+      slot.failed ||
+      !slot.activated ||
+      this.route.getMediaAssignment()?.upstream.kind !== "sfu"
+    ) {
+      return;
+    }
+    this.events.onSfuVideoAvailability?.(available);
   }
 
   private commitMedia(token: RouteOperationToken, acknowledge: boolean): void {
