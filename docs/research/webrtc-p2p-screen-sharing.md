@@ -187,8 +187,7 @@ Web UI 后续只做最小诚实处理：运行时检查
 `navigator.mediaDevices?.getDisplayMedia`，缺失时在建房/发布前明确显示不支持；
 方法存在也只表示可以尝试，真实调用失败仍区分 denied/cancelled/capture-failed，
 不能按 UA 宣称兼容。移动 Viewer 不需要该 API，继续使用同一响应式 Web 播放端并保持
-leaf-only。移动 Host 若要落地，必须走后续原生 sender，而不是在 Web 端模拟
-screen track 或加入私有媒体协议。
+leaf-only。
 
 来源：
 

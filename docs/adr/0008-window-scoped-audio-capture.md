@@ -143,8 +143,6 @@ runtime downgrade.
 - The helper is packaged beside the sender in a commit-bound evaluation ZIP.
   The ZIP carries internal and external SHA-256 manifests plus exact linked Go
   dependency license files; it is neither an installer nor a release.
-- Android `AudioPlaybackCapture` and packaged cross-platform UI remain later
-  candidates; they do not block this slice.
 
 ## Follow-Up TODO
 
