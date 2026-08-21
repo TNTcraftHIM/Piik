@@ -196,14 +196,16 @@ server accepts one B from the bound parent session and generation. The router
 may retain C while awaiting B, but advances only when the correlated pair has a
 hard C receive predicate and a hard B sender predicate. `sending`, either
 report alone, and healthy or ambiguous pairs reset or do not advance the
-streak.
+streak. Signaling supplies the room's current `maxFramerate` only to the
+server-side router alongside C; no public evidence field is added.
 It holds at most one pending/streak state per connected Viewer and one room
 cooldown, with no timer, weighted score or global parent-capacity decision.
 
 The conservative Viewer C hard predicates are: freeze duration at least half
 of the one-to-five-second window; positive received-packet delta with zero
 decoded frames; or at least 100 received-plus-lost packets with loss at least
-30%. Parent B must independently report the exact `cpu`/`bandwidth` sender
+30%; or decoded FPS below five-sixths of the room's current `maxFramerate`.
+Parent B must independently report the exact `cpu`/`bandwidth` sender
 limitation or at least 100 sent packets with remote loss divided by sent packets
 at least 30%. Three consecutive dual-hard-bad windows are required. A healthy
 or incomplete correlated window, any Viewer/parent session, connection, route
@@ -233,9 +235,9 @@ Viewer-side
 `packetsReceived`, `packetsLost`, `framesDecoded`, `freezeCount` and
 `totalFreezesDuration`; its WebRTC 1.0 diagnostic example treats loss over 30%
 as a likely culprit. It does not define route-migration thresholds. The 50%
-freeze share, 100-packet floor, three windows, five-second gap and 30-second
-cooldown are falsifiable candidate constants for production calibration, not
-standards-derived or claimed optimum values.
+freeze share, five-sixths FPS ratio, 100-packet floor, three windows,
+five-second gap and 30-second cooldown are falsifiable candidate constants for
+production calibration, not standards-derived or claimed optimum values.
 
 The correlated pair can therefore attribute a problem only to the current
 parent-to-child edge generation. It cannot prove that the parent is globally
