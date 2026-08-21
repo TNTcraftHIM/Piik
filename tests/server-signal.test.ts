@@ -721,6 +721,139 @@ async function activateSingleViewerSfu(
   return { ...direct, revision: viewerPrepare.revision };
 }
 
+async function activateTwoFailedViewerSfuRoots(
+  webSocketUrl: string,
+  room: CreatedRoom,
+  prefix: string,
+) {
+  const first = await activateSingleViewerSfu(
+    webSocketUrl,
+    room,
+    `${prefix}-first`,
+  );
+  const secondViewer = await openClient(webSocketUrl);
+  const secondAuth = peerAssisted(
+    await authenticate(
+      secondViewer,
+      room,
+      "viewer",
+      `${prefix}-second-viewer`,
+      0,
+    ),
+  );
+  expect(secondAuth.routeAssignment.upstream).toEqual({
+    kind: "peer",
+    peerId: first.hostAuth.peerId,
+  });
+
+  const hostConnectionId = `${prefix}-host-edge`;
+  first.host.socket.send(JSON.stringify({
+    type: "signal",
+    targetPeerId: secondAuth.peerId,
+    payload: {
+      kind: "description",
+      connectionId: hostConnectionId,
+      description: { type: "offer", sdp: "v=0\r\n" },
+    },
+  }));
+  await secondViewer.inbox.next("signal");
+  secondViewer.socket.send(JSON.stringify({
+    type: "route-failed",
+    revision: secondAuth.routeRevision,
+    phase: "active",
+    connectionId: hostConnectionId,
+  }));
+  const reparented = await nextActiveRouteAfter(
+    secondViewer,
+    secondAuth.routeRevision,
+  );
+  expect(reparented.assignment.upstream).toEqual({
+    kind: "peer",
+    peerId: first.viewerAuth.peerId,
+  });
+
+  const peerConnectionId = `${prefix}-peer-edge`;
+  first.viewer.socket.send(JSON.stringify({
+    type: "signal",
+    targetPeerId: secondAuth.peerId,
+    payload: {
+      kind: "description",
+      connectionId: peerConnectionId,
+      description: { type: "offer", sdp: "v=0\r\n" },
+    },
+  }));
+  await secondViewer.inbox.next("signal");
+  secondViewer.socket.send(JSON.stringify({
+    type: "route-failed",
+    revision: reparented.revision,
+    phase: "active",
+    connectionId: peerConnectionId,
+  }));
+
+  const hostPrepare = await nextPreparedRoute(first.host);
+  const firstRootPrepare = await nextPreparedRoute(first.viewer);
+  const secondRootPrepare = await nextPreparedRoute(secondViewer);
+  await Promise.all([
+    first.host.inbox.next("sfu-config"),
+    first.viewer.inbox.next("sfu-config"),
+    secondViewer.inbox.next("sfu-config"),
+  ]);
+  for (const client of [first.host, first.viewer, secondViewer]) {
+    client.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: hostPrepare.revision,
+      phase: "prepare",
+    }));
+  }
+  const [, firstRootActive, secondRootActive] = await Promise.all([
+    nextActiveRouteRevision(first.host, hostPrepare.revision),
+    nextActiveRouteRevision(first.viewer, firstRootPrepare.revision),
+    nextActiveRouteRevision(secondViewer, secondRootPrepare.revision),
+  ]);
+  expect(firstRootActive.assignment.upstream).toEqual({ kind: "sfu" });
+  expect(secondRootActive.assignment.upstream).toEqual({ kind: "sfu" });
+  return {
+    host: first.host,
+    hostAuth: first.hostAuth,
+    failedViewer: secondViewer,
+    failedAuth: secondAuth,
+    secondRoot: first.viewer,
+    secondRootAuth: first.viewerAuth,
+    revision: hostPrepare.revision,
+  };
+}
+
+async function failActiveSfuRoot(client: TestClient, revision: number) {
+  client.socket.send(JSON.stringify({
+    type: "refresh-sfu",
+    revision,
+  }));
+  await client.inbox.next("sfu-config");
+  client.socket.send(JSON.stringify({
+    type: "route-failed",
+    revision,
+    phase: "active",
+    connectionId: null,
+  }));
+}
+
+async function startPeerSelectedTurn(
+  viewer: TestClient,
+  parent: TestClient,
+  revision: number,
+) {
+  await failActiveSfuRoot(viewer, revision);
+  const [viewerGrant, parentGrant] = await Promise.all([
+    viewer.inbox.next("selected-edge-turn"),
+    parent.inbox.next("selected-edge-turn"),
+  ]);
+  expect(parentGrant).toEqual(viewerGrant);
+  if (viewerGrant.edgeKind !== "peer-selected") {
+    throw new Error("expected a peer-selected grant");
+  }
+  return viewerGrant;
+}
+
 async function exhaustDeepViewerPeerRoutes(
   webSocketUrl: string,
   room: CreatedRoom,
@@ -4031,6 +4164,149 @@ describe("WebSocket signaling", () => {
     ).rejects.toThrow("Timed out");
   });
 
+  it("admits only one pending peer-selected TURN attempt per room", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const peers = await activateTwoFailedViewerSfuRoots(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-room-pending-cap",
+    );
+
+    await startPeerSelectedTurn(
+      peers.failedViewer,
+      peers.secondRoot,
+      peers.revision,
+    );
+
+    await failActiveSfuRoot(peers.secondRoot, peers.revision);
+    await expect(
+      nextActiveRouteAfter(peers.secondRoot, peers.revision),
+    ).resolves.toMatchObject({
+      assignment: { upstream: { kind: "peer" } },
+    });
+    await expect(
+      peers.secondRoot.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
+  it("keeps an answered peer-selected TURN edge inside the room cap", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const peers = await activateTwoFailedViewerSfuRoots(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-room-answered-cap",
+    );
+
+    const grant = await startPeerSelectedTurn(
+      peers.failedViewer,
+      peers.secondRoot,
+      peers.revision,
+    );
+    peers.secondRoot.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: peers.failedAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: grant.newConnectionId,
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }));
+    await peers.failedViewer.inbox.next("signal");
+    peers.failedViewer.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: peers.secondRootAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: grant.newConnectionId,
+        description: { type: "answer", sdp: "v=0\r\n" },
+      },
+    }));
+    await peers.secondRoot.inbox.next("signal");
+
+    await failActiveSfuRoot(peers.secondRoot, peers.revision);
+    await expect(
+      nextActiveRouteAfter(peers.secondRoot, peers.revision),
+    ).resolves.toMatchObject({
+      assignment: { upstream: { kind: "peer" } },
+    });
+    await expect(
+      peers.secondRoot.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+  });
+
+  it("releases the room cap after the selected edge fails", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const peers = await activateTwoFailedViewerSfuRoots(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-room-failure-release",
+    );
+
+    const firstGrant = await startPeerSelectedTurn(
+      peers.failedViewer,
+      peers.secondRoot,
+      peers.revision,
+    );
+    peers.failedViewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: peers.revision,
+      phase: "active",
+      connectionId: firstGrant.newConnectionId,
+    }));
+    await peers.failedViewer.inbox.next("error");
+
+    await failActiveSfuRoot(peers.secondRoot, peers.revision);
+    const [secondGrant, hostGrant] = await Promise.all([
+      peers.secondRoot.inbox.next("selected-edge-turn"),
+      peers.host.inbox.next("selected-edge-turn"),
+    ]);
+    expect(hostGrant).toEqual(secondGrant);
+    expect(secondGrant).toMatchObject({
+      edgeKind: "peer-selected",
+      viewerPeerId: peers.secondRootAuth.peerId,
+    });
+  });
+
+  it("releases the room cap when the selected Viewer disconnects", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+      viewerDisconnectGraceMs: 500,
+    });
+    const peers = await activateTwoFailedViewerSfuRoots(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-room-disconnect-release",
+    );
+
+    await startPeerSelectedTurn(
+      peers.failedViewer,
+      peers.secondRoot,
+      peers.revision,
+    );
+    await closeClient(peers.failedViewer);
+
+    await failActiveSfuRoot(peers.secondRoot, peers.revision);
+    const [secondGrant, hostGrant] = await Promise.all([
+      peers.secondRoot.inbox.next("selected-edge-turn"),
+      peers.host.inbox.next("selected-edge-turn"),
+    ]);
+    expect(hostGrant).toEqual(secondGrant);
+    expect(secondGrant).toMatchObject({
+      edgeKind: "peer-selected",
+      viewerPeerId: peers.secondRootAuth.peerId,
+    });
+  });
+
   it("allows selected TURN for Host SFU ingress outside historical room 1", async () => {
     const harness = await startSfuHarness({
       persistent: true,
@@ -4057,6 +4333,34 @@ describe("WebSocket signaling", () => {
       publicationGeneration: expect.any(String),
       iceServer: { urls: ["turn:turn.example.test:3478?transport=udp"] },
     });
+  });
+
+  it("does not count Host SFU ingress against the peer-selected room cap", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+    });
+    const direct = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-independent-ingress",
+    );
+
+    direct.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: direct.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    await expect(
+      direct.host.inbox.next("selected-edge-turn"),
+    ).resolves.toMatchObject({ edgeKind: "host-sfu-ingress" });
+
+    await startPeerSelectedTurn(
+      direct.viewer,
+      direct.host,
+      direct.revision,
+    );
   });
 
   it("retries an initial Host SFU prepare through one selected ingress", async () => {

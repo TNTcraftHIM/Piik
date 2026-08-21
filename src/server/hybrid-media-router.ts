@@ -1010,6 +1010,13 @@ export class HybridMediaRouter {
       return true;
     }
     if (
+      [...this.selectedEdgeTurnAttempts.values()].some(
+        (attempt) => attempt.roomId === roomId,
+      )
+    ) {
+      return false;
+    }
+    if (
       !config ||
       !active ||
       !intent ||
