@@ -81,7 +81,54 @@ describe("browser-local display name", () => {
     expect(labeled[1].peerIdSuffix.length).toBeGreaterThan(6);
     expect(labeled[0].peerIdSuffix).not.toBe(labeled[1].peerIdSuffix);
     expect(labeled[2].peerIdSuffix).toHaveLength(6);
+    expect(labeled[2].label).toBe("朋友");
     expect(labeled[0].label).toContain("同名 (");
+  });
+
+  it("keeps the shortest hidden suffix for distinct display names", () => {
+    const labeled = labelViewerPresence([
+      {
+        role: "viewer",
+        peerId: "viewer_AAAAAAsuffix",
+        displayName: "甲",
+        upstream: { kind: "sfu" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer_BBBBBBsuffix",
+        displayName: "乙",
+        upstream: { kind: "sfu" },
+      },
+    ]);
+
+    expect(labeled.map((viewer) => viewer.label)).toEqual(["甲", "乙"]);
+    expect(labeled.map((viewer) => viewer.peerIdSuffix.length)).toEqual([6, 6]);
+  });
+
+  it("uses the minimum suffix when duplicate names are already distinct", () => {
+    const labeled = labelViewerPresence([
+      {
+        role: "viewer",
+        peerId: "viewer_AAAAAA111111",
+        displayName: "同名",
+        upstream: { kind: "none" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer_BBBBBB222222",
+        displayName: "同名",
+        upstream: { kind: "none" },
+      },
+    ]);
+
+    expect(labeled.map((viewer) => viewer.peerIdSuffix)).toEqual([
+      "111111",
+      "222222",
+    ]);
+    expect(labeled.map((viewer) => viewer.label)).toEqual([
+      "同名 (111111)",
+      "同名 (222222)",
+    ]);
   });
 
   it("derives exact peer and SFU branches without guessing orphaned routes", () => {
