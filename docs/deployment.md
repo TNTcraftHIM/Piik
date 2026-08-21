@@ -248,8 +248,10 @@ receive a short-lived grant. Roll back by removing the application tuple before
 changing coturn or firewall state. Credentials never enter URLs, logs, browser
 persistence, room rows, or SQLite.
 
-Before a media canary, `npm run gate:turn-allocation` provides the bounded
-allocation check. Set `CHROME_PATH` in the process environment and supply the
+Before a media canary, `npm run gate:turn-udp-allocation` provides the bounded
+UDP allocation check. It proves only that an authenticated relay candidate can
+be allocated over UDP; it does not prove a media route, recovery, quality, or
+performance. Set `CHROME_PATH` in the process environment and supply the
 complete selected-edge tuple either in that environment or as newline-delimited
 `KEY=value` records on stdin. Values containing `=` are preserved. The script
 uses an isolated Chrome profile and loopback-only in-memory credential response,

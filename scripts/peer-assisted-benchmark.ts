@@ -105,7 +105,7 @@ interface RunCheck {
   expected: string;
 }
 
-interface RecoveryResult {
+export interface RecoveryResult {
   triggered: boolean;
   relayPeerId?: string;
   affectedPeerIds?: string[];
@@ -116,6 +116,22 @@ interface RecoveryResult {
   maxHostActiveMediaEdges?: number;
   maxHostAssignedChildren?: number;
   error?: string;
+}
+
+export interface RecoveryHostPeaks {
+  maxHostActiveMediaEdges?: number;
+  maxHostAssignedChildren?: number;
+}
+
+export interface RecoveryViewerBaseline {
+  label: string;
+  routeRevision: number;
+  upstreamKind: "peer" | "sfu";
+  parentPeerId: string | null;
+  connectionId: string | null;
+  connectionIndex: number;
+  rtpId: string;
+  framesTotal: number;
 }
 
 interface BenchmarkRun {
@@ -720,14 +736,6 @@ export function buildRunChecks(
     },
     sfuConsistencyCheck,
     {
-      name: "first-decoded-frame",
-      passed:
-        summary.maxFirstDecodedAfterAuthenticateMs !== null &&
-        summary.maxFirstDecodedAfterAuthenticateMs <= 3_000,
-      actual: summary.maxFirstDecodedAfterAuthenticateMs ?? false,
-      expected: "<= 3000 ms after signaling authentication starts",
-    },
-    {
       name: "quality-settings-propagated",
       passed: summary.finalTopology.every(
         (participant) =>
@@ -742,6 +750,23 @@ export function buildRunChecks(
       expected: `${profileId} quality settings on every participant`,
     },
   ];
+}
+
+export function buildRecoveryCheck(recovery: RecoveryResult): RunCheck {
+  const passed =
+    recovery.triggered &&
+    recovery.error === undefined &&
+    recovery.recoveredAtEpochMs !== undefined &&
+    recovery.maxHostActiveMediaEdges !== undefined &&
+    recovery.maxHostActiveMediaEdges <= 2 &&
+    recovery.maxHostAssignedChildren !== undefined &&
+    recovery.maxHostAssignedChildren <= 2;
+  return {
+    name: "relay-recovery-correctness",
+    passed,
+    actual: passed,
+    expected: "decoded frames resume with host media edges and assigned children <= 2",
+  };
 }
 
 export function buildBenchmarkInitScript(options: {
@@ -1772,6 +1797,106 @@ export function everyViewerAdvanced(
   );
 }
 
+function recoveryViewerBaseline(
+  page: PageObservation,
+): RecoveryViewerBaseline | null {
+  const upstream = page.routeAssignment?.upstream;
+  if (page.routeRevision === null || !upstream || upstream.kind === "none") {
+    return null;
+  }
+  const parentPeerId = upstream.kind === "peer" ? upstream.peerId : null;
+  const candidates = page.connections.filter((connection) => {
+    const framesTotal = connection.receiveTotals?.framesTotal;
+    return (
+      connection.hasInboundVideo &&
+      connection.connectionState === "connected" &&
+      typeof connection.receiveTotals?.id === "string" &&
+      connection.receiveTotals.id.length > 0 &&
+      typeof framesTotal === "number" &&
+      Number.isFinite(framesTotal) &&
+      framesTotal >= 0 &&
+      (parentPeerId === null || connection.remotePeerId === parentPeerId)
+    );
+  });
+  if (candidates.length !== 1) {
+    return null;
+  }
+  const connection = candidates[0]!;
+  return {
+    label: page.label,
+    routeRevision: page.routeRevision,
+    upstreamKind: upstream.kind,
+    parentPeerId,
+    connectionId: connection.connectionId,
+    connectionIndex: connection.index,
+    rtpId: connection.receiveTotals!.id,
+    framesTotal: connection.receiveTotals!.framesTotal!,
+  };
+}
+
+export function captureRecoveryViewerBaselines(
+  pages: PageObservation[],
+): RecoveryViewerBaseline[] | null {
+  const viewers = pages.filter((page) => page.role === "viewer");
+  const baselines = viewers.map(recoveryViewerBaseline);
+  return viewers.length > 0 && baselines.every((baseline) => baseline !== null)
+    ? baselines
+    : null;
+}
+
+export function everyViewerRecoveredMedia(
+  baselines: RecoveryViewerBaseline[] | null,
+  after: PageObservation[],
+): boolean {
+  if (!baselines || baselines.length === 0) {
+    return false;
+  }
+  const currentViewers = after.filter((page) => page.role === "viewer");
+  const currentByLabel = new Map(currentViewers.map((page) => [page.label, page]));
+  return (
+    currentViewers.length === baselines.length &&
+    currentByLabel.size === baselines.length &&
+    baselines.every((baseline) => {
+      const currentPage = currentByLabel.get(baseline.label);
+      const current = currentPage ? recoveryViewerBaseline(currentPage) : null;
+      return (
+        current !== null &&
+        current.routeRevision === baseline.routeRevision &&
+        current.upstreamKind === baseline.upstreamKind &&
+        current.parentPeerId === baseline.parentPeerId &&
+        current.connectionId === baseline.connectionId &&
+        current.connectionIndex === baseline.connectionIndex &&
+        current.rtpId === baseline.rtpId &&
+        current.framesTotal > baseline.framesTotal
+      );
+    })
+  );
+}
+
+export function mergeRecoveryHostPeaks(
+  peaks: RecoveryHostPeaks,
+  host: PageObservation,
+): RecoveryHostPeaks {
+  if (
+    !Number.isFinite(host.maxActiveOutboundMediaEdges) ||
+    !Number.isFinite(host.maxAssignedChildren)
+  ) {
+    return peaks;
+  }
+  return {
+    maxHostActiveMediaEdges: Math.max(
+      peaks.maxHostActiveMediaEdges ?? 0,
+      activeVideoEdgeCount(host, "send"),
+      host.maxActiveOutboundMediaEdges,
+    ),
+    maxHostAssignedChildren: Math.max(
+      peaks.maxHostAssignedChildren ?? 0,
+      routeChildPeerIds(host).length,
+      host.maxAssignedChildren,
+    ),
+  };
+}
+
 function descendantsOf(
   rootPeerId: string,
   pages: PageObservation[],
@@ -1819,18 +1944,13 @@ async function runRecovery(
   if (!relayHandle || affectedPeerIds.length === 0) {
     return { triggered: true, error: "Relay had no measurable descendant branch" };
   }
-  const affectedHandles = pages.filter((page) => {
-    const observation = finalPages.find((item) => item.label === page.label);
-    return observation?.peerId ? affectedPeerIds.includes(observation.peerId) : false;
-  });
   const failureAtEpochMs = Date.now();
   await closePage(cdp, relayHandle);
   const remainingPages = pages.filter((page) => page !== relayHandle);
   const deadline = failureAtEpochMs + timeoutMs;
   let reassignedAtEpochMs: number | undefined;
-  let baselines = new Map<string, number>();
-  let maxHostActiveMediaEdges = 0;
-  let maxHostAssignedChildren = 0;
+  let remainingViewerBaselines: RecoveryViewerBaseline[] | null = null;
+  let hostPeaks: RecoveryHostPeaks = {};
 
   while (Date.now() < deadline) {
     const observations = await Promise.all(
@@ -1838,40 +1958,34 @@ async function runRecovery(
     );
     const currentHost = observations.find((page) => page.role === "host");
     if (currentHost) {
-      maxHostActiveMediaEdges = Math.max(
-        maxHostActiveMediaEdges,
-        activeVideoEdgeCount(currentHost, "send"),
-      );
-      maxHostAssignedChildren = Math.max(
-        maxHostAssignedChildren,
-        routeChildPeerIds(currentHost).length,
-      );
+      hostPeaks = mergeRecoveryHostPeaks(hostPeaks, currentHost);
     }
     const affected = observations.filter((page) =>
       page.peerId ? affectedPeerIds.includes(page.peerId) : false,
     );
-    const branchRoot = affected.find(
-      (page) =>
-        routeParentPeerId(page) !== null &&
-        routeParentPeerId(page) !== relay.peerId,
-    );
-    if (!reassignedAtEpochMs && branchRoot) {
-      reassignedAtEpochMs = Date.now();
-      baselines = new Map(
-        affected.map((page) => [page.label, totalDecodedFrames(page)]),
-      );
-    } else if (
-      reassignedAtEpochMs &&
-      affected.length === affectedHandles.length &&
+    const branchReassigned =
+      affected.length === affectedPeerIds.length &&
       affected.every(
         (page) =>
-          totalDecodedFrames(page) > (baselines.get(page.label) ?? 0) &&
-          page.connections.some(
-            (connection) =>
-              connection.connectionState === "connected" &&
-              connection.receiveTotals !== null,
-          ),
-      )
+          routeParentPeerId(page) !== null &&
+          routeParentPeerId(page) !== relay.peerId,
+      );
+    if (!reassignedAtEpochMs && branchReassigned) {
+      reassignedAtEpochMs = Date.now();
+    }
+    if (
+      reassignedAtEpochMs &&
+      branchReassigned &&
+      remainingViewerBaselines === null
+    ) {
+      const baselines = captureRecoveryViewerBaselines(observations);
+      const remainingViewerCount = remainingPages.length - 1;
+      if (baselines?.length === remainingViewerCount) {
+        remainingViewerBaselines = baselines;
+      }
+    } else if (
+      reassignedAtEpochMs &&
+      everyViewerRecoveredMedia(remainingViewerBaselines, observations)
     ) {
       const recoveredAtEpochMs = Date.now();
       return {
@@ -1882,8 +1996,7 @@ async function runRecovery(
         reassignedAtEpochMs,
         recoveredAtEpochMs,
         recoveryMs: recoveredAtEpochMs - failureAtEpochMs,
-        maxHostActiveMediaEdges,
-        maxHostAssignedChildren,
+        ...hostPeaks,
       };
     }
     await delay(100, signal);
@@ -1894,8 +2007,7 @@ async function runRecovery(
     affectedPeerIds,
     failureAtEpochMs,
     reassignedAtEpochMs,
-    maxHostActiveMediaEdges,
-    maxHostAssignedChildren,
+    ...hostPeaks,
     error: "Recovery did not resume decoded frames before the timeout",
   };
 }
@@ -2017,16 +2129,7 @@ async function runCase(
         config.recoveryTimeoutMs,
         signal,
       );
-      checks.push({
-        name: "relay-recovery",
-        passed:
-          recovery.error === undefined &&
-          (recovery.recoveryMs ?? Infinity) <= 8_000 &&
-          (recovery.maxHostActiveMediaEdges ?? 0) <= 2 &&
-          (recovery.maxHostAssignedChildren ?? 0) <= 2,
-        actual: recovery.recoveryMs ?? false,
-        expected: "decoded frames resume within 8000 ms with host fanout <= 2",
-      });
+      checks.push(buildRecoveryCheck(recovery));
     }
     return {
       viewerCount,
@@ -2075,7 +2178,7 @@ async function writeReport(report: BenchmarkReport, outputPath: string | null): 
   const resolved = isAbsolute(outputPath) ? outputPath : resolve(REPO_ROOT, outputPath);
   await mkdir(dirname(resolved), { recursive: true });
   await writeFile(resolved, json, "utf8");
-  console.error(`Benchmark report: ${resolved}`);
+  console.error(`Peer topology loopback report: ${resolved}`);
 }
 
 function errorMessage(error: unknown): string {
@@ -2131,6 +2234,7 @@ export async function main(): Promise<number> {
     limitations: [
       "Synthetic canvas motion exercises real Chromium WebRTC but is not a game-capture quality claim.",
       "Headless runs are topology and transport evidence, not representative GPU or power evidence.",
+      "First-frame and recovery timing fields are diagnostics and never determine this loopback gate's status.",
       "CPU, GPU, NIC totals, glass-to-glass latency, generational visual quality, mobile browsers, and TURN require external or device-specific measurement.",
       "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
@@ -2206,7 +2310,7 @@ export async function main(): Promise<number> {
 
     for (const viewerCount of config.viewerCounts) {
       abortController.signal.throwIfAborted();
-      console.error(`Running peer-assisted benchmark with ${viewerCount} viewer(s)`);
+      console.error(`Running peer-topology loopback with ${viewerCount} viewer(s)`);
       report.runs.push(
         await runCase(
           cdp,

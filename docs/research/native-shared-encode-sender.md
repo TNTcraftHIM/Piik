@@ -4,8 +4,8 @@
 - Scope: one Windows game-capture sender, one encoded video stream, and at most
   two independent standard WebRTC media edges
 - Status: stacked Draft PRs #16/#18/#22/#23/#25/#28 pass one bounded live
-  two-leg WebCodecs/Pion candidate. Both product-wiring attempts remain
-  no-go-unclassified; product and physical shared encoding remain unproven.
+  two-leg WebCodecs/Pion candidate, and the later Native path has one Viewer
+  delivery proof. Two-leg product shared encoding and release remain unproven.
 
 ## Decision Input
 
@@ -173,180 +173,44 @@ is awaited. A provisional room whose WebSocket handshake never opened remains
 bounded by the existing 300-second reclaim window.
 HTTP statuses, Cookie attributes, create-room responses, Host authentication,
 and ignored Viewer evidence are strict and bounded; errors retain only fixed categories.
-Focused Go and TypeScript checks pass. The overbroad unused gate/probe framework
-stays deleted; the current command consumer is limited to the executable runner
-and sanitized stage ledger required by the next authorized run.
+Focused Go and TypeScript checks pass. The overbroad unused framework stays
+deleted. `npm run probe:native-one-viewer` is the remaining local-only, optional
+Native research runner; it is not part of Web acceptance, routine full checks,
+or an automatic Actions workflow.
 
-The one authorized 2026-08-20 current-wire attempt used Chrome 151 on Windows
-amd64, a temporary non-default Chrome profile, a real animated Chrome tab, and
-an isolated local Node server with an in-memory RoomStore and peer assistance
-disabled. It did not contact production or SQLite. Retained history booleans
-show that the source and Sender pages loaded and no Viewer page was created. The
-runner reported `failedStage=node-host` after its bounded 20-second Sender-start
-interval because it did not observe the combined Sender-ready and Go source-RTP
-condition.
+The probe requires an explicit Chrome executable and uses a task-local Go
+executable or task-specific `PATH`; neither path is committed. It retains only
+bounded booleans, capped counters, and ordinal/generation identities. One frozen
+signaling socket, PeerConnection/video track, bridge generation, and Pion edge
+must own all positive evidence. Cleanup is fail-closed and completes bounded
+process-tree exit, closed-port checks, exact system-Temp profile validation,
+reparse-point rejection, and deletion before a pass can be reported. Pure tests
+cover deadline expiry, cross-connection evidence, bridge replacement,
+cleanup-before-pass, profile bounds, and deletion failure.
 
-This is `no-go-unclassified`, not evidence that the Node Host path itself
-failed. The timeout branch did not retain a final Sender DOM/counter sample, so
-it cannot locate the break among `getDisplayMedia` request/resolve, Host
-admission/create, WSS authentication, local bridge connection, first encoded
-chunk, or Go source RTP. There was no retry or timeout adjustment. Viewer auth,
-offer/answer/ICE, Pion bound-edge output, Viewer inbound/decode/render, two-edge,
-and FIFO evidence were never attempted. A later run needs separate authorization
-and an unconditional stage-1 final-negative ledger before it may create one
-Viewer.
+The current correctness proof is one complete Chrome 151/Windows loopback with
+an in-memory room, peer assistance off, and no production or SQLite access. The
+Sender produced positive decoded/source-RTP evidence without a fatal or encoder
+error; one Viewer authenticated, completed offer/answer/ICE, received media, and
+advanced decoded and rendered frames at 1280x720. Sampled elapsed time and an
+asynchronously refreshed Pion delta are diagnostics only and do not decide the
+proof. This establishes one-Viewer functional delivery, not performance,
+hardware use, public-network behavior, a second Viewer, FIFO promotion,
+packaging, or release acceptance.
 
-That local-only runner is now the current `npm run gate:native-one-viewer`
-consumer. It requires an explicit Chrome executable environment path and uses
-the task-local Go executable or task-specific `PATH`; neither path is committed.
-Each monotonic Sender-start transition appends and flushes one bounded JSON
-record containing only booleans and capped counters. A pure timeout test proves
-that capture, admission/create, Host WSS, bridge, fixed-`HIGH`, first encoded
-chunk, Go-ingest, and source-RTP state cannot be erased by a later failed sample.
-The one-Viewer signaling/media waits likewise preserve their latest sanitized
-sample in the final report. They now accept evidence only from one frozen
-signaling socket/auth/opaque-connection ordinal, one PeerConnection/video-track
-ordinal, and the same Pion slot/edge generation across signal and media stages.
-The raw connection ID remains page-local. Every CDP RPC/sample is capped by the
-remaining stage deadline. Final status is written only after bounded process-tree
-exit and closed-port polling, followed by an exact system-Temp path audit,
-recursive reparse-point rejection, profile deletion, and absence verification;
-any cleanup failure is fail-closed. Microsoft documents `/T` as terminating a
-task's child processes and `ReparsePoint` as the filesystem attribute used for
-these special entries. Pure tests cover hung sampling, cross-PC evidence,
-cleanup-before-pass, profile path bounds, and deletion failure. Sources were
+The retained implementation advances Pion time from positive adjacent source
+timestamp deltas rather than assuming `EncodedVideoChunk.duration` is present or
+authoritative. Equal or decreasing timestamps fail closed. Focused timeline and
+real `/media` tests cover capture jitter, decode, fanout, positive source RTP,
+and bounded fatal reporting for unexpected post-config bridge closure. The
+probe treats candidates before the first offer and one development-only
+pre-offer control-socket replacement as the same test generation; after an
+active offer, connection or bridge replacement still fails closed. WebCodecs,
+Chromium remote-debugging, Windows cleanup, and pinned Pion sources were
 rechecked 2026-08-20.
 
-One separately authorized second current-wire run used the frozen gate once and
-did not retry or adjust a threshold. Its append-and-flush ledger reached sequence
-7 and retained positive booleans for capture request/resolution, site access,
-private room creation, Host WSS authentication, bridge readiness, fixed VP8
-1280x720@30/3 Mbps config acceptance, one encoder object, and entry into the
-first WebCodecs output callback. The ledger serialized zero media counters but
-did not retain whether diagnostics arrived, so those values do not prove that
-Go reported zero. The runner failed closed at `sender-start`; it never created
-the Viewer page and did not
-exercise Viewer auth, SDP/ICE, Pion bound-edge output, decode/render, a second
-Viewer, or FIFO. Cleanup was complete before the report was finalized: Chrome
-and Native exited, the isolated Node listener and all three random loopback
-ports closed, and the exact task profile passed a non-reparse audit and was
-removed.
-
-The result narrows but does not classify the break. The gate increments its
-encoded-output observation before it calls the product output callback, and that
-run did not retain whether the current local media WebSocket attempted, returned
-from, or threw during the binary frame send. Static source comparison shows a
-matching binary message type, 17-byte big-endian header, one-MiB payload limit,
-and VP8 frame decode on both sides. A focused test now drives the real local
-`/media` WebSocket through ready, fixed config acceptance, one same-contract
-binary frame, decode, fanout, and positive `framesWritten` plus source-RTP packet
-accounting. Pion's unbound static RTP track also returns no error. This proves
-the current envelope is consumable by the current Go handler; it does not prove
-that the retained browser called or returned from the product send.
-
-The concrete P1 defect at this boundary was silent handling of every unexpected
-post-config WebSocket read error. The handler now emits one `fatal` with fixed
-message `local media bridge read failed` only while the app context is active
-and the close status is neither normal nor going-away. It never includes the
-underlying error or close reason. Focused real-WebSocket tests cover an abnormal
-post-config close, normal close, and app shutdown. All Go tests, vet, Windows
-amd64 no-CGO build, TypeScript typecheck, and the relevant bridge probe/ledger
-tests pass.
-
-One authorized evidence-clarification run then used the corrected tracked gate
-exactly once with the same fixed VP8 1280x720@30, 3 Mbps, one-Viewer boundary,
-Chrome 151, one in-memory loopback room, and no peer assistance. It retained the
-start sequence through one generation-1 binary `super.send()` return, then
-observed no diagnostics or post-send diagnostics, zero encoder errors, and at
-least one sanitized fatal marker. The media-counter zeros are initial ledger
-values, not Go reports. The gate failed at `sender-start` and did not create a Viewer.
-
-Cleanup passed 5/5 before final failure. No retry, threshold change, H.264,
-second Viewer, FIFO, or production run followed. The result remains
-`no-go-unclassified`: the fatal marker and missing diagnostics do not prove where
-or why the product path stopped, so no underlying close or raw cause may be
-inferred.
-
-A later static follow-up identified a deterministic source fatal candidate, but
-the retained run did not preserve the fatal category needed to attribute its
-failure to that branch. WebCodecs defines `EncodedVideoChunk.duration` as
-nullable and copies output timestamp and duration from the input `VideoFrame`;
-it does not establish the prior product assumption that the next timestamp must
-be at least the previous timestamp plus duration. The local sender substitutes
-33,333 microseconds when duration is absent, so ordinary capture jitter such as
-1,000,000 then 1,033,000 microseconds previously reached `encoded frame
-timestamps overlap` despite strictly increasing source time.
-
-The source candidate now packetizes the first frame without advancing Pion's
-clock, then advances it by each positive adjacent source-timestamp delta before
-packetizing the next frame. Reported duration remains only for positive
-dropped-source-time diagnostics; equal or decreasing timestamps still fail
-closed. Focused timeline tests cover shorter-than-duration jitter, dropped
-source time, non-increasing input, and a positive delta below one 90 kHz sample.
-A real `/media` handler test carries the two jittered frames through decode and
-fanout with two frames written and positive source RTP. All Native Go packages
-pass. These checks prove that specific fatal path is removed; the later bounded
-loopback smoke below supplies one Viewer delivery proof but does not classify the
-retained fatal run or establish broader Native acceptance.
-The WebCodecs and pinned Pion packetizer sources were rechecked 2026-08-20.
-
-A bounded follow-up smoke on 2026-08-20 then exercised the complete one-viewer
-loopback path with Chrome 151, fixed VP8 1280x720@30, and peer assistance off.
-The Sender reached 30 written frames and 85 source RTP packets with zero fatal or
-encoder errors. The Viewer authenticated, completed offer/answer/ICE, received
-877 packets (842,346 bytes), and advanced from 0 to 299 decoded and rendered
-frames at 1280x720. The gate stopped only because its Pion outbound check sampled
-the same two-second diagnostics snapshot before it refreshed (`pionPacketDelta=0`);
-that residual probe timing does not invalidate the independent inbound/decode/
-render counters, but it leaves a fresh Pion outbound delta unretained.
-
-The gate probe now treats trickled candidates before the first offer, and a
-development-only pre-offer control-socket replacement, as one logical generation;
-after an active offer/PeerConnection, socket or connection changes still fail
-closed. This is test-harness evidence, not a runtime protocol relaxation. No
-second Viewer, FIFO, hardware, endurance, public-network, or packaged-native run
-followed.
-
-The frozen probe continues to bind the first actual local media WebSocket as
-gate-local generation 1. A second bridge generation saturates at 2, stops
-accumulating the first generation's counters, and fails the Viewer signal,
-Viewer media, and final-success checks. Pure tests cover success, throw, and
-late replacement without retaining a URL, payload, token, SDP, candidate, IP
-address, or raw error.
-
-Chromium documents the tab-capture auto-selection switch as a test-only aid,
-and Chrome requires a non-default user-data directory for remote debugging from
-Chrome 136. Those constraints explain the isolated harness setup; they do not
-prove that `getDisplayMedia` resolved in the first failed current-wire run.
-Static inspection of the pinned Pion v4.2.18 `TrackLocalStaticRTP.WriteRTP` shows
-that it iterates the
-current bindings and returns no error for an empty binding set. This excludes a
-pre-Viewer no-binding write as the likely fatal break; it is not runtime proof
-of Go ingest or source RTP. Sources were rechecked 2026-08-20.
-
-The earlier authorized 2026-08-19 local product gate is
-`no-go-unclassified`:
-
-| Checkpoint | Retained evidence |
-| --- | --- |
-| Ordinary Node server | The local listener started with peer assistance and TURN disabled. No raw signaling frames were retained. |
-| Native room/host | `/api/start` returned an invite, which in the attempted branch followed room creation and host signaling authentication. |
-| Local encoder | Config acknowledgement preceded construction; the probe observed one `VideoEncoder` object and encoded output. Helper ingress, frame decode, and source RTP were not proven. |
-| Viewer page | The page and probe loaded, but the 30-second combined decoded-and-rendered condition timed out. |
-| Downstream lifecycle | Viewer auth, `peer-joined`, SDP/candidates, PC states, source RTP/edge packets, inbound RTP, video readiness, and console state were not retained. |
-
-For that retained run, the first missing evidence checkpoint was viewer
-authentication, not a proven authentication failure. The harness discarded each false sample; its reused
-`progress()` path can omit a connection after a swallowed `getStats()` error;
-and render evidence had no readiness/current-time/video-dimension fallback.
-The timeout therefore cannot locate the runtime break or rule out a probe-only
-false negative. The static code review found no obvious protocol disconnect,
-which is not runtime evidence.
-
-No second viewer, two-edge proof, third-viewer waiting/FIFO promotion, or
-direct/TURN pair ran. Do not treat the attempted branch as usable or mergeable
-product code. ADR-0006 owns the separately authorized staged revalidation and
-exact stop line; this research does not redefine it.
+ADR-0006 owns the remaining staged two-Viewer, third-Viewer waiting/FIFO,
+network, package, and release stop lines; this research does not redefine them.
 
 ## Stacked Validation Ladder
 
@@ -442,13 +306,14 @@ and publishes the ZIP with an adjacent SHA-256 file.
 `screener-sender.exe --version` is the non-interactive package smoke. This does not add an installer,
 Electron, auto-update, signing, a bundled server, codec matrix, or release.
 
-The workflow uses the official `windows-latest` image, whose current manifest
-includes VSWhere, the x64 Visual C++ tools, and Windows 11 SDK, and the official
-immutable `actions/upload-artifact@v7` path with missing-file failure, zero
-second-stage compression for the precompressed ZIP, and seven-day retention.
-GitHub requires authentication to download the resulting artifact. The
-workflow is path-filtered on pull requests and `main`, with manual dispatch for
-an exact retained commit. Sources were checked 2026-08-21.
+The manual-only workflow uses the official `windows-latest` image, whose current
+manifest includes VSWhere, the x64 Visual C++ tools, and Windows 11 SDK, and the
+official immutable `actions/upload-artifact@v7` path with missing-file failure,
+zero second-stage compression for the precompressed ZIP, and seven-day
+retention. It has no push or pull-request trigger and is dispatched only at an
+explicitly authorized Native release-package boundary; it is not a Web
+acceptance gate. GitHub requires authentication to download the resulting
+artifact. Sources were checked 2026-08-21.
 
 The linked-binary audit covers 23 modules: coder/websocket is ISC; the 16 Pion
 modules are MIT; google/uuid, wlynxg/anet, and the four `golang.org/x` modules

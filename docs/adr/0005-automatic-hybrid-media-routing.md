@@ -182,13 +182,11 @@ Targeted tests cover the revision controller, protocol authorization, relay
 capacity and deterministic admission rescue, ordered break-before-make client
 transitions, stale asynchronous work, server-restart
 resynchronization, one-shot credential recovery, peer failback, and optional
-standby warming. The corrected cold Chrome 151/LiveKit 1.13.5 localhost run took
-1.481 seconds from failure report to active and 2.257 seconds to a new rendered
-frame. With authenticated standby warming, the same physical-leaf/two-root
-scenario took 200 ms to active and 319.7 ms to render while the host edge peak
-remained two. Public transport/audio/load/browser checks remain pending. The
-direction is accepted, while implementation migration and deployment
-acceptance remain unverified.
+standby warming. Chrome 151/LiveKit 1.13.5 localhost runs established route
+transition, resumed decoding, and the two-edge bound. Their elapsed times are
+diagnostics only and do not satisfy the regional recovery target. Public
+transport/audio/load/browser checks remain pending. The direction is accepted,
+while implementation migration and deployment acceptance remain unverified.
 
 ## State And Wire
 
@@ -444,9 +442,10 @@ is configured in production, and its active Host-ingress relay function is now
 proven; the initial-ingress and `peer-selected` variants remain open.
 LiveKit participant-wide embedded/external TURN remains a separate ICE domain.
 
-On 2026-08-21 a standalone relay-only Chrome allocation gate issued a credential
-through the production parser/issuer and received one UDP relay candidate. One
-subsequent bounded Chrome 151 canary ran the exact deployed Web source in a local
+On 2026-08-21 the standalone `gate:turn-udp-allocation` check issued a credential
+through the production parser/issuer and received one UDP relay candidate. That
+check proves UDP allocation only, not media, recovery, quality, or performance.
+One subsequent bounded Chrome 151 canary ran the exact deployed Web source in a local
 Screener room against the production LiveKit/coturn tuple. A temporary DEV-only
 hook forced the active SFU publisher to fail once and was removed afterward. The
 application then issued `host-sfu-ingress`, connected a relay-policy publisher
@@ -576,11 +575,12 @@ boundary is actually configured and the UI must not claim E2EE.
 4. Implement server prepare/commit/abort and strict authorization.
 5. Integrate host/viewer first-frame switching while retaining relay children.
 6. Land the bounded selected-edge function before treating performance evidence
-   as a prerequisite. Retain the tracked `1/3/5/8` benchmark and then extend it
-   with peer/SFU UDP, one selected relay edge, bounded UDP-blocked failure,
-   allocation/RSS/ports, relay bandwidth and server-egress measurements. Only after those pass,
-   add the 20-viewer gate before changing
-   the room default.
+   as a prerequisite. Retain `gate:peer-topology-loopback` for decoded-media,
+   route-consistency, and two-edge correctness only. Collect peer/SFU UDP,
+   selected-edge, bounded UDP-blocked failure, resource, bandwidth, egress, and
+   recovery performance on representative target devices or production-like
+   networks. Only after those pass, add the 20-viewer gate before changing the
+   room default.
 
 ## Acceptance Gates
 
@@ -596,7 +596,8 @@ boundary is actually configured and the UI must not claim E2EE.
   server edges.
 - Prepare failure leaves the old active route unchanged.
 - First new decodable picture arrives within one second after a route failure is
-  detected in the reference regional network.
+  detected in the reference regional network. Localhost loopback timing is not
+  a pass/fail substitute for this target.
 - Existing descendants, source selection, quality profile, pause, audio, and
   persistent-room stop/restart semantics survive the transition.
 - No LiveKit configuration preserves the existing P2P/peer behavior and wire,

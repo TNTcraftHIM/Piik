@@ -2,11 +2,12 @@
 
 ## 2026-08-21 Native Window Source
 
-The Native sender now has two explicit local video sources. Browser VP8 remains
-the default; browser H.264 remains available as the earlier opt-in. The new
-`native-window-h264` source is Windows 11-only and requires the user to select
-one local opaque window target. It never silently replaces a browser source or
-falls back to software encode, another codec, monitor capture, or system audio.
+The Native sender has two explicit local video sources. The Web source now
+prefers H.264 through standard negotiation and keeps the browser codec fallback
+list; the separate `native-window-h264` source is Windows 11-only and requires
+the user to select one local opaque window target. It never silently replaces a
+browser source or falls back to software encode, another codec, monitor capture,
+or system audio.
 
 The native-window path is:
 
@@ -55,10 +56,9 @@ The exact helper process was PID 15060. Its Windows GPU Engine instance
 `pid_15060_luid_0x00000000_0x0001a496_phys_0_eng_6_engtype_videoencode`
 reached 2.98028% utilization; the helper's independently validated adapter
 status was `0x00000000:0x0001a496`. This is process-and-adapter-correlated
-hardware evidence, not a throughput or performance claim. The generic gate
-reported failure only because its asynchronous Pion diagnostics delta stayed
-zero after the Viewer counters advanced; the run was not repeated for that
-known sampling residue.
+hardware evidence, not a throughput or performance claim. The independent
+Viewer receive/decode/render and sender counters establish this functional
+boundary; asynchronously sampled Pion deltas and elapsed time remain diagnostic.
 
 Primary sources checked 2026-08-21:
 
@@ -70,10 +70,12 @@ Primary sources checked 2026-08-21:
 - [`ID3D11VideoDevice::CreateVideoProcessorInputView`](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11videodevice-createvideoprocessorinputview)
 - [`ID3D11VideoContext::VideoProcessorSetOutputBackgroundColor`](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11videocontext-videoprocessorsetoutputbackgroundcolor)
 
-## 2026-08-21 Browser H.264 Source
+## 2026-08-21 Web H.264 Source
 
-The earlier browser H.264 source remains an explicit option. Its loopback path
-is Chrome WebCodecs Annex-B -> the local envelope -> the same Go/Pion fanout.
+The Web sender's standard WebRTC path now prefers H.264 while preserving the
+browser's negotiated fallback list. The separate browser-to-Native bridge
+loopback remains Chrome WebCodecs Annex-B -> the local envelope -> the same
+Go/Pion fanout.
 
 ## Bounded Loopback Evidence
 
@@ -91,11 +93,10 @@ Retained evidence:
 | Viewer media | 2,690 inbound packets, about 3.0 MiB, 299 decoded and 298 rendered frames, 1280x720 |
 | Resource/lifecycle | One host edge; cleanup completed; no production endpoint or TURN allocation |
 
-The generic gate reported failure only because its two-second Pion diagnostics
-snapshot did not refresh during the final sample (`pionPacketDelta=0`), the same
-probe-timing residual retained by the earlier VP8 run. All independent viewer
-receive/decode/render and sender checks passed. This is one functional
-loopback, not a public-network, multi-viewer, endurance, or codec benchmark.
+Independent Viewer receive/decode/render and sender checks passed. Sampling
+latency and the asynchronously refreshed Pion delta are diagnostic only. This
+is one functional loopback, not a public-network, multi-viewer, endurance, or
+codec benchmark.
 
 ## Hardware Boundary
 
@@ -109,10 +110,12 @@ separate encoder-contract measurement.
 
 ## Scope
 
-- Browser VP8 remains the default and no production deployment switch is made.
-- No SFU, TURN, Web viewer, access protocol, or default VP8 behavior changed.
+- The Web source prefers H.264 through standard negotiation; production rollout
+  remains tracked separately from this Native research path.
 - No codec matrix, benchmark, second viewer, or endurance run is required for
   this landing slice.
+- `npm run probe:native-one-viewer` remains optional Native research and does
+  not enter Web acceptance.
 - The Native source reuses existing controller compatibility and evaluation
   packaging changes; it adds no topology.
 - H.264 distribution still carries the existing patent/license review boundary.

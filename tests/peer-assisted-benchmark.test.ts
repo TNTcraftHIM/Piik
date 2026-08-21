@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   activeVideoEdgeCount,
-  buildRunChecks,
   buildBenchmarkInitScript,
+  buildRecoveryCheck,
+  buildRunChecks,
+  captureRecoveryViewerBaselines,
   everyViewerAdvanced,
+  everyViewerRecoveredMedia,
+  mergeRecoveryHostPeaks,
   parseBenchmarkConfig,
   parseViewerCounts,
   summarizeSamples,
@@ -79,7 +83,7 @@ function page(
       ...Array.from({ length: receiveEdges }, (_, index) => ({
         index: sendEdges + index,
         createdAtEpochMs: 1_000,
-        connectionId: `receive-${index}`,
+        connectionId: `receive-${index}` as string | null,
         remotePeerId: "parent-peer",
         connectionState: "connected",
         iceConnectionState: "connected",
@@ -206,7 +210,7 @@ function markActiveRouteReady(observation: ReturnType<typeof page>): void {
   });
 }
 
-describe("peer-assisted benchmark configuration", () => {
+describe("peer topology loopback configuration", () => {
   it("uses the bounded 1/3/5/8 matrix by default", () => {
     expect(parseViewerCounts(undefined)).toEqual([1, 3, 5, 8]);
   });
@@ -254,7 +258,7 @@ describe("peer-assisted benchmark configuration", () => {
   });
 });
 
-describe("peer-assisted benchmark observations", () => {
+describe("peer topology loopback observations", () => {
   it("counts only active media connections in the requested direction", () => {
     const host = page("host", "host", 2, 0);
     host.connections[0]!.connectionState = "closed";
@@ -527,6 +531,130 @@ describe("peer-assisted benchmark observations", () => {
       buildRunChecks(orphanedSummary, 1, "720p30").find(
         (check) => check.name === "no-orphan-sfu-publication",
       )?.passed,
+    ).toBe(false);
+  });
+
+  it("keeps loopback timing diagnostic while gating topology and decoding", () => {
+    const initial = [
+      page("host", "host", 1, 0),
+      page("viewer", "viewer-1", 0, 1),
+    ];
+    initial[1]!.authenticateSentAtEpochMs = 1_000;
+    const final = structuredClone(initial);
+    final[1]!.firstDecodedAtEpochMs = 31_000;
+    final[1]!.connections[0]!.receiveTotals!.framesTotal = 20;
+    const summary = summarizeSamples(
+      [
+        { atEpochMs: 2_000, elapsedMs: 0, pages: initial },
+        { atEpochMs: 32_000, elapsedMs: 30_000, pages: final },
+      ],
+      1,
+    );
+    const checks = buildRunChecks(summary, 1, "720p30");
+
+    expect(summary.maxFirstDecodedAfterAuthenticateMs).toBe(30_000);
+    expect(
+      checks.some((check) => check.name === "first-decoded-frame"),
+    ).toBe(false);
+    expect(
+      checks.find((check) => check.name === "all-viewers-decoded")?.passed,
+    ).toBe(true);
+    expect(
+      checks
+        .filter((check) => check.name.endsWith("media-edges"))
+        .every((check) => check.passed),
+    ).toBe(true);
+  });
+
+  it("gates recovery on resumed decoding and the two-edge bounds, not elapsed time", () => {
+    const recovered = {
+      triggered: true,
+      recoveredAtEpochMs: 60_000,
+      recoveryMs: 50_000,
+      maxHostActiveMediaEdges: 2,
+      maxHostAssignedChildren: 2,
+    };
+
+    expect(buildRecoveryCheck(recovered).passed).toBe(true);
+    expect(
+      buildRecoveryCheck({ ...recovered, recoveredAtEpochMs: undefined }).passed,
+    ).toBe(false);
+    expect(
+      buildRecoveryCheck({ ...recovered, maxHostActiveMediaEdges: 3 }).passed,
+    ).toBe(false);
+    expect(
+      buildRecoveryCheck({ ...recovered, maxHostAssignedChildren: 3 }).passed,
+    ).toBe(false);
+    expect(
+      buildRecoveryCheck({
+        triggered: true,
+        recoveredAtEpochMs: 60_000,
+      }).passed,
+    ).toBe(false);
+  });
+
+  it("requires unaffected viewers to keep decoding after relay reassignment", () => {
+    const before = [
+      page("viewer", "viewer-1", 1, 1),
+      page("viewer", "viewer-2", 0, 1),
+    ];
+    const baselines = captureRecoveryViewerBaselines(before);
+    expect(baselines).not.toBeNull();
+    const after = structuredClone(before);
+    after[0]!.connections.at(-1)!.receiveTotals!.framesTotal = 20;
+
+    expect(everyViewerRecoveredMedia(baselines, after)).toBe(false);
+
+    after[1]!.connections.at(-1)!.receiveTotals!.framesTotal = 20;
+    expect(everyViewerRecoveredMedia(baselines, after)).toBe(true);
+
+    after[1]!.connections.at(-1)!.connectionId = "replacement-connection";
+    expect(everyViewerRecoveredMedia(baselines, after)).toBe(false);
+    after[1]!.connections.at(-1)!.connectionId = "receive-0";
+    after[1]!.connections.at(-1)!.receiveTotals!.id = "replacement-rtp";
+    expect(everyViewerRecoveredMedia(baselines, after)).toBe(false);
+  });
+
+  it("does not treat an unavailable recovery baseline as decoded growth", () => {
+    const missing = [page("viewer", "viewer-1", 0, 1)];
+    missing[0]!.connections = [];
+    const current = [page("viewer", "viewer-1", 0, 1)];
+
+    expect(captureRecoveryViewerBaselines(missing)).toBeNull();
+    expect(everyViewerRecoveredMedia(null, current)).toBe(false);
+
+    const rebased = captureRecoveryViewerBaselines(current);
+    expect(rebased).not.toBeNull();
+    expect(
+      everyViewerRecoveredMedia(rebased, structuredClone(current)),
+    ).toBe(false);
+
+    current[0]!.connections[0]!.connectionId = null;
+    expect(captureRecoveryViewerBaselines(current)).not.toBeNull();
+
+    const errored = structuredClone(current);
+    errored[0]!.connections[0]!.receiveTotals = null;
+    errored[0]!.connections[0]!.error = "getStats failed";
+    expect(captureRecoveryViewerBaselines(errored)).toBeNull();
+  });
+
+  it("retains a probe-observed host peak above the current edge count", () => {
+    const host = page("host", "host", 2, 0);
+    host.maxActiveOutboundMediaEdges = 3;
+    host.maxAssignedChildren = 3;
+
+    const peaks = mergeRecoveryHostPeaks({}, host);
+
+    expect(peaks).toEqual({
+      maxHostActiveMediaEdges: 3,
+      maxHostAssignedChildren: 3,
+    });
+    expect(
+      buildRecoveryCheck({
+        triggered: true,
+        recoveredAtEpochMs: 60_000,
+        ...peaks,
+      }).passed,
     ).toBe(false);
   });
 

@@ -1,21 +1,14 @@
-name: Native sender package
+name: Native sender release package (manual)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "native/sender/**"
-      - "native/window-capture-helper/**"
-      - "scripts/package-native-sender.ps1"
-      - ".github/workflows/native-sender-package.yml"
 
 permissions:
   contents: read
 
 jobs:
   package:
+    name: Package native release candidate
     runs-on: windows-latest
     steps:
       - name: Check out repository
