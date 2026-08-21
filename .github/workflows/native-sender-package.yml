@@ -2,12 +2,6 @@ name: Native sender package
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "native/sender/**"
-      - "native/window-capture-helper/**"
-      - "scripts/package-native-sender.ps1"
-      - ".github/workflows/native-sender-package.yml"
   push:
     branches:
       - main

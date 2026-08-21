@@ -7,9 +7,9 @@
 3. For non-trivial design, implementation, or bug fixing, inspect the repository and research current primary sources before changing code. Record durable findings under `docs/research/`.
 4. Implement the smallest complete change. Add tests and concise rationale comments in proportion to risk.
 5. Update requirements, ADRs, project memory, status, and operational docs when their source facts changed. Replace stale text instead of appending a diary.
-6. Run `sh scripts/check-project-state.sh` on macOS/Linux/Git Bash or `./scripts/check-project-state.ps1` on PowerShell, plus `npm run check` and any relevant manual browser/network checks.
+6. Run `sh scripts/check-project-state.sh` on macOS/Linux/Git Bash or `./scripts/check-project-state.ps1` on PowerShell, plus `npm run check` and any relevant manual browser/network checks. Record this local evidence in the pull request; GitHub Actions are reserved for `main` integration, releases, and explicit manual runs.
 7. Make focused commits using `type(scope): summary` where practical, then push the branch.
-8. Open a pull request using the repository template. Resolve review comments and required checks before merging.
+8. Open a pull request using the repository template. Resolve review comments and required local checks before merging.
 9. Prefer squash merge for a single coherent change; preserve separate commits when they carry independently useful history. Delete the merged branch.
 
 Direct commits to `main` are reserved for an explicit user-approved exception. Never force-push shared branches or rewrite shared history without explicit approval.

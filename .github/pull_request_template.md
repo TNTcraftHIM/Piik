@@ -13,7 +13,7 @@ Link the relevant requirement, research note, issue, and ADR, or explain why non
 ## Checklist
 
 - [ ] The branch contains one coherent change and no unrelated churn.
-- [ ] Tests and repository hygiene checks pass.
+- [ ] Required local tests and repository hygiene checks pass, and their exact evidence is listed above.
 - [ ] Security, privacy, compatibility, and licensing effects were considered.
 - [ ] Requirements, operational docs, ADRs, project memory, and status were updated where their facts changed.
 - [ ] Stale or conflicting memory and documentation were removed rather than preserved as a diary.

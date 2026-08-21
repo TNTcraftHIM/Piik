@@ -29,6 +29,7 @@
 ## Git Workflow
 
 - Work on a short-lived branch for each coherent change. Use `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `spike/` prefixes.
+- Treat GitHub Actions as an acceptance-boundary resource: feature branches and pull requests use local gates and do not trigger workflows; run Actions only for `main` integration, releases, or explicit manual dispatch. Do not retry zero-step or infrastructure failures.
 - Keep work-in-progress and checkpoint branches local. Do not push a branch merely for backup, agent handoff, or intermediate review; after local validation and review, push it once to open the final pull request. Direct changes to `main` require an explicit exception.
 - Default to squash-merging each coherent, non-stacked pull request so `main` receives one meaningful `feat`, `fix`, `docs`, or other conventional commit. Use a merge commit only for an explicitly stacked dependency whose parent ancestry must remain intact; do not use ordinary merge by habit.
 - Delete a remote branch only after verifying that its pull request is merged, its current head still equals the merged pull request head, and no open pull request uses it as a head or base. Keep branches required by an active stacked pull request chain.
