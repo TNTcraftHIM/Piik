@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  screenAudioQualityLockNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
   videoCodecLockNotice,
@@ -56,6 +57,20 @@ describe("videoCodecLockNotice", () => {
     );
     for (const phase of ["idle", "ended", "error"]) {
       expect(videoCodecLockNotice(phase)).toBeNull();
+    }
+  });
+});
+
+describe("screenAudioQualityLockNotice", () => {
+  it("explains why audio quality is locked during a share", () => {
+    expect(screenAudioQualityLockNotice("starting")).toBe(
+      "本次分享的音频质量已锁定，停止分享后可修改",
+    );
+    expect(screenAudioQualityLockNotice("live")).toBe(
+      "本次分享的音频质量已锁定，停止分享后可修改",
+    );
+    for (const phase of ["idle", "ended", "error"]) {
+      expect(screenAudioQualityLockNotice(phase)).toBeNull();
     }
   });
 });

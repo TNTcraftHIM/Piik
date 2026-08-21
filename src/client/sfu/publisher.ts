@@ -8,10 +8,13 @@ import type {
 import {
   configureTwoLayerVideoSender,
   QUALITY_RESOLUTIONS,
+  resolveScreenAudioQuality,
   SCREEN_SHARE_LOW_SCALE,
+  screenAudioBitrate,
   screenShareLowBitrate,
   senderParameterWarning,
   type QualityProfile,
+  type ScreenAudioQuality,
   type VideoSenderParameterReadback,
 } from "../media/quality";
 
@@ -168,7 +171,7 @@ export class SfuPublisher {
             room,
             audioTrack,
             sdk.Track.Source.ScreenShareAudio,
-            audioPublishOptions(sdk),
+            audioPublishOptions(sdk, profile.screenAudioQuality),
           );
           if (!this.owns(room, generation)) {
             return false;
@@ -279,7 +282,7 @@ export class SfuPublisher {
             room,
             nextAudioTrack,
             sdk.Track.Source.ScreenShareAudio,
-            audioPublishOptions(sdk),
+            audioPublishOptions(sdk, profile.screenAudioQuality),
           );
           if (!this.owns(room, generation)) {
             return false;
@@ -371,6 +374,12 @@ export class SfuPublisher {
       const sdk = this.sdk;
       if (!video || !previousProfile || !sdk) {
         throw new Error("SFU publisher has no active video publication");
+      }
+      if (
+        resolveScreenAudioQuality(profile.screenAudioQuality) !==
+        resolveScreenAudioQuality(previousProfile.screenAudioQuality)
+      ) {
+        return false;
       }
 
       try {
@@ -630,9 +639,19 @@ function videoPublishOptions(
   };
 }
 
-function audioPublishOptions(sdk: LiveKit): TrackPublishOptions {
+function audioPublishOptions(
+  sdk: LiveKit,
+  quality: ScreenAudioQuality | undefined,
+): TrackPublishOptions {
+  const resolvedQuality = resolveScreenAudioQuality(quality);
+  const audioPreset =
+    resolvedQuality === "saver"
+      ? sdk.AudioPresets.musicStereo
+      : resolvedQuality === "music"
+        ? sdk.AudioPresets.musicHighQualityStereo
+        : { maxBitrate: screenAudioBitrate(resolvedQuality) };
   return {
-    audioPreset: sdk.AudioPresets.musicHighQualityStereo,
+    audioPreset,
     forceStereo: true,
     dtx: false,
   };

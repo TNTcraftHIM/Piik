@@ -177,6 +177,13 @@ export type VideoCodecPreference = z.infer<
   typeof videoCodecPreferenceSchema
 >;
 
+export const screenAudioQualitySchema = z.enum([
+  "saver",
+  "music",
+  "very-high",
+]);
+export type ScreenAudioQuality = z.infer<typeof screenAudioQualitySchema>;
+
 export const qualitySettingsSchema = z
   .object({
     resolution: qualityResolutionSchema,
@@ -184,6 +191,7 @@ export const qualitySettingsSchema = z
     maxBitrate: z.number().int().min(2_000_000).max(12_000_000),
     degradationPreference: degradationPreferenceSchema,
     videoCodec: videoCodecPreferenceSchema.optional(),
+    screenAudioQuality: screenAudioQualitySchema.optional(),
   })
   .strict();
 export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
@@ -193,6 +201,7 @@ export const DEFAULT_QUALITY_SETTINGS = {
   maxBitrate: 8_000_000,
   degradationPreference: "balanced",
   videoCodec: "automatic",
+  screenAudioQuality: "music",
 } as const satisfies QualitySettings;
 
 export const DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES = 2;

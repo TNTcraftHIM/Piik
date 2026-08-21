@@ -76,10 +76,13 @@ import {
   QUALITY_PROFILE_LABELS,
   QUALITY_RESOLUTIONS,
   qualitySettingsLabel,
+  resolveScreenAudioQuality,
+  SCREEN_AUDIO_QUALITY_LABELS,
   setMediaPaused,
   type DegradationPreference,
   type QualityProfileId,
   type QualitySettings,
+  type ScreenAudioQuality,
   type VideoCodecPreference,
   VIDEO_CODEC_PREFERENCE_LABELS,
 } from "../media/quality";
@@ -102,6 +105,7 @@ import {
   reconcileBoundedMediaChildren,
 } from "../webrtc/media-assignment";
 import {
+  screenAudioQualityLockNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
   videoCodecLockNotice,
@@ -632,11 +636,27 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setAdvancedQuality((current) => ({ ...current, videoCodec }));
   }
 
+  function changeScreenAudioQuality(
+    screenAudioQuality: ScreenAudioQuality,
+  ): void {
+    if (phase === "starting" || phase === "live") {
+      return;
+    }
+    const next = { ...qualitySettingsRef.current, screenAudioQuality };
+    qualitySettingsRef.current = next;
+    setQualitySettings(next);
+    setAdvancedQuality((current) => ({ ...current, screenAudioQuality }));
+  }
+
   async function changeQuality(nextProfile: QualitySettings): Promise<void> {
     if (
       phase === "live" &&
-      (nextProfile.videoCodec ?? "automatic") !==
-        (qualitySettingsRef.current.videoCodec ?? "automatic")
+      ((nextProfile.videoCodec ?? "automatic") !==
+        (qualitySettingsRef.current.videoCodec ?? "automatic") ||
+        resolveScreenAudioQuality(nextProfile.screenAudioQuality) !==
+          resolveScreenAudioQuality(
+            qualitySettingsRef.current.screenAudioQuality,
+          ))
     ) {
       return;
     }
@@ -1608,6 +1628,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       : "长期有效"
     : null;
   const codecLockNotice = videoCodecLockNotice(phase);
+  const audioQualityLockNotice = screenAudioQualityLockNotice(phase);
 
   return (
     <div className="app-shell">
@@ -1914,6 +1935,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                             ...QUALITY_PROFILES[id],
                             videoCodec:
                               qualitySettingsRef.current.videoCodec ?? "automatic",
+                            screenAudioQuality: resolveScreenAudioQuality(
+                              qualitySettingsRef.current.screenAudioQuality,
+                            ),
                           })
                         }
                       >
@@ -1925,7 +1949,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </fieldset>
 
               <details className="advanced-quality">
-                <summary>高级视频设置</summary>
+                <summary>分享高级设置</summary>
                 <div className="advanced-quality-grid">
                   <label>
                     <span>分辨率上限</span>
@@ -2066,6 +2090,58 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       </p>
                     )}
                   </fieldset>
+                  <fieldset
+                    className="control-group quality-priority"
+                    aria-describedby={
+                      audioQualityLockNotice
+                        ? "screen-audio-quality-lock-notice"
+                        : undefined
+                    }
+                  >
+                    <legend>音频质量</legend>
+                    <div className="segmented-control">
+                      {(
+                        Object.keys(
+                          SCREEN_AUDIO_QUALITY_LABELS,
+                        ) as ScreenAudioQuality[]
+                      ).map((audioQuality) => (
+                        <button
+                          key={audioQuality}
+                          type="button"
+                          className={
+                            resolveScreenAudioQuality(
+                              advancedQuality.screenAudioQuality,
+                            ) === audioQuality
+                              ? "is-selected"
+                              : undefined
+                          }
+                          aria-pressed={
+                            resolveScreenAudioQuality(
+                              advancedQuality.screenAudioQuality,
+                            ) === audioQuality
+                          }
+                          disabled={
+                            phase === "starting" ||
+                            phase === "live" ||
+                            changingQuality
+                          }
+                          onClick={() =>
+                            changeScreenAudioQuality(audioQuality)
+                          }
+                        >
+                          {SCREEN_AUDIO_QUALITY_LABELS[audioQuality]}
+                        </button>
+                      ))}
+                    </div>
+                    {audioQualityLockNotice && (
+                      <p
+                        id="screen-audio-quality-lock-notice"
+                        className="control-note"
+                      >
+                        {audioQualityLockNotice}
+                      </p>
+                    )}
+                  </fieldset>
                   <button
                     className="button button-secondary"
                     type="button"
@@ -2076,7 +2152,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     }
                     onClick={() => void changeQuality(advancedQuality)}
                   >
-                    {changingQuality ? "正在应用" : "应用视频设置"}
+                    {changingQuality ? "正在应用" : "应用分享设置"}
                   </button>
                 </div>
               </details>

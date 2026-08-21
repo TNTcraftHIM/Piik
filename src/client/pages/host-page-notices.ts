@@ -39,3 +39,9 @@ export function videoCodecLockNotice(phase: string): string | null {
     ? "本次分享的编码已锁定，停止分享后可修改"
     : null;
 }
+
+export function screenAudioQualityLockNotice(phase: string): string | null {
+  return phase === "starting" || phase === "live"
+    ? "本次分享的音频质量已锁定，停止分享后可修改"
+    : null;
+}

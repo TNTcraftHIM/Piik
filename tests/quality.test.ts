@@ -9,7 +9,7 @@ import {
   matchingQualityProfileId,
   QUALITY_PROFILES,
   qualitySettingsEqual,
-  SCREEN_AUDIO_MAX_BITRATE,
+  SCREEN_AUDIO_BITRATES,
   screenShareLowBitrate,
   senderParameterWarning,
   setMediaPaused,
@@ -100,6 +100,23 @@ describe("realtime quality controls", () => {
     expect(qualitySettingsEqual(h264, QUALITY_PROFILES["1080p60"])).toBe(false);
   });
 
+  it("keeps audio selection orthogonal while defaulting old settings to music", () => {
+    const saver = {
+      ...QUALITY_PROFILES["1080p60"],
+      screenAudioQuality: "saver",
+    } as const;
+    const {
+      screenAudioQuality: _screenAudioQuality,
+      ...legacySettings
+    } = QUALITY_PROFILES["1080p60"];
+
+    expect(matchingQualityProfileId(saver)).toBe("1080p60");
+    expect(qualitySettingsEqual(saver, QUALITY_PROFILES["1080p60"])).toBe(false);
+    expect(
+      qualitySettingsEqual(legacySettings, QUALITY_PROFILES["1080p60"]),
+    ).toBe(true);
+  });
+
   it("reads back every requested sender control after setParameters", async () => {
     let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
     const setParameters = vi.fn(async (parameters: RTCRtpSendParameters) => {
@@ -139,7 +156,11 @@ describe("realtime quality controls", () => {
     expect(setParameters).toHaveBeenCalledOnce();
   });
 
-  it("applies and reads back the screen audio send ceiling", async () => {
+  it.each([
+    ["saver", 64_000],
+    ["music", 128_000],
+    ["very-high", 256_000],
+  ] as const)("applies and reads back the %s audio ceiling", async (quality, bitrate) => {
     let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
     const sender = {
       getParameters: () => applied,
@@ -148,12 +169,23 @@ describe("realtime quality controls", () => {
       }),
     } as unknown as RTCRtpSender;
 
-    await expect(configureScreenAudioSender(sender)).resolves.toBe(
-      SCREEN_AUDIO_MAX_BITRATE,
+    await expect(configureScreenAudioSender(sender, quality)).resolves.toBe(
+      bitrate,
     );
-    expect(applied.encodings).toEqual([
-      { maxBitrate: SCREEN_AUDIO_MAX_BITRATE },
-    ]);
+    expect(applied.encodings).toEqual([{ maxBitrate: bitrate }]);
+    expect(SCREEN_AUDIO_BITRATES[quality]).toBe(bitrate);
+  });
+
+  it("uses the music ceiling for a legacy setting without an audio preset", async () => {
+    let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
+    const sender = {
+      getParameters: () => applied,
+      setParameters: vi.fn(async (parameters: RTCRtpSendParameters) => {
+        applied = parameters;
+      }),
+    } as unknown as RTCRtpSender;
+
+    await expect(configureScreenAudioSender(sender)).resolves.toBe(128_000);
   });
 
   it("reports fields the browser does not retain", async () => {
