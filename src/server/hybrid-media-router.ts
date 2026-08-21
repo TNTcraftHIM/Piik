@@ -33,7 +33,6 @@ const VIEWER_QUALITY_BAD_WINDOWS_TO_REASSIGN = 3;
 const VIEWER_QUALITY_EVIDENCE_GAP_MS = 5_000;
 const VIEWER_QUALITY_REASSIGN_COOLDOWN_MS = 30_000;
 const VIEWER_QUALITY_FREEZE_RATIO = 0.5;
-const VIEWER_QUALITY_MIN_FPS_RATIO = 5 / 6;
 const VIEWER_QUALITY_MIN_LOSS_PACKETS = 100;
 const VIEWER_QUALITY_HIGH_LOSS_RATIO = 0.3;
 interface PendingRoutePreparation {
@@ -123,7 +122,6 @@ interface ViewerQualityEvidenceState {
   badWindowCount: number;
   pendingViewerEvidence: {
     acceptedAtMs: number;
-    maxFramerate: number;
     evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>;
   } | null;
 }
@@ -132,7 +130,6 @@ interface ForwardedViewerQualityEvidence {
   roomId: string;
   viewerSessionId: string;
   parentSessionId: string;
-  maxFramerate: number;
   evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>;
 }
 
@@ -499,13 +496,7 @@ export class HybridMediaRouter {
   }
 
   handleViewerQualityEvidence(input: ForwardedViewerQualityEvidence): void {
-    const {
-      evidence,
-      roomId,
-      viewerSessionId,
-      parentSessionId,
-      maxFramerate,
-    } = input;
+    const { evidence, roomId, viewerSessionId, parentSessionId } = input;
     const { viewerPeerId, parentPeerId } = evidence;
     const viewer = this.options.roomStore.getConnectedViewer(
       roomId,
@@ -561,7 +552,7 @@ export class HybridMediaRouter {
         ? previous.lastCorrelatedAtMs
         : null,
       badWindowCount: canContinueStreak ? previous.badWindowCount : 0,
-      pendingViewerEvidence: { acceptedAtMs: now, maxFramerate, evidence },
+      pendingViewerEvidence: { acceptedAtMs: now, evidence },
     });
   }
 
@@ -635,10 +626,7 @@ export class HybridMediaRouter {
     }
 
     const hardBad =
-      isHardBadViewerQualityWindow(
-        pending.evidence,
-        pending.maxFramerate,
-      ) &&
+      isHardBadViewerQualityWindow(pending.evidence) &&
       isHardBadParentEdgeQualityProof(evidence.proof);
     state.badWindowCount = hardBad
       ? state.lastCorrelatedAtMs !== null &&
@@ -3217,7 +3205,6 @@ function sameUpstream(
 
 function isHardBadViewerQualityWindow(
   evidence: Extract<ServerMessage, { type: "viewer-quality-evidence" }>,
-  maxFramerate: number,
 ): boolean {
   const metrics = evidence.metrics;
   const freezeRatio =
@@ -3231,12 +3218,6 @@ function isHardBadViewerQualityWindow(
     metrics.packetsReceivedDelta !== null &&
     metrics.packetsReceivedDelta > 0 &&
     metrics.framesDecodedDelta === 0
-  ) {
-    return true;
-  }
-  if (
-    metrics.framesPerSecond !== null &&
-    metrics.framesPerSecond < maxFramerate * VIEWER_QUALITY_MIN_FPS_RATIO
   ) {
     return true;
   }

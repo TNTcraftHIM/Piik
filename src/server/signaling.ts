@@ -1122,9 +1122,6 @@ export class SignalingServer {
         roomId: source.roomId,
         viewerSessionId: viewerState.sessionId,
         parentSessionId: parent.sessionId,
-        maxFramerate:
-          (this.qualitySettingsByRoom.get(source.roomId) ??
-            DEFAULT_QUALITY_SETTINGS).maxFramerate,
         evidence: forwarded,
       });
     }
