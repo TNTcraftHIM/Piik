@@ -186,8 +186,8 @@ Chrome Android 也标为不支持。桌面模式、UA 或设备性能不能改�
 Web UI 后续只做最小诚实处理：运行时检查
 `navigator.mediaDevices?.getDisplayMedia`，缺失时在建房/发布前明确显示不支持；
 方法存在也只表示可以尝试，真实调用失败仍区分 denied/cancelled/capture-failed，
-不能按 UA 宣称兼容。移动 Viewer 不需要该 API，继续使用同一响应式 Web 播放端并保持
-leaf-only。
+不能按 UA 宣称兼容。移动 Viewer 不需要该 API，继续使用同一响应式 Web 播放端；
+relay capacity 与其他普通 Web Viewer 相同。
 
 来源：
 

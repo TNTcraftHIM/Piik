@@ -1,10 +1,10 @@
 # Peer-Assisted Media Research
 
-- Research date: 2026-08-19
+- Research date: 2026-08-21
 - Scope: one game-screen broadcaster, at most eight trusted viewers, host media fanout at most two
-- Status: historical evidence for the bounded ADR-0004 experiment; accepted
-  ADR-0005 now owns automatic peer/SFU routing. Production later removed the
-  room-`1` rollout boundary; retained SFU media remains unverified.
+- Status: historical evidence plus the current capacity-two source candidate;
+  accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
+  the room-`1` rollout boundary; retained SFU media remains unverified.
 
 ## Conclusion
 
@@ -13,9 +13,10 @@ edges without making an SFU carry every viewer's traffic. The smallest credible
 experiment uses only standard WebRTC media:
 
 1. the browser host sends its screen stream to at most two first-level viewers;
-2. each viewer may add the received remote `MediaStreamTrack` values to one
-   downstream `RTCPeerConnection`; and
-3. the signaling server assigns two balanced chains deterministically.
+2. each viewer may add the received remote `MediaStreamTrack` values to at most
+   two downstream `RTCPeerConnection` instances; and
+3. the signaling server assigns one active upstream per viewer in a bounded,
+   deterministic breadth-first DAG.
 
 This path reuses WebRTC capture, codec negotiation, RTP, NACK/PLI/RTX, congestion
 control, jitter buffering, ICE, STUN, DTLS-SRTP, and browser rendering. A later
@@ -87,12 +88,14 @@ It follows from those source interfaces that a normal browser relay decodes and
 re-encodes at every hop. It is functional but adds relay CPU/GPU load, encode
 delay, and generational quality loss. Each outbound WebRTC send stream creates
 an independent sender encoder: the experimental host can therefore encode
-twice, while a viewer with one child encodes once.
+twice, while a viewer with two children has two independent outbound senders.
 
 Sources:
 
 - [libwebrtc video RTP receiver](https://webrtc.googlesource.com/src/+/refs/heads/main/pc/video_rtp_receiver.cc)
 - [libwebrtc raw-frame sender source](https://webrtc.googlesource.com/src/+/refs/heads/main/media/engine/webrtc_video_engine.cc)
+- [W3C WebRTC `addTrack` and sender model](https://www.w3.org/TR/webrtc/) (accessed 2026-08-21)
+- [WebRTC remote-stream forwarding primitives](https://webrtc.org/getting-started/remote-streams) (accessed 2026-08-21)
 
 ### Encoded DataChannel Relay, Rejected For The First Spike
 
@@ -158,29 +161,32 @@ Sources:
 
 ## Deterministic Experimental Topology
 
-The signaling server remains the topology authority. The experiment uses two
-sticky, balanced chains selected by one breadth-first walk. Here, one media edge
+The signaling server remains the topology authority. The source candidate uses
+a sticky, bounded DAG selected by one breadth-first walk. Here, one media edge
 means one downstream `RTCPeerConnection` carrying the shared stream; a later
 controller-selected TURN rebuild does not change the edge count.
 
-- the host has capacity for at most two children and every viewer for at most
-  one;
-- the host's child count is a hard invariant and never exceeds two, including
-  joins, reconnects, and reparenting;
+- the host and every ordinary Web viewer currently have capacity for at most two
+  children;
+- each endpoint's child count is a hard invariant and never exceeds two,
+  including joins, reconnects, and reparenting;
 - candidate parents are ordered by depth and server join sequence, and the
   first connected node with a free slot is selected;
-- joining a viewer never moves an existing assignment; on parent loss, only the
-  orphaned subtree root is reassigned and its descendants remain attached; and
+- every viewer has exactly one active upstream even though several candidate
+  parents may be eligible;
+- join/capacity admission never moves a healthy edge; on disconnect or current
+  edge failure, only each orphaned direct subtree root is reassigned while its
+  descendants remain attached; and
 - if no assigned parent is available, media waits or admission fails explicitly.
   The host never opens a third edge.
 
 There is no RTT, bandwidth, CPU, geography, candidate-type, or historical
-quality score. There is no optimization loop or live topology rebalancing. With
-two host slots and one slot per viewer, eight viewers require a maximum depth of
-four; that latency and repeated-encode cost is part of the experiment rather
-than something hidden by a scheduler. The controlled relay cohort uses
-foreground desktop Chrome/Edge; mobile leaf checks join after their intended
-parent so the spike does not pretend to solve background mobile relay policy.
+quality score. There is no optimization loop, multi-source media, or live
+topology rebalancing. With two host and two viewer slots, eight viewers require
+a maximum depth of three; that latency and repeated-encode cost is part of the
+experiment rather than something hidden by a scheduler. Ordinary Web clients
+use the same capacity without UA or visibility classification; mobile devices
+remain non-blocking compatibility observations.
 
 Per-edge ICE remains independent. Ordinary peer edges are STUN-only; after
 direct/peer UDP and SFU/UDP fail, a controller-selected exceptional edge may use
@@ -195,7 +201,7 @@ integer 15-60 fps, integer 2-12 Mbps, and the three standard degradation
 preferences; missing, extra, or out-of-range fields fail schema validation.
 The three visible presets are recommendations rather than wire IDs. The server
 stores the latest complete object in a room-count-bounded in-memory map,
-defaults to 1080p60 at 8 Mbps with clarity priority, includes it in
+defaults to 1080p60 at 8 Mbps with balanced priority, includes it in
 peer-assisted authenticated snapshots, and broadcasts host changes to online
 viewers. The value survives a stopped share, is removed with the room, and is
 not written to SQLite. Ordinary P2P authentication remains unchanged and
@@ -230,7 +236,7 @@ and RTP sender parameters remain targets, so achieved bitrate, frame rate,
 resolution, encode work, and cross-hop quality still require the measurement
 matrix below. It does not add or imply shared encoding.
 
-A controlled Chrome 151 loopback smoke used one host, three viewers, and a
+An earlier controlled Chrome 151 loopback smoke used one host, three viewers, and a
 synthetic 720p30 source. Balanced and clarity settings reached every
 participant; every baseline active outbound video sender displayed the matching
 requested/applied preference; peer-connection fingerprints stayed unchanged;
@@ -240,6 +246,14 @@ its render check because Chrome throttles background frame callbacks. Host
 fanout stayed at two and relay fanout at one. This is control and continuity
 evidence only, not visual-quality, full-resolution, load, TURN, public-network,
 or endurance evidence.
+
+A 2026-08-21 local Chrome 151 capacity-two run used one Host and five Viewers
+with a synthetic 720p30 stream. Host and relay fanout peaked at two; one Viewer
+simultaneously served two children, whose inbound counters each advanced by 80
+decoded frames and about 1.1 MB. All five Viewers decoded and cleanup reported
+no fatal error. The run proves the two-child control path and bound on local
+Chrome only. It does not prove shared encoding, CPU/GPU cost, visual quality,
+games, mobile resources, public networking, or endurance.
 
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
@@ -272,26 +286,24 @@ Sources:
 
 ## Resource Model
 
-For observed encoded bitrate `B`, `N` viewers, two host slots, and one viewer
-slot:
+For observed encoded bitrate `B`, `N` viewers, and the current two host/viewer
+slots:
 
 - host upload is at most approximately `2 * B`, plus transport overhead;
-- each relay upload is at most approximately `B`;
+- each relay upload is at most approximately `2 * B`;
 - aggregate viewer delivery still requires approximately `N * B` across hosts,
   relays, and any TURN paths; and
 - signaling/STUN carry negligible media traffic, while a TURN path still incurs
   relay ingress and egress for that edge.
 
-Peer assistance distributes traffic; it does not eliminate it. Relay
-eligibility must therefore be visible and voluntary in any production design.
+Peer assistance distributes traffic; it does not eliminate it. The product
+keeps topology automatic and invisible while enforcing advertised capacity and
+the deployment ceiling.
 The standalone ADR-0004 spike has no runtime capability flag and relies on
-controlled join order. The accepted ADR-0005 controller starts every viewer as
-a leaf, then accepts an explicit per-session capacity of zero or one. The first
-production smoke scoped it to room `1`; current production no longer has that
-room boundary. Its Web client
-reports detected mobile/iPad clients as leaves and desktop-class browsers as
-one-child relays. That conservative heuristic is still unverified on the real
-mobile matrix and is not a substitute for a future voluntary relay policy.
+controlled join order. The accepted ADR-0005 controller starts every viewer at
+zero, then the current Web client advertises an explicit per-session capacity
+of two. The first production smoke scoped it to room `1`; current production no
+longer has that room boundary. There is no mobile/iPad, UA, or visibility branch.
 
 ## Bounded Spike And Gates
 
@@ -299,9 +311,9 @@ This historical gate assumed default-off configuration through
 `PEER_ASSISTED_MEDIA=false`; current production enables the controller for all
 rooms.
 It cannot be enabled above eight viewers and uses the existing standard WebRTC
-screen stream, current desktop Chrome/Edge as relay nodes, current Android
-Chrome and iOS Safari as required
-leaf checks, one child per viewer, and at most eight viewers. It may carry the
+screen stream, current Chrome/Edge as the controlled relay cohort, Android
+Chrome and iOS Safari as compatibility observations, at most two children per
+viewer, and at most eight viewers. It may carry the
 existing screen-audio track when the browser provides one. SVC/simulcast,
 custom encoded transport, FEC changes, multi-tree striping, transcoding,
 background mobile relay, and the later ADR-0005 SFU controller are outside this
@@ -325,8 +337,8 @@ telemetry service.
 
 All hard gates must pass:
 
-1. The host has no more than two outgoing media edges and every viewer has no
-   more than one child at every sampled instant,
+1. The host and every viewer have no more than two outgoing media edges at every
+   sampled instant, and a third child is rejected,
    including churn; no hidden direct-host fallback is allowed.
 2. Assignment is reproducible from depth and server join order. Standard relay
    statistics are expected to show a new outbound RTP encoder at every hop; its
@@ -336,7 +348,7 @@ All hard gates must pass:
    and egress remains zero. Host and relay upload stay within 20% of
    `childCount * B`.
 4. First picture is at most 3 seconds, decoded 60 fps does not remain below 50
-   for more than 5 seconds without an explicit failure, and depth-four p95
+   for more than 5 seconds without an explicit failure, and depth-three p95
    glass-to-glass latency is at most 350 ms.
 5. Closing either first-level relay so the server observes it immediately starts
    the default 5-second disconnect grace. If it does not reconnect during that
@@ -345,8 +357,9 @@ All hard gates must pass:
 6. At each relay, delta encode time per encoded frame stays at or below one
    60 fps frame interval on the reference cohort and CPU limitation does not
    persist for more than 5 seconds.
-7. The standard WebRTC stream works on current Chrome and Edge relay nodes and
-   on current Android Chrome and iOS Safari leaves.
+7. The standard WebRTC stream works on the controlled Chrome and Edge relay
+   cohort. Android Chrome and iOS Safari remain non-blocking compatibility
+   observations rather than a separate capacity policy.
 
 An ordinary implementation defect may be corrected inside the spike. If a gate
 requires an encoded DataChannel/WebCodecs media plane, custom congestion
@@ -360,10 +373,9 @@ relay experiment keeps standard P2P plus explicit user-operated or central SFU
 fallbacks.
 
 Passing these historical gates proved only that a second design phase was
-justified. ADR-0005 subsequently accepted the bounded controller and production
-first ran a room-`1` smoke and later removed that rollout boundary, but retained
-SFU media, voluntary relay policy, and broader audio/A-V verification remain
-open. The
+justified. ADR-0005 subsequently accepted the bounded controller; production
+first ran a room-`1` smoke and later removed that rollout boundary. Retained SFU
+media and broader audio/A-V verification remain open. The
 native host shared-encode sender is a separate planned phase regardless of this
 experiment's result and is not implemented here.
 

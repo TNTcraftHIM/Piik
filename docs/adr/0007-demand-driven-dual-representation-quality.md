@@ -120,9 +120,8 @@ derived negotiated codec/profile/parameters (including applicable
 `scalabilityMode`) agree with sender transport/GCC and encode evidence. A
 request alone cannot lower quality or start a representation.
 
-UA, platform, and device-model detection does not participate in quality
-selection. The existing mobile/iPad heuristic remains limited to conservative
-relay-capacity admission. Browser capability queries can guide a bounded probe,
+UA, platform, and device-model detection does not participate in quality or
+relay-capacity selection. Browser capability queries can guide a bounded probe,
 but runtime encode/decode behavior is authoritative.
 
 ## Standard Capability Short-Circuits

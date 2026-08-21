@@ -5,7 +5,7 @@ import type {
 } from "../../shared/protocol";
 
 export const MAX_HOST_MEDIA_CHILDREN = 2;
-export const MAX_VIEWER_MEDIA_CHILDREN = 1;
+export const MAX_VIEWER_MEDIA_CHILDREN = 2;
 
 export function limitMediaAssignment(
   assignment: MediaAssignment,

@@ -11,6 +11,7 @@ function addRelayViewer(
   roomId: string,
   peerId: string,
   connectedPeerIds: ReadonlySet<string>,
+  downstreamEdges: 1 | 2 = 1,
 ) {
   const changes = topology.addViewer(roomId, peerId, connectedPeerIds);
   return [
@@ -18,7 +19,7 @@ function addRelayViewer(
     ...topology.setViewerRelayCapacity(
       roomId,
       peerId,
-      1,
+      downstreamEdges,
       connectedPeerIds,
     ),
   ];
@@ -29,6 +30,7 @@ function expectValidTree(
   roomId: string,
   hostPeerId: string,
   viewerPeerIds: readonly string[],
+  maxViewerChildren = 1,
 ): number {
   const hostAssignment = topology.getAssignment(roomId, hostPeerId)!;
   expect(hostAssignment.parentPeerId).toBeNull();
@@ -38,7 +40,9 @@ function expectValidTree(
   let maximumDepth = 0;
   for (const peerId of viewerPeerIds) {
     const assignment = topology.getAssignment(roomId, peerId)!;
-    expect(assignment.childPeerIds.length).toBeLessThanOrEqual(1);
+    expect(assignment.childPeerIds.length).toBeLessThanOrEqual(
+      maxViewerChildren,
+    );
     for (const childPeerId of assignment.childPeerIds) {
       expect(allChildren.has(childPeerId)).toBe(false);
       allChildren.add(childPeerId);
@@ -281,6 +285,83 @@ describe("PeerRelayTopology", () => {
     }
 
     expect(expectValidTree(topology, roomId, hostPeerId, viewerPeerIds)).toBe(4);
+  });
+
+  it("forms a bounded depth-three DAG for eight capacity-two viewers", () => {
+    const topology = new PeerRelayTopology();
+    const roomId = "room";
+    const hostPeerId = "host";
+    const viewerPeerIds = Array.from(
+      { length: 8 },
+      (_, index) => `viewer-${index + 1}`,
+    );
+    const peers = connected(hostPeerId, ...viewerPeerIds);
+    topology.setHost(roomId, hostPeerId, peers);
+
+    for (let index = 0; index < viewerPeerIds.length; index += 1) {
+      addRelayViewer(
+        topology,
+        roomId,
+        viewerPeerIds[index]!,
+        peers,
+        2,
+      );
+      expectValidTree(
+        topology,
+        roomId,
+        hostPeerId,
+        viewerPeerIds.slice(0, index + 1),
+        2,
+      );
+    }
+
+    expect(topology.getAssignment(roomId, "viewer-1")?.childPeerIds).toEqual([
+      "viewer-3",
+      "viewer-4",
+    ]);
+    expect(topology.getDownstreamCapacity(roomId, "viewer-1")).toBe(2);
+    expect(topology.getAssignment(roomId, "viewer-5")?.parentPeerId).toBe(
+      "viewer-2",
+    );
+    expect(
+      expectValidTree(topology, roomId, hostPeerId, viewerPeerIds, 2),
+    ).toBe(3);
+  });
+
+  it("reattaches both child subtrees when a capacity-two relay leaves", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "relay", "sibling", "child-a", "child-b");
+    topology.setHost("room", "host", peers);
+    addRelayViewer(topology, "room", "relay", peers, 2);
+    addRelayViewer(topology, "room", "sibling", peers, 2);
+    addRelayViewer(topology, "room", "child-a", peers, 2);
+    addRelayViewer(topology, "room", "child-b", peers, 2);
+    expect(topology.getAssignment("room", "relay")?.childPeerIds).toEqual([
+      "child-a",
+      "child-b",
+    ]);
+
+    topology.removeViewer(
+      "room",
+      "relay",
+      connected("host", "sibling", "child-a", "child-b"),
+    );
+
+    expect(topology.getAssignment("room", "child-a")?.parentPeerId).toBe(
+      "host",
+    );
+    expect(topology.getAssignment("room", "child-b")?.parentPeerId).toBe(
+      "sibling",
+    );
+    expect(
+      expectValidTree(
+        topology,
+        "room",
+        "host",
+        ["sibling", "child-a", "child-b"],
+        2,
+      ),
+    ).toBe(2);
   });
 
   it("uses the same depth-four bound for initial admission", () => {

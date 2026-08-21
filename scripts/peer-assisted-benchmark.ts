@@ -708,9 +708,9 @@ export function buildRunChecks(
     },
     {
       name: "relay-active-media-edges",
-      passed: summary.maxRelayActiveMediaEdges <= 1,
+      passed: summary.maxRelayActiveMediaEdges <= 2,
       actual: summary.maxRelayActiveMediaEdges,
-      expected: "<= 1",
+      expected: "<= 2",
     },
     {
       name: "all-viewers-decoded",

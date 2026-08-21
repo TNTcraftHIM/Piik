@@ -52,11 +52,11 @@ or duplicate values fail startup when the experiment is enabled; there is no
 all-room fail-open. This exact-room gate is temporary validation scope and adds
 no UI, percentage rollout, or routing score.
 
-The signaling server assigns two sticky, balanced chains with a deterministic
-breadth-first walk. The host has capacity for at most two children and each
-viewer for at most one. Candidate parents are ordered by depth and server-issued
-join sequence. Joining a viewer does not move existing assignments except for
-ADR-0005's bounded admission rescue: an unassigned one-slot relay may replace
+The signaling server assigns a sticky, bounded DAG with a deterministic
+breadth-first walk. The host and each ordinary Web viewer currently have
+capacity for at most two children. Candidate parents are ordered by depth and
+server-issued join sequence. Joining a viewer does not move existing assignments except for
+ADR-0005's bounded admission rescue: an unassigned relay may replace
 the oldest childless zero-capacity Host leaf when both Host slots are full. If a
 parent leaves, only its orphaned subtree root is assigned to the first available
 slot; the root's descendants stay attached. No RTT, bandwidth, CPU, geography,
@@ -64,7 +64,7 @@ capability, or quality scoring is added.
 
 For this ADR, one media edge is one downstream `RTCPeerConnection` carrying the
 shared stream. Using TURN for that connection does not alter the edge count. The
-host's two-child limit is a hard invariant across join, reconnect,
+current two-child endpoint limit is a hard invariant across join, reconnect,
 reparent, and recovery paths. If the deterministic topology has no connected
 eligible parent, the viewer remains admitted but waits without media until a
 slot becomes reachable; it must not create a third host connection.
@@ -107,8 +107,8 @@ route-controller ADR owns cross-mode fallback.
 
 The browser spike may encode once for each of the host's one or two seed
 connections because browsers do not guarantee cross-connection encoder reuse.
-Each viewer relay also performs one downstream encode. This is tolerated only
-for the experiment and must be measured honestly.
+Each viewer relay also performs one downstream encode per child, currently up
+to two. This is tolerated only for the experiment and must be measured honestly.
 
 A separate planned packaged/native sender must use custom libwebrtc encoder
 proxies that share one encoded output while retaining independent standard
@@ -123,19 +123,18 @@ viewing remains required.
 Test 1, 3, 5, and 8 viewers for 30 minutes across the three recommended ceiling
 combinations, plus any advanced combination proposed for production, with
 controlled per-edge RTT at or below 40 ms and loss at or below 1%. Current
-desktop Chrome and Edge form the relay cohort; current Android Chrome and iOS
-Safari join last as leaf checks. ADR-0005 now adds a per-session binary relay
-capacity: detected mobile/iPad clients report zero and desktop-class browsers
-report one. That heuristic, background lifecycle, and voluntary relay policy
-remain unverified, so the spike is still unsafe for arbitrary-user deployment.
-This one-child, depth-four gate remains an eight-viewer experiment; it cannot
+Chrome and Edge form the controlled relay cohort; Android Chrome and iOS Safari
+remain compatibility observations. ADR-0005 now gives every ordinary Web
+Viewer the same two-edge capacity without UA or visibility detection. Mobile
+resource behavior remains unverified, but does not define a separate route
+class. This depth-three gate remains an eight-viewer experiment; it cannot
 authorize the accepted 20-viewer default. That later release requires a separate
-20-viewer matrix and proven capacity-two relay or bounded central exceptions.
+20-viewer matrix or bounded central exceptions.
 
 The proposal advances only if every condition holds:
 
-- host media fanout is never greater than two and viewer fanout is never greater
-  than one, including relay loss and reparenting;
+- host and viewer media fanout are never greater than two, including relay loss
+  and reparenting, and a third child is never admitted;
 - assignments are reproducible from depth and server join order, without a
   composite score, live optimization loop, or proactive rebalancing;
 - every relay's expected outbound RTP encoder is measured through encode time,
@@ -146,7 +145,7 @@ The proposal advances only if every condition holds:
 - authentication and live setting changes leave every current and future child
   sender targeting the same latest room setting without altering the P2P wire;
 - first picture is at most 3 seconds, a 60 fps run does not remain below 50
-  decoded fps for more than 5 seconds, and depth-four p95 glass-to-glass
+  decoded fps for more than 5 seconds, and depth-three p95 glass-to-glass
   latency is at most 350 ms;
 - relay delta encode time per frame stays at or below 16.7 ms on the reference
   cohort and CPU limitation does not persist for more than 5 seconds;
@@ -154,7 +153,10 @@ The proposal advances only if every condition holds:
   receives the default 5-second disconnect grace; if it does not reconnect,
   the same deterministic assignment rule produces a new decodable picture
   within the following 3 seconds (about 8 seconds total under defaults); and
-- the common codec path works on the required desktop relays and mobile leaves.
+- the common codec path works on the controlled Web relay cohort.
+
+Android Chrome and iOS Safari remain non-blocking compatibility observations;
+their behavior does not introduce a device-specific relay-capacity policy.
 
 The about-8-second gate covers a controlled page close that the server observes
 immediately. A silent network partition depends on the default 30-second
@@ -174,7 +176,7 @@ failed browser-relay topology as passing.
 
 Passing the gate does not change this ADR to Accepted. It permits a separate ADR
 to propose a production design, including broader game-audio/A-V verification,
-voluntary relay policy, and privacy disclosure. The native shared-encode sender
+automatic bounded relay policy, and privacy disclosure. The native shared-encode sender
 is the independent planned work described above, not a reward for passing this
 gate.
 
@@ -196,8 +198,8 @@ Negative:
   descendants.
 - Relay upload, battery, background suspension, and peer IP exposure affect
   viewers, not just the broadcaster.
-- Two one-child chains need depth four for eight viewers, so the latency target
-  is uncertain by design.
+- The capacity-two DAG still adds repeated encode and up to three hops for eight
+  viewers, so the latency target remains uncertain until measured.
 
 ## Relationship To Existing ADRs
 

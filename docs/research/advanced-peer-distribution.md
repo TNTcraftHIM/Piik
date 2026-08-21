@@ -103,7 +103,8 @@ Go gates:
   350 ms;
 - a path failure returns a decodable picture within one second after detection;
 - protection still saves at least 30% host upload relative to `2B`; and
-- target desktop relays and mobile leaves pass runtime codec capability probes.
+- the controlled Web relay cohort passes runtime codec capability probes;
+  mobile browsers remain compatibility observations, not a capacity class.
 
 Reject that spike if endpoint upload remains near `2B`, relay encoding returns,
 queues cannot be bounded, or supported clients require two unrelated decoders
@@ -245,8 +246,8 @@ conferencing UI but is not a directional P2P parent score. Screener consequently
 excludes only the failed parent for the affected Viewer-rooted subtree and
 releases the quality-owned exclusion after a successful move.
 
-With host degree two and the current browser-relay degree one, two balanced
-chains already minimize maximum depth at `ceil(N/2)`. A tree for `N` viewers
+With host and current browser-relay degree two, deterministic breadth-first
+assignment keeps eight viewers to depth three. A tree for `N` viewers
 still has `N` media edges, approximately `N*B` useful upload in aggregate, and
 approximately `2B` host upload once both roots are used. Local reparenting does
 not reduce either bandwidth quantity. Reordering an already balanced healthy
@@ -254,8 +255,8 @@ tree also cannot reduce depth; a move needs a discrete admission, path, TURN,
 relay-resource, recovery, or future native-capacity benefit.
 
 The source admission-rescue slice is limited to its discrete capacity case. If
-a relay-capable viewer is unassigned because two zero-capacity roots,
-especially mobile leaves, occupy both host slots, it inserts that viewer above
+a relay-capable viewer is unassigned because two zero-capacity roots occupy
+both host slots, it inserts that viewer above
 one deterministic childless root:
 
 ```text
@@ -263,10 +264,10 @@ host -> new relay -> existing leaf
 host -> other root
 ```
 
-This admits the waiting viewer while keeping host fanout two and browser relay
-fanout one. The router permits it only on an active peer-only route with no SFU
+This admits the waiting viewer while keeping host and browser-relay fanout at
+two. The router permits it only on an active peer-only route with no SFU
 publication or pending prepare, when the connected candidate currently has no
-upstream or children, newly offers one relay slot, and has no failed-parent
+upstream or children, offers relay capacity, and has no failed-parent
 history. The host must have exactly two children and the chosen child must be a
 connected, childless, zero-capacity leaf. Existing server join order chooses the
 oldest eligible leaf. One synchronous topology snapshot changes the host,
@@ -291,8 +292,8 @@ move only one affected subtree, use separate enter and recovery thresholds plus
 a cooldown, and disable proactive moves for the share after repeated rollback.
 
 Use make-before-break only when the new parent has a free downstream media slot
-and every affected endpoint remains within its limit: host at most two, current
-browser relay one, and any future native relay at most two. Admission rescue
+and every affected endpoint remains within its current limit: host, Web relay,
+and native relay at most two. Admission rescue
 starts with both host slots occupied, so it is break-before-make: retire the
 chosen host-to-leaf media edge before activating host-to-new-relay media. A
 control-only `RTCPeerConnection` may prewarm ICE but cannot prove media uplink:

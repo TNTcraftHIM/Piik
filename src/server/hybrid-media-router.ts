@@ -647,7 +647,7 @@ export class HybridMediaRouter {
       .get(participant.roomId)
       ?.get(participant.peerId);
     const allowAdmissionRescue =
-      downstreamEdges === 1 &&
+      downstreamEdges > 0 &&
       active?.sfu.publicationGeneration === null &&
       active.assignments.get(participant.peerId)?.upstream.kind === "none" &&
       controller?.getPendingRoute() === undefined &&
@@ -1055,11 +1055,10 @@ export class HybridMediaRouter {
     const parent = this.connectedPeer(roomId, intent.failedParentPeerId);
     const shareGeneration = this.options.getShareGeneration(roomId);
     const parentAssignment = active.assignments.get(intent.failedParentPeerId);
-    const parentChildLimit =
-      intent.failedParentPeerId ===
-      this.peerRelayTopology.getHostPeerId(roomId)
-        ? 2
-        : 1;
+    const parentChildLimit = this.peerRelayTopology.getDownstreamCapacity(
+      roomId,
+      intent.failedParentPeerId,
+    );
     if (
       viewer?.sessionId !== intent.sessionId ||
       parent?.sessionId !== intent.failedParentSessionId ||

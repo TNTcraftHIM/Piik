@@ -449,7 +449,7 @@ describe("client signaling protocol", () => {
     ).toBe(false);
   });
 
-  it("accepts only a binary browser relay capacity", () => {
+  it("accepts only a bounded browser relay capacity", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "relay-capacity",
@@ -466,6 +466,12 @@ describe("client signaling protocol", () => {
       clientMessageSchema.safeParse({
         type: "relay-capacity",
         downstreamEdges: 2,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "relay-capacity",
+        downstreamEdges: 3,
       }).success,
     ).toBe(false);
     expect(

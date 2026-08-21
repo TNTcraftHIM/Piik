@@ -8,7 +8,7 @@ Last updated: 2026-08-21
 - Browser first. Viewers use desktop/mobile Web; an optional sender requires a proven browser capability gap.
 - Use a small central service for access, rooms, signaling, deterministic topology, STUN, observability, and bounded SFU-root capacity.
 - Minimize server bandwidth. Ordinary peer ICE is STUN-only. Failure tries restart, rebuild, alternate peer and bounded SFU/UDP roots; only then may the controller authorize short-lived TURN for one selected exceptional edge before clear failure. TURN is transport, not topology.
-- Non-server nodes have at most two downstream edges; browser relays stay at one until resource gates pass. SFU normally feeds one or two roots that retain peer descendants; separately capped server edges may serve exceptional viewers that cannot attach behind a healthy root.
+- The current release budget is two downstream edges per non-server node, including ordinary Web relays; upstream receive is free and UA/visibility do not change it. SFU normally feeds one or two roots that retain peer descendants; separately capped server edges may serve exceptional viewers that cannot attach behind a healthy root. A future evidence-driven tier may change the ceiling only through the owning requirement and design.
 - Two-tree packet/layer striping may reduce endpoint upload toward one stream bitrate, but needs a bounded multi-parent, loss, sync, churn, and latency experiment; it is not in the current full-stream chains.
 - Direct/peer keeps per-PC stock GCC. SFU paths start at a `HIGH` ceiling and share at most one `LOW`; next test LiveKit exactly-two built-in BWE on zero-descendant leaves. If it passes, no app media selector is built. Explicit quality, manual activation, then custom/native are later fallbacks; always-on `LOW` needs resource gates.
 - A later explicit quality fallback evacuates children under a generation guard first. Autonomous BWE enters `suspect`; confirmation evacuates children, and no confirmed `FALLBACK` parent remains. Root-with-children impact is a default-on gate; capacity returns after longer recovery plus cooldown. Self-report alone never triggers it.
@@ -19,7 +19,7 @@ Last updated: 2026-08-21
 
 ## Current Recommendation
 
-- Keep desktop Chrome/Edge and the responsive Web viewer as the baseline. Validate Android Chrome and iOS Safari as leaves.
+- Keep desktop Chrome/Edge and the responsive Web viewer as the baseline. Observe Android Chrome and iOS Safari compatibility without assigning a separate relay-capacity class.
 - Keep Viewer playback on one persistent, user-started audible media element while hidden. Continuity evidence uses media/connection counters; hidden video composition is presentation-only, and iOS lock-screen, reclamation and background reconnection remain device gates.
 - Use direct host P2P for one or two viewers, then the bounded controller for every room when `PEER_ASSISTED_MEDIA=true`. Room `1` is historical smoke, not a runtime gate; resource, quality, recovery, SFU/UDP, bounded-failure, and browser/mobile evidence remain separate.
 - Browser relays resend remote `MediaStreamTrack` values and re-encode at each hop; WebRTC does not guarantee a shared encoder across peer connections, so measure the cost.
@@ -27,7 +27,7 @@ Last updated: 2026-08-21
 - ADR-0006's historical browser-bridge canary remains no-go; VP8 stays default. Browser H.264 rendered 298/299; Native WGC/MF rendered 203 with PID/LUID-correlated `VideoEncode`. Downloaded use, multi-viewer/endurance/public proof remain open.
 - Mobile endpoints are Web Viewer-only. Current Android/iOS browsers do not expose Web Host capture; AirPlay/system mirroring is Viewer-local output.
 - ADR-0005: direct/peer UDP -> bounded SFU roots -> selected-edge TURN. The deployed controller caps pending/answered `peer-selected` at one per room; Host ingress is independent. A pre-`ecc794d` exact-source/production-media canary proves active Host ingress only. Ordinary peers stay STUN-only.
-- The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, mobile leaves and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
+- The controller is process-enabled, not room-allowlisted: `PEER_ASSISTED_MEDIA=true` gives every normal room the same direct/peer -> SFU -> selected-edge path with per-room state. Room `1` is historical smoke. Preserve sticky P2P, one active upstream and break-before-make; recovery gets one attempt per layer (ICE restart, same-parent rebuild, alternate peer, then SFU), never three identical retries.
 - C+B quality reparenting is edge-local and cooldown-bound; no score, timer, or global parent penalty.
 - Flagship media is UDP; HTTPS/WSS stays TLS/TCP; the old release remains rollback-only.
 - Treat settings as ceilings and degradation as unclassified. Use correlated Host A+B/Viewer C and one-variable evidence; never force AV1, infer by UA, or create a composite score.
@@ -52,6 +52,7 @@ Last updated: 2026-08-21
 - ADR-0005 rejects `PEER_ASSISTED_ROOM_IDS`; `PEER_ASSISTED_MEDIA=true` enables every room and ordinary peers stay STUN-only. Initial or active Host ingress may consume one bound relay-only grant; ready/abort clears it and failure restores peer baseline. Stale room-ID config fails startup; `screener-v2` is the only deployed wire.
 - Chrome 151/LiveKit localhost A/B cut failure-to-active/render from 1.481/2.257 seconds to 0.200/0.320; 31 new frames and 25 ms sampling kept host edges at two. It is headless synthetic 720p30 and includes SDK/network prewarm, not public-network evidence.
 - Deployed Web uses LiveKit 2.22.0 `q,h`. Chrome 151 proves local SFU/UDP and, separately, active selected TURN/UDP Host ingress against production media services with Viewer frame progress and clean stop. Initial/peer-selected relay, BWE, and C+B remain open.
+- The current local source candidate gives every ordinary Web Viewer two relay slots. A Chrome 151 synthetic 720p30 run with five Viewers kept Host/relay fanout at two, advanced both children of one relay by 80 decoded frames and about 1.1 MB each, decoded at every Viewer, and stopped without fatal error. This is bounded functional evidence only; production remains one-slot until the candidate ships.
 
 ## Provisional Quality Targets
 
@@ -65,7 +66,7 @@ These are measurement gates, not performance claims.
 ## Open Decisions
 
 - Sustainable count by hardware, quality, network, and route: finish instrumented `1/3/5/8`, then pass a 20-viewer matrix before changing the accepted target default to 20.
-- Whether ADR-0004 passes fanout, re-encoding, depth-four latency, reparenting, silent-partition, and mobile-leaf gates.
+- Whether ADR-0004 passes re-encoding, depth-three/eight-viewer latency, reparenting, silent-partition, and representative resource gates.
 - Selected-edge: active Host-ingress function passes; initial ingress, `peer-selected`, expiry/failure, mobile, resource and bandwidth gates remain. The bearer is non-revocable until expiry; performance follows later and Media TCP is out.
 - Exact mobile Viewer lifecycle behavior across autoplay, rotation, iOS lock-screen/page reclamation, background reconnection and network changes.
 - Project license and distribution model, which determines whether GPL/AGPL sources can move beyond study-only use.
