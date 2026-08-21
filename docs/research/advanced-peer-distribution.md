@@ -4,8 +4,9 @@
 - Scope: at most eight trusted viewers, sub-second interactive media, endpoint
   downstream fanout at most two, and minimal central-server media egress
 - Status: bounded C+B local reparenting and admission rescue are deployed;
-  one-root healthy SFU reselection is implemented source-only; advanced
-  encoded-media routes remain isolated candidates
+  one-root healthy SFU reselection is deployed but browser/media/production-route
+  evidence is unverified; relay-capacity `0 -> 1`, multi-root reselection, and
+  advanced encoded-media routes remain unimplemented candidates
 
 ## Terms
 

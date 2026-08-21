@@ -20,24 +20,24 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `1331fbddb59fc2b0b99ba9e5ee4848768ae907c8`
+Production currently runs exact `6ccb516a47261054f91dfa2fafa408d39ced59fc`
 on the existing shared public IP, with local/public health 200 and SQLite v3
-integrity. Its immutable source artifact is 606,386 bytes with SHA-256
-`7defb2c8d813de0576301f011a61cfc45481ce6ff209f14d61d2b9f0096a6a99`;
-the locally built dist artifact is 355,113 bytes with SHA-256
-`f20719d415396e6bc1feb6fba883c3a7ef0c619ba70fe1feafff96c93f8c8740`.
-The 2026-08-21T09:19:09Z UTC cutover held the deployment lock for 848.008 ms;
-local health returned 626.778 ms after service stop (560.282 ms after the symlink
+integrity. Its immutable source artifact is 619,674 bytes with SHA-256
+`ec0048023de4b40c32579c31db44cab8746dbae8e67430c16457a5bd437a4885`;
+the locally built dist artifact is 358,621 bytes with SHA-256
+`5d21c11e00e46525afbb40051b5276193f02c511728fce2c1e2df667b035cf73`.
+The 2026-08-21T10:14:26Z UTC cutover held the deployment lock for 2,048 ms;
+local health returned 1,272 ms after service stop (888 ms after the symlink
 switch). Screener, LiveKit, coturn, and nginx are active/running with
 observed `NRestarts=0`. SQLite v3 contains five rooms including room `1`, with the
 service owner/mode `screener:screener`/0600 and SHA-256
 `aef724ae52c4107be8ec8791e72f8dcaa11b0ec849fb432d022e2cfb9cfe0974`.
-The immutable release is `/opt/screener/releases/1331fbddb59f`; backup
-`/opt/screener/backups/1331fbddb59f-precutover-20260821T091908Z` preserves the
+The immutable release is `/opt/screener/releases/6ccb516a4726`; backup
+`/opt/screener/backups/6ccb516a4726-precutover-20260821T101426Z` preserves the
 database, environment, artifact digests, firewall snapshot, and exact previous
-target. Exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777` is the immediate rollback
-target; exact `691863e1720ebbee1b5368f29e94f05b3710ccf8` and
-`6634cb9fca8278b44d57e5fcddcbaf9f0dc9b137` remain secondary and tertiary.
+target. Exact `1331fbddb59fc2b0b99ba9e5ee4848768ae907c8` is the immediate rollback
+target; exact `261e980c3a9ff2d1a6b54ce18cf3daedb491b777` and
+`691863e1720ebbee1b5368f29e94f05b3710ccf8` remain secondary and tertiary.
 This release keeps one stable SFU subscriber stream, clears unavailable SFU
 video state, stays neutral until current media evidence proves P2P or SFU, and
 labels TURN plus a protocol only from actual local relay stats. Routing remains
@@ -50,7 +50,10 @@ shared entry/nickname UI, and two
 downstream slots per Web
 relay remain deployed; a third child remains rejected. Production
 STUN/SFU/selected-edge configuration and the database were unchanged.
-Fresh exact-source acceptance passed typecheck, 32 test files/473 tests, both
+One-root healthy-SFU make-before-break reselection is now deployed with its
+revision/session/connection/media-proof and overlap guards; capacity `0 -> 1`,
+multi-root, browser/media, and production-route evidence remain open.
+Fresh exact-source acceptance passed typecheck, 32 test files/489 tests, both
 builds, and repository hygiene. Deployment verified both artifact manifests and
 hashes, one bounded production-only install, runtime imports, `node:sqlite`,
 UTF-8 paths, zero cross-release regular-file inodes, and immutable permissions.
@@ -151,7 +154,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `1331fbdd` release with one
+selected-edge TURN config/wire is deployed in the current `6ccb516a` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
