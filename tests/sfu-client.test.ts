@@ -333,6 +333,15 @@ beforeEach(() => {
   livekit.state.connectGate = null;
   livekit.state.nextSenderParameterError = null;
   vi.stubGlobal("MediaStream", FakeMediaStream);
+  vi.stubGlobal("RTCRtpSender", {
+    getCapabilities: vi.fn(() => ({
+      codecs: [
+        { mimeType: "video/VP8", clockRate: 90_000 },
+        { mimeType: "video/H264", clockRate: 90_000 },
+      ],
+      headerExtensions: [],
+    })),
+  });
 });
 
 afterEach(() => {
@@ -414,6 +423,7 @@ describe("SfuPublisher", () => {
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(1, video, {
       source: Track.Source.ScreenShare,
       backupCodec: false,
+      videoCodec: "h264",
       simulcast: true,
       screenShareEncoding: {
         maxBitrate: 8_000_000,
@@ -472,6 +482,25 @@ describe("SfuPublisher", () => {
     await expect(publisher.deactivate()).resolves.toBe(true);
     expect(room.localParticipant.unpublishTrack).toHaveBeenCalledTimes(2);
     expect(room.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("keeps VP8 for SFU publication when H.264 send capability is absent", async () => {
+    vi.stubGlobal("RTCRtpSender", {
+      getCapabilities: vi.fn(() => ({
+        codecs: [{ mimeType: "video/VP8", clockRate: 90_000 }],
+        headerExtensions: [],
+      })),
+    });
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+
+    await expect(
+      publisher.activate(stream(track("video", "video-1")), qualityProfile),
+    ).resolves.toBe(true);
+
+    expect(
+      livekit.state.rooms[0].localParticipant.publications[0].options,
+    ).toMatchObject({ videoCodec: "vp8", backupCodec: false });
   });
 
   it("fails closed when initial sender configuration is rejected", async () => {
