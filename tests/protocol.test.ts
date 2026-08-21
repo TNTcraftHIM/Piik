@@ -402,6 +402,19 @@ describe("client signaling protocol", () => {
     );
   });
 
+  it("rejects a Viewer request for the Host-only P2P debug mode", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+        debugP2pOnly: true,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts only strict, bounded quality settings", () => {
     expect(
       clientMessageSchema.safeParse({
@@ -798,6 +811,8 @@ describe("server signaling protocol", () => {
     };
 
     expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);
+    expect(serverMessageSchema.safeParse({ ...peerAssisted, debugP2pOnly: true }).success).toBe(true);
+    expect(serverMessageSchema.safeParse({ ...peerAssisted, debugP2pOnly: false }).success).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         ...peerAssisted,
