@@ -1,5 +1,7 @@
 import {
+  DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_ICE_SERVER_URLS,
+  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   stunUrlSchema,
   turnUrlSchema,
@@ -55,6 +57,7 @@ export interface ServerConfig {
   maxRooms: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
+  maxPeerRelayDownstreamEdges: number;
   livekitFallback?: LiveKitFallbackConfig;
   selectedEdgeTurn?: SelectedEdgeTurnConfig;
   stunUrls: readonly string[];
@@ -334,6 +337,13 @@ export function loadConfig(
     false,
     "PEER_ASSISTED_MEDIA",
   );
+  const maxPeerRelayDownstreamEdges = parseBoundedInteger(
+    environment.MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+    DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+    "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
+    1,
+    MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+  );
   const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
   const selectedEdgeTurn = parseSelectedEdgeTurn(environment);
 
@@ -403,6 +413,7 @@ export function loadConfig(
     maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
     maxViewersPerRoom,
     peerAssistedMedia,
+    maxPeerRelayDownstreamEdges,
     livekitFallback,
     selectedEdgeTurn,
     stunUrls,

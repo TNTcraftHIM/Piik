@@ -197,6 +197,60 @@ describe("PeerRelayTopology", () => {
     expect(topology.getAssignment("room", "viewer-d")?.parentPeerId).toBeNull();
   });
 
+  it("keeps server relay ineligibility separate from advertised capacity", () => {
+    const topology = new PeerRelayTopology();
+    const peers = connected("host", "relay", "sibling", "child", "pending");
+    topology.setHost("room", "host", peers);
+    topology.addViewer("room", "relay", peers);
+    topology.addViewer("room", "sibling", peers);
+    topology.setViewerRelayCapacity("room", "relay", 1, peers);
+    topology.addViewer("room", "child", peers);
+
+    topology.setViewerRelayEligible("room", "relay", false);
+    expect(topology.getDownstreamCapacity("room", "relay")).toBe(0);
+    expect(topology.getAdvertisedDownstreamCapacity("room", "relay")).toBe(1);
+    expect(topology.getAssignment("room", "child")?.parentPeerId).toBe("relay");
+    expect(
+      topology.setViewerRelayCapacity("room", "relay", 2, peers),
+    ).toEqual([]);
+    expect(topology.getAdvertisedDownstreamCapacity("room", "relay")).toBe(2);
+    topology.addViewer("room", "pending", peers);
+    expect(topology.getAssignment("room", "pending")?.parentPeerId).toBeNull();
+
+    topology.setViewerRelayEligible("room", "relay", true);
+    topology.setViewerRelayCapacity("room", "relay", 2, peers);
+    expect(topology.getAssignment("room", "pending")?.parentPeerId).toBe(
+      "relay",
+    );
+    topology.setViewerRelayEligible("room", "host", false);
+    expect(topology.getDownstreamCapacity("room", "host")).toBe(2);
+  });
+
+  it("clamps advertisements to the deployment limit and can opt into three", () => {
+    const peers = connected("host", "relay");
+    const defaultTopology = new PeerRelayTopology();
+    defaultTopology.setHost("default", "host", peers);
+    defaultTopology.addViewer("default", "relay", peers);
+    defaultTopology.setViewerRelayCapacity("default", "relay", 3, peers);
+    expect(
+      defaultTopology.getAdvertisedDownstreamCapacity("default", "host"),
+    ).toBe(2);
+    expect(
+      defaultTopology.getAdvertisedDownstreamCapacity("default", "relay"),
+    ).toBe(2);
+
+    const expandedTopology = new PeerRelayTopology(3);
+    expandedTopology.setHost("expanded", "host", peers);
+    expandedTopology.addViewer("expanded", "relay", peers);
+    expandedTopology.setViewerRelayCapacity("expanded", "relay", 3, peers);
+    expect(
+      expandedTopology.getAdvertisedDownstreamCapacity("expanded", "host"),
+    ).toBe(3);
+    expect(
+      expandedTopology.getAdvertisedDownstreamCapacity("expanded", "relay"),
+    ).toBe(3);
+  });
+
   it("does not reassign a failed edge through a viewer leaf", () => {
     const topology = new PeerRelayTopology();
     const peers = connected("host", "viewer-a", "viewer-b", "viewer-c");

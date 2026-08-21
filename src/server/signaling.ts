@@ -82,6 +82,7 @@ export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
   peerAssistedMedia: boolean;
+  maxPeerRelayDownstreamEdges: number;
   sfuFallback?: SfuFallbackOptions;
   selectedEdgeTurn?: SelectedEdgeTurnConfig;
   ice: IceConfigOptions;
@@ -155,6 +156,7 @@ export class SignalingServer {
     if (options.peerAssistedMedia) {
       this.hybridMediaRouter = new HybridMediaRouter({
         roomStore: options.roomStore,
+        maxPeerRelayDownstreamEdges: options.maxPeerRelayDownstreamEdges,
         sfuFallback: options.sfuFallback,
         selectedEdgeTurn: options.selectedEdgeTurn,
         sendToSession: (sessionId, message) =>

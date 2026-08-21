@@ -2,6 +2,10 @@ import type {
   MediaAssignment,
   RelayDownstreamEdges,
 } from "../shared/protocol.js";
+import {
+  DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+} from "../shared/protocol.js";
 
 export interface MediaAssignmentChange {
   peerId: string;
@@ -20,17 +24,32 @@ interface RelayViewer {
   parentPeerId: string | null;
   childPeerIds: string[];
   downstreamEdges: RelayDownstreamEdges;
+  relayEligible: boolean;
 }
 
 interface RelayRoom {
   hostPeerId?: string;
   hostChildPeerIds: string[];
+  maxDownstreamEdges: RelayDownstreamEdges;
   viewers: Map<string, RelayViewer>;
   nextOrder: number;
 }
 
 export class PeerRelayTopology {
   private readonly rooms = new Map<string, RelayRoom>();
+
+  constructor(
+    private readonly maxDownstreamEdges: RelayDownstreamEdges =
+      DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+  ) {
+    if (
+      !Number.isSafeInteger(maxDownstreamEdges) ||
+      maxDownstreamEdges < 1 ||
+      maxDownstreamEdges > MAX_PEER_RELAY_DOWNSTREAM_EDGES
+    ) {
+      throw new Error("Peer relay downstream limit is invalid");
+    }
+  }
 
   setHost(
     roomId: string,
@@ -73,6 +92,7 @@ export class PeerRelayTopology {
         parentPeerId: null,
         childPeerIds: [],
         downstreamEdges: 0,
+        relayEligible: true,
       });
       room.nextOrder += 1;
     } else {
@@ -100,8 +120,12 @@ export class PeerRelayTopology {
     }
 
     const before = snapshot(room);
+    const boundedDownstreamEdges = Math.min(
+      downstreamEdges,
+      this.maxDownstreamEdges,
+    );
     const previousDownstreamEdges = viewer.downstreamEdges;
-    viewer.downstreamEdges = downstreamEdges;
+    viewer.downstreamEdges = boundedDownstreamEdges;
     for (const [candidatePeerId, candidate] of orderedViewers(room)) {
       if (candidate.parentPeerId === null) {
         this.assignViewer(room, candidatePeerId, connectedPeerIds);
@@ -110,7 +134,7 @@ export class PeerRelayTopology {
     if (
       options.rescueUnassignedRelay &&
       previousDownstreamEdges === 0 &&
-      downstreamEdges > 0
+      boundedDownstreamEdges > 0
     ) {
       this.rescueUnassignedRelay(room, peerId, connectedPeerIds);
     }
@@ -191,6 +215,25 @@ export class PeerRelayTopology {
     return room ? downstreamCapacity(room, peerId) : 0;
   }
 
+  getAdvertisedDownstreamCapacity(
+    roomId: string,
+    peerId: string,
+  ): RelayDownstreamEdges {
+    const room = this.rooms.get(roomId);
+    return room ? advertisedDownstreamCapacity(room, peerId) : 0;
+  }
+
+  setViewerRelayEligible(
+    roomId: string,
+    peerId: string,
+    eligible: boolean,
+  ): void {
+    const viewer = this.rooms.get(roomId)?.viewers.get(peerId);
+    if (viewer) {
+      viewer.relayEligible = eligible;
+    }
+  }
+
   getHostPeerId(roomId: string): string | undefined {
     return this.rooms.get(roomId)?.hostPeerId;
   }
@@ -258,6 +301,7 @@ export class PeerRelayTopology {
     if (!room) {
       room = {
         hostChildPeerIds: [],
+        maxDownstreamEdges: this.maxDownstreamEdges,
         viewers: new Map(),
         nextOrder: 0,
       };
@@ -325,7 +369,7 @@ export class PeerRelayTopology {
       !connectedPeerIds.has(peerId) ||
       candidate.parentPeerId !== null ||
       candidate.childPeerIds.length !== 0 ||
-      candidate.downstreamEdges === 0 ||
+      downstreamCapacity(room, peerId) === 0 ||
       room.hostChildPeerIds.length !== downstreamCapacity(room, hostPeerId)
     ) {
       return;
@@ -337,7 +381,7 @@ export class PeerRelayTopology {
         connectedPeerIds.has(childPeerId) &&
         child?.parentPeerId === hostPeerId &&
         child.childPeerIds.length === 0 &&
-        child.downstreamEdges === 0
+        downstreamCapacity(room, childPeerId) === 0
       );
     });
     if (!leafPeerId) {
@@ -427,8 +471,17 @@ function downstreamCapacity(
   room: RelayRoom,
   peerId: string,
 ): RelayDownstreamEdges {
+  return room.hostPeerId === peerId || room.viewers.get(peerId)?.relayEligible
+    ? advertisedDownstreamCapacity(room, peerId)
+    : 0;
+}
+
+function advertisedDownstreamCapacity(
+  room: RelayRoom,
+  peerId: string,
+): RelayDownstreamEdges {
   return room.hostPeerId === peerId
-    ? 2
+    ? room.maxDownstreamEdges
     : (room.viewers.get(peerId)?.downstreamEdges ?? 0);
 }
 

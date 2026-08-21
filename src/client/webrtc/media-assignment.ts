@@ -3,9 +3,10 @@ import type {
   MediaAssignment,
   SignalPayload,
 } from "../../shared/protocol";
+import { MAX_PEER_RELAY_DOWNSTREAM_EDGES } from "../../shared/protocol";
 
-export const MAX_HOST_MEDIA_CHILDREN = 2;
-export const MAX_VIEWER_MEDIA_CHILDREN = 2;
+export const MAX_HOST_MEDIA_CHILDREN = MAX_PEER_RELAY_DOWNSTREAM_EDGES;
+export const MAX_VIEWER_MEDIA_CHILDREN = MAX_PEER_RELAY_DOWNSTREAM_EDGES;
 
 export function limitMediaAssignment(
   assignment: MediaAssignment,

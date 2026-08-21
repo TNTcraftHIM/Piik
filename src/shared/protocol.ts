@@ -5,7 +5,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v4";
+export const SIGNALING_PROTOCOL = "screener-v5";
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
@@ -195,11 +195,13 @@ export const DEFAULT_QUALITY_SETTINGS = {
   videoCodec: "automatic",
 } as const satisfies QualitySettings;
 
-export const relayDownstreamEdgesSchema = z.union([
-  z.literal(0),
-  z.literal(1),
-  z.literal(2),
-]);
+export const DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES = 2;
+export const MAX_PEER_RELAY_DOWNSTREAM_EDGES = 3;
+export const relayDownstreamEdgesSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_PEER_RELAY_DOWNSTREAM_EDGES);
 export type RelayDownstreamEdges = z.infer<typeof relayDownstreamEdgesSchema>;
 
 function isValidStunUrl(value: string): boolean {
@@ -336,7 +338,9 @@ export type SignalPayload = z.infer<typeof signalPayloadSchema>;
 export const mediaAssignmentSchema = z
   .object({
     parentPeerId: opaqueIdSchema.nullable(),
-    childPeerIds: z.array(opaqueIdSchema).max(2),
+    childPeerIds: z
+      .array(opaqueIdSchema)
+      .max(MAX_PEER_RELAY_DOWNSTREAM_EDGES),
   })
   .strict();
 export type MediaAssignment = z.infer<typeof mediaAssignmentSchema>;
@@ -357,7 +361,7 @@ export const participantRouteAssignmentSchema = z
     upstream: mediaRouteUpstreamSchema,
     childPeerIds: z
       .array(opaqueIdSchema)
-      .max(2)
+      .max(MAX_PEER_RELAY_DOWNSTREAM_EDGES)
       .refine((peerIds) => new Set(peerIds).size === peerIds.length),
     sfuPublicationGeneration: sfuPublicationGenerationSchema.nullable(),
   })

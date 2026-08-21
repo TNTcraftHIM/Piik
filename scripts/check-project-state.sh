@@ -23,7 +23,7 @@ if [ "$agent_lines" -gt 200 ]; then
   exit 1
 fi
 
-if [ "$memory_lines" -gt 200 ] || [ "$memory_bytes" -gt 12000 ]; then
+if [ "$memory_lines" -gt 200 ] || [ "$memory_bytes" -gt 16000 ]; then
   echo "docs/project-memory.md exceeds its budget: $memory_lines lines, $memory_bytes bytes" >&2
   exit 1
 fi

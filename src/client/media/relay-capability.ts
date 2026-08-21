@@ -1,4 +1,7 @@
-import type { ClientMessage } from "../../shared/protocol";
+import {
+  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
+  type ClientMessage,
+} from "../../shared/protocol";
 
 type RelayCapacityMessage = Extract<
   ClientMessage,
@@ -13,6 +16,6 @@ export function relayCapacityMessageForBrowser(
   }
   return {
     type: "relay-capacity",
-    downstreamEdges: 2,
+    downstreamEdges: MAX_PEER_RELAY_DOWNSTREAM_EDGES,
   };
 }

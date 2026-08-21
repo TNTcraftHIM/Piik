@@ -24,7 +24,9 @@ describe("peer-assisted client assignment", () => {
       childPeerIds: [
         "child_12345678",
         "child_abcdefgh",
+        "child_qwertyui",
         "child_12345678",
+        "child_overflow",
       ],
     };
 
@@ -32,13 +34,21 @@ describe("peer-assisted client assignment", () => {
       limitMediaAssignment(assignment, MAX_HOST_MEDIA_CHILDREN),
     ).toEqual({
       parentPeerId: "parent_12345678",
-      childPeerIds: ["child_12345678", "child_abcdefgh"],
+      childPeerIds: [
+        "child_12345678",
+        "child_abcdefgh",
+        "child_qwertyui",
+      ],
     });
     expect(
       limitMediaAssignment(assignment, MAX_VIEWER_MEDIA_CHILDREN),
     ).toEqual({
       parentPeerId: "parent_12345678",
-      childPeerIds: ["child_12345678", "child_abcdefgh"],
+      childPeerIds: [
+        "child_12345678",
+        "child_abcdefgh",
+        "child_qwertyui",
+      ],
     });
   });
 
@@ -57,6 +67,7 @@ describe("peer-assisted client assignment", () => {
       "remove:old-child",
       "start:kept-child",
       "start:new-child",
+      "start:overflow-child",
     ]);
   });
 

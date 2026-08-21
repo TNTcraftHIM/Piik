@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	signalingProtocol  = "screener-v4"
+	signalingProtocol  = "screener-v5"
 	maxProtocolViewers = 16
 	maxRouteRevision   = int64(1<<53 - 1)
 	maxSignalSDPBytes  = 48 << 10

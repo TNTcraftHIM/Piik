@@ -201,7 +201,10 @@ less than two-thirds of that actual inbound FPS. The configured FPS ceiling is
 not evidence. `sending`, either report alone, and healthy or ambiguous pairs
 reset or do not advance the streak.
 It holds at most one pending/streak state per connected Viewer and one room
-cooldown, with no timer, weighted score or global parent-capacity decision.
+cooldown, with no timer or weighted score. One confirmed child event stays
+edge-local. A separate bounded corroboration can suspend one Viewer relay's
+server-owned eligibility only after two distinct children confirm under the
+same parent session and share within five seconds.
 
 The conservative Viewer C hard predicates are: freeze duration at least half
 of the one-to-five-second window; positive received-packet delta with zero
@@ -245,16 +248,19 @@ five-second gap and 30-second
 cooldown are falsifiable candidate constants for production calibration, not
 standards-derived or claimed optimum values.
 
-The correlated pair can therefore attribute a problem only to the current
-parent-to-child edge generation. It cannot prove that the parent is globally
-bad: the remote-loss value is that child's RTCP report and
-`qualityLimitationReason` belongs to one outbound video stream. LiveKit's pinned
-server implementation deliberately reduces published-track and subscribed-
-downtrack quality to a participant-wide minimum; that aggregate is useful for
-conferencing UI but is not a directional P2P parent score. Screener consequently
-excludes only the affected edge parent. Alternate-parent selection remains
-deterministic breadth-first; preferring recent healthy candidates over unknown
-candidates is a later make-before-break slice, not a score in this correction.
+One correlated pair still attributes a problem only to its current
+parent-to-child edge generation: remote loss comes from that child and
+`qualityLimitationReason` belongs to one outbound stream. Screener therefore
+keeps a single event edge-local. Two independently confirmed current children
+within five seconds are instead treated as bounded corroboration to pause that
+Viewer parent's relay eligibility for 30 seconds, not as proof of device-wide
+quality or a numeric score. The client-advertised capacity remains intact; new
+capacity messages cannot override the server-owned pause. Existing children
+try deterministic peer reassignment and keep their old edge when none exists;
+the parent keeps its upstream and the pause itself never starts SFU or TURN.
+Host parents are excluded, while expiry, a new parent session or a new share
+restores eligibility. Alternate-parent selection remains breadth-first;
+preferring recent healthy candidates remains a later make-before-break slice.
 
 With host and current browser-relay degree two, deterministic breadth-first
 assignment keeps eight viewers to depth three. A tree for `N` viewers
