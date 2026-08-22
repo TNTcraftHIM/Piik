@@ -2141,13 +2141,20 @@ export class HybridMediaRouter {
           this.options.getShareGeneration(participant.roomId) &&
         attempt.newConnectionId === message.connectionId
       ) {
+        const pendingRevision = this.pendingRoutePreparations.get(
+          participant.roomId,
+        )?.revision;
         this.settleSelectedSfuIngressAttempt(participant.roomId);
         this.sendError(
           participant.sessionId,
           "PEER_NOT_FOUND",
           "Selected SFU relay ingress failed",
         );
-        this.failBackToPeerBaseline(participant.roomId);
+        if (pendingRevision === message.revision) {
+          this.abortPendingRoute(participant.roomId, undefined, false);
+        } else {
+          this.failBackToPeerBaseline(participant.roomId);
+        }
         return true;
       }
       const activeIngress = this.activeSelectedSfuIngresses.get(
@@ -2162,11 +2169,16 @@ export class HybridMediaRouter {
         activeIngress.connectionId === message.connectionId &&
         activeIngress.shareGeneration ===
           this.options.getShareGeneration(participant.roomId) &&
-        activeRoute?.revision === message.revision &&
+        activeRoute !== undefined &&
         activeRoute.sfu.publicationGeneration ===
           activeIngress.publicationGeneration &&
         activeRoute.assignments.get(participant.peerId)
-          ?.sfuPublicationGeneration === activeIngress.publicationGeneration
+          ?.sfuPublicationGeneration === activeIngress.publicationGeneration &&
+        ((message.phase === "active" &&
+          activeRoute.revision === message.revision) ||
+          (message.phase === "prepare" &&
+            this.pendingRoutePreparations.get(participant.roomId)?.revision ===
+              message.revision))
       ) {
         this.settleActiveSelectedSfuIngress(participant.roomId);
         this.sendError(
@@ -3916,14 +3928,7 @@ export class HybridMediaRouter {
       const participant = this.connectedPeer(lease.roomId, peerId);
       const assignment = active.assignments.get(peerId);
       if (participant?.sessionId === sessionId && assignment) {
-        // No carry grant precedes this duplicate authority, so the client
-        // closes the selected transport even when the route revision is equal.
-        this.options.sendToSession(sessionId, {
-          type: "route-update",
-          revision: active.revision,
-          phase: "active",
-          assignment,
-        });
+        this.sendActiveRouteUpdate(lease.roomId, peerId, active, assignment);
       }
     }
     return lease;

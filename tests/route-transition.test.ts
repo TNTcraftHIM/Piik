@@ -60,14 +60,15 @@ function sfuConfig(revision: number) {
 function hostSfuIngressGrant(
   newConnectionId = "selected-connection-new",
   revision = 1,
+  publicationGeneration = "generation-a",
 ) {
   return {
     type: "selected-edge-turn" as const,
     edgeKind: "host-sfu-ingress" as const,
     revision,
     hostPeerId: "host_12345678",
-    publicationGeneration: "generation-a",
-    oldConnectionId: "generation-a",
+    publicationGeneration,
+    oldConnectionId: publicationGeneration,
     newConnectionId,
     expiresAt: "2099-01-01T00:00:00.000Z",
     iceServer: {
@@ -788,6 +789,167 @@ describe("HostSfuRoute", () => {
       revision: 1,
       phase: "prepare",
     });
+  });
+
+  it("keeps the old publisher until a selected replacement commits", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: () => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        if (publishers.length === 2) {
+          publisher.connect.mockResolvedValue(false);
+        }
+        return publisher;
+      },
+    });
+    const generationA = hostAssignment("generation-a");
+    route.accept({ revision: 1, phase: "prepare", assignment: generationA });
+    await route.acceptConfig(sfuConfig(1));
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: generationA,
+    });
+    expect(
+      route.startSelectedEdgeTurn(
+        hostSfuIngressGrant("same-generation", 1, "generation-a"),
+      ),
+    ).toBe(false);
+
+    const generationB = hostAssignment("generation-b");
+    route.accept({ revision: 2, phase: "prepare", assignment: generationB });
+    await route.acceptConfig(sfuConfig(2));
+    const selectedB = hostSfuIngressGrant(
+      "selected-generation-b",
+      2,
+      "generation-b",
+    );
+    expect(route.startSelectedEdgeTurn(selectedB)).toBe(true);
+    await vi.waitFor(() => expect(publishers).toHaveLength(3));
+    expect(publishers[2]?.connect).toHaveBeenCalledWith({
+      url: "wss://sfu.example.test",
+      token: "token-2",
+      rtcConfig: {
+        iceServers: [selectedB.iceServer],
+        iceTransportPolicy: "relay",
+      },
+    });
+    expect(publishers[0]?.deactivate).not.toHaveBeenCalled();
+    expect(publishers[0]?.disconnect).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "route-ready",
+      revision: 2,
+      phase: "prepare",
+    });
+
+    await route.acceptAndWait({
+      revision: 2,
+      phase: "active",
+      assignment: generationB,
+    });
+    expect(publishers[0]?.deactivate).toHaveBeenCalledOnce();
+    expect(publishers[0]?.disconnect).toHaveBeenCalledOnce();
+    expect(publishers[2]?.activate).toHaveBeenCalledOnce();
+    expect(messages).toContainEqual({
+      type: "route-ready",
+      revision: 2,
+      phase: "active",
+    });
+  });
+
+  it("keeps the old publisher through rollback and selected candidate failure", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const failures: Array<() => void> = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: (onDisconnected) => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        failures.push(onDisconnected);
+        if (publishers.length === 2 || publishers.length === 4) {
+          publisher.connect.mockResolvedValue(false);
+        }
+        return publisher;
+      },
+    });
+    const generationA = hostAssignment("generation-a");
+    route.accept({ revision: 1, phase: "prepare", assignment: generationA });
+    await route.acceptConfig(sfuConfig(1));
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: generationA,
+    });
+
+    const generationB = hostAssignment("generation-b");
+    route.accept({ revision: 2, phase: "prepare", assignment: generationB });
+    await route.acceptConfig(sfuConfig(2));
+    expect(
+      route.startSelectedEdgeTurn(
+        hostSfuIngressGrant("selected-generation-b", 2, "generation-b"),
+      ),
+    ).toBe(true);
+    await vi.waitFor(() => expect(publishers).toHaveLength(3));
+    expect(publishers[0]?.deactivate).not.toHaveBeenCalled();
+    expect(publishers[0]?.disconnect).not.toHaveBeenCalled();
+
+    await route.acceptAndWait({
+      revision: 3,
+      phase: "active",
+      assignment: generationA,
+    });
+    expect(publishers[2]?.disconnect).toHaveBeenCalledOnce();
+    expect(publishers[0]?.deactivate).not.toHaveBeenCalled();
+    expect(publishers[0]?.disconnect).not.toHaveBeenCalled();
+
+    route.accept({
+      revision: 4,
+      phase: "prepare",
+      assignment: hostAssignment("generation-c"),
+    });
+    await route.acceptConfig(sfuConfig(4));
+    expect(
+      route.startSelectedEdgeTurn(
+        hostSfuIngressGrant("selected-generation-c", 4, "generation-c"),
+      ),
+    ).toBe(true);
+    await vi.waitFor(() => expect(publishers).toHaveLength(5));
+    messages.length = 0;
+    failures[4]?.();
+    expect(messages).toEqual([{
+      type: "route-failed",
+      revision: 4,
+      phase: "prepare",
+      connectionId: "selected-generation-c",
+    }]);
+    await expect(
+      route.updateProfile(QUALITY_PROFILES["1080p30"]),
+    ).resolves.toBe(true);
+    expect(publishers[0]?.updateProfile).toHaveBeenCalledOnce();
+    expect(publishers[0]?.deactivate).not.toHaveBeenCalled();
+    expect(publishers[0]?.disconnect).not.toHaveBeenCalled();
   });
 
   it("identifies a failed selected ingress retry by its new connection", async () => {

@@ -7881,6 +7881,119 @@ describe("WebSocket signaling", () => {
     expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
   });
 
+  it("carries a surviving same-parent selected edge before sibling release authority", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken() { throw new Error("offline"); } },
+      selectedEdgeTurn: true,
+      endpointMediaCopyCapacity: 2,
+      turnAllocationCapacity: 2,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = peerAssisted(await authenticate(
+      host,
+      harness.room,
+      "host",
+      "selected-sibling-carry-host",
+      2,
+      "selected-sibling-carry-share",
+    ));
+    const viewerA = await openClient(harness.webSocketUrl);
+    const viewerAAuth = peerAssisted(await authenticate(
+      viewerA,
+      harness.room,
+      "viewer",
+      "selected-sibling-carry-viewer-a",
+      0,
+    ));
+    const viewerB = await openClient(harness.webSocketUrl);
+    const viewerBAuth = peerAssisted(await authenticate(
+      viewerB,
+      harness.room,
+      "viewer",
+      "selected-sibling-carry-viewer-b",
+      0,
+    ));
+    expect(viewerAAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    expect(viewerBAuth.routeAssignment.upstream).toEqual({
+      kind: "peer",
+      peerId: hostAuth.peerId,
+    });
+    await nextActiveRouteRevision(viewerA, viewerBAuth.routeRevision);
+
+    const connectionA = "selected-sibling-carry-connection-a";
+    const connectionB = "selected-sibling-carry-connection-b";
+    await sendTestOffer(host, viewerA, viewerAAuth.peerId, connectionA);
+    await sendTestOffer(host, viewerB, viewerBAuth.peerId, connectionB);
+    const grantA = await startPeerSelectedCandidate(
+      viewerA,
+      host,
+      viewerBAuth.routeRevision,
+      connectionA,
+    );
+    const grantB = await startPeerSelectedCandidate(
+      viewerB,
+      host,
+      grantA.revision,
+      connectionB,
+    );
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 2 });
+
+    const parentAuthority: ServerMessage[] = [];
+    host.socket.on("message", (data) => {
+      const message = decodeServerMessage(data.toString());
+      if (
+        (message.type === "selected-edge-turn" &&
+          message.edgeKind === "peer-selected" &&
+          message.newConnectionId === grantB.newConnectionId) ||
+        (message.type === "route-update" && message.phase === "active")
+      ) {
+        parentAuthority.push(message);
+      }
+    });
+    viewerA.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: grantA.revision,
+      phase: "active",
+      connectionId: grantA.newConnectionId,
+    }));
+    await expect(viewerA.inbox.next("error")).resolves.toMatchObject({
+      code: "PEER_NOT_FOUND",
+      message: "Selected relay edge failed",
+    });
+    await vi.waitFor(() => expect(parentAuthority).toHaveLength(2));
+    expect(parentAuthority[0]).toMatchObject({
+      type: "selected-edge-turn",
+      revision: grantB.revision,
+      edgeKind: "peer-selected",
+      viewerPeerId: viewerBAuth.peerId,
+      newConnectionId: grantB.newConnectionId,
+    });
+    expect(parentAuthority[1]).toMatchObject({
+      type: "route-update",
+      revision: grantB.revision,
+      phase: "active",
+    });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+
+    host.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: viewerBAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: grantB.newConnectionId,
+        candidate: null,
+      },
+    }));
+    await expect(viewerB.inbox.next("signal")).resolves.toMatchObject({
+      fromPeerId: hostAuth.peerId,
+      payload: { connectionId: grantB.newConnectionId },
+    });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+  });
+
   it("releases deployment capacity when the selected Viewer disconnects", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken() { throw new Error("offline"); } },
@@ -8127,6 +8240,105 @@ describe("WebSocket signaling", () => {
       replacement.active.host.inbox.next("error"),
     ).resolves.toMatchObject({ code: "FORBIDDEN" });
     expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+  });
+
+  it("rolls back only the exact failed pending Host ingress candidate", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+      turnAllocationCapacity: 2,
+    });
+    const replacement = await prepareSelectedHostIngressReplacement(
+      harness,
+      "selected-ingress-candidate-failure",
+    );
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: replacement.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: replacement.candidateGrant.newConnectionId,
+    }));
+    await expect(
+      replacement.active.host.inbox.next("error"),
+    ).resolves.toMatchObject({
+      code: "PEER_NOT_FOUND",
+      message: "Selected SFU relay ingress failed",
+    });
+    const rollback = await nextActiveRouteAfter(
+      replacement.active.host,
+      replacement.hostPrepare.revision,
+    );
+    expect(rollback).toMatchObject({
+      revision: replacement.hostPrepare.revision + 1,
+      assignment: {
+        sfuPublicationGeneration:
+          replacement.activeGrant.publicationGeneration,
+      },
+    });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: rollback.revision,
+      phase: "active",
+      connectionId: replacement.candidateGrant.newConnectionId,
+    }));
+    await expect(
+      replacement.active.host.inbox.next("error"),
+    ).resolves.toMatchObject({ code: "FORBIDDEN" });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+  });
+
+  it("preempts a pending replacement when its exact old active ingress fails", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+      turnAllocationCapacity: 2,
+    });
+    const replacement = await prepareSelectedHostIngressReplacement(
+      harness,
+      "selected-ingress-active-failure",
+    );
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: replacement.hostPrepare.revision,
+      phase: "prepare",
+      connectionId: replacement.activeGrant.newConnectionId,
+    }));
+    await expect(
+      replacement.active.host.inbox.next("error"),
+    ).resolves.toMatchObject({
+      code: "PEER_NOT_FOUND",
+      message: "Selected SFU relay ingress failed",
+    });
+    const rollback = await nextActiveRouteAfter(
+      replacement.active.host,
+      replacement.hostPrepare.revision,
+    );
+    expect(rollback.assignment.sfuPublicationGeneration).toBe(
+      replacement.activeGrant.publicationGeneration,
+    );
+    const baseline = await nextActiveRouteAfter(
+      replacement.active.host,
+      rollback.revision,
+    );
+    expect(baseline).toMatchObject({
+      assignment: { sfuPublicationGeneration: null },
+    });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 0 });
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: baseline.revision,
+      phase: "active",
+      connectionId: replacement.candidateGrant.newConnectionId,
+    }));
+    await expect(
+      replacement.active.host.inbox.next("error"),
+    ).resolves.toMatchObject({ code: "FORBIDDEN" });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 0 });
   });
 
   it("promotes a pending Host ingress only after the route commits", async () => {
