@@ -11,11 +11,13 @@ import {
 import { SiteAccess } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import { createIceConfig } from "./ice.js";
+import type { SfuFallbackOptions } from "./hybrid-media-router.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
+import type { SfuRoomControl } from "./sfu-room-control.js";
 import { SfuResourceAdmission } from "./sfu-resource-admission.js";
 import { RoomDatabase } from "./room-database.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
-import { SignalingServer } from "./signaling.js";
+import { SignalingServer, type SignalingOptions } from "./signaling.js";
 
 export interface CreateServerOptions {
   config?: ServerConfig;
@@ -31,6 +33,7 @@ export interface CreateServerOptions {
   maxUnauthenticatedSignalConnections?: number;
   siteAccessTtlSeconds?: number;
   sfuTokenIssuer?: SfuTokenIssuer;
+  sfuRoomControl?: SfuRoomControl;
 }
 
 export interface ScreenerServer {
@@ -48,22 +51,33 @@ export async function createScreenerServer(
   const config = options.config ?? loadConfig();
   const now = options.now ?? Date.now;
   const livekitFallback = config.livekitFallback;
-  const sfuFallback = livekitFallback
-    ? {
-        url: livekitFallback.url,
-        tokenIssuer:
-          options.sfuTokenIssuer ??
-          new (await import("./livekit-token.js")).LiveKitTokenIssuer({
-            apiKey: livekitFallback.apiKey,
-            apiSecret: livekitFallback.apiSecret,
-            maxViewersPerRoom: config.maxViewersPerRoom,
-          }),
-        admission: new SfuResourceAdmission({
-          ingressCapacity: livekitFallback.ingressCapacity,
-          egressCapacity: livekitFallback.egressCapacity,
+  let sfuFallback: SfuFallbackOptions | undefined;
+  let sfuRoomControl: SfuRoomControl | undefined;
+  if (livekitFallback) {
+    sfuRoomControl =
+      options.sfuRoomControl ??
+      new (await import("./sfu-room-control.js")).LiveKitSfuRoomControl({
+        apiUrl: livekitFallback.apiUrl,
+        apiKey: livekitFallback.apiKey,
+        apiSecret: livekitFallback.apiSecret,
+        maxViewersPerRoom: config.maxViewersPerRoom,
+      });
+    sfuFallback = {
+      url: livekitFallback.url,
+      tokenIssuer:
+        options.sfuTokenIssuer ??
+        new (await import("./livekit-token.js")).LiveKitTokenIssuer({
+          apiKey: livekitFallback.apiKey,
+          apiSecret: livekitFallback.apiSecret,
+          maxViewersPerRoom: config.maxViewersPerRoom,
         }),
-      }
-    : undefined;
+      admission: new SfuResourceAdmission({
+        ingressCapacity: livekitFallback.ingressCapacity,
+        egressCapacity: livekitFallback.egressCapacity,
+      }),
+      roomControl: sfuRoomControl,
+    };
+  }
   const roomStore =
     options.roomStore ??
     new RoomStore({
@@ -89,7 +103,14 @@ export async function createScreenerServer(
 
   let frontendHandler: FrontendHandler | undefined;
   let vite: ViteDevServer | undefined;
+  let acceptingTraffic = false;
   const httpServer = createServer((request, response) => {
+    if (!acceptingTraffic) {
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("Retry-After", "1");
+      sendJson(response, 503, { error: "Service starting" });
+      return;
+    }
     void handleRequest(
       request,
       response,
@@ -111,7 +132,7 @@ export async function createScreenerServer(
     });
   });
 
-  const signaling = new SignalingServer({
+  const signalingOptions: SignalingOptions = {
     server: httpServer,
     roomStore,
     peerAssistedMedia: config.peerAssistedMedia,
@@ -133,7 +154,10 @@ export async function createScreenerServer(
       options.maxUnauthenticatedSignalConnections,
     passThroughUnknownUpgrades:
       config.nodeEnv === "development" && options.serveFrontend !== false,
-  });
+  };
+  let signaling: SignalingServer | undefined;
+  let startupOperation: Promise<number> | undefined;
+  let closing = false;
 
   if (options.serveFrontend !== false) {
     if (config.nodeEnv === "development") {
@@ -176,40 +200,107 @@ export async function createScreenerServer(
   return {
     httpServer,
     roomStore,
-    listen(port = config.port, host = config.listenHost) {
-      return new Promise<number>((resolve, reject) => {
-        const onError = (error: Error) => {
-          httpServer.off("listening", onListening);
-          reject(error);
-        };
-        const onListening = () => {
-          httpServer.off("error", onError);
-          const address = httpServer.address();
-          if (!address || typeof address === "string") {
-            reject(new Error("Server did not bind to a TCP port"));
-            return;
+    async listen(port = config.port, host = config.listenHost) {
+      if (startupOperation) {
+        throw new Error("Screener server startup was already requested");
+      }
+      if (closing) {
+        throw new Error("Screener server is closing");
+      }
+      startupOperation = (async () => {
+        const boundPort = await bindHttpServer(httpServer, port, host);
+        try {
+          await sfuRoomControl?.initialize();
+          if (!closing) {
+            signaling = new SignalingServer(signalingOptions);
+            acceptingTraffic = true;
           }
-          resolve(address.port);
-        };
-        httpServer.once("error", onError);
-        httpServer.once("listening", onListening);
-        httpServer.listen(port, host);
-      });
+          return boundPort;
+        } catch (error) {
+          try {
+            await closeHttpServer(httpServer);
+          } catch (closeError) {
+            throw new AggregateError(
+              [error, closeError],
+              "Screener startup reconciliation failed",
+            );
+          }
+          throw error;
+        }
+      })();
+      return await startupOperation;
     },
     async close() {
+      acceptingTraffic = false;
+      closing = true;
+      const errors: unknown[] = [];
       try {
-        await signaling.close();
+        await startupOperation;
+      } catch {
+        // The listen caller owns the startup error; shutdown still closes resources.
+      }
+      try {
+        await signaling?.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
         if (httpServer.listening) {
           await new Promise<void>((resolve, reject) => {
             httpServer.close((error) => (error ? reject(error) : resolve()));
           });
         }
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
         await vite?.close();
-      } finally {
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
         roomStore.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length > 0) {
+        throw new AggregateError(errors, "Screener server shutdown failed");
       }
     },
   };
+}
+
+function bindHttpServer(
+  httpServer: ReturnType<typeof createServer>,
+  port: number,
+  host: string,
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const onError = (error: Error) => {
+      httpServer.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      httpServer.off("error", onError);
+      const address = httpServer.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Server did not bind to a TCP port"));
+        return;
+      }
+      resolve(address.port);
+    };
+    httpServer.once("error", onError);
+    httpServer.once("listening", onListening);
+    httpServer.listen(port, host);
+  });
+}
+
+function closeHttpServer(
+  httpServer: ReturnType<typeof createServer>,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    httpServer.close((error) => (error ? reject(error) : resolve()));
+  });
 }
 
 async function handleRequest(

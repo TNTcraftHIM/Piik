@@ -26,6 +26,8 @@ import { SignalingServer } from "../src/server/signaling.ts";
 import type { SfuTokenIssuer } from "../src/server/livekit-token.ts";
 import { HybridMediaRouter } from "../src/server/hybrid-media-router.ts";
 import { SfuResourceAdmission } from "../src/server/sfu-resource-admission.ts";
+import { managedSfuRoomName } from "../src/server/sfu-room-control.ts";
+import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const allowedOrigin = "http://allowed.test";
 const TEST_SFU_INGRESS_CAPACITY = 10;
@@ -146,6 +148,7 @@ interface SignalHarness {
   room: CreatedRoom;
   database?: RoomDatabase;
   sfuAdmission?: SfuResourceAdmission;
+  sfuRoomControl?: FakeSfuRoomControl;
 }
 
 function testConfig(): ServerConfig {
@@ -650,6 +653,9 @@ async function startSfuHarness(options: {
   viewerDisconnectGraceMs?: number;
   stunUrls?: readonly string[];
   now?: () => number;
+  roomControl?: FakeSfuRoomControl;
+  hostOfflineCheckMs?: number;
+  drainRetryMs?: number;
 }): Promise<SignalHarness> {
   const roomStore = new RoomStore({
     ttlMs: 14_400_000,
@@ -671,6 +677,7 @@ async function startSfuHarness(options: {
     egressCapacity:
       options.sfuEgressCapacity ?? TEST_SFU_EGRESS_CAPACITY,
   });
+  const sfuRoomControl = options.roomControl ?? new FakeSfuRoomControl();
   const signaling = new SignalingServer({
     server: httpServer,
     roomStore,
@@ -681,7 +688,10 @@ async function startSfuHarness(options: {
       url: "wss://sfu.example.test",
       tokenIssuer: options.tokenIssuer,
       admission: sfuAdmission,
+      roomControl: sfuRoomControl,
       prepareTimeoutMs: options.prepareTimeoutMs,
+      hostOfflineCheckMs: options.hostOfflineCheckMs,
+      drainRetryMs: options.drainRetryMs,
     },
     ...(options.selectedEdgeTurn
       ? {
@@ -735,6 +745,7 @@ async function startSfuHarness(options: {
     roomStore,
     room,
     sfuAdmission,
+    sfuRoomControl,
   };
 }
 
@@ -1513,6 +1524,14 @@ async function closeClient(client: TestClient): Promise<void> {
   const closed = new Promise<void>((resolve) => client.socket.once("close", () => resolve()));
   client.socket.close();
   await closed;
+}
+
+function deferredVoid(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 describe("WebSocket signaling", () => {
@@ -10054,5 +10073,259 @@ describe("WebSocket signaling", () => {
       "capacity-viewer",
     );
     expect(await rejectedUpgradeStatus(harness.webSocketUrl)).toBe(503);
+  });
+
+  it("keeps a draining generation charged and blocks a second room until deletion proof", async () => {
+    let issuedTokens = 0;
+    const roomControl = new FakeSfuRoomControl();
+    const harness = await startSfuHarness({
+      roomControl,
+      sfuIngressCapacity: 1,
+      sfuEgressCapacity: 1,
+      tokenIssuer: {
+        async issueToken({ peerId }) {
+          issuedTokens += 1;
+          return `token-${peerId}`;
+        },
+      },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "draining-capacity",
+    );
+    const resourceFence = roomControl.created[0]!;
+    const staleTokenRoom = managedSfuRoomName(resourceFence);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
+
+    const deletion = deferredVoid();
+    roomControl.deleteBarrier = deletion.promise;
+    active.host.socket.send(JSON.stringify({
+      type: "stop-sharing",
+      shareGeneration: "draining-capacity-share",
+    }));
+    await active.viewer.inbox.next("sharing-stopped");
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
+    expect(roomControl.canJoin(staleTokenRoom)).toBe(true);
+
+    const secondRoom = harness.roomStore.createRoom();
+    const second = await failSingleViewerDirect(
+      harness.webSocketUrl,
+      secondRoom,
+      "draining-second-room",
+    );
+    expect((await second.viewer.inbox.next("error")).message).toBe(
+      "SFU server capacity is exhausted",
+    );
+    expect(roomControl.created).toHaveLength(1);
+    expect(issuedTokens).toBe(2);
+
+    deletion.resolve();
+    await vi.waitFor(() =>
+      expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 }),
+    );
+    expect(roomControl.canJoin(staleTokenRoom)).toBe(false);
+  });
+
+  it("keeps two active rooms isolated under one deployment-wide owner", async () => {
+    const roomControl = new FakeSfuRoomControl();
+    const harness = await startSfuHarness({
+      roomControl,
+      sfuIngressCapacity: 2,
+      sfuEgressCapacity: 2,
+      tokenIssuer: {
+        async issueToken({ peerId }) {
+          return `token-${peerId}`;
+        },
+      },
+    });
+    const first = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "two-room-first",
+    );
+    const secondRoom = harness.roomStore.createRoom();
+    const second = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      secondRoom,
+      "two-room-second",
+    );
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 2, egress: 2 });
+    expect(new Set(roomControl.created.map(({ roomId }) => roomId))).toEqual(
+      new Set([harness.room.roomId, secondRoom.roomId]),
+    );
+
+    first.host.socket.send(JSON.stringify({
+      type: "stop-sharing",
+      shareGeneration: "two-room-first-share",
+    }));
+    await first.viewer.inbox.next("sharing-stopped");
+    await vi.waitFor(() =>
+      expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 }),
+    );
+    expect(
+      roomControl.rooms.has(managedSfuRoomName(roomControl.created[1]!)),
+    ).toBe(true);
+
+    second.viewer.socket.send(JSON.stringify({
+      type: "refresh-sfu",
+      revision: second.revision,
+    }));
+    expect(await second.viewer.inbox.next("sfu-config")).toMatchObject({
+      revision: second.revision,
+    });
+  });
+
+  it("keeps a signaling-offline Host charged while LiveKit is live and reclaims it after departure", async () => {
+    const roomControl = new FakeSfuRoomControl();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const harness = await startSfuHarness({
+      roomControl,
+      hostOfflineCheckMs: 20,
+      tokenIssuer: {
+        async issueToken({ peerId }) {
+          return `token-${peerId}`;
+        },
+      },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "host-offline",
+    );
+    const resourceFence = roomControl.created[0]!;
+    roomControl.seedRoom(resourceFence, ["host"]);
+    roomControl.failHostCheck = true;
+
+    await closeClient(active.host);
+    await new Promise((resolve) => setTimeout(resolve, 55));
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
+    expect(roomControl.rooms.has(managedSfuRoomName(resourceFence))).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      "SFU Host-offline check failed; capacity remains reserved",
+    );
+
+    roomControl.failHostCheck = false;
+    await new Promise((resolve) => setTimeout(resolve, 55));
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
+    roomControl.rooms.get(managedSfuRoomName(resourceFence))?.delete("host");
+    await vi.waitFor(
+      () =>
+        expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 }),
+      { timeout: 300 },
+    );
+    expect(roomControl.rooms.has(managedSfuRoomName(resourceFence))).toBe(false);
+    error.mockRestore();
+  });
+
+  it("keeps failed room deletion charged until a retry proves absence", async () => {
+    const roomControl = new FakeSfuRoomControl();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const harness = await startSfuHarness({
+      roomControl,
+      drainRetryMs: 20,
+      tokenIssuer: {
+        async issueToken({ peerId }) {
+          return `token-${peerId}`;
+        },
+      },
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "delete-retry",
+    );
+    const resourceFence = roomControl.created[0]!;
+    roomControl.failDelete = true;
+
+    active.host.socket.send(JSON.stringify({
+      type: "stop-sharing",
+      shareGeneration: "delete-retry-share",
+    }));
+    await active.viewer.inbox.next("sharing-stopped");
+    await new Promise((resolve) => setTimeout(resolve, 55));
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
+    expect(roomControl.rooms.has(managedSfuRoomName(resourceFence))).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      "SFU room drain failed; capacity remains reserved",
+    );
+
+    roomControl.failDelete = false;
+    await vi.waitFor(
+      () =>
+        expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 }),
+      { timeout: 300 },
+    );
+    expect(roomControl.rooms.has(managedSfuRoomName(resourceFence))).toBe(false);
+    error.mockRestore();
+  });
+
+  it("waits for managed LiveKit rooms to drain before graceful shutdown completes", async () => {
+    const roomControl = new FakeSfuRoomControl();
+    const harness = await startSfuHarness({
+      roomControl,
+      tokenIssuer: {
+        async issueToken({ peerId }) {
+          return `token-${peerId}`;
+        },
+      },
+    });
+    await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "graceful-drain",
+    );
+    const secondRoom = harness.roomStore.createRoom();
+    const secondHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      secondHost,
+      secondRoom,
+      "host",
+      "graceful-second-host",
+      1,
+      "graceful-second-share",
+    );
+    const secondViewer = await openClient(harness.webSocketUrl);
+    const secondViewerAuth = peerAssisted(await authenticate(
+      secondViewer,
+      secondRoom,
+      "viewer",
+      "graceful-second-viewer",
+    ));
+    secondHost.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: secondViewerAuth.peerId,
+      payload: {
+        kind: "description",
+        connectionId: "graceful-second-direct",
+        description: { type: "offer", sdp: "v=0\r\n" },
+      },
+    }));
+    await secondViewer.inbox.next("signal");
+    const deletion = deferredVoid();
+    roomControl.deleteBarrier = deletion.promise;
+
+    let closed = false;
+    const closing = runningServer!.close().then(() => {
+      closed = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(closed).toBe(false);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
+    secondViewer.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: secondViewerAuth.routeRevision,
+      phase: "active",
+      connectionId: "graceful-second-direct",
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(roomControl.created).toHaveLength(1);
+
+    deletion.resolve();
+    await closing;
+    runningServer = undefined;
+    expect(closed).toBe(true);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
+    expect(roomControl.created).toHaveLength(1);
   });
 });

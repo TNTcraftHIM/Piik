@@ -1,6 +1,5 @@
 import {
   AccessToken,
-  RoomConfiguration,
   TrackSource,
 } from "livekit-server-sdk";
 
@@ -8,6 +7,7 @@ import {
   MAX_VIEWERS_PER_ROOM_LIMIT,
   type Role,
 } from "../shared/protocol.js";
+import { managedSfuRoomName } from "./sfu-room-control.js";
 
 const LIVEKIT_TOKEN_TTL_SECONDS = 5 * 60;
 const ROOM_ID_PATTERN = /^[1-9]\d{0,11}$/;
@@ -17,6 +17,7 @@ export interface SfuTokenRequest {
   roomId: string;
   role: Role;
   peerId: string;
+  shareGeneration: string;
   publicationGeneration: string;
   allowlistedRootPeerIds: readonly string[];
 }
@@ -49,10 +50,7 @@ export class LiveKitTokenIssuer implements SfuTokenIssuer {
     validateTokenRequest(request, this.options.maxViewersPerRoom);
 
     const isHost = request.role === "host";
-    const room = liveKitRoomName(
-      request.roomId,
-      request.publicationGeneration,
-    );
+    const room = managedSfuRoomName(request);
     const token = new AccessToken(
       this.options.apiKey,
       this.options.apiSecret,
@@ -72,11 +70,6 @@ export class LiveKitTokenIssuer implements SfuTokenIssuer {
       canPublishData: false,
       canUpdateOwnMetadata: false,
     });
-    token.roomConfig = new RoomConfiguration({
-      name: room,
-      maxParticipants: this.options.maxViewersPerRoom + 1,
-    });
-
     return await token.toJwt();
   }
 }
@@ -90,6 +83,7 @@ function validateTokenRequest(
   }
   if (
     !OPAQUE_ID_PATTERN.test(request.peerId) ||
+    !OPAQUE_ID_PATTERN.test(request.shareGeneration) ||
     !OPAQUE_ID_PATTERN.test(request.publicationGeneration)
   ) {
     throw new Error("LiveKit participant identity is invalid");
@@ -110,11 +104,4 @@ function validateTokenRequest(
   if (request.role === "viewer" && !roots.has(request.peerId)) {
     throw new Error("LiveKit viewer is not an allowlisted SFU root");
   }
-}
-
-function liveKitRoomName(
-  roomId: string,
-  publicationGeneration: string,
-): string {
-  return `screener-${roomId}-${publicationGeneration}`;
 }

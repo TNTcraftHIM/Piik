@@ -22,6 +22,7 @@ interface SfuResourceEntry {
 interface RoomSfuResources {
   committed?: SfuResourceEntry;
   reserved?: SfuResourceEntry;
+  draining: Map<string, SfuResourceEntry>;
 }
 
 export class SfuResourceAdmission {
@@ -48,6 +49,9 @@ export class SfuResourceAdmission {
     if (room?.committed && sameFence(room.committed.fence, fence)) {
       return room.committed.egress === egress;
     }
+    if (room?.draining.has(fenceKey(fence))) {
+      return false;
+    }
     if (
       this.ingressInUse >= this.ingressCapacity ||
       egress > this.egressCapacity - this.egressInUse
@@ -55,7 +59,7 @@ export class SfuResourceAdmission {
       return false;
     }
 
-    const resources = room ?? {};
+    const resources: RoomSfuResources = room ?? { draining: new Map() };
     resources.reserved = { fence: { ...fence }, egress };
     this.rooms.set(fence.roomId, resources);
     this.ingressInUse += 1;
@@ -63,68 +67,88 @@ export class SfuResourceAdmission {
     return true;
   }
 
-  commit(fence: SfuResourceFence): boolean {
+  commit(fence: SfuResourceFence): readonly SfuResourceFence[] | null {
     assertFence(fence);
     const room = this.rooms.get(fence.roomId);
     if (room?.committed && sameFence(room.committed.fence, fence)) {
-      return true;
+      return [];
     }
     if (!room?.reserved || !sameFence(room.reserved.fence, fence)) {
-      return false;
+      return null;
     }
 
+    const draining: SfuResourceFence[] = [];
     if (room.committed) {
-      this.subtract(room.committed);
+      this.addDraining(room, room.committed);
+      draining.push({ ...room.committed.fence });
     }
     room.committed = room.reserved;
     room.reserved = undefined;
-    return true;
+    return draining;
   }
 
-  release(fence: SfuResourceFence): boolean {
+  beginDrain(fence: SfuResourceFence): boolean {
     assertFence(fence);
     const room = this.rooms.get(fence.roomId);
     if (!room) {
       return false;
     }
 
-    let released = false;
+    if (room.draining.has(fenceKey(fence))) {
+      return true;
+    }
+    let entry: SfuResourceEntry | undefined;
     if (room.reserved && sameFence(room.reserved.fence, fence)) {
-      this.subtract(room.reserved);
+      entry = room.reserved;
       room.reserved = undefined;
-      released = true;
     }
     if (room.committed && sameFence(room.committed.fence, fence)) {
-      this.subtract(room.committed);
+      entry = room.committed;
       room.committed = undefined;
-      released = true;
     }
-    this.deleteEmptyRoom(fence.roomId, room);
-    return released;
+    if (!entry) {
+      return false;
+    }
+    this.addDraining(room, entry);
+    return true;
   }
 
-  releaseRoom(roomId: string): boolean {
+  completeDrain(fence: SfuResourceFence): boolean {
+    assertFence(fence);
+    const room = this.rooms.get(fence.roomId);
+    const entry = room?.draining.get(fenceKey(fence));
+    if (!room || !entry) {
+      return false;
+    }
+    room.draining.delete(fenceKey(fence));
+    this.subtract(entry);
+    this.deleteEmptyRoom(fence.roomId, room);
+    return true;
+  }
+
+  beginDrainRoom(roomId: string): readonly SfuResourceFence[] {
     if (!roomId) {
       throw new Error("SFU resource room ID is invalid");
     }
     const room = this.rooms.get(roomId);
     if (!room) {
-      return false;
+      return [];
     }
     if (room.reserved) {
-      this.subtract(room.reserved);
+      this.addDraining(room, room.reserved);
+      room.reserved = undefined;
     }
     if (room.committed) {
-      this.subtract(room.committed);
+      this.addDraining(room, room.committed);
+      room.committed = undefined;
     }
-    this.rooms.delete(roomId);
-    return true;
+    return [...room.draining.values()].map((entry) => ({ ...entry.fence }));
   }
 
-  releaseAll(): void {
-    this.rooms.clear();
-    this.ingressInUse = 0;
-    this.egressInUse = 0;
+  beginDrainAll(): readonly SfuResourceFence[] {
+    return [...this.rooms.keys()].flatMap((roomId) =>
+      this.beginDrainRoom(roomId),
+    );
   }
 
   usage(): SfuResourceUsage {
@@ -139,11 +163,19 @@ export class SfuResourceAdmission {
     }
   }
 
+  private addDraining(room: RoomSfuResources, entry: SfuResourceEntry): void {
+    room.draining.set(fenceKey(entry.fence), entry);
+  }
+
   private deleteEmptyRoom(roomId: string, room: RoomSfuResources): void {
-    if (!room.committed && !room.reserved) {
+    if (!room.committed && !room.reserved && room.draining.size === 0) {
       this.rooms.delete(roomId);
     }
   }
+}
+
+function fenceKey(fence: SfuResourceFence): string {
+  return `${fence.shareGeneration}\u0000${fence.publicationGeneration}`;
 }
 
 function sameEntry(

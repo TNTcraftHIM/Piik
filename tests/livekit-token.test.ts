@@ -6,6 +6,7 @@ import { LiveKitTokenIssuer } from "../src/server/livekit-token.ts";
 const apiKey = "test-api-key";
 const apiSecret = "s".repeat(32);
 const publicationGeneration = "publication_12345678";
+const shareGeneration = "share_generation_12345678";
 const rootPeerId = "viewer_root_12345678";
 const secondRootPeerId = "viewer_root_23456789";
 const thirdRootPeerId = "viewer_root_34567890";
@@ -26,6 +27,7 @@ describe("LiveKitTokenIssuer", () => {
         roomId: "42",
         role: "host",
         peerId: "host_peer_12345678",
+        shareGeneration,
         publicationGeneration,
         allowlistedRootPeerIds: [rootPeerId, secondRootPeerId],
       }),
@@ -35,6 +37,7 @@ describe("LiveKitTokenIssuer", () => {
         roomId: "42",
         role: "viewer",
         peerId: secondRootPeerId,
+        shareGeneration,
         publicationGeneration,
         allowlistedRootPeerIds: [rootPeerId, secondRootPeerId],
       }),
@@ -44,6 +47,7 @@ describe("LiveKitTokenIssuer", () => {
         roomId: "42",
         role: "host",
         peerId: "host_peer_12345678",
+        shareGeneration,
         publicationGeneration,
         allowlistedRootPeerIds: [
           rootPeerId,
@@ -60,6 +64,7 @@ describe("LiveKitTokenIssuer", () => {
         roomId: "42",
         role: "host",
         peerId: "host_peer_12345678",
+        shareGeneration,
         publicationGeneration,
         allowlistedRootPeerIds: [rootPeerId],
       }),
@@ -69,17 +74,14 @@ describe("LiveKitTokenIssuer", () => {
     expect(claims.exp! - claims.nbf!).toBe(5 * 60);
     expect(claims.video).toMatchObject({
       roomJoin: true,
-      room: `screener-42-${publicationGeneration}`,
+      room: `screener-v1.42.${shareGeneration}.${publicationGeneration}`,
       canPublish: true,
       canSubscribe: false,
       canPublishData: false,
       canUpdateOwnMetadata: false,
       canPublishSources: ["screen_share", "screen_share_audio"],
     });
-    expect(claims.roomConfig).toMatchObject({
-      name: `screener-42-${publicationGeneration}`,
-      maxParticipants: 9,
-    });
+    expect(claims.roomConfig).toBeUndefined();
   });
 
   it("issues a subscribe-only token to a current fallback root", async () => {
@@ -88,6 +90,7 @@ describe("LiveKitTokenIssuer", () => {
         roomId: "7",
         role: "viewer",
         peerId: rootPeerId,
+        shareGeneration,
         publicationGeneration,
         allowlistedRootPeerIds: [rootPeerId],
       }),
@@ -96,14 +99,14 @@ describe("LiveKitTokenIssuer", () => {
     expect(claims.sub).toBe(`viewer:${rootPeerId}`);
     expect(claims.video).toMatchObject({
       roomJoin: true,
-      room: `screener-7-${publicationGeneration}`,
+      room: `screener-v1.7.${shareGeneration}.${publicationGeneration}`,
       canPublish: false,
       canSubscribe: true,
       canPublishData: false,
       canUpdateOwnMetadata: false,
     });
     expect(claims.video?.canPublishSources).toBeUndefined();
-    expect(claims.roomConfig?.maxParticipants).toBe(4);
+    expect(claims.roomConfig).toBeUndefined();
   });
 
   it("does not issue viewer tokens outside the current root allowlist", async () => {
@@ -112,6 +115,7 @@ describe("LiveKitTokenIssuer", () => {
         roomId: "7",
         role: "viewer",
         peerId: "viewer_other_12345678",
+        shareGeneration,
         publicationGeneration,
         allowlistedRootPeerIds: [rootPeerId],
       }),
@@ -124,6 +128,7 @@ describe("LiveKitTokenIssuer", () => {
       roomId: "7",
       role: "host" as const,
       peerId: "host_peer_12345678",
+      shareGeneration,
       publicationGeneration,
     };
 
@@ -154,6 +159,7 @@ describe("LiveKitTokenIssuer", () => {
       roomId: "7",
       role: "host" as const,
       peerId: "host_peer_12345678",
+      shareGeneration,
       allowlistedRootPeerIds: [rootPeerId],
     };
     const first = await verifier.verify(

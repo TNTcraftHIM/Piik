@@ -38,7 +38,7 @@ describe("SfuResourceAdmission", () => {
     expect(admission.usage()).toEqual({ ingress: 2, egress: 4 });
   });
 
-  it("charges old and candidate generations until exact commit", () => {
+  it("charges old and candidate generations until exact drain proof", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 2,
       egressCapacity: 5,
@@ -46,14 +46,16 @@ describe("SfuResourceAdmission", () => {
     const first = fence("1", "publication_first");
     const second = fence("1", "publication_second");
     expect(admission.reserve(first, 1)).toBe(true);
-    expect(admission.commit(first)).toBe(true);
+    expect(admission.commit(first)).toEqual([]);
     expect(admission.reserve(second, 2)).toBe(true);
     expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
 
-    expect(admission.commit(fence("1", "publication_stale"))).toBe(false);
-    expect(admission.commit(second)).toBe(true);
+    expect(admission.commit(fence("1", "publication_stale"))).toBeNull();
+    expect(admission.commit(second)).toEqual([first]);
+    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
+    expect(admission.completeDrain(first)).toBe(true);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
-    expect(admission.release(first)).toBe(false);
+    expect(admission.completeDrain(first)).toBe(false);
   });
 
   it("makes duplicate operations idempotent without weakening fences", () => {
@@ -68,42 +70,55 @@ describe("SfuResourceAdmission", () => {
     expect(admission.reserve(fence("1", "publication_other"), 1)).toBe(false);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
 
-    expect(admission.release(pending)).toBe(true);
-    expect(admission.release(pending)).toBe(false);
+    expect(admission.beginDrain(pending)).toBe(true);
+    expect(admission.beginDrain(pending)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
+    expect(admission.completeDrain(pending)).toBe(true);
+    expect(admission.completeDrain(pending)).toBe(false);
     expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
-  it("releases a room's committed and reserved resources together", () => {
+  it("moves a room's committed and reserved resources into draining together", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 2,
       egressCapacity: 4,
     });
     const active = fence("1", "publication_active");
     expect(admission.reserve(active, 1)).toBe(true);
-    expect(admission.commit(active)).toBe(true);
+    expect(admission.commit(active)).toEqual([]);
     expect(admission.reserve(fence("1", "publication_candidate"), 2)).toBe(
       true,
     );
 
-    expect(admission.releaseRoom("1")).toBe(true);
-    expect(admission.releaseRoom("1")).toBe(false);
+    const draining = admission.beginDrainRoom("1");
+    expect(draining).toHaveLength(2);
+    expect(admission.beginDrainRoom("1")).toEqual(draining);
+    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
+    for (const resourceFence of draining) {
+      expect(admission.completeDrain(resourceFence)).toBe(true);
+    }
     expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
-  it("releases every room when its process owner closes", () => {
+  it("moves every room to draining before its process owner closes", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 2,
       egressCapacity: 3,
     });
     const active = fence("1", "publication_active");
     expect(admission.reserve(active, 1)).toBe(true);
-    expect(admission.commit(active)).toBe(true);
+    expect(admission.commit(active)).toEqual([]);
     expect(admission.reserve(fence("2", "publication_pending"), 2)).toBe(
       true,
     );
 
-    admission.releaseAll();
-    admission.releaseAll();
+    const draining = admission.beginDrainAll();
+    expect(draining).toHaveLength(2);
+    expect(admission.beginDrainAll()).toEqual(draining);
+    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
+    for (const resourceFence of draining) {
+      expect(admission.completeDrain(resourceFence)).toBe(true);
+    }
     expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 });

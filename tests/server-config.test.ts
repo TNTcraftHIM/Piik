@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/server/config.ts";
 
 const liveKitAdmission = {
+  LIVEKIT_API_URL: "https://livekit-api.test",
   SFU_INGRESS_CAPACITY: "4",
   SFU_EGRESS_CAPACITY: "16",
 } as const;
@@ -72,6 +73,7 @@ describe("server configuration", () => {
     const config = loadConfig({
       PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: " ws://livekit.test:7880 ",
+      LIVEKIT_API_URL: " http://livekit.test:7880 ",
       LIVEKIT_API_KEY: " test-key ",
       LIVEKIT_API_SECRET: ` ${"s".repeat(32)} `,
       SFU_INGRESS_CAPACITY: " 4 ",
@@ -80,6 +82,7 @@ describe("server configuration", () => {
 
     expect(config.livekitFallback).toEqual({
       url: "ws://livekit.test:7880",
+      apiUrl: "http://livekit.test:7880",
       apiKey: "test-key",
       apiSecret: "s".repeat(32),
       ingressCapacity: 4,
@@ -93,6 +96,7 @@ describe("server configuration", () => {
       const config = loadConfig({
         PEER_ASSISTED_MEDIA: "true",
         LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_URL: "https://livekit-api.test",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
         SFU_INGRESS_CAPACITY: capacity,
@@ -124,15 +128,17 @@ describe("server configuration", () => {
 
   it.each([
     { LIVEKIT_URL: "wss://livekit.test" },
+    { LIVEKIT_API_URL: "https://livekit-api.test" },
     { LIVEKIT_API_KEY: "test-key" },
     { LIVEKIT_API_SECRET: "s".repeat(32) },
     {
       LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_URL: "https://livekit-api.test",
       LIVEKIT_API_KEY: "test-key",
     },
   ])("rejects a partial LiveKit credential tuple", (partial) => {
     expect(() => loadConfig(partial)).toThrow(
-      "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+      "LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
     );
   });
 
@@ -168,6 +174,53 @@ describe("server configuration", () => {
     ).toThrow("LIVEKIT_URL must use wss in production");
   });
 
+  it.each([
+    "ws://livekit-api.test",
+    "http://user:pass@livekit-api.test",
+    "http://livekit-api.test/rtc",
+    "http://livekit-api.test?token=value",
+    "http://livekit-api.test#fragment",
+  ])("rejects an invalid LiveKit control origin: %s", (apiUrl) => {
+    expect(() =>
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_URL: apiUrl,
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+        SFU_INGRESS_CAPACITY: "4",
+        SFU_EGRESS_CAPACITY: "16",
+      }),
+    ).toThrow("LIVEKIT_API_URL");
+  });
+
+  it("allows only HTTPS or loopback LiveKit control in production", () => {
+    const production = {
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://share.test",
+      SITE_ACCESS_PASSWORD: "host-password-12",
+      STUN_URLS: "stun:stun.test:3478",
+      PEER_ASSISTED_MEDIA: "true",
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "s".repeat(32),
+      SFU_INGRESS_CAPACITY: "4",
+      SFU_EGRESS_CAPACITY: "16",
+    };
+    expect(() =>
+      loadConfig({
+        ...production,
+        LIVEKIT_API_URL: "http://livekit-api.test:7880",
+      }),
+    ).toThrow("must use https or loopback");
+    expect(
+      loadConfig({
+        ...production,
+        LIVEKIT_API_URL: "http://127.0.0.1:7880",
+      }).livekitFallback?.apiUrl,
+    ).toBe("http://127.0.0.1:7880");
+  });
+
   it("rejects a short LiveKit API secret and invalid SFU capacities", () => {
     const fallback = {
       LIVEKIT_URL: "wss://livekit.test",
@@ -192,6 +245,7 @@ describe("server configuration", () => {
   it("requires both SFU capacities with LiveKit and rejects the removed root key", () => {
     const fallback = {
       LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_URL: "https://livekit-api.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
     };

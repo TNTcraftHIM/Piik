@@ -35,6 +35,7 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
 
 export interface LiveKitFallbackConfig {
   url: string;
+  apiUrl: string;
   apiKey: string;
   apiSecret: string;
   ingressCapacity: number;
@@ -139,9 +140,10 @@ function parseLiveKitFallback(
   nodeEnv: RuntimeEnvironment,
 ): LiveKitFallbackConfig | undefined {
   const url = environment.LIVEKIT_URL?.trim() || undefined;
+  const apiUrl = environment.LIVEKIT_API_URL?.trim() || undefined;
   const apiKey = environment.LIVEKIT_API_KEY?.trim() || undefined;
   const apiSecret = environment.LIVEKIT_API_SECRET?.trim() || undefined;
-  const configuredValues = [url, apiKey, apiSecret].filter(Boolean).length;
+  const configuredValues = [url, apiUrl, apiKey, apiSecret].filter(Boolean).length;
   const ingressCapacity = environment.SFU_INGRESS_CAPACITY?.trim() || undefined;
   const egressCapacity = environment.SFU_EGRESS_CAPACITY?.trim() || undefined;
   const configuredCapacities = [ingressCapacity, egressCapacity].filter(
@@ -156,9 +158,9 @@ function parseLiveKitFallback(
     }
     return undefined;
   }
-  if (configuredValues !== 3) {
+  if (configuredValues !== 4) {
     throw new Error(
-      "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+      "LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
     );
   }
   if (configuredCapacities !== 2) {
@@ -194,8 +196,37 @@ function parseLiveKitFallback(
     throw new Error("LIVEKIT_URL must use wss in production");
   }
 
+  let parsedApiUrl: URL;
+  try {
+    parsedApiUrl = new URL(apiUrl!);
+  } catch {
+    throw new Error("LIVEKIT_API_URL must be a valid http or https origin");
+  }
+  if (parsedApiUrl.protocol !== "http:" && parsedApiUrl.protocol !== "https:") {
+    throw new Error("LIVEKIT_API_URL must use http or https");
+  }
+  if (
+    parsedApiUrl.username ||
+    parsedApiUrl.password ||
+    parsedApiUrl.pathname !== "/" ||
+    parsedApiUrl.search ||
+    parsedApiUrl.hash
+  ) {
+    throw new Error(
+      "LIVEKIT_API_URL must be an origin without credentials, path, query, or fragment",
+    );
+  }
+  if (
+    nodeEnv === "production" &&
+    parsedApiUrl.protocol !== "https:" &&
+    !isLoopbackHostname(parsedApiUrl.hostname)
+  ) {
+    throw new Error("LIVEKIT_API_URL must use https or loopback in production");
+  }
+
   return {
     url: parsedUrl.origin,
+    apiUrl: parsedApiUrl.origin,
     apiKey: apiKey!,
     apiSecret: apiSecret!,
     ingressCapacity: parseRequiredPositiveInteger(
@@ -207,6 +238,15 @@ function parseLiveKitFallback(
       "SFU_EGRESS_CAPACITY",
     ),
   };
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
 }
 
 function parseUrlList(value: string | undefined, name: string): string[] {
