@@ -2,7 +2,7 @@
 
 - Status: Accepted route model; runtime migration pending
 - Date: 2026-08-20
-- Last updated: 2026-08-22
+- Last updated: 2026-08-23
 
 ## Context
 
@@ -152,7 +152,13 @@ one resource ledger, and monotonic room/session/revision fences.
   proof, atomic commit, drain, and idempotent release are one transaction.
   TTL cleans abandoned reservations; it never revokes a healthy committed edge.
 - A child that observes its own upstream as bad uses correlated C+B evidence
-  for that edge and invokes child-scoped reparent. A relay parent enters
+  for that edge and invokes child-scoped reparent. If an exact current ordinary
+  peer edge stops current-generation RTP and decoded-frame progress while
+  signaling and the PeerConnection remain present, expiry of the bounded parent-
+  proof deadline authorizes hard reparent of that child if the stall remains,
+  whether matching positive non-server-parent outbound-media proof arrived or
+  not. Parent sending or non-response does not change parent eligibility. A
+  relay parent enters
   `suspect` only for its own ingress/parent-scope evidence, then stops accepting
   new children and repairs its own ingress with reparent or branch-preserving
   `replaceIngress`; Host source failures instead use publication repair and
@@ -206,8 +212,9 @@ Before a revised controller ships:
   corroborated drain, prove that same-edge C+B cannot drain a parent, require
   independent sibling edges for parent corroboration, include a Viewer that is
   both child and parent plus the Host-source publication-repair exception, bind
-  evidence to media-binding generation, and exercise suspect/local-repair
-  before drain while preserving unrelated sibling evidence;
+  evidence to media-binding generation, prove bounded child-only recovery when
+  an ordinary peer edge stops RTP while signaling remains present, and exercise
+  suspect/local-repair before drain while preserving unrelated sibling evidence;
 - real-browser tests cover direct peer media, peer relay, server-assisted media,
   selected transport when configured, failure, and recovery;
 - measured endpoint upload and server ingress/egress prove the accepted

@@ -210,6 +210,15 @@ edge-local. Corroboration from two distinct current children can affect relay
 parent eligibility only when the configured ordinary capacity makes that state
 reachable; it does not define the capacity policy.
 
+The accepted controller target also handles an exact ordinary peer edge whose
+signaling and PeerConnection remain present while current-generation RTP and
+decoded-frame progress stop. If the stall remains when the bounded parent-proof
+deadline expires, only that child enters hard reparent whether matching positive
+non-server-parent outbound-media proof arrived or not. Parent sending and parent
+non-response are both edge-local here; parent cordon/drain still requires a hard
+endpoint failure, explicit sender/resource failure, failed ingress repair, or
+independent downstream evidence.
+
 The conservative Viewer C hard predicates are: freeze duration at least half
 of the one-to-five-second window; positive received-packet delta with zero
 decoded frames; or at least 100 received-plus-lost packets with loss at least

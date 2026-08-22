@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 This is the current execution index. Git history owns completed timelines; [verification status](./verification-status.md) owns evidence boundaries.
 
@@ -15,7 +15,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 - Canonical source is the clean `main` branch; auxiliary branches and worktrees do not own current truth.
 - Current source implements one steady outbound media-copy cap for every non-server endpoint: default `2`, static `1/2/3`, a peer child or Host publication consumes one slot, upstream receive is free, a committed selected TURN transport replaces the same copy while hidden carry consumes another, and no Browser/UA/visibility tier exists. One shared guard owns the accounting and transition work is bounded by `min(C + 1, 3)`.
-- The v6 release boundary rejects v5 before room authority and must carry the exact deployment cap in every authenticated snapshot so Native ordinary admission, peer-assisted child assignments, and sender slots share the server authority. It leaves an SFU-fed Viewer childless without independent outbound proof and keeps quality events child-scoped without a fixed two-child parent drain. Fixed SFU-root and room-wide selected-lease guards remain until their independent server admission owners land.
+- The v6 release boundary rejects v5 before room authority and carries the exact deployment cap in every authenticated snapshot so ordinary Host authorization, Native admission, peer-assisted child assignments, and sender slots share the server authority. It leaves an SFU-fed Viewer childless without independent outbound proof and keeps quality events child-scoped without a fixed two-child parent drain. Fixed SFU-root and room-wide selected-lease guards remain until their independent server admission owners land.
 - Automatic P2P-first routing, one active upstream, an acyclic graph, exact identity/generation authority, media-proven make-before-break, and bounded failure remain accepted.
 - The holistic assisted-route model is accepted: one controller performs allocation, child reparenting, and relay abdication/drain. One Host publication serves SFU subscriptions; TURN is an exact edge transport, not a topology node. Wave A supplies endpoint accounting and the wire boundary without pretending that later controller convergence, media-binding generations, or independent SFU/TURN admission already exist.
 - Parent selection is deterministic rather than random or score-based: hard eligibility filters, then shallowest result, remaining sender capacity, stable join order, and peer identity; one provisional edge uses standard ICE and media proof at a time. Viewer connection feedback and the strict-NAT emulator gate are accepted follow-up work, not deployed behavior.
@@ -23,7 +23,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Rebuild and release route waves A-D from exact canonical `main`, including cap/accounting, bounded server admission, deterministic local parent selection, quality ownership, and one controller.
+1. Complete and release route waves B-D from exact canonical `main` on the merged Wave A cap/wire boundary, including bounded server admission, deterministic local parent selection, quality ownership, and one controller.
 2. Release live audio-ceiling mutation and paused-share codec switching on the resulting generation/transition boundary.
 3. Reproduce the H.264 startup report before any codec-specific repair, and build the strict-NAT emulator gate before any manually approved canary in an operator-owned test room.
 4. Add first-frame-driven Viewer connection stages and finish the remaining accepted functional and real-network work.
@@ -38,5 +38,5 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Next Stop
 
-Create each runtime change from the resulting clean `main`; remaining TODOs stay
-scoped to their owner and do not revive superseded branches.
+Reconcile each retained route candidate once onto this clean `main`; remaining
+TODOs stay scoped to their owner and do not revive superseded branches.
