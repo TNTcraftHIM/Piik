@@ -112,7 +112,7 @@ export async function createScreenerServer(
     server: httpServer,
     roomStore,
     peerAssistedMedia: config.peerAssistedMedia,
-    maxPeerRelayDownstreamEdges: config.maxPeerRelayDownstreamEdges,
+    endpointMediaCopyCapacity: config.endpointMediaCopyCapacity,
     ...(sfuFallback ? { sfuFallback } : {}),
     ...(config.selectedEdgeTurn ? { selectedEdgeTurn: config.selectedEdgeTurn } : {}),
     ice: iceOptions,

@@ -3,6 +3,7 @@ import type {
   ParticipantRouteAssignment,
   SignalPayload,
 } from "../../shared/protocol";
+import { countEndpointMediaCopies } from "../../shared/media-copy-accounting";
 import { HostPeer } from "../webrtc/host-peer";
 import type { PeerSnapshot } from "../types";
 import type { QualityProfile } from "./quality";
@@ -220,8 +221,13 @@ export function plannedHostProvisionalChild(
     input.activeChildPeerIds.some(
       (candidate) => !childPeerIds.includes(candidate),
     ) ||
-    hostPhysicalMediaEdges(input.assignment, input.selectedPeerId) >
-      input.maxMediaEdges
+    countEndpointMediaCopies({
+      childPeerIds: input.assignment.childPeerIds,
+      publicationGeneration: input.assignment.sfuPublicationGeneration,
+      selectedChildPeerIds: input.selectedPeerId
+        ? [input.selectedPeerId]
+        : [],
+    }) > input.maxMediaEdges
   ) {
     return null;
   }
@@ -248,17 +254,4 @@ export function resolveHostPreparedChildActivation(
         connectionId: input.prepared.failedConnectionId,
       }
     : { kind: "promote", peerId };
-}
-
-function hostPhysicalMediaEdges(
-  assignment: ParticipantRouteAssignment,
-  selectedPeerId: string | null,
-): number {
-  const selectedOverlayEdges =
-    selectedPeerId && !assignment.childPeerIds.includes(selectedPeerId) ? 1 : 0;
-  return (
-    assignment.childPeerIds.length +
-    (assignment.sfuPublicationGeneration ? 1 : 0) +
-    selectedOverlayEdges
-  );
 }

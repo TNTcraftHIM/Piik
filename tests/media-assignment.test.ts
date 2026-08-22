@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SignalPayload } from "../src/shared/protocol.ts";
 import {
   limitMediaAssignment,
-  MAX_HOST_MEDIA_CHILDREN,
-  MAX_VIEWER_MEDIA_CHILDREN,
+  MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
   retainSelectedMediaParent,
   viewerRestartMessage,
@@ -18,9 +17,8 @@ const offer: SignalPayload = {
 };
 
 describe("peer-assisted client assignment", () => {
-  it("keeps host and viewer child counts within their client limits", () => {
-    expect(MAX_HOST_MEDIA_CHILDREN).toBe(2);
-    expect(MAX_VIEWER_MEDIA_CHILDREN).toBe(1);
+  it("keeps endpoint child counts within the shared client limit", () => {
+    expect(MAX_ENDPOINT_MEDIA_CHILDREN).toBe(3);
 
     const assignment = {
       parentPeerId: "parent_12345678",
@@ -34,19 +32,14 @@ describe("peer-assisted client assignment", () => {
     };
 
     expect(
-      limitMediaAssignment(assignment, MAX_HOST_MEDIA_CHILDREN),
+      limitMediaAssignment(assignment, MAX_ENDPOINT_MEDIA_CHILDREN),
     ).toEqual({
       parentPeerId: "parent_12345678",
       childPeerIds: [
         "child_12345678",
         "child_abcdefgh",
+        "child_qwertyui",
       ],
-    });
-    expect(
-      limitMediaAssignment(assignment, MAX_VIEWER_MEDIA_CHILDREN),
-    ).toEqual({
-      parentPeerId: "parent_12345678",
-      childPeerIds: ["child_12345678"],
     });
   });
 
@@ -56,7 +49,7 @@ describe("peer-assisted client assignment", () => {
     reconcileBoundedMediaChildren(
       new Set(["old-child", "kept-child"]),
       ["kept-child", "new-child", "overflow-child"],
-      MAX_HOST_MEDIA_CHILDREN,
+      MAX_ENDPOINT_MEDIA_CHILDREN,
       (peerId) => operations.push(`remove:${peerId}`),
       (peerId) => operations.push(`start:${peerId}`),
     );
@@ -65,6 +58,7 @@ describe("peer-assisted client assignment", () => {
       "remove:old-child",
       "start:kept-child",
       "start:new-child",
+      "start:overflow-child",
     ]);
   });
 

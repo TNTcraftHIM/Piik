@@ -7,12 +7,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import WebSocket from "ws";
 import {
-  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-  CURRENT_HOST_MEDIA_EDGE_LIMIT,
-  DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   type ParticipantRouteAssignment,
 } from "../src/shared/protocol";
+import {
+  DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
+  MAX_ENDPOINT_MEDIA_COPY_CAPACITY,
+} from "../src/shared/media-copy-accounting";
 import {
   createScreenerServer,
   type ScreenerServer,
@@ -387,14 +388,14 @@ export function parseBenchmarkCanaryMode(value: string | undefined): BenchmarkCa
 export function parseExpectedEndpointCap(value: string | undefined): number {
   const parsed = value?.trim()
     ? Number(value)
-    : DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES;
+    : DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY;
   if (
     !Number.isSafeInteger(parsed) ||
     parsed < 1 ||
-    parsed > CURRENT_HOST_MEDIA_EDGE_LIMIT
+    parsed > MAX_ENDPOINT_MEDIA_COPY_CAPACITY
   ) {
     throw new Error(
-      `BENCHMARK_EXPECTED_ENDPOINT_CAP must be an integer from 1 to ${CURRENT_HOST_MEDIA_EDGE_LIMIT}`,
+      `BENCHMARK_EXPECTED_ENDPOINT_CAP must be an integer from 1 to ${MAX_ENDPOINT_MEDIA_COPY_CAPACITY}`,
     );
   }
   return parsed;
@@ -863,12 +864,8 @@ export function buildRunChecks(
   summary: NonNullable<BenchmarkRun["summary"]>,
   viewerCount: number,
   profileId: ProfileId,
-  expectedEndpointCap = DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+  expectedEndpointCap = DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
 ): RunCheck[] {
-  const expectedViewerCap = Math.min(
-    expectedEndpointCap,
-    CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-  );
   const sfuConsistencyCheck: RunCheck = summary.sfuPublicationObserved
     ? {
         name: "sfu-route-consistency",
@@ -898,9 +895,9 @@ export function buildRunChecks(
     },
     {
       name: "relay-active-media-edges",
-      passed: summary.maxRelayActiveMediaEdges <= expectedViewerCap,
+      passed: summary.maxRelayActiveMediaEdges <= expectedEndpointCap,
       actual: summary.maxRelayActiveMediaEdges,
-      expected: `<= ${expectedViewerCap}`,
+      expected: `<= ${expectedEndpointCap}`,
     },
     {
       name: "all-viewers-decoded",
@@ -928,7 +925,7 @@ export function buildRunChecks(
 
 export function buildRecoveryCheck(
   recovery: RecoveryResult,
-  expectedEndpointCap = DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+  expectedEndpointCap = DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
 ): RunCheck {
   const passed =
     recovery.triggered &&
@@ -960,9 +957,7 @@ export function buildBenchmarkInitScript(options: {
   return `(() => {
     if (globalThis.__SCREENER_BENCHMARK__) return;
     const options = ${serialized};
-    const expectedRoleCap = options.role === "host"
-      ? options.expectedEndpointCap
-      : Math.min(options.expectedEndpointCap, ${CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT});
+    const expectedRoleCap = options.expectedEndpointCap;
     if (options.clearHostRoom) {
       try { localStorage.removeItem("screener:host-room:v1"); } catch {}
     }
@@ -2664,7 +2659,7 @@ export async function main(): Promise<number> {
       ALLOWED_ORIGINS: baseUrl,
       ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "true",
-      MAX_PEER_RELAY_DOWNSTREAM_EDGES: String(config.expectedEndpointCap),
+      ENDPOINT_MEDIA_COPY_CAPACITY: String(config.expectedEndpointCap),
       MAX_VIEWERS_PER_ROOM: String(Math.max(
         ...config.viewerCounts,
         config.canaryMode === "viewer-mbb" ? 3 : 1,

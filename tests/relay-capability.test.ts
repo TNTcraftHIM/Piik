@@ -5,10 +5,10 @@ import {
 } from "../src/client/media/relay-capability.ts";
 
 describe("browser relay capability", () => {
-  it("advertises the current one-child browser release capacity", () => {
+  it("advertises the endpoint capability envelope without a Browser tier", () => {
     expect(relayCapacityMessageForBrowser(true)).toEqual({
       type: "relay-capacity",
-      downstreamEdges: 1,
+      downstreamEdges: 3,
     });
   });
 

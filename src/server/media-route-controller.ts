@@ -1,16 +1,18 @@
 import {
-  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   CURRENT_SFU_ROOT_LIMIT,
-  DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_MEDIA_ROUTE_REVISION,
-  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   participantRouteAssignmentSchema,
   sfuPublicationGenerationSchema,
   type MediaRoutePhase,
   type ParticipantRouteAssignment,
 } from "../shared/protocol.js";
+import {
+  assertEndpointMediaCopyCapacity,
+  assertEndpointMediaCopyCount,
+  countEndpointMediaCopies,
+  DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
+} from "../shared/media-copy-accounting.js";
 
 const MAX_PARTICIPANTS_PER_ROOM = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 
@@ -37,7 +39,7 @@ export interface MediaRouteControllerOptions {
   revision?: number;
   sfuPublicationGeneration?: string | null;
   sfuRootPeerIds?: readonly string[];
-  maxEndpointMediaEdges?: number;
+  endpointMediaCopyCapacity?: number;
 }
 
 export interface PrepareMediaRouteInput {
@@ -64,28 +66,14 @@ export class MediaRouteController {
   private pendingRoute: StoredPendingRoute | undefined;
   private latestRevision: number;
   private readonly hostPeerId: string;
-  private readonly maxHostMediaEdges: number;
-  private readonly maxViewerMediaEdges: number;
+  private readonly endpointMediaCopyCapacity: number;
 
   constructor(options: MediaRouteControllerOptions) {
     this.hostPeerId = options.hostPeerId;
-    const deploymentMediaEdgeLimit =
-      options.maxEndpointMediaEdges ?? DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES;
-    if (
-      !Number.isSafeInteger(deploymentMediaEdgeLimit) ||
-      deploymentMediaEdgeLimit < 1 ||
-      deploymentMediaEdgeLimit > MAX_PEER_RELAY_DOWNSTREAM_EDGES
-    ) {
-      throw new Error("Endpoint media edge budget is invalid");
-    }
-    this.maxHostMediaEdges = Math.min(
-      deploymentMediaEdgeLimit,
-      CURRENT_HOST_MEDIA_EDGE_LIMIT,
-    );
-    this.maxViewerMediaEdges = Math.min(
-      deploymentMediaEdgeLimit,
-      CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-    );
+    this.endpointMediaCopyCapacity =
+      options.endpointMediaCopyCapacity ??
+      DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY;
+    assertEndpointMediaCopyCapacity(this.endpointMediaCopyCapacity);
     const revision = options.revision ?? 0;
     assertRevision(revision);
     this.activeRoute = createRoute(
@@ -94,8 +82,7 @@ export class MediaRouteController {
       options.sfuPublicationGeneration ?? null,
       options.sfuRootPeerIds ?? [],
       this.hostPeerId,
-      this.maxHostMediaEdges,
-      this.maxViewerMediaEdges,
+      this.endpointMediaCopyCapacity,
     );
     this.latestRevision = revision;
   }
@@ -129,8 +116,7 @@ export class MediaRouteController {
         : input.sfuPublicationGeneration,
       input.sfuRootPeerIds ?? this.activeRoute.sfu.rootPeerIds,
       this.hostPeerId,
-      this.maxHostMediaEdges,
-      this.maxViewerMediaEdges,
+      this.endpointMediaCopyCapacity,
     );
     if (hasSameTopology(route, this.activeRoute)) {
       return undefined;
@@ -153,8 +139,7 @@ export class MediaRouteController {
       input.sfuPublicationGeneration ?? null,
       input.sfuRootPeerIds ?? [],
       this.hostPeerId,
-      this.maxHostMediaEdges,
-      this.maxViewerMediaEdges,
+      this.endpointMediaCopyCapacity,
     );
     const expectedParticipantIds = new Set(input.expectedParticipantIds);
     if (expectedParticipantIds.size > MAX_PARTICIPANTS_PER_ROOM) {
@@ -222,9 +207,10 @@ export class MediaRouteController {
 
   hostActiveMediaEdges(): number {
     const edgeCount = hostMediaEdges(this.activeRoute, this.hostPeerId);
-    if (edgeCount > this.maxHostMediaEdges) {
-      throw new Error("Host active media edge budget exceeded");
-    }
+    assertEndpointMediaCopyCount(
+      edgeCount,
+      this.endpointMediaCopyCapacity,
+    );
     return edgeCount;
   }
 
@@ -242,8 +228,7 @@ function createRoute(
   publicationGeneration: string | null,
   rootPeerIds: readonly string[],
   hostPeerId: string,
-  maxHostMediaEdges: number,
-  maxViewerMediaEdges: number,
+  endpointMediaCopyCapacity: number,
 ): RoomMediaRoute {
   assertRevision(revision);
   if (
@@ -272,8 +257,7 @@ function createRoute(
   assertRouteInvariants(
     route,
     hostPeerId,
-    maxHostMediaEdges,
-    maxViewerMediaEdges,
+    endpointMediaCopyCapacity,
   );
   return route;
 }
@@ -281,8 +265,7 @@ function createRoute(
 function assertRouteInvariants(
   route: RoomMediaRoute,
   hostPeerId: string,
-  maxHostMediaEdges: number,
-  maxViewerMediaEdges: number,
+  endpointMediaCopyCapacity: number,
 ): void {
   const hostAssignment = route.assignments.get(hostPeerId);
   if (!hostAssignment) {
@@ -312,11 +295,13 @@ function assertRouteInvariants(
   }
 
   for (const [peerId, assignment] of route.assignments) {
-    const downstreamEdgeLimit =
-      peerId === hostPeerId ? maxHostMediaEdges : maxViewerMediaEdges;
-    if (assignment.childPeerIds.length > downstreamEdgeLimit) {
-      throw new Error("Participant active media edge budget exceeded");
-    }
+    assertEndpointMediaCopyCount(
+      countEndpointMediaCopies({
+        childPeerIds: assignment.childPeerIds,
+        publicationGeneration: assignment.sfuPublicationGeneration,
+      }),
+      endpointMediaCopyCapacity,
+    );
     if (
       peerId !== hostPeerId &&
       assignment.sfuPublicationGeneration !== null
@@ -351,6 +336,12 @@ function assertRouteInvariants(
     if (assignment.upstream.kind === "sfu" && !rootPeerIds.has(peerId)) {
       throw new Error("Every SFU upstream must belong to the root allowlist");
     }
+    if (
+      assignment.upstream.kind === "sfu" &&
+      assignment.childPeerIds.length > 0
+    ) {
+      throw new Error("SFU-fed viewers require outbound relay proof");
+    }
   }
 
   for (const rootPeerId of rootPeerIds) {
@@ -361,9 +352,10 @@ function assertRouteInvariants(
   }
 
   assertAcyclicPeerEdges(route.assignments);
-  if (hostMediaEdges(route, hostPeerId) > maxHostMediaEdges) {
-    throw new Error("Host active media edge budget exceeded");
-  }
+  assertEndpointMediaCopyCount(
+    hostMediaEdges(route, hostPeerId),
+    endpointMediaCopyCapacity,
+  );
 }
 
 function assertAcyclicPeerEdges(
@@ -384,11 +376,14 @@ function assertAcyclicPeerEdges(
 }
 
 function hostMediaEdges(route: RoomMediaRoute, hostPeerId: string): number {
-  const directChildren = route.assignments.get(hostPeerId)?.childPeerIds.length;
-  if (directChildren === undefined) {
+  const hostAssignment = route.assignments.get(hostPeerId);
+  if (!hostAssignment) {
     throw new Error("Media route is missing its host assignment");
   }
-  return directChildren + (route.sfu.publicationGeneration === null ? 0 : 1);
+  return countEndpointMediaCopies({
+    childPeerIds: hostAssignment.childPeerIds,
+    publicationGeneration: route.sfu.publicationGeneration,
+  });
 }
 
 function hasSameTopology(left: RoomMediaRoute, right: RoomMediaRoute): boolean {

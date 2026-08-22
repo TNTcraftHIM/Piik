@@ -43,7 +43,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     maxRooms: 10,
     maxViewersPerRoom: 8,
     peerAssistedMedia: false,
-    maxPeerRelayDownstreamEdges: 2,
+    endpointMediaCopyCapacity: 2,
     stunUrls: [],
     ...overrides,
   };

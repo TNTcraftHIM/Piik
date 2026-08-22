@@ -3,11 +3,9 @@ import type {
   RelayDownstreamEdges,
 } from "../shared/protocol.js";
 import {
-  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-  CURRENT_HOST_MEDIA_EDGE_LIMIT,
-  DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
-  MAX_PEER_RELAY_DOWNSTREAM_EDGES,
-} from "../shared/protocol.js";
+  assertEndpointMediaCopyCapacity,
+  DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
+} from "../shared/media-copy-accounting.js";
 
 export interface MediaAssignmentChange {
   peerId: string;
@@ -26,42 +24,26 @@ interface RelayViewer {
   parentPeerId: string | null;
   childPeerIds: string[];
   downstreamEdges: RelayDownstreamEdges;
-  relayEligible: boolean;
 }
 
 interface RelayRoom {
   hostPeerId?: string;
   hostChildPeerIds: string[];
-  maxHostDownstreamEdges: RelayDownstreamEdges;
-  maxViewerDownstreamEdges: RelayDownstreamEdges;
+  endpointMediaCopyCapacity: RelayDownstreamEdges;
   viewers: Map<string, RelayViewer>;
   nextOrder: number;
 }
 
 export class PeerRelayTopology {
   private readonly rooms = new Map<string, RelayRoom>();
-  private readonly maxHostDownstreamEdges: RelayDownstreamEdges;
-  private readonly maxViewerDownstreamEdges: RelayDownstreamEdges;
+  private readonly endpointMediaCopyCapacity: RelayDownstreamEdges;
 
   constructor(
-    deploymentDownstreamEdgeLimit: RelayDownstreamEdges =
-      DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
+    endpointMediaCopyCapacity: RelayDownstreamEdges =
+      DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
   ) {
-    if (
-      !Number.isSafeInteger(deploymentDownstreamEdgeLimit) ||
-      deploymentDownstreamEdgeLimit < 1 ||
-      deploymentDownstreamEdgeLimit > MAX_PEER_RELAY_DOWNSTREAM_EDGES
-    ) {
-      throw new Error("Peer relay downstream limit is invalid");
-    }
-    this.maxHostDownstreamEdges = Math.min(
-      deploymentDownstreamEdgeLimit,
-      CURRENT_HOST_MEDIA_EDGE_LIMIT,
-    );
-    this.maxViewerDownstreamEdges = Math.min(
-      deploymentDownstreamEdgeLimit,
-      CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-    );
+    assertEndpointMediaCopyCapacity(endpointMediaCopyCapacity);
+    this.endpointMediaCopyCapacity = endpointMediaCopyCapacity;
   }
 
   setHost(
@@ -105,7 +87,6 @@ export class PeerRelayTopology {
         parentPeerId: null,
         childPeerIds: [],
         downstreamEdges: 0,
-        relayEligible: true,
       });
       room.nextOrder += 1;
     } else {
@@ -135,7 +116,7 @@ export class PeerRelayTopology {
     const before = snapshot(room);
     const boundedDownstreamEdges = Math.min(
       downstreamEdges,
-      room.maxViewerDownstreamEdges,
+      room.endpointMediaCopyCapacity,
     );
     const previousDownstreamEdges = viewer.downstreamEdges;
     viewer.downstreamEdges = boundedDownstreamEdges;
@@ -236,17 +217,6 @@ export class PeerRelayTopology {
     return room ? advertisedDownstreamCapacity(room, peerId) : 0;
   }
 
-  setViewerRelayEligible(
-    roomId: string,
-    peerId: string,
-    eligible: boolean,
-  ): void {
-    const viewer = this.rooms.get(roomId)?.viewers.get(peerId);
-    if (viewer) {
-      viewer.relayEligible = eligible;
-    }
-  }
-
   getHostPeerId(roomId: string): string | undefined {
     return this.rooms.get(roomId)?.hostPeerId;
   }
@@ -338,8 +308,7 @@ export class PeerRelayTopology {
     if (!room) {
       room = {
         hostChildPeerIds: [],
-        maxHostDownstreamEdges: this.maxHostDownstreamEdges,
-        maxViewerDownstreamEdges: this.maxViewerDownstreamEdges,
+        endpointMediaCopyCapacity: this.endpointMediaCopyCapacity,
         viewers: new Map(),
         nextOrder: 0,
       };
@@ -509,9 +478,7 @@ function downstreamCapacity(
   room: RelayRoom,
   peerId: string,
 ): RelayDownstreamEdges {
-  return room.hostPeerId === peerId || room.viewers.get(peerId)?.relayEligible
-    ? advertisedDownstreamCapacity(room, peerId)
-    : 0;
+  return advertisedDownstreamCapacity(room, peerId);
 }
 
 function advertisedDownstreamCapacity(
@@ -519,7 +486,7 @@ function advertisedDownstreamCapacity(
   peerId: string,
 ): RelayDownstreamEdges {
   return room.hostPeerId === peerId
-    ? room.maxHostDownstreamEdges
+    ? room.endpointMediaCopyCapacity
     : (room.viewers.get(peerId)?.downstreamEdges ?? 0);
 }
 

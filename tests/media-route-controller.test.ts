@@ -129,7 +129,7 @@ describe("MediaRouteController", () => {
           sfuPublicationGeneration: GENERATION_A,
           sfuRootPeerIds: [SFU_ROOT_A, SFU_ROOT_B],
         }),
-    ).toThrow("Host active media edge budget exceeded");
+    ).toThrow("Endpoint steady media copy capacity exceeded");
   });
 
   it("atomically commits only after every expected participant is ready", () => {
@@ -299,7 +299,7 @@ describe("MediaRouteController", () => {
         sfuPublicationGeneration: GENERATION_A,
         sfuRootPeerIds: [SFU_ROOT_A],
       }),
-    ).toThrow("Host active media edge budget exceeded");
+    ).toThrow("Endpoint steady media copy capacity exceeded");
 
     const nonHostPublisher = directAssignments();
     nonHostPublisher.set(
@@ -338,7 +338,7 @@ describe("MediaRouteController", () => {
     ).toThrow("SFU roots and publication generation must be active together");
   });
 
-  it("does not let an explicit three-edge setting lift release role limits", () => {
+  it("applies capacity three uniformly to Host and Viewer endpoints", () => {
     const threeHostChildren = new Map<string, ParticipantRouteAssignment>([
       [
         HOST,
@@ -351,13 +351,12 @@ describe("MediaRouteController", () => {
       [SFU_ROOT_A, assignment({ kind: "peer", peerId: HOST })],
       [THIRD_CHILD, assignment({ kind: "peer", peerId: HOST })],
     ]);
-    expect(() =>
-      new MediaRouteController({
-        hostPeerId: HOST,
-        assignments: threeHostChildren,
-        maxEndpointMediaEdges: 3,
-      }),
-    ).toThrow("Participant active media edge budget exceeded");
+    const hostAtCapacity = new MediaRouteController({
+      hostPeerId: HOST,
+      assignments: threeHostChildren,
+      endpointMediaCopyCapacity: 3,
+    });
+    expect(hostAtCapacity.hostActiveMediaEdges()).toBe(3);
 
     const viewerWithTwoChildren = new Map<string, ParticipantRouteAssignment>([
       [HOST, assignment({ kind: "none" }, [DIRECT_ROOT])],
@@ -371,13 +370,13 @@ describe("MediaRouteController", () => {
       [SFU_ROOT_A, assignment({ kind: "peer", peerId: DIRECT_ROOT })],
       [SFU_ROOT_B, assignment({ kind: "peer", peerId: DIRECT_ROOT })],
     ]);
-    expect(() =>
+    expect(
       new MediaRouteController({
         hostPeerId: HOST,
         assignments: viewerWithTwoChildren,
-        maxEndpointMediaEdges: 3,
-      }),
-    ).toThrow("Participant active media edge budget exceeded");
+        endpointMediaCopyCapacity: 3,
+      }).getActiveRoute().assignments.get(DIRECT_ROOT)?.childPeerIds,
+    ).toHaveLength(2);
 
     const publicationAtHostLimit = new Map<string, ParticipantRouteAssignment>([
       [
@@ -390,7 +389,7 @@ describe("MediaRouteController", () => {
     const allowed = new MediaRouteController({
       hostPeerId: HOST,
       assignments: publicationAtHostLimit,
-      maxEndpointMediaEdges: 3,
+      endpointMediaCopyCapacity: 3,
       sfuPublicationGeneration: GENERATION_A,
       sfuRootPeerIds: [SFU_ROOT_A],
     });
@@ -401,7 +400,7 @@ describe("MediaRouteController", () => {
       HOST,
       assignment(
         { kind: "none" },
-        [DIRECT_ROOT, THIRD_CHILD],
+        [DIRECT_ROOT, THIRD_CHILD, SFU_ROOT_B],
         GENERATION_A,
       ),
     );
@@ -409,15 +408,19 @@ describe("MediaRouteController", () => {
       THIRD_CHILD,
       assignment({ kind: "peer", peerId: HOST }),
     );
+    publicationOverHostLimit.set(
+      SFU_ROOT_B,
+      assignment({ kind: "peer", peerId: HOST }),
+    );
     expect(() =>
       new MediaRouteController({
         hostPeerId: HOST,
         assignments: publicationOverHostLimit,
-        maxEndpointMediaEdges: 3,
+        endpointMediaCopyCapacity: 3,
         sfuPublicationGeneration: GENERATION_A,
         sfuRootPeerIds: [SFU_ROOT_A],
       }),
-    ).toThrow("Host active media edge budget exceeded");
+    ).toThrow("Endpoint steady media copy capacity exceeded");
   });
 
   it("rejects reciprocal peer cycles", () => {

@@ -2,9 +2,9 @@
 
 Last verified against upstream documentation: 2026-08-21.
 
-This page records exact release `9461e20` deployment behavior and syntax. Current
-product direction and pending migrations are owned by [project memory](./project-memory.md)
-and [the TODO ledger](./todo.md).
+This page records exact release `9461e20` production facts and the current source
+deployment contract. Product direction and pending migrations are owned by
+[project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
@@ -194,7 +194,7 @@ manager or a cross-platform Node command such as:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Use this production baseline:
+Use this next-release baseline for the current source candidate:
 
 ```dotenv
 NODE_ENV=production
@@ -207,6 +207,7 @@ ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
 MAX_VIEWERS_PER_ROOM=8
+ENDPOINT_MEDIA_COPY_CAPACITY=2
 
 STUN_URLS=stun:stun.example.com:3478
 ```
@@ -215,7 +216,6 @@ To make automatic SFU fallback capacity available, add the complete tuple:
 
 ```dotenv
 PEER_ASSISTED_MEDIA=true
-MAX_PEER_RELAY_DOWNSTREAM_EDGES=2
 LIVEKIT_URL=wss://share.example.com
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
@@ -264,15 +264,22 @@ Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
 limit, not evidence that the publisher can sustain that many streams.
-In exact release `9461e20`, `MAX_PEER_RELAY_DOWNSTREAM_EDGES` defaults to 2 and accepts only 1 or 2. It can
-tighten but cannot lift release policy: effective Host capacity is
-`min(value, 2)` and effective ordinary Browser Viewer capacity is
-`min(value, 1)`. Active/provisional/selected physical downstream overlays count,
-and an active Host SFU publication uses one Host edge; ordinary upstream receive
-does not. The current Browser advertises one. The unchanged protocol accepts
-`0/1/2/3` only as a future capability envelope, so an old or malicious Viewer
-advertising two or three remains effectively one. This setting does not change
-the separate SFU root limit, which remains at most two.
+`ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
+the single server-authoritative steady outbound media-copy cap for Host and
+Viewer endpoints; role, browser, UA, and visibility do not create another tier.
+A peer child or the Host's single SFU publication consumes one copy, upstream
+receive is free, a committed selected TURN transport for the same child does not
+consume a second copy, and an uncommitted selected carry does. Transition work
+may reach only `min(C + 1, 3)`. A Host already sending three copies at `C=3`
+must fail or wait before a fourth publication token or TURN grant is issued.
+Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
+startup. The fixed per-room SFU-root and selected-lease guards remain separate
+temporary server safety boundaries.
+
+Production release `9461e20` still runs the legacy Host-2/Browser-1 policy on
+wire `screener-v5`. Deploy the current source server, Web assets, and Native
+sender atomically on `screener-v6`; restore the exact prior environment and
+release together when rolling back.
 
 The three `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the

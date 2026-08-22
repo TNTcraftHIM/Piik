@@ -57,7 +57,7 @@ Keep site access and room authorization as two ordered checks:
   `screener-v1` to `screener-v2`. That migration had no negotiation, v1 parser,
   dual write, or translator. A v1 first message received the universal fatal
   refresh outcome before room lookup and did not reconnect. Later atomic
-  migrations advanced the current wire to `screener-v5`.
+  migrations advanced the source wire to `screener-v6`.
 
 Every room has one of two Viewer policies:
 
@@ -98,9 +98,9 @@ material and socket/Host session so stale asynchronous work cannot authorize or
 commit.
 
 At this ADR's implementation checkpoint, the wire remained `screener-v2`.
-Current source and production have since migrated atomically to `screener-v5`;
-the paragraph below records the v2 compatibility boundary rather than the
-current wire. Only a Web Host that advertises
+Current source has since migrated atomically to `screener-v6`, while production
+remains on `screener-v5`; the paragraph below records the v2 compatibility
+boundary rather than the current source wire. Only a Web Host that advertises
 `viewerPasswordSettings: true` may set/remove the password and receive
 `viewer-password-updated`; Native v2 does not advertise the capability and sees
 no new message type. Viewer `authenticate` may carry the current password

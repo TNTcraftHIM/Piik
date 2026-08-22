@@ -343,6 +343,18 @@ describe("client signaling protocol", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects the previous signaling wire", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: "screener-v5",
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+      }).success,
+    ).toBe(false);
+  });
+
   it("requires a host token and rejects viewer tokens or malformed room codes", () => {
     expect(
       clientMessageSchema.safeParse({

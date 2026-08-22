@@ -1,8 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import {
-  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   CURRENT_SFU_ROOT_LIMIT,
   MAX_MEDIA_ROUTE_REVISION,
   type ClientMessage,
@@ -14,6 +12,11 @@ import {
   type Role,
   type ServerMessage,
 } from "../shared/protocol.js";
+import {
+  assertEndpointMediaCopyCapacity,
+  countEndpointMediaCopies,
+  endpointMediaCopyCountFits,
+} from "../shared/media-copy-accounting.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SelectedEdgeTurnConfig } from "./config.js";
 import {
@@ -160,14 +163,6 @@ interface ViewerQualityEvidenceState {
   } | null;
 }
 
-interface RelayParentQualityState {
-  parentSessionId: string;
-  shareGeneration: string;
-  lastChildPeerId: string;
-  lastConfirmedAtMs: number;
-  quarantinedUntilMs: number | null;
-}
-
 interface ForwardedViewerQualityEvidence {
   roomId: string;
   viewerSessionId: string;
@@ -196,7 +191,7 @@ export interface SfuFallbackOptions {
 
 export interface HybridMediaRouterOptions {
   roomStore: RoomStore;
-  maxPeerRelayDownstreamEdges: RelayDownstreamEdges;
+  endpointMediaCopyCapacity: number;
   sfuFallback?: SfuFallbackOptions;
   selectedEdgeTurn?: SelectedEdgeTurnConfig;
   sendToSession: (sessionId: string, message: ServerMessage) => void;
@@ -233,7 +228,7 @@ export interface AuthenticatedRouteParticipant {
 
 export class HybridMediaRouter {
   private readonly peerRelayTopology: PeerRelayTopology;
-  private readonly maxHostMediaEdges: number;
+  private readonly endpointMediaCopyCapacity: number;
   private readonly mediaRouteControllers = new Map<
     string,
     MediaRouteController
@@ -251,7 +246,7 @@ export class HybridMediaRouter {
     Map<string, ViewerRouteIntent>
   >();
   private readonly consumedSfuRefreshesByRoom = new Map<string, Set<string>>();
-  private readonly selectedPeerEdgeLeases = new Map<
+  private readonly selectedPeerEdgeLeasesByRoom = new Map<
     string,
     SelectedPeerEdgeLease
   >();
@@ -284,16 +279,12 @@ export class HybridMediaRouter {
     string,
     DeferredHealthySfuReselection
   >();
-  private readonly relayParentQualityStates = new Map<string, RelayParentQualityState>();
-
   constructor(private readonly options: HybridMediaRouterOptions) {
+    assertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity);
     this.peerRelayTopology = new PeerRelayTopology(
-      options.maxPeerRelayDownstreamEdges,
+      options.endpointMediaCopyCapacity,
     );
-    this.maxHostMediaEdges = Math.min(
-      options.maxPeerRelayDownstreamEdges,
-      CURRENT_HOST_MEDIA_EDGE_LIMIT,
-    );
+    this.endpointMediaCopyCapacity = options.endpointMediaCopyCapacity;
     const fallback = options.sfuFallback;
     if (options.selectedEdgeTurn && !fallback) {
       throw new Error("Selected-edge TURN requires SFU fallback");
@@ -320,10 +311,10 @@ export class HybridMediaRouter {
       clearTimeout(pending.timer);
     }
     this.pendingRoutePreparations.clear();
-    for (const lease of this.selectedPeerEdgeLeases.values()) {
+    for (const lease of this.selectedPeerEdgeLeasesByRoom.values()) {
       clearTimeout(lease.timer);
     }
-    this.selectedPeerEdgeLeases.clear();
+    this.selectedPeerEdgeLeasesByRoom.clear();
     for (const attempt of this.selectedSfuIngressAttempts.values()) {
       clearTimeout(attempt.timer);
     }
@@ -344,7 +335,6 @@ export class HybridMediaRouter {
     this.viewerQualityEvidenceStates.clear();
     this.heldQualityParentExclusionsByViewer.clear();
     this.roomQualityMigrationCooldownUntilMs.clear();
-    this.relayParentQualityStates.clear();
   }
 
   connectParticipant(input: AuthenticatedRouteParticipant): HybridAuthenticationState {
@@ -355,7 +345,6 @@ export class HybridMediaRouter {
       input.peerId,
     );
     this.clearRoomViewerQualityEvidenceStates(input.roomId);
-    this.refreshRelayParentQualityStates(input.roomId);
     this.clearHeldQualityParentExclusion(input.roomId, input.peerId);
     this.clearSfuRefreshesForPeer(input.roomId, input.peerId);
     if (input.role === "viewer") {
@@ -457,16 +446,15 @@ export class HybridMediaRouter {
     signalKind: "candidate" | "description";
     descriptionType?: "offer" | "answer";
   }): boolean | "probe" | undefined {
-    const sourceKey = viewerConnectionKey(input.roomId, input.sourcePeerId);
-    const targetKey = viewerConnectionKey(input.roomId, input.targetPeerId);
+    const roomLease = this.selectedPeerEdgeLeasesByRoom.get(input.roomId);
     const lease =
-      this.selectedPeerEdgeLeases.get(sourceKey)?.parentPeerId ===
-      input.targetPeerId
-        ? this.selectedPeerEdgeLeases.get(sourceKey)
-        : this.selectedPeerEdgeLeases.get(targetKey)?.parentPeerId ===
-            input.sourcePeerId
-          ? this.selectedPeerEdgeLeases.get(targetKey)
-          : undefined;
+      roomLease &&
+      ((roomLease.parentPeerId === input.sourcePeerId &&
+        roomLease.viewerPeerId === input.targetPeerId) ||
+        (roomLease.viewerPeerId === input.sourcePeerId &&
+          roomLease.parentPeerId === input.targetPeerId))
+        ? roomLease
+        : undefined;
     if (!lease) {
       const pending = this.pendingRoutePreparations.get(input.roomId);
       const qualityProbe = pending?.peerQualityReselection;
@@ -540,10 +528,11 @@ export class HybridMediaRouter {
     viewerPeerId: string,
     connectionId: string,
   ): void {
-    const lease = this.selectedPeerEdgeLeases.get(
-      viewerConnectionKey(roomId, viewerPeerId),
-    );
-    if (lease?.newConnectionId === connectionId) {
+    const lease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    if (
+      lease?.viewerPeerId === viewerPeerId &&
+      lease.newConnectionId === connectionId
+    ) {
       lease.answered = true;
       clearTimeout(lease.timer);
       this.drainViewerRouteIntents(roomId);
@@ -726,7 +715,6 @@ export class HybridMediaRouter {
       correlatedAtMs: now,
       framesPerSecond: pending.evidence.metrics.framesPerSecond,
     };
-    this.refreshRelayParentQualityStates(roomId, now);
     const existingIntent = this.viewerRouteIntentsByRoom
       .get(roomId)
       ?.get(viewerPeerId);
@@ -766,25 +754,11 @@ export class HybridMediaRouter {
       return;
     }
 
-    const relayParentBadEvent = this.handleRelayParentBadEvent(
-      roomId,
-      edge.parentPeerId,
-      parentSessionId,
-      viewerPeerId,
-      badWindowKind!,
-      now,
-    );
-    if (relayParentBadEvent === "trigger-moved") {
-      this.viewerQualityEvidenceStates.delete(connectionKey);
-      return;
-    }
     const cooldownUntil = this.roomQualityMigrationCooldownUntilMs.get(roomId);
     if (cooldownUntil !== undefined && now < cooldownUntil) {
-      if (relayParentBadEvent === null) {
-        state.badWindowCount = 0;
-        state.badWindowKind = null;
-        return;
-      }
+      state.badWindowCount = 0;
+      state.badWindowKind = null;
+      return;
     } else if (cooldownUntil !== undefined) {
       this.roomQualityMigrationCooldownUntilMs.delete(roomId);
     }
@@ -868,7 +842,6 @@ export class HybridMediaRouter {
     if (participant.role !== "viewer") {
       return;
     }
-    this.refreshRelayParentQualityStates(participant.roomId);
     let advertised = this.relayCapacitySessionsByRoom.get(participant.roomId);
     if (!advertised) {
       advertised = new Map();
@@ -988,20 +961,24 @@ export class HybridMediaRouter {
     const host = this.connectedPeer(roomId, hostPeerId);
     const parent = this.connectedPeer(roomId, parentPeerId);
     const activeParent = active.assignments.get(parentPeerId);
-    const capacity = Math.min(
-      this.peerRelayTopology.getDownstreamCapacity(roomId, parentPeerId),
+    const parentSupportsOutboundRelay =
       parentPeerId === hostPeerId
-        ? this.maxHostMediaEdges
-        : CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+        ? activeParent?.upstream.kind === "none"
+        : activeParent?.upstream.kind === "peer";
+    const capacity = this.peerRelayTopology.getDownstreamCapacity(
+      roomId,
+      parentPeerId,
     );
     if (
       !host ||
       !parent ||
       !activeParent ||
-      activeParent.childPeerIds.length +
-          (activeParent.sfuPublicationGeneration ? 1 : 0) +
-          1 >
-        capacity ||
+      !parentSupportsOutboundRelay ||
+      !endpointMediaCopyCountFits(
+        this.activeParentMediaEdges(roomId, parentPeerId, activeParent) + 1,
+        capacity,
+        "transition",
+      ) ||
       (parentPeerId !== hostPeerId &&
         this.relayCapacitySessionsByRoom.get(roomId)?.get(parentPeerId) !==
           parent.sessionId)
@@ -1013,7 +990,7 @@ export class HybridMediaRouter {
       hostPeerId,
       null,
       [],
-      this.maxHostMediaEdges,
+      this.endpointMediaCopyCapacity,
     );
     const rootAssignment = assignments.get(participant.peerId)!;
     const parentAssignment = assignments.get(parentPeerId)!;
@@ -1643,11 +1620,8 @@ export class HybridMediaRouter {
     if (pending?.peerQualityReselection) {
       return "quality";
     }
-    return [...this.selectedPeerEdgeLeases.values()].some(
-      (lease) =>
-        lease.roomId === roomId &&
-        (!lease.answered || lease.viewerPeerId === viewerPeerId),
-    )
+    const lease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    return lease && (!lease.answered || lease.viewerPeerId === viewerPeerId)
       ? "selected"
       : null;
   }
@@ -1668,21 +1642,16 @@ export class HybridMediaRouter {
     const controller = this.mediaRouteControllers.get(roomId);
     const active = controller?.getActiveRoute();
     const intent = this.viewerRouteIntentsByRoom.get(roomId)?.get(viewerPeerId);
-    const key = viewerConnectionKey(roomId, viewerPeerId);
     const roomAttempt = this.roomPeerMigrationAttempt(roomId);
     if (roomAttempt === "healthy" || roomAttempt === "quality") {
       // The room probe already owns recovery, so suppress concurrent failback.
       return true;
     }
-    if (this.selectedPeerEdgeLeases.has(key)) {
+    const roomLease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    if (roomLease?.viewerPeerId === viewerPeerId) {
       return true;
     }
-    if (
-      roomAttempt === "selected" ||
-      [...this.selectedPeerEdgeLeases.values()].some(
-        (lease) => lease.roomId === roomId,
-      )
-    ) {
+    if (roomAttempt === "selected" || roomLease) {
       return false;
     }
     if (
@@ -1703,27 +1672,31 @@ export class HybridMediaRouter {
     const parent = this.connectedPeer(roomId, intent.failedParentPeerId);
     const shareGeneration = this.options.getShareGeneration(roomId);
     const parentAssignment = active.assignments.get(intent.failedParentPeerId);
+    const hostPeerId = this.peerRelayTopology.getHostPeerId(roomId);
+    const parentSupportsOutboundRelay =
+      intent.failedParentPeerId === hostPeerId
+        ? parentAssignment?.upstream.kind === "none"
+        : parentAssignment?.upstream.kind === "peer";
     const parentChildLimit =
       this.peerRelayTopology.getAdvertisedDownstreamCapacity(
         roomId,
         intent.failedParentPeerId,
       );
-    const selectedOverlayEdges = parentAssignment?.childPeerIds.includes(
-      viewerPeerId,
-    )
-      ? 0
-      : 1;
     const parentActiveEdges = parentAssignment
-      ? parentAssignment.childPeerIds.length +
-        (parentAssignment.sfuPublicationGeneration ? 1 : 0) +
-        selectedOverlayEdges
+      ? countEndpointMediaCopies({
+          childPeerIds: parentAssignment.childPeerIds,
+          publicationGeneration:
+            parentAssignment.sfuPublicationGeneration,
+          selectedChildPeerIds: [viewerPeerId],
+        })
       : Number.POSITIVE_INFINITY;
     if (
       viewer?.sessionId !== intent.sessionId ||
       parent?.sessionId !== intent.failedParentSessionId ||
       !parentAssignment ||
+      !parentSupportsOutboundRelay ||
       parentChildLimit === 0 ||
-      parentActiveEdges > parentChildLimit ||
+      !endpointMediaCopyCountFits(parentActiveEdges, parentChildLimit) ||
       !shareGeneration
     ) {
       return false;
@@ -1773,7 +1746,7 @@ export class HybridMediaRouter {
     }
 
     const timer = setTimeout(() => {
-      const current = this.selectedPeerEdgeLeases.get(key);
+      const current = this.selectedPeerEdgeLeasesByRoom.get(roomId);
       if (
         !current ||
         current.newConnectionId !== newConnectionId ||
@@ -1781,7 +1754,7 @@ export class HybridMediaRouter {
       ) {
         return;
       }
-      const settled = this.settleSelectedPeerEdgeLease(key);
+      const settled = this.settleSelectedPeerEdgeLease(roomId);
       if (!settled) {
         return;
       }
@@ -1817,7 +1790,7 @@ export class HybridMediaRouter {
       answered: false,
       timer,
     };
-    this.selectedPeerEdgeLeases.set(key, lease);
+    this.selectedPeerEdgeLeasesByRoom.set(roomId, lease);
     // Queue the Viewer grant first. Any parent offer is handled on a later
     // event-loop turn, so the Viewer's socket observes this grant first.
     this.options.sendToSession(viewer.sessionId, message);
@@ -2037,23 +2010,7 @@ export class HybridMediaRouter {
     if (message.connectionId === null) {
       return false;
     }
-    let key = viewerConnectionKey(participant.roomId, participant.peerId);
-    let lease = this.selectedPeerEdgeLeases.get(key);
-    if (
-      !lease ||
-      lease.viewerPeerId !== participant.peerId ||
-      lease.viewerSessionId !== participant.sessionId
-    ) {
-      const parentEntry = [...this.selectedPeerEdgeLeases].find(
-        ([, candidate]) =>
-          candidate.roomId === participant.roomId &&
-          candidate.parentPeerId === participant.peerId &&
-          candidate.parentSessionId === participant.sessionId,
-      );
-      if (parentEntry) {
-        [key, lease] = parentEntry;
-      }
-    }
+    const lease = this.selectedPeerEdgeLeasesByRoom.get(participant.roomId);
     const active = this.mediaRouteControllers
       .get(participant.roomId)
       ?.getActiveRoute();
@@ -2079,7 +2036,7 @@ export class HybridMediaRouter {
       participant.roomId,
       lease.viewerPeerId,
     );
-    this.settleSelectedPeerEdgeLease(key);
+    this.settleSelectedPeerEdgeLease(participant.roomId);
     this.sendError(
       participant.sessionId,
       "PEER_NOT_FOUND",
@@ -2108,7 +2065,7 @@ export class HybridMediaRouter {
       hostPeerId,
       null,
       [],
-      this.maxHostMediaEdges,
+      this.endpointMediaCopyCapacity,
     );
     const revision = controller.reconcileBaseline({
       assignments,
@@ -2143,7 +2100,7 @@ export class HybridMediaRouter {
       hostPeerId,
       null,
       [],
-      this.maxHostMediaEdges,
+      this.endpointMediaCopyCapacity,
     );
     const revision = controller.reconcileBaseline({
       assignments,
@@ -2192,7 +2149,6 @@ export class HybridMediaRouter {
   }
 
   private drainViewerRouteIntents(roomId: string): void {
-    this.refreshRelayParentQualityStates(roomId);
     this.enqueueUnassignedViewerIntents(roomId);
     const pending = this.pendingRoutePreparations.get(roomId);
     if (pending) {
@@ -2206,15 +2162,13 @@ export class HybridMediaRouter {
     }
     const intents = this.viewerRouteIntentsByRoom.get(roomId);
     if (!intents) {
-      this.evacuateQuarantinedRelayParents(roomId);
       return;
     }
 
     for (const [viewerPeerId, intent] of [...intents]) {
       if (
-        this.selectedPeerEdgeLeases.has(
-          viewerConnectionKey(roomId, viewerPeerId),
-        )
+        this.selectedPeerEdgeLeasesByRoom.get(roomId)?.viewerPeerId ===
+        viewerPeerId
       ) {
         continue;
       }
@@ -2412,9 +2366,6 @@ export class HybridMediaRouter {
     if (intents.size === 0) {
       this.viewerRouteIntentsByRoom.delete(roomId);
     }
-    if (this.roomPeerMigrationAttempt(roomId) !== "selected") {
-      this.evacuateQuarantinedRelayParents(roomId);
-    }
   }
 
   private startPeerQualityReselection(
@@ -2454,13 +2405,15 @@ export class HybridMediaRouter {
         : this.options.roomStore.getConnectedViewer(roomId, peerId);
       const supportedParent = isHost
         ? assignment.upstream.kind === "none"
-        : assignment.upstream.kind === "peer" ||
-          assignment.upstream.kind === "sfu";
+        : assignment.upstream.kind === "peer";
       if (
         !participant ||
         !supportedParent ||
-        this.activeParentMediaEdges(roomId, peerId, assignment) + 1 >
-          this.peerRelayTopology.getDownstreamCapacity(roomId, peerId)
+        !endpointMediaCopyCountFits(
+          this.activeParentMediaEdges(roomId, peerId, assignment) + 1,
+          this.peerRelayTopology.getDownstreamCapacity(roomId, peerId),
+          "transition",
+        )
       ) {
         candidateExclusions.add(peerId);
       }
@@ -2755,7 +2708,15 @@ export class HybridMediaRouter {
       return "unavailable";
     }
 
-    if (host.childPeerIds.length > this.maxHostMediaEdges - 1) {
+    if (
+      !endpointMediaCopyCountFits(
+        countEndpointMediaCopies({
+          childPeerIds: host.childPeerIds,
+          publicationGeneration: "candidate",
+        }),
+        this.endpointMediaCopyCapacity,
+      )
+    ) {
       const budgetRootPeerId =
         requestedAssignment.upstream.kind === "peer"
           ? findHostBranchRoot(active.assignments, failedPeerId, hostPeerId)
@@ -2790,13 +2751,35 @@ export class HybridMediaRouter {
     if (
       rootPeerIds.length > fallback.maxRoots ||
       !host ||
-      host.childPeerIds.length + 1 >
-        this.maxHostMediaEdges
+      !endpointMediaCopyCountFits(
+        countEndpointMediaCopies({
+          childPeerIds: host.childPeerIds,
+          publicationGeneration: "candidate",
+        }),
+        this.endpointMediaCopyCapacity,
+      )
     ) {
       this.sendError(
         sourceSessionId,
         "PEER_NOT_FOUND",
         "SFU fallback root budget is exhausted",
+      );
+      return "unavailable";
+    }
+
+    const activeHost = active.assignments.get(hostPeerId);
+    if (
+      !activeHost ||
+      !endpointMediaCopyCountFits(
+        this.activeParentMediaEdges(roomId, hostPeerId, activeHost) + 1,
+        this.endpointMediaCopyCapacity,
+        "transition",
+      )
+    ) {
+      this.sendError(
+        sourceSessionId,
+        "PEER_NOT_FOUND",
+        "Endpoint media copy transition capacity is exhausted",
       );
       return "unavailable";
     }
@@ -3056,8 +3039,7 @@ export class HybridMediaRouter {
     const supportedParent =
       probe?.newParentPeerId === hostPeerId
         ? parentAssignment?.upstream.kind === "none"
-        : parentAssignment?.upstream.kind === "peer" ||
-          parentAssignment?.upstream.kind === "sfu";
+        : parentAssignment?.upstream.kind === "peer";
     return Boolean(
       probe &&
         this.pendingRoutePreparations.get(roomId) === pending &&
@@ -3065,15 +3047,18 @@ export class HybridMediaRouter {
         this.options.getShareGeneration(roomId) === probe.shareGeneration &&
         supportedParent &&
         parentAssignment &&
-        this.activeParentMediaEdges(
-          roomId,
-          probe.newParentPeerId,
-          parentAssignment,
-        ) + 1 <=
+        endpointMediaCopyCountFits(
+          this.activeParentMediaEdges(
+            roomId,
+            probe.newParentPeerId,
+            parentAssignment,
+          ) + 1,
           this.peerRelayTopology.getDownstreamCapacity(
             roomId,
             probe.newParentPeerId,
-          ) &&
+          ),
+          "transition",
+        ) &&
         planned?.revision === pending.revision &&
         plannedUpstream?.kind === "peer" &&
         plannedUpstream.peerId === probe.newParentPeerId &&
@@ -3087,19 +3072,15 @@ export class HybridMediaRouter {
     parentPeerId: string,
     assignment: ParticipantRouteAssignment,
   ): number {
-    const selectedOverlayEdges = [...this.selectedPeerEdgeLeases.values()].some(
-      (lease) =>
-        lease.roomId === roomId &&
-        lease.parentPeerId === parentPeerId &&
-        !assignment.childPeerIds.includes(lease.viewerPeerId),
-    )
-      ? 1
-      : 0;
-    return (
-      assignment.childPeerIds.length +
-      (assignment.sfuPublicationGeneration ? 1 : 0) +
-      selectedOverlayEdges
-    );
+    const selectedLease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    return countEndpointMediaCopies({
+      childPeerIds: assignment.childPeerIds,
+      publicationGeneration: assignment.sfuPublicationGeneration,
+      selectedChildPeerIds:
+        selectedLease?.parentPeerId === parentPeerId
+          ? [selectedLease.viewerPeerId]
+          : [],
+    });
   }
 
   private ownsActiveSfuForHealthyReselection(
@@ -3156,9 +3137,8 @@ export class HybridMediaRouter {
     }
     if (participant.role === "viewer") {
       return (
-        !this.selectedPeerEdgeLeases.has(
-          viewerConnectionKey(participant.roomId, participant.peerId),
-        ) &&
+        this.selectedPeerEdgeLeasesByRoom.get(participant.roomId)
+          ?.viewerPeerId !== participant.peerId &&
         assignment.upstream.kind === "sfu" &&
         active.sfu.rootPeerIds.includes(participant.peerId)
       );
@@ -3462,7 +3442,7 @@ export class HybridMediaRouter {
       hostPeerId,
       previousSfu?.publicationGeneration ?? null,
       rootPeerIds,
-      this.maxHostMediaEdges,
+      this.endpointMediaCopyCapacity,
     );
     if (!controller && initialRevision === 0 && assignments.size > 1) {
       initialRevision = 1;
@@ -3471,7 +3451,7 @@ export class HybridMediaRouter {
     if (!controller) {
       controller = new MediaRouteController({
         hostPeerId,
-        maxEndpointMediaEdges: this.maxHostMediaEdges,
+        endpointMediaCopyCapacity: this.endpointMediaCopyCapacity,
         assignments,
         revision: initialRevision,
         sfuPublicationGeneration:
@@ -3563,14 +3543,18 @@ export class HybridMediaRouter {
       lease.parentPeerId,
     );
     const activeParentAssignment = route.assignments.get(lease.parentPeerId);
-    const selectedOverlayEdges =
-      activeParentAssignment?.childPeerIds.includes(lease.viewerPeerId) === true
-        ? 0
-        : 1;
+    const hostPeerId = this.peerRelayTopology.getHostPeerId(roomId);
+    const parentSupportsOutboundRelay =
+      lease.parentPeerId === hostPeerId
+        ? activeParentAssignment?.upstream.kind === "none"
+        : activeParentAssignment?.upstream.kind === "peer";
     const activeParentEdges = activeParentAssignment
-      ? activeParentAssignment.childPeerIds.length +
-        (activeParentAssignment.sfuPublicationGeneration ? 1 : 0) +
-        selectedOverlayEdges
+      ? countEndpointMediaCopies({
+          childPeerIds: activeParentAssignment.childPeerIds,
+          publicationGeneration:
+            activeParentAssignment.sfuPublicationGeneration,
+          selectedChildPeerIds: [lease.viewerPeerId],
+        })
       : Number.POSITIVE_INFINITY;
     return (
       route.revision === lease.currentRouteRevision &&
@@ -3579,13 +3563,16 @@ export class HybridMediaRouter {
         lease.parentSessionId &&
       this.options.roomStore.getConnectedViewer(roomId, lease.viewerPeerId)
         ?.sessionId === lease.viewerSessionId &&
+      parentSupportsOutboundRelay &&
       viewerAssignment?.parentPeerId === lease.parentPeerId &&
       parentAssignment?.childPeerIds.includes(lease.viewerPeerId) === true &&
-      activeParentEdges <=
+      endpointMediaCopyCountFits(
+        activeParentEdges,
         this.peerRelayTopology.getAdvertisedDownstreamCapacity(
           roomId,
           lease.parentPeerId,
-        )
+        ),
+      )
     );
   }
 
@@ -3593,28 +3580,26 @@ export class HybridMediaRouter {
     roomId: string,
     route: RoomMediaRoute,
   ): void {
-    for (const [key, lease] of this.selectedPeerEdgeLeases) {
-      if (lease.roomId !== roomId) {
-        continue;
-      }
-      lease.currentRouteRevision = route.revision;
-      if (this.selectedPeerEdgeLeaseIsCurrent(roomId, lease, route)) {
-        continue;
-      }
-      this.settleSelectedPeerEdgeLease(key);
+    const lease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    if (!lease) {
+      return;
+    }
+    lease.currentRouteRevision = route.revision;
+    if (!this.selectedPeerEdgeLeaseIsCurrent(roomId, lease, route)) {
+      this.settleSelectedPeerEdgeLease(roomId);
     }
   }
 
   private settleSelectedPeerEdgeLease(
-    key: string,
+    roomId: string,
     excludedPeerId?: string,
   ): SelectedPeerEdgeLease | undefined {
-    const lease = this.selectedPeerEdgeLeases.get(key);
+    const lease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
     if (!lease) {
       return undefined;
     }
     clearTimeout(lease.timer);
-    this.selectedPeerEdgeLeases.delete(key);
+    this.selectedPeerEdgeLeasesByRoom.delete(roomId);
 
     const active = this.mediaRouteControllers.get(lease.roomId)?.getActiveRoute();
     if (!active) {
@@ -3653,17 +3638,16 @@ export class HybridMediaRouter {
     if (!peer || !assignment) {
       return;
     }
-    for (const lease of this.selectedPeerEdgeLeases.values()) {
-      if (
-        lease.roomId === roomId &&
-        (lease.parentPeerId === peerId || lease.viewerPeerId === peerId) &&
-        this.selectedPeerEdgeLeaseIsCurrent(roomId, lease, route)
-      ) {
-        this.options.sendToSession(peer.sessionId, {
-          ...lease.grant,
-          revision: route.revision,
-        });
-      }
+    const lease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    if (
+      lease &&
+      (lease.parentPeerId === peerId || lease.viewerPeerId === peerId) &&
+      this.selectedPeerEdgeLeaseIsCurrent(roomId, lease, route)
+    ) {
+      this.options.sendToSession(peer.sessionId, {
+        ...lease.grant,
+        revision: route.revision,
+      });
     }
     this.options.sendToSession(peer.sessionId, {
       type: "route-update",
@@ -3795,11 +3779,10 @@ export class HybridMediaRouter {
     this.mediaRouteControllers.delete(roomId);
     this.clearRoomFailedParents(roomId);
     this.viewerRouteIntentsByRoom.delete(roomId);
-    for (const [key, lease] of this.selectedPeerEdgeLeases) {
-      if (lease.roomId === roomId) {
-        clearTimeout(lease.timer);
-        this.selectedPeerEdgeLeases.delete(key);
-      }
+    const selectedLease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    if (selectedLease) {
+      clearTimeout(selectedLease.timer);
+      this.selectedPeerEdgeLeasesByRoom.delete(roomId);
     }
     const ingress = this.selectedSfuIngressAttempts.get(roomId);
     if (ingress) {
@@ -3812,20 +3795,18 @@ export class HybridMediaRouter {
     this.sfuDisabledRoomIds.delete(roomId);
     this.clearRoomViewerQualityEvidenceStates(roomId);
     this.roomQualityMigrationCooldownUntilMs.delete(roomId);
-    this.refreshRelayParentQualityStates(roomId, Number.MAX_SAFE_INTEGER);
   }
 
   private clearSelectedEdgeTurnsForParticipant(
     roomId: string,
     peerId: string,
   ): void {
-    for (const [key, lease] of [...this.selectedPeerEdgeLeases]) {
-      if (
-        lease.roomId === roomId &&
-        (lease.parentPeerId === peerId || lease.viewerPeerId === peerId)
-      ) {
-        this.settleSelectedPeerEdgeLease(key, peerId);
-      }
+    const lease = this.selectedPeerEdgeLeasesByRoom.get(roomId);
+    if (
+      lease &&
+      (lease.parentPeerId === peerId || lease.viewerPeerId === peerId)
+    ) {
+      this.settleSelectedPeerEdgeLease(roomId, peerId);
     }
     const ingress = this.selectedSfuIngressAttempts.get(roomId);
     if (ingress?.hostPeerId === peerId) {
@@ -3965,132 +3946,10 @@ export class HybridMediaRouter {
     }
   }
 
-  private handleRelayParentBadEvent(
-    roomId: string,
-    parentPeerId: string,
-    parentSessionId: string,
-    childPeerId: string,
-    badWindowKind: ViewerQualityBadWindowKind,
-    now: number,
-  ): ViewerQualityBadWindowKind | "trigger-moved" | null {
-    const shareGeneration = this.options.getShareGeneration(roomId);
-    if (
-      !shareGeneration ||
-      this.options.roomStore.getConnectedViewer(roomId, parentPeerId)
-        ?.sessionId !== parentSessionId
-    ) {
-      return null;
-    }
-    const key = viewerConnectionKey(roomId, parentPeerId);
-    const previous = this.relayParentQualityStates.get(key);
-    if (previous?.quarantinedUntilMs == null) {
-      if (
-        !previous ||
-        previous.lastChildPeerId === childPeerId ||
-        now - previous.lastConfirmedAtMs > VIEWER_QUALITY_EVIDENCE_GAP_MS
-      ) {
-        this.relayParentQualityStates.set(key, {
-          parentSessionId,
-          shareGeneration,
-          lastChildPeerId: childPeerId,
-          lastConfirmedAtMs: now,
-          quarantinedUntilMs: null,
-        });
-        return null;
-      }
-      previous.lastChildPeerId = childPeerId;
-      previous.lastConfirmedAtMs = now;
-      previous.quarantinedUntilMs =
-        now + VIEWER_QUALITY_REASSIGN_COOLDOWN_MS;
-      this.peerRelayTopology.setViewerRelayEligible(roomId, parentPeerId, false);
-    }
-    return this.resolveActivePeerEdge(roomId, childPeerId)?.parentPeerId ===
-      parentPeerId
-      ? badWindowKind
-      : "trigger-moved";
-  }
-
-  private evacuateRelayParentChildren(
-    roomId: string,
-    parentPeerId: string,
-  ): void {
-    const childPeerIds =
-      this.peerRelayTopology.getAssignment(roomId, parentPeerId)?.childPeerIds ?? [];
-    for (const childPeerId of childPeerIds) {
-      if (
-        this.heldQualityParentExclusionsByViewer.get(
-          viewerConnectionKey(roomId, childPeerId),
-        )?.parentPeerId === parentPeerId
-      ) {
-        continue;
-      }
-      const failedParents = this.failedParentPeerIdsByViewer.get(
-        viewerConnectionKey(roomId, childPeerId),
-      );
-      const excludedParents = new Set(failedParents);
-      excludedParents.add(parentPeerId);
-      const changes = this.peerRelayTopology.reassignViewer(
-        roomId, childPeerId, this.connectedPeerIds(roomId), excludedParents,
-        MAX_PEER_RELAY_DEPTH,
-      );
-      if (!changes) continue;
-      this.clearChangedConnectionIds(roomId, changes);
-      this.reconcileMediaRoute(roomId);
-      this.sendMediaAssignmentChanges(roomId, changes);
-    }
-  }
-
-  private evacuateQuarantinedRelayParents(roomId: string): void {
-    const prefix = `${roomId}:`;
-    for (const [key, state] of this.relayParentQualityStates) {
-      if (key.startsWith(prefix) && state.quarantinedUntilMs !== null) {
-        this.evacuateRelayParentChildren(roomId, key.slice(prefix.length));
-      }
-    }
-  }
-
-  private refreshRelayParentQualityStates(
-    roomId: string,
-    currentTime = this.options.now?.() ?? Date.now(),
-  ): void {
-    if (!Number.isFinite(currentTime)) return;
-    const prefix = `${roomId}:`;
-    const shareGeneration = this.options.getShareGeneration(roomId);
-    for (const [key, state] of this.relayParentQualityStates) {
-      if (!key.startsWith(prefix)) continue;
-      const parentPeerId = key.slice(prefix.length);
-      const identityCurrent =
-        state.parentSessionId ===
-          this.options.roomStore.getConnectedViewer(roomId, parentPeerId)
-            ?.sessionId && state.shareGeneration === shareGeneration;
-      const active =
-        state.quarantinedUntilMs === null
-          ? currentTime - state.lastConfirmedAtMs <=
-            VIEWER_QUALITY_EVIDENCE_GAP_MS
-          : currentTime < state.quarantinedUntilMs;
-      if (
-        identityCurrent &&
-        currentTime >= state.lastConfirmedAtMs &&
-        active
-      ) {
-        continue;
-      }
-      if (state.quarantinedUntilMs !== null) {
-        this.peerRelayTopology.setViewerRelayEligible(roomId, parentPeerId, true);
-      }
-      this.relayParentQualityStates.delete(key);
-    }
-  }
-
   private clearViewerQualityStateForParticipant(
     roomId: string,
     peerId: string,
   ): void {
-    const relayParentKey = viewerConnectionKey(roomId, peerId);
-    if (this.relayParentQualityStates.get(relayParentKey)?.quarantinedUntilMs != null) {
-      this.peerRelayTopology.setViewerRelayEligible(roomId, peerId, true);
-    }
-    this.relayParentQualityStates.delete(relayParentKey);
     this.clearHeldQualityParentExclusion(roomId, peerId);
     const intents = this.viewerRouteIntentsByRoom.get(roomId);
     for (const [viewerPeerId, intent] of [...(intents ?? [])]) {
@@ -4217,10 +4076,10 @@ function participantRoutesFromTopology(
   hostPeerId: string,
   publicationGeneration: string | null,
   requestedRootPeerIds: readonly string[],
-  maxHostMediaEdges: number,
+  endpointMediaCopyCapacity: number,
 ): Map<string, ParticipantRouteAssignment> {
-  // Keep the peer tree intact underneath the active SFU overlay so prepare
-  // aborts and one-shot failback never need to reconstruct a lost baseline.
+  // The topology remains the failback baseline. The active SFU overlay detaches
+  // children because an SFU-fed Viewer has no independent outbound proof yet.
   const assignments = new Map<string, ParticipantRouteAssignment>();
   for (const [peerId, assignment] of topologyAssignments) {
     assignments.set(peerId, {
@@ -4254,11 +4113,24 @@ function participantRoutesFromTopology(
     assignments.set(rootPeerId, {
       ...root,
       upstream: { kind: "sfu" },
+      childPeerIds: [],
     });
+    for (const childPeerId of root.childPeerIds) {
+      const child = assignments.get(childPeerId);
+      if (
+        child?.upstream.kind === "peer" &&
+        child.upstream.peerId === rootPeerId
+      ) {
+        assignments.set(childPeerId, {
+          ...child,
+          upstream: { kind: "none" },
+        });
+      }
+    }
   }
   const host = assignments.get(hostPeerId);
   if (host && rootPeerIds.length > 0) {
-    const directChildLimit = Math.max(0, maxHostMediaEdges - 1);
+    const directChildLimit = Math.max(0, endpointMediaCopyCapacity - 1);
     const directChildPeerIds = host.childPeerIds.slice(0, directChildLimit);
     for (const suppressedPeerId of host.childPeerIds.slice(directChildLimit)) {
       const suppressed = assignments.get(suppressedPeerId);
@@ -4302,7 +4174,7 @@ function promoteSfuRoots(
 ): boolean {
   for (const rootPeerId of rootPeerIds) {
     const root = assignments.get(rootPeerId);
-    if (!root) {
+    if (!root || root.childPeerIds.length > 0) {
       return false;
     }
     if (root.upstream.kind === "peer") {
