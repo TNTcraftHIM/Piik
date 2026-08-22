@@ -46,6 +46,7 @@ export interface SelectedEdgeTurnConfig {
   urls: readonly [string];
   sharedSecret: string;
   credentialTtlSeconds: number;
+  allocationCapacity: number;
 }
 
 export interface ServerConfig {
@@ -283,6 +284,7 @@ export function parseSelectedEdgeTurn(
   const names = [
     "SELECTED_EDGE_TURN_URLS", "SELECTED_EDGE_TURN_SHARED_SECRET",
     "SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS",
+    "SELECTED_EDGE_TURN_ALLOCATION_CAPACITY",
   ] as const;
   const configuredNames = names.filter((name) => environment[name]?.trim());
   if (configuredNames.length === 0) {
@@ -322,6 +324,10 @@ export function parseSelectedEdgeTurn(
       "SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS",
       MIN_SELECTED_EDGE_TURN_TTL_SECONDS,
       MAX_SELECTED_EDGE_TURN_TTL_SECONDS,
+    ),
+    allocationCapacity: parseRequiredPositiveInteger(
+      environment.SELECTED_EDGE_TURN_ALLOCATION_CAPACITY,
+      "SELECTED_EDGE_TURN_ALLOCATION_CAPACITY",
     ),
   };
 }

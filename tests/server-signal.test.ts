@@ -27,11 +27,13 @@ import type { SfuTokenIssuer } from "../src/server/livekit-token.ts";
 import { HybridMediaRouter } from "../src/server/hybrid-media-router.ts";
 import { SfuResourceAdmission } from "../src/server/sfu-resource-admission.ts";
 import { managedSfuRoomName } from "../src/server/sfu-room-control.ts";
+import { TurnAllocationAdmission } from "../src/server/turn-allocation-admission.ts";
 import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const allowedOrigin = "http://allowed.test";
 const TEST_SFU_INGRESS_CAPACITY = 10;
 const TEST_SFU_EGRESS_CAPACITY = 16;
+const TEST_TURN_ALLOCATION_CAPACITY = 8;
 const defaultQualitySettings = {
   resolution: "1080p",
   maxFramerate: 60,
@@ -148,6 +150,7 @@ interface SignalHarness {
   room: CreatedRoom;
   database?: RoomDatabase;
   sfuAdmission?: SfuResourceAdmission;
+  turnAdmission?: TurnAllocationAdmission;
   sfuRoomControl?: FakeSfuRoomControl;
 }
 
@@ -656,6 +659,7 @@ async function startSfuHarness(options: {
   roomControl?: FakeSfuRoomControl;
   hostOfflineCheckMs?: number;
   drainRetryMs?: number;
+  turnAllocationCapacity?: number;
 }): Promise<SignalHarness> {
   const roomStore = new RoomStore({
     ttlMs: 14_400_000,
@@ -677,6 +681,11 @@ async function startSfuHarness(options: {
     egressCapacity:
       options.sfuEgressCapacity ?? TEST_SFU_EGRESS_CAPACITY,
   });
+  const turnAllocationCapacity =
+    options.turnAllocationCapacity ?? TEST_TURN_ALLOCATION_CAPACITY;
+  const turnAdmission = options.selectedEdgeTurn
+    ? new TurnAllocationAdmission({ capacity: turnAllocationCapacity })
+    : undefined;
   const sfuRoomControl = options.roomControl ?? new FakeSfuRoomControl();
   const signaling = new SignalingServer({
     server: httpServer,
@@ -696,9 +705,13 @@ async function startSfuHarness(options: {
     ...(options.selectedEdgeTurn
       ? {
           selectedEdgeTurn: {
-            urls: ["turn:turn.example.test:3478?transport=udp"],
-            sharedSecret: "t".repeat(32),
-            credentialTtlSeconds: 120,
+            config: {
+              urls: ["turn:turn.example.test:3478?transport=udp"],
+              sharedSecret: "t".repeat(32),
+              credentialTtlSeconds: 120,
+              allocationCapacity: turnAllocationCapacity,
+            },
+            admission: turnAdmission!,
           },
         }
       : {}),
@@ -745,6 +758,7 @@ async function startSfuHarness(options: {
     roomStore,
     room,
     sfuAdmission,
+    turnAdmission,
     sfuRoomControl,
   };
 }
@@ -1384,14 +1398,15 @@ async function startPeerSelectedCandidate(
   connectionId: string,
 ) {
   failPeerEdgeCandidate(viewer, revision, connectionId);
-  const [viewerGrant, parentGrant] = await Promise.all([
-    viewer.inbox.next("selected-edge-turn"),
-    parent.inbox.next("selected-edge-turn"),
-  ]);
-  expect(parentGrant).toEqual(viewerGrant);
+  const viewerGrant = await viewer.inbox.next("selected-edge-turn");
   if (viewerGrant.edgeKind !== "peer-selected") {
     throw new Error("expected a peer-selected grant");
   }
+  let parentGrant: Extract<ServerMessage, { type: "selected-edge-turn" }>;
+  do {
+    parentGrant = await parent.inbox.next("selected-edge-turn");
+  } while (parentGrant.newConnectionId !== viewerGrant.newConnectionId);
+  expect(parentGrant).toEqual(viewerGrant);
   return viewerGrant;
 }
 
@@ -7347,10 +7362,11 @@ describe("WebSocket signaling", () => {
     ]);
   });
 
-  it("admits only one pending peer-selected TURN attempt per room", async () => {
+  it("admits independent pending peer-selected TURN edges concurrently", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken() { throw new Error("offline"); } },
       selectedEdgeTurn: true,
+      turnAllocationCapacity: 2,
     });
     const peers = await prepareTwoSelectedPeerEdgeCandidates(
       harness.webSocketUrl,
@@ -7370,18 +7386,173 @@ describe("WebSocket signaling", () => {
       firstGrant.revision,
       peers.secondConnectionId,
     );
-    await expect(
-      peers.secondViewer.inbox.next("selected-edge-turn", 40),
-    ).rejects.toThrow("Timed out");
-    await expect(
-      peers.secondParent.inbox.next("selected-edge-turn", 40),
-    ).rejects.toThrow("Timed out");
+    const [secondViewerGrant, secondParentGrant] = await Promise.all([
+      peers.secondViewer.inbox.next("selected-edge-turn"),
+      peers.secondParent.inbox.next("selected-edge-turn"),
+    ]);
+    expect(secondViewerGrant).toMatchObject({
+      edgeKind: "peer-selected",
+      viewerPeerId: peers.secondAuth.peerId,
+      parentPeerId: peers.secondParentAuth.peerId,
+    });
+    expect(secondParentGrant.newConnectionId).toBe(
+      secondViewerGrant.newConnectionId,
+    );
+    expect(secondViewerGrant.newConnectionId).not.toBe(
+      firstGrant.newConnectionId,
+    );
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 2 });
   });
 
-  it("keeps an answered peer-selected TURN edge inside the room cap", async () => {
+  it.each([1, 2, 3] as const)(
+    "admits %i same-parent selected edges without changing endpoint copy count",
+    async (endpointMediaCopyCapacity) => {
+      const harness = await startSfuHarness({
+        tokenIssuer: { async issueToken() { throw new Error("offline"); } },
+        selectedEdgeTurn: true,
+        endpointMediaCopyCapacity,
+        turnAllocationCapacity: endpointMediaCopyCapacity,
+      });
+      const host = await openClient(harness.webSocketUrl);
+      const hostAuth = peerAssisted(await authenticate(
+        host,
+        harness.room,
+        "host",
+        `selected-same-parent-cap-${endpointMediaCopyCapacity}-host`,
+        endpointMediaCopyCapacity,
+        `selected-same-parent-cap-${endpointMediaCopyCapacity}-share`,
+      ));
+      const viewers: Array<{
+        client: TestClient;
+        peerId: string;
+        connectionId: string;
+      }> = [];
+      let revision = hostAuth.routeRevision;
+      for (let index = 0; index < endpointMediaCopyCapacity; index += 1) {
+        const client = await openClient(harness.webSocketUrl);
+        const authenticated = peerAssisted(await authenticate(
+          client,
+          harness.room,
+          "viewer",
+          `selected-same-parent-cap-${endpointMediaCopyCapacity}-viewer-${index}`,
+          0,
+        ));
+        expect(authenticated.routeAssignment.upstream).toEqual({
+          kind: "peer",
+          peerId: hostAuth.peerId,
+        });
+        revision = authenticated.routeRevision;
+        viewers.push({
+          client,
+          peerId: authenticated.peerId,
+          connectionId:
+            `selected-same-parent-cap-${endpointMediaCopyCapacity}-edge-${index}`,
+        });
+      }
+
+      for (const [index, viewer] of viewers.entries()) {
+        await sendTestOffer(
+          host,
+          viewer.client,
+          viewer.peerId,
+          viewer.connectionId,
+        );
+        const grant = await startPeerSelectedCandidate(
+          viewer.client,
+          host,
+          revision,
+          viewer.connectionId,
+        ).catch((error: unknown) => {
+          throw new Error(
+            `selected edge ${index + 1} of ${endpointMediaCopyCapacity} was not admitted`,
+            { cause: error },
+          );
+        });
+        expect(grant.parentPeerId).toBe(hostAuth.peerId);
+        revision = grant.revision;
+      }
+      expect(harness.turnAdmission?.usage()).toEqual({
+        allocations: endpointMediaCopyCapacity,
+      });
+
+      const overflow = await openClient(harness.webSocketUrl);
+      const overflowAuth = peerAssisted(await authenticate(
+        overflow,
+        harness.room,
+        "viewer",
+        `selected-same-parent-cap-${endpointMediaCopyCapacity}-overflow`,
+        0,
+      ));
+      expect(overflowAuth.routeAssignment.upstream).toEqual({ kind: "none" });
+      expect(harness.turnAdmission?.usage()).toEqual({
+        allocations: endpointMediaCopyCapacity,
+      });
+    },
+  );
+
+  it("releases every selected allocation when the current share stops", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken() { throw new Error("offline"); } },
       selectedEdgeTurn: true,
+      turnAllocationCapacity: 2,
+    });
+    const peers = await prepareTwoSelectedPeerEdgeCandidates(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-room-stop",
+    );
+
+    const firstGrant = await startPeerSelectedCandidate(
+      peers.firstViewer,
+      peers.firstParent,
+      peers.revision,
+      peers.firstConnectionId,
+    );
+    await startPeerSelectedCandidate(
+      peers.secondViewer,
+      peers.secondParent,
+      firstGrant.revision,
+      peers.secondConnectionId,
+    );
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 2 });
+
+    peers.host.socket.send(JSON.stringify({ type: "stop-sharing" }));
+    await Promise.all([
+      peers.firstViewer.inbox.next("sharing-stopped"),
+      peers.secondViewer.inbox.next("sharing-stopped"),
+    ]);
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 0 });
+  });
+
+  it("releases selected allocations during graceful shutdown", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken() { throw new Error("offline"); } },
+      selectedEdgeTurn: true,
+      turnAllocationCapacity: 1,
+    });
+    const peers = await prepareTwoSelectedPeerEdgeCandidates(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-shutdown",
+    );
+    await startPeerSelectedCandidate(
+      peers.firstViewer,
+      peers.firstParent,
+      peers.revision,
+      peers.firstConnectionId,
+    );
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+
+    await runningServer!.close();
+    runningServer = undefined;
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 0 });
+  });
+
+  it("keeps an answered peer-selected edge charged against deployment capacity", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken() { throw new Error("offline"); } },
+      selectedEdgeTurn: true,
+      turnAllocationCapacity: 1,
     });
     const peers = await prepareTwoSelectedPeerEdgeCandidates(
       harness.webSocketUrl,
@@ -7520,6 +7691,7 @@ describe("WebSocket signaling", () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken() { throw new Error("offline"); } },
       selectedEdgeTurn: true,
+      turnAllocationCapacity: 1,
     });
     const peers = await prepareTwoSelectedPeerEdgeCandidates(
       harness.webSocketUrl,
@@ -7562,10 +7734,11 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("releases the room cap after the selected edge fails", async () => {
+  it("releases one exact selected edge without affecting a newer edge", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken() { throw new Error("offline"); } },
       selectedEdgeTurn: true,
+      turnAllocationCapacity: 1,
     });
     const peers = await prepareTwoSelectedPeerEdgeCandidates(
       harness.webSocketUrl,
@@ -7586,6 +7759,7 @@ describe("WebSocket signaling", () => {
       connectionId: firstGrant.newConnectionId,
     }));
     await peers.firstViewer.inbox.next("error");
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 0 });
 
     const secondGrant = await startPeerSelectedCandidate(
       peers.secondViewer,
@@ -7597,12 +7771,28 @@ describe("WebSocket signaling", () => {
       edgeKind: "peer-selected",
       viewerPeerId: peers.secondAuth.peerId,
     });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+
+    peers.firstParent.inbox.ignore("route-update");
+    peers.firstParent.inbox.ignore("media-assignment");
+    peers.firstParent.socket.send(JSON.stringify({
+      type: "signal",
+      targetPeerId: peers.firstAuth.peerId,
+      payload: {
+        kind: "candidate",
+        connectionId: firstGrant.newConnectionId,
+        candidate: null,
+      },
+    }));
+    await peers.firstParent.inbox.expectNone(40);
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
   });
 
-  it("releases the room cap when the selected Viewer disconnects", async () => {
+  it("releases deployment capacity when the selected Viewer disconnects", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken() { throw new Error("offline"); } },
       selectedEdgeTurn: true,
+      turnAllocationCapacity: 1,
       viewerDisconnectGraceMs: 500,
     });
     const peers = await prepareTwoSelectedPeerEdgeCandidates(
@@ -7643,6 +7833,7 @@ describe("WebSocket signaling", () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken() { throw new Error("offline"); } },
       selectedEdgeTurn: true,
+      turnAllocationCapacity: 1,
     });
     const peers = await prepareTwoSelectedPeerEdgeCandidates(
       harness.webSocketUrl,
@@ -7713,10 +7904,11 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("does not count Host SFU ingress against the peer-selected room cap", async () => {
+  it("admits Host ingress and peer-selected edges from one deployment ledger", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
       selectedEdgeTurn: true,
+      turnAllocationCapacity: 2,
     });
     const direct = await activateSingleViewerSfu(
       harness.webSocketUrl,
@@ -7733,12 +7925,74 @@ describe("WebSocket signaling", () => {
     await expect(
       direct.host.inbox.next("selected-edge-turn"),
     ).resolves.toMatchObject({ edgeKind: "host-sfu-ingress" });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
 
     await startPeerSelectedTurn(
       direct.viewer,
       direct.host,
       direct.revision,
     );
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 2 });
+  });
+
+  it("keeps active Host ingress charged until its exact transport fails", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+      turnAllocationCapacity: 1,
+    });
+    const active = await activateSingleViewerSfu(
+      harness.webSocketUrl,
+      harness.room,
+      "selected-active-ingress-exact-release",
+    );
+
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: active.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    const grant = await active.host.inbox.next("selected-edge-turn");
+    if (grant.edgeKind !== "host-sfu-ingress") {
+      throw new Error("expected a Host SFU ingress grant");
+    }
+    active.host.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: active.revision,
+      phase: "active",
+    }));
+    await vi.waitFor(() =>
+      expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 }),
+    );
+
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: active.revision,
+      phase: "active",
+      connectionId: null,
+    }));
+    await expect(
+      active.host.inbox.next("selected-edge-turn", 40),
+    ).rejects.toThrow("Timed out");
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+
+    active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: active.revision,
+      phase: "active",
+      connectionId: grant.newConnectionId,
+    }));
+    await expect(active.host.inbox.next("error")).resolves.toMatchObject({
+      code: "PEER_NOT_FOUND",
+      message: "Selected SFU relay ingress failed",
+    });
+    await expect(
+      nextActiveRouteAfter(active.host, active.revision),
+    ).resolves.toMatchObject({
+      assignment: { sfuPublicationGeneration: null },
+    });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 0 });
   });
 
   it("retries an initial Host SFU prepare through one selected ingress", async () => {
