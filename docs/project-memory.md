@@ -14,7 +14,7 @@ Last updated: 2026-08-22
 - Ordinary peer ICE is STUN-only. Credentials, room secrets, candidate details, and diagnostic data remain private and narrowly scoped.
 - Screen audio offers live-switchable 64/128/256 kbps sender ceilings and defaults to 128. The existing last-wins quality wire owns desired state; each endpoint serially applies and reads back current Host/relay/SFU audio senders, exposes local failures, and gives future senders the latest desired value. Opus remains fixed, and without an applied-ack wire the Host does not claim room-wide atomic convergence. These are configuration ceilings, not fidelity claims.
 - Video codec selection remains `automatic | H.264 | VP8`. The accepted first switching boundary is a generation-fenced renegotiation/republish transaction while sharing is explicitly paused; unpaused hot switching is later reuse of that transaction, not an independent mechanism.
-- A source-checkout LAN one-command launcher is accepted as a Web development/deployment convenience. It reuses the current Node/config/access/storage contract and does not claim to be a packaged client, TLS provisioner, NAT traversal tool, or public deployment service.
+- Two distribution artifacts are accepted only after the current feature, NAT, and real-network ledger is complete. A public-server one-click deployment package installs the current application plus STUN/SFU/TURN and proxy components on a user-owned server. A Windows/macOS/Linux local package runs the Host, application server, and local state on the broadcaster's machine without source, Node, or any external Screener/network service; it keeps workable direct P2P but reports the reachability loss imposed by public ingress, TLS, gateway, NAT, or firewall limits rather than promising universal connectivity.
 - Current UI, presence, route labels, and diagnostics describe observed state only; they do not create route authority.
 - Viewer startup feedback remains on the stage until current-generation frame presentation is proven, distinguishes peer, fallback, media, autoplay, recovery, and failure phases, and keeps `Play` specific to autoplay rejection. The strict-NAT guessed-candidate idea remains an isolated emulator gate; only a pass may authorize one manually approved, kill-switched canary in an operator-owned test room with explicit consent from both endpoints and exact room/edge/generation/budget bounds.
 
@@ -31,7 +31,7 @@ Last updated: 2026-08-22
 ## Current Priority
 
 1. Keep this truth set and [the TODO ledger](./todo.md) concise and internally consistent.
-2. Rebuild and release the accepted route runtime first. Then release live audio and paused video-codec switching, follow with evidence-led H.264 diagnosis and the strict-NAT emulator gate, then connection feedback, the LAN launcher, and the remaining accepted roadmap. Parallel branches may finish earlier but do not change this merge/deployment order.
+2. Rebuild and release the accepted route runtime first. Then release live audio and paused video-codec switching, follow with evidence-led H.264 diagnosis, the strict-NAT emulator gate, connection feedback, and the remaining functional roadmap. Distribution packaging starts only after those TODOs are complete. Parallel branches may finish earlier but do not change this merge/deployment order.
 
 ## Working Rules
 

@@ -19,20 +19,19 @@ This is the current execution index. Git history owns completed timelines; [veri
 - Automatic P2P-first routing, one active upstream, an acyclic graph, exact identity/generation authority, media-proven make-before-break, and bounded failure remain accepted.
 - The holistic assisted-route model is accepted: one controller performs allocation, child reparenting, and relay abdication/drain. One Host publication serves SFU subscriptions; TURN is an exact edge transport, not a topology node. Wave A supplies endpoint accounting and the wire boundary without pretending that later controller convergence, media-binding generations, or independent SFU/TURN admission already exist.
 - Parent selection is deterministic rather than random or score-based: hard eligibility filters, then shallowest result, remaining sender capacity, stable join order, and peer identity; one provisional edge uses standard ICE and media proof at a time. Viewer connection feedback and the strict-NAT emulator gate are accepted follow-up work, not deployed behavior.
-- Live 64/128/256 audio-ceiling mutation, a source-checkout LAN one-command launcher, and paused-share video codec switching are accepted but not yet implemented on canonical `main`. H.264 startup blur/low-FPS reports remain an evidence-led diagnosis, not a presumed codec defect.
+- Live 64/128/256 audio-ceiling mutation and paused-share video codec switching are accepted but not yet implemented on canonical `main`. H.264 startup blur/low-FPS reports remain an evidence-led diagnosis, not a presumed codec defect. Public-server and fully local distribution packages are later work after the functional, NAT, and real-network ledger is complete.
 
 ## Current Milestone
 
 1. Rebuild and release route waves A-D from exact canonical `main`, including cap/accounting, bounded server admission, deterministic local parent selection, quality ownership, and one controller.
 2. Release live audio-ceiling mutation and paused-share codec switching on the resulting generation/transition boundary.
 3. Reproduce the H.264 startup report before any codec-specific repair, and build the strict-NAT emulator gate before any manually approved canary in an operator-owned test room.
-4. Add first-frame-driven Viewer connection stages, then integrate the scoped LAN launcher and remaining accepted tools.
-5. Validate and deploy each coherent slice in this order with its focused browser/network/resource and rollback gates.
+4. Add first-frame-driven Viewer connection stages and finish the remaining accepted functional and real-network work.
+5. Validate and deploy each coherent slice in this order with its focused browser/network/resource and rollback gates; distribution packaging remains outside this milestone.
 
 ## Active Boundaries
 
 - `fix/configurable-relay-cap` is an old, incomplete draft and must not be merged as-is.
-- `feat/local-oneclick-bundle` is a stale-base donor only. Transplant its launcher logic and tests selectively; never import its old requirements, memory, status, access variable, or generated local state.
 - Open PR #192 and the Native stack are evidence/research, not pending product releases.
 - Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
 - Real SFU/TURN recovery, heterogeneous networks, mobile lifecycle, audio/A-V device behavior, and endurance/resource measurements remain external acceptance evidence, not blockers for unrelated reversible work.
