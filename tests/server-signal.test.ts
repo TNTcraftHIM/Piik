@@ -9231,6 +9231,258 @@ describe("WebSocket signaling", () => {
     expect((await host.inbox.next("peer-left", 500)).peerId).toBe(firstAuth.peerId);
   });
 
+  it.each([1, 2, 3] as const)(
+    "authorizes exactly %i ordinary Host children independently of room admission",
+    async (endpointMediaCopyCapacity) => {
+      const maxViewersPerRoom = endpointMediaCopyCapacity + 1;
+      const harness = await startHarness({
+        endpointMediaCopyCapacity,
+        maxViewersPerRoom,
+      });
+      const viewers: TestClient[] = [];
+      const viewerPeerIds: string[] = [];
+      for (let index = 0; index < maxViewersPerRoom; index += 1) {
+        const viewer = await openClient(harness.webSocketUrl);
+        const authenticated = await authenticate(
+          viewer,
+          harness.room,
+          "viewer",
+          `ordinary-cap-viewer-${index}`,
+          1,
+          undefined,
+          { viewerPresence: true },
+        );
+        expect(authenticated.endpointMediaCopyCapacity).toBe(
+          endpointMediaCopyCapacity,
+        );
+        viewers.push(viewer);
+        viewerPeerIds.push(authenticated.peerId);
+      }
+
+      const host = await openClient(harness.webSocketUrl);
+      const hostAuth = await authenticate(
+        host,
+        harness.room,
+        "host",
+        "ordinary-cap-host",
+        1,
+        undefined,
+        { viewerPresence: true },
+      );
+      expect(hostAuth).toMatchObject({
+        maxViewers: maxViewersPerRoom,
+        endpointMediaCopyCapacity,
+        viewerPeerIds: viewerPeerIds.slice(0, endpointMediaCopyCapacity),
+      });
+
+      const presence = viewerPresenceEntries(
+        await host.inbox.next("viewer-presence"),
+      );
+      for (let index = 0; index < presence.length; index += 1) {
+        expect(presence[index]).toMatchObject({
+          peerId: viewerPeerIds[index],
+          upstream:
+            index < endpointMediaCopyCapacity
+              ? { kind: "peer", peerId: hostAuth.peerId }
+              : { kind: "none" },
+        });
+      }
+
+      const waitingPeerId = viewerPeerIds.at(-1)!;
+      expect((await host.inbox.next("peer-waiting")).peerId).toBe(
+        waitingPeerId,
+      );
+      for (const activePeerId of viewerPeerIds.slice(
+        0,
+        endpointMediaCopyCapacity,
+      )) {
+        expect((await host.inbox.next("peer-joined")).peerId).toBe(
+          activePeerId,
+        );
+      }
+
+      host.socket.send(
+        JSON.stringify({
+          type: "signal",
+          targetPeerId: waitingPeerId,
+          payload: {
+            kind: "description",
+            connectionId: "waiting-host-offer",
+            description: { type: "offer", sdp: "v=0\r\n" },
+          },
+        }),
+      );
+      expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
+
+      host.socket.send(
+        JSON.stringify({
+          type: "signal",
+          targetPeerId: waitingPeerId,
+          payload: {
+            kind: "candidate",
+            connectionId: "waiting-host-candidate",
+            candidate: null,
+          },
+        }),
+      );
+      expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
+
+      const waitingViewer = viewers.at(-1)!;
+      waitingViewer.socket.send(
+        JSON.stringify({
+          type: "signal",
+          payload: {
+            kind: "description",
+            connectionId: "waiting-viewer-answer",
+            description: { type: "answer", sdp: "v=0\r\n" },
+          },
+        }),
+      );
+      expect((await waitingViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+
+      waitingViewer.socket.send(
+        JSON.stringify({
+          type: "signal",
+          payload: {
+            kind: "candidate",
+            connectionId: "waiting-viewer-candidate",
+            candidate: null,
+          },
+        }),
+      );
+      expect((await waitingViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+
+      waitingViewer.socket.send(
+        JSON.stringify({
+          type: "restart-request",
+          connectionId: "waiting-viewer-restart",
+          rebuild: true,
+        }),
+      );
+      expect((await waitingViewer.inbox.next("error")).code).toBe("FORBIDDEN");
+
+      host.socket.send(
+        JSON.stringify({
+          type: "signal",
+          targetPeerId: viewerPeerIds[0],
+          payload: {
+            kind: "description",
+            connectionId: "active-host-offer",
+            description: { type: "offer", sdp: "v=0\r\n" },
+          },
+        }),
+      );
+      expect(await viewers[0]!.inbox.next("signal")).toMatchObject({
+        fromPeerId: hostAuth.peerId,
+        payload: { connectionId: "active-host-offer" },
+      });
+    },
+  );
+
+  it("holds an active ordinary slot through grace and skips offline waiters", async () => {
+    const harness = await startHarness({
+      endpointMediaCopyCapacity: 1,
+      maxViewersPerRoom: 3,
+      viewerDisconnectGraceMs: 100,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "ordinary-grace-host",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    expect(
+      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
+    ).toEqual([]);
+
+    const activeViewer = await openClient(harness.webSocketUrl);
+    const activeAuth = await authenticate(
+      activeViewer,
+      harness.room,
+      "viewer",
+      "ordinary-grace-active",
+    );
+    expect((await host.inbox.next("peer-joined")).peerId).toBe(
+      activeAuth.peerId,
+    );
+    expect(
+      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
+    ).toEqual([
+      expect.objectContaining({
+        peerId: activeAuth.peerId,
+        upstream: { kind: "peer", peerId: hostAuth.peerId },
+      }),
+    ]);
+
+    const offlineWaitingViewer = await openClient(harness.webSocketUrl);
+    const offlineWaitingAuth = await authenticate(
+      offlineWaitingViewer,
+      harness.room,
+      "viewer",
+      "ordinary-grace-offline-waiting",
+    );
+    expect((await host.inbox.next("peer-waiting")).peerId).toBe(
+      offlineWaitingAuth.peerId,
+    );
+    await host.inbox.next("viewer-presence");
+
+    const connectedWaitingViewer = await openClient(harness.webSocketUrl);
+    const connectedWaitingAuth = await authenticate(
+      connectedWaitingViewer,
+      harness.room,
+      "viewer",
+      "ordinary-grace-connected-waiting",
+    );
+    expect((await host.inbox.next("peer-waiting")).peerId).toBe(
+      connectedWaitingAuth.peerId,
+    );
+    await host.inbox.next("viewer-presence");
+
+    await closeClient(activeViewer);
+    await host.inbox.next("viewer-presence");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await closeClient(offlineWaitingViewer);
+    await host.inbox.next("viewer-presence");
+    await host.inbox.expectNone(40);
+
+    expect((await host.inbox.next("peer-left", 300)).peerId).toBe(
+      activeAuth.peerId,
+    );
+    expect((await host.inbox.next("peer-joined", 300)).peerId).toBe(
+      connectedWaitingAuth.peerId,
+    );
+    expect(
+      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
+    ).toEqual([
+      expect.objectContaining({
+        peerId: connectedWaitingAuth.peerId,
+        upstream: { kind: "peer", peerId: hostAuth.peerId },
+      }),
+    ]);
+
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: connectedWaitingAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId: "promoted-host-offer",
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await connectedWaitingViewer.inbox.next("signal")).toMatchObject({
+      payload: { connectionId: "promoted-host-offer" },
+    });
+    expect((await host.inbox.next("peer-left", 300)).peerId).toBe(
+      offlineWaitingAuth.peerId,
+    );
+  });
+
   it("clears the previous media generation when sharing stops", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 300 });
     const host = await openClient(harness.webSocketUrl);
@@ -9636,7 +9888,7 @@ describe("WebSocket signaling", () => {
         `viewer-client-${index}`,
       );
       expect(viewerAuth.maxViewers).toBe(maxViewersPerRoom);
-      await host.inbox.next("peer-joined");
+      await host.inbox.next(index <= 2 ? "peer-joined" : "peer-waiting");
       viewers.push(viewer);
     }
 

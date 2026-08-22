@@ -17,8 +17,8 @@ type viewerAdmission struct {
 	waitSet   map[string]struct{}
 }
 
-func newViewerAdmission(maxViewers int) *viewerAdmission {
-	edgeLimit := maxHostEdges
+func newViewerAdmission(maxViewers, endpointMediaCopyCapacity int) *viewerAdmission {
+	edgeLimit := endpointMediaCopyCapacity
 	if maxViewers < edgeLimit {
 		edgeLimit = maxViewers
 	}
@@ -30,33 +30,53 @@ func newViewerAdmission(maxViewers int) *viewerAdmission {
 	}
 }
 
-func (admission *viewerAdmission) Join(peerID string) admissionAction {
+func (admission *viewerAdmission) Activate(peerID string) admissionAction {
 	if _, exists := admission.active[peerID]; exists {
 		return admissionDuplicate
 	}
+	_, wasWaiting := admission.waitSet[peerID]
+	if !wasWaiting && len(admission.active)+len(admission.waiting) >= admission.roomLimit {
+		return admissionFull
+	}
+	if len(admission.active) >= admission.edgeLimit {
+		return admissionFull
+	}
+	if wasWaiting {
+		admission.removeWaiting(peerID)
+	}
+	admission.active[peerID] = struct{}{}
+	return admissionActivate
+}
+
+func (admission *viewerAdmission) Wait(peerID string) admissionAction {
 	if _, exists := admission.waitSet[peerID]; exists {
 		return admissionDuplicate
 	}
-	if len(admission.active) < admission.edgeLimit {
-		admission.active[peerID] = struct{}{}
-		return admissionActivate
-	}
-	if len(admission.active)+len(admission.waiting) >= admission.roomLimit {
+	_, wasActive := admission.active[peerID]
+	if !wasActive && len(admission.active)+len(admission.waiting) >= admission.roomLimit {
 		return admissionFull
+	}
+	if wasActive {
+		delete(admission.active, peerID)
 	}
 	admission.waiting = append(admission.waiting, peerID)
 	admission.waitSet[peerID] = struct{}{}
 	return admissionWait
 }
 
-func (admission *viewerAdmission) Leave(peerID string) (wasActive bool, promoted string) {
+func (admission *viewerAdmission) Leave(peerID string) (wasActive bool) {
 	if _, exists := admission.active[peerID]; exists {
 		delete(admission.active, peerID)
-		return true, admission.promoteNext()
+		return true
 	}
 	if _, exists := admission.waitSet[peerID]; !exists {
-		return false, ""
+		return false
 	}
+	admission.removeWaiting(peerID)
+	return false
+}
+
+func (admission *viewerAdmission) removeWaiting(peerID string) {
 	delete(admission.waitSet, peerID)
 	for index, waitingID := range admission.waiting {
 		if waitingID != peerID {
@@ -67,7 +87,6 @@ func (admission *viewerAdmission) Leave(peerID string) (wasActive bool, promoted
 		admission.waiting = admission.waiting[:len(admission.waiting)-1]
 		break
 	}
-	return false, ""
 }
 
 func (admission *viewerAdmission) AbortActivation(peerID string) {
@@ -81,16 +100,4 @@ func (admission *viewerAdmission) Counts() (active, waiting int) {
 func (admission *viewerAdmission) IsActive(peerID string) bool {
 	_, exists := admission.active[peerID]
 	return exists
-}
-
-func (admission *viewerAdmission) promoteNext() string {
-	if len(admission.waiting) == 0 {
-		return ""
-	}
-	promoted := admission.waiting[0]
-	admission.waiting[0] = ""
-	admission.waiting = admission.waiting[1:]
-	delete(admission.waitSet, promoted)
-	admission.active[promoted] = struct{}{}
-	return promoted
 }

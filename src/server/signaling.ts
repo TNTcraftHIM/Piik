@@ -21,6 +21,7 @@ import {
   type ServerMessage,
   type ParticipantPresenceEntry,
 } from "../shared/protocol.js";
+import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 import {
   RoomStore,
   RoomStoreError,
@@ -123,6 +124,10 @@ export class SignalingServer {
   private readonly shareGenerationsByRoom = new Map<string, string>();
   private readonly pausedShareGenerationsByRoom = new Map<string, string>();
   private readonly deferredViewerPresenceRooms = new Set<string>();
+  private readonly ordinaryActiveHostChildrenByRoom = new Map<
+    string,
+    Set<string>
+  >();
   private readonly hybridMediaRouter?: HybridMediaRouter;
   private readonly now: () => number;
   private readonly authenticationTimeoutMs: number;
@@ -136,6 +141,7 @@ export class SignalingServer {
   private closing = false;
 
   constructor(private readonly options: SignalingOptions) {
+    assertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity);
     this.now = options.now ?? Date.now;
     this.authenticationTimeoutMs = options.authenticationTimeoutMs ?? 5_000;
     this.viewerDisconnectGraceMs = options.viewerDisconnectGraceMs ?? 5_000;
@@ -255,6 +261,7 @@ export class SignalingServer {
     this.viewerMediaReadyByRoom.clear();
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
+    this.ordinaryActiveHostChildrenByRoom.clear();
     this.options.server.off("upgrade", this.upgradeHandler);
 
     for (const socket of this.webSocketServer.clients) {
@@ -531,6 +538,9 @@ export class SignalingServer {
       participant.role === "host"
         ? this.options.roomStore.getConnectedViewers(participant.roomId)
         : [];
+    if (!this.isHybridMediaEnabled()) {
+      this.fillOrdinaryHostChildren(participant.roomId);
+    }
 
     const authenticatedMessage = {
       type: "authenticated" as const,
@@ -539,6 +549,7 @@ export class SignalingServer {
       peerId: participant.peerId,
       roomExpiresAt: participant.expiresAt,
       maxViewers: this.options.roomStore.maxViewersPerRoom,
+      endpointMediaCopyCapacity: this.options.endpointMediaCopyCapacity,
       hostOnline: participant.hostOnline,
       ...(participant.role === "viewer"
         ? {
@@ -549,7 +560,10 @@ export class SignalingServer {
           }
         : {}),
       connectionId,
-      viewerPeerIds: [...participant.viewerPeerIds],
+      viewerPeerIds:
+        participant.role === "host" && !this.isHybridMediaEnabled()
+          ? [...this.ordinaryHostChildPeerIds(participant.roomId)]
+          : [...participant.viewerPeerIds],
       iceConfig: this.iceConfig(),
       viewerPolicy: participant.viewerPolicy,
       viewerAuthorizationGeneration:
@@ -606,8 +620,18 @@ export class SignalingServer {
             this.pausedShareGenerationsByRoom.get(participant.roomId) ===
             shareGeneration,
         });
-        if (!this.isHybridMediaEnabled()) {
-          this.send(socket, { type: "peer-joined", peerId: viewer.peerId });
+        if (
+          !this.isHybridMediaEnabled() &&
+          !this.isOrdinaryHostChild(participant.roomId, viewer.peerId)
+        ) {
+          this.send(socket, { type: "peer-waiting", peerId: viewer.peerId });
+        }
+      }
+      if (!this.isHybridMediaEnabled()) {
+        for (const viewer of connectedViewers) {
+          if (this.isOrdinaryHostChild(participant.roomId, viewer.peerId)) {
+            this.send(socket, { type: "peer-joined", peerId: viewer.peerId });
+          }
         }
       }
       return;
@@ -625,7 +649,9 @@ export class SignalingServer {
     // event idempotently, which closes races where its local peer was rebuilt
     // while the viewer retained the same server-side connection ID.
     this.sendToSession(host.sessionId, {
-      type: "peer-joined",
+      type: this.isOrdinaryHostChild(participant.roomId, participant.peerId)
+        ? "peer-joined"
+        : "peer-waiting",
       peerId: participant.peerId,
     });
   }
@@ -673,6 +699,12 @@ export class SignalingServer {
         }
         if (message.targetPeerId) {
           this.sendError(socket, "FORBIDDEN", "P2P restart requests target the host implicitly");
+          return;
+        }
+        if (
+          !this.isOrdinaryHostChild(authenticated.roomId, authenticated.peerId)
+        ) {
+          this.sendError(socket, "FORBIDDEN", "Viewer has no active Host edge");
           return;
         }
         this.routeToHost(socket, authenticated, {
@@ -954,6 +986,7 @@ export class SignalingServer {
     if (update.revokedViewers.length > 0) {
       this.clearRoomGraceTimers(authenticated.roomId);
       this.clearRoomConnectionIds(authenticated.roomId);
+      this.ordinaryActiveHostChildrenByRoom.delete(authenticated.roomId);
 
       this.deferredViewerPresenceRooms.add(authenticated.roomId);
       try {
@@ -1257,6 +1290,10 @@ export class SignalingServer {
         this.sendError(sourceSocket, "PEER_NOT_FOUND", "Viewer is not connected");
         return;
       }
+      if (!this.isOrdinaryHostChild(source.roomId, viewer.peerId)) {
+        this.sendError(sourceSocket, "FORBIDDEN", "Viewer has no active Host edge");
+        return;
+      }
       if (description?.type === "offer") {
         this.setViewerConnectionId(
           source.roomId,
@@ -1274,6 +1311,10 @@ export class SignalingServer {
 
     if (message.targetPeerId || description?.type === "offer") {
       this.sendError(sourceSocket, "FORBIDDEN", "Viewer signals may only reply to the host");
+      return;
+    }
+    if (!this.isOrdinaryHostChild(source.roomId, source.peerId)) {
+      this.sendError(sourceSocket, "FORBIDDEN", "Viewer has no active Host edge");
       return;
     }
     this.routeToHost(sourceSocket, source, {
@@ -1488,12 +1529,25 @@ export class SignalingServer {
           );
           return;
         }
+        this.releaseOrdinaryHostChild(disconnected.roomId, disconnected.peerId);
+        const promotedPeerIds = this.fillOrdinaryHostChildren(
+          disconnected.roomId,
+        );
         const host = this.options.roomStore.getConnectedHost(disconnected.roomId);
         if (host) {
           this.sendToSession(host.sessionId, {
             type: "peer-left",
             peerId: disconnected.peerId,
           });
+          for (const peerId of promotedPeerIds) {
+            this.sendToSession(host.sessionId, {
+              type: "peer-joined",
+              peerId,
+            });
+          }
+        }
+        if (promotedPeerIds.length > 0) {
+          this.sendViewerPresence(disconnected.roomId);
         }
       }
     }, this.viewerDisconnectGraceMs);
@@ -1524,6 +1578,7 @@ export class SignalingServer {
     }
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
+    this.ordinaryActiveHostChildrenByRoom.delete(roomId);
     if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.deleteRoom(roomId);
     }
@@ -1544,6 +1599,7 @@ export class SignalingServer {
     for (const expired of this.options.roomStore.expireRooms(this.now())) {
       this.clearRoomGraceTimers(expired.roomId);
       this.clearRoomConnectionIds(expired.roomId);
+      this.ordinaryActiveHostChildrenByRoom.delete(expired.roomId);
       if (this.isHybridMediaEnabled()) {
         this.hybridMediaRouter!.deleteRoom(expired.roomId);
       }
@@ -1601,6 +1657,60 @@ export class SignalingServer {
 
   private isHybridMediaEnabled(): boolean {
     return this.hybridMediaRouter !== undefined;
+  }
+
+  private ordinaryHostChildPeerIds(roomId: string): readonly string[] {
+    const active = this.ordinaryActiveHostChildren(roomId);
+    return this.options.roomStore
+      .getViewerPeerIds(roomId)
+      .filter((peerId) => active.has(peerId));
+  }
+
+  private isOrdinaryHostChild(roomId: string, peerId: string): boolean {
+    return this.ordinaryActiveHostChildren(roomId).has(peerId);
+  }
+
+  private ordinaryActiveHostChildren(roomId: string): Set<string> {
+    let active = this.ordinaryActiveHostChildrenByRoom.get(roomId);
+    if (!active) {
+      active = new Set<string>();
+      this.ordinaryActiveHostChildrenByRoom.set(roomId, active);
+      return active;
+    }
+    const members = new Set(this.options.roomStore.getViewerPeerIds(roomId));
+    for (const peerId of active) {
+      if (!members.has(peerId)) {
+        active.delete(peerId);
+      }
+    }
+    return active;
+  }
+
+  private fillOrdinaryHostChildren(roomId: string): string[] {
+    const active = this.ordinaryActiveHostChildren(roomId);
+    const promotedPeerIds: string[] = [];
+    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+      if (active.size >= this.options.endpointMediaCopyCapacity) {
+        break;
+      }
+      if (active.has(viewer.peerId)) {
+        continue;
+      }
+      active.add(viewer.peerId);
+      promotedPeerIds.push(viewer.peerId);
+    }
+    return promotedPeerIds;
+  }
+
+  private releaseOrdinaryHostChild(roomId: string, peerId: string): void {
+    const active = this.ordinaryActiveHostChildrenByRoom.get(roomId);
+    if (!active) {
+      return;
+    }
+    active.delete(peerId);
+    if (active.size === 0) {
+      this.ordinaryActiveHostChildrenByRoom.delete(roomId);
+    }
   }
 
   private hasConnectionCapacity(): boolean {
@@ -1690,7 +1800,7 @@ export class SignalingServer {
       }
       const upstream = this.isHybridMediaEnabled()
         ? this.hybridMediaRouter!.getViewerRouteUpstream(roomId, viewer.peerId)
-        : host
+        : host && this.isOrdinaryHostChild(roomId, viewer.peerId)
           ? { kind: "peer" as const, peerId: host.peerId }
           : { kind: "none" as const };
       const ready = readyByViewer?.get(viewer.peerId);

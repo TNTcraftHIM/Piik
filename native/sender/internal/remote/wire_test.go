@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-const validHostAuthenticated = `{"type":"authenticated","protocol":"screener-v6","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`
+const validHostAuthenticated = `{"type":"authenticated","protocol":"screener-v6","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"endpointMediaCopyCapacity":2,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`
 
-const validPeerAssistedHostAuthenticated = `{"type":"authenticated","protocol":"screener-v6","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":["viewer-1","viewer-2","viewer-3"],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678","mediaMode":"peer-assisted","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1","viewer-2","viewer-3"]},"routeRevision":7,"routeAssignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1","viewer-2","viewer-3"],"sfuPublicationGeneration":null},"qualitySettings":{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","videoCodec":"automatic"}}`
+const validPeerAssistedHostAuthenticated = `{"type":"authenticated","protocol":"screener-v6","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"endpointMediaCopyCapacity":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":["viewer-1","viewer-2","viewer-3"],"iceConfig":{"iceServers":[{"urls":["stun:example.test"]}]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678","mediaMode":"peer-assisted","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1","viewer-2","viewer-3"]},"routeRevision":7,"routeAssignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1","viewer-2","viewer-3"],"sfuPublicationGeneration":null},"qualitySettings":{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","videoCodec":"automatic"}}`
 
 func TestMarshalHostSignalShapes(t *testing.T) {
 	mid := "0"
@@ -58,7 +58,7 @@ func TestDecodeOrdinaryHostAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if message.MaxViewers != 3 || message.Type != "authenticated" || message.Role != "host" ||
+	if message.MaxViewers != 3 || message.EndpointMediaCopyCapacity != 2 || message.Type != "authenticated" || message.Role != "host" ||
 		message.ViewerPolicy != "private-link" {
 		t.Fatalf("authentication = %+v", message)
 	}
@@ -138,13 +138,16 @@ func TestDecodePeerAssistedRouteMessages(t *testing.T) {
 
 func TestDecodeOrdinaryHostAuthenticationRejectsInvalidVariants(t *testing.T) {
 	tests := map[string]func(map[string]any){
-		"missing-protocol": func(message map[string]any) { delete(message, "protocol") },
-		"wrong-protocol":   func(message map[string]any) { message["protocol"] = "screener-v5" },
-		"missing-max":      func(message map[string]any) { delete(message, "maxViewers") },
-		"zero-max":         func(message map[string]any) { message["maxViewers"] = 0 },
-		"too-large-max":    func(message map[string]any) { message["maxViewers"] = 17 },
-		"peer-mode-extra":  func(message map[string]any) { message["mediaMode"] = "peer-assisted" },
-		"wrong-role":       func(message map[string]any) { message["role"] = "viewer" },
+		"missing-protocol":       func(message map[string]any) { delete(message, "protocol") },
+		"wrong-protocol":         func(message map[string]any) { message["protocol"] = "screener-v5" },
+		"missing-max":            func(message map[string]any) { delete(message, "maxViewers") },
+		"zero-max":               func(message map[string]any) { message["maxViewers"] = 0 },
+		"too-large-max":          func(message map[string]any) { message["maxViewers"] = 17 },
+		"missing-endpoint-cap":   func(message map[string]any) { delete(message, "endpointMediaCopyCapacity") },
+		"zero-endpoint-cap":      func(message map[string]any) { message["endpointMediaCopyCapacity"] = 0 },
+		"too-large-endpoint-cap": func(message map[string]any) { message["endpointMediaCopyCapacity"] = 4 },
+		"peer-mode-extra":        func(message map[string]any) { message["mediaMode"] = "peer-assisted" },
+		"wrong-role":             func(message map[string]any) { message["role"] = "viewer" },
 		"legacy-ice-shape": func(message map[string]any) {
 			message["iceConfig"].(map[string]any)["expiresAt"] = nil
 		},
