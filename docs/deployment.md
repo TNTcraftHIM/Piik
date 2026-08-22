@@ -219,7 +219,8 @@ PEER_ASSISTED_MEDIA=true
 LIVEKIT_URL=wss://share.example.com
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
-MAX_SFU_ROOTS_PER_ROOM=2
+SFU_INGRESS_CAPACITY=<MEASURED_DEPLOYMENT_INGRESS_COPIES>
+SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 ```
 
 The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
@@ -247,7 +248,7 @@ errors to the result.
 `PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
 that a stale room-1 deployment cannot silently retain the old scope. With
 `PEER_ASSISTED_MEDIA=true`, every normal room receives peer-assisted routing,
-optional LiveKit fallback, and the same per-room root/fanout/failure guards.
+optional LiveKit fallback, and the same deployment resource/fanout/failure guards.
 Every ordinary peer connection remains STUN-only; selected-edge TURN is still
 issued only to a current controller-selected edge. There is no browser control,
 percentage rollout, or second router.
@@ -282,14 +283,19 @@ sender atomically on `screener-v6`; restore the exact prior environment and
 release together when rolling back.
 
 The three `LIVEKIT_*` values must either all be absent or all be present, and a
-complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the
-optional SDK and server path dormant. `LIVEKIT_URL` must be a plain `ws:` or
-`wss:` origin with no `/rtc` suffix; production requires `wss:`.
+complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
+safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values. The two
+capacities have no defaults and must be selected from the instance's measured
+publisher/subscriber/bitrate and accepted concurrency matrix. Supplying either
+capacity without the complete fallback configuration fails startup rather than
+silently enabling or ignoring a partial policy. An empty tuple with neither
+capacity keeps the optional SDK and server path dormant. `LIVEKIT_URL` must be a
+plain `ws:` or `wss:` origin with no `/rtc` suffix; production requires `wss:`.
 `LIVEKIT_API_SECRET` must contain at least 32 bytes and must not reuse
-`SITE_ACCESS_PASSWORD`. In that same held release, `MAX_SFU_ROOTS_PER_ROOM` defaults to
-2 and accepts only 1 or 2; it is ignored when LiveKit is not configured. These
-credentials authorize short-lived LiveKit room tokens and do not provide E2EE:
-the LiveKit operator can access ordinary SFU media.
+`SITE_ACCESS_PASSWORD`. These credentials authorize short-lived LiveKit room
+tokens and do not provide E2EE: the LiveKit operator can access ordinary SFU
+media. The current admission owner is one Screener process; run only one
+application process until a shared atomic ledger is implemented.
 
 For the first candidate canary, use an isolated instance and a protected
 persistent room whose ID is stable across restarts. Restart the application and

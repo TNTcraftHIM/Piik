@@ -533,6 +533,39 @@ the server must. Redundancy can improve recovery but costs traffic and
 coordination; removing redundancy leaves a recovery interval after a relay is
 lost.
 
+## Deployment-Wide SFU Admission
+
+LiveKit's official benchmark guidance says each room must fit on one SFU node
+and identifies published tracks, subscribers, and bytes forwarded per subscriber
+as separate capacity drivers. Its room `maxParticipants` setting is a participant
+count guard; it does not express Screener's Host-publication ingress or
+per-subscription egress budget. The application therefore needs its own typed
+admission boundary instead of treating a root count or the SDK room setting as
+resource evidence.
+
+For the current single application process, one O(1) ledger owns two explicitly
+configured positive safe-integer capacities: each Host publication uses one
+ingress unit and each authorized SFU subscription uses one egress unit. There is
+no built-in default or fixed root count. A candidate reserves its full actual
+ingress/egress demand under exact room/share/publication identity before any
+token is issued; concurrent old and candidate generations are both charged.
+Commit promotes the candidate and releases the superseded generation. Abort,
+timeout, disconnect, share rollover, room stop, and room deletion use the same
+idempotent release. Capacity exhaustion leaves the current route unchanged and
+returns control to the bounded fallback sequence.
+
+These capacities are operator inputs derived from the actual instance, codec,
+representation, bitrate, and accepted concurrency matrix. LiveKit's published
+example benchmark cannot supply Screener defaults. A later multi-process
+Screener deployment needs a shared atomic ledger; independent process-local
+counters would not be deployment-wide admission.
+
+Primary sources accessed 2026-08-22:
+
+- [LiveKit benchmarking](https://docs.livekit.io/transport/self-hosting/benchmark/)
+- [LiveKit server configuration sample](https://github.com/livekit/livekit/blob/master/config-sample.yaml)
+- [LiveKit access tokens and room configuration](https://docs.livekit.io/frontends/reference/tokens-grants/)
+
 ## Route Screening
 
 | Route | Where copies are emitted | Endpoint cost | Evidence status |

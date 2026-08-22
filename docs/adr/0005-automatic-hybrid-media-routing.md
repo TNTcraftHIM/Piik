@@ -184,6 +184,20 @@ SFU and TURN remain bounded fallback resources with independent deployment-wide
 admission. Resource exhaustion produces the next bounded candidate, an explicit
 wait, or failure; it never creates unbounded central fanout.
 
+For the single-process deployment, SFU admission is one injected in-memory
+authority with deployment-wide ingress and egress counters. Enabling LiveKit
+requires explicit positive safe-integer `SFU_INGRESS_CAPACITY` and
+`SFU_EGRESS_CAPACITY` values; neither has a product default and neither is
+derived from endpoint capacity, Viewer admission, or a fixed root count. One
+Host publication consumes one ingress unit and every SFU subscription consumes
+one egress unit. A concurrently media-producing candidate consumes its actual
+units in addition to the committed generation. The controller reserves against
+the exact room, share, and publication generation before token issuance,
+promotes that reservation at route commit, and idempotently releases it on
+abort, timeout, participant loss, share rollover, room stop, or room deletion.
+A multi-process application deployment requires a shared atomic admission
+authority before it may claim these values are deployment-wide.
+
 ## Current Production Divergence
 
 Production release `9461e20` predates this revision. Its exact behavior is owned
