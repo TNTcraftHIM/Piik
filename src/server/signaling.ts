@@ -27,9 +27,9 @@ import {
   RoomStoreError,
   type ConnectedPeer,
 } from "./room-store.js";
-import type { SelectedEdgeTurnConfig } from "./config.js";
 import {
   HybridMediaRouter,
+  type SelectedEdgeTurnOptions,
   type SfuFallbackOptions,
 } from "./hybrid-media-router.js";
 import { createIceConfig, type IceConfigOptions } from "./ice.js";
@@ -87,7 +87,7 @@ export interface SignalingOptions {
   peerAssistedMedia: boolean;
   endpointMediaCopyCapacity: number;
   sfuFallback?: SfuFallbackOptions;
-  selectedEdgeTurn?: SelectedEdgeTurnConfig;
+  selectedEdgeTurn?: SelectedEdgeTurnOptions;
   ice: IceConfigOptions;
   allowedOrigins: ReadonlySet<string>;
   siteAccessAtUpgrade: (request: IncomingMessage) => boolean;

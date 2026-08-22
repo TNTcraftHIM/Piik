@@ -5,6 +5,7 @@ const config = {
   urls: ["turn:turn.example.test:3478?transport=udp"] as [string],
   sharedSecret: "t".repeat(32),
   credentialTtlSeconds: 120,
+  allocationCapacity: 4,
 };
 const identity = {
   edgeKind: "peer-selected" as const,

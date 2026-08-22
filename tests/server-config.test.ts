@@ -35,11 +35,13 @@ describe("server configuration", () => {
       SELECTED_EDGE_TURN_URLS: "turn:turn.test:3478?transport=udp",
       SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
       SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
+      SELECTED_EDGE_TURN_ALLOCATION_CAPACITY: "4",
     };
     expect(loadConfig({ ...base, ...turn }).selectedEdgeTurn).toEqual({
       urls: [turn.SELECTED_EDGE_TURN_URLS],
       sharedSecret: turn.SELECTED_EDGE_TURN_SHARED_SECRET,
       credentialTtlSeconds: 120,
+      allocationCapacity: 4,
     });
     expect(loadConfig({ ...base, ...turn }).stunUrls).toEqual([]);
     for (const name of Object.keys(turn)) {
@@ -65,9 +67,30 @@ describe("server configuration", () => {
         SELECTED_EDGE_TURN_URLS: url,
         SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
         SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
+        SELECTED_EDGE_TURN_ALLOCATION_CAPACITY: "4",
       }),
     ).toThrow("one UDP TURN URL");
   });
+
+  it.each(["0", "-1", "1.5", "9007199254740992"])(
+    "rejects an invalid selected-edge TURN allocation capacity of %s",
+    (capacity) => {
+      expect(() =>
+        loadConfig({
+          PEER_ASSISTED_MEDIA: "true",
+          LIVEKIT_URL: "wss://livekit.test",
+          LIVEKIT_API_KEY: "test-key",
+          LIVEKIT_API_SECRET: "s".repeat(32),
+          ...liveKitAdmission,
+          SELECTED_EDGE_TURN_URLS:
+            "turn:turn.test:3478?transport=udp",
+          SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
+          SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
+          SELECTED_EDGE_TURN_ALLOCATION_CAPACITY: capacity,
+        }),
+      ).toThrow("SELECTED_EDGE_TURN_ALLOCATION_CAPACITY must be a positive integer");
+    },
+  );
 
   it("enables LiveKit fallback only for a complete credential tuple", () => {
     const config = loadConfig({

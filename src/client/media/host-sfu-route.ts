@@ -291,7 +291,6 @@ export class HostSfuRoute {
   ): boolean {
     if (
       this.closed ||
-      this.active !== null ||
       !this.route.acceptsConfig(message.revision) ||
       Date.parse(message.expiresAt) <= Date.now()
     ) {
@@ -302,7 +301,8 @@ export class HostSfuRoute {
     if (
       !publicationGeneration ||
       publicationGeneration !== message.publicationGeneration ||
-      message.oldConnectionId !== publicationGeneration
+      message.oldConnectionId !== publicationGeneration ||
+      this.active?.publicationGeneration === publicationGeneration
     ) {
       return false;
     }

@@ -14,11 +14,62 @@ export interface HostPreparedChildIdentity {
   failedConnectionId: string | null;
 }
 
+export interface ActiveSelectedHostChild {
+  peerId: string;
+  connectionId: string;
+  currentRouteRevision: number;
+  pendingCarryRevision: number | null;
+}
+
+export function hostSelectedChildForConnection(
+  children: ReadonlyMap<string, ActiveSelectedHostChild>,
+  peerId: string,
+  connectionId: string,
+): ActiveSelectedHostChild | undefined {
+  const child = children.get(peerId);
+  return child?.connectionId === connectionId ? child : undefined;
+}
+
+export function carryHostSelectedChild(
+  children: Map<string, ActiveSelectedHostChild>,
+  peerId: string,
+  connectionId: string,
+  revision: number,
+): boolean {
+  const child = hostSelectedChildForConnection(
+    children,
+    peerId,
+    connectionId,
+  );
+  if (!child || revision < child.currentRouteRevision) {
+    return false;
+  }
+  child.currentRouteRevision = revision;
+  child.pendingCarryRevision = revision;
+  return true;
+}
+
+export function acceptHostSelectedChildrenRevision(
+  children: Map<string, ActiveSelectedHostChild>,
+  revision: number,
+): string[] {
+  const removedPeerIds: string[] = [];
+  for (const [peerId, child] of children) {
+    if (child.pendingCarryRevision === revision) {
+      child.pendingCarryRevision = null;
+    } else {
+      children.delete(peerId);
+      removedPeerIds.push(peerId);
+    }
+  }
+  return removedPeerIds;
+}
+
 interface HostProvisionalInput {
   revision: number;
   assignment: ParticipantRouteAssignment;
   activeChildPeerIds: readonly string[];
-  selectedPeerId: string | null;
+  selectedPeerIds: Iterable<string>;
   maxMediaEdges: number;
 }
 
@@ -224,9 +275,7 @@ export function plannedHostProvisionalChild(
     countEndpointMediaCopies({
       childPeerIds: input.assignment.childPeerIds,
       publicationGeneration: input.assignment.sfuPublicationGeneration,
-      selectedChildPeerIds: input.selectedPeerId
-        ? [input.selectedPeerId]
-        : [],
+      selectedChildPeerIds: input.selectedPeerIds,
     }) > input.maxMediaEdges
   ) {
     return null;

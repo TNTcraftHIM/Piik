@@ -41,6 +41,30 @@ describe("endpoint media copy accounting", () => {
   });
 
   it.each([
+    [1, null, ["selected-a"]],
+    [2, "publication", ["selected-a"]],
+    [3, "publication", ["selected-a", "selected-b"]],
+  ] as const)(
+    "holds hidden selected carries to endpoint cap %i",
+    (capacity, publicationGeneration, selectedChildPeerIds) => {
+      const atCapacity = countEndpointMediaCopies({
+        childPeerIds: [],
+        publicationGeneration,
+        selectedChildPeerIds,
+      });
+      const overCapacity = countEndpointMediaCopies({
+        childPeerIds: [],
+        publicationGeneration,
+        selectedChildPeerIds: [...selectedChildPeerIds, "selected-overflow"],
+      });
+
+      expect(atCapacity).toBe(capacity);
+      expect(endpointMediaCopyCountFits(atCapacity, capacity)).toBe(true);
+      expect(endpointMediaCopyCountFits(overCapacity, capacity)).toBe(false);
+    },
+  );
+
+  it.each([
     [1, 1, 2],
     [2, 2, 3],
     [3, 3, 3],
