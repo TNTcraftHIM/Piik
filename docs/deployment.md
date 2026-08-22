@@ -302,17 +302,22 @@ production permits plaintext only on loopback and otherwise requires `https:`.
 `SITE_ACCESS_PASSWORD`. These credentials authorize short-lived LiveKit room
 tokens and do not provide E2EE: the LiveKit operator can access ordinary SFU
 media. The LiveKit instance is dedicated to this Screener process and has
-`room.auto_create: false`. Before the HTTP listener accepts traffic, Screener
-rejects any foreign room name, deletes every stale managed room, and confirms
-the namespace empty. Each exact-generation room is then created before its token
-is issued. Reserved, committed, and draining generations remain charged until
+`room.auto_create: false`. Screener first binds the configured application
+listener exclusively; a competing process that cannot bind makes no LiveKit
+call. While bound but not initialized it returns `503` and has no signaling
+upgrade handler. It then rejects any foreign room name, deletes every stale
+managed room, confirms the namespace empty, and begins serving. Each
+exact-generation room is then created before its token is issued. Reserved,
+committed, and draining generations remain charged until
 `DeleteRoom` succeeds and a follow-up lookup proves absence. Run only one
 application process until a shared atomic admission and lifecycle owner exists.
 
 For the first candidate canary, use an isolated instance and a protected
 persistent room whose ID is stable across restarts. Restart the application and
 verify startup removes a seeded stale managed LiveKit room before serving
-traffic. Verify that both the persistent room and a second normal room contain
+traffic. Hold the application port with another process and verify a competing
+startup makes zero LiveKit calls. Verify that both the persistent room and a
+second normal room contain
 `mediaMode: "peer-assisted"`, with independent route revisions and no shared
 room state or capacity bypass. Exercise join, offer and answer, stale-token
 reconnect after abort, Host signaling loss with and without a live Host

@@ -204,11 +204,14 @@ follow-up lookup must prove the room absent before its ingress or egress units
 are released. Because joining cannot recreate a deleted room, a stale
 self-hosted token cannot produce an off-ledger participant.
 
-Before accepting application traffic, the single owner lists its dedicated
-LiveKit instance, rejects foreign room names, deletes every stale Screener room,
-and confirms the owned namespace is empty. Graceful shutdown drains the same
-namespace before forgetting counters. A Host signaling disconnect keeps a
-committed generation charged while its exact LiveKit Host participant exists;
+The single owner first binds the configured application listener exclusively;
+a competing process that cannot bind makes no LiveKit control-plane call. While
+bound but not initialized, HTTP returns `503` and no signaling upgrade handler
+is installed. The owner then lists its dedicated LiveKit instance, rejects
+foreign room names, deletes every stale Screener room, confirms the owned
+namespace empty, and only then accepts application traffic. Graceful shutdown
+drains the same namespace before forgetting counters. A Host signaling
+disconnect keeps a committed generation charged while its exact LiveKit Host participant exists;
 an interval-bounded control-plane check retires it after that participant
 disappears. A multi-process application deployment requires a shared atomic
 admission and lifecycle owner before it may claim these values are
@@ -236,8 +239,9 @@ Before a revised controller ships:
 - route changes preserve unaffected branches and never commit before media
   proof;
 - SFU lifecycle tests keep reserved, committed, and draining generations charged
-  until deletion plus absence proof, reject stale-token room recreation, fence
-  startup against stale or foreign rooms, reclaim an abandoned Host generation
+  until deletion plus absence proof, reject stale-token room recreation, prove a
+  competing listener owner makes no LiveKit call, fence startup against stale or
+  foreign rooms, reclaim an abandoned Host generation
   without cutting a live Host participant, and keep two rooms under one global
   capacity owner;
 - candidate lists are deterministic under input permutation, preserve a healthy

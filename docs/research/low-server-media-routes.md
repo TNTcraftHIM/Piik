@@ -559,9 +559,12 @@ used as resource-release proof. The dedicated LiveKit instance instead disables
 automatic room creation. Screener explicitly creates an exact-generation room
 through `RoomService` before token issuance and uses `DeleteRoom` plus an absent
 room readback as the only drain proof. A deleted room cannot be recreated by a
-stale token when `room.auto_create` is false. At process startup, the one owner
-rejects foreign room names, drains all stale Screener rooms, and confirms the
-namespace empty before it admits a new generation. Host signaling loss is
+stale token when `room.auto_create` is false. At process startup, the application
+first acquires its configured listener; a competing process that cannot bind
+performs no LiveKit operation. The bound owner returns `503` and installs no
+signaling upgrade handler while it rejects foreign room names, drains all stale
+Screener rooms, and confirms the namespace empty before it admits a new
+generation. Host signaling loss is
 checked against the exact LiveKit Host participant on a bounded interval, so
 healthy media stays charged while an abandoned generation is reclaimed after
 the participant disappears.
