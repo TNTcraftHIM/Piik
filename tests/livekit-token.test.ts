@@ -10,20 +10,16 @@ const rootPeerId = "viewer_root_12345678";
 const secondRootPeerId = "viewer_root_23456789";
 const thirdRootPeerId = "viewer_root_34567890";
 
-function issuer(
-  maxViewersPerRoom = 8,
-  maxSfuRootsPerRoom = 2,
-): LiveKitTokenIssuer {
+function issuer(maxViewersPerRoom = 8): LiveKitTokenIssuer {
   return new LiveKitTokenIssuer({
     apiKey,
     apiSecret,
     maxViewersPerRoom,
-    maxSfuRootsPerRoom,
   });
 }
 
 describe("LiveKitTokenIssuer", () => {
-  it("SFU root invariant gate: allows exactly two roots and rejects a third", async () => {
+  it("allows every admitted root within the room Viewer bound", async () => {
     const tokenIssuer = issuer();
     await expect(
       tokenIssuer.issueToken({
@@ -55,7 +51,7 @@ describe("LiveKitTokenIssuer", () => {
           thirdRootPeerId,
         ],
       }),
-    ).rejects.toThrow("root allowlist is invalid");
+    ).resolves.toEqual(expect.any(String));
   });
 
   it("issues a generation-bound host token limited to screen sharing", async () => {
@@ -123,7 +119,7 @@ describe("LiveKitTokenIssuer", () => {
   });
 
   it("rejects duplicate, excessive, and malformed root allowlists", async () => {
-    const tokenIssuer = issuer(8, 1);
+    const tokenIssuer = issuer(1);
     const request = {
       roomId: "7",
       role: "host" as const,

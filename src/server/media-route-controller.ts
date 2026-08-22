@@ -1,5 +1,4 @@
 import {
-  CURRENT_SFU_ROOT_LIMIT,
   MAX_MEDIA_ROUTE_REVISION,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   participantRouteAssignmentSchema,
@@ -282,11 +281,8 @@ function assertRouteInvariants(
   }
 
   const rootPeerIds = new Set(route.sfu.rootPeerIds);
-  if (
-    rootPeerIds.size !== route.sfu.rootPeerIds.length ||
-    rootPeerIds.size > CURRENT_SFU_ROOT_LIMIT
-  ) {
-    throw new Error("SFU root participants must be unique and bounded");
+  if (rootPeerIds.size !== route.sfu.rootPeerIds.length) {
+    throw new Error("SFU root participants must be unique");
   }
   if (
     (route.sfu.publicationGeneration === null) !== (rootPeerIds.size === 0)

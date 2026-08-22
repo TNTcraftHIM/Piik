@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import {
-  CURRENT_SFU_ROOT_LIMIT,
   MAX_MEDIA_ROUTE_REVISION,
   type ClientMessage,
   type MediaAssignment,
@@ -18,6 +17,10 @@ import {
   endpointMediaCopyCountFits,
 } from "../shared/media-copy-accounting.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
+import type {
+  SfuResourceAdmission,
+  SfuResourceFence,
+} from "./sfu-resource-admission.js";
 import type { SelectedEdgeTurnConfig } from "./config.js";
 import {
   MediaRouteController,
@@ -55,6 +58,7 @@ interface PendingRoutePreparation {
   hostSfuIngressTurnAttempted: boolean;
   healthyReselection: HealthySfuReselectionProbe | null;
   peerQualityReselection: PeerQualityReselectionProbe | null;
+  sfuResourceFence: SfuResourceFence | null;
   timer: NodeJS.Timeout;
 }
 
@@ -185,7 +189,7 @@ type SfuPrepareResult = "started" | "busy" | "unavailable";
 export interface SfuFallbackOptions {
   url: string;
   tokenIssuer: SfuTokenIssuer;
-  maxRoots: number;
+  admission: SfuResourceAdmission;
   prepareTimeoutMs?: number;
 }
 
@@ -293,15 +297,11 @@ export class HybridMediaRouter {
       return;
     }
     if (
-      !Number.isSafeInteger(fallback.maxRoots) ||
-      fallback.maxRoots < 1 ||
-      fallback.maxRoots >
-        Math.min(CURRENT_SFU_ROOT_LIMIT, options.roomStore.maxViewersPerRoom) ||
-      (fallback.prepareTimeoutMs !== undefined &&
-        (!Number.isSafeInteger(fallback.prepareTimeoutMs) ||
-          fallback.prepareTimeoutMs <= 0))
+      fallback.prepareTimeoutMs !== undefined &&
+      (!Number.isSafeInteger(fallback.prepareTimeoutMs) ||
+        fallback.prepareTimeoutMs <= 0)
     ) {
-      throw new Error("SFU fallback limits are invalid");
+      throw new Error("SFU fallback timeout is invalid");
     }
     new URL(fallback.url);
   }
@@ -335,6 +335,7 @@ export class HybridMediaRouter {
     this.viewerQualityEvidenceStates.clear();
     this.heldQualityParentExclusionsByViewer.clear();
     this.roomQualityMigrationCooldownUntilMs.clear();
+    this.options.sfuFallback?.admission.releaseAll();
   }
 
   connectParticipant(input: AuthenticatedRouteParticipant): HybridAuthenticationState {
@@ -1038,6 +1039,7 @@ export class HybridMediaRouter {
         parentPeerId,
       },
       peerQualityReselection: null,
+      sfuResourceFence: null,
       timer,
     });
     for (const [sessionId, assignment] of [
@@ -2502,6 +2504,7 @@ export class HybridMediaRouter {
         newParentPeerId,
         newConnectionId: null,
       },
+      sfuResourceFence: null,
       timer,
     });
     this.startRoomQualityMigrationCooldown(roomId);
@@ -2651,7 +2654,8 @@ export class HybridMediaRouter {
   ): SfuPrepareResult {
     const fallback = this.options.sfuFallback;
     const controller = this.mediaRouteControllers.get(roomId);
-    if (!fallback || !controller) {
+    const shareGeneration = this.options.getShareGeneration(roomId);
+    if (!fallback || !controller || !shareGeneration) {
       return "unavailable";
     }
     if (controller.getPendingRoute()) {
@@ -2721,16 +2725,11 @@ export class HybridMediaRouter {
         requestedAssignment.upstream.kind === "peer"
           ? findHostBranchRoot(active.assignments, failedPeerId, hostPeerId)
           : host.childPeerIds[0];
-      if (
-        !budgetRootPeerId ||
-        budgetRootPeerId === hostPeerId ||
-        (!rootPeerIds.includes(budgetRootPeerId) &&
-          rootPeerIds.length >= fallback.maxRoots)
-      ) {
+      if (!budgetRootPeerId || budgetRootPeerId === hostPeerId) {
         this.sendError(
           sourceSessionId,
           "PEER_NOT_FOUND",
-          "SFU fallback root budget is exhausted",
+          "No bounded SFU fallback plan is available",
         );
         return "unavailable";
       }
@@ -2749,7 +2748,6 @@ export class HybridMediaRouter {
     }
 
     if (
-      rootPeerIds.length > fallback.maxRoots ||
       !host ||
       !endpointMediaCopyCountFits(
         countEndpointMediaCopies({
@@ -2762,7 +2760,7 @@ export class HybridMediaRouter {
       this.sendError(
         sourceSessionId,
         "PEER_NOT_FOUND",
-        "SFU fallback root budget is exhausted",
+        "Endpoint media copy capacity is exhausted",
       );
       return "unavailable";
     }
@@ -2803,6 +2801,19 @@ export class HybridMediaRouter {
       }
       expectedSessionIds.set(peerId, peer.sessionId);
     }
+    const sfuResourceFence: SfuResourceFence = {
+      roomId,
+      shareGeneration,
+      publicationGeneration: generation,
+    };
+    if (!fallback.admission.reserve(sfuResourceFence, rootPeerIds.length)) {
+      this.sendError(
+        sourceSessionId,
+        "PEER_NOT_FOUND",
+        "SFU server capacity is exhausted",
+      );
+      return "unavailable";
+    }
     let revision: number | undefined;
     try {
       revision = controller.prepare({
@@ -2812,6 +2823,7 @@ export class HybridMediaRouter {
         sfuRootPeerIds: rootPeerIds,
       });
     } catch {
+      fallback.admission.release(sfuResourceFence);
       this.sendError(
         sourceSessionId,
         "SERVER_ERROR",
@@ -2820,6 +2832,7 @@ export class HybridMediaRouter {
       return "unavailable";
     }
     if (revision === undefined) {
+      fallback.admission.release(sfuResourceFence);
       return "unavailable";
     }
 
@@ -2843,6 +2856,7 @@ export class HybridMediaRouter {
       hostSfuIngressTurnAttempted: false,
       healthyReselection: null,
       peerQualityReselection: null,
+      sfuResourceFence,
       timer,
     });
     void this.issueSfuPrepareGrants(
@@ -2973,6 +2987,12 @@ export class HybridMediaRouter {
     }
     if (!controller.commit(revision)) {
       return;
+    }
+    if (
+      pending.sfuResourceFence &&
+      !this.options.sfuFallback?.admission.commit(pending.sfuResourceFence)
+    ) {
+      throw new Error("Committed SFU route has no resource reservation");
     }
     clearTimeout(pending.timer);
     this.pendingRoutePreparations.delete(roomId);
@@ -3166,11 +3186,14 @@ export class HybridMediaRouter {
   ): void {
     const controller = this.mediaRouteControllers.get(roomId);
     const pending = this.pendingRoutePreparations.get(roomId);
-    if (!controller || !pending) {
+    if (!pending) {
       return;
     }
     clearTimeout(pending.timer);
     this.pendingRoutePreparations.delete(roomId);
+    if (pending.sfuResourceFence) {
+      this.options.sfuFallback?.admission.release(pending.sfuResourceFence);
+    }
     if (pending.healthyReselection) {
       this.options.deleteConnectionId(roomId, pending.healthyReselection.rootPeerId);
     }
@@ -3179,7 +3202,7 @@ export class HybridMediaRouter {
       clearTimeout(ingress.timer);
       this.selectedSfuIngressAttempts.delete(roomId);
     }
-    if (controller.abort(pending.revision)) {
+    if (controller?.abort(pending.revision)) {
       this.broadcastActiveRoute(
         roomId,
         controller.getActiveRoute(),
@@ -3498,6 +3521,9 @@ export class HybridMediaRouter {
     route: RoomMediaRoute,
     excludedPeerId?: string,
   ): void {
+    if (route.sfu.publicationGeneration === null) {
+      this.options.sfuFallback?.admission.releaseRoom(roomId);
+    }
     this.reconcileSelectedPeerEdgeLeases(roomId, route);
     for (const [key, attempt] of this.selectedSfuIngressAttempts) {
       if (attempt.roomId === roomId && attempt.revision !== route.revision) {
@@ -3795,6 +3821,7 @@ export class HybridMediaRouter {
     this.sfuDisabledRoomIds.delete(roomId);
     this.clearRoomViewerQualityEvidenceStates(roomId);
     this.roomQualityMigrationCooldownUntilMs.delete(roomId);
+    this.options.sfuFallback?.admission.releaseRoom(roomId);
   }
 
   private clearSelectedEdgeTurnsForParticipant(

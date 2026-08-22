@@ -12,6 +12,7 @@ import { SiteAccess } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import { createIceConfig } from "./ice.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
+import { SfuResourceAdmission } from "./sfu-resource-admission.js";
 import { RoomDatabase } from "./room-database.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer } from "./signaling.js";
@@ -56,9 +57,11 @@ export async function createScreenerServer(
             apiKey: livekitFallback.apiKey,
             apiSecret: livekitFallback.apiSecret,
             maxViewersPerRoom: config.maxViewersPerRoom,
-            maxSfuRootsPerRoom: livekitFallback.maxSfuRootsPerRoom,
           }),
-        maxRoots: livekitFallback.maxSfuRootsPerRoom,
+        admission: new SfuResourceAdmission({
+          ingressCapacity: livekitFallback.ingressCapacity,
+          egressCapacity: livekitFallback.egressCapacity,
+        }),
       }
     : undefined;
   const roomStore =

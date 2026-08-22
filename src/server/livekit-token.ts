@@ -5,7 +5,6 @@ import {
 } from "livekit-server-sdk";
 
 import {
-  CURRENT_SFU_ROOT_LIMIT,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   type Role,
 } from "../shared/protocol.js";
@@ -30,7 +29,6 @@ export interface LiveKitTokenIssuerOptions {
   apiKey: string;
   apiSecret: string;
   maxViewersPerRoom: number;
-  maxSfuRootsPerRoom: number;
 }
 
 export class LiveKitTokenIssuer implements SfuTokenIssuer {
@@ -45,17 +43,10 @@ export class LiveKitTokenIssuer implements SfuTokenIssuer {
     ) {
       throw new Error("LiveKit viewer limit is invalid");
     }
-    if (
-      !Number.isSafeInteger(options.maxSfuRootsPerRoom) ||
-      options.maxSfuRootsPerRoom < 1 ||
-      options.maxSfuRootsPerRoom > CURRENT_SFU_ROOT_LIMIT
-    ) {
-      throw new Error("LiveKit SFU root limit is invalid");
-    }
   }
 
   async issueToken(request: SfuTokenRequest): Promise<string> {
-    validateTokenRequest(request, this.options.maxSfuRootsPerRoom);
+    validateTokenRequest(request, this.options.maxViewersPerRoom);
 
     const isHost = request.role === "host";
     const room = liveKitRoomName(
@@ -92,7 +83,7 @@ export class LiveKitTokenIssuer implements SfuTokenIssuer {
 
 function validateTokenRequest(
   request: SfuTokenRequest,
-  maxSfuRootsPerRoom: number,
+  maxViewersPerRoom: number,
 ): void {
   if (!ROOM_ID_PATTERN.test(request.roomId)) {
     throw new Error("LiveKit room ID is invalid");
@@ -104,7 +95,7 @@ function validateTokenRequest(
     throw new Error("LiveKit participant identity is invalid");
   }
   if (
-    request.allowlistedRootPeerIds.length > maxSfuRootsPerRoom ||
+    request.allowlistedRootPeerIds.length > maxViewersPerRoom ||
     request.allowlistedRootPeerIds.some(
       (peerId) => !OPAQUE_ID_PATTERN.test(peerId),
     )

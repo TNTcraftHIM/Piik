@@ -25,8 +25,11 @@ import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
 import { SignalingServer } from "../src/server/signaling.ts";
 import type { SfuTokenIssuer } from "../src/server/livekit-token.ts";
 import { HybridMediaRouter } from "../src/server/hybrid-media-router.ts";
+import { SfuResourceAdmission } from "../src/server/sfu-resource-admission.ts";
 
 const allowedOrigin = "http://allowed.test";
+const TEST_SFU_INGRESS_CAPACITY = 10;
+const TEST_SFU_EGRESS_CAPACITY = 16;
 const defaultQualitySettings = {
   resolution: "1080p",
   maxFramerate: 60,
@@ -142,6 +145,7 @@ interface SignalHarness {
   roomStore: RoomStore;
   room: CreatedRoom;
   database?: RoomDatabase;
+  sfuAdmission?: SfuResourceAdmission;
 }
 
 function testConfig(): ServerConfig {
@@ -640,7 +644,8 @@ async function startSfuHarness(options: {
   selectedEdgeTurn?: boolean;
   persistent?: boolean;
   prepareTimeoutMs?: number;
-  maxRoots?: number;
+  sfuIngressCapacity?: number;
+  sfuEgressCapacity?: number;
   endpointMediaCopyCapacity?: number;
   viewerDisconnectGraceMs?: number;
   stunUrls?: readonly string[];
@@ -660,6 +665,12 @@ async function startSfuHarness(options: {
     response.statusCode = 404;
     response.end();
   });
+  const sfuAdmission = new SfuResourceAdmission({
+    ingressCapacity:
+      options.sfuIngressCapacity ?? TEST_SFU_INGRESS_CAPACITY,
+    egressCapacity:
+      options.sfuEgressCapacity ?? TEST_SFU_EGRESS_CAPACITY,
+  });
   const signaling = new SignalingServer({
     server: httpServer,
     roomStore,
@@ -669,7 +680,7 @@ async function startSfuHarness(options: {
     sfuFallback: {
       url: "wss://sfu.example.test",
       tokenIssuer: options.tokenIssuer,
-      maxRoots: options.maxRoots ?? 2,
+      admission: sfuAdmission,
       prepareTimeoutMs: options.prepareTimeoutMs,
     },
     ...(options.selectedEdgeTurn
@@ -723,6 +734,7 @@ async function startSfuHarness(options: {
     webSocketUrl: `ws://127.0.0.1:${port}/signal`,
     roomStore,
     room,
+    sfuAdmission,
   };
 }
 
@@ -2286,6 +2298,7 @@ describe("WebSocket signaling", () => {
     const hostPrepare = await nextPreparedRoute(peers.host);
     const branchPrepare = await nextPreparedRoute(peers.secondRoot);
     const failedPrepare = await nextPreparedRoute(peers.failedViewer);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 2 });
     await peers.host.inbox.next("sfu-config");
     await peers.secondRoot.inbox.next("sfu-config");
     await peers.failedViewer.inbox.next("sfu-config");
@@ -2368,6 +2381,7 @@ describe("WebSocket signaling", () => {
       childPeerIds: [],
       sfuPublicationGeneration: null,
     });
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
     await expect(peers.host.inbox.next("signal", 30)).rejects.toThrow(
       "Timed out",
     );
@@ -6123,7 +6137,7 @@ describe("WebSocket signaling", () => {
     );
   });
 
-  it("SFU root invariant gate: retains a zero-child root across commit and reauthentication", async () => {
+  it("retains a zero-child SFU root across commit and reauthentication", async () => {
     const issued: Array<
       Parameters<SfuTokenIssuer["issueToken"]>[0]
     > = [];
@@ -6495,18 +6509,19 @@ describe("WebSocket signaling", () => {
       direct.host.inbox.next("selected-edge-turn"),
     ]);
     expect(viewerGrant.oldConnectionId).toBe(direct.oldConnectionId);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
   it("commits one healthy SFU root probe only after the peer edge is proven", async () => {
     const harness = await startSfuHarness({
       tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
-      maxRoots: 1,
     });
     const active = await activateSingleViewerSfu(
       harness.webSocketUrl,
       harness.room,
       "healthy-commit",
     );
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
 
     requestHealthyReselection(active.viewer, active.revision - 1);
     await expect(active.viewer.inbox.next("route-update", 40)).rejects.toThrow("Timed out");
@@ -6580,6 +6595,7 @@ describe("WebSocket signaling", () => {
       peerId: active.hostAuth.peerId,
     });
     expect(hostActive.assignment.sfuPublicationGeneration).toBeNull();
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
 
     active.viewer.socket.send(JSON.stringify({
       type: "route-failed",
@@ -8149,14 +8165,16 @@ describe("WebSocket signaling", () => {
     );
   });
 
-  it("fails a deep SFU fallback cleanly when its root budget is one", async () => {
+  it("fails a deep SFU fallback cleanly when deployment egress is exhausted", async () => {
+    let issuedTokens = 0;
     const harness = await startSfuHarness({
       tokenIssuer: {
         async issueToken(request) {
+          issuedTokens += 1;
           return `token-${request.peerId}`;
         },
       },
-      maxRoots: 1,
+      sfuEgressCapacity: 1,
     });
     const peers = await exhaustDeepViewerPeerRoutes(
       harness.webSocketUrl,
@@ -8168,6 +8186,8 @@ describe("WebSocket signaling", () => {
       "PEER_NOT_FOUND",
     );
     await expect(nextPreparedRoute(peers.host)).rejects.toThrow("Timed out");
+    expect(issuedTokens).toBe(0);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
     expect(peers.host.socket.readyState).toBe(WebSocket.OPEN);
   });
 
@@ -8355,6 +8375,7 @@ describe("WebSocket signaling", () => {
     );
     expect(hostActive.assignment.sfuPublicationGeneration).toBeTruthy();
     expect(issued).toHaveLength(3);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 2 });
 
     await closeClient(peers.failedViewer);
     const retiredHost = await nextActiveRouteAfter(
@@ -8372,6 +8393,7 @@ describe("WebSocket signaling", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(issued).toHaveLength(3);
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
   it("separates host signaling reconnects from new sharing generations", async () => {
@@ -8407,6 +8429,7 @@ describe("WebSocket signaling", () => {
       prepared.rootPrepare.revision,
     );
     expect(active.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
 
     const sameShareHost = await openClient(harness.webSocketUrl);
     const sameShareAuth = peerAssisted(
@@ -8447,6 +8470,7 @@ describe("WebSocket signaling", () => {
     await prepared.failedViewer.inbox.next("sharing-stopped");
     expect(nextShareAuth.routeRevision).toBeLessThanOrEqual(active.revision);
     expect(nextShareAuth.routeAssignment.sfuPublicationGeneration).toBeNull();
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
 
     const staleStopClosed = new Promise<number>((resolve) =>
       nextShareHost.socket.once("close", (code) => resolve(code)),
@@ -8657,6 +8681,7 @@ describe("WebSocket signaling", () => {
       harness.room,
       "timeout",
     );
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
     const timedOutRollback = await nextActiveRouteAfter(
       timedOut.host,
       timedOut.hostPrepare.revision,
@@ -8669,6 +8694,7 @@ describe("WebSocket signaling", () => {
         sfuPublicationGeneration: null,
       },
     });
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
 
     const replacementRoom = harness.roomStore.createRoom();
     const replacing = await prepareFallbackForTwoViewers(
@@ -8676,6 +8702,7 @@ describe("WebSocket signaling", () => {
       replacementRoom,
       "replacement",
     );
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 1, egress: 1 });
     const replacementRoot = await openClient(harness.webSocketUrl);
     const replacementAuth = peerAssisted(
       await authenticate(
@@ -8700,6 +8727,7 @@ describe("WebSocket signaling", () => {
     expect(replacementRollback.revision).toBe(
       replacing.hostPrepare.revision + 1,
     );
+    expect(harness.sfuAdmission?.usage()).toEqual({ ingress: 0, egress: 0 });
 
     replacing.rootViewer.socket.send(
       JSON.stringify({

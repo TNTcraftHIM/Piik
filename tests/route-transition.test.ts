@@ -1203,7 +1203,7 @@ describe("HostSfuRoute", () => {
 });
 
 describe("ViewerSfuRoute", () => {
-  it("SFU root invariant gate: retains an active subscriber when the root has zero peer children", async () => {
+  it("retains an active SFU subscriber when the root has zero peer children", async () => {
     const reconcileSfuChildren = vi.fn();
     const { route, subscriber } = await activateViewerSfuRoute({
       activatePeer: () => undefined,
