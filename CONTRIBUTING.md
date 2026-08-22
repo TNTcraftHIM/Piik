@@ -7,7 +7,7 @@
 3. For non-trivial design, implementation, or bug fixing, inspect the repository and research current primary sources before changing code. Record durable findings under `docs/research/`.
 4. Reconcile the requested outcome against the whole current product model and conflicting evidence. Before implementation, update every affected owning requirement/design/ADR/research document and current memory/status, replace stale current text, and checkpoint that nonvolatile truth in Git. If semantics remain disputed, record a hold and stop dependent implementation.
 5. Implement the smallest complete change from that checkpoint. Add tests and concise rationale comments in proportion to risk, and keep operational/current-truth updates in the same coherent pull request when implementation changes source facts.
-6. Run `sh scripts/check-project-state.sh` on macOS/Linux/Git Bash or `./scripts/check-project-state.ps1` on PowerShell, plus `npm run check` and any relevant manual browser/network checks. Record this local evidence in the pull request; GitHub Actions are reserved for `main` integration, releases, and explicit manual runs.
+6. Run `sh scripts/check-project-state.sh` on macOS/Linux/Git Bash or `./scripts/check-project-state.ps1` on PowerShell, plus `npm run check` and any relevant manual browser/network checks. Record this local evidence in the pull request; feature branches and pull requests use local gates, while GitHub Actions are reserved for `main` integration, releases, and explicit manual runs. Do not retry zero-step or infrastructure failures.
 7. Merge an accepted truth checkpoint before dependent candidates. Rebase or rebuild a retained candidate from that main once, keeping main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts. Make focused commits using `type(scope): summary` where practical, then push the branch.
    Create any new implementation branch or parallel worktree from that exact canonical `main` commit, never from an older candidate or auxiliary worktree.
 8. Open a pull request using the repository template. Resolve review comments and required local checks before merging.
@@ -23,6 +23,7 @@ Clean up worktrees and branches only after semantic review and integration are c
 - Use current community issues and operational reports to identify real compatibility failures, but label anecdotal evidence as such.
 - Include a date and direct URLs. Separate verified facts, measurements, assumptions, and recommendations.
 - Review licenses before copying implementation code. A useful reference is not automatically a compatible dependency.
+- Until the project license and distribution model are decided, treat GPL/AGPL implementation sources as study-only.
 
 ## Pull Request Scope
 

@@ -5,18 +5,14 @@
   exact-room canary
 - Status: rejected after bounded production canary; historical evidence only
 
-> Truth-audit boundary: the rejection of participant-wide TURN and the
-> STUN-only ordinary-peer fact remain valid inputs. The exact SFU/TURN order,
-> one-lease room policy, Host-ingress exception, and resource accounting below
-> describe the deployed candidate or a historical recommendation and are held
-> by the [TODO audit](../todo-audit-hold.md); they are not current design
-> authority.
+The remainder records the tested candidate and exact release behavior. Current
+transport design is owned by [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md).
 
 ## Decision
 
 Do not deploy or continue the built-in participant-wide candidate. Ordinary
 peer connections remain STUN-only. Exact release `9461e20` implements this
-ladder, whose future placement and accounting are now held:
+ladder:
 
 ```text
 direct/peer UDP -> SFU/UDP virtual parent -> selected-edge TURN -> failure

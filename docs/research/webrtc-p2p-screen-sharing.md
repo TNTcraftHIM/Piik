@@ -6,7 +6,8 @@
 - 目标场景：一名玩家向少量熟人私密分享，观看者可用手机/桌面浏览器加入，低延迟，尽量不消耗媒体服务器带宽
 - 结论状态：本文记录已部署 PoC 的 P2P/coturn 基线。ADR-0005 与[低服务器成本媒体路由](./low-server-media-routes.md)已取代本文早期“每条 peer edge 必带 TURN”的旗舰建议；生产后续移除了 room `1` 边界，ordinary ICE 仍为 STUN-only，selected-edge TURN 已配置但尚未完成真实媒体验收
 
-> Truth-audit boundary: direct/peer first、ordinary STUN-only 和 dated production evidence 仍是输入；固定 SFU/TURN 顺序、root/lease 数值和资源计账受 [TODO audit hold](../todo-audit-hold.md) 约束，不是当前实现授权。
+本文是可行性与历史证据，不定义当前路由策略；当前约束见
+[ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) 与 [TODO 台账](../todo.md)。
 
 ## 结论
 
@@ -20,7 +21,7 @@
    |
    +---- direct/peer UDP -> SFU root -> selected TURN edge
 
-2026-08-18 的历史目标顺序是 direct/peer UDP -> SFU virtual parent -> optional selected-edge TURN -> 明确失败；room `1` 只是首个 bounded production smoke，生产后来移除了 exact-room 边界并对所有房间运行 automatic controller。retained-media 验收仍未完成，未来 SFU/TURN 顺序与计账受 truth-audit hold 约束。
+2026-08-18 的历史目标顺序是 direct/peer UDP -> SFU virtual parent -> optional selected-edge TURN -> 明确失败；room `1` 只是首个 bounded production smoke，生产后来移除了 exact-room 边界并对所有房间运行 automatic controller。retained-media 验收仍未完成，未来 SFU/TURN 顺序与计账尚未接受。
 系统必须无感完成拓扑分配、恢复和必要迁移；大规模公开分享仍直接使用现有直播服务。
 ```
 
@@ -119,10 +120,10 @@ IETF 对 mesh/SFU 的拓扑说明见 [RFC 7667](https://www.rfc-editor.org/rfc/r
 - 生产已移除 exact-room allowlist，所有房间由 bounded peer-assisted/SFU controller 自动路由；ordinary peer 仍使用 STUN-only ICE。
 - 当前 PoC 默认允许八名观看者，部署者可配置 1 至 16，超额连接会被明确拒绝。该数值只控制接入，不代表 1:8 已通过性能验收；必须收集可用上行、实际发送码率、`qualityLimitationReason`、编码耗时和发送队列来确定真实可持续人数。
 - 每条 ordinary peer 链路独立使用 STUN-only ICE；只有控制器选中的异常 edge 才会获得短期 TURN credential。
-- Exact release `9461e20` 的所有房间在 peer recovery 与 alternate parent 耗尽后可准备最多两个 SFU/UDP roots；这是受 truth-audit hold 约束的已部署事实，不是未来固定 root 数的授权。首次 room `1` smoke 已观察到 participant entry，但 retained media 尚未验收。
+- Exact release `9461e20` 的所有房间在 peer recovery 与 alternate parent 耗尽后可准备最多两个 SFU/UDP roots；这是已部署事实，不是未来固定 root 数的授权。首次 room `1` smoke 已观察到 participant entry，但 retained media 尚未验收。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
-当前接受的非服务器 endpoint downstream 默认值为二，并允许部署静态配置为一、二或三；分享端及 Viewer 遵守同一规则。ADR-0004 的可删除实验验证第三名及后续 viewer 可由客户端转发；ADR-0005 的自动 controller 最初在 room `1` 受限部署，现已覆盖所有房间。未来 SFU/TURN 层级、计账和 fallback 顺序仍在 truth-audit hold 中。retained SFU media、移动端矩阵和 broad rollout 仍未通过门槛；已关闭 PR #12 的显式整房 SFU 模式不再是当前方案。超过小房间上限时仍建议使用外部直播服务。观察项包括：
+当前接受的非服务器 endpoint downstream 默认值为二，并允许部署静态配置为一、二或三；分享端及 Viewer 遵守同一规则。ADR-0004 的可删除实验验证第三名及后续 viewer 可由客户端转发；ADR-0005 的自动 controller 最初在 room `1` 受限部署，现已覆盖所有房间。未来 SFU/TURN 层级、计账和 fallback 顺序尚未接受。retained SFU media、移动端矩阵和 broad rollout 仍未通过门槛；已关闭 PR #12 的显式整房 SFU 模式不再是当前方案。超过小房间上限时仍建议使用外部直播服务。观察项包括：
 
 - 正常工作负载持续超过实测可承载的 P2P 人数。
 - 当前 edge 已耗尽 peer recovery、alternate parent 与 SFU/UDP；未来只有该 edge 可进入 selected-edge TURN 决策。
