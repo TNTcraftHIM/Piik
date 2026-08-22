@@ -280,6 +280,18 @@ fanout stayed at two and relay fanout at one. This is control and continuity
 evidence only, not visual-quality, full-resolution, load, TURN, public-network,
 or endurance evidence.
 
+A 2026-08-22 current-release rerun at exact source `b77f4eb58944` used Chrome
+151.0.7922.138, three Viewers, the Host2/ordinary Browser Viewer1 policy, an
+eight-second sample window, and the existing hard-departure recovery gate. All
+three Viewers decoded; Host media fanout peaked at two, Browser relay fanout at
+one, and no SFU publication appeared. Closing the first-level relay page moved
+its affected descendant and resumed advancing frames in 5,380 ms while the Host
+remained within two media edges. The requested synthetic source was 1280x720 at
+30 fps, but observed final samples remained 320x180 at roughly 9-11 fps. This is
+real local `RTCPeerConnection` media and hard-participant-departure evidence. It
+does not exercise correlated bad-quality detection or provisional MBB, a silent
+socket partition, SFU, TURN, a public network, game capture, or resource quality.
+
 A 2026-08-21 local Chrome 151 capacity-two run used one Host and five Viewers
 with a synthetic 720p30 stream. Host and relay fanout peaked at two; one Viewer
 simultaneously served two children, whose inbound counters each advanced by 80
