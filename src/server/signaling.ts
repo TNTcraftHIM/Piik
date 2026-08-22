@@ -38,6 +38,7 @@ type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
 const MAX_BUFFERED_SIGNAL_BYTES = 256 * 1024;
 const DEFAULT_MAX_SIGNAL_CONNECTIONS = 2_048;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS = 256;
+const MIN_SIGNALING_CHALLENGE_INTERVAL_MS = 1_000;
 
 interface AuthenticatedSession {
   roomId: string;
@@ -58,6 +59,7 @@ interface SocketState {
   revoked?: boolean;
   authenticating?: boolean;
   viewerPasswordUpdatePending?: boolean;
+  lastSignalingChallengeAtMs?: number;
   authenticated?: AuthenticatedSession;
 }
 
@@ -634,6 +636,29 @@ export class SignalingServer {
     message: Exclude<ClientMessage, { type: "authenticate" }>,
   ): void {
     switch (message.type) {
+      case "signaling-challenge": {
+        const state = this.socketStates.get(socket);
+        if (!state || state.authenticated !== authenticated) {
+          return;
+        }
+        const now = this.now();
+        if (state.lastSignalingChallengeAtMs !== undefined) {
+          const elapsedMs = now - state.lastSignalingChallengeAtMs;
+          if (elapsedMs < 0) {
+            state.lastSignalingChallengeAtMs = now;
+            return;
+          }
+          if (elapsedMs < MIN_SIGNALING_CHALLENGE_INTERVAL_MS) {
+            return;
+          }
+        }
+        state.lastSignalingChallengeAtMs = now;
+        this.send(socket, {
+          type: "signaling-challenge-response",
+          sequence: message.sequence,
+        });
+        return;
+      }
       case "signal":
         this.routeSignal(socket, authenticated, message);
         return;

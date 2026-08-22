@@ -40,6 +40,7 @@ import {
 } from "../src/client/webrtc/stats.ts";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -657,6 +658,251 @@ describe("client signaling recovery policy", () => {
     expect(signal.reconnect()).toBe(true);
     expect(sockets[0]!.close).toHaveBeenCalledWith(4002, "client reconnect");
     expect(signal.reconnect()).toBe(false);
+  });
+
+  it("confirms an exact silent partition before replacing the socket immediately", () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn((code?: number, reason?: string) => {
+        void code;
+        void reason;
+        this.readyState = FakeWebSocket.CLOSING;
+      });
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/123456789012"),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    const statuses: string[] = [];
+    const onMessage = vi.fn();
+    const onTerminated = vi.fn();
+    const signal = new SignalingClient(
+      {
+        roomId: "123456789012",
+        role: "host",
+        token: "h".repeat(43),
+        clientId: "host-client",
+      },
+      {
+        onMessage,
+        onStatus: (status) => statuses.push(status),
+        onTerminated,
+        onAccessRequired: () => undefined,
+      },
+      () => now,
+    );
+    const receive = (socket: FakeWebSocket, value: object) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: JSON.stringify(value) });
+      socket.dispatchEvent(event);
+    };
+    const authenticate = (socket: FakeWebSocket) => {
+      socket.dispatchEvent(new Event("open"));
+      receive(socket, {
+        type: "authenticated",
+        protocol: "screener-v5",
+        role: "host",
+        peerId: "host_12345678",
+        roomExpiresAt: null,
+        maxViewers: 8,
+        hostOnline: true,
+        connectionId: null,
+        viewerPeerIds: [],
+        iceConfig: { iceServers: [] },
+        viewerPolicy: "private-link",
+        viewerAuthorizationGeneration: "viewer_generation_12345678",
+      });
+    };
+    const advance = (milliseconds: number) => {
+      now += milliseconds;
+      vi.advanceTimersByTime(milliseconds);
+    };
+
+    signal.start();
+    authenticate(sockets[0]!);
+    advance(5_000);
+    const first = JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0]));
+    expect(first).toEqual({ type: "signaling-challenge", sequence: 1 });
+
+    advance(2_000);
+    const confirm = JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0]));
+    expect(confirm).toEqual({ type: "signaling-challenge", sequence: 2 });
+    receive(sockets[0]!, {
+      type: "signaling-challenge-response",
+      sequence: first.sequence,
+    });
+    advance(2_000);
+
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]!.close).toHaveBeenCalledWith(4002, "signaling timeout");
+    expect(statuses.at(-1)).toBe("reconnecting");
+    expect(onTerminated).not.toHaveBeenCalled();
+    expect(
+      sockets[0]!.send.mock.calls
+        .map(([value]) => JSON.parse(String(value)).type)
+        .includes("route-failed"),
+    ).toBe(false);
+
+    receive(sockets[0]!, {
+      type: "signaling-challenge-response",
+      sequence: confirm.sequence,
+    });
+    const oldClose = new Event("close");
+    Object.defineProperties(oldClose, {
+      code: { value: 4002 },
+      reason: { value: "signaling timeout" },
+    });
+    sockets[0]!.dispatchEvent(oldClose);
+    authenticate(sockets[1]!);
+    advance(5_000);
+    const healthy = JSON.parse(String(sockets[1]!.send.mock.calls.at(-1)![0]));
+    receive(sockets[1]!, {
+      type: "signaling-challenge-response",
+      sequence: healthy.sequence,
+    });
+    advance(2_000);
+
+    expect(sockets).toHaveLength(2);
+    expect(onMessage).toHaveBeenCalledTimes(2);
+    signal.stop();
+  });
+
+  it("rebases inactive, hidden, and obviously delayed challenge windows", () => {
+    vi.useFakeTimers();
+    let now = 0;
+    let visibilityState: DocumentVisibilityState = "visible";
+    const documentTarget = new EventTarget();
+    Object.defineProperty(documentTarget, "visibilityState", {
+      get: () => visibilityState,
+    });
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", documentTarget);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/123456789012"),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    const onMessage = vi.fn();
+    const signal = new SignalingClient(
+      {
+        roomId: "123456789012",
+        role: "viewer",
+        clientId: "viewer-client",
+      },
+      {
+        onMessage,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+      () => now,
+    );
+    const receive = (value: object) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: JSON.stringify(value) });
+      sockets[0]!.dispatchEvent(event);
+    };
+    const advance = (milliseconds: number) => {
+      now += milliseconds;
+      vi.advanceTimersByTime(milliseconds);
+    };
+
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    receive({
+      type: "authenticated",
+      protocol: "screener-v5",
+      role: "viewer",
+      peerId: "viewer_12345678",
+      roomExpiresAt: null,
+      maxViewers: 8,
+      hostOnline: true,
+      connectionId: "connection_12345678",
+      viewerPeerIds: [],
+      iceConfig: { iceServers: [] },
+      viewerPolicy: "private-link",
+      viewerAuthorizationGeneration: "viewer_generation_12345678",
+      mediaMode: "peer-assisted",
+      mediaAssignment: { parentPeerId: null, childPeerIds: [] },
+      routeRevision: 1,
+      routeAssignment: {
+        upstream: { kind: "none" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      },
+      qualitySettings: {
+        resolution: "1080p",
+        maxFramerate: 30,
+        maxBitrate: 5_000_000,
+        degradationPreference: "balanced",
+        videoCodec: "automatic",
+        screenAudioQuality: "music",
+      },
+    });
+    advance(5_000);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(1);
+
+    receive({
+      type: "route-update",
+      revision: 2,
+      phase: "active",
+      assignment: {
+        upstream: { kind: "peer", peerId: "host_12345678" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      },
+    });
+    advance(5_000);
+    const first = JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0]));
+    expect(first.type).toBe("signaling-challenge");
+
+    visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    advance(20_000);
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(2);
+
+    visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    advance(5_000);
+    const visible = JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0]));
+    receive({
+      type: "signaling-challenge-response",
+      sequence: visible.sequence,
+    });
+    now += 7_000;
+    vi.advanceTimersByTime(5_000);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(3);
+    advance(5_000);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(4);
+    expect(onMessage).toHaveBeenCalledTimes(2);
+    signal.stop();
   });
 
   it.each([

@@ -479,10 +479,15 @@ viewers cannot attach behind any healthy root, a later reviewed config may
 admit additional direct server-fed edges under a separate explicit egress cap;
 it never creates a third endpoint edge or unbounded whole-room fanout.
 
-Sub-second failure recovery is a target after failure detection. The current
-30-second control heartbeat cannot meet it for silent partitions, so the media
-plane needs a small 100-200 ms liveness/queue signal or an equivalent native
-transport event. This signal must be measured before its interval is fixed.
+Sub-second media recovery remains a target after media failure detection. A
+separate browser application challenge detects a silently partitioned signaling
+WebSocket on a bounded 5-second baseline plus two exact 2-second misses, then
+reauthenticates on a new socket without asking ordinary P2P or duplicate
+same-revision SFU media to close and without reporting `route-failed`. Existing
+`peer-selected` TURN authority remains session-bound and follows its bounded
+recovery path after session replacement. Control-plane recovery is not media
+evidence and does not replace a measured media liveness or native transport
+event for sub-second route recovery.
 
 ## Selected-Edge TURN After SFU
 

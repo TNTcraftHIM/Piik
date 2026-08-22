@@ -536,8 +536,20 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
     .strict(),
 ]);
 
+const signalingChallengeSequenceSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(Number.MAX_SAFE_INTEGER);
+
 export const clientMessageSchema = z.union([
   authenticateMessageSchema,
+  z
+    .object({
+      type: z.literal("signaling-challenge"),
+      sequence: signalingChallengeSequenceSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("signal"),
@@ -680,6 +692,12 @@ const authenticatedMessageSchema = z.union([
 
 export const serverMessageSchema = z.union([
   authenticatedMessageSchema,
+  z
+    .object({
+      type: z.literal("signaling-challenge-response"),
+      sequence: signalingChallengeSequenceSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("peer-joined"),

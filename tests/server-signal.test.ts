@@ -1353,6 +1353,35 @@ async function closeClient(client: TestClient): Promise<void> {
 }
 
 describe("WebSocket signaling", () => {
+  it("answers only opted-in current sockets and rate-limits each socket", async () => {
+    let now = Date.now();
+    const harness = await startHarness({ now: () => now });
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "challenge-host");
+
+    host.socket.send(
+      JSON.stringify({ type: "signaling-challenge", sequence: 7 }),
+    );
+    expect(await host.inbox.next("signaling-challenge-response")).toEqual({
+      type: "signaling-challenge-response",
+      sequence: 7,
+    });
+
+    host.socket.send(
+      JSON.stringify({ type: "signaling-challenge", sequence: 8 }),
+    );
+    await host.inbox.expectNone(40);
+
+    now += 1_000;
+    host.socket.send(
+      JSON.stringify({ type: "signaling-challenge", sequence: 9 }),
+    );
+    expect(await host.inbox.next("signaling-challenge-response")).toEqual({
+      type: "signaling-challenge-response",
+      sequence: 9,
+    });
+  });
+
   it("keeps the exact Native Host wire unchanged without a presence opt-in", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);

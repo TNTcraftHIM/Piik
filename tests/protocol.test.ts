@@ -90,6 +90,39 @@ describe("client signaling protocol", () => {
     );
   });
 
+  it("keeps signaling challenges strict and sequence-only", () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: "signaling-challenge",
+        sequence: Number.MAX_SAFE_INTEGER,
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "signaling-challenge-response",
+        sequence: 0,
+      }).success,
+    ).toBe(true);
+    for (const invalid of [
+      { type: "signaling-challenge", sequence: -1 },
+      { type: "signaling-challenge", sequence: 1.5 },
+      {
+        type: "signaling-challenge",
+        sequence: Number.MAX_SAFE_INTEGER + 1,
+      },
+      { type: "signaling-challenge", sequence: 1, roomId },
+      { type: "signaling-challenge-response", sequence: "1" },
+      { type: "signaling-challenge-response", sequence: 1, sessionId: token },
+    ]) {
+      expect(
+        (invalid.type === "signaling-challenge"
+          ? clientMessageSchema
+          : serverMessageSchema
+        ).safeParse(invalid).success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts only the fixed provisional Host lease", () => {
     expect(
       createRoomRequestSchema.parse({ viewerPolicy: "private-link" }),
