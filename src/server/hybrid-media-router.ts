@@ -2104,19 +2104,10 @@ export class HybridMediaRouter {
       return;
     }
     attempt.answered = true;
-    if (this.pendingRoutePreparations.get(roomId)?.timer !== attempt.timer) {
-      clearTimeout(attempt.timer);
+    if (this.pendingRoutePreparations.get(roomId)?.revision === revision) {
+      return;
     }
-    this.selectedSfuIngressAttempts.delete(roomId);
-    this.settleActiveSelectedSfuIngress(roomId);
-    this.activeSelectedSfuIngresses.set(roomId, {
-      shareGeneration: attempt.shareGeneration,
-      hostPeerId: attempt.hostPeerId,
-      hostSessionId: attempt.hostSessionId,
-      publicationGeneration: attempt.publicationGeneration,
-      connectionId: attempt.newConnectionId,
-      allocationFence: attempt.allocationFence,
-    });
+    this.promoteSelectedSfuIngressAttempt(roomId, revision);
   }
 
   private selectedSfuIngressAttemptIsCurrent(
@@ -3207,6 +3198,12 @@ export class HybridMediaRouter {
       }
       supersededSfuFences = result;
     }
+    if (
+      pending.hostSfuIngressTurnAttempted &&
+      !this.promoteSelectedSfuIngressAttempt(roomId, revision)
+    ) {
+      throw new Error("Committed SFU route has no selected ingress candidate");
+    }
     clearTimeout(pending.timer);
     this.pendingRoutePreparations.delete(roomId);
     const active = controller.getActiveRoute();
@@ -4275,6 +4272,28 @@ export class HybridMediaRouter {
     this.selectedSfuIngressAttempts.delete(roomId);
     this.releaseTurnAllocation(attempt.allocationFence);
     return attempt;
+  }
+
+  private promoteSelectedSfuIngressAttempt(
+    roomId: string,
+    revision: number,
+  ): boolean {
+    const attempt = this.selectedSfuIngressAttempts.get(roomId);
+    if (!attempt || attempt.revision !== revision || !attempt.answered) {
+      return false;
+    }
+    clearTimeout(attempt.timer);
+    this.selectedSfuIngressAttempts.delete(roomId);
+    this.settleActiveSelectedSfuIngress(roomId);
+    this.activeSelectedSfuIngresses.set(roomId, {
+      shareGeneration: attempt.shareGeneration,
+      hostPeerId: attempt.hostPeerId,
+      hostSessionId: attempt.hostSessionId,
+      publicationGeneration: attempt.publicationGeneration,
+      connectionId: attempt.newConnectionId,
+      allocationFence: attempt.allocationFence,
+    });
+    return true;
   }
 
   private settleActiveSelectedSfuIngress(

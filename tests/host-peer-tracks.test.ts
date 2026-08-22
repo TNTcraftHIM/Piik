@@ -1005,7 +1005,7 @@ function hostProvisionalInput(
   overrides: {
     activeChildPeerIds?: string[];
     publicationGeneration?: string | null;
-    selectedPeerId?: string | null;
+    selectedPeerIds?: readonly string[];
   } = {},
 ) {
   return {
@@ -1015,7 +1015,7 @@ function hostProvisionalInput(
       overrides.publicationGeneration ?? null,
     ),
     activeChildPeerIds: overrides.activeChildPeerIds ?? [],
-    selectedPeerId: overrides.selectedPeerId ?? null,
+    selectedPeerIds: overrides.selectedPeerIds ?? [],
     maxMediaEdges: 2,
     iceConfig: { iceServers: [] },
     stream,
@@ -1104,7 +1104,7 @@ describe("Host provisional child runtime ownership", () => {
       revision: 9,
       assignment: hostAssignment([]),
       activeChildPeerIds: [],
-      selectedPeerId: null,
+      selectedPeerIds: [],
       maxMediaEdges: 2,
     })).toEqual({ kind: "ordinary" });
     expect(second.connectionState).toBe("closed");
@@ -1694,6 +1694,158 @@ describe("ViewerRelay downstream ownership", () => {
     ).resolves.toBe(false);
     expect(FakePeerConnection.activeCount).toBe(0);
     expect(FakePeerConnection.peakActiveCount).toBe(1);
+    relay.dispose();
+  });
+
+  it("keeps concurrent selected children isolated across carry and failure", async () => {
+    const sendSignal = vi.fn(() => true);
+    const onSelectedEdgeFailed = vi.fn();
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal, onSelectedEdgeFailed },
+    );
+    relay.setChildren(["selected-a", "selected-b"]);
+    relay.setStream(createStream(createTrack("video", "selected-video"), null));
+    await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledTimes(2));
+    const oldConnectionA = relay.getSnapshot("selected-a")!.connectionId;
+    const oldConnectionB = relay.getSnapshot("selected-b")!.connectionId;
+    relay.setChildren([]);
+    expect(FakePeerConnection.activeCount).toBe(0);
+
+    sendSignal.mockClear();
+    const grantA = selectedEdgeTurn(
+      "selected-a",
+      oldConnectionA,
+      "selected-connection-a",
+    );
+    const grantB = selectedEdgeTurn(
+      "selected-b",
+      oldConnectionB,
+      "selected-connection-b",
+    );
+    expect(relay.startSelectedEdgeTurn(grantA, "selected-parent", 7)).toBe(true);
+    expect(relay.startSelectedEdgeTurn(grantB, "selected-parent", 7)).toBe(true);
+    await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledTimes(2));
+    const [selectedConnectionA, selectedConnectionB] =
+      FakePeerConnection.instances.slice(-2);
+    expect(selectedConnectionA).toBeDefined();
+    expect(selectedConnectionB).toBeDefined();
+    expect(FakePeerConnection.activeCount).toBe(2);
+
+    expect(
+      relay.startSelectedEdgeTurn(
+        { ...grantA, revision: 8 },
+        "selected-parent",
+        7,
+      ),
+    ).toBe(true);
+    expect(
+      relay.startSelectedEdgeTurn(
+        { ...grantB, revision: 8 },
+        "selected-parent",
+        7,
+      ),
+    ).toBe(true);
+    relay.acceptActiveRevision(8);
+    relay.setChildren([]);
+    expect(selectedConnectionA!.connectionState).not.toBe("closed");
+    expect(selectedConnectionB!.connectionState).not.toBe("closed");
+    expect(FakePeerConnection.activeCount).toBe(2);
+
+    await expect(
+      relay.acceptSignal(
+        "selected-a",
+        {
+          kind: "description",
+          connectionId: "selected-connection-a",
+          description: { type: "answer", sdp: "selected-answer-a" },
+        },
+        8,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      relay.acceptSignal(
+        "selected-b",
+        {
+          kind: "description",
+          connectionId: "selected-connection-b",
+          description: { type: "answer", sdp: "selected-answer-b" },
+        },
+        8,
+      ),
+    ).resolves.toBe(true);
+    expect(selectedConnectionA!.remoteDescription?.sdp).toBe(
+      "selected-answer-a",
+    );
+    expect(selectedConnectionB!.remoteDescription?.sdp).toBe(
+      "selected-answer-b",
+    );
+
+    FakePeerConnection.offersFailing = 1;
+    expect(
+      relay.startSelectedEdgeTurn(
+        {
+          ...selectedEdgeTurn(
+            "selected-a",
+            "selected-connection-a",
+            "selected-connection-a-failed",
+          ),
+          revision: 8,
+        },
+        "selected-parent",
+        8,
+      ),
+    ).toBe(true);
+    await vi.waitFor(() =>
+      expect(onSelectedEdgeFailed).toHaveBeenCalledWith(
+        "selected-a",
+        "selected-connection-a-failed",
+        8,
+      ),
+    );
+    expect(selectedConnectionA!.connectionState).toBe("closed");
+    expect(selectedConnectionB!.connectionState).not.toBe("closed");
+    expect(relay.getSnapshot("selected-a")).toBeNull();
+    expect(relay.getSnapshot("selected-b")?.connectionId).toBe(
+      "selected-connection-b",
+    );
+    expect(FakePeerConnection.activeCount).toBe(1);
+    await expect(
+      relay.acceptSignal(
+        "selected-a",
+        {
+          kind: "candidate",
+          connectionId: "selected-connection-a-failed",
+          candidate: null,
+        },
+        8,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      relay.acceptSignal(
+        "selected-b",
+        {
+          kind: "candidate",
+          connectionId: "selected-connection-b",
+          candidate: null,
+        },
+        8,
+      ),
+    ).resolves.toBe(true);
+
+    expect(
+      relay.startSelectedEdgeTurn(
+        { ...grantB, revision: 9 },
+        "selected-parent",
+        8,
+      ),
+    ).toBe(true);
+    relay.acceptActiveRevision(9);
+    expect(selectedConnectionB!.connectionState).not.toBe("closed");
+    relay.clearSelectedEdgeTurn();
+    expect(selectedConnectionB!.connectionState).toBe("closed");
+    expect(FakePeerConnection.activeCount).toBe(0);
     relay.dispose();
   });
 

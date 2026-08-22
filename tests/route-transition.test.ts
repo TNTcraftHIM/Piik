@@ -10,8 +10,12 @@ import {
 } from "../src/client/media/route-transition.ts";
 import { HostSfuRoute } from "../src/client/media/host-sfu-route.ts";
 import {
+  acceptHostSelectedChildrenRevision,
+  carryHostSelectedChild,
+  hostSelectedChildForConnection,
   plannedHostProvisionalChild,
   resolveHostPreparedChildActivation,
+  type ActiveSelectedHostChild,
 } from "../src/client/media/host-provisional-child.ts";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
@@ -97,13 +101,76 @@ function createFakePublisher(log: string[], label: string) {
 }
 
 describe("Host provisional child ownership", () => {
+  it("keeps selected Host children isolated by peer and connection", () => {
+    const selected = new Map<string, ActiveSelectedHostChild>([
+      [
+        "selected-a",
+        {
+          peerId: "selected-a",
+          connectionId: "connection-a",
+          currentRouteRevision: 7,
+          pendingCarryRevision: null,
+        },
+      ],
+      [
+        "selected-b",
+        {
+          peerId: "selected-b",
+          connectionId: "connection-b",
+          currentRouteRevision: 7,
+          pendingCarryRevision: null,
+        },
+      ],
+    ]);
+
+    expect(
+      hostSelectedChildForConnection(
+        selected,
+        "selected-a",
+        "wrong-connection",
+      ),
+    ).toBeUndefined();
+    expect(
+      carryHostSelectedChild(selected, "selected-a", "connection-a", 8),
+    ).toBe(true);
+    expect(
+      carryHostSelectedChild(selected, "selected-b", "connection-b", 8),
+    ).toBe(true);
+    expect(acceptHostSelectedChildrenRevision(selected, 8)).toEqual([]);
+    expect(selected.size).toBe(2);
+
+    const failed = hostSelectedChildForConnection(
+      selected,
+      "selected-a",
+      "connection-a",
+    );
+    expect(failed).toBeDefined();
+    selected.delete(failed!.peerId);
+    expect(selected.has("selected-a")).toBe(false);
+    expect(selected.has("selected-b")).toBe(true);
+
+    selected.set("selected-a", {
+      peerId: "selected-a",
+      connectionId: "connection-a-2",
+      currentRouteRevision: 8,
+      pendingCarryRevision: null,
+    });
+    expect(
+      carryHostSelectedChild(selected, "selected-b", "connection-b", 9),
+    ).toBe(true);
+    expect(acceptHostSelectedChildrenRevision(selected, 9)).toEqual([
+      "selected-a",
+    ]);
+    expect([...selected.keys()]).toEqual(["selected-b"]);
+  });
+
   it("admits only one strict child within the physical Host edge budget", () => {
     expect(
       plannedHostProvisionalChild({
         revision: 7,
         assignment: hostAssignment(null, ["active-child", "probe-child"]),
         activeChildPeerIds: ["active-child"],
-        selectedPeerId: null,
+        selectedPeerIds: [],
         maxMediaEdges: 2,
       }),
     ).toBe("probe-child");
@@ -112,7 +179,7 @@ describe("Host provisional child ownership", () => {
         revision: 7,
         assignment: hostAssignment("publication", ["probe-child"]),
         activeChildPeerIds: [],
-        selectedPeerId: null,
+        selectedPeerIds: [],
         maxMediaEdges: 2,
       }),
     ).toBe("probe-child");
@@ -121,7 +188,7 @@ describe("Host provisional child ownership", () => {
         revision: 7,
         assignment: hostAssignment(null, ["probe-child"]),
         activeChildPeerIds: [],
-        selectedPeerId: "selected-overlay",
+        selectedPeerIds: ["selected-overlay"],
         maxMediaEdges: 2,
       }),
     ).toBe("probe-child");
@@ -133,7 +200,7 @@ describe("Host provisional child ownership", () => {
           "probe-child",
         ]),
         activeChildPeerIds: ["active-child"],
-        selectedPeerId: null,
+        selectedPeerIds: [],
         maxMediaEdges: 2,
       }),
     ).toBeNull();
@@ -142,8 +209,26 @@ describe("Host provisional child ownership", () => {
         revision: 7,
         assignment: hostAssignment(null, ["active-child", "probe-child"]),
         activeChildPeerIds: ["active-child"],
-        selectedPeerId: "selected-overlay",
+        selectedPeerIds: ["selected-overlay"],
         maxMediaEdges: 2,
+      }),
+    ).toBeNull();
+    expect(
+      plannedHostProvisionalChild({
+        revision: 7,
+        assignment: hostAssignment(null, ["probe-child"]),
+        activeChildPeerIds: [],
+        selectedPeerIds: ["selected-a", "selected-b"],
+        maxMediaEdges: 3,
+      }),
+    ).toBe("probe-child");
+    expect(
+      plannedHostProvisionalChild({
+        revision: 7,
+        assignment: hostAssignment("publication", ["probe-child"]),
+        activeChildPeerIds: [],
+        selectedPeerIds: ["selected-a", "selected-b"],
+        maxMediaEdges: 3,
       }),
     ).toBeNull();
   });
@@ -153,7 +238,7 @@ describe("Host provisional child ownership", () => {
       revision: 7,
       assignment: hostAssignment(null, ["active-child", "probe-child"]),
       activeChildPeerIds: ["active-child"],
-      selectedPeerId: null,
+      selectedPeerIds: [],
       maxMediaEdges: 2,
     };
     expect(

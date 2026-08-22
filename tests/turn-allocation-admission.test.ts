@@ -104,6 +104,20 @@ describe("TURN allocation admission", () => {
     expect(admission.usage()).toEqual({ allocations: 1 });
   });
 
+  it("returns capacity exhaustion immediately without queueing a retry", () => {
+    const admission = new TurnAllocationAdmission({ capacity: 1 });
+    const active = ingressFence("room-a");
+    const rejected = peerFence("room-b", "viewer-b");
+
+    expect(admission.reserve(active)).toBe(true);
+    expect(admission.reserve(rejected)).toBe(false);
+    expect(admission.beginDrain(active)).toBe(true);
+    expect(admission.completeDrain(active)).toBe(true);
+    expect(admission.state(rejected)).toBeUndefined();
+    expect(admission.usage()).toEqual({ allocations: 0 });
+    expect(admission.reserve(rejected)).toBe(true);
+  });
+
   it("makes shutdown drain explicit while restart ownership stays process-local", () => {
     const previousOwner = new TurnAllocationAdmission({ capacity: 2 });
     const first = peerFence("room-a", "viewer-a");

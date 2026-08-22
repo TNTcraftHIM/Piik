@@ -1199,6 +1199,99 @@ async function activateSingleViewerSfu(
   return { ...direct, revision: viewerPrepare.revision };
 }
 
+async function prepareSelectedHostIngressReplacement(
+  harness: SignalHarness,
+  prefix: string,
+) {
+  const active = await activateSingleViewerSfu(
+    harness.webSocketUrl,
+    harness.room,
+    prefix,
+  );
+  active.host.socket.send(JSON.stringify({
+    type: "route-failed",
+    revision: active.revision,
+    phase: "active",
+    connectionId: null,
+  }));
+  const activeGrant = await active.host.inbox.next("selected-edge-turn");
+  if (activeGrant.edgeKind !== "host-sfu-ingress") {
+    throw new Error("expected an active Host SFU ingress grant");
+  }
+  active.host.socket.send(JSON.stringify({
+    type: "route-ready",
+    revision: active.revision,
+    phase: "active",
+  }));
+  await vi.waitFor(() =>
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 }),
+  );
+  active.viewer.socket.send(JSON.stringify({
+    type: "relay-capacity",
+    downstreamEdges: 0,
+  }));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  const candidateViewer = await openClient(harness.webSocketUrl);
+  const candidateAuth = peerAssisted(await authenticate(
+    candidateViewer,
+    harness.room,
+    "viewer",
+    `${prefix}-candidate-viewer`,
+    0,
+  ));
+  expect(candidateAuth.routeAssignment.upstream).toEqual({
+    kind: "peer",
+    peerId: active.hostAuth.peerId,
+  });
+  const candidateConnectionId = `${prefix}-candidate-connection`;
+  await sendTestOffer(
+    active.host,
+    candidateViewer,
+    candidateAuth.peerId,
+    candidateConnectionId,
+  );
+  candidateViewer.socket.send(JSON.stringify({
+    type: "route-failed",
+    revision: candidateAuth.routeRevision,
+    phase: "active",
+    connectionId: candidateConnectionId,
+  }));
+  const [hostPrepare, activeViewerPrepare, candidatePrepare] =
+    await Promise.all([
+      nextPreparedRoute(active.host),
+      nextPreparedRoute(active.viewer),
+      nextPreparedRoute(candidateViewer),
+    ]);
+  expect(activeViewerPrepare.revision).toBe(hostPrepare.revision);
+  expect(candidatePrepare.revision).toBe(hostPrepare.revision);
+  await Promise.all([
+    active.host.inbox.next("sfu-config"),
+    active.viewer.inbox.next("sfu-config"),
+    candidateViewer.inbox.next("sfu-config"),
+  ]);
+
+  active.host.socket.send(JSON.stringify({
+    type: "route-failed",
+    revision: hostPrepare.revision,
+    phase: "prepare",
+    connectionId: null,
+  }));
+  const candidateGrant = await active.host.inbox.next("selected-edge-turn");
+  if (candidateGrant.edgeKind !== "host-sfu-ingress") {
+    throw new Error("expected a pending Host SFU ingress grant");
+  }
+  expect(candidateGrant.newConnectionId).not.toBe(activeGrant.newConnectionId);
+  expect(harness.turnAdmission?.usage()).toEqual({ allocations: 2 });
+  return {
+    active,
+    activeGrant,
+    candidateGrant,
+    candidateViewer,
+    hostPrepare,
+  };
+}
+
 async function prepareSfuHostParentQualityProbe(
   harness: SignalHarness,
   active: Awaited<ReturnType<typeof activateSingleViewerSfu>>,
@@ -7993,6 +8086,97 @@ describe("WebSocket signaling", () => {
       assignment: { sfuPublicationGeneration: null },
     });
     expect(harness.turnAdmission?.usage()).toEqual({ allocations: 0 });
+  });
+
+  it("keeps active Host ingress while an answered pending replacement rolls back", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+      turnAllocationCapacity: 2,
+    });
+    const replacement = await prepareSelectedHostIngressReplacement(
+      harness,
+      "selected-ingress-rollback",
+    );
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: replacement.hostPrepare.revision,
+      phase: "prepare",
+    }));
+    await vi.waitFor(() =>
+      expect(harness.turnAdmission?.usage()).toEqual({ allocations: 2 }),
+    );
+    await closeClient(replacement.candidateViewer);
+    const rollback = await nextActiveRouteAfter(
+      replacement.active.host,
+      replacement.hostPrepare.revision,
+    );
+    expect(rollback.assignment.sfuPublicationGeneration).toBe(
+      replacement.activeGrant.publicationGeneration,
+    );
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: rollback.revision,
+      phase: "active",
+      connectionId: replacement.candidateGrant.newConnectionId,
+    }));
+    await expect(
+      replacement.active.host.inbox.next("error"),
+    ).resolves.toMatchObject({ code: "FORBIDDEN" });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+  });
+
+  it("promotes a pending Host ingress only after the route commits", async () => {
+    const harness = await startSfuHarness({
+      tokenIssuer: { async issueToken({ peerId }) { return `token-${peerId}`; } },
+      selectedEdgeTurn: true,
+      turnAllocationCapacity: 2,
+    });
+    const replacement = await prepareSelectedHostIngressReplacement(
+      harness,
+      "selected-ingress-commit",
+    );
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-ready",
+      revision: replacement.hostPrepare.revision,
+      phase: "prepare",
+    }));
+    await vi.waitFor(() =>
+      expect(harness.turnAdmission?.usage()).toEqual({ allocations: 2 }),
+    );
+    for (const client of [
+      replacement.active.viewer,
+      replacement.candidateViewer,
+    ]) {
+      client.socket.send(JSON.stringify({
+        type: "route-ready",
+        revision: replacement.hostPrepare.revision,
+        phase: "prepare",
+      }));
+    }
+    const committed = await nextActiveRouteRevision(
+      replacement.active.host,
+      replacement.hostPrepare.revision,
+    );
+    expect(committed.assignment.sfuPublicationGeneration).toBe(
+      replacement.candidateGrant.publicationGeneration,
+    );
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
+
+    replacement.active.host.socket.send(JSON.stringify({
+      type: "route-failed",
+      revision: committed.revision,
+      phase: "active",
+      connectionId: replacement.activeGrant.newConnectionId,
+    }));
+    await expect(
+      replacement.active.host.inbox.next("error"),
+    ).resolves.toMatchObject({ code: "FORBIDDEN" });
+    expect(harness.turnAdmission?.usage()).toEqual({ allocations: 1 });
   });
 
   it("retries an initial Host SFU prepare through one selected ingress", async () => {
