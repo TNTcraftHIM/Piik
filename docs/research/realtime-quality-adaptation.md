@@ -220,20 +220,27 @@ does not prove shared encode: separate browser PeerConnections may construct
 separate encoders, and the SFU still publishes only the configured `q,h`
 representations.
 
-The retained diagnostic keeps lifecycle and codec experiments orthogonal.
-Lifecycle runs fix `automatic`; each independently recreated affected state runs
-exactly one of observe, preview cycle, Host-peer rebuild, capture replacement,
-or Host reload. Codec A/B uses fresh Host/share/PeerConnection sessions for
-automatic, H.264, and VP8 and rejects an actual-codec mismatch. Quality claims
-require a headed run with the same real game, browser/driver, capture surface,
-and one wired direct Viewer. Capture A, sender B, and Viewer C samples must share
-the current generation and overlapping windows; identity polling must not
-advance their accumulators. Record actual codec/profile, configured/source/send/
-receive FPS, interval encoded frames/encode time, limitation reason, game FPS,
-and process-scoped GPU evidence. Missing implementation or power-efficiency
-fields remain unknown. No H.264 root cause or policy change is accepted until
-the controlled sample distinguishes capture starvation, software fallback,
-hardware queue/driver pressure, and congestion.
+The repository diagnostic is a mechanical single-machine preflight, not a
+quality runner. Lifecycle runs fix `automatic`; each fresh run performs exactly
+one of observe, preview cycle, Host-peer rebuild, capture replacement, or Host
+reload, keeps the actual codec/profile/parameters stable across that action, and
+rechecks the action budget after its two current-generation evidence windows.
+Codec preflight uses fresh Host/share/PeerConnection sessions for automatic,
+H.264, and VP8 and rejects an actual-codec mismatch. Reports retain only
+allowlisted failure stages and sanitized identifiers.
+
+Quality diagnosis remains a separately orchestrated headed matrix with the same
+real game, browser/driver, capture surface, and one external wired direct Viewer;
+the local loopback preflight cannot satisfy it. Capture A, sender B, and Viewer C
+samples must share the current generation and overlapping windows; identity
+polling must not advance their accumulators. Record actual codec/profile,
+configured/source/send/receive FPS, interval encoded frames/encode time,
+limitation reason, game FPS, and process-scoped GPU evidence. Missing
+implementation or power-efficiency fields remain unknown. Add a remote runner
+adapter only when that matrix has a current automated consumer. No H.264 root
+cause or policy change is accepted until the controlled sample distinguishes
+capture starvation, software fallback, hardware queue/driver pressure, and
+congestion.
 
 Open-source distribution is not itself a patent-license exemption. This Web
 change only requests a codec already implemented by the browser/LiveKit path and
