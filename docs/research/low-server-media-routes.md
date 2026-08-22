@@ -110,11 +110,12 @@ physical hops, so NIC, service, and billing counters must never be folded.
 If `E>0`, SFU root/exception egress is
 `sum(B_i) + sum(B_exc,j)` and central SFU traffic is
 `B_pub + sum(B_i) + sum(B_exc,j)`. Peer descendant upload remains
-`sum(B_edge)`. Any separately TURN-relayed LiveKit root/exception leg or
+`sum(B_edge)`. Any separately TURN-relayed LiveKit subscription or
 controller-selected peer edge adds TURN ingress and egress equal to that leg's
-measured bitrate. The separately capped
-exceptions are therefore never hidden inside the normal `R<=2` root budget or
-the equal-representation formulas.
+measured bitrate. Server-fed subscriptions are never hidden inside endpoint
+child capacity or the equal-representation formulas. Their ingress, egress and
+TURN allocations are admitted explicitly; `R` is a measured scenario variable,
+not a fixed product root limit.
 
 RTP/RTCP/SRTP, DTLS, ICE/TURN and IP headers, retransmission, FEC, and redundant
 paths only add traffic. W3C candidate-pair byte counters exclude some transport
@@ -300,7 +301,7 @@ hundreds of sockets and probes.
   discovery from the same application-controlled UDP socket. Browser
   WebTransport is a client connection to a server, not a raw UDP socket or an
   inbound peer listener. Native TCP/QUIC DCUtR results therefore do not reopen
-  Screener's accepted UDP-only browser media ladder.
+  Screener's accepted browser media transport boundary.
 - `iceCandidatePoolSize` only pre-gathers implementation-managed candidates for
   future ICE use. It does not expose ports, create birthday probes, or repair an
   endpoint-dependent mapping. Repeated refreshes and a large STUN list likewise
@@ -480,9 +481,10 @@ One bounded exact-room gate owns rollout evidence:
    8 and 12 Mbps with one and two roots. Record CPU seconds/GiB, RX/TX bytes,
    packets/s, RSS, host upload, p95/p99 forwarding latency, loss/recovery, and
    final decoded quality.
-2. Cover representative consumer networks with STUN-only direct/peer first,
-   then SFU/UDP. Only after both gates pass, force one controller-selected edge
-   through TURN. All ordinary peer connections must remain STUN-only.
+2. Cover representative consumer networks with independent STUN-only
+   direct/peer, SFU/UDP subscription, exact selected-edge TURN, and Host-SFU TURN
+   gates. The test order does not define the controller's per-edge route choice.
+   All ordinary peer connections must remain STUN-only.
 3. Measure allocation count/relay ports/RSS/CPU/latency for one and two selected
    attempts, plus relay RX/TX/loss/latency. There is no participant-count idle
    allocation target because ordinary peer PCs do not receive TURN candidates.

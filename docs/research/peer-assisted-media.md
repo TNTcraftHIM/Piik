@@ -15,26 +15,25 @@ and [project memory](../project-memory.md).
 
 Peer-assisted forwarding can reduce broadcaster fanout without making an SFU
 carry every viewer's traffic. The release measurements below are historical
-evidence rather than current capacity policy. The smallest tested path uses only
-standard WebRTC media:
-
-1. the browser host sends its screen stream to at most two first-level viewers;
-2. each ordinary Browser Viewer may add the received remote `MediaStreamTrack`
-   values to at most one downstream `RTCPeerConnection`; and
-3. the signaling server assigns one active upstream per viewer in a bounded,
-   deterministic breadth-first DAG.
+evidence rather than current capacity policy. The accepted path uses standard
+WebRTC media, one active upstream per Viewer, a bounded acyclic peer graph, and
+one uniform non-server outbound capacity `C` configured as `1`, `2`, or `3`.
+Host publication and peer children consume physical sender slots under
+ADR-0005; SFU/TURN server resources use separate admission.
 
 This path reuses WebRTC capture, codec negotiation, RTP, NACK/PLI/RTX, congestion
-control, jitter buffering, ICE, STUN, DTLS-SRTP, and browser rendering. A later
-controller-selected exceptional edge may also use TURN. Its
+control, jitter buffering, ICE, STUN, DTLS-SRTP, and browser rendering. An
+exact controller-authorized logical edge may also use selected TURN. Its
 cost is unavoidable in ordinary browsers: every relay decodes and re-encodes
 the screen stream. The first spike measures whether that cost is acceptable; it
 does not hide it or claim shared encoding.
 
-The accepted flagship preference is `direct/peer UDP -> SFU-root fallback ->
-optional exceptional-edge TURN -> bounded failure`. Direct P2P remains the
-simplest path for one or two viewers. The experiment assigns the third and later
-viewers to peers automatically. ADR-0005 makes SFU capacity part of the flagship
+The accepted controller preserves healthy direct/peer UDP edges. Exact selected
+TURN may replace an authorized logical edge transport; one Host publication and
+per-Viewer SFU subscriptions provide server-fed ingress when selected by the
+same bounded controller. Direct P2P remains the
+simplest path while a healthy endpoint sender slot is available; later Viewers
+may be assigned to peers automatically. ADR-0005 makes SFU capacity part of the flagship
 target while retaining peer descendants. The first production rollout used a
 room-`1` exact smoke; participant entry was observed, but retained SFU media
 remained unverified. Production later removed that room boundary.
@@ -220,9 +219,9 @@ experiment rather than something hidden by a scheduler. Ordinary Web clients
 use the same capacity without UA or visibility classification; mobile devices
 remain non-blocking compatibility observations.
 
-Per-edge ICE remains independent. Ordinary peer edges are STUN-only; after
-direct/peer UDP and SFU/UDP fail, a controller-selected exceptional edge may use
-authenticated TURN. Peer assistance therefore reduces normal server media
+Per-edge ICE remains independent. Ordinary peer edges are STUN-only; the
+controller may select authenticated TURN for an exact logical edge transport or
+the single Host-SFU ingress under the accepted route model. Peer assistance therefore reduces normal server media
 traffic but cannot promise zero server traffic in restrictive networks.
 
 ## Implemented Bounded Quality Coordination

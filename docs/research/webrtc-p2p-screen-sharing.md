@@ -19,9 +19,10 @@
    |                                               |
    +---- ICE + STUN 尝试直接 UDP WebRTC ----------+
    |
-   +---- direct/peer UDP -> SFU root -> selected TURN edge
+   +---- logical edge: direct/STUN -> exact selected TURN transport
+   +---- source/ingress fallback: one Host publication -> SFU subscriptions
 
-2026-08-18 的历史目标顺序是 direct/peer UDP -> SFU virtual parent -> optional selected-edge TURN -> 明确失败；room `1` 只是首个 bounded production smoke，生产后来移除了 exact-room 边界并对所有房间运行 automatic controller。retained-media 验收仍未完成，未来 SFU/TURN 顺序与计账尚未接受。
+当前自动模型由 ADR-0005 持有：健康 direct/peer 边保持 sticky；selected TURN 只替换 exact logical edge 的 transport；需要 server-fed ingress 时由一份 Host publication 服务精确授权的 SFU subscriptions。每条路径受端点发送容量、独立 server admission、generation 和 bounded failure 共同约束。room `1` 只是首个 bounded production smoke，retained-media 验收仍未完成。
 系统必须无感完成拓扑分配、恢复和必要迁移；大规模公开分享仍直接使用现有直播服务。
 ```
 
@@ -37,7 +38,7 @@
 | 产品 | 已公开的可靠事实 | 对本项目的含义 |
 | --- | --- | --- |
 | Discord Go Live | 使用 WebRTC，但媒体发往 Discord RTC Worker 后再转发给观看者；官方明确这是为了路由控制和隐藏用户 IP。桌面端有原生 C++ media engine、自研捕获/编码、多后端回退和硬件编码。 | Discord 的稳定性并不是纯 P2P 或纯浏览器免费获得的。它是未来质量上限参考，不是首版拓扑参考。 |
-| TeamSpeak 6 | 官方技术回复说明用 WebRTC/ICE 做 P2P 屏幕分享；Windows 在 DX、Windows Game Capture 与传统捕获路径间选择。2026-04 官方称其 `turn.*` 主机实际仅启用 STUN，server-side SFU 仍在开发。 | 与当前目标接近，也解释了 direct-only/STUN-only 的部分可达风险；Screener 已部署 coturn 基线，旗舰迁移改由 SFU/UDP roots 兜底并把 TURN 设为可选兼容层。 |
+| TeamSpeak 6 | 官方技术回复说明用 WebRTC/ICE 做 P2P 屏幕分享；Windows 在 DX、Windows Game Capture 与传统捕获路径间选择。2026-04 官方称其 `turn.*` 主机实际仅启用 STUN，server-side SFU 仍在开发。 | 与当前目标接近，也解释了 direct-only/STUN-only 的部分可达风险；Screener 保持 direct/peer 优先，由同一 controller 为 exact edge 选择 TURN transport 或 Host-publication/SFU subscription。 |
 | KOOK / Oopz | 官方 SDK 清单只足以证明屏幕分享接入声网相关能力，没有公开具体媒体拓扑。 | 可以参考交互，不能把它们写成已经证实的 P2P 或 SFU 案例。 |
 
 来源：
@@ -58,7 +59,7 @@
 - STUN 让客户端发现公网映射并产生 server-reflexive candidate。它不承载媒体，也不能保证穿过所有 NAT。
 - ICE 测试 host、server-reflexive、peer-reflexive 和 relay candidates，并选择可工作的候选对。Trickle ICE 可以减少建连等待。
 - TURN 在无法直连时转发完整媒体流，是 NAT 组件中真正产生高带宽成本的部分。
-- 当前媒体梯级是 direct/peer UDP -> SFU/UDP roots -> optional selected-edge TURN/UDP -> bounded failure。Ordinary peer 只接收 STUN；controller 只为当前异常 edge 的一次重建签发短期 TURN 凭据。每个 `RTCPeerConnection` 只检查实际配置的候选，全部 UDP 路径耗尽后明确失败。
+- 当前 controller 保持健康 direct/peer UDP 边；ordinary peer 只接收 STUN。selected TURN 只替换 exact logical edge 的 transport，Host 无 direct first-level path 时可用于唯一 Host-SFU publication；server-fed Viewer 使用该 publication 的精确 SFU subscription。每个尝试都受当前 generation、端点容量、server admission 和 bounded failure 约束。
 
 不存在适用于所有用户的权威“P2P 直连率”。CGNAT、endpoint-dependent mapping、校园/企业防火墙、移动网络、IPv6 和地区运营商都会改变结果。首版必须通过 `getStats()` 统计自己的 `host/srflx/prflx/relay` 比例，而不是引用未经验证的行业百分比。
 
@@ -69,7 +70,7 @@ ICE 是按分享者与每一名观看者的网络组合独立选路，而不是�
 当前边界如下：
 
 1. 将 direct UDP 设为最高优先级，成功者保持零媒体服务器路径。
-2. Ordinary peer ICE 为 STUN-only；UDP peer 失败时优先使用 SFU root，可选 coturn 只由 selected-edge grant/rebuild 授予异常连接。
+2. Ordinary peer ICE 为 STUN-only；controller 只为已选定的 logical edge 授予 selected TURN transport，或在需要 server-fed ingress 时授权当前 Host publication 的 SFU subscription，不能用固定全局梯级代替逐 edge 决策。
 3. 通过统计确认最终选中的 candidate pair；LiveKit participant TURN 与 selected-edge coturn 分别记录，不能从应用计时顺序推断路径。
 4. 网络切换或候选对失效时执行 ICE restart，超时后重建该 peer connection。
 5. 在 UI 和诊断中区分“直连”“服务器中继”“正在恢复”和明确失败原因。
@@ -92,7 +93,7 @@ ICE 是按分享者与每一名观看者的网络组合独立选路，而不是�
 | --- | ---: | ---: | --- |
 | P2P 星型 | `N * B` | 直连时接近 0 | 最符合成本目标；适合少量朋友 |
 | P2P + TURN | 仍为 `N * B` | 每条中继约 `B` 入 + `B` 出 | 只解决不可达，不解决分享者上行 |
-| Peer-assisted 两链 | 分享端最多约 `2 * B` | 直连边接近 0；TURN 仍按边计费 | 每名 viewer 最多转发一份；标准 browser relay 逐跳解码/重编码 |
+| Peer-assisted tree | 分享端最多约 `C * B` | 直连边接近 0；TURN 仍按边计费 | 每个 endpoint 最多发送 `C` 份；标准 browser relay 逐跳解码/重编码 |
 | 整房 SFU（仅对照） | 约 `B` | `B` 入 + `N * B` 出 | 分享者轻松，但服务器承担全部观看流量；当前 root-shape 目标另按 `B_pub`、`B_i` 和 `B_exc,j` 计量 |
 | MCU | 约 `B` | 另有解码、合成、重编码 | 本场景没有合成需求，不采用 |
 
@@ -119,14 +120,14 @@ IETF 对 mesh/SFU 的拓扑说明见 [RFC 7667](https://www.rfc-editor.org/rfc/r
 
 - 生产已移除 exact-room allowlist，所有房间由 bounded peer-assisted/SFU controller 自动路由；ordinary peer 仍使用 STUN-only ICE。
 - 当前 PoC 默认允许八名观看者，部署者可配置 1 至 16，超额连接会被明确拒绝。该数值只控制接入，不代表 1:8 已通过性能验收；必须收集可用上行、实际发送码率、`qualityLimitationReason`、编码耗时和发送队列来确定真实可持续人数。
-- 每条 ordinary peer 链路独立使用 STUN-only ICE；只有控制器选中的异常 edge 才会获得短期 TURN credential。
+- 每条 ordinary peer 链路独立使用 STUN-only ICE；只有控制器选中的 exact logical edge 或 Host-SFU ingress 才会获得短期 TURN credential。
 - Exact release `9461e20` 的所有房间在 peer recovery 与 alternate parent 耗尽后可准备最多两个 SFU/UDP roots；这是已部署事实，不是未来固定 root 数的授权。首次 room `1` smoke 已观察到 participant entry，但 retained media 尚未验收。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
-当前接受的非服务器 endpoint downstream 默认值为二，并允许部署静态配置为一、二或三；分享端及 Viewer 遵守同一规则。ADR-0004 的可删除实验验证第三名及后续 viewer 可由客户端转发；ADR-0005 的自动 controller 最初在 room `1` 受限部署，现已覆盖所有房间。未来 SFU/TURN 层级、计账和 fallback 顺序尚未接受。retained SFU media、移动端矩阵和 broad rollout 仍未通过门槛；已关闭 PR #12 的显式整房 SFU 模式不再是当前方案。超过小房间上限时仍建议使用外部直播服务。观察项包括：
+当前接受的非服务器 endpoint downstream 默认值为二，并允许部署静态配置为一、二或三；分享端及 Viewer 遵守同一规则。ADR-0004 的可删除实验验证第三名及后续 viewer 可由客户端转发；ADR-0005 定义一份 Host publication、逐 Viewer SFU subscription、exact selected TURN edge transport 与独立 server admission，automatic controller 最初在 room `1` 受限部署，现已覆盖所有房间。retained SFU media、移动端矩阵和 broad rollout 仍未通过门槛；已关闭 PR #12 的显式整房 SFU 模式不再是当前方案。超过小房间上限时仍建议使用外部直播服务。观察项包括：
 
 - 正常工作负载持续超过实测可承载的 P2P 人数。
-- 当前 edge 已耗尽 peer recovery、alternate parent 与 SFU/UDP；未来只有该 edge 可进入 selected-edge TURN 决策。
+- 当前 logical edge 的 direct/STUN transport 失败；controller 可为同一 edge 选择 selected TURN，或在 logical ingress 需要 server-fed source 时选择当前 Host publication 的 SFU subscription。
 - 分享者上行安全余量不足。
 - 分享者因 CPU/encoder 限制降质。
 - 产品开始要求隐藏好友之间的 IP。
@@ -293,7 +294,7 @@ W3C TAG 的 capability URL 指南指出 URL 仍会出现在地址栏、历史、
 
 来源（访问于 2026-08-19）：[RFC 3986 section 3.5](https://www.rfc-editor.org/rfc/rfc3986.html#section-3.5)、[WHATWG WebSockets](https://websockets.spec.whatwg.org/#the-websocket-interface)、[RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)、[RFC 6750 section 2.3](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.3)、[W3C Referrer Policy](https://www.w3.org/TR/referrer-policy/)、[W3C TAG Capability URLs](https://www.w3.org/TR/capability-urls/)、[HTML Web Storage](https://html.spec.whatwg.org/multipage/webstorage.html)、[Web Cryptography Level 2](https://www.w3.org/TR/WebCryptoAPI/)、[Node.js Crypto](https://nodejs.org/api/crypto.html)、[SQLite STRICT Tables](https://www.sqlite.org/stricttables.html)、[SQLite ALTER TABLE](https://www.sqlite.org/lang_altertable.html) 与 [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)。
 
-WebRTC 媒体本身使用 DTLS-SRTP 加密，但 direct P2P 仍可能让这组可信好友看到彼此网络地址。若房间政策要求完全隐藏 endpoint IP，ordinary direct/peer 不能满足，应使用明确的中央媒体路径或拒绝该连接；selected-edge TURN 仅是 SFU/UDP 失败后的兼容 transport，不是全房隐私开关。
+WebRTC 媒体本身使用 DTLS-SRTP 加密，但 direct P2P 仍可能让这组可信好友看到彼此网络地址。若房间政策要求完全隐藏 endpoint IP，ordinary direct/peer 不能满足，应使用明确的中央媒体路径或拒绝该连接；selected TURN 只隐藏获授权 edge 的 direct candidate，不是全房隐私开关。
 
 ## 编解码策略
 
@@ -399,8 +400,8 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 1. 首版坚持 P2P-first，但明确只服务小房间；默认接入上限为八名、可配置 1 至 16，真实 1:8 测量完成前不把它写成性能承诺。
 2. Web 先行，目标 Windows Chrome/Edge；把 1080p60 写成 best effort，同时提供降档。
-3. 保留当前 STUN-only 应用配置直到 ADR-0005 迁移 gate 通过。旗舰先验证 direct/peer UDP 与 SFU/UDP roots；只有 controller 选中的异常 edge 才在两者失败后以新连接使用短期 authenticated TURN。普通 Web/Native PeerConnection 始终 STUN-only；coturn 只验证 credential 与 expiry，room/edge/revision 必须由应用重验。
+3. 保留 ordinary STUN-only 配置。Controller 对 exact logical edge 先验证 direct/STUN，再按 ADR-0005 选择短期 authenticated selected TURN；需要 server-fed ingress 时复用唯一 Host publication 和精确 SFU subscription，Host-SFU ingress 本身也可经 selected TURN。coturn 只验证 credential 与 expiry，room/edge/revision 必须由应用重验。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。
 5. 产品代码优先直接使用浏览器 WebRTC API；借鉴 MiroTalk BRO 和 Screego，不在许可证未定前直接 fork GPL/AGPL 代码。
-6. 分享端 hard fanout 为二；一至两名 viewer 走直接 P2P，第三名及以后只通过 ADR-0004 的 bounded peer-assisted spike 验证，不得隐藏回退为更多 host 连接。
-7. SFU 保持 root-only、可逆且非整房默认；旗舰部署通过 canary 后由 ADR-0005 控制器自动用作中央兜底。peer-assisted 若未通过逐跳重编码负载、延迟、兼容和换父门槛就整体放弃，不通过 encoded custom media、评分器、多树或自研 RTP 来挽救。
+6. 每个非服务器端点使用部署权威 outbound capacity `C in {1,2,3}`，默认二；peer child 与 Host publication 消耗 sender slot，上游接收不计数。分配、恢复和 server admission 由 ADR-0005 统一约束，不从一次历史 fanout 测量推导产品上限。
+7. SFU 保持一份 Host publication、逐 Viewer 精确 subscription、可逆且非整房默认；旗舰部署由 ADR-0005 控制器按 logical ingress 和 server admission 用作中央兜底。peer-assisted 若未通过逐跳重编码负载、延迟、兼容和换父门槛就整体放弃，不通过 encoded custom media、评分器、多树或自研 RTP 来挽救。

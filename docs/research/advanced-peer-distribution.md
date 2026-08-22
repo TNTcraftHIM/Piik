@@ -40,7 +40,7 @@ overhead. Protocol headers, retransmission, and TURN overhead are additional.
 | Current full-stream browser chains | at most `2B` | zero except TURN edges | host up to two encoders; every relay encodes again |
 | Native full-stream RTP relay | at most `2B` | zero except TURN edges | relay zero encode; native host can share one encode |
 | Two encoded-object stripe trees | about `(1+r)B` | zero except TURN edges | host one encode; relay zero encode |
-| SFU virtual parent to bounded roots | measured `B_pub` | root-only; see low-server model | one publication may carry at most two active representations; physical encoder count remains measured evidence |
+| Host publication with bounded SFU subscriptions | measured `B_pub` | per-subscriber egress; see low-server model | one publication may carry at most two active representations; physical encoder count remains measured evidence |
 | Full central SFU/MoQ fanout | about `B` | ingress `B`, egress `N*B` | comparison class, not the accepted fallback shape |
 
 Useful last-hop traffic remains approximately `N*B`; these routes only decide
@@ -351,13 +351,17 @@ mismatches before a full reconnect. Jitsi Videobridge similarly defaults to a
 reference boundaries, not universal prescriptions. Screener's separately owned
 15-second initial deadline remains a candidate pending mobile-network evidence.
 
-The accepted Screener order is therefore: soft visible wait while initial ICE
-is still making progress; one ICE restart on hard failure; one same-parent PC
-rebuild; one different eligible peer parent; then SFU only after peer exhaustion.
-Each success cancels the remaining stages. Every completion is guarded by the
-current session, route revision, assignment/connection generation, and cooldown.
-Connected-but-bad media is a separate correlated-quality trigger and must not be
-treated as a connection retry.
+The peer-local repair phase is bounded: show progress while initial ICE still
+advances, attempt one ICE restart on hard failure, and rebuild the same logical
+edge at most once under current transport authority. If that edge remains
+unusable, emit one exact failed-edge event to the ADR-0005 controller. The
+controller may reparent the child, authorize selected TURN for an exact edge, or
+choose a Host-publication SFU ingress under current capacity and server
+admission; these are not a fixed global retry ladder. Each success cancels the
+remaining work. Every completion is guarded by the current session, route
+revision, assignment/connection generation, and cooldown. Connected-but-bad
+media is a separate correlated-quality trigger and must not be treated as a
+connection retry.
 
 The first room-1 production trace on 2026-08-20 observed two short Host
 participants while two roots remained for roughly 4.6 seconds; all ended with
@@ -372,22 +376,24 @@ addresses out of wire and logs.
 
 ## Automatic Route Controller Boundary
 
-The accepted product order is:
-
-`direct/peer UDP -> SFU roots -> optional exceptional-edge TURN -> wait/fail`
+The accepted controller preserves healthy peer edges and chooses transport per
+logical edge: direct/STUN first, then exact selected TURN when authorized. A
+server-fed ingress uses the room's single Host publication plus exact SFU
+subscriptions; it is not a fixed rung inserted between every peer edge and TURN.
+Every attempt ends in bounded success, wait, or failure.
 
 Native full-stream relay and striped-object routes remain the bounded candidates
 above; passing their own gates may change capability, but does not insert them
-into the current product ladder.
+into the current route model.
 
-The enabled SFU is normally a virtual parent for at most `R=2` roots, which
-retain bounded peer descendants. A viewer that cannot attach behind any healthy
-root may be separately admitted only under the explicit `E`/central-egress cap;
-this is an exceptional compatibility budget, not unbounded whole-room fanout.
-The SFU/UDP and optional selected-edge TURN transport accounting lives in
-[Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005's deployed
-controller handles failure and bounded admission; the current source also has
-the one-root healthy-reselection slice described below. None changes the sticky
+The SFU uses one authoritative Host publication and exact per-Viewer
+subscriptions. SFU-fed Viewers may retain bounded peer descendants when their
+outbound relay eligibility is independently proven. Server ingress/egress and
+TURN allocations use deployment-wide admission rather than a fixed root count
+or room-wide lease. The SFU/UDP and optional selected-edge TURN accounting lives in
+[Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005 owns the
+accepted target; the current source still contains legacy controller slices and
+the one-root healthy-reselection behavior described below. None changes the sticky
 local reparenting candidate above.
 
 The controller must be automatic and invisible. It uses explicit capability
@@ -406,18 +412,15 @@ the same two-window gate when a refreshed signaling session receives an
 authoritative sticky SFU assignment. This avoids immediately reversing an
 ordinary peer-to-SFU fallback, whose initial authenticated assignment was peer.
 
-The overlap edge is physical: an active Host SFU publication consumes one of
-the Host's two downstream media edges while the provisional peer offer consumes
-the other. A browser parent remains limited to one downstream edge during this
-probe even if its normal advertised relay capacity is two. Failed or stale
-probes restore the prior controller revision without writing ordinary
+The overlap edge is physical: an active Host SFU publication consumes one steady
+sender slot, and a media-producing provisional peer candidate consumes another.
+Every non-server parent uses deployment capacity `C in {1,2,3}` without a
+Browser tier. A free steady slot permits ordinary make-before-break; otherwise a
+single fenced `TransitionOverlapSlot` may raise the physical count only to
+`min(C + 1, 3)`. A full `C=3` endpoint must wait, use a bounded-gap transition,
+or fail before creating a fourth copy. Failed or stale probes restore the prior
+controller revision and release their reservation without writing ordinary
 failed-parent state.
-
-Use make-before-break when a downstream slot is free. With all two slots in
-use, strict fanout means break-before-make; zero interruption, no standby, and a
-hard two-edge limit cannot all be guaranteed simultaneously. Sub-second recovery
-also requires a media/data heartbeat near 100-200 ms rather than the current
-30-second control heartbeat.
 
 ## Sources And License Boundary
 

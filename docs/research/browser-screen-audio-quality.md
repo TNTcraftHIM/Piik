@@ -46,10 +46,18 @@ stereo music in a 64--128 kbps sweet spot, and LiveKit 2.22.0 names 128 kbps
 `musicHighQualityStereo`. Requested, applied, negotiated, and observed states
 remain separate.
 
-The advanced panel is named Share advanced settings. Its audio choice is locked
-while sharing because peer SDP and SFU publication options are established for
-that share; video-only ceiling changes remain live. A future microphone/voice
-feature remains a separate track and processing path with its own
+The advanced panel is named Share advanced settings. The 64/128/256 choice is
+a sender `maxBitrate` ceiling on the existing Opus path, so it can change during
+an active share through serialized `getParameters()`/`setParameters()` updates
+and readback; it does not require audio codec renegotiation. The existing wire
+distributes a last-wins desired profile; each endpoint applies it locally, keeps
+media and the old applied ceiling on failure, and does not claim room-wide
+convergence without a remote applied acknowledgement. On the declared
+Chrome/Edge screen-audio Host baseline, pinned LiveKit 2.22.0 can update the
+existing audio sender without republish. Firefox's initial publish path may also
+write the preset into Opus fmtp, so a sender-only increase is not claimed there
+until real readback and receive evidence pass. A future microphone/voice feature
+remains a separate track and processing path with its own
 AEC/noise-suppression/DTX contract. It must not turn movie or game audio into a
 voice-processed source.
 
@@ -445,16 +453,18 @@ candidate on current Windows 11 with game parent and child audio, an independent
 voice process, notifications, no render stream, and process restart. Windows 10
 records the explicit unsupported/unresolved result rather than a fake fallback.
 Direct is the primary route; one browser-relay and one
-SFU-root audio check cover route preservation, while selected-edge TURN needs
-only one post-SFU connectivity smoke. Correlate capture settings, negotiated codec/derived fmtp,
+SFU-subscription audio check cover route preservation. Test exact selected-edge
+TURN and Host-SFU TURN transport as separate authorized connectivity gates.
+Correlate capture settings, negotiated codec/derived fmtp,
 actual outbound/inbound bitrate, loss, jitter, concealment, jitter buffer, and
 A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 
 ## UI And Voice Boundary
 
 Share advanced settings offers exactly 64/128/256 kbps and defaults to 128.
-The choice is locked for the active share and follows the same room-memory
-quality settings through P2P, browser relay, and SFU. It remains a sender
+The choice can change during the active share. P2P, browser relay, and SFU
+senders read the latest desired profile and keep endpoint-local applied
+readback rather than claiming one room-wide applied commit. It remains a sender
 ceiling, not a guaranteed or constant bitrate. Do not expose sample rate,
 channel count, codec, DTX, RED, FEC, an arbitrary slider, or a second audio
 adaptation loop.

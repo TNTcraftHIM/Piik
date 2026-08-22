@@ -11,17 +11,13 @@ transport design is owned by [ADR-0005](../adr/0005-automatic-hybrid-media-routi
 ## Decision
 
 Do not deploy or continue the built-in participant-wide candidate. Ordinary
-peer connections remain STUN-only. Exact release `9461e20` implements this
-ladder:
+peer connections remain STUN-only. Exact release `9461e20` used its dated
+SFU-then-selected-TURN recovery slice; current route authority is ADR-0005.
 
-```text
-direct/peer UDP -> SFU/UDP virtual parent -> selected-edge TURN -> failure
-```
-
-TURN remains a compatibility transport, not a topology. Only the existing media
-controller may select one exceptional edge after direct/peer UDP and SFU/UDP
-have failed. No room, participant, or ordinary peer connection receives TURN
-candidates by default.
+TURN remains a compatibility transport, not a topology. The controller may
+authorize it only for an exact logical edge transport or the single Host-SFU
+publication path. No room, participant, or ordinary peer connection receives
+TURN candidates by default.
 
 This supersedes this document's former recommendation to place STUN plus TURN on
 every capable exact-room Web peer connection. Git history retains that analysis;
@@ -72,8 +68,8 @@ normally preferred. That does not make participant-wide TURN free:
 - one participant credential can be reused by its holder until expiry;
 - `setConfiguration()` affects future gathering and does not itself move an
   existing connection, so refresh/recovery still needs lifecycle ownership; and
-- placing TURN on the initial peer PC allows it before the bounded SFU/UDP root,
-  contrary to the accepted cost and topology order.
+- placing TURN on every initial peer PC bypasses exact edge selection and spends
+  relay resources before the controller has observed a failed direct transport.
 
 The candidate was smaller in code because it delegated selection to standard
 ICE, but it widened credential scope and idle server cost. Its failed direct
@@ -82,12 +78,13 @@ acceptance supplied no compensating runtime evidence.
 ## Selected-Edge Boundary
 
 The deployed selected-edge replacement was designed as one coherent
-controller-owned change with a current consumer. The list below records that
-source boundary; fixed counts and ordering remain held:
+controller-owned change with a current consumer. ADR-0005 now owns path
+selection and resource accounting; the transport boundary retained here is:
 
 - a complete default-off deployment tuple with an independent secret, one
   explicit TURN/UDP URI, bounded TTL, quota, bandwidth, and relay-port limits;
-- issuance only after the current edge exhausts direct/peer UDP and SFU/UDP;
+- issuance only after the exact logical edge's direct/STUN transport fails and
+  the controller selects TURN; SFU subscription is a separate ingress choice;
 - one in-memory negotiating attempt bound to room/share generation, viewer and parent
   sessions, route revision, the replaced connection, and a server-generated new
   connection identity;
@@ -120,14 +117,15 @@ exact-room peer assistance and SFU configuration. `HostPeer`, relay parents, the
 Viewer child, and `HybridMediaRouter` share one generation contract; a config-only
 or issuer-only partial deployment remains forbidden.
 
-## Acceptance Boundary
+## Retained Acceptance Boundary
 
-Before production enablement, one isolated canary must prove, in order:
+Current acceptance must independently prove:
 
 1. ordinary direct/peer PCs contain no TURN candidates;
-2. a real SFU/UDP root reaches a decoded/rendered frame under the existing caps;
-3. after that edge's SFU/UDP failure, exactly one authorized parent/child pair
-   rebuilds and selects relay;
+2. one exact authorized parent/child edge can rebuild, select relay, and reach a
+   decoded/rendered frame after its direct transport fails;
+3. Host-SFU publication ingress can independently select TURN when authorized,
+   without granting TURN to unrelated peer edges;
 4. stale/replayed/wrong-session/wrong-revision/wrong-connection grants fail;
 5. success stops further escalation, while expiry, coturn failure, disconnect,
    and all-UDP-blocked cases terminate within the bounded window;
