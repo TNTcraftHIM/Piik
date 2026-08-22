@@ -23,7 +23,6 @@ import {
   DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_QUALITY_SETTINGS,
   MAX_VIEWER_PASSWORD_LENGTH,
-  VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   viewerPasswordSchema,
   type CreateRoomResponse,
   type IceConfig,
@@ -101,7 +100,13 @@ import {
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
   classifyHostViewerQualityEvidence,
+  freshViewerQualityEvidence,
   metricsFromQualityEvidence,
+  nextViewerQualityEvidencePresentationExpiryAt,
+  presentViewerQualityEvidence,
+  reconcileViewerQualityEvidencePresentation,
+  refreshViewerQualityEvidencePresentation,
+  type ViewerQualityEvidencePresentation,
 } from "../media/viewer-quality-evidence";
 import type {
   PeerSnapshot,
@@ -258,7 +263,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
-    Map<string, ViewerQualityEvidence>
+    Map<string, ViewerQualityEvidencePresentation>
   >(() => new Map());
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -285,7 +290,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const hostPeerIdRef = useRef<string | null>(null);
   const viewerQualityEvidenceRef = useRef(
-    new Map<string, ViewerQualityEvidence>(),
+    new Map<string, ViewerQualityEvidencePresentation>(),
   );
   const viewerQualityEvidenceTimersRef = useRef(
     new Map<string, number>(),
@@ -349,7 +354,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         metrics: snapshot.metrics,
       });
     }
-    const evidence = viewerQualityEvidence.get(viewer.peerId);
+    const presentation = viewerQualityEvidence.get(viewer.peerId);
+    const evidence = freshViewerQualityEvidence(presentation);
     if (
       viewer.upstream.kind === "peer" &&
       evidence?.parentPeerId === viewer.upstream.peerId
@@ -590,12 +596,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function updatePeerSnapshot(snapshot: PeerSnapshot): void {
-    const evidence = viewerQualityEvidenceRef.current.get(snapshot.peerId);
-    if (
-      evidence &&
-      evidence.guard.connectionId !== snapshot.connectionId
-    ) {
-      clearViewerQualityEvidence(snapshot.peerId);
+    const presentation = viewerQualityEvidenceRef.current.get(snapshot.peerId);
+    if (presentation) {
+      const reconciled = reconcileViewerQualityEvidencePresentation(
+        presentation,
+        snapshot,
+      );
+      if (reconciled !== presentation) {
+        commitViewerQualityEvidence(snapshot.peerId, reconciled);
+      }
     }
     setPeerSnapshots((current) => {
       const next = new Map(current);
@@ -604,19 +613,56 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     });
   }
 
-  function clearViewerQualityEvidence(peerId: string): void {
+  function commitViewerQualityEvidence(
+    peerId: string,
+    presentation: ViewerQualityEvidencePresentation | null,
+  ): void {
     const timer = viewerQualityEvidenceTimersRef.current.get(peerId);
     if (timer !== undefined) {
       window.clearTimeout(timer);
       viewerQualityEvidenceTimersRef.current.delete(peerId);
     }
-    if (!viewerQualityEvidenceRef.current.has(peerId)) {
+    const current = viewerQualityEvidenceRef.current.get(peerId);
+    if (presentation === null && current === undefined) {
       return;
     }
-    const next = new Map(viewerQualityEvidenceRef.current);
-    next.delete(peerId);
-    viewerQualityEvidenceRef.current = next;
-    setViewerQualityEvidence(next);
+    if (current !== presentation) {
+      const next = new Map(viewerQualityEvidenceRef.current);
+      if (presentation === null) {
+        next.delete(peerId);
+      } else {
+        next.set(peerId, presentation);
+      }
+      viewerQualityEvidenceRef.current = next;
+      setViewerQualityEvidence(next);
+    }
+    if (presentation === null) {
+      return;
+    }
+
+    const nowMs = Date.now();
+    const expiryAt = nextViewerQualityEvidencePresentationExpiryAt(
+      presentation,
+      nowMs,
+    );
+    if (expiryAt === null) {
+      return;
+    }
+    const expected = presentation;
+    const nextTimer = window.setTimeout(() => {
+      if (viewerQualityEvidenceRef.current.get(peerId) !== expected) {
+        return;
+      }
+      commitViewerQualityEvidence(
+        peerId,
+        refreshViewerQualityEvidencePresentation(expected),
+      );
+    }, Math.max(0, expiryAt - nowMs));
+    viewerQualityEvidenceTimersRef.current.set(peerId, nextTimer);
+  }
+
+  function clearViewerQualityEvidence(peerId: string): void {
+    commitViewerQualityEvidence(peerId, null);
   }
 
   function clearAllViewerQualityEvidence(): void {
@@ -652,24 +698,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         signalRef.current?.send(parentEvidence);
       }
     }
-    const next = new Map(viewerQualityEvidenceRef.current);
-    next.set(evidence.viewerPeerId, evidence);
-    viewerQualityEvidenceRef.current = next;
-    setViewerQualityEvidence(next);
-    const previousTimer = viewerQualityEvidenceTimersRef.current.get(
+    commitViewerQualityEvidence(
       evidence.viewerPeerId,
+      presentViewerQualityEvidence(
+        viewerQualityEvidenceRef.current.get(evidence.viewerPeerId) ?? null,
+        evidence,
+      ),
     );
-    if (previousTimer !== undefined) {
-      window.clearTimeout(previousTimer);
-    }
-    const timer = window.setTimeout(() => {
-      if (
-        viewerQualityEvidenceRef.current.get(evidence.viewerPeerId) === evidence
-      ) {
-        clearViewerQualityEvidence(evidence.viewerPeerId);
-      }
-    }, VIEWER_QUALITY_EVIDENCE_EXPIRY_MS);
-    viewerQualityEvidenceTimersRef.current.set(evidence.viewerPeerId, timer);
   }
 
   function watchCaptureEnd(
@@ -2551,10 +2586,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   (hostPresence?.peerId ?? hostPeerIdRef.current)
                   ? peerSnapshots.get(viewer.peerId)
                   : undefined;
-              const qualityEvidence = viewerQualityEvidence.get(viewer.peerId);
-              const hasCurrentQualityEvidence =
+              const qualityPresentation = viewerQualityEvidence.get(
+                viewer.peerId,
+              );
+              const qualityEvidence = qualityPresentation?.evidence;
+              const hasMatchingQualityEvidence =
                 viewer.upstream.kind === "peer" &&
                 qualityEvidence?.parentPeerId === viewer.upstream.peerId;
+              const hasCurrentQualityEvidence =
+                hasMatchingQualityEvidence &&
+                qualityPresentation?.fresh === true;
               const hasCurrentSfuEvidence =
                 viewer.upstream.kind === "sfu" &&
                 viewer.sfuMediaReady === true;
@@ -2602,7 +2643,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     )}
                   {showConnectionDetails &&
                     qualityEvidence &&
-                    hasCurrentQualityEvidence && (
+                    hasMatchingQualityEvidence && (
                     <>
                       <p className="section-meta">观看端接收</p>
                       <StatsGrid

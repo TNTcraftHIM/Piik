@@ -16,7 +16,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
   MAX_VIEWER_PASSWORD_LENGTH,
-  VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   viewerPasswordSchema,
   type IceConfig,
   type MediaAssignment,
@@ -50,8 +49,14 @@ import {
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
+  freshViewerQualityEvidence,
   metricsFromQualityEvidence,
+  nextViewerQualityEvidencePresentationExpiryAt,
+  presentViewerQualityEvidence,
   qualityEvidenceMatchesSnapshot,
+  reconcileViewerQualityEvidencePresentation,
+  refreshViewerQualityEvidencePresentation,
+  type ViewerQualityEvidencePresentation,
   ViewerQualityEvidenceReporter,
 } from "../media/viewer-quality-evidence";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
@@ -127,7 +132,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   } | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [relayChildEvidence, setRelayChildEvidence] =
-    useState<ViewerQualityEvidence | null>(null);
+    useState<ViewerQualityEvidencePresentation | null>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [playbackVolume, setPlaybackVolume] = useState(
     DEFAULT_VIEWER_VOLUME_STATE,
@@ -223,12 +228,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       metrics: relaySnapshot.metrics,
     });
   }
-  if (relayChildEvidence) {
+  const freshRelayChildEvidence = freshViewerQualityEvidence(
+    relayChildEvidence,
+  );
+  if (freshRelayChildEvidence) {
     diagnosticConnections.push({
       scope: "relay-edge",
       route: "p2p",
       direction: "receive",
-      metrics: metricsFromQualityEvidence(relayChildEvidence),
+      metrics: metricsFromQualityEvidence(freshRelayChildEvidence),
     });
   }
 
@@ -272,7 +280,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let selectedEdgeTurn: ActiveSelectedEdgeTurn | null = null;
     const messageAuthority = new ViewerMessageAuthority();
     let sfuStandbyPrewarmer: SfuStandbyPrewarmer | null = null;
-    let relayChildEvidenceCurrent: ViewerQualityEvidence | null = null;
+    let relayChildEvidenceCurrent: ViewerQualityEvidencePresentation | null =
+      null;
     let relayChildEvidenceTimer: number | null = null;
 
     function setSfuStandbyUrl(url: string | null | undefined): void {
@@ -345,13 +354,43 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const parentEdgeQualityEvidenceReporter =
       new ParentEdgeQualityEvidenceReporter();
 
-    function clearRelayChildEvidence(): void {
-      relayChildEvidenceCurrent = null;
-      setRelayChildEvidence(null);
+    function commitRelayChildEvidence(
+      presentation: ViewerQualityEvidencePresentation | null,
+    ): void {
       if (relayChildEvidenceTimer !== null) {
         window.clearTimeout(relayChildEvidenceTimer);
         relayChildEvidenceTimer = null;
       }
+      const current = relayChildEvidenceCurrent;
+      relayChildEvidenceCurrent = presentation;
+      if (current !== presentation) {
+        setRelayChildEvidence(presentation);
+      }
+      if (presentation === null) {
+        return;
+      }
+
+      const nowMs = Date.now();
+      const expiryAt = nextViewerQualityEvidencePresentationExpiryAt(
+        presentation,
+        nowMs,
+      );
+      if (expiryAt === null) {
+        return;
+      }
+      const expected = presentation;
+      relayChildEvidenceTimer = window.setTimeout(() => {
+        if (relayChildEvidenceCurrent !== expected) {
+          return;
+        }
+        commitRelayChildEvidence(
+          refreshViewerQualityEvidencePresentation(expected),
+        );
+      }, Math.max(0, expiryAt - nowMs));
+    }
+
+    function clearRelayChildEvidence(): void {
+      commitRelayChildEvidence(null);
     }
 
     function acceptRelayChildEvidence(evidence: ViewerQualityEvidence): void {
@@ -372,14 +411,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (parentEvidence) {
         signal.send(parentEvidence);
       }
-      clearRelayChildEvidence();
-      relayChildEvidenceCurrent = evidence;
-      setRelayChildEvidence(evidence);
-      relayChildEvidenceTimer = window.setTimeout(() => {
-        if (relayChildEvidenceCurrent === evidence) {
-          clearRelayChildEvidence();
-        }
-      }, VIEWER_QUALITY_EVIDENCE_EXPIRY_MS);
+      commitRelayChildEvidence(
+        presentViewerQualityEvidence(
+          relayChildEvidenceCurrent,
+          evidence,
+        ),
+      );
     }
 
     function ensureViewerRelay(): ViewerRelay | null {
@@ -418,16 +455,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           onUpdate: (snapshot) => {
             if (active) {
               setRelaySnapshot(snapshot);
-              if (
-                relayChildEvidenceCurrent &&
-                !qualityEvidenceMatchesSnapshot(
-                  relayChildEvidenceCurrent,
-                  viewerRelay?.getSnapshot(
-                    relayChildEvidenceCurrent.viewerPeerId,
-                  ) ?? null,
-                )
-              ) {
-                clearRelayChildEvidence();
+              if (relayChildEvidenceCurrent) {
+                const reconciled =
+                  reconcileViewerQualityEvidencePresentation(
+                    relayChildEvidenceCurrent,
+                    viewerRelay?.getSnapshot(
+                      relayChildEvidenceCurrent.evidence.viewerPeerId,
+                    ) ?? null,
+                  );
+                if (reconciled !== relayChildEvidenceCurrent) {
+                  commitRelayChildEvidence(reconciled);
+                }
               }
             }
           },
@@ -723,6 +761,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
     function clearPeerState(): void {
       clearUpstreamState();
+      clearRelayChildEvidence();
       viewerRelay?.stop();
     }
 
@@ -1275,11 +1314,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       currentPeerId = null;
       qualityEvidenceReporter.reset();
       parentEdgeQualityEvidenceReporter.reset();
-      relayChildEvidenceCurrent = null;
-      if (relayChildEvidenceTimer !== null) {
-        window.clearTimeout(relayChildEvidenceTimer);
-        relayChildEvidenceTimer = null;
-      }
+      clearRelayChildEvidence();
       sfuStandbyPrewarmer?.dispose();
       signal.stop();
       clearParticipantPresence();
@@ -1762,7 +1797,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           >
             <h2 id="relay-child-stats-heading">下游接收数据</h2>
             <StatsGrid
-              metrics={metricsFromQualityEvidence(relayChildEvidence)}
+              metrics={metricsFromQualityEvidence(relayChildEvidence.evidence)}
               direction="receive"
             />
           </section>

@@ -1,6 +1,7 @@
 import {
   MAX_MEDIA_ROUTE_REVISION,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
+  VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
   viewerQualityEvidenceMessageSchema,
   viewerQualityEvidenceMetricsSchema,
@@ -15,10 +16,25 @@ import {
 } from "../types";
 import { packetLossPercentFromDeltas } from "../webrtc/stats";
 
-type ViewerQualityEvidence = Extract<
+export type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
 >;
+
+type ViewerQualityEvidenceMetric = keyof ViewerQualityEvidenceMetrics;
+
+function viewerQualityEvidenceMetricKeys(
+  metrics: ViewerQualityEvidenceMetrics,
+): ViewerQualityEvidenceMetric[] {
+  return Object.keys(metrics) as ViewerQualityEvidenceMetric[];
+}
+
+export interface ViewerQualityEvidencePresentation {
+  evidence: ViewerQualityEvidence;
+  fresh: boolean;
+  receivedAtMs: number;
+  observedAtMs: Partial<Record<ViewerQualityEvidenceMetric, number>>;
+}
 
 type ViewerQualityEvidenceWindow = Pick<
   Extract<ClientMessage, { type: "viewer-quality-evidence" }>,
@@ -208,15 +224,166 @@ export class ViewerQualityEvidenceReporter {
   }
 }
 
-export function qualityEvidenceMatchesSnapshot(
+function sameViewerQualityEvidenceIdentity(
+  previous: ViewerQualityEvidence,
+  next: ViewerQualityEvidence,
+): boolean {
+  return (
+    previous.viewerPeerId === next.viewerPeerId &&
+    previous.parentPeerId === next.parentPeerId &&
+    previous.guard.connectionId === next.guard.connectionId &&
+    previous.guard.routeRevision === next.guard.routeRevision
+  );
+}
+
+export function presentViewerQualityEvidence(
+  previous: ViewerQualityEvidencePresentation | null,
+  evidence: ViewerQualityEvidence,
+  nowMs: number = Date.now(),
+): ViewerQualityEvidencePresentation {
+  const continuing =
+    previous !== null &&
+    sameViewerQualityEvidenceIdentity(previous.evidence, evidence) &&
+    evidence.sequence > previous.evidence.sequence;
+  const current = continuing
+    ? refreshViewerQualityEvidencePresentation(previous, nowMs)
+    : null;
+  const metrics = { ...evidence.metrics };
+  const observedAtMs: Partial<
+    Record<ViewerQualityEvidenceMetric, number>
+  > = {};
+
+  for (const metric of viewerQualityEvidenceMetricKeys(evidence.metrics)) {
+    if (evidence.metrics[metric] !== null) {
+      observedAtMs[metric] = nowMs;
+    } else if (
+      current !== null &&
+      current.evidence.metrics[metric] !== null &&
+      current.observedAtMs[metric] !== undefined
+    ) {
+      metrics[metric] = current.evidence.metrics[metric] as never;
+      observedAtMs[metric] = current.observedAtMs[metric];
+    }
+  }
+
+  return {
+    evidence: { ...evidence, metrics },
+    fresh: true,
+    receivedAtMs: nowMs,
+    observedAtMs,
+  };
+}
+
+export function refreshViewerQualityEvidencePresentation(
+  presentation: ViewerQualityEvidencePresentation,
+  nowMs: number = Date.now(),
+): ViewerQualityEvidencePresentation {
+  let metrics = presentation.evidence.metrics;
+  let observedAtMs = presentation.observedAtMs;
+  let changed = false;
+
+  for (const metric of viewerQualityEvidenceMetricKeys(metrics)) {
+    const observedAt = observedAtMs[metric];
+    if (
+      metrics[metric] !== null &&
+      observedAt !== undefined &&
+      nowMs >= observedAt + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
+    ) {
+      if (!changed) {
+        metrics = { ...metrics };
+        observedAtMs = { ...observedAtMs };
+        changed = true;
+      }
+      metrics[metric] = null as never;
+      delete observedAtMs[metric];
+    }
+  }
+
+  const fresh =
+    nowMs < presentation.receivedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
+  if (!changed && fresh === presentation.fresh) {
+    return presentation;
+  }
+  return {
+    ...presentation,
+    evidence: changed
+      ? { ...presentation.evidence, metrics }
+      : presentation.evidence,
+    fresh,
+    observedAtMs,
+  };
+}
+
+export function nextViewerQualityEvidencePresentationExpiryAt(
+  presentation: ViewerQualityEvidencePresentation,
+  nowMs: number = Date.now(),
+): number | null {
+  let nextExpiryAt = presentation.fresh
+    ? presentation.receivedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
+    : Number.POSITIVE_INFINITY;
+
+  for (const metric of viewerQualityEvidenceMetricKeys(
+    presentation.evidence.metrics,
+  )) {
+    const observedAt = presentation.observedAtMs[metric];
+    if (
+      presentation.evidence.metrics[metric] !== null &&
+      observedAt !== undefined
+    ) {
+      nextExpiryAt = Math.min(
+        nextExpiryAt,
+        observedAt + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
+      );
+    }
+  }
+
+  return Number.isFinite(nextExpiryAt)
+    ? Math.max(nowMs, nextExpiryAt)
+    : null;
+}
+
+export function qualityEvidenceIdentityMatchesSnapshot(
   evidence: ViewerQualityEvidence,
   snapshot: PeerSnapshot | null,
-): boolean {
+): snapshot is PeerSnapshot {
   return (
     snapshot !== null &&
     snapshot.peerId === evidence.viewerPeerId &&
     snapshot.connectionId === evidence.guard.connectionId
   );
+}
+
+export function qualityEvidenceMatchesSnapshot(
+  evidence: ViewerQualityEvidence,
+  snapshot: PeerSnapshot | null,
+): boolean {
+  return (
+    qualityEvidenceIdentityMatchesSnapshot(evidence, snapshot) &&
+    snapshot.connectionState === "connected"
+  );
+}
+
+export function reconcileViewerQualityEvidencePresentation(
+  presentation: ViewerQualityEvidencePresentation,
+  snapshot: PeerSnapshot | null,
+): ViewerQualityEvidencePresentation | null {
+  if (
+    !qualityEvidenceIdentityMatchesSnapshot(presentation.evidence, snapshot) ||
+    snapshot?.connectionState === "failed" ||
+    snapshot?.connectionState === "closed"
+  ) {
+    return null;
+  }
+  if (snapshot.connectionState !== "connected" && presentation.fresh) {
+    return { ...presentation, fresh: false };
+  }
+  return presentation;
+}
+
+export function freshViewerQualityEvidence(
+  presentation: ViewerQualityEvidencePresentation | null | undefined,
+): ViewerQualityEvidence | null {
+  return presentation?.fresh ? presentation.evidence : null;
 }
 
 export function classifyHostViewerQualityEvidence(
