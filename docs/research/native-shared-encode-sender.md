@@ -155,8 +155,8 @@ strict ordinary signaling wire, unmodified viewers, read-only feedback, and no
 audio or automatic `LOW`. This is a proposed test boundary, not current product
 behavior or hardware-encoder evidence.
 
-The 2026-08-20 local delivery checkpoint rebases that candidate onto the sole
-current access contract: `screener-v2`, site-access Cookie authentication,
+The 2026-08-20 local delivery checkpoint rebased that candidate onto the
+then-current access contract, `screener-v2`, with site-access Cookie authentication,
 explicit `private-link` creation, fragment-only Viewer grants returned to the
 local Host, and STUN-only ordinary ICE. Native creation alone requests a fixed
 300-second provisional room. It remains random and memory-only even with SQLite
@@ -164,8 +164,11 @@ configured: the current Host session suppresses the reclaim deadline, its
 generation-matched disconnect resets the five-minute window, the ordinary
 transient room TTL still caps the room, and restart drops it. A pre-auth
 connection or authentication failure gets one same-room/token/client-generation
-retry without a second room POST. SQLite remains v2 and ordinary Web creation is
-unchanged.
+retry without a second room POST. SQLite remained v2 and ordinary Web creation
+was unchanged. Current Web and source-only Native have since moved to
+`screener-v5`, and current room persistence is SQLite schema v3. Retaining this
+paragraph records the dated candidate boundary; it does not authorize new work
+against v2.
 Android stop/capture-failure cleanup keeps the established signaling socket until
 its single-thread teardown sends `abandon-room` and then performs a normal close;
 pending-work cancellation only blocks callbacks and cancels active HTTP. No ACK

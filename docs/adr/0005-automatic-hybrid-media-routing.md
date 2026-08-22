@@ -1,7 +1,9 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted Direction - All-Room Controller, Media Evidence Unverified
+- Status: Accepted P2P-First Automatic Direction; Capacity And Fallback Accounting On Truth-Audit Hold
 - Date: 2026-08-19
+
+> The all-room automatic direction, single authoritative Viewer upstream, exact generation authorization, bounded failure, and media-proven transition principles remain accepted. Capacity, SFU publication/subscription, selected TURN, fallback ordering, and temporary resource accounting are disputed inputs rather than implementation authority until the [TODO audit hold](../todo-audit-hold.md) is resolved and this ADR is updated in place.
 
 ## Context
 
@@ -214,8 +216,10 @@ bandwidth adaptation, or resource cost. Chrome 151/LiveKit 1.13.5 localhost runs
 established route
 transition, resumed decoding, and the two-edge bound. Their elapsed times are
 diagnostics only and do not satisfy the regional recovery target. Public
-transport/audio/load/browser checks remain pending. The direction is accepted,
-while implementation migration and deployment acceptance remain unverified.
+transport/audio/load/browser checks remain pending. The automatic controller
+and its later bounded transition slices are deployed, while the fixed
+accounting policy in this checkpoint is under truth-audit hold and real packet,
+recovery, resource, and broad-browser acceptance remains unverified.
 
 ## State And Wire
 

@@ -485,6 +485,12 @@ activation/deactivation.
 
 ### SFU Root Invariant Preflight
 
+> Truth-audit boundary: this section records what the 2026-08-22 source gate
+> asserted. Its fixed root count and Host-publication edge accounting are under
+> the [TODO audit hold](../todo-audit-hold.md), not accepted product invariants.
+> Dynacast/layer configuration and the limits of in-process evidence remain
+> valid observations.
+
 The 2026-08-22 `gate:sfu-root-invariants` source gate proves that the publisher
 passes explicit `dynacast: false`, exposes exactly the ordered active `q,h`
 encodings, and the selectively subscribed screen publication retains a `HIGH`
@@ -664,13 +670,13 @@ resolution, frame rate, or bitrate.
   target guarantees, and the project does not use SDP bitrate hacks.
 - The folded “advanced video” panel accepts only 720p/1080p/1440p, integer
   15-60 fps, 2-12 Mbps, the three preferences, and Automatic/H.264/VP8. Codec
-  selection is locked during a share and applies to the next one. It exposes no
-  audio quality controls and is not renamed in the screen-audio slice. Display capture does
-  not standardize channel-count or sample-rate control; the portable audio
-  `maxBitrate` field remains only a 128 kbps ceiling. The accepted peer
-  exception is a structured Viewer-answer Opus
-  `stereo=1;maxaveragebitrate=128000` receive contract, paired with pinned
-  LiveKit's explicit high-quality stereo/forceStereo option.
+  selection is locked during a share and applies to the next one. The panel is
+  now Share advanced settings and also offers 64/128/256 kbps audio sender
+  ceilings, default 128, locked during the active share. Display capture does
+  not standardize channel-count or sample-rate control. The peer receive
+  contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
+  LiveKit's explicit high-quality stereo/forceStereo option; the selected sender
+  ceiling remains separate from negotiated and observed bitrate.
   DTX stays fixed off, RED retains the pinned SDK default, and FEC remains
   browser/SDK negotiation, not a control or custom adaptation algorithm. The
   full boundary is recorded in `docs/research/browser-screen-audio-quality.md`.

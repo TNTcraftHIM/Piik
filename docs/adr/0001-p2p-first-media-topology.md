@@ -1,7 +1,9 @@
 # ADR-0001: P2P-First Media Topology
 
-- Status: Accepted for the MVP
+- Status: Accepted Historical MVP Baseline; Current Routing Details Superseded By ADR-0002/0005 And Audit Hold
 - Date: 2026-08-18
+
+The P2P-first product intent remains useful. Current access grants, deployed automatic routing, endpoint capacity, SFU publication/subscription, selected TURN, and fallback accounting must not be inferred from this dated baseline; use ADR-0002 and the [TODO audit hold](../todo-audit-hold.md) until ADR-0005 is reconciled.
 
 Current clarification, 2026-08-19: the MVP remains unchanged, but statements
 below that exclude automatic topology migration do not describe the product

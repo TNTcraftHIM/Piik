@@ -2,6 +2,14 @@
 
 Last verified against upstream documentation: 2026-08-21.
 
+> Truth-audit boundary: this page records the exact `9461e20` deployment and
+> its currently accepted configuration syntax. Browser1, fixed root counts,
+> Host-publication accounting, room-wide selected-lease limits, and the exact
+> fallback order are deployed/source facts under the
+> [TODO audit hold](./todo-audit-hold.md), not authority for the next routing
+> model. Do not change or redeploy them until that model is accepted in its
+> owning truth and merged to canonical `main`.
+
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
 behind Caddy or nginx; application ICE advertises only STUN by default; LiveKit
@@ -256,7 +264,7 @@ Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
 limit, not evidence that the publisher can sustain that many streams.
-`MAX_PEER_RELAY_DOWNSTREAM_EDGES` defaults to 2 and accepts only 1 or 2. It can
+In exact release `9461e20`, `MAX_PEER_RELAY_DOWNSTREAM_EDGES` defaults to 2 and accepts only 1 or 2. It can
 tighten but cannot lift release policy: effective Host capacity is
 `min(value, 2)` and effective ordinary Browser Viewer capacity is
 `min(value, 1)`. Active/provisional/selected physical downstream overlays count,
@@ -271,7 +279,7 @@ complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the
 optional SDK and server path dormant. `LIVEKIT_URL` must be a plain `ws:` or
 `wss:` origin with no `/rtc` suffix; production requires `wss:`.
 `LIVEKIT_API_SECRET` must contain at least 32 bytes and must not reuse
-`SITE_ACCESS_PASSWORD`. `MAX_SFU_ROOTS_PER_ROOM` defaults to
+`SITE_ACCESS_PASSWORD`. In that same held release, `MAX_SFU_ROOTS_PER_ROOM` defaults to
 2 and accepts only 1 or 2; it is ignored when LiveKit is not configured. These
 credentials authorize short-lived LiveKit room tokens and do not provide E2EE:
 the LiveKit operator can access ordinary SFU media.
@@ -362,22 +370,22 @@ ownership to the service account and mode `0600`, run SQLite
 use SQLite's [backup API](https://www.sqlite.org/backup.html) or `VACUUM INTO`;
 do not copy only the live main file while it may have an active journal.
 
-The access release changes schema v1 to v2 and has no dual-schema runtime. For
-an existing deployment, stop the service and take a named, immutable v1 copy
-before installing or starting the new binary. Confirm the stopped source reports
-`PRAGMA user_version = 1`, retain the backup outside the release directory, and
-record its checksum. On first v2 startup, one `BEGIN IMMEDIATE` transaction adds
-the checked nullable Viewer digest, writes a different fresh locked-private
-digest to every old room, and advances `user_version` to `2`. Old code-only
-Viewer links intentionally stop working; each existing Host must use rotate once
-to produce a private invitation.
+The current release migrates schema v1 or v2 to v3 and has no dual-schema
+runtime. For an existing deployment, stop the service and take a named,
+immutable copy before installing or starting the new binary. Confirm the
+stopped source reports `PRAGMA user_version = 1` or `2`, retain the backup
+outside the release directory, and record its checksum. On first v3 startup,
+one `BEGIN IMMEDIATE` transaction first gives v1 rows a checked nullable Viewer
+grant digest with a fresh fail-closed value, then gives v1/v2 rows the checked
+nullable password material and advances `user_version` to `3`.
 
-After startup, verify `PRAGMA integrity_check`, `user_version = 2`, service
-health, Host reclaim, rotation, and a new Viewer join before removing the
-maintenance boundary. If rollback is required, stop the v2 service, preserve the
-v2 database separately for diagnosis, restore the exact v1 backup with service
-ownership and mode `0600`, verify integrity and `user_version = 1`, and only then
-start the old binary. Never point the old binary at the migrated v2 file.
+After startup, verify `PRAGMA integrity_check`, `user_version = 3`, service
+health, Host reclaim, invitation rotation, password update/removal, and a new
+Viewer join before removing the maintenance boundary. If rollback is required,
+stop the v3 service, preserve the v3 database separately for diagnosis, restore
+the exact pre-migration backup with service ownership and mode `0600`, verify
+its integrity and original user version, and only then start the matching old
+binary. Never point an old binary at the migrated v3 file.
 
 Enabling persistence does not migrate rooms that existed only in memory. The
 deployment restart invalidates those temporary links; the first subsequently

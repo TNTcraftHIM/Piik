@@ -33,6 +33,16 @@
 
 检查点应立即修改事实的权威归属文件；只有当前全局快照确实改变时才同步修改 `project-memory.md` 或 `status.md`。不要等到 session 末尾才补写，也不要为每个文件、函数、工具调用或未形成结论的探索建立检查点。
 
+讨论、纠正、示例、review 建议、实验结论、checkbox 或 agent 推导都只是输入，不能直接触发实现。先复述目标和源头理由，放回完整产品模型检查矛盾与不必要复杂度，再更新所有受影响的 owning requirement/design/ADR/research 以及确实变化的 memory/status/global rule，并形成 Git-tracked checkpoint。只有 nonvolatile truth 自洽后才能开始实现或派发实现；语义未决时先建立 truth hold，只冻结依赖项。
+
+集成必须先让 accepted truth checkpoint 进入 main，再逐个把保留候选基于该 main 做一次 rebase 或重建。冲突以 main 的 owning truth 为底，只移植已批准的 scoped code/tests/new facts；旧分支中的 `AGENTS.md`、requirements、ADR、memory、status、deployment snapshot 不得覆盖新真相。语义裁决和集成完成后才进入 worktree/branch 清理，并继续执行 PR 等价、开放引用和 link/reparse 安全检查。
+
+审计或集成阶段结束后，先显式保全仍需保留的用户修改，再让 canonical repository root 回到 clean、最新的 `main`；辅助 worktree 不得长期占用 `main`。后续每个实现分支和并行 worktree 都必须从该 canonical `main` 的精确提交创建，不能从旧候选、旧快照或另一个辅助 worktree 继续开枝散叶。只有这一步完成后，才恢复功能实现并行。
+
+当真相审计与功能设计同时存在时，严格按以下依赖顺序推进：先整理 TODO 来源和全部 current truth owner，再形成文档归档及 worktree/branch/folder 处置排期；随后合入审计护栏、恢复 canonical `main` 并只执行已批准的工作区清理；然后才从该 main 做整体设计建模并把它保持为 held proposal。并行化只能加速当前阶段，不能绕过前置真相或提前执行功能实现、候选合并或部署。
+
+完成 canonical root/workspace 整理和整体设计 held proposal 后，必须先向用户报告唯一 `main` SHA、根目录状态、保留/清理项、设计模型和拟恢复 TODO，等待明确核对。核对前不得接受最终争议语义，也不得为“剩余 TODO”新建或恢复实现 worktree；核对后先更新 accepted owning truth，所有高置信并行 worktree 再只从该 exact canonical `main` 创建。
+
 检查点只保存以后仍需要的结论、当前状态、下一步和阻塞项。不要保存原始对话、完整日志、工具输出、临时文件路径、重复的代码结构、可随时重新搜索的常识、过程性 TODO 流水账或已经在其他规范中存在的内容。
 
 恢复上下文时按以下顺序读取：`AGENTS.md`、`docs/project-memory.md`、`docs/status.md`、相关需求/ADR/调研，然后检查当前分支、`git status`、最近 commit 和 PR 状态。任何摘要与仓库冲突时，以当前代码、测试和正式文档为准。
@@ -58,6 +68,8 @@
 - `gate:*` 只承载当前验收确实需要的正确性、安全、协议或资源上限；`probe:*` 是可选研究入口，不进入 Web 验收。localhost synthetic loopback 可记录诊断耗时，但不能用该耗时判定产品性能、标定阈值或阻断可逆标准能力。
 
 ## 阶段验收后的有界架构收敛
+
+> `AUDIT-HOLD / HISTORICAL`：本节是 2026-08-19 的延期审查提案，不是当前授权 TODO、当前里程碑或架构不变量。其旧文件规模、owner、百分比假设、`SFU roots`/exceptional-edge/Host-two 表述只能作为 provenance 输入；必须等 [TODO audit hold](./todo-audit-hold.md) 完成、canonical root 回到最新 `main`，并由用户重新接受范围后才可重建或删除本节。
 
 这是一项明确延期的收官任务。只有当前主要功能基本完成、相关主线变更合并且阶段验收完成后才可启动；它不阻断或抢占当前的质量证据、自动路由 exact-room canary、native sender 或部署工作。启动时从届时最新 `main` 建立一个短期 `refactor/` 或 `chore/` 分支。当前只记录审查契约，不实施重构。
 

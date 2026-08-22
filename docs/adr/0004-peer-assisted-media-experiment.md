@@ -3,6 +3,8 @@
 - Status: Proposed - Historical Experiment (rollout superseded by ADR-0005)
 - Date: 2026-08-19
 
+> Historical cap2/cap3 measurements remain evidence only. References below to a current Browser1 policy, global SFU-root-two limit, or accepted accounting are frozen by the [TODO audit hold](../todo-audit-hold.md) and must not authorize implementation or a release gate.
+
 ## Context
 
 ADR-0001 accepted standard browser WebRTC P2P for the MVP and rejected a viewer
