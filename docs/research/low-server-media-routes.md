@@ -543,6 +543,13 @@ per-subscription egress budget. The application therefore needs its own typed
 admission boundary instead of treating a root count or the SDK room setting as
 resource evidence.
 
+Pinned LiveKit 1.13.5 treats `canPublishSources` as a source allowlist, not a
+per-participant or per-source publication-count limit. `limit.num_tracks` gates
+node-wide `NumTracksIn + NumTracksOut` admission, while
+`subscription_limit_video/audio` caps each participant's concurrent subscribed
+tracks by kind and leaves excess requests pending. Neither is an SFU bandwidth
+budget or a replacement for Screener's ingress and egress admission.
+
 For the current single application process, one O(1) ledger owns two explicitly
 configured positive safe-integer capacities: each Host publication uses one
 ingress unit and each authorized SFU subscription uses one egress unit. There is
@@ -550,38 +557,36 @@ no built-in default or fixed root count. A candidate reserves its full actual
 ingress/egress demand under exact room/share/publication identity before any
 token is issued; reserved, committed, and draining generations are all charged.
 Capacity exhaustion leaves the current route unchanged and returns control to
-the bounded fallback sequence.
+the bounded fallback sequence. Screener sizes those capacities for its shipped
+clients in private rooms where authenticated Hosts are trusted media
+participants; the pinned upstream LiveKit release is sufficient for that
+boundary.
 
-Self-hosted LiveKit does not revoke an old token when a participant is removed,
-and token expiry governs connection admission rather than terminating an
-existing participant. A route commit or client disconnect therefore cannot be
-used as resource-release proof. The dedicated LiveKit instance instead disables
-automatic room creation. Screener explicitly creates an exact-generation room
-through `RoomService` before token issuance and uses `DeleteRoom` plus an absent
-room readback as the only drain proof. A deleted room cannot be recreated by a
-stale token when `room.auto_create` is false. At process startup, the application
-first acquires its configured listener; a competing process that cannot bind
-performs no LiveKit operation. The bound owner returns `503` and installs no
-signaling upgrade handler while it rejects foreign room names, drains all stale
-Screener rooms, and confirms the namespace empty before it admits a new
-generation. Host signaling loss is
-checked against the exact LiveKit Host participant on a bounded interval, so
-healthy media stays charged while an abandoned generation is reclaimed after
-the participant disappears.
+Self-hosted `RemoveParticipant` closes the current participant but does not
+invalidate a still-valid join token, and token expiry governs connection
+admission rather than terminating an existing participant. A route commit or
+client disconnect therefore cannot prove resource release. The dedicated
+LiveKit instance disables automatic room creation. Screener explicitly creates
+an exact-generation room containing an unguessable publication generation and
+never reuses that name; `DeleteRoom` plus an absent-room readback is the drain
+proof. With `room.auto_create: false`, an old token cannot recreate the absent
+room. Reserved, committed, and draining generations remain charged until that
+proof completes.
+
+At process startup, the application first acquires its configured listener; a
+competing process that cannot bind performs no LiveKit operation. The bound owner
+returns `503` and installs no signaling upgrade handler while it rejects foreign
+room names, drains all stale Screener rooms, and confirms the namespace empty
+before admitting a new generation. Host signaling loss is checked against the
+exact LiveKit Host participant on a bounded interval, so healthy media stays
+charged while an abandoned generation is reclaimed after the participant
+disappears.
 
 These capacities are operator inputs derived from the actual instance, codec,
 representation, bitrate, and accepted concurrency matrix. LiveKit's published
 example benchmark cannot supply Screener defaults. A later multi-process
 Screener deployment needs a shared atomic ledger; independent process-local
 counters would not be deployment-wide admission.
-
-Primary sources accessed 2026-08-22:
-
-- [LiveKit benchmarking](https://docs.livekit.io/transport/self-hosting/benchmark/)
-- [LiveKit 1.13.5 server configuration sample](https://github.com/livekit/livekit/blob/v1.13.5/config-sample.yaml)
-- [LiveKit access tokens and room configuration](https://docs.livekit.io/frontends/reference/tokens-grants/)
-- [LiveKit RoomService API](https://docs.livekit.io/reference/other/roomservice-api/)
-- [LiveKit server SDK 2.17.0 RoomServiceClient](https://github.com/livekit/node-sdks/blob/livekit-server-sdk%402.17.0/packages/livekit-server-sdk/src/RoomServiceClient.ts)
 
 ## Route Screening
 
@@ -658,7 +663,7 @@ The measurable gates and exact staged experiments are in
 
 ## Sources And License Boundary
 
-Primary sources accessed on 2026-08-19, 2026-08-21, and 2026-08-22:
+Primary sources accessed on 2026-08-19, 2026-08-21, 2026-08-22, and 2026-08-23:
 
 - [Pion WebRTC](https://github.com/pion/webrtc) - MIT; no code copied.
 - [Pion WebRTC v4 API](https://pkg.go.dev/github.com/pion/webrtc/v4) - API
@@ -722,6 +727,14 @@ Primary sources accessed on 2026-08-19, 2026-08-21, and 2026-08-22:
   reference, with no code copied into this research change.
 - [LiveKit 1.13.5 configuration sample](https://github.com/livekit/livekit/blob/v1.13.5/config-sample.yaml),
   [pinned configuration source](https://github.com/livekit/livekit/blob/v1.13.5/pkg/config/config.go),
+  [node track-limit selection](https://github.com/livekit/livekit/blob/v1.13.5/pkg/routing/selector/utils.go),
+  [participant publication checks](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/participant.go),
+  [subscription-limit handling](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscriptionmanager.go),
+  [room allocation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roomallocator.go),
+  [room-service lifecycle](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roomservice.go),
+  [access tokens and grants](https://docs.livekit.io/frontends/reference/tokens-grants/),
+  [RoomService API](https://docs.livekit.io/reference/other/roomservice-api/),
+  [server SDK 2.17.0 RoomServiceClient](https://github.com/livekit/node-sdks/blob/livekit-server-sdk%402.17.0/packages/livekit-server-sdk/src/RoomServiceClient.ts),
   [ports/firewall](https://docs.livekit.io/transport/self-hosting/ports-firewall/),
   [deployment/embedded TURN](https://docs.livekit.io/transport/self-hosting/deployment/),
   and [benchmark guidance](https://docs.livekit.io/transport/self-hosting/benchmark/)
