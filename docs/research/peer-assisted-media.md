@@ -3,7 +3,7 @@
 - Research date: 2026-08-22
 - Scope: one game-screen broadcaster, explicit admission up to sixteen trusted
   viewers, with the retained resource/quality gate at eight
-- Status: historical evidence plus the current bounded source candidate;
+- Status: historical evidence plus the deployed bounded controller;
   accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
   the room-`1` rollout boundary; retained SFU media remains unverified.
 
@@ -528,6 +528,8 @@ socket generation are ignored, and the server revalidates the current
 authenticated session before replying. A hidden document, a visibility
 restore, or an obviously late timer callback clears pending evidence and starts
 a fresh five-second baseline instead of declaring failure.
+This response-only watchdog is deployed in release `21d5cd9f7139`; real silent
+partition timing remains a production/browser evidence boundary.
 
 The response is socket-local, contains no room state, secret, candidate, or raw
 statistics, is not logged, and is limited by the server to at most one response

@@ -437,11 +437,13 @@ unchanged severe or relative pair advances its own streak. Healthy or ambiguous
 correlated windows clear it. A Viewer or parent session,
 connection ID, route revision or parent identity change also resets it, as does
 an evidence gap over five seconds. Severe and relative-FPS evidence each open at
-most one peer-to-peer make-before-break attempt. The candidate is a Viewer whose
-active upstream is peer or SFU, whose session/share/revision are current, and
-whose effective relay capacity has one strict spare slot; Host remains excluded.
-The candidate parent holds one provisional child `HostPeer` outside its active
-child IDs/map. The old active edge and its connection ID remain authoritative
+most one peer-to-peer make-before-break attempt. The candidate is either a Viewer
+whose active upstream is peer or SFU, or the Host; its session/share/revision
+must be current and its effective downstream budget must have one strict spare
+slot. A Viewer candidate holds one provisional child `HostPeer` outside its
+active child IDs/map; the Host owns an equivalent provisional child separately
+from its active peers, SFU publication, and selected overlay, while Host2 remains
+the physical-edge ceiling. The old active edge and its connection ID remain authoritative
 while the candidate uses a separate exact identity. The Viewer sends prepare-ready only after positive current-candidate
 RTP and decoded-frame progress plus a live video track; only then does the server
 commit the planned topology and promote the same provisional PC plus candidate
@@ -479,8 +481,8 @@ viewers cannot attach behind any healthy root, a later reviewed config may
 admit additional direct server-fed edges under a separate explicit egress cap;
 it never creates a third endpoint edge or unbounded whole-room fanout.
 
-Sub-second media recovery remains a target after media failure detection. A
-separate browser application challenge detects a silently partitioned signaling
+Sub-second media recovery remains a target after media failure detection. The
+deployed browser application challenge detects a silently partitioned signaling
 WebSocket on a bounded 5-second baseline plus two exact 2-second misses, then
 reauthenticates on a new socket without asking ordinary P2P or duplicate
 same-revision SFU media to close and without reporting `route-failed`. Existing

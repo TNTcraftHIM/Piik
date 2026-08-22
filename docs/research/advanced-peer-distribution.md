@@ -214,10 +214,11 @@ limitation or at least 100 sent packets with remote loss divided by sent packets
 at least 30%. Three consecutive windows of the same severe or relative kind are
 required. A healthy or incomplete correlated window, any Viewer/parent session,
 connection, route revision or parent change, or a gap over five seconds clears
-the streak. Severe and relative-FPS quality evidence each tries one Viewer whose
-active upstream is peer or SFU through make-before-break; Host is excluded, and
-session/share/revision plus one strict effective-capacity slot are required
-before breadth-first selection continues. No candidate, probe failure, or timeout keeps
+the streak. Severe and relative-FPS quality evidence each tries one parent through
+make-before-break: either a Viewer whose active upstream is peer/SFU or the Host.
+Session/share/revision plus one strict effective-capacity slot are required
+before breadth-first selection continues; Host accounting includes its active
+children, SFU publication, selected overlay, and provisional child. No candidate, probe failure, or timeout keeps
 the old edge without SFU, TURN, or an error. A started attempt spends a
 30-second room migration
 budget, so a new public Viewer identity cannot bypass it. Per-edge state clears
