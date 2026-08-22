@@ -184,6 +184,16 @@ SFU and TURN remain bounded fallback resources with independent deployment-wide
 admission. Resource exhaustion produces the next bounded candidate, an explicit
 wait, or failure; it never creates unbounded central fanout.
 
+For the single-process deployment, selected TURN uses one injected allocation
+authority with an explicitly configured positive safe-integer capacity and no
+product default. Each exact `peer-selected` transport and Host-SFU ingress
+transport consumes one unit. The controller reserves that unit before issuing a
+credential, commits only the matching current identity, and keeps reserved,
+committed, and draining entries charged until their logical authorization is
+released. Independent logical edges may coexist up to this deployment capacity;
+the capacity is not derived from endpoint media-copy capacity, Viewer admission,
+or a room-wide lease count.
+
 For the single-process deployment, SFU admission is one injected authority with
 deployment-wide ingress and egress counters. Enabling LiveKit requires explicit
 positive safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values;

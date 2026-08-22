@@ -588,6 +588,27 @@ example benchmark cannot supply Screener defaults. A later multi-process
 Screener deployment needs a shared atomic ledger; independent process-local
 counters would not be deployment-wide admission.
 
+## Deployment-Wide TURN Admission
+
+Selected TURN needs its own deployment admission because coturn REST credentials
+authenticate a bounded bearer but do not enforce Screener's room, edge, session,
+revision, or connection identity. The current single-process boundary is one
+O(1) logical-allocation ledger with an explicit positive safe-integer capacity
+and no default. Each exact `peer-selected` transport and Host-SFU ingress
+transport reserves one unit before credential issuance; reserved, committed, and
+draining authorizations remain charged until the application releases that exact
+identity. Independent edges may therefore coexist without a room-wide lease
+rule, while exhaustion returns to the existing bounded fallback path.
+
+Coturn exposes no application control-plane operation that deletes and reads
+back one exact Screener allocation. The logical ledger therefore does not claim
+physical allocation drain proof. Short credential TTL plus coturn `user-quota`
+and `total-quota` bound allocations that outlive a logical authorization or an
+application restart. A restarted single process starts a new logical owner and
+cannot reconstruct the old in-memory ledger; a multi-process or stronger
+cross-restart claim would require a shared atomic owner or a coturn control
+contract and is outside this wave.
+
 ## Route Screening
 
 | Route | Where copies are emitted | Endpoint cost | Evidence status |
