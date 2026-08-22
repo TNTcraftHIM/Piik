@@ -1,16 +1,56 @@
 # Workspace Disposition
 
-Last sampled: 2026-08-22 11:42 HKT
+Last sampled: 2026-08-22 after the approved cleanup pass
 
 This is the demand-loaded schedule for restoring one canonical repository root and disposing of auxiliary work safely. It is not permission to delete, merge, rebase, or resume a TODO. Shared state is dynamic, so every action must re-sample Git status, refs, PRs, and links immediately before execution.
+
+## Executed Cleanup Checkpoint
+
+The detailed tables below retain the pre-execution 30-worktree snapshot so the
+disposition evidence is reviewable. This checkpoint supersedes those counts:
+
+- The canonical root `Screener` was restored to clean `main@5bb54b0`, equal to
+  `origin/main` and GitHub `main` before this docs-only record. The two staged
+  user `AGENTS.md` rules are present in that mainline truth; their recovery copy
+  remains in `stash@{0}` through the user checkpoint.
+- After this record branch is merged and removed, 26 registered worktrees and
+  29 local branches remain. Five worktrees are dirty; only
+  `Screener-local-oneclick` has nonignored untracked files, exactly five. Every
+  dirty, held, unknown, evidence-only, archive, and open-stack item was
+  preserved.
+- The clean auxiliary-main, current-routing-truth,
+  connection-details-stability, and detached current-route-canary worktrees
+  were removed after exact status and non-following link checks. Their eligible
+  local branches were removed together with the merged-equivalent
+  `feat/viewer-presence-polish`, `feat/room-viewer-access-merge-history`, and
+  main-ancestor `fix/ice-status-wording` refs.
+- Fifteen merged remote heads were deleted only after exact PR-head equality,
+  merge ancestry, and open head/base checks. Ten remote branches remain:
+  `main`, open PR #192, the six open Native stack refs, held
+  `test/native-two-viewer-fanout`, and closed-unmerged
+  `feat/screen-audio-stereo`.
+- The signaling-canary junction and both junction-only unregistered shells were
+  unlinked without following their targets. The only known registered-worktree
+  junction left is the preserved configurable-cap `node_modules` link to the
+  canonical dependency directory.
+- Four approved empty/junction-only sibling directories were removed. The empty
+  `Screener-android-pilot-apk` directory remains because Windows reports an
+  external open handle; no process was killed and no forced recursive deletion
+  was attempted. Deployment archives, extracted artifacts, the independent
+  audio acceptance clone, and all uncertain directories remain retained.
+- `feat/sfu-media-mode` remains local because it is closed-unmerged and not
+  commit-equivalent to main. Apparent semantic supersession was not used as
+  permission to destroy its recovery input.
+
+No routing implementation or remaining TODO resumed during this cleanup pass.
 
 ## Canonical Target And Stop Gate
 
 - The canonical repository root is the registered worktree whose sibling-directory name is `Screener`; all other `Screener-*` worktrees are auxiliary.
 - Its required terminal state is a clean, exact latest `main`. An auxiliary worktree must not retain `main` afterward.
 - The audit-guard truth checkpoint merges first; it does not accept a final routing model. The root's staged user rules must be proved present in that updated `main` or explicitly preserved before its index changes.
-- After truth integration, canonical-root restoration, and the approved workspace cleanup below, produce the holistic routing model as a held proposal from canonical `main`. Then report the main SHA, dirty/untracked count, retained worktrees/branches, route proposal, held candidates, and proposed high-confidence TODOs to the user.
-- Do not create or resume a remaining-TODO implementation worktree until that checkpoint is explicitly confirmed. After confirmation, every new branch/worktree starts from the exact canonical `main` SHA.
+- After truth integration, canonical-root restoration, and the approved workspace cleanup below, report the main SHA, dirty/untracked count, retained worktrees/branches, held candidates, and TODO classifications to the user before producing the holistic route proposal or resuming cleanup.
+- After that checkpoint is explicitly confirmed, produce the holistic routing model as a held proposal from exact canonical `main`, then stop again for route-semantics confirmation. Do not create or resume an implementation worktree until the accepted owning truth is merged; every later worktree starts from that exact newer `main` SHA.
 
 ## Disposition Classes
 
@@ -20,7 +60,7 @@ This is the demand-loaded schedule for restoring one canonical repository root a
 - `D CLEANUP`: eligible only after semantic disposition, integration/equivalence, clean-tree, open-reference, and non-following link checks all pass.
 - `E RETAIN`: active stack, external evidence, archive, or unknown provenance; keep until a separate reviewed decision.
 
-## Registered Worktrees
+## Registered Worktrees (Pre-Execution Snapshot)
 
 The snapshot contains 30 registered worktrees. Seven are dirty. Only
 `Screener-local-oneclick` has nonignored untracked files: five unique project
@@ -100,7 +140,8 @@ Never recursively remove a containing directory while one of these links remains
 4. Handle the signaling-canary junction without following it. Recheck the auxiliary-main worktree is clean, untracked-free, and at exact latest `main`, then release it.
 5. Make the canonical root clean without losing unmatched user work, switch it to exact latest `main`, and verify path, branch, HEAD, dirty/untracked state, and GitHub main equality.
 6. Execute only already-approved `D` cleanup items, one exact target at a time, after semantic/equivalence/open-reference/link checks. Preserve all `A`, `B`, and `E` items.
-7. From exact canonical `main`, produce only the holistic routing held proposal; do not implement it or resume another TODO.
-8. Stop and obtain user confirmation of the organized canonical state, routing proposal, and proposed remaining TODO list.
-9. Only after confirmation, update accepted owning truth and merge that truth into canonical `main`. Then create new implementation worktrees from that exact newer canonical-main commit and reconcile `B` candidates one at a time. Old branch truth files never win conflicts.
-10. Process independent archives and deployment artifacts last, with checksum and retention evidence.
+7. Stop and obtain user confirmation of the organized canonical state, retained material, and TODO classifications before route modeling or another cleanup pass.
+8. After that confirmation, produce only the holistic routing held proposal from exact canonical `main`; do not implement it or resume another TODO.
+9. Stop again and obtain explicit route-semantics confirmation.
+10. Only after confirmation, update accepted owning truth and merge that truth into canonical `main`. Then create new implementation worktrees from that exact newer canonical-main commit and reconcile `B` candidates one at a time. Old branch truth files never win conflicts.
+11. Process independent archives and deployment artifacts last, with checksum and retention evidence.
