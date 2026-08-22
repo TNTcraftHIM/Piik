@@ -8,7 +8,9 @@
   evidence is unverified; relay-capacity `0 -> 1`, multi-root reselection, and
   advanced encoded-media routes remain unimplemented candidates
 
-> Truth-audit note: this document remains research evidence, not a backlog. Any current-capacity, SFU-root, TURN, fallback, or accounting assertion is held by the [TODO audit hold](../todo-audit-hold.md) until the holistic route model is accepted.
+This document is research evidence, not current architecture or a backlog. See
+[ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) for accepted routing
+invariants and [the TODO ledger](../todo.md) for pending work.
 
 ## Terms
 
@@ -204,9 +206,9 @@ not evidence. `sending`, either report alone, and healthy or ambiguous pairs
 reset or do not advance the streak.
 It holds at most one pending/streak state per connected Viewer and one room
 cooldown, with no timer or weighted score. One confirmed child event stays
-edge-local. The two-distinct-child corroboration logic is retained only for a
-future accepted Viewer-capacity tier; current ordinary Browser Viewer capacity
-one makes that state unreachable in release routing.
+edge-local. Corroboration from two distinct current children can affect relay
+parent eligibility only when the configured ordinary capacity makes that state
+reachable; it does not define the capacity policy.
 
 The conservative Viewer C hard predicates are: freeze duration at least half
 of the one-to-five-second window; positive received-packet delta with zero
@@ -218,9 +220,8 @@ required. A healthy or incomplete correlated window, any Viewer/parent session,
 connection, route revision or parent change, or a gap over five seconds clears
 the streak. Severe and relative-FPS quality evidence each tries one parent through
 make-before-break: either a Viewer whose active upstream is peer/SFU or the Host.
-Session/share/revision plus one strict effective-capacity slot are required
-before breadth-first selection continues; Host accounting includes its active
-children, SFU publication, selected overlay, and provisional child. No candidate, probe failure, or timeout keeps
+Session/share/revision plus one strict ordinary-capacity reservation are required
+before breadth-first selection continues. No candidate, probe failure, or timeout keeps
 the old edge without SFU, TURN, or an error. A started attempt spends a
 30-second room migration
 budget, so a new public Viewer identity cannot bypass it. Per-edge state clears
@@ -262,27 +263,17 @@ standards-derived or claimed optimum values.
 
 One correlated pair still attributes a problem only to its current
 parent-to-child edge generation: remote loss comes from that child and
-`qualityLimitationReason` belongs to one outbound stream. Screener therefore
-keeps a single event edge-local. In a future accepted capacity-two tier, two independently confirmed current children
-within five seconds are instead treated as bounded corroboration to pause that
-Viewer parent's relay eligibility for 30 seconds, not as proof of device-wide
-quality or a numeric score. The client-advertised capacity remains intact; new
-capacity messages cannot override the server-owned pause. Existing children
-try deterministic peer reassignment and keep their old edge when none exists;
-the parent keeps its upstream and the pause itself never starts SFU or TURN.
-Host parents are excluded, while expiry, a new parent session or a new share
-restores eligibility. Alternate-parent selection remains breadth-first;
-preferring recent healthy candidates remains later. The triggering child now
-uses bounded make-before-break; converting the quarantined parent's remaining
-children from their existing immediate reassignment is a separate slice.
+`qualityLimitationReason` belongs to one outbound stream. Two independently
+confirmed current children may provide bounded corroboration for that relay
+parent, but do not prove device-wide quality or create a numeric score. Existing
+children keep their old edge when no authorized alternate exists. The triggering
+child uses media-proven make-before-break, and current Viewer/SFU-upstream and
+Host provisional-parent paths preserve the candidate connection identity.
 
-With current Host degree two and Browser Viewer degree one, deterministic
-assignment forms at most two bounded chains. A tree for `N` viewers
-still has `N` media edges, approximately `N*B` useful upload in aggregate, and
-approximately `2B` host upload once both roots are used. Local reparenting does
-not reduce either bandwidth quantity. Reordering an already balanced healthy
-tree also cannot reduce depth; a move needs a discrete admission, path, TURN,
-relay-resource, recovery, or future native-capacity benefit.
+For `N` Viewers a peer tree still has `N` media edges and approximately `N*B`
+useful upload in aggregate. Local reparenting redistributes that traffic; it does
+not eliminate it. Reordering a healthy tree therefore needs a discrete current
+benefit rather than a continuous optimizer.
 
 The source admission-rescue slice is limited to its discrete capacity case. If
 a relay-capable viewer is unassigned because two zero-capacity roots occupy
@@ -294,8 +285,8 @@ host -> new relay -> existing leaf
 host -> other root
 ```
 
-This admits the waiting viewer while keeping Host fanout at two and Browser
-Viewer fanout at one. The router permits it only on an active peer-only route with no SFU
+At the exact release that introduced this rescue, the move kept Host fanout at
+two and Browser Viewer fanout at one. The router permits it only on an active peer-only route with no SFU
 publication or pending prepare, when the connected candidate currently has no
 upstream or children, offers relay capacity, and has no failed-parent
 history. The host must have exactly two children and the chosen child must be a
@@ -321,10 +312,9 @@ geography, or one party's unverified report. Keep healthy assignments sticky,
 move only one affected subtree, use separate enter and recovery thresholds plus
 a cooldown, and disable proactive moves for the share after repeated rollback.
 
-Use make-before-break only when the new parent has a free downstream media slot
-and every affected endpoint remains within its current release limit: Host at
-most two, ordinary Browser Viewer at most one. A future native role requires its
-own accepted limit. Admission rescue
+Use make-before-break only when the new parent has a free ordinary downstream
+slot under the server-authoritative configured cap. A provisional child reserves
+that slot until commit or rollback. Admission rescue
 starts with both host slots occupied, so it is break-before-make: retire the
 chosen host-to-leaf media edge before activating host-to-new-relay media. A
 control-only `RTCPeerConnection` may prewarm ICE but cannot prove media uplink:
@@ -332,8 +322,8 @@ WebRTC exposes `availableOutgoingBitrate` only after congestion-controlled RTP
 has used that candidate pair. Zero interruption, active standby media, and a
 hard endpoint edge limit cannot all be guaranteed at once.
 
-Proceed only after the current evidence-alignment and peer canary gates pass.
-Every sampled instant must retain host/relay fanout limits; unaffected branches
+Any calibration study must retain configured fanout limits at every sampled
+instant; unaffected branches
 must not freeze; make-before-break must decode at every affected receiver on the
 new path before retiring the old edge, while break-before-make must do so within
 one second p95 after the break and before declaring the move successful. Stable

@@ -11,13 +11,10 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-The user accepted `balanced` as the recommended-profile and advanced default.
-A previous iteration temporarily returned those defaults to clarity-first after
-field feedback, but that overcorrection is superseded: current source uses
-`balanced`, while `maintain-resolution` and `maintain-framerate` remain explicit
-choices. Independently, the P2P answer-time whole-profile workaround rested on
-confounded evidence and is removed below. These preferences still leave actual
-degradation to the browser; Screener observes readback and stats.
+Current source uses `balanced` as the recommended profile and advanced default;
+`maintain-resolution` and `maintain-framerate` remain explicit choices. These
+preferences leave actual degradation to the browser, so Screener observes
+readback and stats rather than claiming a fixed quality outcome.
 
 The inspected Chromium/libwebrtc source chain makes a screen-only shortcut
 especially unsafe to assume for Screener. The JavaScript `motion` hint reaches
@@ -483,13 +480,10 @@ that feature. If built-in selection fails the product gates, test explicit
 standard subscriber quality selection before manual sender
 activation/deactivation.
 
-### SFU Root Invariant Preflight
+### Historical SFU Source Gate
 
-> Truth-audit boundary: this section records what the 2026-08-22 source gate
-> asserted. Its fixed root count and Host-publication edge accounting are under
-> the [TODO audit hold](../todo-audit-hold.md), not accepted product invariants.
-> Dynacast/layer configuration and the limits of in-process evidence remain
-> valid observations.
+This section records the exact 2026-08-22 source gate; it is evidence rather
+than current routing policy.
 
 The 2026-08-22 `gate:sfu-root-invariants` source gate proves that the publisher
 passes explicit `dynacast: false`, exposes exactly the ordered active `q,h`

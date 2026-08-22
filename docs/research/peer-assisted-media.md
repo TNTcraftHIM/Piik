@@ -7,15 +7,15 @@
   accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
   the room-`1` rollout boundary; retained SFU media remains unverified.
 
-> Truth-audit note: dated measurements and exact deployed behavior remain valid within their stated environments. Browser1, fixed SFU-root-two, publication/selected-edge accounting, and future capacity conclusions are disputed inputs under the [TODO audit hold](../todo-audit-hold.md), not current product policy or executable gates.
+This document owns dated measurements and implementation evidence. Current
+capacity and routing authority live in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md)
+and [project memory](../project-memory.md).
 
 ## Conclusion
 
-Peer-assisted forwarding can cap the broadcaster at one or two outgoing media
-edges without making an SFU carry every viewer's traffic. The current release
-policy allows at most two Host physical media edges and one ordinary Browser
-Viewer downstream edge. The earlier capacity-two Browser relay work below is a
-historical experiment, not release policy. The smallest credible path uses only
+Peer-assisted forwarding can reduce broadcaster fanout without making an SFU
+carry every viewer's traffic. The release measurements below are historical
+evidence rather than current capacity policy. The smallest tested path uses only
 standard WebRTC media:
 
 1. the browser host sends its screen stream to at most two first-level viewers;
@@ -103,7 +103,7 @@ Sources:
 - [W3C WebRTC `addTrack` and sender model](https://www.w3.org/TR/webrtc/) (accessed 2026-08-21)
 - [WebRTC remote-stream forwarding primitives](https://webrtc.org/getting-started/remote-streams) (accessed 2026-08-21)
 
-### Server Authority And Current Release Clamp
+### Server Authority And Ordinary Capacity
 
 The WebRTC 1.0 sender model associates transmission with an individual
 `RTCRtpSender`; it does not turn a client-declared fanout value into server
@@ -114,17 +114,14 @@ provisional or selected replacement, rather than treating a logical route as one
 upload. OWASP's server-side input-validation guidance treats client input as
 untrusted and requires semantic validation in the trusted service.
 
-The resulting Screener policy is an engineering inference: authenticate role
-first, then compute effective Host capacity as `min(deployment, 2)` and ordinary
-Browser Viewer capacity as `min(deployment, 1)`. A Viewer advertisement of two
-or three remains syntactically valid for the unchanged future protocol envelope,
-but cannot authorize a second current-release child. Host SFU publication and
-active/provisional/selected physical overlays consume Host upload budget;
-ordinary upstream receive does not. No UA or visibility classification is used.
-The Web client independently clamps received child assignments to Host two or
-Viewer one before opening physical peer connections. That client check limits
+The resulting Screener policy is an engineering inference: authenticate the
+session first, then let the server apply one ordinary downstream capacity to
+every non-server endpoint. The default is two and a deployment may choose one,
+two, or three. Upstream receive is free; role, UA, visibility, and client
+advertisement cannot raise or create another tier. A client-side clamp can limit
 damage from a server regression, but does not replace authenticated server
-authority or promote the protocol envelope into release policy.
+authority. Assisted transport and temporary-overlap accounting are separate
+routing questions and are not defined by this resource observation.
 
 Sources, accessed 2026-08-22:
 
@@ -282,7 +279,7 @@ fanout stayed at two and relay fanout at one. This is control and continuity
 evidence only, not visual-quality, full-resolution, load, TURN, public-network,
 or endurance evidence.
 
-A 2026-08-22 current-release rerun at exact source `b77f4eb58944` used Chrome
+A 2026-08-22 release-checkpoint rerun at exact source `b77f4eb58944` used Chrome
 151.0.7922.138, three Viewers, the Host2/ordinary Browser Viewer1 policy, an
 eight-second sample window, and the existing hard-departure recovery gate. All
 three Viewers decoded; Host media fanout peaked at two, Browser relay fanout at
@@ -317,14 +314,14 @@ games, mobile resources, public networking, or endurance.
 
 The historical loopback runner used cap2 by default;
 `BENCHMARK_EXPECTED_ENDPOINT_CAP=3` configured only its local server and gate.
-The current runner no longer admits cap3 because it verifies release policy.
+That source checkpoint later rejected cap3 in its release-policy mode.
 A 2026-08-22 Chrome 151 two-second
 smoke passed with three Viewers at Host2/relay1 and six at Host3/relay3, with all
 Viewers decoding. This was an experimental control-path result, not a
 release-policy, production-default, SFU-capacity, or resource claim.
 
-The following cap2/cap3 results are retained historical experiments and must not
-be used to lift the Host2/Browser Viewer1 release policy. A 2026-08-22 Windows
+The following cap2/cap3 results are retained historical experiments and do not
+select product policy. A 2026-08-22 Windows
 Chrome 151.0.7922.138 headless loopback ran sixteen
 Viewers for two seconds at 720p30 with cap2 and cap3. Both runs had all sixteen
 Viewers decoding and no fatal/check failure. Cap2 peaked at Host2/relay2 with
@@ -333,8 +330,8 @@ Host3/relay3 with depth three and 977 ms. Final samples were only 320x180 at
 9-10 fps. The 8-core/16-thread Ryzen 7 9700X runner had 47.1 GiB RAM and 13.7
 GiB free after the runs, but no process CPU, GPU, NIC, or peak-memory totals were
 captured. This proves the explicit admission, bounded topology, and decode paths
-only; resource, visual quality, endurance, heterogeneous networks, and the
-separate 20-viewer gate remain open.
+only; resource, visual quality, endurance, heterogeneous networks, and larger-room
+acceptance remain open.
 
 A same-machine 2026-08-22 Chrome 151 follow-up ran sixteen Viewers for ten seconds at 720p30 and introduced report schema v2; sender means are unweighted connected sender-sample means, while encode cost is weighted by guarded interval frame deltas.
 Cap2 passed at Host2/relay2 with 2 Host and 14 relay senders: Host/relay bitrate was 1,716/1,748 kbps, FPS 11.17/11.20, available outgoing 5,393/5,704 kbps, and encode cost 2.086/2.048 ms per frame.
@@ -342,7 +339,7 @@ Cap3 passed at Host3/relay3 with 3 Host and 13 relay senders: the same fields we
 Both runs observed only 320x180 and 480x270; every Host limitation sample was `bandwidth`, every relay sample was `none`, and maximum first-decode diagnostics were 1,071/1,021 ms for cap2/cap3.
 [CDP `SystemInfo.getProcessInfo`](https://chromedevtools.github.io/devtools-protocol/tot/SystemInfo/) exposes process type, PID, and cumulative CPU seconds, but no resident-set field; v2 therefore reports peak RSS as `null` and rejects intervals when the exact type/PID set changes or any counter retreats.
 Cap2 measured 221.4% aggregate Chromium CPU (250.7% peak) over two valid and three rejected intervals; cap3 measured 209.8% (246.9% peak) over four valid and one rejected interval. Multicore totals may exceed 100%.
-The different valid coverage and one short run per arm forbid a cap2/cap3 CPU ranking. CDP cannot attribute these all-process totals to an individual Host or relay page, and this ordinary-PC synthetic run does not close the resource, game-quality, endurance, mobile, or 20-viewer gates.
+The different valid coverage and one short run per arm forbid a cap2/cap3 CPU ranking. CDP cannot attribute these all-process totals to an individual Host or relay page, and this ordinary-PC synthetic run does not close resource, game-quality, endurance, mobile, or larger-room acceptance.
 
 Peer multicast research such as SplitStream demonstrates why load-balanced,
 failure-tolerant overlays normally introduce multiple trees and content
@@ -375,24 +372,21 @@ Sources:
 
 ## Resource Model
 
-For observed encoded bitrate `B`, `N` viewers, and the current Host2/Browser
-Viewer1 release limits:
+For observed encoded bitrate `B`, `N` Viewers, and configured ordinary
+downstream capacity `C`:
 
-- host upload is at most approximately `2 * B`, plus transport overhead;
-- each Browser Viewer relay upload is at most approximately `B`;
+- each non-server parent has at most approximately `C * B` ordinary downstream
+  upload, plus transport overhead;
 - aggregate viewer delivery still requires approximately `N * B` across hosts,
   relays, and any TURN paths; and
 - signaling/STUN carry negligible media traffic, while a TURN path still incurs
   relay ingress and egress for that edge.
 
 Peer assistance distributes traffic; it does not eliminate it. The product
-keeps topology automatic and invisible while enforcing advertised capacity and
-the deployment ceiling.
-The standalone ADR-0004 spike has no runtime capability flag and relies on
-controlled join order. The accepted ADR-0005 controller starts every viewer at
-zero, then the current Web client advertises an explicit per-session capacity
-of one. The first production smoke scoped it to room `1`; current production no
-longer has that room boundary. There is no mobile/iPad, UA, or visibility branch.
+keeps topology automatic and invisible while the server enforces the configured
+capacity. The standalone ADR-0004 spike relied on controlled join order; the
+ADR-0005 controller starts each Viewer at zero and waits for an authenticated
+capacity message. There is no mobile/iPad, UA, or visibility capacity branch.
 
 ## Selected-Pair Response Observation
 

@@ -3,42 +3,22 @@
 - Research date: 2026-08-22
 - Scope: one broadcaster, explicit admission up to sixteen trusted viewers,
   low latency, and bounded host media fanout
-- Status: ADR-0005 accepts STUN-only direct/peer UDP, bounded SFU/UDP roots,
-  then optional authenticated TURN/UDP for one controller-selected exceptional
-  edge. Production enables the controller for all rooms and has a configured
-  selected-edge TURN tuple; ordinary peer connections remain STUN-only. A
-  post-deploy exact-Web-source canary against the production LiveKit/coturn tuple
-  passed active Host SFU -> selected TURN/UDP ingress. Initial ingress,
-  peer-selected last mile, external cohorts, and performance remain unverified.
+- Status: research and dated route evidence. Current invariants are in
+  [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md); unresolved transport
+  and resource design is in [the TODO ledger](../todo.md).
 
-> Truth-audit note: ordinary STUN-only ICE, automatic P2P-first intent, exact generation authorization, and dated canary facts remain inputs. Fixed root counts, room-wide selected-lease limits, SFU/TURN placement, fallback order, and resource accounting are disputed under the [TODO audit hold](../todo-audit-hold.md) and cannot authorize implementation yet.
+## Historical Candidate Route Ladder
 
-## Current Route Ladder
+At this dated checkpoint, the candidate plan used direct Host P2P first, then a
+bounded browser relay DAG. Browser relays decoded and re-encoded each stream,
+while separate native shared-encode and encoded-RTP relay ideas remained
+research candidates. A single-node SFU was tested as optional capacity after
+peer recovery; its source checkpoint used one or two roots. These measurements
+do not define the current topology, fallback order, or capacity policy.
 
-The smallest current plan is:
-
-1. Use direct host P2P for one or two viewers.
-2. For later viewers, use the bounded browser relay DAG in ADR-0004. It is
-   controlled by `PEER_ASSISTED_MEDIA`, shares the one-through-sixteen room
-   admission limit, and decodes and re-encodes at every relay. The retained
-   representative resource/quality gate remains eight viewers.
-3. Plan a separate native shared-encode sender regardless of the browser relay
-   result. It reduces duplicate host encoding while retaining at most two
-   standard WebRTC edges, so it does not remove their upload cost. The bounded
-   risk spike is specified in
-   [Native Shared-Encode Sender](./native-shared-encode-sender.md).
-4. Only if browser relay re-encoding is the isolated failure should another
-   experiment add opt-in native volunteer encoded-RTP relays.
-5. Keep a user-operated mini-SFU and a centrally operated single-node SFU as
-   optional capacity. The ADR-0005 controller uses that capacity
-   automatically only after deterministic peer recovery is exhausted. The SFU
-   is a virtual parent for only one or two necessary roots; those roots continue
-   bounded peer descendants. A necessary viewer may be a zero-descendant root
-   under that same total only when no reliable relay root exists. Server
-   capacity transfers fanout bandwidth to its operator; it does not disappear.
-
-Any browser-spike failure other than isolated relay re-encoding closes that
-browser-relay route. It does not cancel the separate native sender plan. Closed
+At that checkpoint, any browser-spike failure other than isolated relay
+re-encoding closed that browser-relay candidate. Native sender work remained a
+separate research track. Closed
 PR #12's explicit whole-room SFU mode is superseded. ADR-0005 and merged PR #17
 own the automatic cross-mode controller. Production first enabled it only for
 room `1` and later removed that rollout boundary. The deployed release observed
@@ -82,26 +62,21 @@ effects. Its roughly 86% result must not be extrapolated to a public network;
 internet DNS/TLS reuse, RTT/loss, audio, transport fallback, and browser variance
 still require measurement.
 
-The 2026-08-22 in-process `gate:sfu-root-invariants` closes the corresponding
-source-accounting preflight: controller state and LiveKit token allowlists reject
-a third normal root; an active Host SFU publication counts as one outbound media
-edge in addition to direct children; and the benchmark acceptance evaluator
-rejects either three roots or three Host media edges. A committed root with zero
-peer descendants remains selected across reauthentication; a separate client
-transition check keeps the active subscriber on a newer same-kind empty-child
-assignment. This is executable topology and accounting evidence only; without a
-LiveKit process, browser RTC stats, and packet counters it does not measure
-`B_pub`, root egress, forwarding, or congestion behavior.
+At that source checkpoint, the 2026-08-22 in-process
+`gate:sfu-root-invariants` proved its fixed-root and Host-publication accounting,
+token allowlist, zero-child reauthentication, and subscriber-retention behavior.
+It used no LiveKit process, browser RTC stats, or packet counters, so it did not
+measure `B_pub`, root egress, forwarding, or congestion behavior and does not
+select the current resource model.
 
 ## Traffic Conservation And The Impossible Triangle
 
 This is an engineering accounting identity, not a named theorem. Let `B` be
 the measured useful media bitrate for one same-representation branch, `B_pub`
-the actual SFU publication bitrate, `B_i` root `i`'s selected bitrate, `N` the
-viewer count, `R` the one or two normal roots, `D` their peer descendants, `E`
-the separately admitted exceptional server-fed viewers, `B_exc,j` exception
-`j`'s selected bitrate, and `B_edge` a descendant edge's actual bitrate. Thus
-`N = R + D + E`. For the equal-representation normal-root baseline `E=0`,
+the actual SFU publication bitrate, `B_i` server-fed subscriber `i`'s selected
+bitrate, `N` the Viewer count, `R` the number of server-fed subscribers, and `D`
+their peer descendants. Thus `N = R + D` for this screening model. For the
+equal-representation baseline,
 useful last-hop delivery is approximately `N*B`. Ignoring protocol overhead:
 
 `host last-hop copies + peer last-hop copies + server last-hop copies = N * B`
@@ -149,15 +124,11 @@ it cannot remove the network copy delivered to each viewer.
 
 ## Transport And Topology Layers
 
-TURN is a per-edge ICE transport, but ordinary host-root and peer-peer PCs gather
-only STUN candidates. The controller may authorize one failed edge to rebuild
-relay-only after SFU/UDP; LiveKit participant transport remains separate. An SFU is a topology node.
-Screener uses it as a virtual
-parent for one or two roots, not as an automatic all-viewer fanout service.
-After media reaches a root, the deterministic sticky subtree, current Host
-fanout at most two, ordinary Browser Viewer/root fanout at most one, maximum
-depth, and bounded failure radius still apply. Only the absence of any reliable relay root permits a necessary viewer
-to consume one of the same one or two root slots with zero descendants.
+TURN is an ICE transport and an SFU is a media service; neither fact alone
+defines logical parentage or resource admission. Ordinary peer PCs gather only
+STUN candidates. The holistic model must bind any SFU subscription or selected
+TURN transport to current route authority while preserving sticky unaffected
+subtrees, the configured ordinary endpoint cap, and bounded failure.
 
 This distinction follows TURN's allocation/relay role in RFC 8656 and the media
 topology boundary in RFC 7667. A relay candidate proves transport for one edge;
@@ -177,17 +148,15 @@ network changes, but their selected ICE path must be measured.
 | --- | --- | --- |
 | Endpoint-independent mapping with UDP | Full ICE can check host, server-reflexive, and peer-reflexive paths | Keep direct/peer UDP first |
 | One endpoint-dependent mapper | Coordinated checks can sometimes create a peer-reflexive path; success is not guaranteed | Exhaust the existing bounded restart/rebuild/alternate-parent steps |
-| Both peer endpoints use endpoint-dependent mapping | A direct peer path is not reliable; RFC 8835 requires TURN support for this case | A public SFU/UDP connection can still feed one or two roots when outbound UDP works; an eligible edge may then use selected TURN/UDP |
+| Both peer endpoints use endpoint-dependent mapping | A direct peer path is not reliable; RFC 8835 requires TURN support for this case | A public SFU/UDP or authorized TURN path may still work when outbound UDP reaches that server; exact route ownership is pending |
 | All outbound UDP is blocked | The UDP media ladder has no reachable candidate | End with a clear bounded failure |
 | Wi-Fi/cellular or address change | Old mappings and candidate pairs can become invalid | Use a new opaque generation and bounded ICE restart/rebuild, then re-run the same priority ladder |
 
 Peer-reflexive discovery records an address only after a connectivity check
-succeeds; it does not cross two incompatible mappings by itself. An SFU remains
-a virtual parent and TURN remains transport for one selected edge. A restricted
-Host may therefore reach the SFU directly or through selected TURN, the SFU may
-serve one or two roots, and those roots may still serve peer descendants. If
-every endpoint needs a server path, the existing root, exceptional-viewer, and
-egress caps must bound it.
+succeeds; it does not cross two incompatible mappings by itself. A restricted
+endpoint may still reach SFU or TURN infrastructure over outbound UDP. The
+holistic route model must decide publication ownership, subscription placement,
+selected transport, and resource admission without changing this NAT boundary.
 
 Do not infer endpoint-dependent mapping from a `cellular` or `CGNAT` label. A
 2023 experiment reached three of four Dutch mobile carriers, but that cohort is
@@ -256,8 +225,8 @@ change or explicit reconnect; it does not support periodic probing, a carrier
   retains one cooldown-time opportunity as a current tuple and requires two new
   evidence windows at expiry. Later production deployed that bounded continuation
   and subsequent peer-quality MBB work. Exact current capacity, SFU, TURN, and
-  accounting semantics are now frozen by the truth-audit hold. None of these
-  generations polls network state.
+  accounting semantics remain unaccepted pending the holistic route model. None
+  of these generations polls network state.
 - Retained candidate: a discrete network-change or explicit-reconnect event may
   open one opportunity through that same controller after cooldown. It must not
   create a second route controller or treat an ICE restart on the SFU
@@ -398,14 +367,13 @@ public, `no-store` self-check config returns only the existing STUN-only
 `iceConfig` and an SFU-configured boolean. It returns no SFU or TURN URL, token,
 username, credential, address, candidate, or selected-edge grant.
 
-## SFU/UDP And Selected-Edge TURN
+## Historical SFU/UDP And Selected-Edge TURN Slice
 
-Every ordinary bounded peer `RTCPeerConnection` uses STUN-only ICE. Failure
-follows one restart, one same-parent rebuild, one alternate peer, and one or two
-SFU/UDP roots whose bounded descendants remain distributed. Only an edge that
-also cannot use SFU/UDP may receive one controller-selected authenticated
-TURN/UDP rebuild before bounded failure. Endpoint and central egress caps remain
-unchanged.
+Every ordinary bounded peer `RTCPeerConnection` used STUN-only ICE. The tested
+source attempted bounded peer recovery, then its fixed-root SFU/UDP slice, then
+one controller-selected authenticated TURN/UDP rebuild before failure. That
+ordering and accounting are historical implementation evidence, not current
+route authority.
 
 STUN/ICE discovers and checks paths. RFC 8656 TURN allocates a relayed address
 and continuously carries media when selected; it is not a handshake helper or
@@ -518,10 +486,10 @@ One bounded exact-room gate owns rollout evidence:
    attempts, plus relay RX/TX/loss/latency. There is no participant-count idle
    allocation target because ordinary peer PCs do not receive TURN candidates.
    Block all UDP and show a bounded explicit failure; TURN/UDP is not media TCP.
-4. Exercise root departure, reconnect, SFU unavailable, and rollback. Endpoint
-   downstream edges stay at most two, normal SFU roots at most two, separately
-   capped exceptional server edges stay bounded, and unaffected peer subtrees
-   do not migrate.
+4. Exercise assisted-route departure, reconnect, service unavailability, and
+   rollback. Non-server ordinary downstream edges stay within the configured
+   cap, server allocations stay within accepted resource admission, and
+   unaffected peer subtrees do not migrate.
 5. Correlate only selected candidate type/protocol/relayProtocol and opaque
    generations; never upload raw SDP, candidate/address/IP, credentials, or
    device identifiers.
@@ -531,12 +499,12 @@ terminates DTLS-SRTP on both sides, so its operator can access media unless
 Screener later implements application E2EE and key distribution. That accepted
 tradeoff remains visible in deployment and UI claims.
 
-A peer root simultaneously re-publishing its received stream to the SFU and
-serving peer children is only a later bounded experiment. The current browser
-relay would decode and re-encode, and publication ownership adds another
-failure domain. Do not add it to the controller until measurements prove a
-specific consumer. No global score, continuous optimizer, geography, IP, UA,
-or self-reported capability chooses these routes.
+A peer simultaneously re-publishing its received stream to the SFU and serving
+peer children is an unresolved route-model alternative. A browser relay would
+decode and re-encode, and publication ownership adds another failure domain; the
+holistic model must compare that cost with a single authoritative source
+publication. No global score, continuous optimizer, geography, IP, UA, or
+self-reported capability chooses these routes.
 
 On today's unicast Internet, a design cannot maximize all three of these for
 more than one viewer:
@@ -552,21 +520,21 @@ lost.
 
 ## Route Screening
 
-| Route | Where copies are emitted | Endpoint cost | Current disposition |
+| Route | Where copies are emitted | Endpoint cost | Evidence status |
 | --- | --- | --- | --- |
-| Direct host P2P | Host emits one copy per viewer | Host upload and sender pipelines grow with viewers | Keep for one or two viewers |
+| Direct host P2P | Host emits one copy per Viewer | Host upload and sender pipelines grow with Viewers | Baseline evidence; current capacity is owned by the product contract |
 | Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Admission defaults to eight and permits 1-16; representative resource/quality gate remains eight viewers |
-| Native shared-encode host | Host targets one encode for at most two standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Planned separate sender phase; still pays per-edge upload |
-| Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Conditional experiment only if relay re-encoding is the sole browser-spike failure |
-| SFU virtual parent | SFU normally emits one or two root copies; roots keep peer descendants | Service pays measured root egress; host sends one publication | Accepted primary central fallback after direct/peer UDP; local SFU/UDP and active Host-ingress relay function pass, while public-room/performance evidence remains open |
-| Exceptional server-fed viewers | SFU/TURN emits necessary copies that no healthy root can distribute | Additional capped central egress | Explicit compatibility exception only; never unbounded whole-room fanout |
+| Native shared-encode host | Host targets one encode for standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Research evidence; still pays per-edge upload |
+| Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Research only; no current product authorization |
+| SFU service | SFU emits authorized subscription copies | Service pays measured egress; an authoritative publisher supplies media | Functional single-root evidence exists; topology and admission remain pending |
+| Additional server-assisted paths | SFU/TURN emits authorized copies | Additional central ingress, egress, or allocation cost | Resource-admission input; exact topology remains pending |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
 | MoQ | Publishers and MoQ relays emit object copies | New transport, packaging, player, relay, and auth stack | Optional central-fallback benchmark; still pays server egress |
 | Peer-assisted CDN | Peers cache or upload segments/objects | Discovery, locality, scheduling, incentives, abuse, and privacy systems | Reject for this trusted group |
 | IP multicast | Multicast routers replicate packets | Requires multicast-enabled hosts and routed networks unavailable to ordinary Internet browsers | Reject outside managed networks |
 
-## Planned Native Sender And Conditional Encoded-RTP Relay
+## Native Sender And Encoded-RTP Relay Research
 
 Pion exposes the necessary native building blocks: `TrackRemote.ReadRTP()` reads
 encoded RTP, `TrackLocalStaticRTP.WriteRTP()` writes pre-packetized RTP into
@@ -588,15 +556,14 @@ the narrower transport oracle: one Pion v4.2.18
 `TrackLocalStaticRTP.WriteRTP` call fans a pre-packetized semantic payload to
 two independent PeerConnections with binding-specific SSRCs. Because that
 oracle contains no encoder, browsers, RTCP arbitration, or bandwidth-control
-loop, it proves neither one physical encode nor a usable native relay. Its next
-gate is browser-to-native-to-two-browser interoperability with bounded
-RTCP/PLI, congestion, queues, throughput, and latency.
+loop, it proves neither one physical encode nor a usable native relay. The
+unresolved evidence boundary is browser-to-native-to-two-browser interoperability
+with bounded RTCP/PLI, congestion, queues, throughput, and latency.
 
-The native shared-encode sender is a planned independent phase. Native volunteer
-relays remain conditional on measurements isolating relay re-encoding as the
-sole browser-spike failure. They must not rescue failures in deterministic
-assignment, host fanout, relay loss recovery, ICE/TURN connectivity, mobile
-leaves, or end-to-end latency.
+The native shared-encode sender and volunteer relay remain research candidates,
+not current product work. Any later decision must keep deterministic assignment,
+fanout, recovery, connectivity, mobile, and end-to-end latency concerns in their
+proper owners.
 
 ## Outside The Current Browser-Track Spike
 

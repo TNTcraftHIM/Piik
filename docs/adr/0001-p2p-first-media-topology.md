@@ -1,70 +1,39 @@
 # ADR-0001: P2P-First Media Topology
 
-- Status: Accepted Historical MVP Baseline; Current Routing Details Superseded By ADR-0002/0005 And Audit Hold
+- Status: Historical MVP baseline; superseded for current routing by ADR-0005
 - Date: 2026-08-18
 
-The P2P-first product intent remains useful. Current access grants, deployed automatic routing, endpoint capacity, SFU publication/subscription, selected TURN, and fallback accounting must not be inferred from this dated baseline; use ADR-0002 and the [TODO audit hold](../todo-audit-hold.md) until ADR-0005 is reconciled.
+## Durable Rationale
 
-Current clarification, 2026-08-19: the MVP remains unchanged, but statements
-below that exclude automatic topology migration do not describe the product
-target. Automatic, viewer-transparent routing through direct P2P,
-peer-assisted media, and an enabled SFU fallback is a standing requirement and
-is governed by ADR-0005.
+Screener serves one broadcaster and a small group of trusted friends. Low
+latency, private access, browser viewing, and low server media cost matter more
+than public-broadcast scale. Direct WebRTC therefore remains the preferred
+media path, while centralized media is fallback infrastructure rather than the
+default topology.
 
-Historical ADR-0003's explicit whole-room SFU mode is rejected/superseded.
-ADR-0004's bounded peer topology and ADR-0005's automatic controller are
-process-enabled for all normal rooms when configured; room `1` is only the
-historical production smoke. ADR-0005 accepts the target
-direct/peer UDP -> SFU-root UDP -> optional authenticated selected-edge TURN
-ladder. Ordinary peer ICE remains STUN-only. Production has a complete selected-
-edge tuple, and an exact-source Host-to-SFU selected TURN/UDP canary passed;
-initial-ingress, peer-selected, external-cohort, and performance gates remain.
+The control and media planes are separate. HTTPS/WSS owns identity, rooms,
+invitations, presence, and signaling; WebRTC owns encrypted media. STUN is
+required for ordinary peer discovery. Every attempted route must end in bounded
+success or a clear failure, because direct connectivity is not universal across
+NAT, CGNAT, firewalls, and changing networks.
 
-## Context
+## Historical MVP Decision
 
-The product targets one game broadcaster and a small group of trusted friends. Low glass-to-glass latency, private access, no-install browser viewing, and low server bandwidth cost matter more than large-room scalability. Public broadcasting is deliberately delegated to existing OBS/Twitch-class services. NATs, CGNAT, restrictive firewalls, variable publisher upload, and browser capture limitations prevent a direct-only design from being reliable for every user; partial room reachability is not acceptable behavior.
+The first MVP used one broadcaster-to-Viewer peer connection per Viewer and did
+not implement automatic topology migration. That implementation proved the
+browser-first product surface but did not establish a sustainable fanout,
+fallback order, or server-resource policy.
 
-## Decision
+The MVP explicitly excluded always-SFU conferencing, public-broadcast scaling,
+MCU transcoding, and a custom Parsec-like transport. Those workloads either
+contradict the private-room cost model or duplicate mature WebRTC capabilities.
 
-Use separate control and media planes:
+## Current Ownership
 
-- A small HTTPS/WSS service owns identity, rooms, invitations, presence, and WebRTC signaling.
-- A viewer can join through a numeric room code on desktop or mobile without installing the sharing client. The viewer link has no separate token or fragment; the host publication token remains internal. A deployment may place one site-wide password gate in front of both hosting and viewing; access policy remains control-plane state and does not change the media topology. ADR-0002 owns the current room-ID and lifetime policy.
-- ICE attempts a direct UDP path for every current broadcaster-viewer edge, using STUN to discover candidates. A later accepted peer-assisted topology must apply the same rule independently to each assigned parent-child edge.
-- Ordinary peer connections use STUN-only ICE. After direct/peer UDP and the bounded SFU/UDP virtual-parent path fail, ADR-0005 permits one optional authenticated TURN/UDP attempt for only the controller-selected exceptional edge, followed by bounded failure.
-- Candidate and route selection is independent per edge. A room may simultaneously contain direct, SFU-root, and one selected relayed edge without moving healthy peers onto the server.
-- The deployed MVP broadcaster creates one peer connection per viewer. Rooms default to eight viewers and deployments may configure a limit from 1 through 16. Eight is an admission default, not a validated media-performance promise. A newer product target caps host media fanout at two; the current implementation does not satisfy that target above two viewers, and Proposed ADR-0004 owns the isolated experiment rather than silently changing this accepted baseline.
-- An SFU is not the default whole-room path. The automatic controller is enabled for all configured normal rooms; local SFU/UDP media and active Host-ingress selected TURN/UDP function pass, while public-room and performance evidence remain open. ADR-0005 owns the bounded-root target.
+[ADR-0005](./0005-automatic-hybrid-media-routing.md) owns current routing
+invariants and unresolved assisted-route boundaries. [ADR-0004](./0004-peer-assisted-media-experiment.md)
+owns only historical peer-assisted evidence. Access and room lifetime are owned
+by [ADR-0002](./0002-persistent-protected-rooms.md).
 
-## Consequences
-
-Positive:
-
-- Direct sessions consume almost no server media bandwidth and normally take the shortest network path.
-- TURN cost is paid only for a controller-selected edge after its lower-cost UDP paths fail.
-- The initial product can be built with standard browser WebRTC and a small backend.
-- Friends can watch from a phone or unmanaged desktop through a link instead of installing a TeamSpeak-like full client.
-
-Negative:
-
-- Broadcaster upload scales approximately as `viewer_count * stream_bitrate`.
-- Browser APIs do not guarantee that several peer connections share a single hardware encode.
-- Direct peers learn one another's network addresses; this is acceptable only for the initial trusted-friends threat model.
-- If the site-wide password is disabled, the numeric room code is the sole viewing capability and does not provide a strong privacy guarantee.
-- A room-level P2P-to-SFU migration adds state, keyframe, and reconnection complexity and is not part of the first prototype. This implementation boundary does not remove the product requirement for automatic, viewer-transparent fallback.
-- TURN over TCP can suffer head-of-line blocking, and its `turn:` client-to-server transport is not TLS-wrapped. The WebRTC media remains protected by DTLS-SRTP independently of that TURN transport.
-
-## Rejected For The MVP
-
-- Always-SFU: operationally stable but makes the server carry all viewer egress, contrary to the main cost constraint.
-- Public-broadcast scaling: Twitch/OBS-class services already solve this separate workload and it would distort the private-room design.
-- MCU/transcoding: unnecessary CPU/GPU work and added latency for a single screen stream.
-- Peer-assisted relay tree for the MVP: adds churn handling, extra latency, trust problems, and browser re-encoding or a custom packet-forwarding protocol. Proposed ADR-0004 permits only a bounded, removable experiment; production use remains rejected until a later ADR passes measured gates.
-- Custom Parsec-like transport: duplicates capture, codec, congestion-control, NAT, and security work already provided by WebRTC.
-
-## Revisit Triggers
-
-- More than 20% of successful viewer connections use TURN in representative telemetry.
-- The publisher is CPU-limited or cannot sustain the configured aggregate upload for representative rooms.
-- Product requirements exceed the measured sustainable P2P room envelope.
-- Protecting peer IP addresses becomes a product requirement.
+This historical record does not authorize a capacity, SFU/TURN order, topology,
+runtime migration, or release gate.

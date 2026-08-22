@@ -1,12 +1,11 @@
 # Project Documentation
 
 - [需求理解](./需求理解.md): current product scope, priorities, constraints, and acceptance criteria.
-- [方案设计](./方案设计.md): current implementation design; routing capacity and fallback accounting are temporarily frozen by the truth-audit hold.
-- [Project memory](./project-memory.md): durable decisions and unresolved questions to read at the start of future work.
+- [方案设计](./方案设计.md): current implementation design; unresolved routing semantics are tracked in the current TODO ledger.
+- [Project memory](./project-memory.md): durable current product and source snapshot to read at the start of future work.
 - [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
 - [Verification status](./verification-status.md): demand-loaded ledger of current cross-cutting evidence, open proof boundaries, and expensive-test applicability.
-- [TODO execution audit hold](./todo-audit-hold.md): temporary quarantine for disputed post-boundary work, experiments, and stale assumptions while the 2026-08-22 truth audit is open.
-- [Workspace disposition](./workspace-disposition.md): demand-loaded worktree, branch, folder, junction, and archive schedule for restoring one canonical `main` root.
+- [Current TODO](./todo.md): unresolved work, active truth holds, and decisions that still require user confirmation.
 - [Deployment](./deployment.md): exact current/rollback production configuration, release operations, and transport evidence boundaries.
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
@@ -23,8 +22,8 @@
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): historical P2P-first baseline; later access and automatic-routing decisions supersede its stale current-state details.
 - [ADR-0002](./adr/0002-persistent-protected-rooms.md): site access, room-scoped private Viewer grants, explicit public-watch, rotation, and minimal SQLite persistence.
-- [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): proposed, experiment-only standard-WebRTC peer-assisted spike with hard fanout and failure gates.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted automatic P2P-first direction and generation safety; capacity and fallback accounting are on truth-audit hold.
+- [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): historical standard-WebRTC peer-assisted experiment and reusable evidence.
+- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted automatic P2P-first direction and generation safety; unresolved capacity and fallback accounting remain held in the current TODO.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
 - [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted path-isolated `HIGH + at most one LOW` policy, optional idle-layer stop, evidence contract, and SVC boundary.
 - [ADR-0008](./adr/0008-window-scoped-audio-capture.md): browser window-audio hint and the Windows WASAPI process-loopback boundary.

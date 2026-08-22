@@ -2,13 +2,9 @@
 
 Last verified against upstream documentation: 2026-08-21.
 
-> Truth-audit boundary: this page records the exact `9461e20` deployment and
-> its currently accepted configuration syntax. Browser1, fixed root counts,
-> Host-publication accounting, room-wide selected-lease limits, and the exact
-> fallback order are deployed/source facts under the
-> [TODO audit hold](./todo-audit-hold.md), not authority for the next routing
-> model. Do not change or redeploy them until that model is accepted in its
-> owning truth and merged to canonical `main`.
+This page records exact release `9461e20` deployment behavior and syntax. Current
+product direction and pending migrations are owned by [project memory](./project-memory.md)
+and [the TODO ledger](./todo.md).
 
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling

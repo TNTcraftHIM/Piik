@@ -6,7 +6,7 @@ Last updated: 2026-08-22
 
 This is the demand-loaded ledger for cross-cutting validation evidence and open proof boundaries that do not fit one requirement, ADR, research note, or deployment guide. It is current state, not a release diary: replace superseded facts in place, move durable specialist conclusions to their owning documents, and let Git history retain completed timelines.
 
-During the 2026-08-22 truth audit, Browser1/root-two/accounting entries below describe exact release evidence only. They do not define the next product model or create executable gates; see the [TODO audit hold](./todo-audit-hold.md).
+Capacity and routing entries below describe the exact tested source or release only. Product direction and executable work are owned by [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 ## Deployment Evidence
 
@@ -32,7 +32,7 @@ During the 2026-08-22 truth audit, Browser1/root-two/accounting entries below de
 
 - Routing: verify current-release initial ingress, `peer-selected` expiry/failure, corroborated bad-relay reassignment, one-root healthy SFU reselection, silent partitions, and bounded failure on real browser/media paths. Silent control partitions may wait 30 to 60 seconds for heartbeat detection before the default five-second grace.
 - Quality: production startup blur remains unclassified. One same-`balanced` local A/B retained route/PC/SSRC/track while 720p rose to 1080p, but natural ramp prevents causal, production, or SFU conclusions. Correlate Host capture/encode/send with Viewer receive/decode before changing policy.
-- Relay resources: production `9461e20` is Host2/ordinary Browser Viewer1 and rejects Viewer child2 regardless of advertised capacity. The next endpoint-cap and corroboration contract is held, while CPU/GPU/upload and heterogeneous-network measurements remain optional evidence for later tuning rather than authority to reinstate Browser1.
+- Relay resources: production `9461e20` is Host2/ordinary Browser Viewer1 and rejects Viewer child2 regardless of advertised capacity. The next endpoint-cap and corroboration contract is held, while CPU/GPU/upload and heterogeneous-network measurements remain optional evidence for later tuning rather than authority to change endpoint-cap policy.
 - SFU: production `9461e20` deploys ordered `q,h`, roots <=2, and Dynacast off. Root count and accounting are held; real shaped packet flow, BWE downshift/recovery, resource cost, and root-with-children behavior remain unverified evidence boundaries. Use Linux `tc` or an authorized public canary for per-leaf shaping, never CDP throttling.
 - Audio: verify the 64/128/256 kbps Share settings, negotiated/observed bitrate, audible music quality, route changes, and game A/V synchronization. Bitrate settings are ceilings, not quality proof.
 - Observability: the UI and local stats plumbing are deployed, including identity-bound relayed-detail retention and export freshness guards, but target-browser availability and actual values remain unverified for Host SFU sender evidence, codec/fmtp and encoder implementation/power efficiency, media-source and encoded FPS, A/V playout/jitter/concealment, selected candidate endpoints, and bounded same-pair STUN-response observation. These fields diagnose and have no recovery authority; they do not by themselves prove hardware encode, synchronization quality, or route quality.
