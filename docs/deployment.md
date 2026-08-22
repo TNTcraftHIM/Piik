@@ -20,17 +20,17 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `aa870c51a57a51166a605c734cbb03263a72d12d`
-from `/opt/screener/releases/aa870c51a57a`; immediate rollback is
-`/opt/screener/releases/01a77ae331de`. Local and public health return 200;
+Production currently runs exact `21d5cd9f7139e4a7719c5798bfc74a00f8bb5909`
+from `/opt/screener/releases/21d5cd9f7139`; immediate rollback is
+`/opt/screener/releases/aa870c51a57a`. Local and public health return 200;
 Screener, LiveKit, coturn, and nginx are active, and Screener reports
 `NRestarts=0`.
 
 The current release deploys the bounded pre-share health/WSS/STUN self-check,
 privacy-safe click-only diagnostic JSON export, room admission default eight
-with explicit limits from one through sixteen, and peer-quality MBB. One
-ordinary Viewer with a peer or SFU upstream may own the provisional child;
-Host provisional children remain open. The endpoint-cap environment is unset,
+with explicit limits from one through sixteen, bounded signaling-partition
+recovery, and peer-quality MBB. An ordinary Viewer with a peer/SFU upstream or
+the Host may own one separately budgeted provisional child. The endpoint-cap environment is unset,
 so the production default yields Host two and ordinary Browser Viewer one; the
 wire remains unchanged. The retained capacity-two/cap3 sixteen-Viewer
 and resource runs are historical ordinary-PC experiments only and do not define
@@ -129,7 +129,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `aa870c51a57a` release with one
+selected-edge TURN config/wire is deployed in the current `21d5cd9f7139` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
