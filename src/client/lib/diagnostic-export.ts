@@ -4,6 +4,8 @@ export const DIAGNOSTIC_SCHEMA_VERSION = 1;
 
 const DIAGNOSTIC_METRIC_KEYS = [
   "sampleWindowMs", "captureWidth", "captureHeight",
+  "candidatePairResponsesReceived", "intervalCandidatePairResponsesReceived",
+  "candidatePairSampleWindowMs",
   "captureFramesPerSecond", "mediaSourceFramesPerSecond", "path",
   "iceProtocol", "localRelayProtocol", "localCandidateType",
   "remoteCandidateType", "rttMs", "bitrateKbps", "availableOutgoingKbps",

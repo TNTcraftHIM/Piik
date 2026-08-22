@@ -10,7 +10,12 @@ type StatsRecord = Record<string, unknown> & {
   timestamp: number;
 };
 
+const MAX_CANDIDATE_PAIR_SAMPLE_WINDOW_MS = 5_000;
+
 export interface StatsAccumulator {
+  candidatePairId: string | null;
+  candidatePairResponsesReceived: number | null;
+  candidatePairTimestamp: number | null;
   mediaId: string | null;
   ssrc: number | null;
   trackIdentifier: string | null;
@@ -76,6 +81,9 @@ export function captureMetrics(
 
 export function createStatsAccumulator(): StatsAccumulator {
   return {
+    candidatePairId: null,
+    candidatePairResponsesReceived: null,
+    candidatePairTimestamp: null,
     mediaId: null,
     ssrc: null,
     trackIdentifier: null,
@@ -354,6 +362,16 @@ function positiveIntegerValue(
   return value !== null && Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function nonNegativeIntegerValue(
+  record: StatsRecord | null,
+  key: string,
+): number | null {
+  const value = numberValue(record, key);
+  return value !== null && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 function candidateAddressValue(record: StatsRecord | null): string | null {
   const value = stringValue(record, "address");
   return value !== null &&
@@ -432,6 +450,34 @@ export function collectConnectionMetricsFromReport(
       : localType !== null && remoteType !== null
         ? "direct"
         : "unknown";
+
+  const candidatePairId = pair?.id ?? null;
+  const candidatePairResponsesReceived = nonNegativeIntegerValue(
+    pair,
+    "responsesReceived",
+  );
+  const candidatePairTimestamp = numberValue(pair, "timestamp");
+  const candidatePairSampleWindowMs =
+    candidatePairId !== null &&
+    candidatePairId === previous.candidatePairId &&
+    candidatePairResponsesReceived !== null &&
+    previous.candidatePairResponsesReceived !== null &&
+    candidatePairResponsesReceived >= previous.candidatePairResponsesReceived &&
+    candidatePairTimestamp !== null &&
+    previous.candidatePairTimestamp !== null &&
+    candidatePairTimestamp > previous.candidatePairTimestamp &&
+    candidatePairTimestamp - previous.candidatePairTimestamp <=
+      MAX_CANDIDATE_PAIR_SAMPLE_WINDOW_MS
+      ? candidatePairTimestamp - previous.candidatePairTimestamp
+      : null;
+  const intervalCandidatePairResponsesReceived = intervalDelta(
+    candidatePairResponsesReceived,
+    previous.candidatePairResponsesReceived,
+    candidatePairSampleWindowMs !== null,
+  );
+  previous.candidatePairId = candidatePairId;
+  previous.candidatePairResponsesReceived = candidatePairResponsesReceived;
+  previous.candidatePairTimestamp = candidatePairTimestamp;
 
   const mediaId = media?.id ?? null;
   const ssrc = numberValue(media, "ssrc");
@@ -763,6 +809,9 @@ export function collectConnectionMetricsFromReport(
     rtpRid: stringValue(media, "rid"),
     trackIdentifier,
     selectedCandidatePairId: pair?.id ?? null,
+    candidatePairResponsesReceived,
+    intervalCandidatePairResponsesReceived,
+    candidatePairSampleWindowMs,
     path,
     iceProtocol,
     localRelayProtocol,

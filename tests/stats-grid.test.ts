@@ -23,6 +23,10 @@ const metrics = {
   localCandidatePort: 50_000,
   remoteCandidateAddress: "2001:db8::10",
   remoteCandidatePort: 50_001,
+  selectedCandidatePairId: "candidate-pair-7",
+  candidatePairResponsesReceived: 18,
+  intervalCandidatePairResponsesReceived: 1,
+  candidatePairSampleWindowMs: 2_000,
   codec: "video/VP8",
   codecParameters: "max-fs=8160",
   captureWidth: 1920,
@@ -75,6 +79,10 @@ describe("StatsGrid progressive disclosure", () => {
     expect(html.indexOf("远端候选地址")).toBeGreaterThan(panelStart);
     expect(html).toContain("192.0.2.10:50000");
     expect(html).toContain("[2001:db8::10]:50001");
+    expect(html).toContain("候选对 ID");
+    expect(html).toContain("candidate-pair-7");
+    expect(html).toContain("STUN 响应");
+    expect(html).toContain("18 累计 · +1 / 2.0 s");
     expect(html.indexOf("视频 Codec")).toBeGreaterThan(panelStart);
     expect(html.indexOf("音频发送码率")).toBeGreaterThan(panelStart);
     expect(html.indexOf("编码输入帧率")).toBeGreaterThan(panelStart);

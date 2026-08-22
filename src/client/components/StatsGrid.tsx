@@ -53,6 +53,21 @@ function candidateEndpoint(
   return `${host}:${port}`;
 }
 
+function candidatePairResponses(metrics: ConnectionMetrics): string {
+  if (metrics.candidatePairResponsesReceived === null) {
+    return "未知";
+  }
+  if (
+    metrics.intervalCandidatePairResponsesReceived === null ||
+    metrics.candidatePairSampleWindowMs === null
+  ) {
+    return `${metrics.candidatePairResponsesReceived} 累计 · 区间未知`;
+  }
+  return `${metrics.candidatePairResponsesReceived} 累计 · +${
+    metrics.intervalCandidatePairResponsesReceived
+  } / ${(metrics.candidatePairSampleWindowMs / 1_000).toFixed(1)} s`;
+}
+
 function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="metric" title={title}>
@@ -164,6 +179,16 @@ export function StatsGrid({
           title={remoteCandidateEndpoint}
         />
       )}
+      <Metric
+        label="候选对 ID"
+        value={metrics.selectedCandidatePairId ?? "未知"}
+        title={metrics.selectedCandidatePairId ?? undefined}
+      />
+      <Metric
+        label="STUN 响应"
+        value={candidatePairResponses(metrics)}
+        title="当前候选对的累计响应，以及同一候选对相邻有效采样窗的增量；零增量不代表断链"
+      />
       <Metric label="视频 Codec" value={metrics.codec ?? "未知"} />
       {metrics.codecProfile && (
         <Metric label="视频 Codec profile token" value={metrics.codecProfile} />

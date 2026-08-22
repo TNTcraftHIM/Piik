@@ -367,6 +367,55 @@ zero, then the current Web client advertises an explicit per-session capacity
 of one. The first production smoke scoped it to room `1`; current production no
 longer has that room boundary. There is no mobile/iPad, UA, or visibility branch.
 
+## Selected-Pair Response Observation
+
+The W3C Stats specification makes `RTCTransportStats.selectedCandidatePairId`
+the exact reference to the current `RTCIceCandidatePairStats`. A stats object's
+`id` identifies the monitored object, while `responsesReceived` is the
+cumulative number of connectivity-check responses received by that candidate
+pair. Stats snapshots carry timestamps and applications derive interval values
+from two snapshots. Unsupported fields are omitted, and a current pair is
+deleted when the transport switches to a newly generated pair. These semantics
+support a local observation; they do not define an application failure signal.
+The existing compatibility fallback is retained only when that exact reference
+is absent and exactly one same-transport succeeded nominated/selected pair is
+available; an ambiguous or broken relationship remains unknown.
+
+RFC 7675 binds consent to one transport 5-tuple. An authenticated matching STUN
+response refreshes consent, but the default consent-check interval is randomized
+between four and six seconds and a response can match an earlier request.
+Therefore zero `responsesReceived` growth over one two-second application sample
+does not prove a silent partition. Conversely, growth proves only that a STUN
+response was observed on that pair, not that media quality or future reachability
+is healthy. Video-frame counters are independent, so a static shared frame must
+not be classified as a transport failure.
+
+The bounded implementation uses one accumulator per `RTCPeerConnection` and the
+selected pair's own stats timestamp. It reports the cumulative counter plus a
+delta and elapsed milliseconds only across adjacent samples of the same pair.
+The first sample, PC replacement, pair change or disappearance, missing/invalid
+counter or timestamp, non-increasing timestamp, counter retreat, or a sampling
+gap above five seconds reports the interval fields as unknown and establishes a
+new baseline. The five-second ceiling is a named observation-window bound for
+the current two-second sampler; it is not a consent timeout or a route policy.
+
+Acceptance for this slice is observation-only:
+
+- expanded local connection details show the opaque selected-pair identity,
+  cumulative `responsesReceived`, and the adjacent bounded delta/window;
+- the click-only diagnostic allowlist may contain the cumulative counter,
+  interval delta, and interval duration, but not the pair ID, candidate
+  addresses/ports, raw stats, signaling, or credentials;
+- a missing response counter or required timestamp remains unknown rather than
+  zero; and
+- no value starts ICE restart, emits `route-failed`, changes topology/quality,
+  adds a wire or server ping, or uploads/persists telemetry.
+
+Sources, accessed 2026-08-22:
+
+- [W3C Identifiers for WebRTC's Statistics API](https://www.w3.org/TR/webrtc-stats/)
+- [RFC 7675, Consent Freshness for WebRTC](https://www.rfc-editor.org/rfc/rfc7675.html)
+
 ## Bounded Spike And Gates
 
 This historical gate assumed default-off configuration through
