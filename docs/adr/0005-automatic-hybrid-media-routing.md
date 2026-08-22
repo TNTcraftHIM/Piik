@@ -227,11 +227,19 @@ do not prove target-network latency, quality, capacity, or interoperability.
 
 ## Security and privacy
 
-Media authority is room-, role-, session-, share-, revision-, and
-connection-bound. Server-assisted credentials are short-lived, scoped,
-memory-only, and never placed in URLs, logs, browser persistence, or SQLite.
+Route and signaling authority is room-, role-, session-, share-, revision-, and
+connection-bound. LiveKit media credentials are short-lived and bound to the
+room, role, share, and publication generation so healthy media may survive a
+signaling reconnect. Server-assisted credentials remain memory-only and never
+appear in application page URLs, browser persistence, or SQLite. LiveKit places
+its short-lived JWT in the WebSocket transport request target, which must not be
+logged; no credential may enter application or proxy logs.
 Ordinary SFU transport terminates DTLS-SRTP at the SFU; the product must not
 claim application E2EE unless key distribution and real media evidence exist.
+Authenticated Hosts and shipped clients are trusted media participants in the
+current private-room threat model. Stale route-control sessions remain
+unauthorized; a retired media generation remains charged during bounded drain
+until deletion of its exact room prevents re-entry.
 
 ## Consequences
 
