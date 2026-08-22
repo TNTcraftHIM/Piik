@@ -6,7 +6,7 @@ This is the demand-loaded schedule for restoring one canonical repository root a
 
 ## Canonical Target And Stop Gate
 
-- The canonical repository root is `C:\Users\TNTcraft\Documents\GitHub\Screener`.
+- The canonical repository root is the registered worktree whose sibling-directory name is `Screener`; all other `Screener-*` worktrees are auxiliary.
 - Its required terminal state is a clean, exact latest `main`. An auxiliary worktree must not retain `main` afterward.
 - The audit-guard truth checkpoint merges first; it does not accept a final routing model. The root's staged user rules must be proved present in that updated `main` or explicitly preserved before its index changes.
 - After truth integration, canonical-root restoration, and the approved workspace cleanup below, produce the holistic routing model as a held proposal from canonical `main`. Then report the main SHA, dirty/untracked count, retained worktrees/branches, route proposal, held candidates, and proposed high-confidence TODOs to the user.
