@@ -504,13 +504,22 @@ default-on gate.
 
 ### Per-Flow Shaping Preflight
 
-The 2026-08-19 Windows preflight stopped before downloading LiveKit, writing a
-harness, or starting Chrome. Chrome 151 is available, and the official LiveKit
-1.13.5 release provides a checksummed Windows amd64 binary, so obtaining the
-pinned server is not the blocker. The workstation has no Docker installation,
-no installed WSL distribution, and no Linux `tc`; the current session is also
-not elevated. The existing peer-assisted benchmark starts neither LiveKit nor
-an SFU quality fixture.
+The 2026-08-22 Windows 11 re-audit stopped before writing a harness or starting
+media. Chrome 151 and Edge 151 are installed. A cached official LiveKit 1.13.5
+Linux amd64 archive contains only `LICENSE` and `livekit-server`; its SHA-256
+`c020fac437b7cc9b776eef1ad5ea8af77be9acfa07602eca20a3a44930dfbc70`
+matches the release asset digest. Obtaining the pinned server is therefore not
+the blocker.
+
+The workstation has no Docker, Podman, nerdctl, Lima, Multipass, Vagrant, QEMU,
+Go, Linux `ip`, or Linux `tc`. `wsl.exe --version`, `--status`, and
+`--list --verbose` all report that WSL itself is not installed, not merely that
+a distribution is stopped, and the current session is not elevated. The
+existing peer-assisted benchmark can start Screener and Chromium and already
+collect route/media snapshots plus whole-browser CDP CPU deltas, but it starts
+neither LiveKit nor an SFU quality fixture, isolates no leaf transport, and CDP
+does not provide the required server or browser RSS. Those parts are reusable
+sampling seams, not shaped-media evidence.
 
 Windows policy-based QoS can match outbound traffic by application or IP
 tuple, but this setup has not proved that it can follow one ICE-generated,
@@ -519,13 +528,17 @@ limit to the local loopback media path. CDP `Network` throttling likewise has no
 accepted per-WebRTC-flow contract. Neither mechanism may be used as evidence
 that one SFU subscriber was weakened while another stayed healthy.
 
-Resume this gate only on an isolated Linux VM or equivalent host that can put
-the publisher, healthy leaf, and weak leaf in separate network namespaces with
-separate veth devices. Run the pinned application and LiveKit 1.13.5 without
-TURN or media TCP. Before media, prove only the namespace, route, and veth
-isolation and the availability of `tc`; the selected ICE tuple does not exist
-yet. Use `tbf` for a bounded rate and `netem` only when the case explicitly adds
-loss or delay.
+The minimum external prerequisite is a disposable Linux VM or equivalent host
+with root or `CAP_NET_ADMIN`, `iproute2` (`ip`, `tc`, `tbf`, and a tuple-capable
+filter such as `flower`), readable per-process CPU/RSS counters, Node 24, and a
+supported Chromium. It must put the publisher, healthy leaf, and weak leaf in
+separate network namespaces with separate veth devices and allow the selected
+LiveKit UDP flow to cross those devices. Run the pinned application and
+LiveKit 1.13.5 without TURN or media TCP and without touching production
+networking or firewall state. Before media, prove only the namespace, route,
+veth, filter, and qdisc availability; the selected ICE tuple does not exist yet.
+Use `tbf` for a bounded rate and `netem` only when the case explicitly adds loss
+or delay.
 
 The sole browser run has three ordered phases. First establish both leaves
 without shaping, identify the selected LiveKit ICE/UDP tuples locally, record
@@ -791,7 +804,7 @@ is a separate optimization.
 - [LiveKit server 1.13.5 release assets and checksums](https://github.com/livekit/livekit/releases/tag/v1.13.5)
 - [Microsoft `New-NetQosPolicy`](https://learn.microsoft.com/en-us/powershell/module/netqos/new-netqospolicy)
 - [Linux network namespaces](https://man7.org/linux/man-pages/man7/network_namespaces.7.html)
-- [Linux `tc-tbf`](https://man7.org/linux/man-pages/man8/tc-tbf.8.html) and [`tc-netem`](https://man7.org/linux/man-pages/man8/tc-netem.8.html)
+- [Linux `tc-tbf`](https://man7.org/linux/man-pages/man8/tc-tbf.8.html), [`tc-netem`](https://man7.org/linux/man-pages/man8/tc-netem.8.html), and [`tc-flower`](https://man7.org/linux/man-pages/man8/tc-flower.8.html)
 - [Jitsi desktop degradation preference](https://github.com/jitsi/lib-jitsi-meet/blob/master/modules/RTC/TraceablePeerConnection.ts)
 - [Discord Go Live architecture](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
 - [Discord encoder-quality case study](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus)
