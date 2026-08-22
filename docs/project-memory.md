@@ -5,6 +5,7 @@ Last updated: 2026-08-23
 ## Current Product Truth
 
 - Build private, low-latency game screen sharing for one broadcaster and a small group of trusted friends. Public or large broadcasts belong on OBS/Twitch-class services.
+- Authenticated Hosts and shipped clients are trusted media participants in these private rooms; route authority, generation fencing, and server admission remain fail-closed.
 - Web is the current delivery target. Viewers join from desktop or mobile browsers; a packaged or native sender is a later optimization.
 - Keep routing automatic and media distributed. Direct/peer UDP is preferred; centralized media is fallback infrastructure, not the default topology.
 - Every non-server endpoint uses one server-authoritative steady outbound media-copy capacity: default `2`, statically configurable as `1`, `2`, or `3`. A peer child or the Host publication consumes one slot; upstream receive is free, selected TURN replaces the same copy's transport, and SFU subscriber egress is accounted at the server. Browser role/UA/visibility does not create a separate tier, and clients cannot raise the deployment value.

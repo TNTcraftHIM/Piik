@@ -533,6 +533,28 @@ the server must. Redundancy can improve recovery but costs traffic and
 coordination; removing redundancy leaves a recovery interval after a relay is
 lost.
 
+## Self-Hosted LiveKit Trust Boundary
+
+Pinned LiveKit 1.13.5 treats `canPublishSources` as a source allowlist, not a
+per-participant or per-source publication-count limit. `limit.num_tracks` gates
+node-wide `NumTracksIn + NumTracksOut` admission, while
+`subscription_limit_video/audio` caps each participant's concurrent subscribed
+tracks by kind and leaves excess requests pending; neither is an SFU bandwidth
+budget.
+
+Self-hosted `RemoveParticipant` closes the current participant but does not
+invalidate a still-valid join token. With `room.auto_create: false`, such a
+token cannot recreate an absent room. Screener's exact-generation room names
+include an unguessable publication generation and are never reused, so room
+deletion plus absence proof fences an old media generation rather than revoking
+every token immediately.
+
+Screener sizes ingress and egress for its shipped clients in private rooms where
+authenticated Hosts are trusted media participants. Exact-generation room
+lifecycle, short-lived scoped tokens, source grants, selective subscription,
+and deployment isolation remain required. The pinned upstream LiveKit release
+is sufficient for that boundary.
+
 ## Route Screening
 
 | Route | Where copies are emitted | Endpoint cost | Evidence status |
@@ -608,7 +630,7 @@ The measurable gates and exact staged experiments are in
 
 ## Sources And License Boundary
 
-Primary sources accessed on 2026-08-19, 2026-08-21, and 2026-08-22:
+Primary sources accessed on 2026-08-19, 2026-08-21, 2026-08-22, and 2026-08-23:
 
 - [Pion WebRTC](https://github.com/pion/webrtc) - MIT; no code copied.
 - [Pion WebRTC v4 API](https://pkg.go.dev/github.com/pion/webrtc/v4) - API
@@ -672,6 +694,11 @@ Primary sources accessed on 2026-08-19, 2026-08-21, and 2026-08-22:
   reference, with no code copied into this research change.
 - [LiveKit 1.13.5 configuration sample](https://github.com/livekit/livekit/blob/v1.13.5/config-sample.yaml),
   [pinned configuration source](https://github.com/livekit/livekit/blob/v1.13.5/pkg/config/config.go),
+  [node track-limit selection](https://github.com/livekit/livekit/blob/v1.13.5/pkg/routing/selector/utils.go),
+  [participant publication checks](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/participant.go),
+  [subscription-limit handling](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscriptionmanager.go),
+  [room allocation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roomallocator.go),
+  [room-service lifecycle](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roomservice.go),
   [ports/firewall](https://docs.livekit.io/transport/self-hosting/ports-firewall/),
   [deployment/embedded TURN](https://docs.livekit.io/transport/self-hosting/deployment/),
   and [benchmark guidance](https://docs.livekit.io/transport/self-hosting/benchmark/)
