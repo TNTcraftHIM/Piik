@@ -563,6 +563,13 @@ export class RoomStore {
     return viewer?.sessionId ? { peerId, sessionId: viewer.sessionId } : undefined;
   }
 
+  getViewerPeerIds(roomId: string): string[] {
+    const room = this.rooms.get(roomId);
+    return room
+      ? [...room.viewers.values()].map((viewer) => viewer.peerId)
+      : [];
+  }
+
   getConnectedViewers(roomId: string): ConnectedPeer[] {
     const room = this.rooms.get(roomId);
     if (!room) {

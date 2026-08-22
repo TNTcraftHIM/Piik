@@ -24,7 +24,6 @@ import (
 )
 
 const (
-	maxHostEdges          = 3
 	maxRemoteResponse     = 64 << 10
 	remoteRequestTimeout  = 10 * time.Second
 	signalWriteTimeout    = 5 * time.Second
@@ -77,28 +76,29 @@ type Session struct {
 	shareGeneration string
 	onEvent         func(Event)
 
-	mu               sync.Mutex
-	writeMu          sync.Mutex
-	conn             *websocket.Conn
-	ice              iceConfig
-	peers            map[string]*peer
-	admission        *viewerAdmission
-	peerAssisted     bool
-	routeRevision    int64
-	routePhase       string
-	routeFailures    [2]string
-	fanout           *media.Fanout
-	audioFanout      *media.AudioFanout
-	codec            media.Codec
-	peerAPI          *webrtc.API
-	codecPreferences []webrtc.RTPCodecParameters
-	closeOnce        sync.Once
-	fatalOnce        sync.Once
-	terminalOnce     sync.Once
-	readDone         chan struct{}
-	terminalResult   chan error
-	readerStarted    atomic.Bool
-	closing          atomic.Bool
+	mu                        sync.Mutex
+	writeMu                   sync.Mutex
+	conn                      *websocket.Conn
+	ice                       iceConfig
+	peers                     map[string]*peer
+	admission                 *viewerAdmission
+	endpointMediaCopyCapacity int
+	peerAssisted              bool
+	routeRevision             int64
+	routePhase                string
+	routeFailures             [2]string
+	fanout                    *media.Fanout
+	audioFanout               *media.AudioFanout
+	codec                     media.Codec
+	peerAPI                   *webrtc.API
+	codecPreferences          []webrtc.RTPCodecParameters
+	closeOnce                 sync.Once
+	fatalOnce                 sync.Once
+	terminalOnce              sync.Once
+	readDone                  chan struct{}
+	terminalResult            chan error
+	readerStarted             atomic.Bool
+	closing                   atomic.Bool
 }
 
 type createRoomResponse struct {
@@ -338,12 +338,13 @@ func (session *Session) connect(ctx context.Context) error {
 	}
 	session.mu.Lock()
 	session.ice = message.IceConfig
+	session.endpointMediaCopyCapacity = message.EndpointMediaCopyCapacity
 	session.peerAssisted = message.PeerAssisted
 	if message.PeerAssisted {
 		session.routeRevision = message.RouteRevision
 		session.routePhase = "active"
 	} else {
-		session.admission = newViewerAdmission(message.MaxViewers)
+		session.admission = newViewerAdmission(message.MaxViewers, message.EndpointMediaCopyCapacity)
 	}
 	session.mu.Unlock()
 	if message.PeerAssisted {
@@ -415,6 +416,11 @@ func (session *Session) handle(message serverMessage) error {
 			return nil
 		}
 		return session.addViewer(message.PeerID)
+	case "peer-waiting":
+		if session.peerAssisted {
+			return nil
+		}
+		return session.waitViewer(message.PeerID)
 	case "peer-left":
 		if session.peerAssisted {
 			return nil
@@ -474,16 +480,15 @@ func (session *Session) addViewer(peerID string) error {
 		session.mu.Unlock()
 		return errors.New("viewer joined before host authentication completed")
 	}
-	action := session.admission.Join(peerID)
+	action := session.admission.Activate(peerID)
 	session.mu.Unlock()
 	switch action {
 	case admissionDuplicate:
 		return nil
 	case admissionWait:
-		session.emitViewerCounts()
-		return nil
+		return errors.New("active Viewer was assigned to the waiting set")
 	case admissionFull:
-		return errors.New("viewer presence exceeded the authenticated room capacity")
+		return errors.New("active Viewer exceeds authenticated endpoint or room capacity")
 	case admissionActivate:
 		if err := session.activatePeer(peerID); err != nil {
 			session.mu.Lock()
@@ -496,6 +501,29 @@ func (session *Session) addViewer(peerID string) error {
 	default:
 		return errors.New("viewer admission returned an invalid action")
 	}
+}
+
+func (session *Session) waitViewer(peerID string) error {
+	session.mu.Lock()
+	if session.admission == nil {
+		session.mu.Unlock()
+		return errors.New("waiting Viewer arrived before host authentication completed")
+	}
+	wasActive := session.admission.IsActive(peerID)
+	action := session.admission.Wait(peerID)
+	peer := session.peers[peerID]
+	if wasActive {
+		delete(session.peers, peerID)
+	}
+	session.mu.Unlock()
+	if peer != nil && wasActive {
+		peer.close()
+	}
+	if action == admissionFull {
+		return errors.New("waiting Viewer exceeds authenticated room capacity")
+	}
+	session.emitViewerCounts()
+	return nil
 }
 
 func (session *Session) activatePeer(peerID string) error {
@@ -537,18 +565,10 @@ func (session *Session) removeViewer(peerID string) error {
 		}
 		return nil
 	}
-	_, promoted := session.admission.Leave(peerID)
+	session.admission.Leave(peerID)
 	session.mu.Unlock()
 	if peer != nil {
 		peer.close()
-	}
-	if promoted != "" {
-		if err := session.activatePeer(promoted); err != nil {
-			session.mu.Lock()
-			session.admission.AbortActivation(promoted)
-			session.mu.Unlock()
-			return fmt.Errorf("promote waiting viewer: %w", err)
-		}
 	}
 	session.emitViewerCounts()
 	return nil
@@ -583,6 +603,9 @@ func (session *Session) rebuildPeer(peerID string) error {
 }
 
 func (session *Session) reconcileAuthoritativeChildren(peerIDs []string) error {
+	if len(peerIDs) > session.endpointMediaCopyCapacity {
+		return errors.New("authoritative children exceed the authenticated endpoint capacity")
+	}
 	desired := make(map[string]struct{}, len(peerIDs))
 	for _, peerID := range peerIDs {
 		desired[peerID] = struct{}{}
@@ -622,10 +645,20 @@ func (session *Session) handleRouteUpdate(message serverMessage) error {
 	if message.RouteRevision < session.routeRevision {
 		return nil
 	}
+	if !hostRouteAssignmentFitsCapacity(
+		message.RouteAssignment,
+		session.endpointMediaCopyCapacity,
+		message.RoutePhase == "prepare",
+	) {
+		return errors.New("route update exceeds the authenticated endpoint capacity")
+	}
 	session.routeRevision = message.RouteRevision
 	session.routePhase = message.RoutePhase
 	publicationGeneration, _ := decodeNullableOpaqueID(message.RouteAssignment.SFUPublicationGeneration)
 	if publicationGeneration != "" {
+		return session.failUnsupportedRoute(message.RouteRevision, message.RoutePhase, nil)
+	}
+	if message.RoutePhase == "prepare" && !session.hasExactChildren(message.RouteAssignment.ChildPeerIDs) {
 		return session.failUnsupportedRoute(message.RouteRevision, message.RoutePhase, nil)
 	}
 	if message.RoutePhase == "active" {
@@ -634,6 +667,20 @@ func (session *Session) handleRouteUpdate(message serverMessage) error {
 		}
 	}
 	return session.send(map[string]any{"type": "route-ready", "revision": message.RouteRevision, "phase": message.RoutePhase})
+}
+
+func (session *Session) hasExactChildren(peerIDs []string) bool {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if len(session.peers) != len(peerIDs) {
+		return false
+	}
+	for _, peerID := range peerIDs {
+		if session.peers[peerID] == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (session *Session) handleUnsupportedRouteMessage(message serverMessage, connectionID *string) error {
@@ -754,13 +801,13 @@ func (session *Session) diagnosticsLoop() {
 }
 
 func (session *Session) availableSlotLocked() int {
-	used := [maxHostEdges + 1]bool{}
+	used := [maxEndpointMediaCopyCapacity + 1]bool{}
 	for _, activePeer := range session.peers {
-		if activePeer.slot > 0 && activePeer.slot <= maxHostEdges {
+		if activePeer.slot > 0 && activePeer.slot <= session.endpointMediaCopyCapacity {
 			used[activePeer.slot] = true
 		}
 	}
-	for slot := 1; slot <= maxHostEdges; slot++ {
+	for slot := 1; slot <= session.endpointMediaCopyCapacity; slot++ {
 		if !used[slot] {
 			return slot
 		}

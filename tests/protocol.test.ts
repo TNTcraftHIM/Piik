@@ -85,8 +85,8 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(nativeWire).toContain(
-      `signalingProtocol  = "${SIGNALING_PROTOCOL}"`,
+    expect(nativeWire).toMatch(
+      new RegExp(`signalingProtocol\\s*=\\s*"${SIGNALING_PROTOCOL}"`),
     );
   });
 
@@ -848,6 +848,7 @@ describe("server signaling protocol", () => {
       peerId: "host_12345678",
       roomExpiresAt: "2026-08-18T18:00:00.000Z",
       maxViewers,
+      endpointMediaCopyCapacity: 2,
       hostOnline: true,
       connectionId: null,
       viewerPeerIds,
@@ -871,6 +872,46 @@ describe("server signaling protocol", () => {
         authenticatedMessage(MAX_VIEWERS_PER_ROOM_LIMIT),
       ).success,
     ).toBe(true);
+  });
+
+  it("requires the authenticated endpoint capacity to be 1, 2, or 3", () => {
+    for (const endpointMediaCopyCapacity of [1, 2, 3]) {
+      expect(
+        serverMessageSchema.safeParse({
+          ...authenticatedMessage(8),
+          endpointMediaCopyCapacity,
+        }).success,
+      ).toBe(true);
+    }
+    for (const endpointMediaCopyCapacity of [undefined, 0, 4, 1.5]) {
+      const message = authenticatedMessage(8) as Record<string, unknown>;
+      if (endpointMediaCopyCapacity === undefined) {
+        delete message.endpointMediaCopyCapacity;
+      } else {
+        message.endpointMediaCopyCapacity = endpointMediaCopyCapacity;
+      }
+      expect(serverMessageSchema.safeParse(message).success).toBe(false);
+    }
+  });
+
+  it("accepts only a strict peer-waiting notification", () => {
+    expect(
+      serverMessageSchema.safeParse({
+        type: "peer-waiting",
+        peerId: "viewer_12345678",
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "peer-waiting",
+        peerId: "viewer_12345678",
+        active: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({ type: "peer-waiting", peerId: "short" })
+        .success,
+    ).toBe(false);
   });
 
   it("accepts a strict, unique and bounded Viewer presence snapshot", () => {

@@ -661,6 +661,11 @@ const authenticatedMessageShape = {
   peerId: opaqueIdSchema,
   roomExpiresAt: z.string().datetime().nullable(),
   maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+  endpointMediaCopyCapacity: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_ENDPOINT_MEDIA_COPY_CAPACITY),
   hostOnline: z.boolean(),
   hostPaused: z.boolean().optional(),
   connectionId: opaqueIdSchema.nullable(),
@@ -696,6 +701,12 @@ export const serverMessageSchema = z.union([
   z
     .object({
       type: z.literal("peer-joined"),
+      peerId: opaqueIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("peer-waiting"),
       peerId: opaqueIdSchema,
     })
     .strict(),

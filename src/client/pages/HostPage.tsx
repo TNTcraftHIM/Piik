@@ -1414,6 +1414,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       });
       return;
     }
+    if (message.type === "peer-waiting") {
+      if (!peerAssistedRef.current) {
+        removePeer(message.peerId);
+      }
+      return;
+    }
     if (message.type === "peer-left") {
       if (peerAssistedRef.current) {
         return;

@@ -16,11 +16,12 @@ import (
 )
 
 const (
-	signalingProtocol  = "screener-v6"
-	maxProtocolViewers = 16
-	maxRouteRevision   = int64(1<<53 - 1)
-	maxSignalSDPBytes  = 48 << 10
-	maxQualityEvidence = 2 << 10
+	signalingProtocol            = "screener-v6"
+	maxProtocolViewers           = 16
+	maxEndpointMediaCopyCapacity = 3
+	maxRouteRevision             = int64(1<<53 - 1)
+	maxSignalSDPBytes            = 48 << 10
+	maxQualityEvidence           = 2 << 10
 )
 
 var opaqueIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{8,128}$`)
@@ -91,27 +92,28 @@ type participantRouteAssignment struct {
 }
 
 type serverMessage struct {
-	Type            string
-	Role            string
-	PeerID          string
-	FromPeerID      string
-	ViewerPeerIDs   []string
-	ConnectionID    string
-	Rebuild         bool
-	MaxViewers      int
-	IceConfig       iceConfig
-	ViewerPolicy    string
-	Payload         inboundSignalPayload
-	Code            string
-	Message         string
-	Reason          string
-	PeerAssisted    bool
-	MediaAssignment mediaAssignment
-	RouteAssignment participantRouteAssignment
-	RouteRevision   int64
-	RoutePhase      string
-	EdgeKind        string
-	NewConnectionID string
+	Type                      string
+	Role                      string
+	PeerID                    string
+	FromPeerID                string
+	ViewerPeerIDs             []string
+	ConnectionID              string
+	Rebuild                   bool
+	MaxViewers                int
+	EndpointMediaCopyCapacity int
+	IceConfig                 iceConfig
+	ViewerPolicy              string
+	Payload                   inboundSignalPayload
+	Code                      string
+	Message                   string
+	Reason                    string
+	PeerAssisted              bool
+	MediaAssignment           mediaAssignment
+	RouteAssignment           participantRouteAssignment
+	RouteRevision             int64
+	RoutePhase                string
+	EdgeKind                  string
+	NewConnectionID           string
 }
 
 func readServerMessage(ctx context.Context, conn *websocket.Conn) (serverMessage, error) {
@@ -135,7 +137,7 @@ func decodeServerMessage(payload []byte) (serverMessage, error) {
 	switch discriminator.Type {
 	case "authenticated":
 		return decodeAuthenticatedMessage(payload)
-	case "peer-joined", "peer-left":
+	case "peer-joined", "peer-waiting", "peer-left":
 		var wire struct {
 			Type   string `json:"type"`
 			PeerID string `json:"peerId"`
@@ -327,6 +329,7 @@ func decodeAuthenticatedMessage(payload []byte) (serverMessage, error) {
 		PeerID                        string          `json:"peerId"`
 		RoomExpiresAt                 json.RawMessage `json:"roomExpiresAt"`
 		MaxViewers                    *int            `json:"maxViewers"`
+		EndpointMediaCopyCapacity     *int            `json:"endpointMediaCopyCapacity"`
 		HostOnline                    *bool           `json:"hostOnline"`
 		ConnectionID                  json.RawMessage `json:"connectionId"`
 		ViewerPeerIDs                 []string        `json:"viewerPeerIds"`
@@ -343,7 +346,9 @@ func decodeAuthenticatedMessage(payload []byte) (serverMessage, error) {
 	if err := decodeStrict(payload, &wire); err != nil || wire.Type != "authenticated" ||
 		wire.Protocol != signalingProtocol ||
 		wire.Role != "host" || !validOpaqueID(wire.PeerID) || wire.MaxViewers == nil ||
-		*wire.MaxViewers < 1 || *wire.MaxViewers > maxProtocolViewers || wire.HostOnline == nil ||
+		*wire.MaxViewers < 1 || *wire.MaxViewers > maxProtocolViewers ||
+		wire.EndpointMediaCopyCapacity == nil || *wire.EndpointMediaCopyCapacity < 1 ||
+		*wire.EndpointMediaCopyCapacity > maxEndpointMediaCopyCapacity || wire.HostOnline == nil ||
 		!*wire.HostOnline || !bytes.Equal(bytes.TrimSpace(wire.ConnectionID), []byte("null")) ||
 		wire.ViewerPeerIDs == nil || len(wire.ViewerPeerIDs) > *wire.MaxViewers ||
 		(wire.ViewerPolicy != "private-link" && wire.ViewerPolicy != "public-watch") ||
@@ -382,23 +387,27 @@ func decodeAuthenticatedMessage(payload []byte) (serverMessage, error) {
 		if err != nil || strings.Join(assignment.ChildPeerIDs, "\x00") != strings.Join(routeAssignment.ChildPeerIDs, "\x00") {
 			return serverMessage{}, errors.New("host authentication response is invalid")
 		}
+		if !hostRouteAssignmentFitsCapacity(routeAssignment, *wire.EndpointMediaCopyCapacity, false) {
+			return serverMessage{}, errors.New("host authentication response is invalid")
+		}
 		if wire.RouteRevision == nil || *wire.RouteRevision < 0 || *wire.RouteRevision > maxRouteRevision || len(wire.QualitySettings) == 0 {
 			return serverMessage{}, errors.New("host authentication response is invalid")
 		}
 		routeRevision = *wire.RouteRevision
 	}
 	return serverMessage{
-		Type:            wire.Type,
-		Role:            wire.Role,
-		PeerID:          wire.PeerID,
-		MaxViewers:      *wire.MaxViewers,
-		ViewerPeerIDs:   append([]string(nil), wire.ViewerPeerIDs...),
-		IceConfig:       config,
-		ViewerPolicy:    wire.ViewerPolicy,
-		PeerAssisted:    peerAssisted,
-		MediaAssignment: assignment,
-		RouteAssignment: routeAssignment,
-		RouteRevision:   routeRevision,
+		Type:                      wire.Type,
+		Role:                      wire.Role,
+		PeerID:                    wire.PeerID,
+		MaxViewers:                *wire.MaxViewers,
+		EndpointMediaCopyCapacity: *wire.EndpointMediaCopyCapacity,
+		ViewerPeerIDs:             append([]string(nil), wire.ViewerPeerIDs...),
+		IceConfig:                 config,
+		ViewerPolicy:              wire.ViewerPolicy,
+		PeerAssisted:              peerAssisted,
+		MediaAssignment:           assignment,
+		RouteAssignment:           routeAssignment,
+		RouteRevision:             routeRevision,
 	}, nil
 }
 
@@ -433,7 +442,7 @@ func decodeNullableOpaqueID(payload []byte) (string, error) {
 }
 
 func validChildPeerIDs(peerIDs []string) bool {
-	if peerIDs == nil || len(peerIDs) > maxHostEdges {
+	if peerIDs == nil || len(peerIDs) > maxEndpointMediaCopyCapacity {
 		return false
 	}
 	seen := make(map[string]struct{}, len(peerIDs))
@@ -447,6 +456,22 @@ func validChildPeerIDs(peerIDs []string) bool {
 		seen[peerID] = struct{}{}
 	}
 	return true
+}
+
+func hostRouteAssignmentFitsCapacity(assignment participantRouteAssignment, capacity int, transition bool) bool {
+	limit := capacity
+	if transition && limit < maxEndpointMediaCopyCapacity {
+		limit++
+	}
+	publicationGeneration, err := decodeNullableOpaqueID(assignment.SFUPublicationGeneration)
+	if err != nil {
+		return false
+	}
+	count := len(assignment.ChildPeerIDs)
+	if publicationGeneration != "" {
+		count++
+	}
+	return count <= limit
 }
 
 func decodeInboundSignalPayload(payload []byte) (inboundSignalPayload, error) {

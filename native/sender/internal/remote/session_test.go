@@ -92,7 +92,7 @@ func TestStartRetriesTheSameProvisionalRoomOnce(t *testing.T) {
 		expiresAt := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second)
 		authenticated, _ := json.Marshal(map[string]any{
 			"type": "authenticated", "protocol": signalingProtocol, "role": "host", "peerId": "host-peer",
-			"roomExpiresAt": expiresAt.Format(time.RFC3339), "maxViewers": 3, "hostOnline": true,
+			"roomExpiresAt": expiresAt.Format(time.RFC3339), "maxViewers": 3, "endpointMediaCopyCapacity": 2, "hostOnline": true,
 			"connectionId": nil, "viewerPeerIds": []string{},
 			"iceConfig": map[string]any{"iceServers": []any{}}, "viewerPolicy": privateViewerPolicy,
 			"viewerAuthorizationGeneration": "viewer_generation_12345678",
@@ -387,7 +387,8 @@ func TestPeerAssistedHostUsesOnlyAuthoritativeRoutes(t *testing.T) {
 	defer cancel()
 	session := &Session{
 		signalCtx: ctx, conn: connection, peerAssisted: true,
-		peers: make(map[string]*peer), routeRevision: 7, routePhase: "active",
+		peers: make(map[string]*peer), endpointMediaCopyCapacity: 2,
+		routeRevision: 7, routePhase: "active",
 	}
 
 	if err = session.handle(serverMessage{Type: "peer-joined", PeerID: "viewer-new"}); err != nil || len(session.peers) != 0 {
@@ -406,6 +407,13 @@ func TestPeerAssistedHostUsesOnlyAuthoritativeRoutes(t *testing.T) {
 		t.Fatalf("stale route emitted %s", payload)
 	case <-time.After(50 * time.Millisecond):
 	}
+
+	unsupportedPrepare := direct
+	unsupportedPrepare.ChildPeerIDs = []string{"viewer-new"}
+	if err = session.handle(serverMessage{Type: "route-update", RouteRevision: 8, RoutePhase: "prepare", RouteAssignment: unsupportedPrepare}); err != nil {
+		t.Fatal(err)
+	}
+	assertRouteStatus(t, receiveRouteStatus(t, received), "route-failed", 8, "prepare", nil)
 
 	if err = session.handle(serverMessage{Type: "route-update", RouteRevision: 8, RoutePhase: "active", RouteAssignment: direct}); err != nil {
 		t.Fatal(err)
@@ -745,7 +753,7 @@ func newRemoteHarnessWithPassword(t *testing.T, roster []string, password string
 		harness.authentication <- append([]byte(nil), payload...)
 		authenticated, _ := json.Marshal(map[string]any{
 			"type": "authenticated", "protocol": signalingProtocol, "role": "host", "peerId": "host-peer",
-			"roomExpiresAt": nil, "maxViewers": 3, "hostOnline": true,
+			"roomExpiresAt": nil, "maxViewers": 3, "endpointMediaCopyCapacity": 2, "hostOnline": true,
 			"connectionId": nil, "viewerPeerIds": roster,
 			"iceConfig":    map[string]any{"iceServers": []any{}},
 			"viewerPolicy": privateViewerPolicy, "viewerAuthorizationGeneration": "viewer_generation_12345678",
