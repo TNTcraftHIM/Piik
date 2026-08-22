@@ -35,6 +35,20 @@ capacity:
 - one named configuration value and one shared implementation boundary own the
   policy. Route code must not repeat literal policy numbers.
 
+The server returns the final deployment value as
+`authenticated.endpointMediaCopyCapacity` on every successful signaling
+authentication. Web and Native clients validate `1..3`; a Native Host uses that
+same value for ordinary Viewer admission, authoritative peer-assisted child
+assignments, and physical sender slots. Room `maxViewers` is a separate
+participant-admission limit and never supplies a sender budget. A missing or
+invalid capacity fails before route authority is accepted.
+
+Without the peer-assisted controller, signaling still admits at most that many
+active Host children per room. Excess admitted Viewers wait without an
+authorized media edge and are promoted in stable join order when a slot is
+released; offer, answer, candidate, and restart routing is limited to the active
+set.
+
 Capacity counts active outbound media copies produced by a non-server endpoint:
 an ordinary peer child consumes one slot and the Host's single SFU publication
 consumes one Host slot. An upstream receive edge is free. A committed selected
