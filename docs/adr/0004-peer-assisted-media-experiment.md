@@ -124,10 +124,12 @@ Test 1, 3, 5, and 8 viewers for 30 minutes across the three recommended ceiling
 combinations, plus any advanced combination proposed for production, with
 controlled per-edge RTT at or below 40 ms and loss at or below 1%. Current
 Chrome and Edge form the controlled relay cohort; Android Chrome and iOS Safari
-remain compatibility observations. ADR-0005 now gives every ordinary Web
-Viewer the same experimental two-edge capacity without UA or visibility detection. Mobile
+remain compatibility observations. ADR-0005 currently gives every ordinary Web
+Viewer one downstream edge without UA or visibility detection. The retained
+two-edge Browser runs are historical experiments; a future higher tier requires
+this resource/quality gate and cannot be inferred from device class. Mobile
 resource behavior remains unverified, but does not define a separate route
-class. The resource/quality gate remains an eight-viewer experiment. A separate
+class. The gate remains an eight-viewer experiment. A separate
 sixteen-viewer loopback may prove only admission, bounded topology, and decode
 function; neither result can authorize a 20-viewer default. That later release
 requires a separate 20-viewer matrix or bounded central exceptions.
