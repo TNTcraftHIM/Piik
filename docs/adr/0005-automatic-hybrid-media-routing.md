@@ -367,7 +367,10 @@ change or the current share stops. A new sharing generation starts from the
 cheapest available UDP route. The controller does not continuously rebalance
 healthy media. The bounded quality candidate changes only the Viewer-rooted
 subtree whose current parent-to-child edge produced three consecutive hard-bad
-windows. One confirmed child remains edge-local. Two distinct confirmed
+windows. One confirmed child remains edge-local. Two-distinct-child
+corroboration is retained only for a future accepted Viewer-capacity tier; the
+current ordinary Browser Viewer1 release makes it unreachable and does not
+authorize a second downstream child. Two distinct confirmed
 children under the same Viewer parent session and share generation within five
 seconds temporarily make that parent relay-ineligible (effective capacity zero)
 for 30 seconds; its advertised capacity is unchanged. The triggering edge still
