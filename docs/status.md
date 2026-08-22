@@ -20,9 +20,8 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Merge the accepted route truth across requirements, design, ADR, memory, status, and [the TODO ledger](./todo.md).
-2. Rebuild the cap/accounting runtime from exact canonical `main`, preserving safe identity, media-proof, and rollback behavior.
-3. Validate cap `1/2/3`, child and parent quality ownership, constrained Host/SFU/TURN paths, bounded resources, and rollback before deployment.
+1. Rebuild the cap/accounting runtime from exact canonical `main`, preserving safe identity, media-proof, and rollback behavior.
+2. Validate cap `1/2/3`, child and parent quality ownership, constrained Host/SFU/TURN paths, bounded resources, and rollback before deployment.
 
 ## Active Boundaries
 
@@ -33,5 +32,5 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Next Stop
 
-Complete the truth merge and canonical-workspace cleanup first. Runtime changes and
-remaining TODOs start only from the resulting clean `main`.
+Create each runtime change from the resulting clean `main`; remaining TODOs stay
+scoped to their owner and do not revive superseded branches.

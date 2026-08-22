@@ -26,8 +26,7 @@ Last updated: 2026-08-22
 ## Current Priority
 
 1. Keep this truth set and [the TODO ledger](./todo.md) concise and internally consistent.
-2. Merge the accepted holistic routing truth into canonical `main` before any dependent runtime branch or cleanup.
-3. Rebuild only approved runtime changes from that exact `main`, validate cap `1/2/3`, quality ownership, route recovery, and bounded resources, independently review, then deploy with rollback evidence.
+2. Rebuild only approved runtime changes from canonical `main@7426c3a`, validate cap `1/2/3`, quality ownership, route recovery, and bounded resources, independently review, then deploy with rollback evidence.
 
 ## Working Rules
 
