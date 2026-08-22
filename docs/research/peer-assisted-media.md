@@ -525,7 +525,7 @@ event arrives later. The application therefore needs a small text-message
 challenge rather than waiting for either protocol Ping/Pong or the old socket's
 close event.
 
-The retained compatibility seam is response-only opt-in under `screener-v5`:
+The retained compatibility seam is response-only opt-in under `screener-v6`:
 the Web client sends `signaling-challenge { sequence }`, and the server sends
 the exact `signaling-challenge-response { sequence }` only to that requesting
 socket. The Native sender's strict decoder rejects unknown server message

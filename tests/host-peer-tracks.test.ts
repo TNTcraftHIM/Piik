@@ -1443,7 +1443,7 @@ describe("ViewerRelay downstream ownership", () => {
     relay.dispose();
   });
 
-  it("admits one provisional child only while the current Viewer cap has room", async () => {
+  it("admits provisional children until endpoint cap three is full", async () => {
     const relay = new ViewerRelay(
       { iceServers: [] },
       QUALITY_PROFILES["720p30"],
@@ -1455,14 +1455,22 @@ describe("ViewerRelay downstream ownership", () => {
     preparedConnection.connectionState = "connected";
     relay.activateChildren(1, ["child-0"]);
     expect(FakePeerConnection.activeCount).toBe(1);
+    expect(relay.prepareChild(2, ["child-0", "child-1"])).toBe(true);
+    FakePeerConnection.latest!.connectionState = "connected";
+    relay.activateChildren(2, ["child-0", "child-1"]);
+    expect(relay.prepareChild(3, ["child-0", "child-1", "child-2"])).toBe(
+      true,
+    );
+    FakePeerConnection.latest!.connectionState = "connected";
+    relay.activateChildren(3, ["child-0", "child-1", "child-2"]);
     expect(
-      relay.prepareChild(2, ["child-0", "child-1"]),
+      relay.prepareChild(4, ["child-0", "child-1", "child-2", "child-3"]),
     ).toBe(false);
-    expect(FakePeerConnection.activeCount).toBe(1);
+    expect(FakePeerConnection.activeCount).toBe(3);
     relay.dispose();
   });
 
-  it("clamps a malicious multi-child assignment to one physical Viewer edge", async () => {
+  it("clamps a malicious fourth child to three physical endpoint copies", async () => {
     const targets: string[] = [];
     const relay = new ViewerRelay(
       { iceServers: [] },
@@ -1479,10 +1487,17 @@ describe("ViewerRelay downstream ownership", () => {
     relay.setChildren(["child-a", "child-b", "child-c", "ignored-fourth"]);
     relay.setStream(createStream(firstVideo, firstAudio));
 
-    await vi.waitFor(() => expect(targets).toEqual(["child-a"]));
-    const [childAConnection] = FakePeerConnection.instances;
+    await vi.waitFor(() =>
+      expect(targets).toEqual(["child-a", "child-b", "child-c"]),
+    );
+    const [childAConnection, childBConnection, childCConnection] =
+      FakePeerConnection.instances;
     expect(childAConnection).toBeDefined();
+    expect(childBConnection).toBeDefined();
+    expect(childCConnection).toBeDefined();
     childAConnection!.connectionState = "connected";
+    childBConnection!.connectionState = "connected";
+    childCConnection!.connectionState = "connected";
     const retiredConnectionId = relay.getSnapshot("child-a")!.connectionId;
 
     const nextVideo = createTrack("video", "next-video");
@@ -1494,13 +1509,12 @@ describe("ViewerRelay downstream ownership", () => {
     });
 
     relay.setChildren(["child-b", "child-c", "child-d"]);
-    await vi.waitFor(() => expect(targets).toContain("child-b"));
+    await vi.waitFor(() => expect(targets).toContain("child-d"));
     expect(childAConnection!.connectionState).toBe("closed");
-    const childBConnection = FakePeerConnection.latest!;
-    childBConnection.connectionState = "connected";
-    expect(targets).toEqual(["child-a", "child-b"]);
-    expect(FakePeerConnection.activeCount).toBe(1);
-    expect(FakePeerConnection.peakActiveCount).toBe(1);
+    FakePeerConnection.latest!.connectionState = "connected";
+    expect(targets).toEqual(["child-a", "child-b", "child-c", "child-d"]);
+    expect(FakePeerConnection.activeCount).toBe(3);
+    expect(FakePeerConnection.peakActiveCount).toBe(3);
     expect(targets).not.toContain("ignored-fourth");
 
     await relay.acceptSignal("stale-child", {
@@ -1510,14 +1524,14 @@ describe("ViewerRelay downstream ownership", () => {
     }, 7);
     await relay.recover("stale-child", "stale-connection", true);
     await relay.recover("child-b", "wrong-connection", true);
-    expect(FakePeerConnection.activeCount).toBe(1);
+    expect(FakePeerConnection.activeCount).toBe(3);
     const childBConnectionId = relay.getSnapshot("child-b")!.connectionId;
     await relay.recover("child-b", childBConnectionId, true);
     await vi.waitFor(() =>
       expect(FakePeerConnection.latest).not.toBe(childBConnection),
     );
-    expect(FakePeerConnection.activeCount).toBe(1);
-    expect(FakePeerConnection.peakActiveCount).toBe(1);
+    expect(FakePeerConnection.activeCount).toBe(3);
+    expect(FakePeerConnection.peakActiveCount).toBe(3);
 
     expect(
       relay.startSelectedEdgeTurn(
@@ -1530,8 +1544,8 @@ describe("ViewerRelay downstream ownership", () => {
         7,
       ),
     ).toBe(false);
-    expect(FakePeerConnection.activeCount).toBe(1);
-    expect(FakePeerConnection.peakActiveCount).toBe(1);
+    expect(FakePeerConnection.activeCount).toBe(3);
+    expect(FakePeerConnection.peakActiveCount).toBe(3);
     relay.dispose();
   });
 

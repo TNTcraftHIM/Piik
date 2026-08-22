@@ -30,18 +30,20 @@ function expectValidTree(
   roomId: string,
   hostPeerId: string,
   viewerPeerIds: readonly string[],
-  maxViewerChildren = 1,
+  endpointMediaCopyCapacity = 2,
 ): number {
   const hostAssignment = topology.getAssignment(roomId, hostPeerId)!;
   expect(hostAssignment.parentPeerId).toBeNull();
-  expect(hostAssignment.childPeerIds.length).toBeLessThanOrEqual(2);
+  expect(hostAssignment.childPeerIds.length).toBeLessThanOrEqual(
+    endpointMediaCopyCapacity,
+  );
 
   const allChildren = new Set(hostAssignment.childPeerIds);
   let maximumDepth = 0;
   for (const peerId of viewerPeerIds) {
     const assignment = topology.getAssignment(roomId, peerId)!;
     expect(assignment.childPeerIds.length).toBeLessThanOrEqual(
-      maxViewerChildren,
+      endpointMediaCopyCapacity,
     );
     for (const childPeerId of assignment.childPeerIds) {
       expect(allChildren.has(childPeerId)).toBe(false);
@@ -197,42 +199,7 @@ describe("PeerRelayTopology", () => {
     expect(topology.getAssignment("room", "viewer-d")?.parentPeerId).toBeNull();
   });
 
-  it("keeps server relay ineligibility separate from advertised capacity", () => {
-    const topology = new PeerRelayTopology();
-    const peers = connected("host", "relay", "sibling", "child", "pending");
-    topology.setHost("room", "host", peers);
-    topology.addViewer("room", "relay", peers);
-    topology.addViewer("room", "sibling", peers);
-    topology.setViewerRelayCapacity("room", "relay", 1, peers);
-    topology.addViewer("room", "child", peers);
-
-    topology.setViewerRelayEligible("room", "relay", false);
-    expect(topology.getDownstreamCapacity("room", "relay")).toBe(0);
-    expect(topology.getAdvertisedDownstreamCapacity("room", "relay")).toBe(1);
-    expect(topology.getAssignment("room", "child")?.parentPeerId).toBe("relay");
-    expect(
-      topology.setViewerRelayCapacity("room", "relay", 2, peers),
-    ).toEqual([]);
-    expect(topology.getAdvertisedDownstreamCapacity("room", "relay")).toBe(1);
-    topology.addViewer("room", "pending", peers);
-    expect(topology.getAssignment("room", "pending")?.parentPeerId).toBeNull();
-
-    topology.setViewerRelayEligible("room", "relay", true);
-    topology.setViewerRelayCapacity("room", "relay", 2, peers);
-    expect(topology.getAssignment("room", "pending")?.parentPeerId).toBeNull();
-    topology.removeViewer(
-      "room",
-      "child",
-      connected("host", "relay", "sibling", "pending"),
-    );
-    expect(topology.getAssignment("room", "pending")?.parentPeerId).toBe(
-      "relay",
-    );
-    topology.setViewerRelayEligible("room", "host", false);
-    expect(topology.getDownstreamCapacity("room", "host")).toBe(2);
-  });
-
-  it("applies role-aware release limits even when code supplies three", () => {
+  it("applies one deployment capacity to Host and Viewer endpoints", () => {
     const peers = connected("host", "relay");
     const defaultTopology = new PeerRelayTopology();
     defaultTopology.setHost("default", "host", peers);
@@ -243,7 +210,7 @@ describe("PeerRelayTopology", () => {
     ).toBe(2);
     expect(
       defaultTopology.getAdvertisedDownstreamCapacity("default", "relay"),
-    ).toBe(1);
+    ).toBe(2);
 
     const expandedTopology = new PeerRelayTopology(3);
     expandedTopology.setHost("expanded", "host", peers);
@@ -251,10 +218,10 @@ describe("PeerRelayTopology", () => {
     expandedTopology.setViewerRelayCapacity("expanded", "relay", 3, peers);
     expect(
       expandedTopology.getAdvertisedDownstreamCapacity("expanded", "host"),
-    ).toBe(2);
+    ).toBe(3);
     expect(
       expandedTopology.getAdvertisedDownstreamCapacity("expanded", "relay"),
-    ).toBe(1);
+    ).toBe(3);
 
     const tightenedTopology = new PeerRelayTopology(1);
     tightenedTopology.setHost("tightened", "host", peers);
@@ -358,7 +325,7 @@ describe("PeerRelayTopology", () => {
     expect(expectValidTree(topology, roomId, hostPeerId, viewerPeerIds)).toBe(4);
   });
 
-  it("clamps old capacity-three viewers to one child in an eight-viewer tree", () => {
+  it("uses capacity three uniformly in an eight-viewer tree", () => {
     const topology = new PeerRelayTopology(3);
     const roomId = "room";
     const hostPeerId = "host";
@@ -382,23 +349,25 @@ describe("PeerRelayTopology", () => {
         roomId,
         hostPeerId,
         viewerPeerIds.slice(0, index + 1),
-        1,
+        3,
       );
     }
 
     expect(topology.getAssignment(roomId, "viewer-1")?.childPeerIds).toEqual([
-      "viewer-3",
+      "viewer-4",
+      "viewer-5",
+      "viewer-6",
     ]);
-    expect(topology.getDownstreamCapacity(roomId, "viewer-1")).toBe(1);
+    expect(topology.getDownstreamCapacity(roomId, "viewer-1")).toBe(3);
     expect(topology.getAssignment(roomId, "viewer-5")?.parentPeerId).toBe(
-      "viewer-3",
+      "viewer-1",
     );
     expect(
-      expectValidTree(topology, roomId, hostPeerId, viewerPeerIds, 1),
-    ).toBe(4);
+      expectValidTree(topology, roomId, hostPeerId, viewerPeerIds, 3),
+    ).toBe(2);
   });
 
-  it("reattaches a relay child without creating a second viewer child", () => {
+  it("reattaches relay children within the shared endpoint capacity", () => {
     const topology = new PeerRelayTopology();
     const peers = connected("host", "relay", "sibling", "child-a", "child-b");
     topology.setHost("room", "host", peers);
@@ -408,10 +377,9 @@ describe("PeerRelayTopology", () => {
     addRelayViewer(topology, "room", "child-b", peers, 2);
     expect(topology.getAssignment("room", "relay")?.childPeerIds).toEqual([
       "child-a",
-    ]);
-    expect(topology.getAssignment("room", "sibling")?.childPeerIds).toEqual([
       "child-b",
     ]);
+    expect(topology.getAssignment("room", "sibling")?.childPeerIds).toEqual([]);
 
     topology.removeViewer(
       "room",
@@ -431,7 +399,7 @@ describe("PeerRelayTopology", () => {
         "room",
         "host",
         ["sibling", "child-a", "child-b"],
-        1,
+        2,
       ),
     ).toBe(2);
   });

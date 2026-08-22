@@ -1,7 +1,5 @@
-import {
-  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-  type ClientMessage,
-} from "../../shared/protocol";
+import { MAX_ENDPOINT_MEDIA_COPY_CAPACITY } from "../../shared/media-copy-accounting";
+import type { ClientMessage } from "../../shared/protocol";
 
 type RelayCapacityMessage = Extract<
   ClientMessage,
@@ -16,6 +14,6 @@ export function relayCapacityMessageForBrowser(
   }
   return {
     type: "relay-capacity",
-    downstreamEdges: CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
+    downstreamEdges: MAX_ENDPOINT_MEDIA_COPY_CAPACITY,
   };
 }

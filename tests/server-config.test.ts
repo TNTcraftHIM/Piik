@@ -12,7 +12,7 @@ describe("server configuration", () => {
     expect(config.stunUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
-    expect(config.maxPeerRelayDownstreamEdges).toBe(2);
+    expect(config.endpointMediaCopyCapacity).toBe(2);
     expect(config.livekitFallback).toBeUndefined();
     expect(config.selectedEdgeTurn).toBeUndefined();
   });
@@ -227,27 +227,35 @@ describe("server configuration", () => {
     ).toThrow("MAX_VIEWERS_PER_ROOM");
   });
 
-  it.each(["1", "2"])(
-    "accepts a bounded peer relay downstream limit of %s",
-    (maxPeerRelayDownstreamEdges) => {
+  it.each(["1", "2", "3"])(
+    "accepts an endpoint media copy capacity of %s",
+    (endpointMediaCopyCapacity) => {
       expect(
         loadConfig({
-          MAX_PEER_RELAY_DOWNSTREAM_EDGES: maxPeerRelayDownstreamEdges,
-        }).maxPeerRelayDownstreamEdges,
-      ).toBe(Number(maxPeerRelayDownstreamEdges));
+          ENDPOINT_MEDIA_COPY_CAPACITY: endpointMediaCopyCapacity,
+        }).endpointMediaCopyCapacity,
+      ).toBe(Number(endpointMediaCopyCapacity));
     },
   );
 
-  it.each(["0", "3", "4", "1.5"])(
-    "rejects an invalid peer relay downstream limit of %s",
-    (maxPeerRelayDownstreamEdges) => {
+  it.each(["0", "4", "1.5"])(
+    "rejects an invalid endpoint media copy capacity of %s",
+    (endpointMediaCopyCapacity) => {
       expect(() =>
         loadConfig({
-          MAX_PEER_RELAY_DOWNSTREAM_EDGES: maxPeerRelayDownstreamEdges,
+          ENDPOINT_MEDIA_COPY_CAPACITY: endpointMediaCopyCapacity,
         }),
-      ).toThrow("MAX_PEER_RELAY_DOWNSTREAM_EDGES");
+      ).toThrow("ENDPOINT_MEDIA_COPY_CAPACITY");
     },
   );
+
+  it("fails closed on the removed relay downstream setting", () => {
+    expect(() =>
+      loadConfig({ MAX_PEER_RELAY_DOWNSTREAM_EDGES: "2" }),
+    ).toThrow(
+      "MAX_PEER_RELAY_DOWNSTREAM_EDGES is no longer supported; use ENDPOINT_MEDIA_COPY_CAPACITY",
+    );
+  });
 
   it("enables the hybrid controller for every room when selected", () => {
     expect(loadConfig({ PEER_ASSISTED_MEDIA: "true" }).peerAssistedMedia).toBe(

@@ -9,7 +9,7 @@ import {
 } from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
-import { MAX_VIEWER_MEDIA_CHILDREN } from "./media-assignment";
+import { MAX_ENDPOINT_MEDIA_CHILDREN } from "./media-assignment";
 
 interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
@@ -99,7 +99,7 @@ export class ViewerRelay {
       Date.parse(message.expiresAt) <= now ||
       connectionId !== message.oldConnectionId ||
       (!retainedChildPeerIds.includes(message.viewerPeerId) &&
-        retainedChildPeerIds.length >= MAX_VIEWER_MEDIA_CHILDREN)
+        retainedChildPeerIds.length >= MAX_ENDPOINT_MEDIA_CHILDREN)
     ) {
       return false;
     }
@@ -158,7 +158,7 @@ export class ViewerRelay {
       !stream ||
       planned.length !== plannedChildPeerIds.length ||
       planned.length !== this.childPeerIds.length + 1 ||
-      planned.length > MAX_VIEWER_MEDIA_CHILDREN ||
+      planned.length > MAX_ENDPOINT_MEDIA_CHILDREN ||
       this.childPeerIds.some((peerId) => !planned.includes(peerId)) ||
       !childPeerId ||
       this.peers.has(childPeerId)
@@ -247,11 +247,11 @@ export class ViewerRelay {
     }
     const nextChildPeerIds = [...new Set(childPeerIds)].slice(
       0,
-      MAX_VIEWER_MEDIA_CHILDREN,
+      MAX_ENDPOINT_MEDIA_CHILDREN,
     );
     const selectedPeerId = this.selectedChildConnection?.peerId ?? null;
     if (selectedPeerId && !nextChildPeerIds.includes(selectedPeerId)) {
-      if (nextChildPeerIds.length >= MAX_VIEWER_MEDIA_CHILDREN) {
+      if (nextChildPeerIds.length >= MAX_ENDPOINT_MEDIA_CHILDREN) {
         nextChildPeerIds.pop();
       }
       nextChildPeerIds.push(selectedPeerId);
@@ -631,7 +631,7 @@ export class ViewerRelay {
     if (peer) {
       this.retiredConnections.delete(childPeerId);
       this.retiredConnections.set(childPeerId, peer.connectionId);
-      while (this.retiredConnections.size > MAX_VIEWER_MEDIA_CHILDREN) {
+      while (this.retiredConnections.size > MAX_ENDPOINT_MEDIA_CHILDREN) {
         const oldestPeerId = this.retiredConnections.keys().next().value;
         if (typeof oldestPeerId === "string") {
           this.retiredConnections.delete(oldestPeerId);

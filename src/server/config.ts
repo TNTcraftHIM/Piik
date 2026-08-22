@@ -1,12 +1,14 @@
 import {
-  CURRENT_HOST_MEDIA_EDGE_LIMIT,
   CURRENT_SFU_ROOT_LIMIT,
-  DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_ICE_SERVER_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   stunUrlSchema,
   turnUrlSchema,
 } from "../shared/protocol.js";
+import {
+  DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
+  MAX_ENDPOINT_MEDIA_COPY_CAPACITY,
+} from "../shared/media-copy-accounting.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
@@ -29,6 +31,7 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
   "PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS",
   "PEER_ASSISTED_ROOM_IDS",
   "HOST_ADMISSION_PASSWORD",
+  "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
 ] as const;
 
 export interface LiveKitFallbackConfig {
@@ -56,7 +59,7 @@ export interface ServerConfig {
   maxRooms: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
-  maxPeerRelayDownstreamEdges: number;
+  endpointMediaCopyCapacity: number;
   livekitFallback?: LiveKitFallbackConfig;
   selectedEdgeTurn?: SelectedEdgeTurnConfig;
   stunUrls: readonly string[];
@@ -272,7 +275,9 @@ export function loadConfig(
   for (const name of REMOVED_ENVIRONMENT_VARIABLES) {
     if (Object.prototype.hasOwnProperty.call(environment, name)) {
       throw new Error(
-        name === "HOST_ADMISSION_PASSWORD"
+        name === "MAX_PEER_RELAY_DOWNSTREAM_EDGES"
+          ? `${name} is no longer supported; use ENDPOINT_MEDIA_COPY_CAPACITY`
+          : name === "HOST_ADMISSION_PASSWORD"
           ? `${name} is no longer supported; use SITE_ACCESS_PASSWORD`
           : name === "PEER_ASSISTED_ROOM_IDS"
           ? `${name} is no longer supported; peer-assisted media applies to every room when enabled`
@@ -336,12 +341,12 @@ export function loadConfig(
     false,
     "PEER_ASSISTED_MEDIA",
   );
-  const maxPeerRelayDownstreamEdges = parseBoundedInteger(
-    environment.MAX_PEER_RELAY_DOWNSTREAM_EDGES,
-    DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
-    "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
+  const endpointMediaCopyCapacity = parseBoundedInteger(
+    environment.ENDPOINT_MEDIA_COPY_CAPACITY,
+    DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
+    "ENDPOINT_MEDIA_COPY_CAPACITY",
     1,
-    CURRENT_HOST_MEDIA_EDGE_LIMIT,
+    MAX_ENDPOINT_MEDIA_COPY_CAPACITY,
   );
   const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
   const selectedEdgeTurn = parseSelectedEdgeTurn(environment);
@@ -406,7 +411,7 @@ export function loadConfig(
     maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
     maxViewersPerRoom,
     peerAssistedMedia,
-    maxPeerRelayDownstreamEdges,
+    endpointMediaCopyCapacity,
     livekitFallback,
     selectedEdgeTurn,
     stunUrls,

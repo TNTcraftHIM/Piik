@@ -3,14 +3,9 @@ import type {
   MediaAssignment,
   SignalPayload,
 } from "../../shared/protocol";
-import {
-  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
-  CURRENT_HOST_MEDIA_EDGE_LIMIT,
-} from "../../shared/protocol";
+import { MAX_ENDPOINT_MEDIA_COPY_CAPACITY } from "../../shared/media-copy-accounting";
 
-export const MAX_HOST_MEDIA_CHILDREN = CURRENT_HOST_MEDIA_EDGE_LIMIT;
-export const MAX_VIEWER_MEDIA_CHILDREN =
-  CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT;
+export const MAX_ENDPOINT_MEDIA_CHILDREN = MAX_ENDPOINT_MEDIA_COPY_CAPACITY;
 
 export function limitMediaAssignment(
   assignment: MediaAssignment,

@@ -632,7 +632,7 @@ func newAppRemoteServer(t *testing.T, terminal chan<- []byte) *httptest.Server {
 		if _, _, err = connection.Read(request.Context()); err != nil {
 			return
 		}
-		authenticated := []byte(`{"type":"authenticated","protocol":"screener-v5","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`)
+		authenticated := []byte(`{"type":"authenticated","protocol":"screener-v6","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`)
 		if err = connection.Write(request.Context(), websocket.MessageText, authenticated); err != nil {
 			return
 		}
@@ -688,7 +688,7 @@ func newDelayedAppRemoteServer(
 		<-releaseAuthentication
 		writeContext, cancelWrite := context.WithTimeout(context.Background(), time.Second)
 		defer cancelWrite()
-		_ = connection.Write(writeContext, websocket.MessageText, []byte(`{"type":"authenticated","protocol":"screener-v5","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`))
+		_ = connection.Write(writeContext, websocket.MessageText, []byte(`{"type":"authenticated","protocol":"screener-v6","role":"host","peerId":"host-peer","roomExpiresAt":null,"maxViewers":3,"hostOnline":true,"connectionId":null,"viewerPeerIds":[],"iceConfig":{"iceServers":[]},"viewerPolicy":"private-link","viewerAuthorizationGeneration":"viewer_generation_12345678"}`))
 	})
 	return server
 }

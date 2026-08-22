@@ -114,7 +114,7 @@ import type {
 } from "../types";
 import { HostPeer } from "../webrtc/host-peer";
 import {
-  MAX_HOST_MEDIA_CHILDREN,
+  MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
 } from "../webrtc/media-assignment";
 import {
@@ -970,7 +970,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       assignment,
       activeChildPeerIds: activeHostChildPeerIdsRef.current,
       selectedPeerId: selectedHostChildRef.current?.peerId ?? null,
-      maxMediaEdges: MAX_HOST_MEDIA_CHILDREN,
+      maxMediaEdges: MAX_ENDPOINT_MEDIA_CHILDREN,
       iceConfig,
       stream,
       profile: qualitySettingsRef.current,
@@ -989,7 +989,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       assignment,
       activeChildPeerIds,
       selectedPeerId: selectedHostChildRef.current?.peerId ?? null,
-      maxMediaEdges: MAX_HOST_MEDIA_CHILDREN,
+      maxMediaEdges: MAX_ENDPOINT_MEDIA_CHILDREN,
     }) ?? { kind: "ordinary" as const };
     if (activation.kind === "promote") {
       hostProvisionalChildRef.current = null;
@@ -1180,7 +1180,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     reconcileBoundedMediaChildren(
       peersRef.current.keys(),
       effectiveChildPeerIds,
-      MAX_HOST_MEDIA_CHILDREN,
+      MAX_ENDPOINT_MEDIA_CHILDREN,
       removePeer,
       (peerId) => {
         void startPeer(peerId, generation).catch((error: unknown) => {

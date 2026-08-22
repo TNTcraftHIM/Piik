@@ -74,7 +74,7 @@ import type {
 } from "../types";
 import {
   limitMediaAssignment,
-  MAX_VIEWER_MEDIA_CHILDREN,
+  MAX_ENDPOINT_MEDIA_CHILDREN,
   retainSelectedMediaParent,
   viewerRestartMessage,
   viewerSignalMessage,
@@ -648,7 +648,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               parentPeerId: currentAssignment.parentPeerId,
               childPeerIds: [...childPeerIds],
             },
-            MAX_VIEWER_MEDIA_CHILDREN,
+            MAX_ENDPOINT_MEDIA_CHILDREN,
           );
           reconcileRelayChildren(previousChildPeerIds, revision);
         },
@@ -685,7 +685,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           const previousChildPeerIds = currentAssignment.childPeerIds;
           currentAssignment = limitMediaAssignment(
             { parentPeerId: null, childPeerIds: assignment.childPeerIds },
-            MAX_VIEWER_MEDIA_CHILDREN,
+            MAX_ENDPOINT_MEDIA_CHILDREN,
           );
           reconcileRelayChildren(previousChildPeerIds);
           const relay = ensureViewerRelay();
@@ -768,7 +768,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     function applyMediaAssignment(assignment: MediaAssignment, preserveUpstream = false): void {
       const nextAssignment = limitMediaAssignment(
         assignment,
-        MAX_VIEWER_MEDIA_CHILDREN,
+        MAX_ENDPOINT_MEDIA_CHILDREN,
       );
       const previousParentId = currentAssignment.parentPeerId;
       const previousChildPeerIds = currentAssignment.childPeerIds;

@@ -640,7 +640,7 @@ describe("client signaling recovery policy", () => {
     Object.defineProperty(authenticated, "data", {
       value: JSON.stringify({
         type: "authenticated",
-        protocol: "screener-v5",
+        protocol: "screener-v6",
         role: "viewer",
         peerId: "viewer_12345678",
         roomExpiresAt: null,
@@ -713,7 +713,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v5",
+        protocol: "screener-v6",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -837,7 +837,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v5",
+      protocol: "screener-v6",
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -923,7 +923,7 @@ describe("client signaling recovery policy", () => {
       iceConfig: { iceServers: [] },
     }),
   ])(
-    "terminates once when a server payload is incompatible with v2",
+    "terminates once when a server payload is incompatible with the current wire",
     (payload) => {
       const sockets: FakeWebSocket[] = [];
       class FakeWebSocket extends EventTarget {
@@ -964,7 +964,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v5",
+        protocol: "screener-v6",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });

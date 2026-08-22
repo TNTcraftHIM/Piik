@@ -248,11 +248,12 @@ describe("peer topology loopback configuration", () => {
     ).toThrow(/selected viewer count/);
   });
 
-  it("keeps Host cap2 by default and permits only deployment tightening", () => {
+  it("defaults to cap two and accepts the deployment range", () => {
     expect(parseExpectedEndpointCap(undefined)).toBe(2);
     expect(parseExpectedEndpointCap("1")).toBe(1);
-    for (const value of ["0", "2.5", "3", "4"]) {
-      expect(() => parseExpectedEndpointCap(value)).toThrow(/integer from 1 to 2/);
+    expect(parseExpectedEndpointCap("3")).toBe(3);
+    for (const value of ["0", "2.5", "4"]) {
+      expect(() => parseExpectedEndpointCap(value)).toThrow(/integer from 1 to 3/);
     }
   });
 
@@ -389,7 +390,7 @@ describe("peer topology loopback observations", () => {
     expect(summary.browserProcessResources.averageCpuUtilizationPercent).toBeCloseTo(50);
   });
 
-  it("checks Host cap2 and Browser Viewer cap1 independently", () => {
+  it("checks one endpoint cap for Host and Viewer senders", () => {
     const initial = [
       page("host", "host", 2, 0),
       ...Array.from({ length: 3 }, (_, index) =>
@@ -412,7 +413,7 @@ describe("peer topology loopback observations", () => {
     expect(checks.find((check) => check.name === "relay-active-media-edges")?.passed).toBe(true);
     const overused = {
       ...summary,
-      maxRelayActiveMediaEdges: 2,
+      maxRelayActiveMediaEdges: 3,
     };
     expect(
       buildRunChecks(overused, 3, "720p30", 2).find(
