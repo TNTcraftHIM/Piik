@@ -108,7 +108,7 @@ export class SfuPublisher {
         return false;
       }
 
-      const room = new sdk.Room();
+      const room = new sdk.Room({ dynacast: false });
       this.room = room;
       this.sdk = sdk;
       room.on(sdk.RoomEvent.Disconnected, () => {

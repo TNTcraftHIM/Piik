@@ -1012,6 +1012,30 @@ describe("HostSfuRoute", () => {
 });
 
 describe("ViewerSfuRoute", () => {
+  it("SFU root invariant gate: retains an active subscriber when the root has zero peer children", async () => {
+    const reconcileSfuChildren = vi.fn();
+    const { route, subscriber } = await activateViewerSfuRoute({
+      activatePeer: () => undefined,
+      reconcileSfuChildren,
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+    reconcileSfuChildren.mockClear();
+
+    route.accept({
+      revision: 2,
+      phase: "active",
+      assignment: sfuAssignment(),
+    });
+
+    await vi.waitFor(() =>
+      expect(reconcileSfuChildren).toHaveBeenCalledWith([]),
+    );
+    expect(subscriber.activate).toHaveBeenCalledOnce();
+    expect(subscriber.deactivate).not.toHaveBeenCalled();
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+  });
+
   it("reports a subscriber prepare failure without requesting refresh", async () => {
     const messages: ClientMessage[] = [];
     const subscriber = createFakeSubscriber(

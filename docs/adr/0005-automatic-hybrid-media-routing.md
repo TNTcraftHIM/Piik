@@ -202,7 +202,16 @@ Targeted tests cover the revision controller, protocol authorization, relay
 capacity and deterministic admission rescue, ordered break-before-make client
 transitions, stale asynchronous work, server-restart
 resynchronization, one-shot credential recovery, peer failback, and optional
-standby warming. Chrome 151/LiveKit 1.13.5 localhost runs established route
+standby warming. The 2026-08-22 `gate:sfu-root-invariants` preflight hard-checks
+that controller state and token allowlists accept no more than two central
+roots, one active Host SFU publication consumes one of the Host's two outbound
+media edges, and a committed zero-descendant root remains selected across
+reauthentication. A separate client transition check keeps its active subscriber
+when a newer same-kind assignment still has no children. The benchmark evaluator
+also rejects a third root or third Host media edge. This in-process evidence
+starts neither LiveKit nor a browser and therefore proves no packet flow,
+bandwidth adaptation, or resource cost. Chrome 151/LiveKit 1.13.5 localhost runs
+established route
 transition, resumed decoding, and the two-edge bound. Their elapsed times are
 diagnostics only and do not satisfy the regional recovery target. Public
 transport/audio/load/browser checks remain pending. The direction is accepted,

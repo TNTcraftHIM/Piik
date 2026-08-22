@@ -5595,7 +5595,7 @@ describe("WebSocket signaling", () => {
     expect(failedPrepare.assignment.upstream).toEqual({ kind: "sfu" });
   });
 
-  it("reparents failed peer edges before committing a bounded SFU fallback", async () => {
+  it("SFU root invariant gate: retains a zero-child root across commit and reauthentication", async () => {
     const issued: Array<
       Parameters<SfuTokenIssuer["issueToken"]>[0]
     > = [];
@@ -5752,6 +5752,7 @@ describe("WebSocket signaling", () => {
     expect(hostActive.assignment.childPeerIds).toEqual([secondAuth.peerId]);
     expect(hostActive.assignment.sfuPublicationGeneration).toBeTruthy();
     expect(rootActive.assignment.upstream).toEqual({ kind: "sfu" });
+    expect(rootActive.assignment.childPeerIds).toEqual([]);
     expect(new Set(issued.map(({ peerId }) => peerId))).toEqual(
       new Set([hostAuth.peerId, firstAuth.peerId]),
     );
@@ -5783,7 +5784,10 @@ describe("WebSocket signaling", () => {
     expect(reconnectedRootAuth).toMatchObject({
       peerId: firstAuth.peerId,
       routeRevision: hostPrepare.revision,
-      routeAssignment: { upstream: { kind: "sfu" } },
+      routeAssignment: {
+        upstream: { kind: "sfu" },
+        childPeerIds: [],
+      },
       mediaAssignment: { parentPeerId: null },
     });
     expect(await reconnectedRoot.inbox.next("sfu-config")).toMatchObject({

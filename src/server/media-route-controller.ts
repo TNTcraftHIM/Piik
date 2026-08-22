@@ -1,6 +1,7 @@
 import {
   CURRENT_BROWSER_RELAY_DOWNSTREAM_EDGE_LIMIT,
   CURRENT_HOST_MEDIA_EDGE_LIMIT,
+  CURRENT_SFU_ROOT_LIMIT,
   DEFAULT_PEER_RELAY_DOWNSTREAM_EDGES,
   MAX_MEDIA_ROUTE_REVISION,
   MAX_PEER_RELAY_DOWNSTREAM_EDGES,
@@ -300,7 +301,7 @@ function assertRouteInvariants(
   const rootPeerIds = new Set(route.sfu.rootPeerIds);
   if (
     rootPeerIds.size !== route.sfu.rootPeerIds.length ||
-    rootPeerIds.size > MAX_VIEWERS_PER_ROOM_LIMIT
+    rootPeerIds.size > CURRENT_SFU_ROOT_LIMIT
   ) {
     throw new Error("SFU root participants must be unique and bounded");
   }

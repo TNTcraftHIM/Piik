@@ -5,12 +5,12 @@ import {
 } from "livekit-server-sdk";
 
 import {
+  CURRENT_SFU_ROOT_LIMIT,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   type Role,
 } from "../shared/protocol.js";
 
 const LIVEKIT_TOKEN_TTL_SECONDS = 5 * 60;
-const MAX_SFU_ROOTS_PER_ROOM_LIMIT = 2;
 const ROOM_ID_PATTERN = /^[1-9]\d{0,11}$/;
 const OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -48,7 +48,7 @@ export class LiveKitTokenIssuer implements SfuTokenIssuer {
     if (
       !Number.isSafeInteger(options.maxSfuRootsPerRoom) ||
       options.maxSfuRootsPerRoom < 1 ||
-      options.maxSfuRootsPerRoom > MAX_SFU_ROOTS_PER_ROOM_LIMIT
+      options.maxSfuRootsPerRoom > CURRENT_SFU_ROOT_LIMIT
     ) {
       throw new Error("LiveKit SFU root limit is invalid");
     }

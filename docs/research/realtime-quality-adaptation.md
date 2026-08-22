@@ -467,16 +467,40 @@ gate must inject an autonomous downshift, observe `suspect`, evacuate after
 bounded confirmation, and limit temporary descendant impact; no confirmed
 `FALLBACK` root may retain children. Screener's current publisher always
 configures exactly two ordered `q`/`h` encodings whenever an SFU publication is
-active, leaves Dynacast at `false`, disables backup-codec publication, and its
-subscriber sets a `HIGH` ceiling after subscribing. The publication is not
-behind a separate quality flag; its per-subscriber BWE and resource acceptance
-gates remain unverified. This is implemented configuration, not browser or
-performance evidence. The subscriber also does not attach a
+active, explicitly constructs `Room({ dynacast: false })`, disables backup-codec
+publication, and its subscriber sets a `HIGH` ceiling after selectively
+subscribing. Client 2.22.0 also defaults Dynacast to `false`; the explicit option
+prevents silent drift, while `backupCodec: false` prevents the pinned
+multi-codec publish path from enabling Dynacast automatically. Dynacast off
+prevents the pinned SDK's subscribed-quality handler from toggling publisher
+encoding activation. It does not disable per-subscriber SFU BWE, force the
+server to forward `HIGH`, or prove that both encoders consume resources
+continuously. The publication is not behind a separate quality flag. The
+subscriber also does not attach a
 `RemoteTrack`, so SDK `adaptiveStream` is not directly usable without changing
 that ownership; built-in SFU bandwidth adaptation does not depend on enabling
 that feature. If built-in selection fails the product gates, test explicit
 standard subscriber quality selection before manual sender
 activation/deactivation.
+
+### SFU Root Invariant Preflight
+
+The 2026-08-22 `gate:sfu-root-invariants` source gate proves that the publisher
+passes explicit `dynacast: false`, exposes exactly the ordered active `q,h`
+encodings, and the selectively subscribed screen publication retains a `HIGH`
+ceiling. Server route state and token allowlists reject a third SFU root. A Host
+with one direct child plus one active SFU publication is charged two outbound
+media edges, while a third edge fails. A committed SFU root with zero peer
+children stays selected across reauthentication, and its active subscriber is
+reconciled with an empty child list without deactivation. The benchmark
+acceptance evaluator independently rejects a third root or Host media edge.
+
+This preflight does not start LiveKit 1.13.5, a browser, or a network shaper. It
+therefore does not prove packet receipt/forwarding, autonomous BWE downshift and
+recovery, actual `LOW`/`HIGH` dimensions, per-layer bytes, encoder count, CPU/GPU,
+game frame time, or upload cost. Those remain acceptance requirements for the
+isolated zero-descendant run below; root-with-children behavior remains a later
+default-on gate.
 
 ### Per-Flow Shaping Preflight
 
@@ -514,7 +538,7 @@ inbound bitrate, dimensions, FPS, and decode progress must remain within the
 unshaped baseline envelope. Finally remove the weak qdisc and require recovery
 to `HIGH/HIGH` while the healthy leaf remains unchanged.
 
-Retain gate evidence for the publisher's ordered `q`/`f` encodings and
+Retain gate evidence for the publisher's ordered `q`/`h` encodings and
 per-layer bytes, both subscribers' actual dimensions, FPS, bytes, codec and
 decode progress, correlated A+B/C windows, Host upload and interval encode
 cost, and available system CPU/GPU/game proxies. A third layer, an affected
@@ -749,8 +773,12 @@ is a separate optimization.
 - [LiveKit screen-share presets](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
 - [LiveKit degradation defaults](https://github.com/livekit/client-sdk-js/blob/main/src/room/participant/publishUtils.ts)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
+- [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
+- [LiveKit client 2.22.0 room defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts)
+- [LiveKit client 2.22.0 room and Dynacast options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/options.ts)
+- [LiveKit client 2.22.0 room option merge](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
 - [LiveKit client 2.22.0 SVC defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
-- [LiveKit client 2.22.0 screen-share SVC and republish lifecycle](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
+- [LiveKit client 2.22.0 screen-share SVC, Dynacast enablement, and republish lifecycle](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
 - [LiveKit client 2.22.0 start-bitrate negotiation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/PCTransport.ts)
 - [LiveKit client 2.22.0 SVC encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit client 2.22.0 subscriber quality control](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/RemoteTrackPublication.ts)
