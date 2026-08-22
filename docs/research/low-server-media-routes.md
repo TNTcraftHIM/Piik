@@ -150,7 +150,7 @@ network changes, but their selected ICE path must be measured.
 | --- | --- | --- |
 | Endpoint-independent mapping with UDP | Full ICE can check host, server-reflexive, and peer-reflexive paths | Keep direct/peer UDP first |
 | One endpoint-dependent mapper | Coordinated checks can sometimes create a peer-reflexive path; success is not guaranteed | Exhaust the existing bounded restart/rebuild/alternate-parent steps |
-| Both peer endpoints use endpoint-dependent mapping | A direct peer path is not reliable; RFC 8835 requires TURN support for this case | A public SFU/UDP or authorized TURN path may still work when outbound UDP reaches that server; exact route ownership is pending |
+| Both peer endpoints use endpoint-dependent mapping | A direct peer path is not reliable; RFC 8835 requires TURN support for this case | A public SFU/UDP or authorized TURN path may still work when outbound UDP reaches that server; ADR-0005 owns exact edge and resource authority |
 | All outbound UDP is blocked | The UDP media ladder has no reachable candidate | End with a clear bounded failure |
 | Wi-Fi/cellular or address change | Old mappings and candidate pairs can become invalid | Use a new opaque generation and bounded ICE restart/rebuild, then re-run the same priority ladder |
 
@@ -243,18 +243,27 @@ change or explicit reconnect; it does not support periodic probing, a carrier
   churn, keep the healthy SFU route and fix the generation/commit boundary before
   another rollout.
 
-### Isolated Eight-Guess Candidate Spike
+### Isolated Bounded Guessed-Candidate Spike
 
-The earlier categorical rejection of every browser-side prediction experiment
-was too broad. WebRTC does not expose raw UDP, but the WebRTC API does let the
-application signal a remote ICE candidate and call `addIceCandidate()`. An owned
-experiment can therefore inject at most eight nearby remote-port candidate
-guesses in total across both endpoints for one edge generation and let the
-browser ICE agents send authenticated connectivity checks. This is bounded port
-prediction, not the birthday-paradox technique proposed for native peers with
-hundreds of sockets and probes.
+WebRTC does not expose raw UDP, but the WebRTC API lets the application signal a
+remote ICE candidate and call `addIceCandidate()`. An owned experiment can
+therefore inject a small, explicitly capped set of nearby
+remote-port candidate guesses for one edge generation and let the browser ICE
+agents send authenticated connectivity checks. The initial harness ceiling of
+eight guesses across both endpoints is a safety fixture to bound abuse and ICE
+work, not a product constant or evidence that eight is optimal. This is bounded
+port prediction, not the birthday-paradox technique proposed for native peers
+with hundreds of sockets and probes.
 
-- Scope: zero production integration. Use an isolated test page or harness and
+RFC 5780 behavior discovery is Experimental, requires a STUN server that
+supports alternate addresses, observes only current behavior toward those test
+destinations, and explicitly does not replace ICE. It may help an owned emulator
+confirm that a mapping pattern exists, but route decisions must still use actual
+operating connectivity and media evidence. A NAT label or two observed ports do
+not authorize a guessed production path.
+
+- Current status: zero product or production integration and not yet eligible
+  for a production canary. Use an isolated test page or harness and
   a sequential endpoint-dependent NAT emulator fixture. Reuse existing candidate
   signaling and ICE generations; do not mutate SDP or create a second production
   protocol.
@@ -271,8 +280,11 @@ hundreds of sockets and probes.
   connectivity-check packets may exceed eight because guesses pair with local
   candidates and ICE retransmits checks; the candidate budget is not a packet
   budget. Safari is measured separately before any product decision. Only an
-  emulator pass permits a paired, explicitly consented mobile canary; it is still
-  not production evidence.
+  emulator pass permits one manually approved canary in an operator-owned test
+  room. Both endpoints must explicitly consent, and the canary must be default-off
+  behind a kill switch and bound to one exact room, logical edge, ICE generation,
+  deadline, and aggregate candidate budget. It is still not general production
+  evidence.
 - Stop line: reject the candidate if it needs raw sockets, extra peer
   connections, browser-specific SDP rewriting, more than eight total guesses,
   unbounded retries, a longer black-screen deadline, or fails the two-engine
@@ -611,6 +623,7 @@ Primary sources accessed on 2026-08-19, 2026-08-21, and 2026-08-22:
   standards and BCP under IETF Trust terms.
 - [UDP NAT behavior, RFC 4787](https://www.rfc-editor.org/rfc/rfc4787.html),
   [P2P across NATs, RFC 5128](https://www.rfc-editor.org/rfc/rfc5128.html),
+  [NAT behavior discovery, RFC 5780](https://www.rfc-editor.org/rfc/rfc5780.html),
   [PCP, RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html), and
   [CGN requirements, RFC 6888](https://www.rfc-editor.org/rfc/rfc6888.html) -
   mapping, filtering, prediction, simultaneous-open, gateway-control, and CGN
