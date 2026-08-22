@@ -20,9 +20,9 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `21d5cd9f7139e4a7719c5798bfc74a00f8bb5909`
-from `/opt/screener/releases/21d5cd9f7139`; immediate rollback is
-`/opt/screener/releases/aa870c51a57a`. Local and public health return 200;
+Production currently runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`
+from `/opt/screener/releases/9461e20`; immediate rollback is
+`/opt/screener/releases/21d5cd9f7139`. Local and public health return 200;
 Screener, LiveKit, coturn, and nginx are active, and Screener reports
 `NRestarts=0`.
 
@@ -35,7 +35,7 @@ so the production default yields Host two and ordinary Browser Viewer one; the
 wire remains unchanged. The retained capacity-two/cap3 sixteen-Viewer
 and resource runs are historical ordinary-PC experiments only and do not define
 release policy or close performance gates.
-The release also deploys the root <=2 controller/token invariant,
+The release also deploys the identity-bound relayed-detail presentation, root <=2 controller/token invariant,
 Host-publication edge accounting, zero-child assignment/subscriber retention,
 and `dynacast: false` with ordered active `q,h`. These are bounded control-plane
 and publisher-configuration guarantees; real shaped LiveKit packet flow, BWE
@@ -129,7 +129,7 @@ ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
 virtual parent, then optional authenticated TURN for one controller-selected
 exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
 URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `21d5cd9f7139` release with one
+selected-edge TURN config/wire is deployed in the current `9461e20` release with one
 UDP URL and a 120-second credential TTL. It was not exercised by a real media
 session during this cutover.
 
