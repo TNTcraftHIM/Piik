@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import type { ClientMessage, ServerMessage } from "../src/shared/protocol.ts";
+import type {
+  ClientMessage,
+  ServerMessage,
+  ViewerQualityEvidenceMetrics,
+} from "../src/shared/protocol.ts";
 import {
   classifyHostViewerQualityEvidence,
+  freshViewerQualityEvidence,
   metricsFromQualityEvidence,
+  nextViewerQualityEvidencePresentationExpiryAt,
+  presentViewerQualityEvidence,
   qualityEvidenceMatchesSnapshot,
   qualityEvidenceWindowFromMetrics,
+  reconcileViewerQualityEvidencePresentation,
+  refreshViewerQualityEvidencePresentation,
+  type ViewerQualityEvidence,
   ViewerQualityEvidenceReporter,
 } from "../src/client/media/viewer-quality-evidence.ts";
 import {
@@ -63,6 +73,31 @@ function snapshot(
     iceConnectionState: "connected",
     metrics,
     error: null,
+  };
+}
+
+function serverEvidence(
+  overrides: {
+    viewerPeerId?: string;
+    parentPeerId?: string;
+    connectionId?: string;
+    routeRevision?: number;
+    sequence?: number;
+    metrics?: Partial<ViewerQualityEvidenceMetrics>;
+  } = {},
+): ViewerQualityEvidence {
+  const window = qualityEvidenceWindowFromMetrics(receiveMetrics())!;
+  return {
+    type: "viewer-quality-evidence",
+    viewerPeerId: overrides.viewerPeerId ?? "viewer_12345678",
+    parentPeerId: overrides.parentPeerId ?? "host_12345678",
+    guard: {
+      connectionId: overrides.connectionId ?? "connection_12345678",
+      routeRevision: overrides.routeRevision ?? 0,
+    },
+    sequence: overrides.sequence ?? 0,
+    windowMs: window.windowMs,
+    metrics: { ...window.metrics, ...overrides.metrics },
   };
 }
 
@@ -296,6 +331,197 @@ describe("viewer quality evidence", () => {
       intervalFreezeCount: 0,
       codec: "video/H264",
     });
+  });
+
+  it("expires retained fields independently at their exact observation deadline", () => {
+    const first = presentViewerQualityEvidence(
+      null,
+      serverEvidence({ sequence: 4 }),
+      0,
+    );
+    const second = presentViewerQualityEvidence(
+      first,
+      serverEvidence({
+        sequence: 5,
+        metrics: {
+          bitrateKbps: 6_000,
+          codec: null,
+          codecProfile: null,
+          codecParameters: null,
+        },
+      }),
+      2_000,
+    );
+
+    expect(second.evidence.metrics.codec).toBe("video/H264");
+    expect(second.evidence.metrics.bitrateKbps).toBe(6_000);
+    expect(nextViewerQualityEvidencePresentationExpiryAt(second, 2_000)).toBe(
+      5_000,
+    );
+    expect(
+      refreshViewerQualityEvidencePresentation(second, 4_999).evidence.metrics
+        .codec,
+    ).toBe("video/H264");
+
+    const atFirstDeadline = refreshViewerQualityEvidencePresentation(
+      second,
+      5_000,
+    );
+    expect(atFirstDeadline).toMatchObject({ fresh: true });
+    expect(atFirstDeadline.evidence.metrics).toMatchObject({
+      codec: null,
+      codecProfile: null,
+      codecParameters: null,
+      bitrateKbps: 6_000,
+    });
+    expect(
+      nextViewerQualityEvidencePresentationExpiryAt(atFirstDeadline, 5_000),
+    ).toBe(7_000);
+
+    const expired = refreshViewerQualityEvidencePresentation(second, 7_000);
+    expect(expired.fresh).toBe(false);
+    expect(Object.values(expired.evidence.metrics)).toEqual(
+      expect.arrayContaining([null]),
+    );
+    expect(
+      Object.values(expired.evidence.metrics).every((value) => value === null),
+    ).toBe(true);
+    expect(
+      nextViewerQualityEvidencePresentationExpiryAt(expired, 7_000),
+    ).toBeNull();
+  });
+
+  it("does not extend a retained field when later samples still omit it", () => {
+    const first = presentViewerQualityEvidence(
+      null,
+      serverEvidence({ sequence: 1 }),
+      0,
+    );
+    const second = presentViewerQualityEvidence(
+      first,
+      serverEvidence({
+        sequence: 2,
+        metrics: {
+          codec: null,
+          codecProfile: null,
+          codecParameters: null,
+        },
+      }),
+      2_000,
+    );
+    const third = presentViewerQualityEvidence(
+      second,
+      serverEvidence({
+        sequence: 3,
+        metrics: {
+          codec: null,
+          codecProfile: null,
+          codecParameters: null,
+        },
+      }),
+      4_000,
+    );
+
+    expect(third.evidence.metrics.codec).toBe("video/H264");
+    expect(nextViewerQualityEvidencePresentationExpiryAt(third, 4_000)).toBe(
+      5_000,
+    );
+    expect(
+      refreshViewerQualityEvidencePresentation(third, 5_000).evidence.metrics
+        .codec,
+    ).toBeNull();
+  });
+
+  it("resets retained fields on identity or non-monotonic sequence changes", () => {
+    const first = presentViewerQualityEvidence(
+      null,
+      serverEvidence({ sequence: 9 }),
+      0,
+    );
+    const resetSequence = presentViewerQualityEvidence(
+      first,
+      serverEvidence({ sequence: 0, metrics: { bitrateKbps: null } }),
+      2_000,
+    );
+    expect(resetSequence.evidence.metrics.bitrateKbps).toBeNull();
+
+    const changedRoute = presentViewerQualityEvidence(
+      first,
+      serverEvidence({
+        sequence: 10,
+        routeRevision: 1,
+        metrics: {
+          codec: null,
+          codecProfile: null,
+          codecParameters: null,
+        },
+      }),
+      2_000,
+    );
+    expect(changedRoute.evidence.metrics.codec).toBeNull();
+
+    const changedConnection = presentViewerQualityEvidence(
+      first,
+      serverEvidence({
+        sequence: 10,
+        connectionId: "connection_replaced_12345678",
+        metrics: { framesPerSecond: null },
+      }),
+      2_000,
+    );
+    expect(changedConnection.evidence.metrics.framesPerSecond).toBeNull();
+  });
+
+  it("keeps a stale shell during transient states and clears terminal identities", () => {
+    const evidence = serverEvidence();
+    const presentation = presentViewerQualityEvidence(null, evidence, 0);
+    const current = {
+      ...snapshot(evidence.guard.connectionId),
+      peerId: evidence.viewerPeerId,
+    };
+
+    expect(
+      reconcileViewerQualityEvidencePresentation(presentation, current),
+    ).toBe(presentation);
+    expect(freshViewerQualityEvidence(presentation)).toBe(
+      presentation.evidence,
+    );
+    for (const connectionState of [
+      "new",
+      "connecting",
+      "disconnected",
+    ] as const) {
+      const reconciled = reconcileViewerQualityEvidencePresentation(
+        presentation,
+        { ...current, connectionState },
+      );
+      expect(reconciled).toMatchObject({ fresh: false });
+      expect(reconciled?.evidence.metrics.bitrateKbps).toBe(7_500);
+      expect(freshViewerQualityEvidence(reconciled)).toBeNull();
+      expect(
+        qualityEvidenceMatchesSnapshot(evidence, {
+          ...current,
+          connectionState,
+        }),
+      ).toBe(false);
+    }
+    for (const connectionState of ["failed", "closed"] as const) {
+      expect(
+        reconcileViewerQualityEvidencePresentation(presentation, {
+          ...current,
+          connectionState,
+        }),
+      ).toBeNull();
+    }
+    expect(
+      reconcileViewerQualityEvidencePresentation(presentation, {
+        ...current,
+        connectionId: "connection_replaced_12345678",
+      }),
+    ).toBeNull();
+    expect(
+      reconcileViewerQualityEvidencePresentation(presentation, null),
+    ).toBeNull();
   });
 
   it("builds parent proof only from a current connected send interval", () => {
