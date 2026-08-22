@@ -28,6 +28,7 @@ import {
   type QualityProfileId,
   type QualitySettings,
 } from "../src/client/media/quality";
+import { summarizeAvSyncMarkers, type AvSyncSummary } from "./av-sync-measurement";
 
 const PROFILE_SETTINGS = QUALITY_PROFILES;
 type ProfileId = QualityProfileId;
@@ -58,6 +59,7 @@ export interface BenchmarkConfig {
   noSandbox: boolean;
   qualityControlSmoke: boolean;
   canaryMode: BenchmarkCanaryMode;
+  avSync: boolean;
 }
 
 interface MediaTotals {
@@ -107,6 +109,12 @@ interface PageObservation {
   firstRenderedAtEpochMs: number | null;
   renderedFrames: number;
   connections: ConnectionObservation[];
+  avSync?: {
+    supported: boolean | null;
+    reason: string | null;
+    videoMarkers: number[];
+    audioMarkers: number[];
+  };
 }
 
 interface TimedSample {
@@ -121,7 +129,7 @@ interface BrowserProcessSample { processes: Array<{ type: string; id: number; cp
 interface RunCheck {
   name: string;
   passed: boolean;
-  actual: number | boolean;
+  actual: unknown;
   expected: string;
 }
 
@@ -163,6 +171,12 @@ interface BenchmarkRun {
   summary: ReturnType<typeof summarizeSamples> | null;
   samples: TimedSample[];
   recovery: RecoveryResult;
+  avSync: (AvSyncSummary & {
+    supported: boolean;
+    reason: string | null;
+    videoMarkers: number;
+    audioMarkers: number;
+  }) | null;
   error?: string;
 }
 
@@ -187,7 +201,7 @@ interface BenchmarkReport {
     width: number;
     height: number;
     frameRate: number;
-    audio: false;
+    audio: boolean;
   };
   limitations: string[];
   runs: BenchmarkRun[];
@@ -423,6 +437,11 @@ export function parseBenchmarkConfig(
     );
   }
   const canaryMode = parseBenchmarkCanaryMode(environment.BENCHMARK_CANARY);
+  const avSync = parseBoolean(
+    environment.BENCHMARK_AV_SYNC,
+    false,
+    "BENCHMARK_AV_SYNC",
+  );
   const recoveryText = environment.BENCHMARK_RECOVERY_VIEWERS?.trim();
   const recoveryViewerCount = recoveryText ? Number(recoveryText) : null;
   if (
@@ -495,6 +514,7 @@ export function parseBenchmarkConfig(
     ),
     qualityControlSmoke,
     canaryMode,
+    avSync,
   };
 }
 
@@ -955,6 +975,7 @@ export function buildBenchmarkInitScript(options: {
   height: number;
   frameRate: number;
   expectedEndpointCap: number;
+  avSync?: boolean;
 }): string {
   const serialized = JSON.stringify(options);
   return `(() => {
@@ -984,6 +1005,14 @@ export function buildBenchmarkInitScript(options: {
       firstDecodedAtEpochMs: null,
       firstRenderedAtEpochMs: null,
       renderedFrames: 0,
+      avSync: options.avSync
+          ? {
+            supported: null,
+            reason: null,
+            videoMarkers: [],
+            audioMarkers: [],
+          }
+        : undefined,
     };
     const connections = [];
     const descriptions = [];
@@ -1255,6 +1284,9 @@ export function buildBenchmarkInitScript(options: {
       canvas.height = options.height;
       const context = canvas.getContext("2d", { alpha: false });
       if (!context) throw new Error("Canvas 2D is unavailable");
+      const markerPeriodMs = 1_000;
+      const markerDurationMs = 180;
+      const markerStartMs = performance.now() + 1_500;
       let frame = 0;
       const columns = 24;
       const rows = 14;
@@ -1275,10 +1307,48 @@ export function buildBenchmarkInitScript(options: {
         context.fillStyle = "#000000";
         context.font = \`\${Math.max(24, Math.floor(canvas.height / 18))}px monospace\`;
         context.fillText(String(frame).padStart(8, "0"), 24, Math.max(48, Math.floor(canvas.height / 12)));
+        const markerElapsedMs = performance.now() - markerStartMs;
+        const markerActive = options.avSync && markerElapsedMs >= 0 &&
+          markerElapsedMs % markerPeriodMs < markerDurationMs;
+        if (options.avSync) context.fillStyle = markerActive ? "#ffffff" : "#000000";
+        if (options.avSync) context.fillRect(0, 0, Math.max(24, Math.floor(canvas.width / 32)), Math.max(24, Math.floor(canvas.height / 18)));
       }
       draw();
       const timer = setInterval(draw, 1000 / options.frameRate);
       syntheticStream = canvas.captureStream(options.frameRate);
+      if (options.avSync && options.role === "host") {
+        const AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
+        if (typeof AudioContextCtor !== "function") {
+          state.avSync.supported = false;
+          state.avSync.reason = "AudioContext unavailable";
+        } else {
+          try {
+            const audioContext = new AudioContextCtor();
+            const destination = audioContext.createMediaStreamDestination();
+            const oscillator = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            oscillator.frequency.value = 440;
+            gain.gain.value = 0;
+            oscillator.connect(gain).connect(destination);
+            const contextStart = audioContext.currentTime +
+              Math.max(0, (markerStartMs - performance.now()) / 1_000);
+            for (let marker = 0; marker < 32; marker += 1) {
+              const at = contextStart + marker;
+              gain.gain.setValueAtTime(0.2, at);
+              gain.gain.setValueAtTime(0, at + markerDurationMs / 1_000);
+            }
+            oscillator.start();
+            for (const track of destination.stream.getAudioTracks()) {
+              track.contentHint = "music";
+              syntheticStream.addTrack(track);
+            }
+            state.avSync.supported = true;
+          } catch (error) {
+            state.avSync.supported = false;
+            state.avSync.reason = error instanceof Error ? error.message : String(error);
+          }
+        }
+      }
       const track = syntheticStream.getVideoTracks()[0];
       if (track) track.addEventListener("ended", () => clearInterval(timer), { once: true });
       return syntheticStream;
@@ -1293,19 +1363,74 @@ export function buildBenchmarkInitScript(options: {
     });
 
     const observedVideos = new WeakSet();
+    let avSyncAudioStarted = false;
+    function startAvSyncAudio(video) {
+      if (!options.avSync || options.role !== "viewer" || avSyncAudioStarted) return;
+      const stream = video.srcObject;
+      const AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
+      const audioTrack = stream && typeof stream.getAudioTracks === "function"
+        ? stream.getAudioTracks()[0]
+        : null;
+      if (typeof AudioContextCtor !== "function" || !audioTrack) return;
+      avSyncAudioStarted = true;
+      try {
+        const audioContext = new AudioContextCtor();
+        const source = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        void audioContext.resume();
+        const samples = new Float32Array(analyser.fftSize);
+        let active = false;
+        const poll = () => {
+          analyser.getFloatTimeDomainData(samples);
+          let peak = 0;
+          for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+          const next = peak >= 0.03;
+          if (next && !active && state.avSync.audioMarkers.length < 64) {
+            state.avSync.audioMarkers.push(performance.timeOrigin + performance.now());
+          }
+          active = next;
+          if (video.isConnected) setTimeout(poll, 10);
+        };
+        state.avSync.supported = true;
+        poll();
+      } catch (error) {
+        state.avSync.supported = false;
+        state.avSync.reason = error instanceof Error ? error.message : String(error);
+      }
+    }
     const videoObserver = setInterval(() => {
       if (options.role !== "viewer") return;
       const video = document.querySelector(".remote-stage video");
-      if (!video || observedVideos.has(video)) return;
+      if (!video) return;
+      startAvSyncAudio(video);
+      if (observedVideos.has(video)) return;
       observedVideos.add(video);
       if (typeof video.requestVideoFrameCallback === "function") {
+        const markerCanvas = document.createElement("canvas");
+        markerCanvas.width = markerCanvas.height = 1;
+        const markerContext = markerCanvas.getContext("2d", { willReadFrequently: true });
+        let markerActive = false;
         const onFrame = (now) => {
           const at = performance.timeOrigin + now;
           if (state.firstRenderedAtEpochMs === null) state.firstRenderedAtEpochMs = at;
           state.renderedFrames += 1;
+          if (state.avSync && markerContext) {
+            markerContext.drawImage(video, 0, 0, Math.max(1, video.videoWidth / 32), Math.max(1, video.videoHeight / 18), 0, 0, 1, 1);
+            const pixel = markerContext.getImageData(0, 0, 1, 1).data;
+            const next = pixel[0] > 170 && pixel[1] > 170 && pixel[2] > 170;
+            if (next && !markerActive && state.avSync.videoMarkers.length < 64) {
+              state.avSync.videoMarkers.push(at);
+            }
+            markerActive = next;
+          }
           video.requestVideoFrameCallback(onFrame);
         };
         video.requestVideoFrameCallback(onFrame);
+      } else if (state.avSync) {
+        state.avSync.supported = false;
+        state.avSync.reason = "requestVideoFrameCallback unavailable";
       }
     }, 50);
 
@@ -2398,6 +2523,7 @@ async function runCase(
   const pages: PageHandle[] = [];
   const samples: TimedSample[] = [];
   let recovery: RecoveryResult = { triggered: false };
+  let avSync: BenchmarkRun["avSync"] = null;
   try {
     const capture = PROFILE_SETTINGS[config.profileId];
     const captureResolution = QUALITY_RESOLUTIONS[capture.resolution];
@@ -2406,6 +2532,7 @@ async function runCase(
       height: captureResolution.height,
       frameRate: capture.maxFramerate,
       expectedEndpointCap: config.expectedEndpointCap,
+      avSync: config.avSync,
     };
     const hostPage = await createPage(cdp, baseUrl, {
       ...commonInit,
@@ -2461,6 +2588,7 @@ async function runCase(
         summary: null,
         samples: [],
         recovery: { triggered: false },
+        avSync: null,
       };
     }
     const measurementStartedAt = Date.now();
@@ -2483,6 +2611,28 @@ async function runCase(
       config.profileId,
       config.expectedEndpointCap,
     );
+    if (config.avSync) {
+      const finalPages = samples.at(-1)?.pages ?? [];
+      const hostFixture = finalPages.find((page) => page.role === "host")?.avSync;
+      const fixture = finalPages.find((page) => page.role === "viewer")?.avSync;
+      const measured = summarizeAvSyncMarkers(
+        fixture?.videoMarkers ?? [],
+        fixture?.audioMarkers ?? [],
+      );
+      avSync = {
+        ...measured,
+        supported: hostFixture?.supported === true && fixture?.supported === true,
+        reason: hostFixture?.reason ?? fixture?.reason ?? (fixture?.supported === true ? null : "fixture unavailable"),
+        videoMarkers: fixture?.videoMarkers.length ?? 0,
+        audioMarkers: fixture?.audioMarkers.length ?? 0,
+      };
+      checks.push({
+        name: "av-sync-fixture-observation",
+        passed: avSync.supported && avSync.pairedEvents >= 3,
+        actual: avSync,
+        expected: "Chrome observes at least three paired synthetic tone/flash markers; no quality threshold",
+      });
+    }
     if (config.qualityControlSmoke && viewerCount >= 3) {
       const qualityControl = await runQualityControlSmoke(
         cdp,
@@ -2534,6 +2684,7 @@ async function runCase(
       summary,
       samples,
       recovery,
+      avSync,
     };
   } catch (error) {
     return {
@@ -2545,6 +2696,7 @@ async function runCase(
       summary: samples.length > 0 ? summarizeSamples(samples, viewerCount) : null,
       samples,
       recovery,
+      avSync,
       error: errorMessage(error),
     };
   } finally {
@@ -2617,6 +2769,7 @@ export async function main(): Promise<number> {
       noSandbox: config.noSandbox,
       qualityControlSmoke: config.qualityControlSmoke,
       canaryMode: config.canaryMode,
+      avSync: config.avSync,
       chromeExecutable: basename(config.chromePath),
       output: config.outputPath ?? "stdout",
     },
@@ -2625,7 +2778,7 @@ export async function main(): Promise<number> {
       width: profileResolution.width,
       height: profileResolution.height,
       frameRate: profile.maxFramerate,
-      audio: false,
+      audio: config.avSync,
     },
     limitations: [
       "Synthetic canvas motion exercises real Chromium WebRTC but is not a game-capture quality claim.",
@@ -2636,6 +2789,7 @@ export async function main(): Promise<number> {
       "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
       "BENCHMARK_CANARY=viewer-mbb injects only sanitized control counters; it does not claim detector quality or network performance. Host-candidate and signaling-blackhole canaries remain deferred.",
+      "A/V fixture mode is an observation-only tone/flash measurement with test-only Web Audio; it has no sync threshold and does not alter product playback, encoding, or routing.",
     ],
     runs: [],
   };

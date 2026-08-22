@@ -355,6 +355,12 @@ The local receiver diagnostic observes only `getStats()` on that existing
 route. It does not set `jitterBufferTarget`, create a clock, modify playout, add
 a wire field, or claim that a missing browser statistic is zero.
 
+### A/V Measurement Boundary (2026-08-22)
+
+W3C Stats calls `estimatedPlayoutTimestamp` subtraction an estimate, while Media Capture says same-stream tracks are intended, not guaranteed, to stay synchronized. WebRTC `jitterBufferTarget` changes latency versus recovery, may be clamped, and is applied gradually. Therefore Screener keeps browser playout authoritative: no `playbackRate`, Web Audio, separate audio element, or jitter-buffer correction loop enters product code.
+
+One Chrome 151 headless direct-P2P fixture based on `7df8217` observed 13 actual video-flash and audio-tone onsets: analyzer-minus-render median `104.30 ms`, p95 `124.76 ms`; the final stats estimate was `-34 ms`. This proves the gate can measure both signals, not perceptual/acoustic sync, game quality, SFU/relay behavior, or a correction threshold. The analyzer exists only in the isolated gate.
+
 The implementation budget is deliberately bounded to dependency
 manifest/lockfile entries, one SDP helper, `ViewerPeer` answer wiring, SFU
 publisher options, focused unit/integration tests and the owning docs. Parser

@@ -16,6 +16,7 @@ import {
   parseViewerCounts,
   summarizeSamples,
 } from "../scripts/peer-assisted-benchmark";
+import { summarizeAvSyncMarkers } from "../scripts/av-sync-measurement";
 import type {
   MediaRouteUpstream,
   ParticipantRouteAssignment,
@@ -281,6 +282,24 @@ describe("peer topology loopback configuration", () => {
       parseBenchmarkConfig({ CHROME_PATH: "chrome", BENCHMARK_OUTPUT: "-" })
         .outputPath,
     ).toBeNull();
+  });
+
+  it("keeps A/V fixture mode opt-in", () => {
+    expect(parseBenchmarkConfig({ CHROME_PATH: "chrome" }).avSync).toBe(false);
+    expect(parseBenchmarkConfig({ CHROME_PATH: "chrome", BENCHMARK_AV_SYNC: "1" }).avSync).toBe(true);
+  });
+
+  it("pairs finite A/V markers without shifting after a missed marker", () => {
+    expect(summarizeAvSyncMarkers([1_000, 2_000, 3_000], [1_030, 3_040])).toEqual({
+      pairedEvents: 2,
+      medianDeltaMs: 35,
+      p95DeltaMs: 39.5,
+    });
+    expect(summarizeAvSyncMarkers([1_000, Number.NaN], [1_700])).toEqual({
+      pairedEvents: 0,
+      medianDeltaMs: null,
+      p95DeltaMs: null,
+    });
   });
 });
 
