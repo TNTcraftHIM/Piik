@@ -21,8 +21,9 @@ Latest direct user decisions override contradictory older text during this audit
 1. Reconcile TODO provenance and the current truth set. Classify contradictions and holds without implementing them.
 2. Produce the documentation/archive and worktree/branch/folder disposition schedule. Preserve all disputed or unknown material; do not delete, move, rebase, or merge it yet.
 3. Merge this audit-guard truth, restore the canonical root to exact current `main`, and execute only the approved workspace cleanup schedule.
-4. Produce the holistic routing model from those reconciled inputs as a held proposal; do not implement or silently accept disputed semantics.
-5. Stop and reconcile the organized canonical state, routing proposal, and proposed remaining TODOs with the user. Only after explicit confirmation may the final owning route truth be accepted, high-confidence worktrees start from exact canonical `main`, or other TODOs be resumed, parked, superseded, or cleaned from the reviewed ledger.
+4. Stop and reconcile the organized canonical state and TODO classifications with the user before route modeling or another cleanup pass.
+5. After explicit confirmation, produce the holistic routing model from those reconciled inputs as a held proposal; do not implement or silently accept disputed semantics.
+6. Stop again for route-semantics confirmation. Only after accepted owning truth is merged may high-confidence worktrees start from that exact newer canonical `main`, or other TODOs be resumed, parked, superseded, or cleaned from the reviewed ledger.
 
 Parallel work may accelerate one active phase, but it must not start a later phase early.
 
@@ -99,7 +100,6 @@ The range begins at PR #164. A merged or deployed item can still be under audit;
 | `docs/resource-matrix-gate@140dd00` | `EVIDENCE-ONLY` | Preserve the short-run data; do not merge old Browser1 policy text. |
 | `test/real-relay-canary@f135302` | `EVIDENCE-ONLY` | One-line #191 report correction may still be useful even though the later local canary helper also contains it. |
 | `docs/routing-algorithm-convergence@43b1f46` | `AUDIT-HOLD` | Historical design input only; it contains stale capacity assumptions. |
-| `fix/connection-details-stability@55f4cbc` | `SUPERSEDED` | Design input superseded by #187; retain until cleanup audit. |
 
 ## Unresolved Routing Inputs
 
@@ -115,4 +115,4 @@ The preferred simplicity test is one Host screen lineage, at most one canonical 
 
 For each held item, record: original user requirement or lack of one; current consumer; behavior and rollback cost; security/privacy/resource boundary; conflicting facts; and a keep, revise, park, or remove decision. Only then update the owning requirement/ADR/research/status text in place. Do not use this temporary file as permanent architecture documentation.
 
-Merge this audit-guard truth first; that merge does not accept a final routing model. Then preserve any root user changes, release `main` from auxiliary worktrees, and restore the canonical repository root to the exact latest `main`. Complete only the approved workspace cleanup, produce the holistic routing proposal as a held document, report the organized state and proposal, and wait for explicit user confirmation. Only afterward may accepted route semantics be written into their owning truth and merged into `main`; retained candidates or remaining TODOs may be rebuilt or resumed only from that newer exact canonical-main commit. Candidate-era truth files must never overwrite it.
+Merge this audit-guard truth first; that merge does not accept a final routing model. Then preserve any root user changes, release `main` from auxiliary worktrees, restore the canonical repository root to the exact latest `main`, and complete only the approved workspace cleanup. Report that organized state and the TODO classifications, then wait for explicit user confirmation before producing the holistic routing proposal as a held document. Stop again for route-semantics confirmation. Only afterward may accepted route semantics be written into their owning truth and merged into `main`; retained candidates or remaining TODOs may be rebuilt or resumed only from that newer exact canonical-main commit. Candidate-era truth files must never overwrite it.

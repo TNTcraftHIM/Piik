@@ -38,7 +38,7 @@ Last updated: 2026-08-22
 
 - Durable truth precedes action: reconcile each discussion or correction against the whole product model, challenge conflicts, update all affected owning truth and current snapshots, and create a Git checkpoint before implementation or implementation sub-agents begin. Unresolved semantics enter a truth hold instead of code.
 - While the 2026-08-22 truth audit is open, load [the TODO audit hold](./todo-audit-hold.md) before selecting work. Old checkboxes, branch names, agent suggestions, experiments, and post-boundary follow-ups are inputs, not authorization.
-- Current phase order is fixed: reconcile TODO provenance/current truth; schedule archives and workspace disposition; merge the audit guard and restore canonical `main`; then produce a holistic routing held proposal. Report that organized state and proposal to the user before accepting route semantics or resuming any remaining TODO.
+- TODO provenance/current truth, the workspace schedule, the audit-guard merge, canonical-root restoration, and approved D cleanup are complete. The current stop gate is the requested user report; do not start another TODO cleanup, route model, or implementation before that checkpoint is explicitly confirmed. A later holistic route model remains a held proposal until its own user reconciliation and owning-truth merge.
 
 ## Current Implementation
 

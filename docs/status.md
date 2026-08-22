@@ -31,11 +31,10 @@ The route-capacity, SFU-root, publication-accounting, and selected-lease stateme
 
 ## Active Milestone
 
-1. Reconcile TODO provenance and every current truth owner; distinguish accepted requirements, disputed holds, deployed facts, historical evidence, and conditional research.
-2. Produce the document/archive and worktree/branch/folder disposition schedule without deleting, rebasing, merging, or moving held material.
-3. Merge the audit-guard truth, restore the canonical repository root to exact latest `main`, and execute only the approved workspace cleanup schedule.
-4. Produce the holistic routing model from that canonical truth as a held proposal without implementation.
-5. Report the organized canonical root/main, retained/cleaned workspace, routing proposal, held candidates, and proposed remaining TODOs to the user and wait for explicit confirmation. Only then accept final route semantics, update their owning truth, and merge that truth into canonical `main`; only from that exact newer SHA may other TODOs be resumed, parked, superseded, or cleaned. Previous audio, route-canary, SFU-shaping, Native, mobile, and scale items remain preserved in their owners but are not the active execution order.
+1. TODO provenance/current-truth reconciliation, the archive/workspace disposition schedule, the audit-guard merge, canonical-root restoration, and the approved D cleanup are complete. See [workspace disposition](./workspace-disposition.md) for the executed checkpoint and retained material.
+2. Stop at the requested user checkpoint and report the TODO classifications, durable truth changes, canonical `main`, and retained/removed workspace state. Do not start another TODO cleanup, routing implementation, or feature work.
+3. After explicit user confirmation, produce the holistic routing model as a held proposal from exact canonical `main`; it remains analysis, not accepted architecture or implementation authorization.
+4. Stop again for route-semantics confirmation before updating their owning truth. Only after that truth is merged may new implementation worktrees start from the exact newer canonical-main SHA and retained candidates be resumed, parked, superseded, or cleaned one at a time. Previous audio, route-canary, SFU-shaping, Native, mobile, and scale items remain preserved in their owners but are not the active execution order.
 
 ## Decisions And Blockers
 
