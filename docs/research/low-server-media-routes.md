@@ -3,9 +3,9 @@
 - Research date: 2026-08-22
 - Scope: one broadcaster, explicit admission up to sixteen trusted viewers,
   low latency, and bounded host media fanout
-- Status: research and dated route evidence. Current invariants are in
-  [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md); unresolved transport
-  and resource design is in [the TODO ledger](../todo.md).
+- Status: research and dated route evidence. Current invariants and assisted
+  transport roles are in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md);
+  runtime migration and validation are in [the TODO ledger](../todo.md).
 
 ## Historical Candidate Route Ladder
 
@@ -97,8 +97,9 @@ both remain active, that may be `B_HIGH+B_LOW`, not one root bitrate. The
 SFU-root row, not full-room SFU, is the retained fallback shape. For equal
 representations, `B_pub = B` and `sum(B_i) = R*B`. Publisher-to-SFU and every
 SFU-to-root subscriber transport are independent ICE connections and may use a
-separately deployed LiveKit transport. Ordinary descendants are STUN-only; only
-one controller-selected exceptional edge may later use independent coturn. If a
+separately deployed LiveKit transport. Ordinary descendants are STUN-only;
+selected coturn is issued only for an exact authorized edge or Host-SFU ingress.
+If a
 publisher leg separately uses LiveKit TURN, retain host upload
 `B_pub`, TURN ingress `B_pub`, TURN egress `B_pub`, and SFU ingress `B_pub` as
 distinct interface/service traffic. A relayed root leg likewise adds TURN
@@ -500,11 +501,11 @@ Screener later implements application E2EE and key distribution. That accepted
 tradeoff remains visible in deployment and UI claims.
 
 A peer simultaneously re-publishing its received stream to the SFU and serving
-peer children is an unresolved route-model alternative. A browser relay would
-decode and re-encode, and publication ownership adds another failure domain; the
-holistic model must compare that cost with a single authoritative source
-publication. No global score, continuous optimizer, geography, IP, UA, or
-self-reported capability chooses these routes.
+peer children is outside the current product. A browser relay would decode and
+re-encode, and publication ownership would add another failure domain; the
+current model uses one authoritative Host publication. No global score,
+continuous optimizer, geography, IP, UA, or self-reported capability chooses
+routes.
 
 On today's unicast Internet, a design cannot maximize all three of these for
 more than one viewer:
@@ -526,8 +527,8 @@ lost.
 | Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Admission defaults to eight and permits 1-16; representative resource/quality gate remains eight viewers |
 | Native shared-encode host | Host targets one encode for standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Research evidence; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Research only; no current product authorization |
-| SFU service | SFU emits authorized subscription copies | Service pays measured egress; an authoritative publisher supplies media | Functional single-root evidence exists; topology and admission remain pending |
-| Additional server-assisted paths | SFU/TURN emits authorized copies | Additional central ingress, egress, or allocation cost | Resource-admission input; exact topology remains pending |
+| SFU service | SFU emits authorized subscription copies | Service pays measured egress; an authoritative Host publisher supplies media | Functional evidence exists; accepted topology/admission still needs runtime validation |
+| Additional server-assisted paths | SFU/TURN emits authorized copies | Additional central ingress, egress, or allocation cost | Accepted resource-admission input; validate each bounded path at release |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
 | MoQ | Publishers and MoQ relays emit object copies | New transport, packaging, player, relay, and auth stack | Optional central-fallback benchmark; still pays server egress |

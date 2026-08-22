@@ -91,11 +91,14 @@ source boundary; fixed counts and ordering remain held:
 - one in-memory negotiating attempt bound to room/share generation, viewer and parent
   sessions, route revision, the replaced connection, and a server-generated new
   connection identity;
-- at most one `peer-selected` lease per room across negotiating and answered
-  states, with the separate Host-to-SFU ingress attempt excluded from that
-  last-mile cap; negotiation is serialized with other soft migrations, while an
-  answered exact lease is active transport and may coexist with an unrelated
-  soft migration under route carry revalidation;
+- one-use grants are bound to the logical edge, both endpoint sessions, route
+  revision, and connection generations; independent edges may have independent
+  grants under deployment-wide TURN admission. The exact release used one
+  `peer-selected` lease per room (excluding Host ingress), but that release
+  quota is historical rather than a current topology rule; negotiation remains
+  serialized only when route write sets conflict, while an answered exact lease
+  is active transport and may coexist with an unrelated migration under route
+  carry revalidation;
 - coordinated parent and child rebuild for exactly that edge, using relay-only
   ICE only on the new connection;
 - revalidation at grant, rebuild, ready, failure, timeout, route change,

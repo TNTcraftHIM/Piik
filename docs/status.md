@@ -14,16 +14,15 @@ This is the current execution index. Git history owns completed timelines; [veri
 ## Current Source
 
 - Canonical source is the clean `main` branch; auxiliary branches and worktrees do not own current truth.
-- The accepted endpoint direction is one ordinary downstream cap for every non-server endpoint: default `2`, static `1/2/3`, upstream receive free, and no Browser/UA/visibility tier.
+- The accepted endpoint direction is one steady outbound media-copy cap for every non-server endpoint: default `2`, static `1/2/3`, a peer child or Host publication consumes one slot, upstream receive is free, selected TURN replaces the same copy's transport, and no Browser/UA/visibility tier exists.
 - Automatic P2P-first routing, one active upstream, an acyclic graph, exact identity/generation authority, media-proven make-before-break, and bounded failure remain accepted.
-- SFU/TURN placement and accounting are not yet accepted as a complete model. No routing runtime candidate may be merged or deployed until that model is reconciled and written to the owning truth.
+- The holistic assisted-route model is accepted: one controller performs allocation, child reparenting, and relay abdication/drain. One Host publication serves SFU subscriptions; TURN is an exact edge transport, not a topology node. Endpoint cap, transition overlap, media-binding generations, and independent SFU/TURN admission are governed by one bounded transaction and remain runtime validation work.
 
 ## Current Milestone
 
-1. Converge active constraints, requirements, design, ADR, memory, status, and [the TODO ledger](./todo.md) without retaining obsolete-policy commentary.
-2. Report the concrete done/obsolete/decision-needed/unfinished classification and organized workspace state to the user, then stop.
-3. After confirmation, write one holistic routing proposal and stop again for route-semantics confirmation.
-4. Only then update and merge accepted route truth, rebuild the cap/accounting implementation from exact canonical `main`, validate, review, and deploy.
+1. Merge the accepted route truth across requirements, design, ADR, memory, status, and [the TODO ledger](./todo.md).
+2. Rebuild the cap/accounting runtime from exact canonical `main`, preserving safe identity, media-proof, and rollback behavior.
+3. Validate cap `1/2/3`, child and parent quality ownership, constrained Host/SFU/TURN paths, bounded resources, and rollback before deployment.
 
 ## Active Boundaries
 
@@ -34,4 +33,5 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Next Stop
 
-Wait for the user's review of this convergence before starting route modeling, another TODO, candidate integration, cleanup, or deployment.
+Complete the truth merge and canonical-workspace cleanup first. Runtime changes and
+remaining TODOs start only from the resulting clean `main`.
