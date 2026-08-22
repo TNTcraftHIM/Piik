@@ -17,15 +17,19 @@ This is the current execution index. Git history owns completed timelines; [veri
 - The accepted endpoint direction is one steady outbound media-copy cap for every non-server endpoint: default `2`, static `1/2/3`, a peer child or Host publication consumes one slot, upstream receive is free, selected TURN replaces the same copy's transport, and no Browser/UA/visibility tier exists.
 - Automatic P2P-first routing, one active upstream, an acyclic graph, exact identity/generation authority, media-proven make-before-break, and bounded failure remain accepted.
 - The holistic assisted-route model is accepted: one controller performs allocation, child reparenting, and relay abdication/drain. One Host publication serves SFU subscriptions; TURN is an exact edge transport, not a topology node. Endpoint cap, transition overlap, media-binding generations, and independent SFU/TURN admission are governed by one bounded transaction and remain runtime validation work.
+- Live 64/128/256 audio-ceiling mutation, a source-checkout LAN one-command launcher, and paused-share video codec switching are accepted but not yet implemented on canonical `main`. H.264 startup blur/low-FPS reports remain an evidence-led diagnosis, not a presumed codec defect.
 
 ## Current Milestone
 
 1. Rebuild the cap/accounting runtime from exact canonical `main`, preserving safe identity, media-proof, and rollback behavior.
-2. Validate cap `1/2/3`, child and parent quality ownership, constrained Host/SFU/TURN paths, bounded resources, and rollback before deployment.
+2. In independent fresh-main branches, deliver live audio-ceiling mutation and the scoped LAN one-command launcher.
+3. Add paused-share codec switching on the resulting generation/transition boundary, and reproduce the H.264 startup report before any codec-specific repair.
+4. Validate cap `1/2/3`, child and parent quality ownership, constrained Host/SFU/TURN paths, codec/profile mutation, bounded resources, and rollback before deployment.
 
 ## Active Boundaries
 
 - `fix/configurable-relay-cap` is an old, incomplete draft and must not be merged as-is.
+- `feat/local-oneclick-bundle` is a stale-base donor only. Transplant its launcher logic and tests selectively; never import its old requirements, memory, status, access variable, or generated local state.
 - Open PR #192 and the Native stack are evidence/research, not pending product releases.
 - Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
 - Real SFU/TURN recovery, heterogeneous networks, mobile lifecycle, audio/A-V device behavior, and endurance/resource measurements remain external acceptance evidence, not blockers for unrelated reversible work.

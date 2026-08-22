@@ -180,8 +180,8 @@ failed stage while synchronously retaining a bounded final-negative snapshot:
    the viewer keeps its existing waiting state, then close viewer 1 and prove
    FIFO promotion plus decoding/rendering.
 6. Keep this candidate STUN-only. Ordinary Native ICE never receives TURN
-   candidates; a future selected-edge attempt requires its own generation-bound
-   gate after SFU/UDP rather than widening or blocking the direct-path canary.
+   candidates; any selected-edge or Host-SFU TURN attempt requires its own
+   generation-bound gate and does not widen or block the direct-path canary.
 
 A commit-bound, short-lived evaluation artifact may package the current source
 to run these stages without a development toolchain. That artifact is not an

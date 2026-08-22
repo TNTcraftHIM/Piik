@@ -195,6 +195,20 @@ browser default unchanged. LiveKit likewise keeps its default codec for
 `automatic`, overrides it only for an explicit selection, and retains
 `backupCodec=false`; there is no parallel backup-codec publication.
 
+Changing `RTCRtpTransceiver.setCodecPreferences()` affects later negotiation; it
+does not itself switch an established sender, and `replaceTrack()` only replaces
+a same-kind source. Mature WebRTC code such as Jitsi follows a codec preference
+change with renegotiation, while pinned LiveKit changes publication codec through
+its publish/republish lifecycle. Screener therefore starts with a paused-share
+transaction: fence the request by codec/media generation, serialize it with
+route mutation, renegotiate the frozen still-current peer/relay targets, and
+republish the SFU generation when present. A zero-target share only saves the
+future preference. Because paused tracks cannot prove decoded progress, proof
+occurs on resume; failure pauses again and runs a bounded old-preference
+rollback. Passing an empty codec list restores default browser preferences.
+This is a deliberate paused bounded-gap path. Unpaused make-before-break is a
+later extension rather than a second codec mechanism.
+
 H.264 remains an explicit option because mature cross-device hardware
 encode/decode paths may avoid an observed VP8 software-path cost. A controlled
 Web comparison also found that forcing H.264 could lower downstream FPS with the
@@ -206,13 +220,20 @@ does not prove shared encode: separate browser PeerConnections may construct
 separate encoders, and the SFU still publishes only the configured `q,h`
 representations.
 
-The retained follow-up is one target-device H.264/VP8 comparison using these
-local diagnostics, not a new benchmark framework: actual codec/profile,
-encoder implementation, power efficiency, configured/source/send/receive FPS,
-interval encoded frames/encode time, and limitation reason. Missing
-implementation or power-efficiency fields remain unknown. No H.264 root cause
-or policy change is accepted until the controlled sample distinguishes capture
-starvation, software fallback, hardware queue/driver pressure, and congestion.
+The retained diagnostic keeps lifecycle and codec experiments orthogonal.
+Lifecycle runs fix `automatic`; each independently recreated affected state runs
+exactly one of observe, preview cycle, Host-peer rebuild, capture replacement,
+or Host reload. Codec A/B uses fresh Host/share/PeerConnection sessions for
+automatic, H.264, and VP8 and rejects an actual-codec mismatch. Quality claims
+require a headed run with the same real game, browser/driver, capture surface,
+and one wired direct Viewer. Capture A, sender B, and Viewer C samples must share
+the current generation and overlapping windows; identity polling must not
+advance their accumulators. Record actual codec/profile, configured/source/send/
+receive FPS, interval encoded frames/encode time, limitation reason, game FPS,
+and process-scoped GPU evidence. Missing implementation or power-efficiency
+fields remain unknown. No H.264 root cause or policy change is accepted until
+the controlled sample distinguishes capture starvation, software fallback,
+hardware queue/driver pressure, and congestion.
 
 Open-source distribution is not itself a patent-license exemption. This Web
 change only requests a codec already implemented by the browser/LiveKit path and
@@ -663,10 +684,12 @@ resolution, frame rate, or bitrate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
 - The folded “advanced video” panel accepts only 720p/1080p/1440p, integer
-  15-60 fps, 2-12 Mbps, the three preferences, and Automatic/H.264/VP8. Codec
-  selection is locked during a share and applies to the next one. The panel is
-  now Share advanced settings and also offers 64/128/256 kbps audio sender
-  ceilings, default 128, locked during the active share. Display capture does
+  15-60 fps, 2-12 Mbps, the three preferences, and Automatic/H.264/VP8. The
+  first codec-switch product boundary is a generation-fenced renegotiation and
+  SFU republish while sharing is explicitly paused; pause or `replaceTrack()`
+  alone does not switch codec. The panel is now Share advanced settings and
+  also offers live-switchable 64/128/256 kbps audio sender ceilings, default
+  128, on the existing Opus path. Display capture does
   not standardize channel-count or sample-rate control. The peer receive
   contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
   LiveKit's explicit high-quality stereo/forceStereo option; the selected sender
@@ -756,6 +779,8 @@ is a separate optimization.
 - [W3C Media Capture and Streams `getSettings()`](https://www.w3.org/TR/mediacapture-streams/#dom-mediastreamtrack-getsettings)
 - [W3C WebRTC](https://www.w3.org/TR/webrtc/)
 - [W3C WebRTC codec preferences](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver-setcodecpreferences)
+- [W3C WebRTC sender track replacement](https://www.w3.org/TR/webrtc/#dom-rtcrtpsender-replacetrack)
+- [Jitsi codec preference and renegotiation](https://jitsi.github.io/lib-jitsi-meet/classes/JitsiConference._internal_.JingleSessionPC.html)
 - [RFC 7742 WebRTC video codec requirements](https://www.rfc-editor.org/rfc/rfc7742.html)
 - [Via LA AVC/H.264 licensing program](https://via-la.com/licensing-programs/avc-h-264/)
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
