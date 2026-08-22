@@ -39,7 +39,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Next Stop
 
-Implement the independent TURN-admission and controller-convergence waves from
-this source. The route release still requires measured SFU capacities, a
+Implement the controller-convergence wave from this source. The route release
+still requires measured TURN and SFU capacities, a
 dedicated LiveKit instance with the documented private control-plane contract,
 and the focused real-network and Native `C=1/2/3` acceptance matrix.
