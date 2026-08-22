@@ -1,6 +1,6 @@
 # Current Verification Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 ## Purpose
 
@@ -20,6 +20,7 @@ Capacity and routing entries below describe the exact tested source or release o
 
 ## Retained Functional Evidence
 
+- Exact source `31e323e2754fcfde15f7b4d69e925ec71e2795cb` passed repository hygiene, TypeScript typecheck, client/server builds, all 660 Web tests, all Native Go packages, `go vet`, and two independent P0/P1 reviews. The tests cover strict v6 endpoint-cap authentication, ordinary active/waiting authorization and grace promotion, Native cap propagation and admission, and peer-assisted cap rejection. This is local state-machine/build evidence, not a complete Native physical-slot matrix or production, browser-quality, or heterogeneous-network acceptance.
 - Chrome 151 synthetic `1/3/5/8` and 720p30 runs preserved bounded fanout and decoding. A `9461e20`-era three-Viewer rerun kept Host2/Browser Viewer1, decoded every Viewer, and recovered a hard first-level relay departure in 5,380 ms; it did not exercise quality-triggered MBB. Sixteen-Viewer cap2/cap3 loopbacks decoded all Viewers and a ten-second follow-up recorded guarded sender and aggregate Chromium CPU evidence, but resolution/FPS remained low and the ordinary-PC data cannot rank caps, select product policy, or prove sustainable heterogeneous-network quality. See [peer-assisted media](./research/peer-assisted-media.md).
 - Chrome 151 with local LiveKit 1.13.5/client 2.22.0 proved one SFU/UDP root after `q,f` -> `q,h`: decoded frames advanced 3 -> 23, rendered frames reached 26, Host used one edge, leaves were clean, and TURN was absent. This is functional evidence only. See [low-server media routes](./research/low-server-media-routes.md).
 - Host A+B and authenticated P2P Viewer C evidence is sanitized, generation-bound, read-only, and closed for stale, ambiguous, or SFU-fed reports. Production can expose a Host-local current SFU `h` snapshot and clears it on publisher identity changes; raw media metadata is not retained. See [realtime quality adaptation](./research/realtime-quality-adaptation.md).
@@ -30,9 +31,9 @@ Capacity and routing entries below describe the exact tested source or release o
 
 ## Open Proof Boundaries
 
-- Routing: verify current-release initial ingress, `peer-selected` expiry/failure, corroborated bad-relay reassignment, one-root healthy SFU reselection, silent partitions, and bounded failure on real browser/media paths. Silent control partitions may wait 30 to 60 seconds for heartbeat detection before the default five-second grace.
+- Routing: verify current-release initial ingress, `peer-selected` expiry/failure, corroborated bad-relay reassignment, one-root healthy SFU reselection, silent control partitions, signaling-connected current-generation RTP silence, and bounded failure on real browser/media paths. Silent control partitions may wait 30 to 60 seconds for heartbeat detection before the default five-second grace; RTP-silence acceptance must prove child-scoped recovery without granting one uncorroborated child authority to drain its parent.
 - Quality: production startup blur remains unclassified. One same-`balanced` local A/B retained route/PC/SSRC/track while 720p rose to 1080p, but natural ramp prevents causal, production, or SFU conclusions. Correlate Host capture/encode/send with Viewer receive/decode before changing policy.
-- Relay resources: production `9461e20` is Host2/ordinary Browser Viewer1 and rejects Viewer child2 regardless of advertised capacity. This is a dated implementation divergence; the accepted endpoint-cap and corroboration contract is in ADR-0005 and awaits runtime migration. CPU/GPU/upload and heterogeneous-network measurements remain evidence, not authority to change that contract.
+- Relay resources: current source has the authenticated `1/2/3` endpoint-cap boundary, while production `9461e20` remains Host2/ordinary Browser Viewer1 and rejects Viewer child2 regardless of advertised capacity. Before release, explicitly exercise Native `C=1/2/3` admission, waiting promotion, peer-assisted assignment, and physical sender slots; CPU/GPU/upload and heterogeneous-network measurements remain evidence, not authority to change the contract.
 - SFU: production `9461e20` deploys ordered `q,h`, roots <=2, and Dynacast off. Those are release facts; the accepted model has no fixed root-count or room-wide lease rule and still needs real shaped packet flow, BWE downshift/recovery, resource, and root-with-children validation. Use Linux `tc` or an authorized public canary for per-leaf shaping, never CDP throttling.
 - Audio: verify the 64/128/256 kbps Share settings, negotiated/observed bitrate, audible music quality, route changes, and game A/V synchronization. Bitrate settings are ceilings, not quality proof.
 - Observability: the UI and local stats plumbing are deployed, including identity-bound relayed-detail retention and export freshness guards, but target-browser availability and actual values remain unverified for Host SFU sender evidence, codec/fmtp and encoder implementation/power efficiency, media-source and encoded FPS, A/V playout/jitter/concealment, selected candidate endpoints, and bounded same-pair STUN-response observation. These fields diagnose and have no recovery authority; they do not by themselves prove hardware encode, synchronization quality, or route quality.
