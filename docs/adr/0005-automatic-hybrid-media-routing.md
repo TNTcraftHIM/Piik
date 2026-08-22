@@ -184,19 +184,35 @@ SFU and TURN remain bounded fallback resources with independent deployment-wide
 admission. Resource exhaustion produces the next bounded candidate, an explicit
 wait, or failure; it never creates unbounded central fanout.
 
-For the single-process deployment, SFU admission is one injected in-memory
-authority with deployment-wide ingress and egress counters. Enabling LiveKit
-requires explicit positive safe-integer `SFU_INGRESS_CAPACITY` and
-`SFU_EGRESS_CAPACITY` values; neither has a product default and neither is
-derived from endpoint capacity, Viewer admission, or a fixed root count. One
-Host publication consumes one ingress unit and every SFU subscription consumes
-one egress unit. A concurrently media-producing candidate consumes its actual
-units in addition to the committed generation. The controller reserves against
-the exact room, share, and publication generation before token issuance,
-promotes that reservation at route commit, and idempotently releases it on
-abort, timeout, participant loss, share rollover, room stop, or room deletion.
-A multi-process application deployment requires a shared atomic admission
-authority before it may claim these values are deployment-wide.
+For the single-process deployment, SFU admission is one injected authority with
+deployment-wide ingress and egress counters. Enabling LiveKit requires explicit
+positive safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values;
+neither has a product default and neither is derived from endpoint capacity,
+Viewer admission, or a fixed root count. One Host publication consumes one
+ingress unit and every SFU subscription consumes one egress unit. A concurrent
+candidate and every generation still draining from LiveKit remain charged in
+addition to the committed generation.
+
+The accepted self-hosted deployment contract dedicates one LiveKit instance to Screener,
+sets `room.auto_create: false`, and gives the application an explicit private
+`LIVEKIT_API_URL`. The controller reserves the exact room, share, and publication
+generation, creates that managed LiveKit room through `RoomService`, and only
+then issues tokens. Commit moves the old generation to `draining`; abort,
+timeout, participant loss, share rollover, room stop, and room deletion move
+their generation to the same state. `RoomService.DeleteRoom` must complete and a
+follow-up lookup must prove the room absent before its ingress or egress units
+are released. Because joining cannot recreate a deleted room, a stale
+self-hosted token cannot produce an off-ledger participant.
+
+Before accepting application traffic, the single owner lists its dedicated
+LiveKit instance, rejects foreign room names, deletes every stale Screener room,
+and confirms the owned namespace is empty. Graceful shutdown drains the same
+namespace before forgetting counters. A Host signaling disconnect keeps a
+committed generation charged while its exact LiveKit Host participant exists;
+an interval-bounded control-plane check retires it after that participant
+disappears. A multi-process application deployment requires a shared atomic
+admission and lifecycle owner before it may claim these values are
+deployment-wide.
 
 ## Current Production Divergence
 
@@ -219,6 +235,11 @@ Before a revised controller ships:
   signals, departure, rollback, and admission exhaustion;
 - route changes preserve unaffected branches and never commit before media
   proof;
+- SFU lifecycle tests keep reserved, committed, and draining generations charged
+  until deletion plus absence proof, reject stale-token room recreation, fence
+  startup against stale or foreign rooms, reclaim an abandoned Host generation
+  without cutting a live Host participant, and keep two rooms under one global
+  capacity owner;
 - candidate lists are deterministic under input permutation, preserve a healthy
   current edge, prefer the shallowest least-loaded eligible parent, and try only
   the next eligible candidate after exact failure and idempotent cleanup;
@@ -231,6 +252,10 @@ Before a revised controller ships:
   suspect/local-repair before drain while preserving unrelated sibling evidence;
 - real-browser tests cover direct peer media, peer relay, server-assisted media,
   selected transport when configured, failure, and recovery;
+- deployment preflight proves the LiveKit instance is dedicated, uses
+  `room.auto_create: false`, exposes `RoomService` only on its accepted private
+  control origin, and can drain its managed namespace before traffic or
+  rollback;
 - measured endpoint upload and server ingress/egress prove the accepted
   accounting under normal and migration overlap; and
 - every exhausted path reaches a clear bounded wait or failure without leaking
