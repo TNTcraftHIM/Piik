@@ -124,8 +124,11 @@ server fanout, or an untracked parallel route.
 ## Accepted Assisted-Route Model
 
 One room controller owns three operations: allocate/distribute, child reparent,
-and relay abdicate/drain. They share one target snapshot, one pending transition,
-one resource ledger, and monotonic room/session/revision fences.
+and relay abdicate/drain. It is the only owner of the committed graph, pending
+target, and transition lifecycle. Topology helpers retain participant metadata
+and purely plan candidates; they do not retain a second mutable route graph.
+The operations share one target snapshot, one pending transition, one resource
+ledger, and monotonic room/session/revision fences.
 
 - The Host is the only source publisher. There is at most one authoritative Host
   publication per share generation, and every SFU-fed Viewer subscribes to it.
@@ -157,24 +160,30 @@ one resource ledger, and monotonic room/session/revision fences.
   signaling and the PeerConnection remain present, expiry of the bounded parent-
   proof deadline authorizes hard reparent of that child if the stall remains,
   whether matching positive non-server-parent outbound-media proof arrived or
-  not. Parent sending or non-response does not change parent eligibility. A
-  relay parent enters
-  `suspect` only for its own ingress/parent-scope evidence, then stops accepting
-  new children and repairs its own ingress with reparent or branch-preserving
-  `replaceIngress`; Host source failures instead use publication repair and
-  child migration. A relay parent is marked
-  directional-ineligible only after that repair fails, an explicit sender or
-  resource failure makes forwarding unusable, or independent downstream edges
-  (not C+B from the same edge) confirm forwarding remains unusable. It then
-  retains a healthy ingress while draining affected children, and replaces or
-  removes a failed ingress in the same target. The quality policy accounts for
-  currently observable edges and endpoint capacity; the route model does not
-  hard-code a two-child quorum. The quality evidence owner defines finite
-  windows and independent-edge corroboration without turning them into a global
-  score. If the new ingress restores downstream media,
-  the subtree remains unchanged. Hard failure preempts confirmed parent drain,
-  which preempts a single-edge soft reparent. A feasible child migration is
-  never blocked by a sibling with no destination.
+  not. Parent sending or non-response does not change parent eligibility.
+  Downstream evidence drains a relay only when the trigger has at least one
+  distinct current sibling edge and every current authoritative child edge has
+  independently completed a current-generation unusable proof. Positive
+  progress, unknown evidence, or unfinished proof on any current child blocks
+  that drain; positive progress clears the exact edge's unusable evidence. A
+  lone child is reparented without draining its parent. A relay parent enters
+  `suspect` for its own ingress evidence, stops accepting new children, and
+  repairs that ingress with reparent or branch-preserving `replaceIngress`.
+  Parent/session hard failure or failed ingress repair independently authorizes
+  drain. An endpoint-wide sender/resource failure independently authorizes drain
+  only when a concrete server-verifiable producer establishes that scope; a
+  generic per-edge failure remains edge-scoped. Host source failures instead use
+  publication repair and child migration. Drain retains a healthy ingress and
+  replaces or removes a failed ingress in the same target. If a new ingress
+  restores downstream media, the subtree remains unchanged. Hard failure
+  preempts confirmed parent drain, which preempts a single-edge soft reparent. A
+  feasible child migration is never blocked by a sibling with no destination.
+- Unexpired evidence follows its exact edge identity across unrelated route
+  revisions and broadcasts; the controller advances its revision guard without
+  resetting unaffected siblings. Identity change, positive progress, or
+  successful migration clears only that edge's evidence. An authoritative pause
+  stops and clears current-generation quality correlation. Resume starts a fresh
+  baseline, so intentional pause silence cannot trigger reparent or drain.
 - Healthy edges are sticky. Join, departure, capacity release, hard failure,
   confirmed ineligibility, server-resource change, and explicit ingress restore
   are the route-changing events. Quality evidence changes topology eligibility,
@@ -257,13 +266,17 @@ Before a revised controller ships:
 - candidate lists are deterministic under input permutation, preserve a healthy
   current edge, prefer the shallowest least-loaded eligible parent, and try only
   the next eligible candidate after exact failure and idempotent cleanup;
-- quality tests distinguish child-scoped C+B reparent from parent-scoped
-  corroborated drain, prove that same-edge C+B cannot drain a parent, require
-  independent sibling edges for parent corroboration, include a Viewer that is
-  both child and parent plus the Host-source publication-repair exception, bind
-  evidence to media-binding generation, prove bounded child-only recovery when
-  an ordinary peer edge stops RTP while signaling remains present, and exercise
-  suspect/local-repair before drain while preserving unrelated sibling evidence;
+- quality tests distinguish child-scoped C+B reparent from parent-scoped drain;
+  require at least two current children and independently unusable proof on all
+  current child edges; prove that same-edge C+B, a healthy/unknown/unresolved
+  sibling, or a lone child cannot drain a parent; and cover independent
+  parent/session hard failure and failed-ingress-repair drain;
+- quality tests bind evidence to exact media identity, preserve unaffected-edge
+  evidence across unrelated revisions, clear only changed or recovered edges,
+  suspend and clear correlation during authoritative pause, and start a fresh
+  baseline on resume. They include a Viewer that is both child and parent, the
+  Host-source publication-repair exception, bounded child-only recovery while
+  signaling remains present, and suspect/local-repair before drain;
 - real-browser tests cover direct peer media, peer relay, server-assisted media,
   selected transport when configured, failure, and recovery;
 - deployment preflight proves the LiveKit instance is dedicated, uses
