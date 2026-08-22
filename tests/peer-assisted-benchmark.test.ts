@@ -10,6 +10,7 @@ import {
   everyViewerAdvanced,
   everyViewerRecoveredMedia,
   mergeRecoveryHostPeaks,
+  parseBenchmarkCanaryMode,
   parseBenchmarkConfig,
   parseExpectedEndpointCap,
   parseViewerCounts,
@@ -172,10 +173,14 @@ function createObserverHarness(expectedEndpointCap = 2) {
   const WebSocketConstructor = context.WebSocket as new () => FakeWebSocket;
   const api = context.__SCREENER_BENCHMARK__ as {
     snapshot: () => ObserverSnapshot;
+    canarySnapshot: () => Record<string, unknown>;
+    configureCanary: (value: Record<string, unknown>) => boolean;
   };
   return {
     socket: () => new WebSocketConstructor(),
     snapshot: () => structuredClone(api.snapshot()),
+    canarySnapshot: () => structuredClone(api.canarySnapshot()),
+    configureCanary: (value: Record<string, unknown>) => api.configureCanary(value),
   };
 }
 
@@ -213,6 +218,13 @@ function markActiveRouteReady(observation: ReturnType<typeof page>): void {
 }
 
 describe("peer topology loopback configuration", () => {
+  it("keeps the real-relay canary opt-in", () => {
+    expect(parseBenchmarkCanaryMode(undefined)).toBe("none");
+    expect(parseBenchmarkCanaryMode("viewer-mbb")).toBe("viewer-mbb");
+    expect(parseBenchmarkConfig({ CHROME_PATH: "chrome", BENCHMARK_CANARY: "viewer-mbb" }).canaryMode).toBe("viewer-mbb");
+    expect(() => parseBenchmarkCanaryMode("signaling")).toThrow(/BENCHMARK_CANARY/);
+  });
+
   it("uses the bounded 1/3/5/8 matrix by default", () => {
     expect(parseViewerCounts(undefined)).toEqual([1, 3, 5, 8]);
   });
@@ -273,6 +285,16 @@ describe("peer topology loopback configuration", () => {
 });
 
 describe("peer topology loopback observations", () => {
+  it("suppresses parent proof only through the opt-in injected control", () => {
+    const observer = createObserverHarness();
+    const socket = observer.socket();
+    authenticate(socket);
+    expect(observer.configureCanary({ dropParentProof: true })).toBe(true);
+    socket.send(JSON.stringify({ type: "parent-edge-quality-evidence" }));
+    expect(observer.canarySnapshot()).toMatchObject({ droppedProofs: 1 });
+    expect(Object.keys(observer.canarySnapshot())).not.toContain("connectionId");
+  });
+
   it("counts only active media connections in the requested direction", () => {
     const host = page("host", "host", 2, 0);
     host.connections[0]!.connectionState = "closed";

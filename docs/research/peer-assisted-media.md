@@ -292,6 +292,19 @@ real local `RTCPeerConnection` media and hard-participant-departure evidence. It
 does not exercise correlated bad-quality detection or provisional MBB, a silent
 socket partition, SFU, TURN, a public network, game capture, or resource quality.
 
+A 2026-08-22 opt-in `BENCHMARK_CANARY=viewer-mbb` run on the same Chrome build
+used one Host and three Viewers. The harness injected three valid two-second
+viewer-quality windows and parent-limited proof messages through the existing
+authenticated socket, then observed the real provisional `RTCPeerConnection`
+retain the old edge, promote to a Viewer candidate, and keep the same connection
+identity while decoded frames advanced. It also checked the ordinary one-edge
+cap and absence of route-failed messages. The report contains only booleans and
+sanitized counters; it emits no participant IDs, SDP, or ICE candidates. The
+windows are synthetic control input, so this proves the state-transition and
+continuity path only, not bad-relay detector quality, network performance, or a
+real heterogeneous route. Host-candidate and signaling-response-blackhole
+canaries remain deferred.
+
 A 2026-08-21 local Chrome 151 capacity-two run used one Host and five Viewers
 with a synthetic 720p30 stream. Host and relay fanout peaked at two; one Viewer
 simultaneously served two children, whose inbound counters each advanced by 80
