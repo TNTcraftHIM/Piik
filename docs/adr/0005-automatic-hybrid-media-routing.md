@@ -69,6 +69,20 @@ failure, and accepted path-health evidence may open a bounded reassignment. The
 controller does not continuously optimize the room, infer policy from a user
 agent, or aggregate unrelated paths into a room-wide quality score.
 
+Parent selection is deterministic and local. The controller first filters on
+current authority, source reachability, acyclicity, depth, sender reservations,
+relay eligibility, exact-edge exclusion/cooldown, and server admission. It then
+orders eligible parents lexicographically by the shallowest resulting depth,
+the greatest remaining steady sender capacity, stable join order, and peer
+identity. It prepares one candidate at a time. The candidate's standard ICE
+checklist proves connectivity and current-generation RTP plus decoded frames
+prove media; raw addresses, a claimed NAT class, geography, user agent, or a
+weighted room-wide score never choose a parent. A failed candidate releases its
+reservation before the next candidate is attempted. Join and hard-failure repair
+accept the first candidate that reaches the media-usable floor; a soft-quality
+move also needs the quality owner to prove recovery and improvement over the
+still-healthy old edge.
+
 ### Authorization and transition
 
 Every prepare, signal, recovery, commit, and rollback is bound to the exact
@@ -171,6 +185,9 @@ Before a revised controller ships:
   signals, departure, rollback, and admission exhaustion;
 - route changes preserve unaffected branches and never commit before media
   proof;
+- candidate lists are deterministic under input permutation, preserve a healthy
+  current edge, prefer the shallowest least-loaded eligible parent, and try only
+  the next eligible candidate after exact failure and idempotent cleanup;
 - quality tests distinguish child-scoped C+B reparent from parent-scoped
   corroborated drain, prove that same-edge C+B cannot drain a parent, require
   independent sibling edges for parent corroboration, include a Viewer that is
@@ -227,6 +244,10 @@ Negative:
 - [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html)
 - [RTP topologies, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667.html)
 - [PIM-SM Join/Prune behavior, RFC 7761](https://www.rfc-editor.org/rfc/rfc7761.html)
+- [ICE connectivity checks and candidate checklists, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html)
+- [NICE degree-bounded application-layer multicast](https://conferences.sigcomm.org/sigcomm/2002/papers/appmulti.pdf)
+- [Overcast adaptive single-source distribution trees](https://www.usenix.org/conference/osdi-2000/overcast-reliable-multicasting-overlay-network)
+- [Kubernetes cordon and drain](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands)
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/#selective-subscription)
 - [LiveKit track subscription permissions](https://docs.livekit.io/transport/media/publish/#track-permissions)
 - [Kubernetes controllers](https://kubernetes.io/docs/concepts/architecture/controller/)

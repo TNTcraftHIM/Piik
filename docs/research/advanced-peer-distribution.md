@@ -304,13 +304,21 @@ has an upstream, never handles a failed-path intent, and never selects a root by
 quality. An authenticated viewer can still lie about its relay capacity, so the
 exact-room canary and ordinary route-failure recovery remain required; the lie
 can cause at most this one local move before the candidate is no longer
-unassigned. Broader experiments
-may react to a hard media failure, a reviewed threshold-crossing event from
-correlated path evidence, or a proven native capacity change, but never a
-continuous optimizer. Do not use a weighted score, UA/device model, IP
-geography, or one party's unverified report. Keep healthy assignments sticky,
-move only one affected subtree, use separate enter and recovery thresholds plus
-a cooldown, and disable proactive moves for the share after repeated rollback.
+unassigned. Broader experiments may react to a hard media failure, a reviewed
+threshold-crossing event from correlated path evidence, or a proven native
+capacity change, but never a continuous optimizer. Standard ICE already owns
+candidate-pair priority, pruning, connectivity checks, peer-reflexive discovery,
+and nomination inside one `RTCPeerConnection`; the application should not build
+a second ping mesh. Route selection first applies exact authority, reachability,
+acyclicity, depth, sender-slot, eligibility, exclusion/cooldown, and server
+admission filters, then uses a small lexicographic order: shallowest resulting
+tree, most remaining steady sender slots, stable join order, and peer identity.
+Only the selected provisional edge receives real connectivity and media proof;
+failure releases it before the next candidate. Do not use a weighted score,
+UA/device model, IP geography, claimed NAT type, or one party's unverified
+report. Keep healthy assignments sticky, move only one affected subtree, use
+separate enter and recovery thresholds plus a cooldown, and disable proactive
+moves for the share after repeated rollback.
 
 Use make-before-break only when the new parent has a free ordinary downstream
 slot under the server-authoritative configured cap. A provisional child reserves
@@ -424,7 +432,7 @@ failed-parent state.
 
 ## Sources And License Boundary
 
-Sources checked on 2026-08-20 and 2026-08-21:
+Sources checked on 2026-08-20, 2026-08-21, and 2026-08-22:
 
 - [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/),
   [Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/),
@@ -441,6 +449,9 @@ Sources checked on 2026-08-20 and 2026-08-21:
   [room defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts),
   and [state reconciliation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
   - pinned implementation behavior, not a universal timeout prescription.
+- [Kubernetes cordon/drain](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands)
+  - operational analogy for stopping new children before bounded evacuation;
+  no scheduler or disruption framework is copied.
 - [LiveKit server 1.13.5 participant quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/participant.go)
   and [connection scorer](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/connectionquality/scorer.go)
   - Apache-2.0; studied only, with no source copied.
