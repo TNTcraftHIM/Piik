@@ -302,14 +302,14 @@ export class HostSfuRoute {
     if (
       !publicationGeneration ||
       publicationGeneration !== message.publicationGeneration ||
-      message.oldConnectionId !== publicationGeneration ||
-      !this.lastConfig ||
-      this.lastConfig.revision !== message.revision
+      message.oldConnectionId !== publicationGeneration
     ) {
       return false;
     }
     this.selectedEdgeTurn = message;
-    void this.acceptConfig(this.lastConfig);
+    if (this.lastConfig?.revision === message.revision) {
+      void this.acceptConfig(this.lastConfig);
+    }
     return true;
   }
 

@@ -4,10 +4,14 @@ import {
   QUALITY_PROFILES,
   type QualityProfile,
 } from "../src/client/media/quality.ts";
+import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer } from "../src/client/webrtc/host-peer.ts";
 import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
-import type { IceConfig } from "../src/shared/protocol.ts";
+import type {
+  IceConfig,
+  ParticipantRouteAssignment,
+} from "../src/shared/protocol.ts";
 
 const statsCallbacks: Array<() => void> = [];
 
@@ -107,6 +111,8 @@ class FakePeerConnection {
   readonly setConfiguration = vi.fn((configuration: RTCConfiguration) => {
     this.configurations.push(configuration);
   });
+
+  readonly restartIce = vi.fn();
 
   addTransceiver(
     trackOrKind: MediaStreamTrack | string,
@@ -978,6 +984,256 @@ describe("HostPeer source replacement", () => {
     expect(audioSender.replaceTrack).toHaveBeenNthCalledWith(2, oldAudio);
     expect(videoSender.track).toBe(oldVideo);
     expect(audioSender.track).toBe(oldAudio);
+  });
+});
+
+function hostAssignment(
+  childPeerIds: string[],
+  publicationGeneration: string | null = null,
+): ParticipantRouteAssignment {
+  return {
+    upstream: { kind: "none" },
+    childPeerIds,
+    sfuPublicationGeneration: publicationGeneration,
+  };
+}
+
+function hostProvisionalInput(
+  revision: number,
+  childPeerIds: string[],
+  stream: MediaStream,
+  overrides: {
+    activeChildPeerIds?: string[];
+    publicationGeneration?: string | null;
+    selectedPeerId?: string | null;
+  } = {},
+) {
+  return {
+    revision,
+    assignment: hostAssignment(
+      childPeerIds,
+      overrides.publicationGeneration ?? null,
+    ),
+    activeChildPeerIds: overrides.activeChildPeerIds ?? [],
+    selectedPeerId: overrides.selectedPeerId ?? null,
+    maxMediaEdges: 2,
+    iceConfig: { iceServers: [] },
+    stream,
+    profile: QUALITY_PROFILES["720p30"],
+  };
+}
+
+describe("Host provisional child runtime ownership", () => {
+  it("accepts only the exact connection and promotes the same peer", async () => {
+    const signals: Array<{ peerId: string; connectionId: string }> = [];
+    const promotedUpdates = vi.fn();
+    const owner = new HostProvisionalChild({
+      sendSignal: (peerId, payload) => {
+        signals.push({ peerId, connectionId: payload.connectionId });
+        return true;
+      },
+      onPromotedUpdate: promotedUpdates,
+    });
+    const stream = createStream(createTrack("video", "host-probe-video"), null);
+    const input = hostProvisionalInput(7, ["probe-child"], stream);
+
+    expect(owner.prepare(input)).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const preparedConnection = FakePeerConnection.latest!;
+    const preparedConnectionId = signals[0]!.connectionId;
+    expect(FakePeerConnection.activeCount).toBe(1);
+
+    expect(owner.acceptSignal("wrong-child", {
+      kind: "description",
+      connectionId: preparedConnectionId,
+      description: { type: "answer", sdp: "wrong-peer" },
+    })).toBe(false);
+    expect(owner.acceptSignal("probe-child", {
+      kind: "description",
+      connectionId: "wrong-connection",
+      description: { type: "answer", sdp: "wrong-connection" },
+    })).toBe(false);
+    expect(owner.acceptSignal("probe-child", {
+      kind: "candidate",
+      connectionId: preparedConnectionId,
+      candidate: { candidate: "host-probe-candidate" },
+    })).toBe(true);
+    expect(owner.acceptSignal("probe-child", {
+      kind: "description",
+      connectionId: preparedConnectionId,
+      description: { type: "answer", sdp: "right-answer" },
+    })).toBe(true);
+    await vi.waitFor(() =>
+      expect(preparedConnection.remoteDescription?.sdp).toBe("right-answer"),
+    );
+    expect(preparedConnection.addedIceCandidates).toEqual([
+      { candidate: "host-probe-candidate" },
+    ]);
+
+    const activation = owner.activate(input);
+    expect(activation.kind).toBe("promote");
+    if (activation.kind !== "promote") {
+      throw new Error("expected the prepared Host child to promote");
+    }
+    expect(activation.peer.connectionId).toBe(preparedConnectionId);
+    expect(FakePeerConnection.latest).toBe(preparedConnection);
+    expect(FakePeerConnection.activeCount).toBe(1);
+    await expect(activation.peer.restartIce()).resolves.toBe(true);
+    expect(signals).toEqual([
+      { peerId: "probe-child", connectionId: preparedConnectionId },
+      { peerId: "probe-child", connectionId: preparedConnectionId },
+    ]);
+    expect(promotedUpdates).toHaveBeenCalledWith(
+      activation.peer,
+      expect.objectContaining({ connectionId: preparedConnectionId }),
+    );
+    activation.peer.dispose();
+  });
+
+  it("disposes stale prepares on replacement, rollback, and auth reset", async () => {
+    const owner = new HostProvisionalChild({ sendSignal: () => true });
+    const stream = createStream(createTrack("video", "host-cleanup-video"), null);
+
+    expect(owner.prepare(hostProvisionalInput(7, ["first-probe"], stream))).toBe(true);
+    const first = FakePeerConnection.latest!;
+    expect(owner.prepare(hostProvisionalInput(8, ["second-probe"], stream))).toBe(true);
+    const second = FakePeerConnection.latest!;
+    expect(first.connectionState).toBe("closed");
+
+    expect(owner.activate({
+      revision: 9,
+      assignment: hostAssignment([]),
+      activeChildPeerIds: [],
+      selectedPeerId: null,
+      maxMediaEdges: 2,
+    })).toEqual({ kind: "ordinary" });
+    expect(second.connectionState).toBe("closed");
+
+    expect(owner.prepare(hostProvisionalInput(10, ["auth-probe"], stream))).toBe(true);
+    const authProbe = FakePeerConnection.latest!;
+    owner.discard();
+    expect(authProbe.connectionState).toBe("closed");
+    expect(FakePeerConnection.activeCount).toBe(0);
+  });
+
+  it("retains failed connection identity until authoritative activation", async () => {
+    const signals: Array<{ connectionId: string }> = [];
+    const owner = new HostProvisionalChild({
+      sendSignal: (_peerId, payload) => {
+        signals.push({ connectionId: payload.connectionId });
+        return false;
+      },
+    });
+    const stream = createStream(createTrack("video", "host-failed-video"), null);
+    const input = hostProvisionalInput(11, ["failed-probe"], stream);
+
+    expect(owner.prepare(input)).toBe(true);
+    await vi.waitFor(() => expect(FakePeerConnection.activeCount).toBe(0));
+    expect(signals).toHaveLength(1);
+    const instanceCount = FakePeerConnection.instances.length;
+    expect(owner.prepare(input)).toBe(false);
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+
+    expect(owner.activate(input)).toEqual({
+      kind: "failed",
+      peerId: "failed-probe",
+      connectionId: signals[0]!.connectionId,
+    });
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+  });
+
+  it("replaces the prepared stream in place and tombstones a failed replacement", async () => {
+    const signals: Array<{ connectionId: string }> = [];
+    const owner = new HostProvisionalChild({
+      sendSignal: (_peerId, payload) => {
+        signals.push({ connectionId: payload.connectionId });
+        return true;
+      },
+    });
+    const initial = createStream(createTrack("video", "host-initial-video"), null);
+    const input = hostProvisionalInput(12, ["stream-probe"], initial);
+    expect(owner.prepare(input)).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const preparedConnection = FakePeerConnection.latest!;
+    const preparedConnectionId = signals[0]!.connectionId;
+    const instanceCount = FakePeerConnection.instances.length;
+
+    const replacementVideo = createTrack("video", "host-replacement-video");
+    await expect(
+      owner.replaceStream(createStream(replacementVideo, null)),
+    ).resolves.toBe(true);
+    expect(preparedConnection.senders[0]!.track).toBe(replacementVideo);
+    const activation = owner.activate(input);
+    expect(activation.kind).toBe("promote");
+    if (activation.kind !== "promote") {
+      throw new Error("expected stream-updated Host probe to promote");
+    }
+    expect(FakePeerConnection.instances).toHaveLength(instanceCount);
+    expect(FakePeerConnection.latest).toBe(preparedConnection);
+    expect(activation.peer.connectionId).toBe(preparedConnectionId);
+    activation.peer.dispose();
+
+    const failedSignals: Array<{ connectionId: string }> = [];
+    const failedOwner = new HostProvisionalChild({
+      sendSignal: (_peerId, payload) => {
+        failedSignals.push({ connectionId: payload.connectionId });
+        return true;
+      },
+    });
+    const failedInput = hostProvisionalInput(
+      13,
+      ["failed-stream-probe"],
+      initial,
+    );
+    expect(failedOwner.prepare(failedInput)).toBe(true);
+    await vi.waitFor(() => expect(failedSignals).toHaveLength(1));
+    const failedConnection = FakePeerConnection.latest!;
+    const failedConnectionId = failedSignals[0]!.connectionId;
+    const failedInstanceCount = FakePeerConnection.instances.length;
+    failedConnection.senders[0]!.failNextReplace = true;
+    await expect(
+      failedOwner.replaceStream(
+        createStream(createTrack("video", "host-failed-replacement"), null),
+      ),
+    ).resolves.toBe(false);
+    expect(failedConnection.connectionState).toBe("closed");
+    const failedActivation = failedOwner.activate(failedInput);
+    expect(failedActivation).toMatchObject({
+      kind: "failed",
+      peerId: "failed-stream-probe",
+      connectionId: failedConnectionId,
+    });
+    expect(FakePeerConnection.instances).toHaveLength(failedInstanceCount);
+
+    const promotedFailure = vi.fn();
+    const racingSignals: string[] = [];
+    const racingOwner = new HostProvisionalChild({
+      sendSignal: (_peerId, payload) => {
+        racingSignals.push(payload.connectionId);
+        return true;
+      },
+      onPromotedStreamFailure: promotedFailure,
+    });
+    const racingInput = hostProvisionalInput(
+      14,
+      ["racing-stream-probe"],
+      initial,
+    );
+    expect(racingOwner.prepare(racingInput)).toBe(true);
+    await vi.waitFor(() => expect(racingSignals).toHaveLength(1));
+    const racingConnection = FakePeerConnection.latest!;
+    racingConnection.senders[0]!.failNextReplace = true;
+    const racingReplacement = racingOwner.replaceStream(
+      createStream(createTrack("video", "host-racing-replacement"), null),
+    );
+    const racingActivation = racingOwner.activate(racingInput);
+    expect(racingActivation.kind).toBe("promote");
+    if (racingActivation.kind !== "promote") {
+      throw new Error("expected racing Host probe to promote");
+    }
+    await expect(racingReplacement).resolves.toBe(false);
+    expect(promotedFailure).toHaveBeenCalledWith(racingActivation.peer);
+    racingActivation.peer.dispose();
   });
 });
 

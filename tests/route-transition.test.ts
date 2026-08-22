@@ -9,6 +9,10 @@ import {
   reportActivePeerRouteFailure,
 } from "../src/client/media/route-transition.ts";
 import { HostSfuRoute } from "../src/client/media/host-sfu-route.ts";
+import {
+  plannedHostProvisionalChild,
+  resolveHostPreparedChildActivation,
+} from "../src/client/media/host-provisional-child.ts";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
 import {
@@ -49,11 +53,14 @@ function sfuConfig(revision: number) {
   };
 }
 
-function hostSfuIngressGrant(newConnectionId = "selected-connection-new") {
+function hostSfuIngressGrant(
+  newConnectionId = "selected-connection-new",
+  revision = 1,
+) {
   return {
     type: "selected-edge-turn" as const,
     edgeKind: "host-sfu-ingress" as const,
-    revision: 1,
+    revision,
     hostPeerId: "host_12345678",
     publicationGeneration: "generation-a",
     oldConnectionId: "generation-a",
@@ -88,6 +95,116 @@ function createFakePublisher(log: string[], label: string) {
     }),
   };
 }
+
+describe("Host provisional child ownership", () => {
+  it("admits only one strict child within the physical Host edge budget", () => {
+    expect(
+      plannedHostProvisionalChild({
+        revision: 7,
+        assignment: hostAssignment(null, ["active-child", "probe-child"]),
+        activeChildPeerIds: ["active-child"],
+        selectedPeerId: null,
+        maxMediaEdges: 2,
+      }),
+    ).toBe("probe-child");
+    expect(
+      plannedHostProvisionalChild({
+        revision: 7,
+        assignment: hostAssignment("publication", ["probe-child"]),
+        activeChildPeerIds: [],
+        selectedPeerId: null,
+        maxMediaEdges: 2,
+      }),
+    ).toBe("probe-child");
+    expect(
+      plannedHostProvisionalChild({
+        revision: 7,
+        assignment: hostAssignment(null, ["probe-child"]),
+        activeChildPeerIds: [],
+        selectedPeerId: "selected-overlay",
+        maxMediaEdges: 2,
+      }),
+    ).toBe("probe-child");
+    expect(
+      plannedHostProvisionalChild({
+        revision: 7,
+        assignment: hostAssignment("publication", [
+          "active-child",
+          "probe-child",
+        ]),
+        activeChildPeerIds: ["active-child"],
+        selectedPeerId: null,
+        maxMediaEdges: 2,
+      }),
+    ).toBeNull();
+    expect(
+      plannedHostProvisionalChild({
+        revision: 7,
+        assignment: hostAssignment(null, ["active-child", "probe-child"]),
+        activeChildPeerIds: ["active-child"],
+        selectedPeerId: "selected-overlay",
+        maxMediaEdges: 2,
+      }),
+    ).toBeNull();
+  });
+
+  it("promotes the exact identity and preserves a failed connection tombstone", () => {
+    const input = {
+      revision: 7,
+      assignment: hostAssignment(null, ["active-child", "probe-child"]),
+      activeChildPeerIds: ["active-child"],
+      selectedPeerId: null,
+      maxMediaEdges: 2,
+    };
+    expect(
+      resolveHostPreparedChildActivation({
+        ...input,
+        prepared: {
+          revision: 7,
+          peerId: "probe-child",
+          failedConnectionId: null,
+        },
+      }),
+    ).toEqual({ kind: "promote", peerId: "probe-child" });
+    expect(
+      resolveHostPreparedChildActivation({
+        ...input,
+        prepared: {
+          revision: 7,
+          peerId: "probe-child",
+          failedConnectionId: "failed-probe-connection",
+        },
+      }),
+    ).toEqual({
+      kind: "failed",
+      peerId: "probe-child",
+      connectionId: "failed-probe-connection",
+    });
+    expect(
+      resolveHostPreparedChildActivation({ ...input, prepared: null }),
+    ).toEqual({ kind: "ordinary" });
+    expect(
+      resolveHostPreparedChildActivation({
+        ...input,
+        prepared: {
+          revision: 6,
+          peerId: "probe-child",
+          failedConnectionId: null,
+        },
+      }),
+    ).toEqual({ kind: "ordinary" });
+    expect(
+      resolveHostPreparedChildActivation({
+        ...input,
+        prepared: {
+          revision: 7,
+          peerId: "other-child",
+          failedConnectionId: null,
+        },
+      }),
+    ).toEqual({ kind: "ordinary" });
+  });
+});
 
 interface FakeSubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
@@ -400,6 +517,80 @@ describe("HostSfuRoute", () => {
       phase: "prepare",
       connectionId: null,
     }]);
+  });
+
+  it("accepts a forward-revision selected ingress before its config arrives", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const failures: Array<() => void> = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: (onDisconnected) => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        failures.push(onDisconnected);
+        return publisher;
+      },
+    });
+    const active = hostAssignment("generation-a");
+    route.accept({ revision: 1, phase: "prepare", assignment: active });
+    await route.acceptConfig(sfuConfig(1));
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: active,
+    });
+
+    messages.length = 0;
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment("generation-a", ["viewer-root"]),
+    });
+    failures[0]();
+    expect(messages).toContainEqual({
+      type: "route-failed",
+      revision: 2,
+      phase: "prepare",
+      connectionId: null,
+    });
+
+    await route.acceptAndWait({
+      revision: 3,
+      phase: "active",
+      assignment: active,
+    });
+    expect(messages).toContainEqual({ type: "refresh-sfu", revision: 3 });
+    expect(
+      route.startSelectedEdgeTurn(
+        hostSfuIngressGrant("selected-forward-connection", 3),
+      ),
+    ).toBe(true);
+    await route.acceptConfig(sfuConfig(3));
+
+    await vi.waitFor(() => expect(publishers).toHaveLength(2));
+    expect(publishers[1]?.connect).toHaveBeenCalledWith({
+      url: "wss://sfu.example.test",
+      token: "token-3",
+      rtcConfig: {
+        iceServers: [hostSfuIngressGrant().iceServer],
+        iceTransportPolicy: "relay",
+      },
+    });
+    await vi.waitFor(() => expect(messages).toContainEqual({
+      type: "route-ready",
+      revision: 3,
+      phase: "active",
+    }));
   });
 
   it("reports the selected ingress connection when it fails during peer prepare", async () => {

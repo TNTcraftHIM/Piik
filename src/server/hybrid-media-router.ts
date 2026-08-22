@@ -1228,6 +1228,12 @@ export class HybridMediaRouter {
     const ownsHealthyActiveSfu = healthyPending
       ? this.ownsActiveSfuForHealthyReselection(participant, healthyPending)
       : false;
+    const ownsQualityActiveSfu = healthyPending
+      ? this.ownsActiveOrdinarySfuForPeerQualityReselection(
+          participant,
+          healthyPending,
+        )
+      : false;
     if (
       message.phase === "active" &&
       healthy?.activeRevision === message.revision &&
@@ -1261,7 +1267,30 @@ export class HybridMediaRouter {
     ) {
       this.abortPeerQualityReselectionForHardFailure(participant.roomId);
       this.activeSelectedSfuIngresses.delete(participant.roomId);
+      this.failBackToPeerBaseline(participant.roomId);
       return;
+    }
+    if (
+      message.phase === "prepare" &&
+      message.connectionId === null &&
+      healthyPending?.revision === message.revision &&
+      ownsQualityActiveSfu
+    ) {
+      this.abortPeerQualityReselectionForHardFailure(
+        participant.roomId,
+        participant.role === "viewer" ? participant.peerId : undefined,
+      );
+      const rollbackRevision = this.mediaRouteControllers
+        .get(participant.roomId)
+        ?.getActiveRoute().revision;
+      if (rollbackRevision === undefined) {
+        return;
+      }
+      message = {
+        ...message,
+        revision: rollbackRevision,
+        phase: "active",
+      };
     }
     if (
       message.phase === "prepare" &&
@@ -1893,6 +1922,11 @@ export class HybridMediaRouter {
       }
       if (currentPending) {
         this.abortPendingRoute(key);
+      } else if (
+        currentIngress &&
+        this.selectedSfuIngressAttemptIsCurrent(current)
+      ) {
+        this.failBackToPeerBaseline(key);
       }
     }, SELECTED_EDGE_TURN_ATTEMPT_TIMEOUT_MS);
     timer.unref();
@@ -1956,6 +1990,23 @@ export class HybridMediaRouter {
       publicationGeneration: attempt.publicationGeneration,
       connectionId: attempt.newConnectionId,
     });
+  }
+
+  private selectedSfuIngressAttemptIsCurrent(
+    attempt: SelectedSfuIngressAttempt,
+  ): boolean {
+    const active = this.mediaRouteControllers
+      .get(attempt.roomId)
+      ?.getActiveRoute();
+    return (
+      active?.revision === attempt.revision &&
+      active.sfu.publicationGeneration === attempt.publicationGeneration &&
+      active.assignments.get(attempt.hostPeerId)?.sfuPublicationGeneration ===
+        attempt.publicationGeneration &&
+      this.connectedPeer(attempt.roomId, attempt.hostPeerId)?.sessionId ===
+        attempt.hostSessionId &&
+      this.options.getShareGeneration(attempt.roomId) === attempt.shareGeneration
+    );
   }
 
   private finishSelectedEdgeTurnFailure(
@@ -2395,15 +2446,20 @@ export class HybridMediaRouter {
     }
 
     const candidateExclusions = new Set(excludedParentPeerIds);
-    candidateExclusions.add(
-      this.peerRelayTopology.getHostPeerId(roomId) ?? guard.parentPeerId,
-    );
+    const hostPeerId = this.peerRelayTopology.getHostPeerId(roomId);
     for (const [peerId, assignment] of active.assignments) {
+      const isHost = peerId === hostPeerId;
+      const participant = isHost
+        ? this.options.roomStore.getConnectedHost(roomId)
+        : this.options.roomStore.getConnectedViewer(roomId, peerId);
+      const supportedParent = isHost
+        ? assignment.upstream.kind === "none"
+        : assignment.upstream.kind === "peer" ||
+          assignment.upstream.kind === "sfu";
       if (
-        (assignment.upstream.kind !== "peer" &&
-          assignment.upstream.kind !== "sfu") ||
-        !this.options.roomStore.getConnectedViewer(roomId, peerId) ||
-        assignment.childPeerIds.length + 1 >
+        !participant ||
+        !supportedParent ||
+        this.activeParentMediaEdges(roomId, peerId, assignment) + 1 >
           this.peerRelayTopology.getDownstreamCapacity(roomId, peerId)
       ) {
         candidateExclusions.add(peerId);
@@ -2417,7 +2473,7 @@ export class HybridMediaRouter {
       MAX_PEER_RELAY_DEPTH,
     );
     const newParent = newParentPeerId
-      ? this.options.roomStore.getConnectedViewer(roomId, newParentPeerId)
+      ? this.connectedPeer(roomId, newParentPeerId)
       : undefined;
     if (!newParentPeerId || !newParent) {
       return false;
@@ -2996,14 +3052,24 @@ export class HybridMediaRouter {
     const parentAssignment = active?.assignments.get(
       probe?.newParentPeerId ?? "",
     );
+    const hostPeerId = this.peerRelayTopology.getHostPeerId(roomId);
+    const supportedParent =
+      probe?.newParentPeerId === hostPeerId
+        ? parentAssignment?.upstream.kind === "none"
+        : parentAssignment?.upstream.kind === "peer" ||
+          parentAssignment?.upstream.kind === "sfu";
     return Boolean(
       probe &&
         this.pendingRoutePreparations.get(roomId) === pending &&
         active?.revision === probe.activeRevision &&
         this.options.getShareGeneration(roomId) === probe.shareGeneration &&
-        (parentAssignment?.upstream.kind === "peer" ||
-          parentAssignment?.upstream.kind === "sfu") &&
-        parentAssignment.childPeerIds.length + 1 <=
+        supportedParent &&
+        parentAssignment &&
+        this.activeParentMediaEdges(
+          roomId,
+          probe.newParentPeerId,
+          parentAssignment,
+        ) + 1 <=
           this.peerRelayTopology.getDownstreamCapacity(
             roomId,
             probe.newParentPeerId,
@@ -3013,6 +3079,26 @@ export class HybridMediaRouter {
         plannedUpstream.peerId === probe.newParentPeerId &&
         this.pendingSessionsAreCurrent(roomId, pending) &&
         this.pendingQualityIntentIsCurrent(roomId, pending),
+    );
+  }
+
+  private activeParentMediaEdges(
+    roomId: string,
+    parentPeerId: string,
+    assignment: ParticipantRouteAssignment,
+  ): number {
+    const selectedOverlayEdges = [...this.selectedPeerEdgeLeases.values()].some(
+      (lease) =>
+        lease.roomId === roomId &&
+        lease.parentPeerId === parentPeerId &&
+        !assignment.childPeerIds.includes(lease.viewerPeerId),
+    )
+      ? 1
+      : 0;
+    return (
+      assignment.childPeerIds.length +
+      (assignment.sfuPublicationGeneration ? 1 : 0) +
+      selectedOverlayEdges
     );
   }
 
@@ -3044,6 +3130,52 @@ export class HybridMediaRouter {
       participant.peerId ===
         this.peerRelayTopology.getHostPeerId(participant.roomId) &&
       assignment?.sfuPublicationGeneration === probe.publicationGeneration
+    );
+  }
+
+  private ownsActiveOrdinarySfuForPeerQualityReselection(
+    participant: AuthenticatedRouteParticipant,
+    pending: PendingRoutePreparation,
+  ): boolean {
+    const probe = pending.peerQualityReselection;
+    if (
+      !probe ||
+      participant.peerId !== probe.newParentPeerId ||
+      pending.expectedSessionIds.get(participant.peerId) !==
+        participant.sessionId ||
+      !this.peerQualityReselectionIsCurrent(participant.roomId, pending)
+    ) {
+      return false;
+    }
+    const active = this.mediaRouteControllers
+      .get(participant.roomId)
+      ?.getActiveRoute();
+    const assignment = active?.assignments.get(participant.peerId);
+    if (!active?.sfu.publicationGeneration || !assignment) {
+      return false;
+    }
+    if (participant.role === "viewer") {
+      return (
+        !this.selectedPeerEdgeLeases.has(
+          viewerConnectionKey(participant.roomId, participant.peerId),
+        ) &&
+        assignment.upstream.kind === "sfu" &&
+        active.sfu.rootPeerIds.includes(participant.peerId)
+      );
+    }
+    const activeIngress = this.activeSelectedSfuIngresses.get(
+      participant.roomId,
+    );
+    const hasCurrentSelectedIngress =
+      activeIngress?.hostPeerId === participant.peerId &&
+      activeIngress.hostSessionId === participant.sessionId &&
+      activeIngress.shareGeneration === probe.shareGeneration &&
+      activeIngress.publicationGeneration === active.sfu.publicationGeneration;
+    return (
+      !hasCurrentSelectedIngress &&
+      participant.peerId ===
+        this.peerRelayTopology.getHostPeerId(participant.roomId) &&
+      assignment.sfuPublicationGeneration === active.sfu.publicationGeneration
     );
   }
 
