@@ -4,6 +4,8 @@ Last updated: 2026-08-22
 
 This file is the current execution index. Load [verification status](./verification-status.md) only when evidence or acceptance boundaries are relevant; Git history owns completed timelines.
 
+Execution is temporarily constrained by the [TODO audit hold](./todo-audit-hold.md). Held items remain preserved but must not be continued, merged, deployed, deleted, or treated as current product truth until their provenance and semantics are reviewed.
+
 ## Production
 
 - `https://share.bonfire.icu` runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`, release `9461e20`, wire `screener-v5`; `21d5cd9f7139` is the rollback release.
@@ -11,7 +13,9 @@ This file is the current execution index. Load [verification status](./verificat
 - Ordinary ICE is STUN-only. Production allows SFU roots <=2, one `peer-selected` lease across negotiating and answered states excluding Host ingress, selected UDP TTL 120, and room admission default eight with explicit limits from one through sixteen. `MAX_PEER_RELAY_DOWNSTREAM_EDGES` is unset, so effective downstream capacity is Host2/ordinary Browser Viewer1; active, provisional, selected, and Host SFU publication edges count. The wire remains `screener-v5`.
 - Stable SFU, route/transport truth, pause notices, entry/nickname UI, selected-edge lease authority, corroborated bad-relay handling, Share audio presets, local media-path diagnostics, pre-share self-check, privacy-safe diagnostic export, signaling-partition recovery, and peer-quality MBB are live. An ordinary Viewer with a peer/SFU upstream or the Host may own one separately budgeted provisional child; sibling MBB remains open. Native remains source-only.
 
-## Current Product Snapshot
+## Current Source And Production Snapshot
+
+The route-capacity, SFU-root, publication-accounting, and selected-lease statements below describe exact deployed/source behavior, not an accepted future product model. Their semantics are frozen by the [TODO audit hold](./todo-audit-hold.md).
 
 - Capture precedes room creation. Balanced, automatic codec, and 128 kbps screen audio are defaults; clarity/fluid, H.264/VP8, and 64/128/256 kbps audio are deployed next-share choices. Codec and audio quality lock during a share.
 - Local-only connection details expose current Host SFU sender evidence, actual codec/fmtp and encoder fields, media-source/encode FPS evidence, A/V playout/jitter/concealment evidence, and selected candidate endpoints. These fields do not enter quality signaling, server state, logs, persistence, or route selection.
@@ -27,15 +31,15 @@ This file is the current execution index. Load [verification status](./verificat
 
 ## Active Milestone
 
-1. Verify the deployed Share audio presets and local observability on target browsers and real routes: field availability, actual values, negotiated/observed bitrate, audible quality, A/V synchronization evidence, candidate endpoints, and route switches.
-2. Run one representative production-room UDP/frame/cap/stop canary. Validate initial ingress, `peer-selected`, bad-relay reparenting, and healthy SFU reselection without changing the STUN-only ordinary-peer policy.
-3. Run pinned LiveKit with isolated per-leaf shaping to prove zero-child SFU BWE downshift/recovery and resources before implementing explicit evacuation or another media selector; the root-invariant/Dynacast-off gate is deployed.
-4. Complete Native package download, Viewer2/FIFO, hardware/endurance, and game A/V evidence; use target-device or production measurements for performance decisions.
-5. Run the Host2/ordinary Browser Viewer1 relay resource/quality and heterogeneous-network gates. ADR-0004 cap2/cap3 results remain historical experiments. A 20-viewer matrix is required before any accepted scale-default change; mobile remains a compatibility observation, not a capacity class.
+1. Reconcile TODO provenance and every current truth owner; distinguish accepted requirements, disputed holds, deployed facts, historical evidence, and conditional research.
+2. Produce the document/archive and worktree/branch/folder disposition schedule without deleting, rebasing, merging, or moving held material.
+3. Merge the audit-guard truth, restore the canonical repository root to exact latest `main`, and execute only the approved workspace cleanup schedule.
+4. Produce the holistic routing model from that canonical truth as a held proposal without implementation.
+5. Report the organized canonical root/main, retained/cleaned workspace, routing proposal, held candidates, and proposed remaining TODOs to the user and wait for explicit confirmation. Only then accept final route semantics, update their owning truth, and merge that truth into canonical `main`; only from that exact newer SHA may other TODOs be resumed, parked, superseded, or cleaned. Previous audio, route-canary, SFU-shaping, Native, mobile, and scale items remain preserved in their owners but are not the active execution order.
 
 ## Decisions And Blockers
 
-- ADR-0004/0005 remain No-Go for broad rollout. DNS/TLS, independent secrets, UDP 7882, and bounded services are deployed, but real external media/device evidence and the isolated VM/IP clean-port gate remain open.
+- ADR-0005's automatic controller is deployed for all rooms. ADR-0004's experimental claims and any broad media, performance, resource, scale, or device acceptance remain No-Go until their explicit evidence gates pass; DNS/TLS, independent secrets, UDP 7882, and bounded services are deployed, while real external media/device evidence and the isolated VM/IP clean-port gate remain open.
 - Initial deployment region and expected network cohort are undecided.
 - Project license and distribution model are undecided; GPL/AGPL sources remain study-only.
 

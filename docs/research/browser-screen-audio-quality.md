@@ -190,9 +190,11 @@ Chrome/Edge baseline, while the RFC still defines the parameter as a receiver
 maximum rather than a minimum or continuous bitrate guarantee.
 
 The poor movie/music report against production `6ccb516` began under a
-historical mono negotiation contract, but it remained after the current source
-added peer `stereo=1;maxaveragebitrate=128000` and SFU `forceStereo: true`,
-128 kbps, DTX off, and RED retained. Those encoder settings cannot restore PCM
+historical mono negotiation contract, but it remained after a later 128-only
+source stage added peer `stereo=1;maxaveragebitrate=128000` and SFU
+`forceStereo: true`, 128 kbps, DTX off, and RED retained. Current Share advanced
+settings provide 64/128/256 kbps sender ceilings with 128 kbps as the default;
+those encoder settings still cannot restore PCM
 already changed or collapsed to mono by the Host capture processor. Loss,
 jitter and concealment remain separate diagnostic facts, but direct SFU
 reproduction makes source processing the first reversible correction.

@@ -8,6 +8,8 @@
   evidence is unverified; relay-capacity `0 -> 1`, multi-root reselection, and
   advanced encoded-media routes remain unimplemented candidates
 
+> Truth-audit note: this document remains research evidence, not a backlog. Any current-capacity, SFU-root, TURN, fallback, or accounting assertion is held by the [TODO audit hold](../todo-audit-hold.md) until the holistic route model is accepted.
+
 ## Terms
 
 - **Multiple trees:** split one media representation into two stripes and send

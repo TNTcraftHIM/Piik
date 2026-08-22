@@ -2,17 +2,20 @@
 
 ## Normal Workflow
 
-1. Start from an up-to-date `main` with a clean working tree.
+1. Start from the canonical repository root on an up-to-date `main` with a clean working tree. Do not keep `main` checked out in an auxiliary worktree; preserve any overlapping user changes explicitly before restoring the canonical root.
 2. Create one short-lived branch for one coherent change. Use `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `spike/` followed by a short description.
 3. For non-trivial design, implementation, or bug fixing, inspect the repository and research current primary sources before changing code. Record durable findings under `docs/research/`.
-4. Implement the smallest complete change. Add tests and concise rationale comments in proportion to risk.
-5. Update requirements, ADRs, project memory, status, and operational docs when their source facts changed. Replace stale text instead of appending a diary.
+4. Reconcile the requested outcome against the whole current product model and conflicting evidence. Before implementation, update every affected owning requirement/design/ADR/research document and current memory/status, replace stale current text, and checkpoint that nonvolatile truth in Git. If semantics remain disputed, record a hold and stop dependent implementation.
+5. Implement the smallest complete change from that checkpoint. Add tests and concise rationale comments in proportion to risk, and keep operational/current-truth updates in the same coherent pull request when implementation changes source facts.
 6. Run `sh scripts/check-project-state.sh` on macOS/Linux/Git Bash or `./scripts/check-project-state.ps1` on PowerShell, plus `npm run check` and any relevant manual browser/network checks. Record this local evidence in the pull request; GitHub Actions are reserved for `main` integration, releases, and explicit manual runs.
-7. Make focused commits using `type(scope): summary` where practical, then push the branch.
+7. Merge an accepted truth checkpoint before dependent candidates. Rebase or rebuild a retained candidate from that main once, keeping main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts. Make focused commits using `type(scope): summary` where practical, then push the branch.
+   Create any new implementation branch or parallel worktree from that exact canonical `main` commit, never from an older candidate or auxiliary worktree.
 8. Open a pull request using the repository template. Resolve review comments and required local checks before merging.
 9. Prefer squash merge for a single coherent change; preserve separate commits when they carry independently useful history. Delete the merged branch.
 
 Direct commits to `main` are reserved for an explicit user-approved exception. Never force-push shared branches or rewrite shared history without explicit approval.
+
+Clean up worktrees and branches only after semantic review and integration are complete and the normal merged-head, open-reference, clean-tree, and non-following link checks pass. Never merge an old branch wholesale after a newer truth checkpoint.
 
 ## Research Standard
 

@@ -36,7 +36,12 @@ failure. No viewer-1 acceptance means there is no two-viewer, third-viewer
 FIFO, or direct/TURN proof. The attempted native branch must not be opened or
 merged as product code from this state.
 
-## 2026-08-20 Current-Wire Checkpoint
+## 2026-08-20 Historical Wire Checkpoint
+
+This checkpoint targeted the then-current `screener-v2` wire and SQLite schema
+v2. Current Web and source-only Native use `screener-v5`, and current room
+persistence is SQLite schema v3. The dated behavior below remains experiment
+provenance, not a current integration contract.
 
 A clean local delivery candidate now targets only `screener-v2`: it exchanges
 `SITE_ACCESS_PASSWORD` for the bounded HttpOnly site-access cookie, uses

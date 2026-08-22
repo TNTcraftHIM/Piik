@@ -5,10 +5,18 @@
   exact-room canary
 - Status: rejected after bounded production canary; historical evidence only
 
+> Truth-audit boundary: the rejection of participant-wide TURN and the
+> STUN-only ordinary-peer fact remain valid inputs. The exact SFU/TURN order,
+> one-lease room policy, Host-ingress exception, and resource accounting below
+> describe the deployed candidate or a historical recommendation and are held
+> by the [TODO audit](../todo-audit-hold.md); they are not current design
+> authority.
+
 ## Decision
 
 Do not deploy or continue the built-in participant-wide candidate. Ordinary
-peer connections remain STUN-only. The accepted ladder is:
+peer connections remain STUN-only. Exact release `9461e20` implements this
+ladder, whose future placement and accounting are now held:
 
 ```text
 direct/peer UDP -> SFU/UDP virtual parent -> selected-edge TURN -> failure
@@ -77,8 +85,9 @@ acceptance supplied no compensating runtime evidence.
 
 ## Selected-Edge Boundary
 
-A correct replacement is not a renamed participant refresh API. It must be one
-coherent controller-owned change with a current consumer:
+The deployed selected-edge replacement was designed as one coherent
+controller-owned change with a current consumer. The list below records that
+source boundary; fixed counts and ordering remain held:
 
 - a complete default-off deployment tuple with an independent secret, one
   explicit TURN/UDP URI, bounded TTL, quota, bandwidth, and relay-port limits;

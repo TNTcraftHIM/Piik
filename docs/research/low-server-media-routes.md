@@ -11,6 +11,8 @@
   passed active Host SFU -> selected TURN/UDP ingress. Initial ingress,
   peer-selected last mile, external cohorts, and performance remain unverified.
 
+> Truth-audit note: ordinary STUN-only ICE, automatic P2P-first intent, exact generation authorization, and dated canary facts remain inputs. Fixed root counts, room-wide selected-lease limits, SFU/TURN placement, fallback order, and resource accounting are disputed under the [TODO audit hold](../todo-audit-hold.md) and cannot authorize implementation yet.
+
 ## Current Route Ladder
 
 The smallest current plan is:
@@ -247,13 +249,15 @@ change or explicit reconnect; it does not support periodic probing, a carrier
 
 **3. Healthy SFU-to-P2P bounded re-probe**
 
-- Current state: production `27ad90d` has the deployed one-root slice: it
+- Historical checkpoint: production `27ad90d` had the first deployed one-root slice: it
   reserves bounded capacity, keeps the healthy SFU route playing, proves one
   fresh P2P generation with current decoded-media progress, then commits
-  atomically and closes the old route. Current source `4c9174d` additionally
+  atomically and closes the old route. Source `4c9174d` additionally
   retains one cooldown-time opportunity as a current tuple and requires two new
-  evidence windows at expiry; that continuation is not deployed. Neither polls
-  network state.
+  evidence windows at expiry. Later production deployed that bounded continuation
+  and subsequent peer-quality MBB work. Exact current capacity, SFU, TURN, and
+  accounting semantics are now frozen by the truth-audit hold. None of these
+  generations polls network state.
 - Retained candidate: a discrete network-change or explicit-reconnect event may
   open one opportunity through that same controller after cooldown. It must not
   create a second route controller or treat an ICE restart on the SFU

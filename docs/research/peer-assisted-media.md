@@ -7,6 +7,8 @@
   accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
   the room-`1` rollout boundary; retained SFU media remains unverified.
 
+> Truth-audit note: dated measurements and exact deployed behavior remain valid within their stated environments. Browser1, fixed SFU-root-two, publication/selected-edge accounting, and future capacity conclusions are disputed inputs under the [TODO audit hold](../todo-audit-hold.md), not current product policy or executable gates.
+
 ## Conclusion
 
 Peer-assisted forwarding can cap the broadcaster at one or two outgoing media
