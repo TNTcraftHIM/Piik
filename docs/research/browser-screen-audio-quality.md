@@ -341,7 +341,8 @@ explicit encoded-track contract and need a focused compatibility check before
 claiming the same result.
 
 At the default ceiling, audio contributes at most 128 kbps RTP payload per
-active outbound edge, or 256 kbps for the current two-child endpoint cap. The
+active outbound edge, or 256 kbps for the configured two-slot endpoint example.
+The endpoint cap itself follows the current route policy. The
 explicit highest preset doubles those bounds to 256/512 kbps, excluding
 RTP/SRTP/UDP/IP overhead. A Host SFU publication contributes one such ingress;
 each root/peer forward still sends its own copy. This is small beside the

@@ -124,18 +124,22 @@ private to nginx, while WebRTC media reaches LiveKit directly on UDP 7882.
 ## Candidate boundary and rollback
 
 The accepted target for `share.bonfire.icu` remains distributed and automatic:
-direct/peer UDP first, then an SFU virtual parent feeding normally one or two
-roots, whose peer descendants continue carrying media. Multiple exceptional viewers that cannot attach behind a healthy
-root may consume additional server egress only under a separate explicit cap.
+direct/peer UDP first, with one Host publication available to authorized SFU
+subscriptions when a logical edge cannot use peer transport. An SFU-fed Viewer
+may continue as a peer relay only after independent outbound proof; strict
+fallback Viewers remain leaves. Server-assisted subscriptions and allocations
+use independent deployment admission rather than an endpoint-cap or fixed-root
+rule.
 
 The repository requires STUN and ordinary peer connections receive STUN-only
-ICE. The accepted ladder is direct/peer UDP, then the revision-bound SFU/UDP
-virtual parent, then optional authenticated TURN for one controller-selected
-exceptional edge. LiveKit participants receive only revision-bound `sfu-config`
-URL/token messages and negotiate within LiveKit's separate ICE domain. The
-selected-edge TURN config/wire is deployed in the current `9461e20` release with one
-UDP URL and a 120-second credential TTL. It was not exercised by a real media
-session during this cutover.
+ICE. An existing logical edge prefers direct/peer UDP and may use exact selected
+TURN when configured; only an unavailable logical ingress uses the Host
+publication/SFU path. A Host-SFU ingress may itself use selected TURN. LiveKit
+participants receive only revision-bound `sfu-config` URL/token messages and
+negotiate within LiveKit's separate ICE domain. The selected-edge TURN
+config/wire is deployed in the current `9461e20` release with one UDP URL and a
+120-second credential TTL. It was not exercised by a real media session during
+this cutover.
 
 `PEER_ASSISTED_MEDIA=true` is the process-wide topology/SFU switch. Every normal
 room gets its own bounded controller state; ordinary peer connections remain

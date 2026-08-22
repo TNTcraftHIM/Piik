@@ -2,8 +2,8 @@
 
 ## 1. Decision And Durable Truth
 
-- Treat discussions, examples, review suggestions, experiments, checkboxes, and agent ideas as inputs, not implementation authority. Restate the intended outcome and rationale, reconcile it against the whole product model and evidence, and challenge contradictions or needless complexity.
-- Before dependent implementation or implementation agents start, update every affected owning requirement, design, ADR or research conclusion, plus `docs/project-memory.md` and `docs/status.md` when their snapshots change. Checkpoint the consistent truth in Git; chat is not durable truth.
+- Highest priority: before implementation, cleanup, or deployment, settle the meaning against the whole product model and evidence, challenge contradictions or needless complexity, and write the accepted decision to its owning truth documents. Discussions, examples, review suggestions, experiments, checkboxes, and agent ideas are inputs, not implementation authority; never turn a partial interpretation into code or a branch.
+- Before dependent work starts, update every affected owning requirement, design, ADR or research conclusion, plus `docs/project-memory.md` and `docs/status.md` when their snapshots change. Checkpoint the consistent truth in Git; chat is not durable truth.
 - If semantics remain disputed, record the hold in `docs/todo.md` and freeze only dependent work. Do not encode a guess as accepted truth.
 - **Current-truth ("Dongpo pork") rule:** after a correction, current docs, UI, code, comments, configuration, and PR copy state only the accepted behavior and rationale that still constrains it. Remove rejected alternatives and explanations of their removal; Git history owns that history.
 - Queue new observations in their owner and continue the active milestone unless the user requests immediate investigation or the evidence reveals a P0 blocker.
@@ -20,8 +20,8 @@
 - A normal desktop or mobile browser is the initial Viewer target. A packaged sender or native capture helper is a later optimization.
 - Keep media distributed and automatic. Central services own rooms, authentication, signaling, STUN, observability, and bounded fallback resources; do not silently make the product always-SFU.
 - STUN and direct/peer UDP remain first. Ordinary peer edges receive no TURN candidates by default, and every accepted path ends in bounded success or clear failure. HTTPS/WSS transport is independent of media transport.
-- Every non-server endpoint uses one server-authoritative ordinary downstream cap: default `2`, configurable as `1`, `2`, or `3`. Upstream receive is free; Browser role, UA, visibility, and client advertisement do not create another tier.
-- SFU/TURN publication, subscription, selected transport, overlap, and server-resource accounting remain held in the current routing TODO until their holistic model is accepted.
+- Every non-server endpoint uses one server-authoritative steady outbound media-copy cap: default `2`, configurable as `1`, `2`, or `3`. A peer child or the Host's single SFU publication consumes one slot; upstream receive is free, selected TURN replaces the transport of the same copy, and SFU subscriber egress is accounted at the server. Browser role, UA, visibility, and client advertisement do not create another tier.
+- The accepted route model is one room controller with three operations: allocate/distribute, child reparent, and relay abdicate/drain. SFU is one Host publication with per-Viewer subscriptions; TURN is a selected transport for an authorized edge or Host-SFU ingress, not a topology node. These paths use exact generations, media proof, bounded overlap, and independent server admission; they do not create a fixed root-count or room-wide lease rule.
 
 ## 4. Canonical Repository And Integration
 

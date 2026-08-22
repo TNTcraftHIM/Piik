@@ -7,9 +7,9 @@ Last updated: 2026-08-22
 - Build private, low-latency game screen sharing for one broadcaster and a small group of trusted friends. Public or large broadcasts belong on OBS/Twitch-class services.
 - Web is the current delivery target. Viewers join from desktop or mobile browsers; a packaged or native sender is a later optimization.
 - Keep routing automatic and media distributed. Direct/peer UDP is preferred; centralized media is fallback infrastructure, not the default topology.
-- Every non-server endpoint uses one server-authoritative ordinary downstream capacity: default `2`, statically configurable as `1`, `2`, or `3`. Upstream receive is free, Browser role/UA/visibility does not create a separate tier, and clients cannot raise the deployment value.
+- Every non-server endpoint uses one server-authoritative steady outbound media-copy capacity: default `2`, statically configurable as `1`, `2`, or `3`. A peer child or the Host publication consumes one slot; upstream receive is free, selected TURN replaces the same copy's transport, and SFU subscriber egress is accounted at the server. Browser role/UA/visibility does not create a separate tier, and clients cannot raise the deployment value.
 - The stable routing invariants are one authoritative upstream per Viewer, an acyclic active graph, exact room/session/share/revision/generation authorization, media-proven make-before-break, and bounded success or failure.
-- SFU publication/subscription, selected TURN, fallback ordering, temporary overlap, and server-resource accounting must be decided as one route model before routing code changes. No older constant, experiment, or branch is authority for that decision.
+- The accepted route model is one room controller with allocate/distribute, child reparent, and relay abdicate/drain operations. One Host publication may serve all SFU-fed Viewers; an SFU-fed Viewer may relay only with independent outbound proof; selected TURN changes an authorized edge transport and is not a topology node. A confirmed bad edge reparents only its child. A relay parent's own ingress failure first enters suspect/cordon and attempts local repair; only failed repair, independent downstream evidence, or explicit sender/resource failure drains its children. Host source failures use publication repair and child migration. Endpoint capacity, temporary overlap, SFU/TURN admission, exact fallback, media binding generations, and rollback are one bounded transaction model.
 - Ordinary peer ICE is STUN-only. Credentials, room secrets, candidate details, and diagnostic data remain private and narrowly scoped.
 - Screen audio offers 64/128/256 kbps sender ceilings, defaults to 128, and locks the choice during a share. These are configuration ceilings, not fidelity claims.
 - Current UI, presence, route labels, and diagnostics describe observed state only; they do not create route authority.
@@ -26,10 +26,8 @@ Last updated: 2026-08-22
 ## Current Priority
 
 1. Keep this truth set and [the TODO ledger](./todo.md) concise and internally consistent.
-2. Report the converged facts and TODO classification to the user and stop for confirmation.
-3. After confirmation, produce one holistic routing model covering topology, transport, fallback, capacity, resource admission, and recovery; do not implement it yet.
-4. After route-semantics confirmation, update the owning requirement/design/ADR and merge that truth into canonical `main`.
-5. Rebuild only approved runtime changes from that exact `main`, validate cap `1/2/3` and route recovery, independently review, then deploy with rollback evidence.
+2. Merge the accepted holistic routing truth into canonical `main` before any dependent runtime branch or cleanup.
+3. Rebuild only approved runtime changes from that exact `main`, validate cap `1/2/3`, quality ownership, route recovery, and bounded resources, independently review, then deploy with rollback evidence.
 
 ## Working Rules
 

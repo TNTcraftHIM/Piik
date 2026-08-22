@@ -6,11 +6,11 @@ Only items in **Now** are executable after their stated decision gate. A branch 
 
 ## Now
 
-1. **Approve one holistic routing model.** After the user confirms this truth/TODO convergence, write a held proposal covering ordinary topology, SFU/TURN transport roles, fallback ordering, temporary overlap, resource admission, recovery, and the user-supplied constrained-network scenarios. Preserve the accepted endpoint cap and route safety invariants, then stop again for route-semantics confirmation.
-2. **Migrate routing from accepted truth.** After route semantics are confirmed and their owning truth is merged, rebuild the scoped runtime change from exact canonical `main`: every non-server endpoint defaults to ordinary downstream cap `2`, deployment accepts `1/2/3`, upstream receive is free, and no Browser tier exists. Replace policy magic numbers with named configuration and shared invariants.
-3. **Validate and release.** Run focused state-machine tests, cap `1/2/3` topology and recovery matrices, independent routing review, build/full gates, bounded production preflight, deployment, postflight, and rollback verification.
+1. **Merge accepted routing truth.** Reconcile the accepted holistic model across requirements, design, ADR, memory, status, and this ledger, then merge that truth into canonical `main` before dependent implementation.
+2. **Migrate routing from accepted truth.** Rebuild the scoped runtime change from that exact `main`: every non-server endpoint defaults to steady outbound media-copy cap `2`, deployment accepts `1/2/3`, a peer child or Host publication consumes one slot, upstream receive is free, selected TURN replaces the same copy's transport, and no Browser tier exists. Replace split topology/route/transport authority and policy magic numbers with one controller, one committed ingress graph, typed reservations, and shared invariants. Keep `EdgeHealth` child-scoped; let the quality owner supply finite correlated windows and independent-edge corroboration for `RelayEligibility`, with no IP-ranking or room-wide score.
+3. **Validate and release.** Run focused state-machine tests, child-vs-parent quality ownership, cap `1/2/3` topology and recovery matrices, constrained Host/SFU/TURN paths, independent routing review, build/full gates, bounded production preflight, deployment, postflight, and rollback verification.
 
-The deployed #164/#173/#175/#183 routing mechanisms are inputs to these tasks, not four separate TODOs. Keep their safe generation, authorization, make-before-break, and media-proof behavior while reconciling capacity and fallback accounting.
+The existing route implementation is an input to these tasks. Preserve its verified generation, authorization, make-before-break, and media-proof invariants while migrating capacity and fallback accounting.
 
 ## Product Decisions Needed
 

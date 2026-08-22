@@ -1,7 +1,7 @@
 # Project Documentation
 
 - [需求理解](./需求理解.md): current product scope, priorities, constraints, and acceptance criteria.
-- [方案设计](./方案设计.md): current implementation design; unresolved routing semantics are tracked in the current TODO ledger.
+- [方案设计](./方案设计.md): accepted implementation design; runtime migration and validation are tracked in the current TODO ledger.
 - [Project memory](./project-memory.md): durable current product and source snapshot to read at the start of future work.
 - [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
 - [Verification status](./verification-status.md): demand-loaded ledger of current cross-cutting evidence, open proof boundaries, and expensive-test applicability.
@@ -10,7 +10,7 @@
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, runtime relay-capacity extension, and abandon gates.
-- [Low-server-cost media routes](./research/low-server-media-routes.md): SFU-root/peer distribution, selected-edge TURN, hop-level accounting, privacy-safe ICE evidence, and bounded transport gates.
+- [Low-server-cost media routes](./research/low-server-media-routes.md): Host-publication/SFU distribution, selected-edge TURN, hop-level accounting, privacy-safe ICE evidence, and bounded transport gates.
 - [Built-in peer ICE TURN candidate](./research/built-in-peer-ice-turn.md): rejected canary record, retained standards/resource findings, and the selected-edge replacement boundary.
 - [Advanced peer distribution](./research/advanced-peer-distribution.md): multi-tree/SVC, encoded-object relay, native RTP forwarding, FEC/network-coding, MoQ, and measurable go/no-go gates.
 - [Native shared-encode sender](./research/native-shared-encode-sender.md): consolidated Draft #16/#18/#22/#23/#25/#28 ladder, unclassified product-gate failure, staged revalidation, and stop line.
@@ -23,7 +23,7 @@
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): historical P2P-first baseline; later access and automatic-routing decisions supersede its stale current-state details.
 - [ADR-0002](./adr/0002-persistent-protected-rooms.md): site access, room-scoped private Viewer grants, explicit public-watch, rotation, and minimal SQLite persistence.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): historical standard-WebRTC peer-assisted experiment and reusable evidence.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted automatic P2P-first direction and generation safety; unresolved capacity and fallback accounting remain held in the current TODO.
+- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted automatic P2P-first route model, capacity/accounting, fallback roles, and generation safety; runtime migration and validation remain in the current TODO.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
 - [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted path-isolated `HIGH + at most one LOW` policy, optional idle-layer stop, evidence contract, and SVC boundary.
 - [ADR-0008](./adr/0008-window-scoped-audio-capture.md): browser window-audio hint and the Windows WASAPI process-loopback boundary.

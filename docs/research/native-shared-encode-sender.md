@@ -260,7 +260,9 @@ a `HIGH` ceiling and built-in BWE selects from one shared `HIGH+LOW` pair. App
 evidence affects topology eligibility and diagnostics, not ordinary layer
 selection. `LOW` may already be active, and idle stop depends on the resource
 gate. The active representation/layer limit is two, never one per viewer; the
-host still has at most two downstream media edges.
+the host follows the configured non-server outbound media-copy capacity; the
+two-edge result in this experiment is a historical configuration, not a fixed
+policy.
 
 If a qualified hardware/power-efficient `LOW` path is unavailable or its
 measured encoder/CPU/GPU game or upload load is unacceptable, `LOW` fails closed

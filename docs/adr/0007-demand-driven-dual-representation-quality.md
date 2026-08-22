@@ -1,6 +1,6 @@
 # ADR-0007: Path-Isolated Dual-Representation Quality
 
-- Status: Accepted - Staged Implementation
+- Status: Accepted quality/representation decision; topology capacity follows ADR-0005
 - Date: 2026-08-19
 
 ## Context
@@ -31,8 +31,11 @@ Use path-isolated dual representations:
    passes, Screener does not add a media-layer selector.
 3. Correlated sender/viewer evidence and asymmetric windows classify topology
    eligibility and diagnostics only. An observed downshift is `suspect`; a
-   confirmed `FALLBACK` endpoint cannot remain a parent. These application
-   states do not command ordinary built-in layer changes.
+   confirmed `FALLBACK` relay parent cannot remain a parent. The edge-versus-
+   parent scope, same-edge C+B handling, local repair, and drain actions are
+   owned by ADR-0005's `EdgeHealth`/`RelayEligibility` controller; this ADR
+   does not turn representation evidence into a second topology authority or
+   command ordinary built-in layer changes.
 4. Explicit subscriber quality or sender layer activation is considered only
    if the built-in candidate fails its bounded gate. Deactivating an unused
    `LOW` is a resource optimization, not an acceptance requirement.
@@ -58,24 +61,28 @@ machine-learning controller, custom media selector, or continuous room-wide
 optimizer. Exact thresholds remain implementation inputs until the controlled
 quality matrix establishes them.
 
-The topology and representation budgets are independent invariants. The host
-still has at most two downstream media edges. A native relay forwards selected
+The topology and representation budgets are independent invariants. Each
+non-server endpoint follows ADR-0005 steady outbound media-copy capacity `C`
+(`1`, `2`, or `3`, default `2`); the two-edge host result below is a historical
+experiment configuration, not a fixed policy. A native relay forwards selected
 encoded packets without decoding or re-encoding. Future dual-tree or striped
 delivery may reduce host upload from about two full copies toward one copy plus
 necessary redundancy, but it does not block this decision.
 
-The application must not stably retain a confirmed `FALLBACK` endpoint as a
+The application must not stably retain a confirmed `FALLBACK` relay parent as a
 parent. A later planned or explicit `LOW` fallback is leaf-only: complete a
 generation-guarded child evacuation before changing its quality, and preserve
 the prior assignment and quality if evacuation fails or becomes stale. An SFU
 may make an unannounced congestion-protection downshift before the application
-can react. Treat that observation as `suspect`, not confirmed `FALLBACK`; if
-correlated evidence confirms it across the bounded entry window, evacuate its
-children and set downstream capacity to zero. This cannot promise packet-level
-preemption, so the root-with-children gate must bound temporary descendant
-impact before default enablement. Re-advertising relay capacity still needs the
-longer recovery window and a cooldown. A viewer's
-advisory request cannot trigger this sequence by itself.
+can react. Treat that observation as `suspect`, not confirmed `FALLBACK`; the
+representation evidence may contribute to the bounded topology evidence, but
+ADR-0005 decides whether it is an edge-local reparent or a relay-parent
+cordon/repair/drain. C+B from one edge alone never proves parent-wide failure;
+parent drain requires the independent-edge or hard-failure conditions in
+ADR-0005. This cannot promise packet-level preemption, so the root-with-
+children gate must bound temporary descendant impact before default enablement.
+Re-advertising relay capacity still needs the longer recovery window and a
+cooldown. A viewer's advisory request cannot trigger this sequence by itself.
 
 ## Evidence Contract
 
@@ -110,7 +117,11 @@ for the few receive/decode signals required by the topology predicate. The B/C
 correlation uses normalized fields derived from negotiated parameters/stats and
 actual decode behavior; it must never upload raw SDP, raw stats, candidate
 addresses, or raw device/network identifiers. Opaque server-issued path and
-connection-generation IDs remain required for authorization and correlation.
+connection-generation IDs remain required for authorization and correlation,
+and the evidence carries ADR-0005's exact route identity: room/share
+generation, both endpoint sessions, assignment/connection generation,
+media-binding generation, route revision, and publication generation when
+applicable.
 Do not build a general telemetry schema.
 
 A viewer may request `LOW`, but the request is advisory. It must be carried on
@@ -170,9 +181,11 @@ evidence windows remain limited to topology eligibility and diagnostics:
    subscriber does not attach a `RemoteTrack`, so LiveKit `adaptiveStream` is not
    directly usable without changing that ownership; it is not required for the
    SFU bandwidth-adaptation candidate. Before default enablement, a separate
-   root-with-children gate must inject an autonomous downshift, observe it as
-   suspect, evacuate on bounded confirmation, and limit temporary descendant
-   impact; no confirmed `FALLBACK` root may retain children. If built-in selection
+   root-with-children gate must inject an autonomous downshift and observe it as
+   suspect. ADR-0005 then chooses local repair, edge-local reparent, or
+   RelayEligibility parent drain; only that drain branch evacuates children and
+   limits temporary descendant impact. No confirmed `FALLBACK` root may retain
+   children. If built-in selection
    fails the product gates, test explicit standard subscriber quality selection
    before sender activation/deactivation. The gate must prove that a healthy
    P2P/`HIGH` path is unchanged, no third layer appears, the expected layer is
@@ -286,12 +299,15 @@ Negative:
 - An idle `LOW` may remain active only after hardware, game-performance, and
   upload cost passes. If idle stopping exists, verify bytes/frames stop;
   otherwise record and accept the bounded always-on cost.
-- Representation count never exceeds two and host media edges never exceed two.
+- Representation count never exceeds two. Host and relay endpoint media copies
+  follow ADR-0005 steady capacity `C`; the two-edge result is only the bounded
+  experiment configuration.
 - A later planned/explicit `LOW` fallback evacuates children first and preserves the
   prior state on stale/failed evacuation. An autonomous BWE downshift enters
-  `suspect`; bounded confirmation evacuates its children, and no confirmed
-  `FALLBACK` endpoint retains downstream capacity. The root-with-children
-  gate measures temporary descendant impact before default enablement.
+  `suspect`; ADR-0005's bounded edge/parent evidence then chooses local repair,
+  child reparent, or parent drain, and no confirmed `FALLBACK` relay parent
+  retains downstream capacity. The root-with-children gate measures temporary
+  descendant impact before default enablement.
 - Relay capacity returns only after the longer stable recovery plus cooldown.
 - An unavailable/over-budget `LOW` fails visibly for weak paths while healthy
   paths and `HIGH` remain unchanged.
