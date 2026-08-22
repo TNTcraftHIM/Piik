@@ -491,10 +491,54 @@ media and broader audio/A-V verification remain open. The
 native host shared-encode sender is a separate planned phase regardless of this
 experiment's result and is not implemented here.
 
-The recovery gate above does not cover silent network partitions. With the
-default 30-second heartbeat, server detection can take 30 to 60 seconds before
-the same 5-second grace begins; that case remains unverified and must be reported
-separately.
+## Browser Signaling Silent-Partition Detection
+
+The recovery gate above does not cover a browser WebSocket that remains open
+locally after its network path has silently failed. The server's default
+30-second protocol heartbeat can take 30 to 60 seconds to observe that failure,
+and browser script cannot observe WebSocket Ping or Pong control frames. The
+[WHATWG WebSockets Living Standard](https://websockets.spec.whatwg.org/)
+(accessed 2026-08-22) exposes messages, generic error/close events, and
+`readyState`; it also specifies that constructing a WebSocket immediately
+starts a new connection while `close()` starts a closing handshake whose close
+event arrives later. The application therefore needs a small text-message
+challenge rather than waiting for either protocol Ping/Pong or the old socket's
+close event.
+
+The retained compatibility seam is response-only opt-in under `screener-v5`:
+the Web client sends `signaling-challenge { sequence }`, and the server sends
+the exact `signaling-challenge-response { sequence }` only to that requesting
+socket. The Native sender's strict decoder rejects unknown server message
+types, so the server must never send this response unsolicited. Existing Web
+clients and Native senders do not opt in and therefore never receive the new
+message. A new server remains compatible with those old clients, but new Web
+assets and the signaling server still need an ordered, atomic deployment
+because an old server rejects the new client message. Supporting that reverse
+version skew would require explicit capability negotiation or a protocol bump.
+
+The Web watchdog is eligible only while the current socket is authenticated,
+the share is online, and the endpoint has an active authoritative route (the
+Host itself, an ordinary Viewer with an online Host, or a peer-assisted Viewer
+whose active upstream is not `none`). After five seconds it sends one
+challenge. An exact two-second miss enters an internal suspect state and sends
+one fresh confirm challenge; an exact second two-second miss logically retires
+that socket generation and immediately constructs a replacement without
+waiting for the old closing handshake. Responses from another sequence or
+socket generation are ignored, and the server revalidates the current
+authenticated session before replying. A hidden document, a visibility
+restore, or an obviously late timer callback clears pending evidence and starts
+a fresh five-second baseline instead of declaring failure.
+
+The response is socket-local, contains no room state, secret, candidate, or raw
+statistics, is not logged, and is limited by the server to at most one response
+per socket per second. The watchdog itself does not close or rebuild media,
+emit `route-failed`, or change route authority. Ordinary P2P and a duplicate
+same-revision SFU authority keep their healthy media while the new socket
+reauthenticates. An existing `peer-selected` TURN lease remains deliberately
+bound to both authenticated sessions: replacing either session invalidates that
+exceptional transport and leaves recovery to the existing bounded route path.
+Relaxing or carrying that security authority is a separate routing/protocol
+change, not part of signaling liveness detection.
 
 ## License Boundary
 

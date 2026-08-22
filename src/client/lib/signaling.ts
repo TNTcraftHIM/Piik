@@ -37,6 +37,15 @@ const INVALID_MESSAGE_CLOSE_CODE = 1008;
 const VIEWER_ACCESS_REVOKED_CLOSE_CODE = 4004;
 const PROTOCOL_REFRESH_MESSAGE = "页面版本已更新，请刷新后重试";
 const TERMINAL_SEND_TIMEOUT_MS = 15_000;
+const SIGNALING_CHALLENGE_INTERVAL_MS = 5_000;
+const SIGNALING_CHALLENGE_TIMEOUT_MS = 2_000;
+const SIGNALING_TIMER_LAG_TOLERANCE_MS = 1_000;
+
+interface PendingSignalingChallenge {
+  generation: number;
+  sequence: number;
+  confirm: boolean;
+}
 
 export function shouldReconnectSignaling(code: number): boolean {
   return (
@@ -61,16 +70,26 @@ export class SignalingClient {
   private authenticationTimer: number | null = null;
   private terminalTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
+  private socketGeneration = 0;
+  private hostOnline = false;
+  private authoritativeRoute = false;
+  private challengeSequence = 0;
+  private watchdogTimer: number | null = null;
+  private watchdogDeadlineMs = 0;
+  private pendingChallenge: PendingSignalingChallenge | null = null;
+  private visibilityListenerAttached = false;
 
   constructor(
     private readonly identity: SignalingIdentity,
     private readonly events: SignalingEvents,
+    private readonly now: () => number = Date.now,
   ) {}
 
   start(): void {
     if (this.socket || this.stopped) {
       return;
     }
+    this.attachVisibilityListener();
     this.events.onStatus(this.reconnectAttempt === 0 ? "connecting" : "reconnecting");
     this.connect();
   }
@@ -79,6 +98,7 @@ export class SignalingClient {
     this.stopped = true;
     this.authenticated = false;
     this.clearTimers();
+    this.detachVisibilityListener();
     this.terminalMessage = null;
     const socket = this.socket;
     this.socket = null;
@@ -98,6 +118,7 @@ export class SignalingClient {
     ) {
       return false;
     }
+    this.clearSignalingWatchdog();
     socket.close(CLIENT_RECONNECT_CLOSE_CODE, "client reconnect");
     return true;
   }
@@ -167,11 +188,16 @@ export class SignalingClient {
       return;
     }
 
+    const generation = ++this.socketGeneration;
     const socket = new WebSocket(signalUrl());
     this.socket = socket;
 
     socket.addEventListener("open", () => {
-      if (this.socket !== socket || this.stopped) {
+      if (
+        this.socket !== socket ||
+        generation !== this.socketGeneration ||
+        this.stopped
+      ) {
         return;
       }
       const authenticate: ClientMessage = {
@@ -188,7 +214,11 @@ export class SignalingClient {
     });
 
     socket.addEventListener("message", (event) => {
-      if (this.socket !== socket || typeof event.data !== "string") {
+      if (
+        this.socket !== socket ||
+        generation !== this.socketGeneration ||
+        typeof event.data !== "string"
+      ) {
         return;
       }
       let message: ServerMessage;
@@ -196,6 +226,11 @@ export class SignalingClient {
         message = decodeServerMessage(event.data);
       } catch {
         this.terminateForProtocolMismatch();
+        return;
+      }
+
+      if (message.type === "signaling-challenge-response") {
+        this.acceptSignalingChallengeResponse(message.sequence, generation);
         return;
       }
 
@@ -231,15 +266,22 @@ export class SignalingClient {
         }
         this.events.onStatus("connected");
       }
+      this.updateAuthoritativeActivity(message);
       this.events.onMessage(message);
     });
 
     socket.addEventListener("close", (event) => {
-      if (this.socket !== socket) {
+      if (
+        this.socket !== socket ||
+        generation !== this.socketGeneration
+      ) {
         return;
       }
       this.socket = null;
       this.authenticated = false;
+      this.hostOnline = false;
+      this.authoritativeRoute = false;
+      this.clearSignalingWatchdog();
       this.clearAuthenticationTimer();
       if (!this.stopped && shouldReconnectSignaling(event.code)) {
         this.scheduleReconnect();
@@ -287,6 +329,7 @@ export class SignalingClient {
 
   private clearTimers(): void {
     this.clearAuthenticationTimer();
+    this.clearSignalingWatchdog();
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -295,5 +338,172 @@ export class SignalingClient {
       window.clearTimeout(this.terminalTimer);
       this.terminalTimer = null;
     }
+  }
+
+  private updateAuthoritativeActivity(message: ServerMessage): void {
+    if (message.type === "authenticated") {
+      this.hostOnline = message.hostOnline;
+      this.authoritativeRoute =
+        this.identity.role === "host" ||
+        !("mediaMode" in message) ||
+        message.routeAssignment.upstream.kind !== "none";
+    } else if (message.type === "host-status") {
+      this.hostOnline = message.online;
+    } else if (
+      message.type === "route-update" &&
+      message.phase === "active" &&
+      this.identity.role === "viewer"
+    ) {
+      this.authoritativeRoute = message.assignment.upstream.kind !== "none";
+    } else if (
+      message.type === "sharing-stopped" ||
+      message.type === "room-closed"
+    ) {
+      this.hostOnline = false;
+      this.authoritativeRoute = false;
+    } else {
+      return;
+    }
+    this.refreshSignalingWatchdog();
+  }
+
+  private refreshSignalingWatchdog(): void {
+    if (!this.isWatchdogEligible()) {
+      this.clearSignalingWatchdog();
+      return;
+    }
+    if (this.watchdogTimer === null && this.pendingChallenge === null) {
+      this.armSignalingWatchdog(SIGNALING_CHALLENGE_INTERVAL_MS);
+    }
+  }
+
+  private armSignalingWatchdog(delayMs: number): void {
+    const generation = this.socketGeneration;
+    this.watchdogDeadlineMs = this.now() + delayMs;
+    this.watchdogTimer = window.setTimeout(() => {
+      this.watchdogTimer = null;
+      this.handleSignalingWatchdogTick(generation);
+    }, delayMs);
+  }
+
+  private handleSignalingWatchdogTick(generation: number): void {
+    if (generation !== this.socketGeneration) {
+      return;
+    }
+    if (
+      !this.isWatchdogEligible() ||
+      Math.abs(this.now() - this.watchdogDeadlineMs) >
+        SIGNALING_TIMER_LAG_TOLERANCE_MS
+    ) {
+      this.rebaselineSignalingWatchdog();
+      return;
+    }
+    const pending = this.pendingChallenge;
+    if (!pending) {
+      this.sendSignalingChallenge(false, generation);
+    } else if (pending.confirm) {
+      this.replaceUnresponsiveSocket(generation);
+    } else {
+      this.sendSignalingChallenge(true, generation);
+    }
+  }
+
+  private sendSignalingChallenge(confirm: boolean, generation: number): void {
+    const socket = this.socket;
+    if (!socket || generation !== this.socketGeneration) {
+      return;
+    }
+    this.challengeSequence =
+      this.challengeSequence === Number.MAX_SAFE_INTEGER
+        ? 0
+        : this.challengeSequence + 1;
+    const sequence = this.challengeSequence;
+    socket.send(JSON.stringify({ type: "signaling-challenge", sequence }));
+    this.pendingChallenge = { generation, sequence, confirm };
+    this.armSignalingWatchdog(SIGNALING_CHALLENGE_TIMEOUT_MS);
+  }
+
+  private acceptSignalingChallengeResponse(
+    sequence: number,
+    generation: number,
+  ): void {
+    const pending = this.pendingChallenge;
+    if (
+      !pending ||
+      pending.generation !== generation ||
+      pending.sequence !== sequence ||
+      generation !== this.socketGeneration
+    ) {
+      return;
+    }
+    this.clearSignalingWatchdog();
+    this.refreshSignalingWatchdog();
+  }
+
+  private replaceUnresponsiveSocket(generation: number): void {
+    const socket = this.socket;
+    if (!socket || generation !== this.socketGeneration || this.stopped) {
+      return;
+    }
+    this.socket = null;
+    this.authenticated = false;
+    this.hostOnline = false;
+    this.authoritativeRoute = false;
+    this.clearAuthenticationTimer();
+    this.clearSignalingWatchdog();
+    this.events.onStatus("reconnecting");
+    if (socket.readyState < WebSocket.CLOSING) {
+      socket.close(CLIENT_RECONNECT_CLOSE_CODE, "signaling timeout");
+    }
+    this.connect();
+  }
+
+  private rebaselineSignalingWatchdog(): void {
+    this.clearSignalingWatchdog();
+    this.refreshSignalingWatchdog();
+  }
+
+  private clearSignalingWatchdog(): void {
+    this.pendingChallenge = null;
+    if (this.watchdogTimer !== null) {
+      window.clearTimeout(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+  }
+
+  private readonly onVisibilityChange = (): void => {
+    this.rebaselineSignalingWatchdog();
+  };
+
+  private attachVisibilityListener(): void {
+    if (typeof document === "undefined" || this.visibilityListenerAttached) {
+      return;
+    }
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
+    this.visibilityListenerAttached = true;
+  }
+
+  private detachVisibilityListener(): void {
+    if (typeof document === "undefined" || !this.visibilityListenerAttached) {
+      return;
+    }
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
+    this.visibilityListenerAttached = false;
+  }
+
+  private isDocumentVisible(): boolean {
+    return (
+      typeof document === "undefined" || document.visibilityState === "visible"
+    );
+  }
+
+  private isWatchdogEligible(): boolean {
+    return (
+      this.authenticated &&
+      this.hostOnline &&
+      this.authoritativeRoute &&
+      this.isDocumentVisible() &&
+      this.socket?.readyState === WebSocket.OPEN
+    );
   }
 }
