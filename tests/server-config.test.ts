@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { loadConfig } from "../src/server/config.ts";
 
+const liveKitAdmission = {
+  LIVEKIT_API_URL: "https://livekit-api.test",
+  SFU_INGRESS_CAPACITY: "4",
+  SFU_EGRESS_CAPACITY: "16",
+} as const;
+
 describe("server configuration", () => {
   it("allows local development without STUN and defaults the origin", () => {
     const config = loadConfig({ NODE_ENV: "development", PORT: "9123" });
@@ -23,6 +29,7 @@ describe("server configuration", () => {
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
+      ...liveKitAdmission,
     };
     const turn = {
       SELECTED_EDGE_TURN_URLS: "turn:turn.test:3478?transport=udp",
@@ -54,6 +61,7 @@ describe("server configuration", () => {
         LIVEKIT_URL: "wss://livekit.test",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
+        ...liveKitAdmission,
         SELECTED_EDGE_TURN_URLS: url,
         SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
         SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
@@ -65,39 +73,45 @@ describe("server configuration", () => {
     const config = loadConfig({
       PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: " ws://livekit.test:7880 ",
+      LIVEKIT_API_URL: " http://livekit.test:7880 ",
       LIVEKIT_API_KEY: " test-key ",
       LIVEKIT_API_SECRET: ` ${"s".repeat(32)} `,
+      SFU_INGRESS_CAPACITY: " 4 ",
+      SFU_EGRESS_CAPACITY: " 16 ",
     });
 
     expect(config.livekitFallback).toEqual({
       url: "ws://livekit.test:7880",
+      apiUrl: "http://livekit.test:7880",
       apiKey: "test-key",
       apiSecret: "s".repeat(32),
-      maxSfuRootsPerRoom: 2,
+      ingressCapacity: 4,
+      egressCapacity: 16,
     });
   });
 
-  it.each(["1", "2"])(
-    "accepts an SFU root limit of %s when fallback is configured",
-    (maxSfuRootsPerRoom) => {
+  it.each(["1", "9007199254740991"])(
+    "accepts an explicit positive safe SFU capacity of %s",
+    (capacity) => {
       const config = loadConfig({
         PEER_ASSISTED_MEDIA: "true",
         LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_URL: "https://livekit-api.test",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
-        MAX_SFU_ROOTS_PER_ROOM: maxSfuRootsPerRoom,
+        SFU_INGRESS_CAPACITY: capacity,
+        SFU_EGRESS_CAPACITY: capacity,
       });
 
-      expect(config.livekitFallback?.maxSfuRootsPerRoom).toBe(
-        Number(maxSfuRootsPerRoom),
-      );
+      expect(config.livekitFallback?.ingressCapacity).toBe(Number(capacity));
+      expect(config.livekitFallback?.egressCapacity).toBe(Number(capacity));
     },
   );
 
-  it("does not activate fallback from the root limit alone", () => {
-    expect(
-      loadConfig({ MAX_SFU_ROOTS_PER_ROOM: "2" }).livekitFallback,
-    ).toBeUndefined();
+  it("rejects SFU capacity without the LiveKit credential tuple", () => {
+    expect(() => loadConfig({ SFU_INGRESS_CAPACITY: "2" })).toThrow(
+      "require LiveKit fallback",
+    );
   });
 
   it("requires peer-assisted media for LiveKit fallback", () => {
@@ -107,21 +121,24 @@ describe("server configuration", () => {
         LIVEKIT_URL: "wss://livekit.test",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
+        ...liveKitAdmission,
       }),
     ).toThrow("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
   });
 
   it.each([
     { LIVEKIT_URL: "wss://livekit.test" },
+    { LIVEKIT_API_URL: "https://livekit-api.test" },
     { LIVEKIT_API_KEY: "test-key" },
     { LIVEKIT_API_SECRET: "s".repeat(32) },
     {
       LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_URL: "https://livekit-api.test",
       LIVEKIT_API_KEY: "test-key",
     },
   ])("rejects a partial LiveKit credential tuple", (partial) => {
     expect(() => loadConfig(partial)).toThrow(
-      "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+      "LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
     );
   });
 
@@ -137,6 +154,7 @@ describe("server configuration", () => {
         LIVEKIT_URL: url,
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
+        ...liveKitAdmission,
       }),
     ).toThrow("LIVEKIT_URL");
   });
@@ -151,28 +169,95 @@ describe("server configuration", () => {
         LIVEKIT_URL: "ws://livekit.test:7880",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
+        ...liveKitAdmission,
       }),
     ).toThrow("LIVEKIT_URL must use wss in production");
   });
 
-  it("rejects a short LiveKit API secret and invalid root limits", () => {
+  it.each([
+    "ws://livekit-api.test",
+    "http://user:pass@livekit-api.test",
+    "http://livekit-api.test/rtc",
+    "http://livekit-api.test?token=value",
+    "http://livekit-api.test#fragment",
+  ])("rejects an invalid LiveKit control origin: %s", (apiUrl) => {
+    expect(() =>
+      loadConfig({
+        PEER_ASSISTED_MEDIA: "true",
+        LIVEKIT_URL: "wss://livekit.test",
+        LIVEKIT_API_URL: apiUrl,
+        LIVEKIT_API_KEY: "test-key",
+        LIVEKIT_API_SECRET: "s".repeat(32),
+        SFU_INGRESS_CAPACITY: "4",
+        SFU_EGRESS_CAPACITY: "16",
+      }),
+    ).toThrow("LIVEKIT_API_URL");
+  });
+
+  it("allows only HTTPS or loopback LiveKit control in production", () => {
+    const production = {
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://share.test",
+      SITE_ACCESS_PASSWORD: "host-password-12",
+      STUN_URLS: "stun:stun.test:3478",
+      PEER_ASSISTED_MEDIA: "true",
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "s".repeat(32),
+      SFU_INGRESS_CAPACITY: "4",
+      SFU_EGRESS_CAPACITY: "16",
+    };
+    expect(() =>
+      loadConfig({
+        ...production,
+        LIVEKIT_API_URL: "http://livekit-api.test:7880",
+      }),
+    ).toThrow("must use https or loopback");
+    expect(
+      loadConfig({
+        ...production,
+        LIVEKIT_API_URL: "http://127.0.0.1:7880",
+      }).livekitFallback?.apiUrl,
+    ).toBe("http://127.0.0.1:7880");
+  });
+
+  it("rejects a short LiveKit API secret and invalid SFU capacities", () => {
     const fallback = {
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
+      ...liveKitAdmission,
     };
 
     expect(() =>
       loadConfig({ ...fallback, LIVEKIT_API_SECRET: "too-short" }),
     ).toThrow("LIVEKIT_API_SECRET must contain at least 32 bytes");
-    for (const maxSfuRootsPerRoom of ["0", "3", "1.5"]) {
+    for (const capacity of ["0", "1.5", "9007199254740992"]) {
       expect(() =>
         loadConfig({
           ...fallback,
-          MAX_SFU_ROOTS_PER_ROOM: maxSfuRootsPerRoom,
+          SFU_EGRESS_CAPACITY: capacity,
         }),
-      ).toThrow("MAX_SFU_ROOTS_PER_ROOM");
+      ).toThrow("SFU_EGRESS_CAPACITY");
     }
+  });
+
+  it("requires both SFU capacities with LiveKit and rejects the removed root key", () => {
+    const fallback = {
+      LIVEKIT_URL: "wss://livekit.test",
+      LIVEKIT_API_URL: "https://livekit-api.test",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "s".repeat(32),
+    };
+    expect(() => loadConfig(fallback)).toThrow(
+      "must be configured with LiveKit fallback",
+    );
+    expect(() =>
+      loadConfig({ ...fallback, SFU_INGRESS_CAPACITY: "2" }),
+    ).toThrow("must be configured with LiveKit fallback");
+    expect(() => loadConfig({ MAX_SFU_ROOTS_PER_ROOM: "" })).toThrow(
+      "MAX_SFU_ROOTS_PER_ROOM is no longer supported",
+    );
   });
 
   it.each([
@@ -182,12 +267,14 @@ describe("server configuration", () => {
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "x".repeat(32),
+      ...liveKitAdmission,
     },
     {
       PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "x".repeat(32),
       LIVEKIT_API_SECRET: "x".repeat(32),
+      ...liveKitAdmission,
     },
   ])("rejects reused infrastructure secrets", (environment) => {
     expect(() => loadConfig(environment)).toThrow(
@@ -311,6 +398,7 @@ describe("server configuration", () => {
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
+      ...liveKitAdmission,
     });
 
     expect(config.livekitFallback?.url).toBe("wss://livekit.test");

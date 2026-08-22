@@ -19,7 +19,9 @@ rtc:
   use_external_ip: true
 
 room:
-  auto_create: true
+  # Screener creates exact-generation rooms through the private RoomService API.
+  # Keep this false so a stale participant token cannot recreate a drained room.
+  auto_create: false
   # Screener enforces its configured admission limit before issuing a token.
   # This server-side ceiling covers the repository's maximum 16 viewers + host.
   max_participants: 17

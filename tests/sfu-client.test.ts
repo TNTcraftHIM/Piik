@@ -539,7 +539,7 @@ describe("SfuPublisher", () => {
     expect(updates.at(-1)).toBeNull();
   });
 
-  it("SFU root invariant gate: explicitly keeps Dynacast off while preparing", async () => {
+  it("explicitly keeps Dynacast off while preparing SFU fallback", async () => {
     const publisher = new SfuPublisher();
 
     await expect(publisher.connect(connection)).resolves.toBe(true);
@@ -598,7 +598,7 @@ describe("SfuPublisher", () => {
     expect(livekit.state.rooms[0]?.disconnect).toHaveBeenCalledWith(false);
   });
 
-  it("SFU root invariant gate: publishes exactly the ordered q and h video encodings", async () => {
+  it("publishes exactly the ordered q and h video encodings", async () => {
     const publisher = new SfuPublisher();
     const video = track("video", "video-1");
     const audio = track("audio", "audio-1");
@@ -1229,7 +1229,7 @@ describe("SfuPublisher", () => {
 });
 
 describe("SfuSubscriber", () => {
-  it("SFU root invariant gate: keeps the assigned screen subscription at a HIGH ceiling", async () => {
+  it("keeps the assigned screen subscription at a HIGH ceiling", async () => {
     const gate = deferred();
     livekit.state.connectGate = gate.promise;
     const streams: Array<MediaStream | null> = [];

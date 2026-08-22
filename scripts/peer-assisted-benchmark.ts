@@ -551,7 +551,7 @@ function inspectSfuPublication(pages: readonly PageObservation[]) {
     };
   }
 
-  if (sfuViewers.length > 2 || publicationOwners.length !== 1) {
+  if (publicationOwners.length !== 1) {
     return { observed: true, rootCount: sfuViewers.length, coherent: false };
   }
   const host = publicationOwners[0]!;
@@ -872,7 +872,7 @@ export function buildRunChecks(
         passed: summary.sfuPublicationCoherent,
         actual: summary.sfuRootCount,
         expected:
-          "1-2 active SFU roots, one Host publication, and one active revision across all participants",
+          "admitted SFU subscriptions, one Host publication, and one active revision across all participants",
       }
     : {
         name: "no-orphan-sfu-publication",

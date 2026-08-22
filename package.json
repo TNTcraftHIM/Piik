@@ -14,7 +14,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node dist/server/server/index.js",
     "gate:peer-topology-loopback": "tsx scripts/peer-assisted-benchmark.ts",
-    "gate:sfu-root-invariants": "vitest run tests/media-route-controller.test.ts tests/livekit-token.test.ts tests/sfu-client.test.ts tests/route-transition.test.ts tests/peer-assisted-benchmark.test.ts tests/server-signal.test.ts -t \"SFU root invariant gate\"",
+    "gate:sfu-admission": "vitest run tests/sfu-resource-admission.test.ts tests/sfu-room-control.test.ts tests/media-route-controller.test.ts tests/livekit-token.test.ts tests/sfu-client.test.ts tests/route-transition.test.ts tests/peer-assisted-benchmark.test.ts tests/server-config.test.ts tests/server-http.test.ts tests/server-signal.test.ts",
     "gate:access-privacy": "npm run build:client && vitest run tests/server-signal.test.ts && tsx scripts/access-privacy-gate.ts",
     "gate:turn-udp-allocation": "tsx scripts/turn-allocation-gate.ts",
     "probe:native-one-viewer": "tsx scripts/native-one-viewer-gate.ts",

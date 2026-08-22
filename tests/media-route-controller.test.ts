@@ -73,7 +73,7 @@ function chainedAssignments(): Map<string, ParticipantRouteAssignment> {
 }
 
 describe("MediaRouteController", () => {
-  it("SFU root invariant gate: accepts two roots, rejects a third, and charges one Host publication edge", () => {
+  it("keeps SFU roots unique while charging one Host publication edge", () => {
     const assignments = new Map<string, ParticipantRouteAssignment>([
       [
         HOST,
@@ -96,17 +96,23 @@ describe("MediaRouteController", () => {
     ]);
     expect(routes.hostActiveMediaEdges()).toBe(2);
 
-    const excessiveRoots = new Map(assignments);
-    excessiveRoots.set(SFU_ROOT_C, assignment({ kind: "sfu" }));
-    expect(
-      () =>
-        new MediaRouteController({
-          hostPeerId: HOST,
-          assignments: excessiveRoots,
-          sfuPublicationGeneration: GENERATION_A,
-          sfuRootPeerIds: [SFU_ROOT_A, SFU_ROOT_B, SFU_ROOT_C],
-        }),
-    ).toThrow("SFU root participants must be unique and bounded");
+    const threeRootAssignments = new Map(assignments);
+    threeRootAssignments.set(SFU_ROOT_C, assignment({ kind: "sfu" }));
+    const threeRoots = new MediaRouteController({
+      hostPeerId: HOST,
+      assignments: threeRootAssignments,
+      sfuPublicationGeneration: GENERATION_A,
+      sfuRootPeerIds: [SFU_ROOT_A, SFU_ROOT_B, SFU_ROOT_C],
+    });
+    expect(threeRoots.getActiveRoute().sfu.rootPeerIds).toHaveLength(3);
+    expect(() =>
+      new MediaRouteController({
+        hostPeerId: HOST,
+        assignments,
+        sfuPublicationGeneration: GENERATION_A,
+        sfuRootPeerIds: [SFU_ROOT_A, SFU_ROOT_A],
+      }),
+    ).toThrow("SFU root participants must be unique");
 
     const excessiveHostEdges = new Map(assignments);
     excessiveHostEdges.set(

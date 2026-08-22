@@ -216,6 +216,10 @@ export class SignalingServer {
         }
         return;
       }
+      if (this.closing) {
+        rejectUpgrade(socket, 503, "Service Unavailable");
+        return;
+      }
       if (!this.isAllowedOrigin(request.headers.origin)) {
         rejectUpgrade(socket, 403, "Forbidden");
         return;
@@ -250,26 +254,33 @@ export class SignalingServer {
 
   async close(): Promise<void> {
     this.closing = true;
+    this.options.server.off("upgrade", this.upgradeHandler);
     clearInterval(this.heartbeatTimer);
     clearInterval(this.cleanupTimer);
     for (const timer of this.viewerGraceTimers.values()) {
       clearTimeout(timer);
     }
     this.viewerGraceTimers.clear();
-    this.hybridMediaRouter?.close();
+    let routeCloseError: unknown;
+    try {
+      await this.hybridMediaRouter?.close();
+    } catch (error) {
+      routeCloseError = error;
+    }
     this.viewerQualityEvidenceGates.clear();
     this.viewerMediaReadyByRoom.clear();
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
     this.ordinaryActiveHostChildrenByRoom.clear();
-    this.options.server.off("upgrade", this.upgradeHandler);
-
     for (const socket of this.webSocketServer.clients) {
       socket.terminate();
     }
     await new Promise<void>((resolve) => {
       this.webSocketServer.close(() => resolve());
     });
+    if (routeCloseError) {
+      throw routeCloseError;
+    }
   }
 
   private accept(socket: WebSocket, siteAccessAuthenticated: boolean): void {
@@ -313,7 +324,7 @@ export class SignalingServer {
 
   private handleMessage(socket: WebSocket, encoded: string): void {
     const state = this.socketStates.get(socket);
-    if (!state) {
+    if (!state || this.closing) {
       return;
     }
     if (state.revoked) {
@@ -420,6 +431,7 @@ export class SignalingServer {
             sessionId: state.sessionId,
           },
           () =>
+            !this.closing &&
             this.socketStates.get(socket) === state &&
             !state.revoked &&
             !state.authenticated &&
@@ -459,6 +471,20 @@ export class SignalingServer {
           : "SERVER_ERROR";
       this.sendError(socket, code, authenticationErrorMessage(code));
       socket.close(4003, "Authentication failed");
+      return;
+    }
+
+    if (
+      this.closing ||
+      this.socketStates.get(socket) !== state ||
+      state.revoked ||
+      socket.readyState !== WebSocket.OPEN
+    ) {
+      this.options.roomStore.disconnectParticipant(
+        participant.roomId,
+        participant.peerId,
+        state.sessionId,
+      );
       return;
     }
 

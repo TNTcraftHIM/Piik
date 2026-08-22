@@ -1,5 +1,4 @@
 import {
-  CURRENT_SFU_ROOT_LIMIT,
   MAX_ICE_SERVER_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   stunUrlSchema,
@@ -20,7 +19,6 @@ const MAX_SELECTED_EDGE_TURN_SECRET_BYTES = 128;
 const MIN_SELECTED_EDGE_TURN_TTL_SECONDS = 60;
 const MAX_SELECTED_EDGE_TURN_TTL_SECONDS = 10 * 60;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
-const DEFAULT_MAX_SFU_ROOTS_PER_ROOM = CURRENT_SFU_ROOT_LIMIT;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
 const REMOVED_ENVIRONMENT_VARIABLES = [
   "TURN_URLS",
@@ -32,13 +30,16 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
   "PEER_ASSISTED_ROOM_IDS",
   "HOST_ADMISSION_PASSWORD",
   "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
+  "MAX_SFU_ROOTS_PER_ROOM",
 ] as const;
 
 export interface LiveKitFallbackConfig {
   url: string;
+  apiUrl: string;
   apiKey: string;
   apiSecret: string;
-  maxSfuRootsPerRoom: number;
+  ingressCapacity: number;
+  egressCapacity: number;
 }
 
 export interface SelectedEdgeTurnConfig {
@@ -94,6 +95,20 @@ function parsePositiveInteger(
   return parsed;
 }
 
+function parseRequiredPositiveInteger(
+  value: string | undefined,
+  name: string,
+): number {
+  if (value === undefined || value === "") {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
+}
+
 function parseBoundedInteger(
   value: string | undefined,
   fallback: number,
@@ -125,16 +140,32 @@ function parseLiveKitFallback(
   nodeEnv: RuntimeEnvironment,
 ): LiveKitFallbackConfig | undefined {
   const url = environment.LIVEKIT_URL?.trim() || undefined;
+  const apiUrl = environment.LIVEKIT_API_URL?.trim() || undefined;
   const apiKey = environment.LIVEKIT_API_KEY?.trim() || undefined;
   const apiSecret = environment.LIVEKIT_API_SECRET?.trim() || undefined;
-  const configuredValues = [url, apiKey, apiSecret].filter(Boolean).length;
+  const configuredValues = [url, apiUrl, apiKey, apiSecret].filter(Boolean).length;
+  const ingressCapacity = environment.SFU_INGRESS_CAPACITY?.trim() || undefined;
+  const egressCapacity = environment.SFU_EGRESS_CAPACITY?.trim() || undefined;
+  const configuredCapacities = [ingressCapacity, egressCapacity].filter(
+    Boolean,
+  ).length;
 
   if (configuredValues === 0) {
+    if (configuredCapacities > 0) {
+      throw new Error(
+        "SFU_INGRESS_CAPACITY and SFU_EGRESS_CAPACITY require LiveKit fallback",
+      );
+    }
     return undefined;
   }
-  if (configuredValues !== 3) {
+  if (configuredValues !== 4) {
     throw new Error(
-      "LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+      "LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
+    );
+  }
+  if (configuredCapacities !== 2) {
+    throw new Error(
+      "SFU_INGRESS_CAPACITY and SFU_EGRESS_CAPACITY must be configured with LiveKit fallback",
     );
   }
   if (Buffer.byteLength(apiSecret!) < MIN_LIVEKIT_API_SECRET_BYTES) {
@@ -165,18 +196,57 @@ function parseLiveKitFallback(
     throw new Error("LIVEKIT_URL must use wss in production");
   }
 
+  let parsedApiUrl: URL;
+  try {
+    parsedApiUrl = new URL(apiUrl!);
+  } catch {
+    throw new Error("LIVEKIT_API_URL must be a valid http or https origin");
+  }
+  if (parsedApiUrl.protocol !== "http:" && parsedApiUrl.protocol !== "https:") {
+    throw new Error("LIVEKIT_API_URL must use http or https");
+  }
+  if (
+    parsedApiUrl.username ||
+    parsedApiUrl.password ||
+    parsedApiUrl.pathname !== "/" ||
+    parsedApiUrl.search ||
+    parsedApiUrl.hash
+  ) {
+    throw new Error(
+      "LIVEKIT_API_URL must be an origin without credentials, path, query, or fragment",
+    );
+  }
+  if (
+    nodeEnv === "production" &&
+    parsedApiUrl.protocol !== "https:" &&
+    !isLoopbackHostname(parsedApiUrl.hostname)
+  ) {
+    throw new Error("LIVEKIT_API_URL must use https or loopback in production");
+  }
+
   return {
     url: parsedUrl.origin,
+    apiUrl: parsedApiUrl.origin,
     apiKey: apiKey!,
     apiSecret: apiSecret!,
-    maxSfuRootsPerRoom: parseBoundedInteger(
-      environment.MAX_SFU_ROOTS_PER_ROOM,
-      DEFAULT_MAX_SFU_ROOTS_PER_ROOM,
-      "MAX_SFU_ROOTS_PER_ROOM",
-      1,
-      CURRENT_SFU_ROOT_LIMIT,
+    ingressCapacity: parseRequiredPositiveInteger(
+      ingressCapacity,
+      "SFU_INGRESS_CAPACITY",
+    ),
+    egressCapacity: parseRequiredPositiveInteger(
+      egressCapacity,
+      "SFU_EGRESS_CAPACITY",
     ),
   };
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
 }
 
 function parseUrlList(value: string | undefined, name: string): string[] {
@@ -281,6 +351,8 @@ export function loadConfig(
           ? `${name} is no longer supported; use SITE_ACCESS_PASSWORD`
           : name === "PEER_ASSISTED_ROOM_IDS"
           ? `${name} is no longer supported; peer-assisted media applies to every room when enabled`
+          : name === "MAX_SFU_ROOTS_PER_ROOM"
+          ? `${name} is no longer supported; use SFU_INGRESS_CAPACITY and SFU_EGRESS_CAPACITY`
           : `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
       );
     }

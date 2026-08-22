@@ -1,6 +1,6 @@
 # Minimal Deployment
 
-Last verified against upstream documentation: 2026-08-21.
+Last verified against upstream documentation: 2026-08-22.
 
 This page records exact release `9461e20` production facts and the current source
 deployment contract. Product direction and pending migrations are owned by
@@ -9,12 +9,13 @@ deployment contract. Product direction and pending migrations are owned by
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
 behind Caddy or nginx; application ICE advertises only STUN by default; LiveKit
-supplies bounded SFU-root capacity. Normal media remains distributed through
+supplies bounded SFU fallback capacity. Normal media remains distributed through
 direct or peer edges whenever those paths work.
 
-A deployment may additionally provide one single-node LiveKit process as the
-current controller's automatic final media fallback. This capacity is dormant unless the complete
-`LIVEKIT_URL`/key/secret tuple is configured. It does not replace the P2P path,
+A deployment may additionally provide one dedicated single-node LiveKit process
+as the current controller's automatic final media fallback. This capacity is
+dormant unless the complete public URL, private API URL, key, secret, and capacity
+tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
 ICE/UDP only. Source no longer contains the rejected participant-wide Peer ICE TURN
 candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank. The
@@ -119,7 +120,10 @@ The optional same-host LiveKit layout needs no additional public hostname:
 `LIVEKIT_URL=wss://share.example.com` and nginx proxies only current `/rtc/v1*`
 requests to LiveKit. Retired `/rtc` and `/rtc/validate` endpoints return 404
 without request-target logging. LiveKit's HTTP/WebSocket listener on TCP 7880 is
-private to nginx, while WebRTC media reaches LiveKit directly on UDP 7882.
+private to nginx and the Screener process uses
+`LIVEKIT_API_URL=http://127.0.0.1:7880` for `RoomService`; WebRTC media reaches
+LiveKit directly on UDP 7882. No unrelated application may create rooms on this
+instance, and its tracked configuration sets `room.auto_create: false`.
 
 ## Candidate boundary and rollback
 
@@ -217,9 +221,11 @@ To make automatic SFU fallback capacity available, add the complete tuple:
 ```dotenv
 PEER_ASSISTED_MEDIA=true
 LIVEKIT_URL=wss://share.example.com
+LIVEKIT_API_URL=http://127.0.0.1:7880
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
-MAX_SFU_ROOTS_PER_ROOM=2
+SFU_INGRESS_CAPACITY=<MEASURED_DEPLOYMENT_INGRESS_COPIES>
+SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 ```
 
 The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
@@ -247,7 +253,7 @@ errors to the result.
 `PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
 that a stale room-1 deployment cannot silently retain the old scope. With
 `PEER_ASSISTED_MEDIA=true`, every normal room receives peer-assisted routing,
-optional LiveKit fallback, and the same per-room root/fanout/failure guards.
+optional LiveKit fallback, and the same deployment resource/fanout/failure guards.
 Every ordinary peer connection remains STUN-only; selected-edge TURN is still
 issued only to a current controller-selected edge. There is no browser control,
 percentage rollout, or second router.
@@ -273,35 +279,58 @@ consume a second copy, and an uncommitted selected carry does. Transition work
 may reach only `min(C + 1, 3)`. A Host already sending three copies at `C=3`
 must fail or wait before a fourth publication token or TURN grant is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
-startup. The fixed per-room SFU-root and selected-lease guards remain separate
-temporary server safety boundaries.
+startup. The room-wide selected-lease guard remains a temporary server safety
+boundary until per-edge TURN allocation admission replaces it.
 
 Production release `9461e20` still runs the legacy Host-2/Browser-1 policy on
 wire `screener-v5`. Deploy the current source server, Web assets, and Native
 sender atomically on `screener-v6`; restore the exact prior environment and
 release together when rolling back.
 
-The three `LIVEKIT_*` values must either all be absent or all be present, and a
-complete tuple requires `PEER_ASSISTED_MEDIA=true`. An empty tuple keeps the
-optional SDK and server path dormant. `LIVEKIT_URL` must be a plain `ws:` or
-`wss:` origin with no `/rtc` suffix; production requires `wss:`.
+The four `LIVEKIT_*` values must either all be absent or all be present, and a
+complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
+safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values. The two
+capacities have no defaults and must be selected from the instance's measured
+publisher/subscriber/bitrate and accepted concurrency matrix. Supplying either
+capacity without the complete fallback configuration fails startup rather than
+silently enabling or ignoring a partial policy. An empty tuple with neither
+capacity keeps the optional SDK and server path dormant. `LIVEKIT_URL` must be a
+plain `ws:` or `wss:` origin with no `/rtc` suffix; production requires `wss:`.
+`LIVEKIT_API_URL` must be a plain `http:` or `https:` origin with no path;
+production permits plaintext only on loopback and otherwise requires `https:`.
 `LIVEKIT_API_SECRET` must contain at least 32 bytes and must not reuse
-`SITE_ACCESS_PASSWORD`. In that same held release, `MAX_SFU_ROOTS_PER_ROOM` defaults to
-2 and accepts only 1 or 2; it is ignored when LiveKit is not configured. These
-credentials authorize short-lived LiveKit room tokens and do not provide E2EE:
-the LiveKit operator can access ordinary SFU media.
+`SITE_ACCESS_PASSWORD`. These credentials authorize short-lived LiveKit room
+tokens and do not provide E2EE: the LiveKit operator can access ordinary SFU
+media. The LiveKit instance is dedicated to this Screener process and has
+`room.auto_create: false`. Screener first binds the configured application
+listener exclusively; a competing process that cannot bind makes no LiveKit
+call. While bound but not initialized it returns `503` and has no signaling
+upgrade handler. It then rejects any foreign room name, deletes every stale
+managed room, confirms the namespace empty, and begins serving. Each
+exact-generation room is then created before its token is issued. Reserved,
+committed, and draining generations remain charged until
+`DeleteRoom` succeeds and a follow-up lookup proves absence. Run only one
+application process until a shared atomic admission and lifecycle owner exists.
 
 For the first candidate canary, use an isolated instance and a protected
 persistent room whose ID is stable across restarts. Restart the application and
-verify that both that room and a second normal room contain
+verify startup removes a seeded stale managed LiveKit room before serving
+traffic. Hold the application port with another process and verify a competing
+startup makes zero LiveKit calls. Verify that both the persistent room and a
+second normal room contain
 `mediaMode: "peer-assisted"`, with independent route revisions and no shared
-room state. Exercise join, offer and answer, stop, reconnect, and room deletion
-in both rooms. Ordinary Web and
+room state or capacity bypass. Exercise join, offer and answer, stale-token
+reconnect after abort, Host signaling loss with and without a live Host
+participant, stop, restart, and room deletion in both rooms. Confirm each drain
+keeps capacity charged until the room is absent. Ordinary Web and
 Native-shaped clients remain STUN-only. With the selected-edge tuple, only
 the current controller-selected edge may receive a one-use grant; all other
 sessions and connections remain STUN-only. Roll back by disabling application
-issuance before restoring the exact recorded pre-canary coturn/firewall baseline, or direct
-traffic to the unchanged old release. Do not treat disabling
+issuance, stopping Screener, and proving every managed LiveKit room absent before
+restoring the exact recorded application/LiveKit configuration and release; or
+direct traffic to the unchanged old instance. Restore the coturn/firewall
+baseline only after the application no longer issues its selected-edge grant.
+Do not treat disabling
 `PEER_ASSISTED_MEDIA` alone as TURN rollback: disable the selected-edge tuple
 independently, and no removed old
 TURN wire is restored. During migration, remove the retired room-ID variable in
@@ -549,10 +578,10 @@ Run these checks from real external networks before calling the deployment usabl
    are closed externally.
 2. Create a normal Screener room on two different networks. Confirm media flows
    and the selected-pair stats report a non-relay path when direct ICE succeeds.
-3. On a normal room, exhaust a peer route and verify the host plus at
-   most two necessary roots select LiveKit UDP 7882. Peer descendants stay on
-   ordinary direct UDP and Host/ordinary Browser Viewer downstream caps remain
-   two/one.
+3. On a normal room, exhaust a peer route and verify exactly one Host
+   publication serves only the admitted SFU subscriptions over LiveKit UDP 7882.
+   Peer descendants stay on ordinary direct UDP and every non-server endpoint
+   obeys the configured `ENDPOINT_MEDIA_COPY_CAPACITY`.
 4. Force one controller-eligible edge past SFU/UDP and verify only that edge gets
    the short-lived TURN server plus relay policy and selects TURN/UDP. Ordinary
    peer PCs must stay STUN-only. Then block all UDP and verify bounded recovery

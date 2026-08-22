@@ -22,7 +22,7 @@ Last updated: 2026-08-23
 ## Current Source And Production
 
 - Canonical source is the clean `main` branch. New branches and worktrees start from its exact current commit after accepted truth is merged.
-- Current source implements the uniform `1/2/3` endpoint cap through one shared accounting guard, advances Web/server/Native to `screener-v6`, rejects v5 before room authority, and carries the exact deployment cap in every authenticated snapshot so ordinary Host authorization, Native admission, peer-assisted assignments, and sender slots use the same authority. SFU-fed Viewers remain leaves without outbound proof, and the fixed SFU-root and room-wide selected-lease guards remain pending later server admission waves.
+- Current source implements the uniform `1/2/3` endpoint cap through one shared accounting guard, advances Web/server/Native to `screener-v6`, rejects v5 before room authority, and carries the exact deployment cap in every authenticated snapshot so ordinary Host authorization, Native admission, peer-assisted assignments, and sender slots use the same authority. SFU-fed Viewers remain leaves without outbound proof. SFU admission uses explicit no-default ingress/egress capacities, exact `reserved | committed | draining` lifecycle accounting, and a listener-fenced dedicated LiveKit owner; the room-wide selected-lease guard remains for its independent TURN-admission wave.
 - Production runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`, release `9461e20`, wire `screener-v5`; `21d5cd9f7139` is the rollback release.
 - Production still enforces Host downstream `2`, ordinary Browser downstream `1`, deployment values `1/2`, a fixed SFU-root limit of `2`, and legacy publication/selected accounting. This is a dated implementation divergence, not current product policy.
 - Production has automatic routing, bad-relay corroboration, peer-quality make-before-break with Viewer and Host provisional parents, selected-edge transport, stable route/connection details, 64/128/256 audio choices, access controls, self-check, diagnostic export, and signaling watchdog behavior.
@@ -32,7 +32,7 @@ Last updated: 2026-08-23
 ## Current Priority
 
 1. Keep this truth set and [the TODO ledger](./todo.md) concise and internally consistent.
-2. Complete and release the remaining route waves B-D first. Then release live audio and paused video-codec switching, follow with evidence-led H.264 diagnosis, the strict-NAT emulator gate, connection feedback, and the remaining functional roadmap. Distribution packaging starts only after those TODOs are complete. Parallel branches may finish earlier but do not change this merge/deployment order.
+2. Complete and release route waves C-D first. Then release live audio and paused video-codec switching, follow with evidence-led H.264 diagnosis, the strict-NAT emulator gate, connection feedback, and the remaining functional roadmap. Distribution packaging starts only after those TODOs are complete. Parallel branches may finish earlier but do not change this merge/deployment order.
 
 ## Working Rules
 

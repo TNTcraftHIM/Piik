@@ -499,7 +499,7 @@ describe("peer topology loopback observations", () => {
     );
   });
 
-  it("SFU root invariant gate: accepts two roots and detects excess root or Host media edges", () => {
+  it("accepts admitted SFU subscriptions and detects excess Host media edges", () => {
     const generation = "publication_generation_12345678";
     const host = page("host", "host", 2, 0);
     const direct = page("viewer", "viewer-1", 0, 1);
@@ -554,24 +554,24 @@ describe("peer topology loopback observations", () => {
     thirdRoot.routeRevision = 7;
     thirdRoot.routeAssignment.upstream = { kind: "sfu" };
     markActiveRouteReady(thirdRoot);
-    const excessiveRootInitial = [...structuredClone(initial), thirdRoot];
-    const excessiveRootFinal = structuredClone(excessiveRootInitial);
-    for (const viewer of excessiveRootFinal.slice(1)) {
+    const threeRootInitial = [...structuredClone(initial), thirdRoot];
+    const threeRootFinal = structuredClone(threeRootInitial);
+    for (const viewer of threeRootFinal.slice(1)) {
       viewer.connections.at(-1)!.receiveTotals!.framesTotal = 20;
     }
-    const excessiveRootSummary = summarizeSamples(
+    const threeRootSummary = summarizeSamples(
       [
-        { atEpochMs: 2_000, elapsedMs: 0, pages: excessiveRootInitial },
-        { atEpochMs: 4_000, elapsedMs: 2_000, pages: excessiveRootFinal },
+        { atEpochMs: 2_000, elapsedMs: 0, pages: threeRootInitial },
+        { atEpochMs: 4_000, elapsedMs: 2_000, pages: threeRootFinal },
       ],
       4,
     );
-    expect(excessiveRootSummary.sfuRootCount).toBe(3);
+    expect(threeRootSummary.sfuRootCount).toBe(3);
     expect(
-      buildRunChecks(excessiveRootSummary, 4, "720p30").find(
+      buildRunChecks(threeRootSummary, 4, "720p30").find(
         (check) => check.name === "sfu-route-consistency",
       )?.passed,
-    ).toBe(false);
+    ).toBe(true);
 
     const excessiveHostInitial = structuredClone(initial);
     const excessiveHostFinal = structuredClone(final);

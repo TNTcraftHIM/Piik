@@ -85,7 +85,7 @@ useful last-hop delivery is approximately `N*B`. Ignoring protocol overhead:
 | --- | ---: | ---: | ---: |
 | Peer roots, direct edges | `R*B` | `D*B` | none |
 | Peer roots, all `R` seed edges through TURN | `R*B` | `D*B` | TURN ingress `R*B` + egress `R*B` |
-| SFU virtual parent to the same roots | `B_pub` | `D*B` | SFU ingress `B_pub` + egress `sum(B_i)` |
+| SFU virtual parent to the same relay seeds | `B_pub` | `D*B` | SFU ingress `B_pub` + egress `sum(B_i)` |
 | Same-representation full-room SFU | `B` | `0` | SFU ingress `B` + egress `N*B` |
 
 The table's `R*B` and `D*B` rows are equal-representation screening cases with
@@ -94,9 +94,9 @@ With mixed root representations, direct peer-root traffic is `sum(B_i)` and
 descendant upload is `sum(B_edge)`. SFU host upload and ingress are `B_pub`, the
 sum of all actively published representations; if simulcast `HIGH` and `LOW`
 both remain active, that may be `B_HIGH+B_LOW`, not one root bitrate. The
-SFU-root row, not full-room SFU, is the retained fallback shape. For equal
+SFU-fed relay-seed row, not full-room SFU, is the retained fallback shape. For equal
 representations, `B_pub = B` and `sum(B_i) = R*B`. Publisher-to-SFU and every
-SFU-to-root subscriber transport are independent ICE connections and may use a
+SFU-to-seed subscriber transport are independent ICE connections and may use a
 separately deployed LiveKit transport. Ordinary descendants are STUN-only;
 selected coturn is issued only for an exact authorized edge or Host-SFU ingress.
 If a
@@ -107,7 +107,7 @@ ingress and egress `B_i`; a selected-edge relay adds both directions for that
 edge's actual bitrate. They are one logical useful payload copy but real
 physical hops, so NIC, service, and billing counters must never be folded.
 
-If `E>0`, SFU root/exception egress is
+If `E>0`, SFU relay-seed/exception egress is
 `sum(B_i) + sum(B_exc,j)` and central SFU traffic is
 `B_pub + sum(B_i) + sum(B_exc,j)`. Peer descendant upload remains
 `sum(B_edge)`. Any separately TURN-relayed LiveKit subscription or
@@ -533,27 +533,60 @@ the server must. Redundancy can improve recovery but costs traffic and
 coordination; removing redundancy leaves a recovery interval after a relay is
 lost.
 
-## Self-Hosted LiveKit Trust Boundary
+## Deployment-Wide SFU Admission
+
+LiveKit's official benchmark guidance says each room must fit on one SFU node
+and identifies published tracks, subscribers, and bytes forwarded per subscriber
+as separate capacity drivers. Its room `maxParticipants` setting is a participant
+count guard; it does not express Screener's Host-publication ingress or
+per-subscription egress budget. The application therefore needs its own typed
+admission boundary instead of treating a root count or the SDK room setting as
+resource evidence.
 
 Pinned LiveKit 1.13.5 treats `canPublishSources` as a source allowlist, not a
 per-participant or per-source publication-count limit. `limit.num_tracks` gates
 node-wide `NumTracksIn + NumTracksOut` admission, while
 `subscription_limit_video/audio` caps each participant's concurrent subscribed
-tracks by kind and leaves excess requests pending; neither is an SFU bandwidth
-budget.
+tracks by kind and leaves excess requests pending. Neither is an SFU bandwidth
+budget or a replacement for Screener's ingress and egress admission.
+
+For the current single application process, one O(1) ledger owns two explicitly
+configured positive safe-integer capacities: each Host publication uses one
+ingress unit and each authorized SFU subscription uses one egress unit. There is
+no built-in default or fixed root count. A candidate reserves its full actual
+ingress/egress demand under exact room/share/publication identity before any
+token is issued; reserved, committed, and draining generations are all charged.
+Capacity exhaustion leaves the current route unchanged and returns control to
+the bounded fallback sequence. Screener sizes those capacities for its shipped
+clients in private rooms where authenticated Hosts are trusted media
+participants; the pinned upstream LiveKit release is sufficient for that
+boundary.
 
 Self-hosted `RemoveParticipant` closes the current participant but does not
-invalidate a still-valid join token. With `room.auto_create: false`, such a
-token cannot recreate an absent room. Screener's exact-generation room names
-include an unguessable publication generation and are never reused, so room
-deletion plus absence proof fences an old media generation rather than revoking
-every token immediately.
+invalidate a still-valid join token, and token expiry governs connection
+admission rather than terminating an existing participant. A route commit or
+client disconnect therefore cannot prove resource release. The dedicated
+LiveKit instance disables automatic room creation. Screener explicitly creates
+an exact-generation room containing an unguessable publication generation and
+never reuses that name; `DeleteRoom` plus an absent-room readback is the drain
+proof. With `room.auto_create: false`, an old token cannot recreate the absent
+room. Reserved, committed, and draining generations remain charged until that
+proof completes.
 
-Screener sizes ingress and egress for its shipped clients in private rooms where
-authenticated Hosts are trusted media participants. Exact-generation room
-lifecycle, short-lived scoped tokens, source grants, selective subscription,
-and deployment isolation remain required. The pinned upstream LiveKit release
-is sufficient for that boundary.
+At process startup, the application first acquires its configured listener; a
+competing process that cannot bind performs no LiveKit operation. The bound owner
+returns `503` and installs no signaling upgrade handler while it rejects foreign
+room names, drains all stale Screener rooms, and confirms the namespace empty
+before admitting a new generation. Host signaling loss is checked against the
+exact LiveKit Host participant on a bounded interval, so healthy media stays
+charged while an abandoned generation is reclaimed after the participant
+disappears.
+
+These capacities are operator inputs derived from the actual instance, codec,
+representation, bitrate, and accepted concurrency matrix. LiveKit's published
+example benchmark cannot supply Screener defaults. A later multi-process
+Screener deployment needs a shared atomic ledger; independent process-local
+counters would not be deployment-wide admission.
 
 ## Route Screening
 
@@ -699,6 +732,9 @@ Primary sources accessed on 2026-08-19, 2026-08-21, 2026-08-22, and 2026-08-23:
   [subscription-limit handling](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscriptionmanager.go),
   [room allocation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roomallocator.go),
   [room-service lifecycle](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roomservice.go),
+  [access tokens and grants](https://docs.livekit.io/frontends/reference/tokens-grants/),
+  [RoomService API](https://docs.livekit.io/reference/other/roomservice-api/),
+  [server SDK 2.17.0 RoomServiceClient](https://github.com/livekit/node-sdks/blob/livekit-server-sdk%402.17.0/packages/livekit-server-sdk/src/RoomServiceClient.ts),
   [ports/firewall](https://docs.livekit.io/transport/self-hosting/ports-firewall/),
   [deployment/embedded TURN](https://docs.livekit.io/transport/self-hosting/deployment/),
   and [benchmark guidance](https://docs.livekit.io/transport/self-hosting/benchmark/)

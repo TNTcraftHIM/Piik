@@ -205,7 +205,6 @@ export const DEFAULT_QUALITY_SETTINGS = {
   screenAudioQuality: "music",
 } as const satisfies QualitySettings;
 
-export const CURRENT_SFU_ROOT_LIMIT = 2;
 export const relayDownstreamEdgesSchema = z
   .number()
   .int()

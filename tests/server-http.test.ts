@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createRoomResponseSchema } from "../src/shared/protocol.ts";
 import {
@@ -11,6 +11,7 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
+import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const allowedOrigin = "http://allowed.test";
 const siteAccessPassword = "instance-access-password";
@@ -53,11 +54,15 @@ async function start(
   config = testConfig(),
   options: Pick<
     CreateServerOptions,
-    "now" | "siteAccessTtlSeconds" | "sfuTokenIssuer"
+    "now" | "siteAccessTtlSeconds" | "sfuTokenIssuer" | "sfuRoomControl"
   > = {},
 ): Promise<string> {
+  const sfuRoomControl =
+    options.sfuRoomControl ??
+    (config.livekitFallback ? new FakeSfuRoomControl() : undefined);
   runningServer = await createScreenerServer({
     ...options,
+    ...(sfuRoomControl ? { sfuRoomControl } : {}),
     config,
     serveFrontend: false,
   });
@@ -384,9 +389,11 @@ describe("server HTTP listener and health", () => {
         stunUrls: ["stun:stun.example.test:3478"],
         livekitFallback: {
           url: "ws://livekit.test:7880",
+          apiUrl: "http://livekit.test:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          maxSfuRootsPerRoom: 2,
+          ingressCapacity: 4,
+          egressCapacity: 16,
         },
       }),
       { sfuTokenIssuer: { issueToken: async () => "unused-test-token" } },
@@ -416,9 +423,11 @@ describe("server HTTP listener and health", () => {
         peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
+          apiUrl: "http://livekit.test:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          maxSfuRootsPerRoom: 2,
+          ingressCapacity: 4,
+          egressCapacity: 16,
         },
       }),
       {
@@ -430,6 +439,215 @@ describe("server HTTP listener and health", () => {
 
     const response = await fetch(`${baseUrl}/healthz`);
     expect(response.status).toBe(200);
+  });
+
+  it("clears a stale managed LiveKit room before a restarted server serves traffic", async () => {
+    const roomControl = new FakeSfuRoomControl();
+    const staleFence = {
+      roomId: "42",
+      shareGeneration: "stale_share_generation",
+      publicationGeneration: "stale_publication_generation",
+    };
+    roomControl.seedRoom(staleFence, ["host", "viewer:stale"]);
+    const baseUrl = await start(
+      testConfig({
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+          ingressCapacity: 4,
+          egressCapacity: 16,
+        },
+      }),
+      {
+        sfuTokenIssuer: {
+          issueToken: async () => "unused-test-token",
+        },
+        sfuRoomControl: roomControl,
+      },
+    );
+
+    expect(roomControl.initializeCalls).toBe(1);
+    expect(roomControl.startupDeletedRoomNames).toHaveLength(1);
+    expect(roomControl.rooms.size).toBe(0);
+    expect((await fetch(`${baseUrl}/healthz`)).status).toBe(200);
+  });
+
+  it("binds the application listener before LiveKit reconciliation", async () => {
+    let releaseInitialization!: () => void;
+    const roomControl = new FakeSfuRoomControl();
+    roomControl.initializeBarrier = new Promise<void>((resolve) => {
+      releaseInitialization = resolve;
+    });
+    runningServer = await createScreenerServer({
+      config: testConfig({
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+          ingressCapacity: 4,
+          egressCapacity: 16,
+        },
+      }),
+      serveFrontend: false,
+      sfuRoomControl: roomControl,
+      sfuTokenIssuer: {
+        issueToken: async () => "unused-test-token",
+      },
+    });
+
+    const listen = runningServer.listen(0, "127.0.0.1");
+    try {
+      await vi.waitFor(() => {
+        expect(roomControl.initializeCalls).toBe(1);
+        expect(runningServer?.httpServer.address()).not.toBeNull();
+      });
+      const address = runningServer.httpServer.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Expected a TCP server address");
+      }
+      expect(runningServer.httpServer.listenerCount("upgrade")).toBe(0);
+      const response = await fetch(`http://127.0.0.1:${address.port}/healthz`);
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+    } finally {
+      releaseInitialization();
+    }
+
+    await expect(listen).resolves.toBeGreaterThan(0);
+    expect(runningServer.httpServer.listenerCount("upgrade")).toBe(1);
+  });
+
+  it("makes no LiveKit call when another process owns the listener", async () => {
+    const owner = await createScreenerServer({
+      config: testConfig(),
+      serveFrontend: false,
+    });
+    const ownerPort = await owner.listen(0, "127.0.0.1");
+    const roomControl = new FakeSfuRoomControl();
+    const contender = await createScreenerServer({
+      config: testConfig({
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+          ingressCapacity: 4,
+          egressCapacity: 16,
+        },
+      }),
+      serveFrontend: false,
+      sfuRoomControl: roomControl,
+      sfuTokenIssuer: {
+        issueToken: async () => "unused-test-token",
+      },
+    });
+
+    try {
+      await expect(contender.listen(ownerPort, "127.0.0.1")).rejects.toMatchObject({
+        code: "EADDRINUSE",
+      });
+      expect(roomControl.initializeCalls).toBe(0);
+    } finally {
+      await contender.close();
+      await owner.close();
+    }
+  });
+
+  it("holds listener ownership until an in-flight startup reconciliation settles", async () => {
+    let releaseInitialization!: () => void;
+    const roomControl = new FakeSfuRoomControl();
+    roomControl.initializeBarrier = new Promise<void>((resolve) => {
+      releaseInitialization = resolve;
+    });
+    runningServer = await createScreenerServer({
+      config: testConfig({
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+          ingressCapacity: 4,
+          egressCapacity: 16,
+        },
+      }),
+      serveFrontend: false,
+      sfuRoomControl: roomControl,
+      sfuTokenIssuer: {
+        issueToken: async () => "unused-test-token",
+      },
+    });
+    const listen = runningServer.listen(0, "127.0.0.1");
+    await vi.waitFor(() => {
+      expect(roomControl.initializeCalls).toBe(1);
+      expect(runningServer?.httpServer.address()).not.toBeNull();
+    });
+    const address = runningServer.httpServer.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected a TCP server address");
+    }
+
+    let closed = false;
+    const closing = runningServer.close().then(() => {
+      closed = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(closed).toBe(false);
+    expect(runningServer.httpServer.listening).toBe(true);
+
+    const contender = await createScreenerServer({
+      config: testConfig(),
+      serveFrontend: false,
+    });
+    try {
+      await expect(
+        contender.listen(address.port, "127.0.0.1"),
+      ).rejects.toMatchObject({ code: "EADDRINUSE" });
+    } finally {
+      await contender.close();
+    }
+
+    releaseInitialization();
+    await expect(listen).resolves.toBe(address.port);
+    await closing;
+    runningServer = undefined;
+    expect(closed).toBe(true);
+  });
+
+  it("closes the listener when LiveKit startup reconciliation fails", async () => {
+    const roomControl = new FakeSfuRoomControl();
+    roomControl.initializeError = new Error("startup reconciliation failed");
+    runningServer = await createScreenerServer({
+      config: testConfig({
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+          ingressCapacity: 4,
+          egressCapacity: 16,
+        },
+      }),
+      serveFrontend: false,
+      sfuRoomControl: roomControl,
+      sfuTokenIssuer: {
+        issueToken: async () => "unused-test-token",
+      },
+    });
+
+    await expect(runningServer.listen(0, "127.0.0.1")).rejects.toThrow(
+      "startup reconciliation failed",
+    );
+    expect(roomControl.initializeCalls).toBe(1);
+    expect(runningServer.httpServer.listening).toBe(false);
+    expect(runningServer.httpServer.listenerCount("upgrade")).toBe(0);
   });
 
   it("uses the configured listen host by default", async () => {
