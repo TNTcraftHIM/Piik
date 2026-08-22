@@ -228,15 +228,35 @@ SFU_INGRESS_CAPACITY=<MEASURED_DEPLOYMENT_INGRESS_COPIES>
 SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 ```
 
+To enable exact selected TURN after bounded peer and SFU recovery, add its
+complete tuple:
+
+```dotenv
+SELECTED_EDGE_TURN_URLS=turn:turn.example.com:3478?transport=udp
+SELECTED_EDGE_TURN_SHARED_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
+SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS=120
+SELECTED_EDGE_TURN_ALLOCATION_CAPACITY=<MEASURED_DEPLOYMENT_ALLOCATIONS>
+```
+
 The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
-stale key, even blank, fails startup. The deployed source uses the complete
-`SELECTED_EDGE_TURN_URLS`, `SELECTED_EDGE_TURN_SHARED_SECRET`, and
-`SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS` tuple with one explicit TURN/UDP URI,
-an independent secret and bounded TTL. The current production tuple uses the
-coturn UDP endpoint and a 120-second TTL; only the controller-selected edge may
-receive a short-lived grant. Roll back by removing the application tuple before
-changing coturn or firewall state. Credentials never enter URLs, logs, browser
-persistence, room rows, or SQLite.
+stale key, even blank, fails startup. Current source requires the complete
+four-value `SELECTED_EDGE_TURN_*` tuple with one explicit TURN/UDP URI, an
+independent secret, bounded TTL, and positive safe-integer logical-allocation
+capacity. Each exact peer-selected edge and Host-SFU ingress consumes one unit
+from the same process ledger before credential issuance; reserved, committed,
+and draining authorizations stay charged until exact logical release. The
+production release remains on its recorded configuration until the four-value
+tuple is supplied atomically with current source. Only a controller-selected
+edge may receive a short-lived grant. Roll back by
+removing the application tuple before changing coturn or firewall state.
+Credentials never enter URLs, logs, browser persistence, room rows, or SQLite.
+
+Application release does not prove deletion of the matching physical coturn
+allocation. Keep the credential TTL short and configure coturn `user-quota` and
+`total-quota` to bound allocations left by disconnect or process restart. A
+restarted single process begins a fresh logical ledger while old physical
+allocations expire under those coturn bounds; do not claim cross-restart
+reconstruction or per-allocation readback.
 
 Before a media canary, `npm run gate:turn-udp-allocation` provides the bounded
 UDP allocation check. It proves only that an authenticated relay candidate can
@@ -277,10 +297,11 @@ A peer child or the Host's single SFU publication consumes one copy, upstream
 receive is free, a committed selected TURN transport for the same child does not
 consume a second copy, and an uncommitted selected carry does. Transition work
 may reach only `min(C + 1, 3)`. A Host already sending three copies at `C=3`
-must fail or wait before a fourth publication token or TURN grant is issued.
+must fail or wait before a fourth endpoint copy is issued; changing an existing
+copy to selected TURN remains the same endpoint copy and separately requires
+TURN allocation admission.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
-startup. The room-wide selected-lease guard remains a temporary server safety
-boundary until per-edge TURN allocation admission replaces it.
+startup.
 
 Production release `9461e20` still runs the legacy Host-2/Browser-1 policy on
 wire `screener-v5`. Deploy the current source server, Web assets, and Native
