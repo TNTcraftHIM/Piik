@@ -132,10 +132,17 @@ ledger, and monotonic room/session/revision fences.
 
 - The Host is the only source publisher. There is at most one authoritative Host
   publication per share generation, and every SFU-fed Viewer subscribes to it.
-  A Viewer that receives the publication may relay to ordinary children only
-  after independent outbound RTP, decode, resource, and sender-slot proof;
-  a strict SFU Viewer remains a leaf. Viewer republishing into a second SFU
-  publication is outside the current product.
+  An SFU-fed Viewer is not a committed relay parent merely because it advertises
+  capacity or proves its SFU ingress. The controller may reserve one formal
+  sender slot and prepare one exact provisional ordinary-child edge as the proof
+  transaction. Connected transport, a live video track, and positive current-
+  window RTP-receive and decoded-frame deltas at that child prove the outbound
+  path end to end; exact sender ownership and controller admission prove resource
+  and slot availability. Only atomic commit makes the Viewer relay-eligible.
+  Failure, timeout, stale authority, pause, or identity change destroys the
+  candidate and leaves the Viewer a leaf. Every later child still requires its
+  own exact media proof. Viewer republishing into a second SFU publication is
+  outside the current product.
 - TURN is a selected transport for an existing authorized logical edge or the
   Host-to-SFU ingress. It is not a topology node, a second source, or a global
   room lease. Existing direct/STUN edges remain preferred; a failed selected
