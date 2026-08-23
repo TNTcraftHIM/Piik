@@ -11,7 +11,6 @@ export const ROOM_CODE_LENGTH = 4;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
-export const MAX_TURN_CREDENTIAL_LENGTH = 256;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
@@ -254,46 +253,6 @@ export const stunUrlSchema = z
   .max(512)
   .refine(isValidStunUrl, { message: "Invalid STUN URL" });
 
-function isValidTurnUrl(value: string): boolean {
-  const match = /^turn:([^/?#\s]+)\?transport=udp$/i.exec(value);
-  if (!match) {
-    return false;
-  }
-  let authority: URL;
-  try {
-    authority = new URL(`http://${match[1]}`);
-  } catch {
-    return false;
-  }
-  return Boolean(
-    authority.hostname &&
-      !authority.username &&
-      !authority.password &&
-      authority.pathname === "/" &&
-      !authority.search &&
-      !authority.hash &&
-      (!authority.port || Number(authority.port) > 0)
-  );
-}
-
-export const turnUrlSchema = z
-  .string()
-  .min(1)
-  .max(512)
-  .refine(isValidTurnUrl, { message: "Invalid TURN URL" });
-
-const selectedEdgeTurnIceServerSchema = z
-  .object({
-    urls: z.array(turnUrlSchema).length(1),
-    username: z
-      .string()
-      .min(1)
-      .max(128)
-      .regex(/^[1-9]\d{0,12}:[A-Za-z0-9_-]{16,64}$/),
-    credential: z.string().min(1).max(MAX_TURN_CREDENTIAL_LENGTH),
-  })
-  .strict();
-
 const iceServerSchema = z
   .object({
     urls: z.union([
@@ -348,7 +307,7 @@ export const preparedRouteCandidateSchema = z
   .object({
     childPeerId: opaqueIdSchema,
     connectionId: opaqueIdSchema,
-    transport: z.enum(["direct", "selected-turn", "sfu"]),
+    transport: z.enum(["direct", "sfu"]),
   })
   .strict();
 export type PreparedRouteCandidate = z.infer<
@@ -779,34 +738,6 @@ export const serverMessageSchema = z.union([
       token: z.string().min(1).max(MAX_SFU_TOKEN_LENGTH),
     })
     .strict(),
-  z.discriminatedUnion("edgeKind", [
-    z
-      .object({
-        type: z.literal("selected-edge-turn"),
-        edgeKind: z.literal("peer-selected"),
-        revision: mediaRouteRevisionSchema,
-        parentPeerId: opaqueIdSchema,
-        viewerPeerId: opaqueIdSchema,
-        oldConnectionId: opaqueIdSchema,
-        newConnectionId: opaqueIdSchema,
-        expiresAt: z.string().datetime(),
-        iceServer: selectedEdgeTurnIceServerSchema,
-      })
-      .strict(),
-    z
-      .object({
-        type: z.literal("selected-edge-turn"),
-        edgeKind: z.literal("host-sfu-ingress"),
-        revision: mediaRouteRevisionSchema,
-        hostPeerId: opaqueIdSchema,
-        publicationGeneration: opaqueIdSchema,
-        oldConnectionId: opaqueIdSchema,
-        newConnectionId: opaqueIdSchema,
-        expiresAt: z.string().datetime(),
-        iceServer: selectedEdgeTurnIceServerSchema,
-      })
-      .strict(),
-  ]),
   z
     .object({
       type: z.literal("quality-settings"),

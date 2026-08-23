@@ -1634,7 +1634,7 @@ describe("WebRTC stats parsing", () => {
     });
   });
 
-  it("separates the local TURN transport from the ICE protocol", async () => {
+  it("keeps an out-of-contract relay candidate unclassified", async () => {
     const report = new Map<string, Record<string, unknown>>([
       [
         "transport",
@@ -1666,7 +1666,6 @@ describe("WebRTC stats parsing", () => {
           timestamp: 2_000,
           candidateType: "relay",
           protocol: "udp",
-          relayProtocol: "tls",
         },
       ],
       [
@@ -1724,88 +1723,11 @@ describe("WebRTC stats parsing", () => {
 
     expect(firstMetrics.intervalDecodeMs).toBeNull();
     expect(metrics).toMatchObject({
-      path: "relay",
+      path: "unknown",
       iceProtocol: "udp",
-      localRelayProtocol: "tls",
       localCandidateType: "relay",
       remoteCandidateType: "host",
       intervalDecodeMs: 20,
-    });
-  });
-
-  it("does not infer a remote TURN transport", async () => {
-    const report = new Map<string, unknown>([
-      [
-        "transport",
-        {
-          id: "transport",
-          type: "transport",
-          timestamp: 1_000,
-          selectedCandidatePairId: "pair",
-        },
-      ],
-      [
-        "pair",
-        {
-          id: "pair",
-          type: "candidate-pair",
-          timestamp: 1_000,
-          transportId: "transport",
-          localCandidateId: "local",
-          remoteCandidateId: "remote",
-          state: "succeeded",
-          nominated: true,
-        },
-      ],
-      [
-        "local",
-        {
-          id: "local",
-          type: "local-candidate",
-          timestamp: 1_000,
-          candidateType: "host",
-          protocol: "udp",
-        },
-      ],
-      [
-        "remote",
-        {
-          id: "remote",
-          type: "remote-candidate",
-          timestamp: 1_000,
-          candidateType: "relay",
-          protocol: "udp",
-        },
-      ],
-      [
-        "inbound",
-        {
-          id: "inbound",
-          type: "inbound-rtp",
-          timestamp: 1_000,
-          kind: "video",
-          transportId: "transport",
-          bytesReceived: 1_000,
-          framesDecoded: 30,
-        },
-      ],
-    ]) as unknown as RTCStatsReport;
-    const connection = {
-      getStats: async () => report,
-    } as unknown as RTCPeerConnection;
-
-    const metrics = await collectConnectionMetrics(
-      connection,
-      "receive",
-      createStatsAccumulator(),
-    );
-
-    expect(metrics).toMatchObject({
-      path: "relay",
-      iceProtocol: "udp",
-      localRelayProtocol: null,
-      localCandidateType: "host",
-      remoteCandidateType: "relay",
     });
   });
 

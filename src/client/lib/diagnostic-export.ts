@@ -7,7 +7,7 @@ const DIAGNOSTIC_METRIC_KEYS = [
   "candidatePairResponsesReceived", "intervalCandidatePairResponsesReceived",
   "candidatePairSampleWindowMs",
   "captureFramesPerSecond", "mediaSourceFramesPerSecond", "path",
-  "iceProtocol", "localRelayProtocol", "localCandidateType",
+  "iceProtocol", "localCandidateType",
   "remoteCandidateType", "rttMs", "bitrateKbps", "availableOutgoingKbps",
   "framesPerSecond", "frameWidth", "frameHeight", "resolution",
   "packetsLost", "intervalPacketsSent", "intervalPacketsReceived",

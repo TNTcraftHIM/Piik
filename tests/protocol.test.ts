@@ -792,7 +792,7 @@ describe("client signaling protocol", () => {
 });
 
 describe("server signaling protocol", () => {
-  it("rejects the removed all-room TURN credential wire", () => {
+  it("accepts only STUN URLs in the authenticated peer ICE config", () => {
     expect(
       serverMessageSchema.safeParse({
         type: "ice-config",
@@ -1152,54 +1152,6 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
         routeRevision: 9,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("accepts only explicitly classified selected-edge grants", () => {
-    const iceServer = {
-      urls: ["turn:relay.example.test:3478?transport=udp"],
-      username: `1787076000:${"a".repeat(32)}`,
-      credential: "credential",
-    };
-    expect(
-      serverMessageSchema.safeParse({
-        type: "selected-edge-turn",
-        edgeKind: "peer-selected",
-        revision: 1,
-        parentPeerId: "parent_12345678",
-        viewerPeerId: "viewer_12345678",
-        oldConnectionId: "old_12345678",
-        newConnectionId: "new_12345678",
-        expiresAt: "2026-08-20T12:00:00.000Z",
-        iceServer,
-      }).success,
-    ).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({
-        type: "selected-edge-turn",
-        edgeKind: "host-sfu-ingress",
-        revision: 1,
-        hostPeerId: "host_12345678",
-        publicationGeneration: "publication_12345678",
-        oldConnectionId: "publication_12345678",
-        newConnectionId: "new_12345678",
-        expiresAt: "2026-08-20T12:00:00.000Z",
-        iceServer,
-      }).success,
-    ).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({
-        type: "selected-edge-turn",
-        edgeKind: "host-sfu-ingress",
-        revision: 1,
-        hostPeerId: "host_12345678",
-        publicationGeneration: "publication_12345678",
-        oldConnectionId: "publication_12345678",
-        newConnectionId: "new_12345678",
-        parentPeerId: "unexpected_12345678",
-        expiresAt: "2026-08-20T12:00:00.000Z",
-        iceServer,
       }).success,
     ).toBe(false);
   });

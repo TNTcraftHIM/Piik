@@ -453,12 +453,6 @@ func (session *Session) handle(message serverMessage) error {
 		return session.handleRouteUpdate(message)
 	case "sfu-config":
 		return session.handleUnsupportedRouteMessage(message, nil)
-	case "selected-edge-turn":
-		if message.EdgeKind == "host-sfu-ingress" {
-			connectionID := message.NewConnectionID
-			return session.handleUnsupportedRouteMessage(message, &connectionID)
-		}
-		return nil
 	case "viewer-quality-evidence":
 		// Fixed-HIGH observes no viewer feedback; accepting this current-wire
 		// message must not turn it into a room-wide quality controller.

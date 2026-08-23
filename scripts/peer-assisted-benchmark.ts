@@ -2627,7 +2627,7 @@ export async function main(): Promise<number> {
       "Headless runs are topology and transport evidence, not representative GPU or power evidence.",
       "First-frame and recovery timing fields are diagnostics and never determine this loopback gate's status.",
       "CDP process CPU covers the isolated Chromium instance, not a specific Host or relay page; identity changes or counter resets make that interval unknown, and multicore utilization may exceed 100%.",
-      "CDP SystemInfo exposes no resident-set field, so peakResidentSetBytes is null; GPU, NIC, glass-to-glass latency, generational visual quality, mobile browsers, and TURN require other measurement.",
+      "CDP SystemInfo exposes no resident-set field, so peakResidentSetBytes is null; GPU, NIC, glass-to-glass latency, generational visual quality, mobile browsers, and SFU require other measurement.",
       "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
       "BENCHMARK_CANARY=viewer-mbb injects only sanitized control counters; it does not claim detector quality or network performance. Host-candidate and signaling-blackhole canaries remain deferred.",

@@ -145,7 +145,6 @@ func TestDecodePeerAssistedRouteMessages(t *testing.T) {
 		{`{"type":"media-assignment","mediaAssignment":{"parentPeerId":null,"childPeerIds":["viewer-1"]}}`, "media-assignment"},
 		{`{"type":"route-update","revision":8,"phase":"active","assignment":{"upstream":{"kind":"none"},"childPeerIds":["viewer-1"],"sfuPublicationGeneration":null}}`, "route-update"},
 		{`{"type":"sfu-config","revision":8,"url":"wss://example.test","token":"opaque"}`, "sfu-config"},
-		{`{"type":"selected-edge-turn","edgeKind":"host-sfu-ingress","revision":8,"hostPeerId":"host-peer","publicationGeneration":"publication-1","oldConnectionId":"connection-old","newConnectionId":"connection-new","expiresAt":"2030-01-01T00:00:00Z","iceServer":{"urls":["turn:example.test?transport=udp"],"username":"1:abcdefghijklmnop","credential":"opaque"}}`, "selected-edge-turn"},
 	}
 	for _, test := range tests {
 		message, err := decodeServerMessage([]byte(test.payload))

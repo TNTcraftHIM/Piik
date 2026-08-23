@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   hasPeerRouteEvidence,
   MEDIA_ROUTE_PRESENTATION,
-  mediaTransportPresentation,
   ROUTING_STATUS_PRESENTATION,
   viewerRouteEvidence,
 } from "../src/client/components/status-badge-model.ts";
@@ -89,50 +88,4 @@ describe("route status badges", () => {
     ).toBe("p2p");
   });
 
-  it("exposes TURN only from current assigned-edge evidence", () => {
-    const relayPeer = {
-      ...peerSnapshot,
-      metrics: { ...EMPTY_METRICS, path: "relay" as const },
-    };
-    expect(
-      viewerRouteEvidence(
-        { kind: "peer", peerId: "host-peer" },
-        relayPeer,
-        null,
-      ).evidence?.metrics?.path,
-    ).toBe("relay");
-  });
-
-  it("states a TURN protocol only from local relay evidence", () => {
-    expect(
-      mediaTransportPresentation({
-        ...EMPTY_METRICS,
-        path: "relay",
-        localCandidateType: "relay",
-        localRelayProtocol: "udp",
-      }).label,
-    ).toBe("TURN/UDP");
-    expect(
-      mediaTransportPresentation({
-        ...EMPTY_METRICS,
-        path: "relay",
-        localCandidateType: "relay",
-        localRelayProtocol: "tls",
-      }).label,
-    ).toBe("TURN/TLS");
-    expect(
-      mediaTransportPresentation({
-        ...EMPTY_METRICS,
-        path: "relay",
-        localCandidateType: "host",
-      }).label,
-    ).toBe("TURN");
-    expect(
-      mediaTransportPresentation({
-        ...EMPTY_METRICS,
-        path: "direct",
-        iceProtocol: "udp",
-      }).label,
-    ).toBe("UDP");
-  });
 });

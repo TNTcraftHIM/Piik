@@ -21,77 +21,7 @@ describe("server configuration", () => {
     expect(config.peerAssistedMedia).toBe(false);
     expect(config.endpointMediaCopyCapacity).toBe(2);
     expect(config.livekitFallback).toBeUndefined();
-    expect(config.selectedEdgeTurn).toBeUndefined();
   });
-
-  it("enables selected-edge TURN only from its complete post-SFU tuple", () => {
-    const base = {
-      PEER_ASSISTED_MEDIA: "true",
-      LIVEKIT_URL: "wss://livekit.test",
-      LIVEKIT_API_KEY: "test-key",
-      LIVEKIT_API_SECRET: "s".repeat(32),
-      ...liveKitAdmission,
-    };
-    const turn = {
-      SELECTED_EDGE_TURN_URLS: "turn:turn.test:3478?transport=udp",
-      SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
-      SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
-      SELECTED_EDGE_TURN_ALLOCATION_CAPACITY: "4",
-    };
-    expect(loadConfig({ ...base, ...turn }).selectedEdgeTurn).toEqual({
-      urls: [turn.SELECTED_EDGE_TURN_URLS],
-      sharedSecret: turn.SELECTED_EDGE_TURN_SHARED_SECRET,
-      credentialTtlSeconds: 120,
-      allocationCapacity: 4,
-    });
-    expect(loadConfig({ ...base, ...turn }).stunUrls).toEqual([]);
-    for (const name of Object.keys(turn)) {
-      const partial = { ...base, ...turn };
-      delete partial[name as keyof typeof partial];
-      expect(() => loadConfig(partial)).toThrow("must be configured together");
-    }
-  });
-
-  it.each([
-    "turn:turn.test:3478",
-    "turns:turn.test:5349?transport=udp",
-    "turn:user@turn.test:3478?transport=udp",
-    "turn:turn.test:3478?transport=tcp",
-  ])("rejects a non-canonical selected-edge TURN URL: %s", (url) => {
-    expect(() =>
-      loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
-        LIVEKIT_URL: "wss://livekit.test",
-        LIVEKIT_API_KEY: "test-key",
-        LIVEKIT_API_SECRET: "s".repeat(32),
-        ...liveKitAdmission,
-        SELECTED_EDGE_TURN_URLS: url,
-        SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
-        SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
-        SELECTED_EDGE_TURN_ALLOCATION_CAPACITY: "4",
-      }),
-    ).toThrow("one UDP TURN URL");
-  });
-
-  it.each(["0", "-1", "1.5", "9007199254740992"])(
-    "rejects an invalid selected-edge TURN allocation capacity of %s",
-    (capacity) => {
-      expect(() =>
-        loadConfig({
-          PEER_ASSISTED_MEDIA: "true",
-          LIVEKIT_URL: "wss://livekit.test",
-          LIVEKIT_API_KEY: "test-key",
-          LIVEKIT_API_SECRET: "s".repeat(32),
-          ...liveKitAdmission,
-          SELECTED_EDGE_TURN_URLS:
-            "turn:turn.test:3478?transport=udp",
-          SELECTED_EDGE_TURN_SHARED_SECRET: "t".repeat(32),
-          SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS: "120",
-          SELECTED_EDGE_TURN_ALLOCATION_CAPACITY: capacity,
-        }),
-      ).toThrow("SELECTED_EDGE_TURN_ALLOCATION_CAPACITY must be a positive integer");
-    },
-  );
 
   it("enables LiveKit fallback only for a complete credential tuple", () => {
     const config = loadConfig({
@@ -394,7 +324,7 @@ describe("server configuration", () => {
     );
   });
 
-  it("requires STUN but not TURN in production", () => {
+  it("requires STUN in production", () => {
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
@@ -483,6 +413,10 @@ describe("server configuration", () => {
     "PEER_ICE_TURN_URLS",
     "PEER_ICE_TURN_SHARED_SECRET",
     "PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS",
+    "SELECTED_EDGE_TURN_URLS",
+    "SELECTED_EDGE_TURN_SHARED_SECRET",
+    "SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS",
+    "SELECTED_EDGE_TURN_ALLOCATION_CAPACITY",
   ] as const)("rejects removed TURN configuration even when %s is blank", (name) => {
     expect(() => loadConfig({ [name]: "" })).toThrow(
       `${name} is no longer supported`,

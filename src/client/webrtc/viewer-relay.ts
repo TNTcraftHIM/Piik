@@ -1,7 +1,6 @@
 import type {
   IceConfig,
   PreparedRouteCandidate,
-  ServerMessage,
   SignalPayload,
 } from "../../shared/protocol";
 import {
@@ -16,10 +15,6 @@ interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
 }
-type SelectedEdgeTurn = Extract<
-  ServerMessage,
-  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
->;
 interface PreparedChild {
   revision: number;
   childPeerId: string;
@@ -56,40 +51,6 @@ export class ViewerRelay {
     return snapshot
       ? { ...snapshot, metrics: { ...snapshot.metrics } }
       : null;
-  }
-
-  prepareSelectedEdgeTurn(
-    message: SelectedEdgeTurn,
-    parentPeerId: string,
-    routeRevision: number,
-    now = Date.now(),
-  ): boolean {
-    if (
-      this.disposed ||
-      message.parentPeerId !== parentPeerId ||
-      message.revision !== routeRevision ||
-      Date.parse(message.expiresAt) <= now ||
-      this.preparedRevision !== routeRevision ||
-      this.preparedCandidate?.transport !== "selected-turn" ||
-      this.preparedCandidate.childPeerId !== message.viewerPeerId ||
-      this.preparedCandidate.connectionId !== message.newConnectionId
-    ) {
-      return false;
-    }
-    const prepared = this.preparedChild;
-    if (prepared?.peer.connectionId === message.newConnectionId) {
-      return !prepared.failed;
-    }
-    const stream = this.stream;
-    if (!stream) return false;
-    this.discardPreparedPeer();
-    this.startPreparedChild(
-      message.revision,
-      this.preparedCandidate,
-      stream,
-      message,
-    );
-    return true;
   }
 
   prepareChild(
@@ -338,13 +299,11 @@ export class ViewerRelay {
     revision: number,
     candidate: PreparedRouteCandidate,
     stream: MediaStream,
-    selectedTurn?: SelectedEdgeTurn,
   ): void {
     const peer = this.createPeer(
       candidate.childPeerId,
       stream,
       candidate.connectionId,
-      selectedTurn,
     );
     this.preparedChild = {
       revision,
@@ -484,14 +443,11 @@ export class ViewerRelay {
     childPeerId: string,
     stream: MediaStream,
     connectionId?: string,
-    selectedTurn?: SelectedEdgeTurn,
   ): HostPeer {
     let peer: HostPeer;
     peer = new HostPeer(
       childPeerId,
-      selectedTurn
-        ? { iceServers: [selectedTurn.iceServer] }
-        : this.iceConfig,
+      this.iceConfig,
       stream,
       this.desiredProfile,
       {
@@ -524,7 +480,6 @@ export class ViewerRelay {
           }
         },
       },
-      selectedTurn !== undefined,
       connectionId,
     );
     return peer;

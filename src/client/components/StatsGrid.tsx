@@ -138,12 +138,6 @@ export function StatsGrid({
         label="传输协议"
         value={metrics.iceProtocol?.toUpperCase() ?? "未知"}
       />
-      {metrics.localCandidateType === "relay" && (
-        <Metric
-          label="本地 TURN"
-          value={metrics.localRelayProtocol?.toUpperCase() ?? "未知"}
-        />
-      )}
       <Metric
         label="候选路径"
         value={`${metrics.localCandidateType ?? "?"} / ${metrics.remoteCandidateType ?? "?"}`}

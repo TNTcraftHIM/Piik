@@ -29,7 +29,6 @@ import { RoomCode } from "../components/RoomCode";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
   MediaRouteBadge,
-  PathBadge,
   PeerStatusBadge,
   SignalStatusBadge,
   WarningBanner,
@@ -92,10 +91,6 @@ type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
 >;
-type SelectedEdgeTurn = Extract<
-  ServerMessage,
-  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
->;
 interface SfuUpstreamState {
   connectionState: "connected" | "reconnecting";
   metrics: ConnectionMetrics | null;
@@ -105,9 +100,7 @@ interface PendingPeerRoute {
   parentPeerId: string;
   peer: ViewerPeer | null;
   readySent: boolean;
-  selectedTurn: SelectedEdgeTurn | null;
   candidateConnectionId: string;
-  transport: "direct" | "selected-turn";
   stream: MediaStream | null;
   snapshot: PeerSnapshot | null;
 }
@@ -619,9 +612,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               parentPeerId: assignment.upstream.peerId,
               peer: null,
               readySent: false,
-              selectedTurn: null,
               candidateConnectionId: candidate.connectionId,
-              transport: candidate.transport,
               stream: null,
               snapshot: null,
             };
@@ -805,9 +796,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (!probe || !currentIceConfig) return null;
       if (probe.peer) return probe.peer;
       const peer: ViewerPeer = new ViewerPeer(
-        probe.selectedTurn
-          ? { iceServers: [probe.selectedTurn.iceServer] }
-          : currentIceConfig,
+        currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
             signal.send(viewerSignalMessage(peerAssisted, targetPeerId, payload)),
@@ -863,7 +852,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               : true;
           },
         },
-        probe.transport === "selected-turn",
       );
       probe.peer = peer;
       return peer;
@@ -1048,39 +1036,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         return;
       }
-      if (message.type === "selected-edge-turn") {
-        if (message.edgeKind !== "peer-selected") {
-          return;
-        }
-        if (!peerAssisted) {
-          return;
-        }
-        if (message.parentPeerId === currentPeerId) {
-          ensureViewerRelay()?.prepareSelectedEdgeTurn(
-            message,
-            currentPeerId,
-            message.revision,
-          );
-          return;
-        }
-        const probe = pendingPeer;
-        if (probe?.selectedTurn?.newConnectionId === message.newConnectionId) {
-          return;
-        }
-        if (
-          message.viewerPeerId !== currentPeerId ||
-          probe?.revision !== message.revision ||
-          probe.parentPeerId !== message.parentPeerId ||
-          probe.transport !== "selected-turn" ||
-          probe.candidateConnectionId !== message.newConnectionId ||
-          Date.parse(message.expiresAt) <= Date.now() ||
-          probe.peer !== null
-        ) {
-          return;
-        }
-        probe.selectedTurn = message;
-        return;
-      }
       if (message.type === "route-update") {
         if (peerAssisted) {
           if (
@@ -1128,13 +1083,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "signal") {
         if (peerAssisted && pendingPeer?.parentPeerId === message.fromPeerId) {
-          if (
-            message.payload.connectionId === pendingPeer.candidateConnectionId &&
-            pendingPeer.transport === "selected-turn" &&
-            !pendingPeer.selectedTurn
-          ) {
-            return;
-          }
           if (currentAssignment.parentPeerId !== message.fromPeerId) {
             await ensurePendingPeerRoute()?.acceptSignal(
               message.fromPeerId,
@@ -1526,9 +1474,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             {showConnectionDetails && routePresentation.route && (
               <>
                 <MediaRouteBadge route={routePresentation.route} />
-                {routeMetrics?.path === "relay" && (
-                  <PathBadge metrics={routeMetrics} />
-                )}
               </>
             )}
           </div>
@@ -1767,9 +1712,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             <h2 id="stats-heading">连接数据</h2>
             <div className="viewer-transport-heading">
               <MediaRouteBadge route={routePresentation.route} />
-              {routeMetrics?.path === "relay" && (
-                <PathBadge metrics={routeMetrics} />
-              )}
             </div>
             {routeMetrics && (
               <StatsGrid

@@ -75,7 +75,7 @@ describe("diagnostic export privacy boundary", () => {
       trackIdentifier: "sensitive-track-id",
       rawCandidate: "candidate-sensitive",
       sdp: "sdp-sensitive",
-      turnUrl: "turn:secret.example",
+      privateUrl: "https://secret.example",
       stunUrl: "stun:secret.example",
       username: "username-sensitive",
       credential: "credential-sensitive",

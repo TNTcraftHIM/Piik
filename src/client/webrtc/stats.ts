@@ -446,7 +446,7 @@ export function collectConnectionMetricsFromReport(
   const remoteType = stringValue(remoteCandidate, "candidateType");
   const path =
     localType === "relay" || remoteType === "relay"
-      ? "relay"
+      ? "unknown"
       : localType !== null && remoteType !== null
         ? "direct"
         : "unknown";
@@ -796,9 +796,6 @@ export function collectConnectionMetricsFromReport(
   const iceProtocol =
     stringValue(localCandidate, "protocol") ??
     stringValue(remoteCandidate, "protocol");
-  const localRelayProtocol =
-    localType === "relay" ? stringValue(localCandidate, "relayProtocol") : null;
-
   return {
     ...EMPTY_METRICS,
     sampleTimestampMs: timestamp,
@@ -814,7 +811,6 @@ export function collectConnectionMetricsFromReport(
     candidatePairSampleWindowMs,
     path,
     iceProtocol,
-    localRelayProtocol,
     localCandidateType: localType,
     remoteCandidateType: remoteType,
     localCandidateAddress: candidateAddressValue(localCandidate),
