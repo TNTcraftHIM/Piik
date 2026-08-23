@@ -861,6 +861,7 @@ describe("server signaling protocol", () => {
   }
 
   it("accepts dynamic viewer limits within the protocol boundary", () => {
+    expect(MAX_VIEWERS_PER_ROOM_LIMIT).toBe(20);
     expect(serverMessageSchema.safeParse(authenticatedMessage(1)).success).toBe(
       true,
     );

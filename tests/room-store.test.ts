@@ -181,6 +181,49 @@ describe("RoomStore", () => {
     expect(store.maxViewersPerRoom).toBe(2);
   });
 
+  it("admits one Host plus the 20-Viewer room ceiling", () => {
+    const store = new RoomStore({
+      ttlMs: 10_000,
+      maxRooms: 10,
+      maxViewersPerRoom: MAX_VIEWERS_PER_ROOM_LIMIT,
+    });
+    const room = store.createRoom();
+
+    expect(
+      store.connectParticipant({
+        roomId: room.roomId,
+        role: "host",
+        token: room.hostToken,
+        clientId: "host-client",
+        sessionId: "host-session",
+      }).role,
+    ).toBe("host");
+
+    for (let index = 1; index <= MAX_VIEWERS_PER_ROOM_LIMIT; index += 1) {
+      expect(
+        store.connectParticipant({
+          roomId: room.roomId,
+          role: "viewer",
+          viewerGrant: viewerGrant(room),
+          clientId: `viewer-client-${index}`,
+          sessionId: `viewer-session-${index}`,
+        }).role,
+      ).toBe("viewer");
+    }
+
+    expectRoomError(
+      () =>
+        store.connectParticipant({
+          roomId: room.roomId,
+          role: "viewer",
+          viewerGrant: viewerGrant(room),
+          clientId: `viewer-client-${MAX_VIEWERS_PER_ROOM_LIMIT + 1}`,
+          sessionId: `viewer-session-${MAX_VIEWERS_PER_ROOM_LIMIT + 1}`,
+        }),
+      "ROOM_FULL",
+    );
+  });
+
   it("allows only the same host identity to replace an online host", () => {
     const store = new RoomStore({
       ttlMs: 10_000,

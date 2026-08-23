@@ -64,6 +64,25 @@ func TestDecodeOrdinaryHostAuthentication(t *testing.T) {
 	}
 }
 
+func TestDecodeOrdinaryHostAuthenticationAcceptsViewerCeiling(t *testing.T) {
+	var candidate map[string]any
+	if err := json.Unmarshal([]byte(validHostAuthenticated), &candidate); err != nil {
+		t.Fatal(err)
+	}
+	candidate["maxViewers"] = maxProtocolViewers
+	payload, err := json.Marshal(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := decodeServerMessage(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.MaxViewers != maxProtocolViewers {
+		t.Fatalf("max viewers = %d, want %d", message.MaxViewers, maxProtocolViewers)
+	}
+}
+
 func TestDecodePeerAssistedHostAuthentication(t *testing.T) {
 	message, err := decodeServerMessage([]byte(validPeerAssistedHostAuthenticated))
 	if err != nil {
@@ -142,7 +161,7 @@ func TestDecodeOrdinaryHostAuthenticationRejectsInvalidVariants(t *testing.T) {
 		"wrong-protocol":         func(message map[string]any) { message["protocol"] = "screener-v5" },
 		"missing-max":            func(message map[string]any) { delete(message, "maxViewers") },
 		"zero-max":               func(message map[string]any) { message["maxViewers"] = 0 },
-		"too-large-max":          func(message map[string]any) { message["maxViewers"] = 17 },
+		"too-large-max":          func(message map[string]any) { message["maxViewers"] = maxProtocolViewers + 1 },
 		"missing-endpoint-cap":   func(message map[string]any) { delete(message, "endpointMediaCopyCapacity") },
 		"zero-endpoint-cap":      func(message map[string]any) { message["endpointMediaCopyCapacity"] = 0 },
 		"too-large-endpoint-cap": func(message map[string]any) { message["endpointMediaCopyCapacity"] = 4 },

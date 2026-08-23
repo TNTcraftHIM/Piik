@@ -17,7 +17,7 @@ import (
 
 const (
 	signalingProtocol            = "screener-v6"
-	maxProtocolViewers           = 16
+	maxProtocolViewers           = 20
 	maxEndpointMediaCopyCapacity = 3
 	maxRouteRevision             = int64(1<<53 - 1)
 	maxSignalSDPBytes            = 48 << 10

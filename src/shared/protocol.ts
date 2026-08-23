@@ -3,7 +3,7 @@ import { z } from "zod";
 import { MAX_ENDPOINT_MEDIA_COPY_CAPACITY } from "./media-copy-accounting.js";
 import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 
-export const MAX_VIEWERS_PER_ROOM_LIMIT = 16;
+export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
 export const SIGNALING_PROTOCOL = "screener-v6";

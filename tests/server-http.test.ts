@@ -4,7 +4,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createRoomResponseSchema } from "../src/shared/protocol.ts";
+import {
+  MAX_VIEWERS_PER_ROOM_LIMIT,
+  createRoomResponseSchema,
+} from "../src/shared/protocol.ts";
 import {
   createScreenerServer,
   type CreateServerOptions,
@@ -285,6 +288,20 @@ describe("room HTTP API", () => {
     expect(body.viewerPolicy).toBe("private-link");
     expect(body.viewerGrantExpiresAt).toBeTruthy();
     expect("iceConfig" in body).toBe(false);
+  });
+
+  it("passes the shared Viewer ceiling to room admission", async () => {
+    const baseUrl = await start(
+      testConfig({
+        siteAccessPassword: undefined,
+        maxViewersPerRoom: MAX_VIEWERS_PER_ROOM_LIMIT,
+      }),
+    );
+
+    expect((await createRoom(baseUrl)).status).toBe(201);
+    expect(runningServer?.roomStore.maxViewersPerRoom).toBe(
+      MAX_VIEWERS_PER_ROOM_LIMIT,
+    );
   });
 
   it("accepts only the admitted fixed provisional Host lease", async () => {

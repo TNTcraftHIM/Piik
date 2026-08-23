@@ -16,6 +16,7 @@ import {
   parseViewerCounts,
   summarizeSamples,
 } from "../scripts/peer-assisted-benchmark";
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol";
 import type {
   MediaRouteUpstream,
   ParticipantRouteAssignment,
@@ -234,8 +235,14 @@ describe("peer topology loopback configuration", () => {
   });
 
   it("accepts the room viewer ceiling and rejects values above it", () => {
-    expect(parseViewerCounts("16")).toEqual([16]);
-    expect(() => parseViewerCounts("17")).toThrow(/1 to 16/);
+    expect(parseViewerCounts(String(MAX_VIEWERS_PER_ROOM_LIMIT))).toEqual([
+      MAX_VIEWERS_PER_ROOM_LIMIT,
+    ]);
+    expect(() =>
+      parseViewerCounts(String(MAX_VIEWERS_PER_ROOM_LIMIT + 1)),
+    ).toThrow(
+      new RegExp(`1 to ${MAX_VIEWERS_PER_ROOM_LIMIT}`),
+    );
   });
 
   it("requires recovery to target one selected case", () => {

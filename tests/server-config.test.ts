@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol.ts";
 import { loadConfig } from "../src/server/config.ts";
 
 const liveKitAdmission = {
@@ -319,20 +320,20 @@ describe("server configuration", () => {
     );
   });
 
-  it("keeps the peer-assisted room default at 8 and accepts explicit 16", () => {
+  it("keeps the peer-assisted room default at 8 and accepts the room ceiling", () => {
     expect(
       loadConfig({ PEER_ASSISTED_MEDIA: "true" }).maxViewersPerRoom,
     ).toBe(8);
     expect(
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
-        MAX_VIEWERS_PER_ROOM: "16",
+        MAX_VIEWERS_PER_ROOM: String(MAX_VIEWERS_PER_ROOM_LIMIT),
       }).maxViewersPerRoom,
-    ).toBe(16);
+    ).toBe(MAX_VIEWERS_PER_ROOM_LIMIT);
     expect(() =>
       loadConfig({
         PEER_ASSISTED_MEDIA: "true",
-        MAX_VIEWERS_PER_ROOM: "17",
+        MAX_VIEWERS_PER_ROOM: String(MAX_VIEWERS_PER_ROOM_LIMIT + 1),
       }),
     ).toThrow("MAX_VIEWERS_PER_ROOM");
   });
@@ -427,7 +428,7 @@ describe("server configuration", () => {
     expect(config.livekitFallback?.url).toBe("wss://livekit.test");
   });
 
-  it.each([1, 16])(
+  it.each([1, MAX_VIEWERS_PER_ROOM_LIMIT])(
     "accepts a per-room viewer limit at boundary %i",
     (maxViewersPerRoom) => {
       expect(
@@ -437,7 +438,7 @@ describe("server configuration", () => {
     },
   );
 
-  it.each(["0", "17", "1.5"])(
+  it.each(["0", String(MAX_VIEWERS_PER_ROOM_LIMIT + 1), "1.5"])(
     "rejects invalid per-room viewer limit %s",
     (maxViewersPerRoom) => {
       expect(() =>
