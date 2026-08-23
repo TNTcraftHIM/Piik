@@ -16,6 +16,11 @@ Only items in **Now** are executable after their stated decision gate. A branch 
 
 The existing route implementation is an input, not an integration base. Reuse only scoped authorization, capacity, admission, deterministic-planning, and provisional-media primitives that fit the accepted single-loop model; rebuild the controller from the truth checkpoint rather than carrying role-specific state forward.
 
+## Queued After Route
+
+1. **Default room entry and sharing controls.** Make new rooms default to room-code entry without a password. Before implementation, settle one meaning for a token-bearing share link when code entry is already open, then make room code, invite link, and password commands visually distinct with direct labels and familiar icons.
+2. **Default Web share audio request.** For every Browser capture surface that can expose share audio, request audio by default and keep an explicit, truthful no-audio fallback when the browser, operating system, selected surface, or user choice does not provide it. Do not add a native helper or executable for this item.
+
 ## Accepted Later Roadmap
 
 These items are real product work, ordered after the current release boundary; they are not permission to resume an old branch wholesale.
