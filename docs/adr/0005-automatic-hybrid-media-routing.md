@@ -98,7 +98,12 @@ claimed NAT class, geography, user agent, or a
 weighted room-wide score never choose a parent. A failed candidate releases its
 reservation before the next candidate is attempted. The first candidate that
 reaches the media-usable floor commits; otherwise the loop reaches the next
-candidate, an explicit wait, or bounded failure.
+candidate, an explicit wait, or bounded failure. A failed edge seeds its tuple
+only into the operation opened by that fact version; a later external fact may
+make the tuple eligible again. Exhaustion retires an edge that is hard-invalid,
+attached to a confirmed-departed parent, or outside current effective capacity,
+so blocked state never hides a physical copy or server resource. A healthy edge
+used only for SFU bootstrap remains committed if bootstrap cannot start.
 
 There is no independent maximum-depth policy. Acyclicity and room admission
 bound the graph, while shallowest-first ordering minimizes depth. Depth remains
@@ -144,12 +149,25 @@ and server-issued candidate connection identity. Parent and child therefore
 prepare the same connection even when the parent's child set is unchanged by a
 direct/selected-transport replacement; neither endpoint infers candidate
 authority from an assignment-list difference.
+The Browser route release uses the single `screener-v7` wire. On each WebSocket,
+the server sends the exact prepare before its TURN grant or SFU configuration;
+the candidate child is queued before a peer parent is allowed to start its
+offer. WebSocket ordering is the companion-delivery contract, so clients keep
+no reordering inbox. Duplicate current companions are idempotent and stale ones
+are ignored. Native v6 and executable senders are outside this release and fail
+the protocol boundary rather than receiving a compatibility path.
 A stale or mismatched asynchronous result fails closed and cannot revive an old
 edge.
 Successful candidate `P` is broadcast as active revision `P`. Failure, timeout,
 or authoritative abort keeps the previous committed graph content but advances
 and broadcasts one active rollback revision `R > P` before any later prepare;
 clients never infer rollback from silence or from an older revision.
+One room-wide monotonic allocator owns active, prepare, rollback, retirement,
+and prune revisions. A direct peer transport may adopt a fresh WebRTC connection
+identity during its framework-owned rebuild only for the exact current
+parent/child sessions; that identity update does not change topology. Selected
+TURN remains session-bound and must retire through the same rollback primitive
+when either authenticated session changes.
 
 A route replacement uses make-before-break only when the typed endpoint and
 server-resource ledger atomically admits the required reservations. The old
@@ -158,9 +176,15 @@ new video frame. ICE `connected` alone is insufficient. Commit promotes that
 exact candidate
 atomically; timeout, failure, stale identity, or revoked authority destroys it,
 releases reservations idempotently, and keeps or restores the previous valid
-route. When a full sender has no overlap slot, the controller may preconnect
-signaling and transport and perform one explicit bounded-gap cutover instead of
-silently exceeding capacity.
+route. The exact media-ready call synchronously commits typed admission before
+graph promotion; a failed admission commit follows the ordinary candidate
+failure path. Commit releases the resource-set difference plus the overlap
+slot, and room stop/delete returns every current and committed resource through
+one dispose operation. When a full sender has no overlap slot, server resources
+are preflighted before one explicit bounded-gap cutover. Retirement keeps the
+same total deadline, replans the untried tuple suffix against the new graph, and
+appends one ordinary restore candidate when it cut a healthy logical edge.
+There is no fourth endpoint copy and no separate restore state machine.
 
 Recovery attempts are finite, generation-bound, and stop after success. The
 controller must not turn a rare failure into an unbounded retry loop, unaccounted
@@ -213,6 +237,12 @@ second mutable graph.
   WebRTC/LiveKit adaptation inputs; they do not change
   parent eligibility. Multiple bad child edges recover independently through the
   same loop and naturally empty an unusable relay.
+- Web clients derive active decoded progress from their existing periodic
+  WebRTC/LiveKit stats sampling. One route-keyed last-progress deadline reports
+  the exact edge once; it resets on route/connection change or decoded progress
+  and is suppressed while authoritatively paused. It adds no polling loop and
+  does not treat bitrate, FPS, track availability, or SFU layer choice as route
+  authority.
 - Authoritative pause aborts the pending child operation, including its current
   candidate and reservations, keeps the active graph, suppresses decoded-frame-
   stall decisions, and leaves new participants waiting. Resume wakes a fresh
@@ -221,6 +251,10 @@ second mutable graph.
 SFU and TURN remain bounded fallback resources with independent deployment-wide
 admission. Resource exhaustion produces the next bounded candidate, an explicit
 wait, or failure; it never creates unbounded central fanout.
+Rooms that actually lose a candidate to deployment-wide admission register in
+one waiter set. An actual SFU/TURN usage decrease drains that set once, advances
+each waiting controller's external fact, and schedules normal reconciliation;
+there is no periodic capacity poll or resource-specific route controller.
 
 For the single-process deployment, selected TURN uses one injected allocation
 authority with an explicitly configured positive safe-integer capacity and no
