@@ -509,23 +509,6 @@ h3 {
   min-width: 0;
 }
 
-.viewer-policy-toggle {
-  display: inline-flex;
-  min-height: 36px;
-  gap: 9px;
-  align-items: center;
-  margin-bottom: 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.viewer-policy-toggle input {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: var(--green-strong);
-}
-
 .advanced-quality {
   margin-top: 10px;
   border-top: 1px solid var(--border);
@@ -783,11 +766,11 @@ h3 {
 }
 
 .invite-bar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(280px, 3fr) minmax(260px, 2fr);
   min-width: 0;
   gap: 12px;
-  align-items: center;
+  align-items: start;
   margin-top: 18px;
   padding: 11px 12px;
   border: 1px solid var(--border);
@@ -795,15 +778,42 @@ h3 {
   background: var(--surface);
 }
 
-.invite-copy {
+.invite-primary,
+.room-entry-policy {
   min-width: 0;
-  flex: 1;
 }
 
 .invite-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 6px;
+  margin-top: 8px;
+}
+
+.invite-action {
+  min-height: 34px;
+  padding: 6px 9px;
+}
+
+.room-entry-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.room-policy-control {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.room-policy-control button {
+  flex: 1;
+}
+
+.room-lease-note {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .viewer-password-control {
@@ -830,7 +840,8 @@ h3 {
   width: 100%;
 }
 
-.invite-copy .field-label {
+.invite-primary .field-label,
+.room-entry-heading .field-label {
   margin-bottom: 3px;
 }
 
@@ -1439,7 +1450,7 @@ h3 {
   }
 
   .invite-bar {
-    align-items: flex-end;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .viewer-password-control {

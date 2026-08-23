@@ -19,6 +19,8 @@ const MAX_SELECTED_EDGE_TURN_SECRET_BYTES = 128;
 const MIN_SELECTED_EDGE_TURN_TTL_SECONDS = 60;
 const MAX_SELECTED_EDGE_TURN_TTL_SECONDS = 10 * 60;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
+const DEFAULT_ROOM_LEASE_SECONDS = 86_400;
+const MAX_ROOMS = 9_000;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
 const REMOVED_ENVIRONMENT_VARIABLES = [
   "TURN_URLS",
@@ -31,6 +33,8 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
   "HOST_ADMISSION_PASSWORD",
   "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
   "MAX_SFU_ROOTS_PER_ROOM",
+  "ROOM_DATABASE_PATH",
+  "ROOM_TTL_SECONDS",
 ] as const;
 
 export interface LiveKitFallbackConfig {
@@ -56,8 +60,7 @@ export interface ServerConfig {
   publicBaseUrl: URL;
   allowedOrigins: ReadonlySet<string>;
   siteAccessPassword?: string;
-  roomDatabasePath?: string;
-  roomTtlMs: number;
+  roomLeaseMs: number;
   maxRooms: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
@@ -404,8 +407,6 @@ export function loadConfig(
     environment.SITE_ACCESS_PASSWORD === ""
       ? undefined
       : environment.SITE_ACCESS_PASSWORD;
-  const roomDatabasePath =
-    environment.ROOM_DATABASE_PATH?.trim() || undefined;
   const stunUrls = parseStunUrlList(environment.STUN_URLS);
   const maxViewersPerRoom = parseBoundedInteger(
     environment.MAX_VIEWERS_PER_ROOM,
@@ -463,12 +464,6 @@ export function loadConfig(
   if (nodeEnv === "production" && !siteAccessPassword) {
     throw new Error("SITE_ACCESS_PASSWORD is required in production");
   }
-  if (roomDatabasePath && !siteAccessPassword) {
-    throw new Error("ROOM_DATABASE_PATH requires SITE_ACCESS_PASSWORD");
-  }
-  if (nodeEnv === "production" && roomDatabasePath === ":memory:") {
-    throw new Error("ROOM_DATABASE_PATH must be file-backed in production");
-  }
   if (nodeEnv === "production" && stunUrls.length === 0) {
     throw new Error("STUN is required in production");
   }
@@ -482,11 +477,19 @@ export function loadConfig(
       publicBaseUrl.origin,
     ),
     siteAccessPassword,
-    roomDatabasePath,
-    roomTtlMs:
-      parsePositiveInteger(environment.ROOM_TTL_SECONDS, 14_400, "ROOM_TTL_SECONDS") *
+    roomLeaseMs:
+      parsePositiveInteger(
+        environment.ROOM_LEASE_SECONDS,
+        DEFAULT_ROOM_LEASE_SECONDS,
+        "ROOM_LEASE_SECONDS",
+      ) * 1_000,
+    maxRooms: parseBoundedInteger(
+      environment.MAX_ROOMS,
       1_000,
-    maxRooms: parsePositiveInteger(environment.MAX_ROOMS, 1_000, "MAX_ROOMS"),
+      "MAX_ROOMS",
+      1,
+      MAX_ROOMS,
+    ),
     maxViewersPerRoom,
     peerAssistedMedia,
     endpointMediaCopyCapacity,

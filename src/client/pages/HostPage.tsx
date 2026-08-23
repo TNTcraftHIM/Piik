@@ -1,7 +1,6 @@
 import {
   Check,
   Copy,
-  Globe2,
   Hash,
   KeyRound,
   LockKeyhole,
@@ -29,7 +28,7 @@ import {
   type ParticipantPresenceEntry,
   type PreparedRouteCandidate,
   type ServerMessage,
-  type ViewerAccessPolicy,
+  type CodeEntryPolicy,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionSelfCheck } from "../components/ConnectionSelfCheck";
@@ -48,6 +47,11 @@ import { StatsGrid } from "../components/StatsGrid";
 import { TopologyView } from "../components/TopologyView";
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
 import { ApiError, createRoom } from "../lib/api";
+import {
+  readCreationProfile,
+  saveCreationProfile,
+  type HostCreationProfile,
+} from "../lib/creation-profile";
 import { createOpaqueId } from "../lib/opaque-id";
 import { downloadDiagnosticReport, type DiagnosticConnectionInput } from "../lib/diagnostic-export";
 import {
@@ -57,11 +61,9 @@ import {
 } from "../lib/display-name";
 import {
   clearHostRoom,
-  clearViewerGrant,
   getStableClientId,
   type HostRoomIdentity,
   type HostRoomState,
-  isHostRoomExpired,
   mergeAuthenticatedHostRoom,
   readHostRoom,
   replaceViewerInvite,
@@ -189,7 +191,7 @@ function hostRoomFromStored(room: HostRoomIdentity | null): HostRoomState | null
   return room
     ? {
         ...room,
-        viewerPolicy: null,
+        codeEntryPolicy: null,
         inviteUrl: null,
       }
     : null;
@@ -205,7 +207,7 @@ function hostRoomFromCreated(room: CreateRoomResponse): HostRoomState {
     hostToken: room.hostToken,
     expiresAt: room.expiresAt,
     canonicalUrl: canonicalUrl.toString(),
-    viewerPolicy: room.viewerPolicy,
+    codeEntryPolicy: room.codeEntryPolicy,
     inviteUrl: room.inviteUrl,
   };
 }
@@ -230,10 +232,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [room, setRoom] = useState<HostRoomState | null>(() =>
     hostRoomFromStored(readHostRoom()),
   );
-  const [newRoomViewerPolicy, setNewRoomViewerPolicy] =
-    useState<ViewerAccessPolicy>("private-link");
-  const [viewerAccessUpdating, setViewerAccessUpdating] = useState(false);
+  const [creationProfile, setCreationProfile] =
+    useState<HostCreationProfile>(readCreationProfile);
+  const creationProfileRef = useRef(creationProfile);
+  const [viewerGrantUpdating, setViewerGrantUpdating] = useState(false);
   const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(false);
+  useEffect(() => {
+    creationProfileRef.current = creationProfile;
+  }, [creationProfile]);
   const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
   const [viewerPasswordUpdating, setViewerPasswordUpdating] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
@@ -267,7 +273,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
   const hostClientIdRef = useRef<string | null>(null);
-  const viewerPasswordActionRef = useRef<"set" | "remove" | null>(null);
+  const viewerPasswordActionRef = useRef<string | null | undefined>(undefined);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
   const retiredConnectionsRef = useRef(new Map<string, string>());
@@ -1136,21 +1142,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       discardPreparedHostChild();
       hostPeerIdRef.current = message.peerId;
       endpointMediaCopyCapacityRef.current = message.endpointMediaCopyCapacity;
-      setViewerAccessUpdating(false);
+      setViewerGrantUpdating(false);
       clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
         "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
       );
       setMaxViewers(message.maxViewers);
-      if (message.viewerPolicy === "public-watch") {
-        clearViewerGrant(activeRoomId);
-      }
       setRoom((current) =>
         mergeAuthenticatedHostRoom(
           current,
           activeRoomId,
           message.roomExpiresAt,
-          message.viewerPolicy,
+          message.codeEntryPolicy,
         ),
       );
       if (
@@ -1202,36 +1205,62 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       return;
     }
-    if (message.type === "viewer-access-updated") {
-      setViewerAccessUpdating(false);
+    if (message.type === "code-entry-policy-updated") {
+      const profile = {
+        codeEntryPolicy: message.codeEntryPolicy,
+        roomPassword: creationProfileRef.current.roomPassword,
+      };
+      saveCreationProfile(profile);
+      setCreationProfile(profile);
+      setRoom((current) =>
+        current
+          ? { ...current, codeEntryPolicy: message.codeEntryPolicy }
+          : current,
+      );
+      setNotice(
+        message.codeEntryPolicy === "open"
+          ? "已允许仅凭房间号加入"
+          : message.codeEntryPolicy === "password"
+            ? "房间号加入已要求密码"
+            : "已关闭仅凭房间号加入",
+      );
+      return;
+    }
+    if (message.type === "viewer-grant-updated") {
+      setViewerGrantUpdating(false);
       replaceViewerInvite(activeRoomId, message.inviteUrl);
       setRoom((current) =>
         current
           ? {
               ...current,
-              viewerPolicy: message.viewerPolicy,
               inviteUrl: message.inviteUrl,
             }
           : current,
       );
       setNotice(
-        message.viewerPolicy === "public-watch"
-          ? "已允许仅凭房间号观看"
-          : message.inviteUrl
-            ? "已生成新的私密邀请，旧邀请已失效"
-            : "已撤销当前私密邀请",
+        message.inviteUrl
+          ? "已生成新的邀请链接，旧邀请已失效"
+          : "已撤销当前邀请链接",
       );
       return;
     }
     if (message.type === "viewer-password-updated") {
       const action = viewerPasswordActionRef.current;
       viewerPasswordActionRef.current = null;
+      if (action !== undefined) {
+        const profile = {
+          codeEntryPolicy: creationProfileRef.current.codeEntryPolicy,
+          roomPassword: action,
+        };
+        saveCreationProfile(profile);
+        setCreationProfile(profile);
+      }
       setViewerPasswordEnabled(message.enabled);
       setViewerPasswordUpdating(false);
       setViewerPasswordDraft("");
-      if (action) {
+      if (action !== undefined) {
         setNotice(
-          action === "remove" ? "房间密码已移除" : "房间密码已更新",
+          action === null ? "房间密码已移除" : "房间密码已更新",
         );
       }
       return;
@@ -1354,7 +1383,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "error") {
-      setViewerAccessUpdating(false);
+      setViewerGrantUpdating(false);
       setViewerPasswordUpdating(false);
       viewerPasswordActionRef.current = null;
       if (["INVALID_TOKEN", "ROOM_EXPIRED"].includes(message.code)) {
@@ -1421,13 +1450,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let claimedRoom = false;
     try {
       let reusableRoom = room;
-      if (reusableRoom && isHostRoomExpired(reusableRoom)) {
-        forgetRoom();
-        reusableRoom = null;
-      }
       createdRoom = reusableRoom ?? hostRoomFromStored(readHostRoom());
       if (!createdRoom) {
-        const response = await createRoom(newRoomViewerPolicy);
+        const response = await createRoom(
+          creationProfileRef.current.codeEntryPolicy,
+          creationProfileRef.current.roomPassword,
+        );
         createdRoom = hostRoomFromCreated(response);
         if (!isCurrentGeneration(generation)) {
           captured.getTracks().forEach((track) => track.stop());
@@ -1441,75 +1469,132 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         setRoom(createdRoom);
         claimedRoom = true;
       }
-      const activeRoom = createdRoom;
-      const hostClientId = getStableClientId("host", activeRoom.roomId);
-      hostClientIdRef.current = hostClientId;
-      const hostFallback = defaultHostDisplayName(hostClientId);
-      const initialDisplayName = readDisplayName(hostFallback);
-      displayNameRef.current = initialDisplayName;
-      setDisplayName(initialDisplayName);
-      setDisplayNameDraft(initialDisplayName);
-      setDisplayNameError(null);
-      const signal = new SignalingClient(
-        {
-          roomId: activeRoom.roomId,
-          role: "host",
-          token: activeRoom.hostToken,
-          clientId: hostClientId,
-          shareGeneration,
-          sharingPaused: false,
-          viewerPresence: true,
-          viewerPasswordSettings: true,
-          displayName: initialDisplayName,
-        },
-        {
-          onStatus: (status) => {
-            if (
-              isCurrentGeneration(generation) &&
-              signalRef.current === signal
-            ) {
-              setSignalStatus(status);
-            }
+      let replacementAttempted = false;
+      const connectSignal = (activeRoom: HostRoomState): SignalingClient => {
+        let authenticated = false;
+        const hostClientId = getStableClientId("host", activeRoom.roomId);
+        hostClientIdRef.current = hostClientId;
+        const hostFallback = defaultHostDisplayName(hostClientId);
+        const initialDisplayName = readDisplayName(hostFallback);
+        displayNameRef.current = initialDisplayName;
+        setDisplayName(initialDisplayName);
+        setDisplayNameDraft(initialDisplayName);
+        setDisplayNameError(null);
+        const signal = new SignalingClient(
+          {
+            roomId: activeRoom.roomId,
+            role: "host",
+            token: activeRoom.hostToken,
+            clientId: hostClientId,
+            shareGeneration,
+            sharingPaused: false,
+            viewerPresence: true,
+            viewerPasswordSettings: true,
+            displayName: initialDisplayName,
           },
-          onTerminated: (message) => {
-            if (
-              isCurrentGeneration(generation) &&
-              signalRef.current === signal
-            ) {
-              endSharing(message, false);
-            }
+          {
+            onStatus: (status) => {
+              if (
+                isCurrentGeneration(generation) &&
+                signalRef.current === signal
+              ) {
+                setSignalStatus(status);
+              }
+            },
+            onTerminated: (message) => {
+              if (
+                isCurrentGeneration(generation) &&
+                signalRef.current === signal
+              ) {
+                endSharing(message, false);
+              }
+            },
+            onAccessRequired: () => {
+              if (
+                isCurrentGeneration(generation) &&
+                signalRef.current === signal
+              ) {
+                endSharing("站点访问已失效，请重新验证", false);
+                onAuthorizationRequired?.();
+              }
+            },
+            onMessage: (message) => {
+              if (
+                !isCurrentGeneration(generation) ||
+                signalRef.current !== signal
+              ) {
+                return;
+              }
+              if (
+                !authenticated &&
+                message.type === "error" &&
+                (message.code === "INVALID_TOKEN" ||
+                  message.code === "ROOM_EXPIRED") &&
+                !replacementAttempted
+              ) {
+                replacementAttempted = true;
+                signalRef.current = null;
+                signal.stop();
+                setSignalStatus("offline");
+                clearHostRoom();
+                setRoom(null);
+                void createReplacementRoom();
+                return;
+              }
+              if (message.type === "authenticated" && message.role === "host") {
+                authenticated = true;
+                iceConfigRef.current = message.iceConfig;
+                peersRef.current.forEach((peer) =>
+                  peer.updateIceConfig(message.iceConfig),
+                );
+                writeHostRoom({
+                  ...activeRoom,
+                  expiresAt: message.roomExpiresAt,
+                });
+                setPhase("live");
+              }
+              handleSignalMessage(message, generation, activeRoom.roomId);
+            },
           },
-          onAccessRequired: () => {
-            if (
-              isCurrentGeneration(generation) &&
-              signalRef.current === signal
-            ) {
-              endSharing("站点访问已失效，请重新验证", false);
-              onAuthorizationRequired?.();
-            }
-          },
-          onMessage: (message) => {
-            if (
-              !isCurrentGeneration(generation) ||
-              signalRef.current !== signal
-            ) {
-              return;
-            }
-            if (message.type === "authenticated" && message.role === "host") {
-              iceConfigRef.current = message.iceConfig;
-              peersRef.current.forEach((peer) =>
-                peer.updateIceConfig(message.iceConfig),
-              );
-              writeHostRoom({
-                ...activeRoom,
-                expiresAt: message.roomExpiresAt,
-              });
-              setPhase("live");
-            }
-            handleSignalMessage(message, generation, activeRoom.roomId);
-          },
-        },
-      );
+        );
+        return signal;
+      };
+      const createReplacementRoom = async (): Promise<void> => {
+        try {
+          const response = await createRoom(
+            creationProfileRef.current.codeEntryPolicy,
+            creationProfileRef.current.roomPassword,
+          );
+          const replacement = hostRoomFromCreated(response);
+          if (!isCurrentGeneration(generation)) {
+            captured.getTracks().forEach((track) => track.stop());
+            closeAbandonedRoom(replacement);
+            return;
+          }
+          writeHostRoom(replacement);
+          setRoom(replacement);
+          const replacementSignal = connectSignal(replacement);
+          signalRef.current = replacementSignal;
+          replacementSignal.start();
+        } catch (error) {
+          if (!isCurrentGeneration(generation)) {
+            return;
+          }
+          activeGenerationRef.current = null;
+          disposeResources(false);
+          if (
+            error instanceof ApiError &&
+            error.status === 401 &&
+            onAuthorizationRequired
+          ) {
+            onAuthorizationRequired();
+            return;
+          }
+          setNotice(readableError(error));
+          setPhase("error");
+        }
+      };
+      const signal = connectSignal(createdRoom);
       signalRef.current = signal;
       signal.start();
     } catch (error) {
@@ -1702,18 +1787,41 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
   }
 
-  function changeViewerAccess(
-    action: "public-watch" | "rotate" | "revoke",
-  ): void {
+  function changeCodeEntryPolicy(policy: CodeEntryPolicy): void {
     if (
-      viewerAccessUpdating ||
+      (viewerGrantUpdating || viewerPasswordUpdating) ||
       phase !== "live" ||
-      !signalRef.current?.send({ type: "set-viewer-access", action })
+      (policy === "password" && !viewerPasswordEnabled) ||
+      !signalRef.current?.send({
+        type: "set-code-entry-policy",
+        policy,
+      })
     ) {
-      setNotice("开始分享并连接后才能修改观看权限");
+      setNotice(
+        policy === "password" && !viewerPasswordEnabled
+          ? "请先设置房间密码，再开启密码加入"
+          : "开始分享并连接后才能修改房间号加入方式",
+      );
       return;
     }
-    setViewerAccessUpdating(true);
+    setNotice(null);
+  }
+
+  function changeViewerGrant(action: "rotate" | "revoke"): void {
+    if (
+      viewerGrantUpdating ||
+      phase !== "live" ||
+      !signalRef.current?.send({
+        type:
+          action === "rotate"
+            ? "rotate-viewer-grant"
+            : "revoke-viewer-grant",
+      })
+    ) {
+      setNotice("开始分享并连接后才能修改邀请链接");
+      return;
+    }
+    setViewerGrantUpdating(true);
     setNotice(null);
   }
 
@@ -1735,7 +1843,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setNotice("开始分享并连接后才能修改房间密码");
       return;
     }
-    viewerPasswordActionRef.current = password === null ? "remove" : "set";
+    viewerPasswordActionRef.current = password;
     setViewerPasswordUpdating(true);
     setViewerPasswordDraft("");
     setNotice(null);
@@ -1766,8 +1874,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           hour: "2-digit",
           minute: "2-digit",
         }).format(new Date(room.expiresAt))} 过期`
-      : "长期有效"
+      : "分享中不会过期"
     : null;
+  const activeCodeEntryPolicy =
+    room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
   const codecLockNotice = videoCodecLockNotice(phase);
   const audioQualityLockNotice = screenAudioQualityLockNotice(phase);
 
@@ -2042,23 +2152,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
           <div className="setup-controls">
             <div className="quality-controls">
-              {!room && (
-                <label className="viewer-policy-toggle">
-                  <input
-                    type="checkbox"
-                    checked={newRoomViewerPolicy === "public-watch"}
-                    disabled={phase === "starting"}
-                    onChange={(event) =>
-                      setNewRoomViewerPolicy(
-                        event.target.checked
-                          ? "public-watch"
-                          : "private-link",
-                      )
-                    }
-                  />
-                  <span>允许仅凭房间号观看</span>
-                </label>
-              )}
               <fieldset className="control-group">
                 <legend>推荐画质</legend>
                 <div className="segmented-control">
@@ -2308,75 +2401,79 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           </div>
           {room && (
             <div className="invite-bar">
-              <div className="invite-copy">
-                <span className="field-label">
-                  房间 {room.roomId} · {expirationText} ·{" "}
-                  {room.viewerPolicy === "public-watch"
-                    ? "公开观看"
-                    : "私密链接"}
-                </span>
+              <div className="invite-primary">
+                <span className="field-label">邀请链接</span>
                 <span className="invite-url" title={room.inviteUrl ?? undefined}>
-                  {room.inviteUrl ?? "当前没有有效邀请，请轮换生成新链接"}
+                  {room.inviteUrl ?? "当前没有有效邀请，请更新生成新链接"}
                 </span>
-              </div>
-              <div className="invite-actions">
-                <button
-                  className="icon-button"
-                  type="button"
-                  title="复制邀请链接"
-                  aria-label="复制邀请链接"
-                  disabled={!room.inviteUrl}
-                  onClick={() => void copyInvite()}
-                >
-                  {copied ? <Check size={18} /> : <Copy size={18} />}
-                </button>
-                {room.viewerPolicy === "public-watch" ? (
+                <div className="invite-actions">
                   <button
-                    className="icon-button"
+                    className="button button-secondary invite-action"
                     type="button"
-                    title="设为私密并生成新邀请"
-                    aria-label="设为私密并生成新邀请"
-                    disabled={viewerAccessUpdating || phase !== "live"}
-                    onClick={() => changeViewerAccess("rotate")}
+                    disabled={!room.inviteUrl}
+                    onClick={() => void copyInvite()}
                   >
-                    <LockKeyhole size={18} />
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                    {copied ? "已复制" : "复制邀请链接"}
                   </button>
-                ) : (
-                  <>
-                    <button
-                      className="icon-button"
-                      type="button"
-                      title="轮换私密邀请"
-                      aria-label="轮换私密邀请"
-                      disabled={viewerAccessUpdating || phase !== "live"}
-                      onClick={() => changeViewerAccess("rotate")}
-                    >
-                      <RefreshCw size={18} />
-                    </button>
-                    <button
-                      className="icon-button"
-                      type="button"
-                      title="撤销当前邀请"
-                      aria-label="撤销当前邀请"
-                      disabled={viewerAccessUpdating || phase !== "live"}
-                      onClick={() => changeViewerAccess("revoke")}
-                    >
-                      <LockKeyhole size={18} />
-                    </button>
-                    <button
-                      className="icon-button"
-                      type="button"
-                      title="允许仅凭房间号观看"
-                      aria-label="允许仅凭房间号观看"
-                      disabled={viewerAccessUpdating || phase !== "live"}
-                      onClick={() => changeViewerAccess("public-watch")}
-                    >
-                      <Globe2 size={18} />
-                    </button>
-                  </>
-                )}
+                  <button
+                    className="button button-secondary invite-action"
+                    type="button"
+                    disabled={viewerGrantUpdating || phase !== "live"}
+                    onClick={() => changeViewerGrant("rotate")}
+                  >
+                    <RefreshCw size={16} />
+                    更新邀请
+                  </button>
+                  <button
+                    className="button button-danger invite-action"
+                    type="button"
+                    disabled={
+                      !room.inviteUrl || viewerGrantUpdating || phase !== "live"
+                    }
+                    onClick={() => changeViewerGrant("revoke")}
+                  >
+                    <LockKeyhole size={16} />
+                    撤销邀请
+                  </button>
+                </div>
               </div>
-              {room.viewerPolicy === "private-link" && (
+              <div className="room-entry-policy">
+                <div className="room-entry-heading">
+                  <span className="field-label">房间号加入</span>
+                  <span className="room-lease-note">{expirationText}</span>
+                </div>
+                <div className="segmented-control room-policy-control">
+                  {(
+                    [
+                      ["open", "开放"],
+                      ["password", "密码"],
+                      ["disabled", "关闭"],
+                    ] as const
+                  ).map(([policy, label]) => (
+                    <button
+                      key={policy}
+                      type="button"
+                      className={
+                        activeCodeEntryPolicy === policy
+                          ? "is-selected"
+                          : undefined
+                      }
+                      aria-pressed={
+                        activeCodeEntryPolicy === policy
+                      }
+                      disabled={
+                        viewerGrantUpdating ||
+                        viewerPasswordUpdating ||
+                        phase !== "live" ||
+                        (policy === "password" && !viewerPasswordEnabled)
+                      }
+                      onClick={() => changeCodeEntryPolicy(policy)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <form
                   className="viewer-password-control"
                   onSubmit={(event) => {
@@ -2421,16 +2518,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     <button
                       className="icon-button"
                       type="button"
-                      title="移除房间密码"
+                      title={
+                        activeCodeEntryPolicy === "password"
+                          ? "请先将房间号加入改为开放或关闭"
+                          : "移除房间密码"
+                      }
                       aria-label="移除房间密码"
-                      disabled={viewerPasswordUpdating || phase !== "live"}
+                      disabled={
+                        viewerPasswordUpdating ||
+                        phase !== "live" ||
+                        activeCodeEntryPolicy === "password"
+                      }
                       onClick={() => changeViewerPassword(null)}
                     >
                       <Trash2 size={18} />
                     </button>
                   )}
                 </form>
-              )}
+              </div>
             </div>
           )}
         </section>

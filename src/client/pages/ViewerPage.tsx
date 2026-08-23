@@ -1240,7 +1240,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setStatusText("等待开始分享");
         return;
       }
-      if (message.type === "viewer-access-revoked") {
+      if (message.type === "viewer-grant-revoked") {
         if (
           viewerAuthorizationGeneration !==
           message.viewerAuthorizationGeneration

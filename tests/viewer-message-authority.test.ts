@@ -34,7 +34,7 @@ describe("ViewerMessageAuthority", () => {
     const authority = new ViewerMessageAuthority();
     const authenticated = authority.tokenFor(message("authenticated"));
 
-    authority.tokenFor(message("viewer-access-revoked"));
+    authority.tokenFor(message("viewer-grant-revoked"));
 
     expect(authority.owns(authenticated)).toBe(false);
   });

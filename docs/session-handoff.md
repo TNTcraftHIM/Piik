@@ -36,11 +36,12 @@ Current high-signal boundary:
   and SFU/TURN media evidence remains open. Do not rerun broad or
   executable/native test suites unless the current acceptance boundary
   specifically requires them.
-- ADR-0002 owns the newly accepted room model: one process-memory RoomStore,
+- ADR-0002 owns the source-implemented room model: one process-memory RoomStore,
   random free four-digit codes, configurable 24-hour dormant leases, restart
   loss, local Host preference replay, an independent expiring Viewer grant, and
-  open/password/disabled code entry. SQLite removal and the new access/UI model
-  are documented but not implemented or deployed.
+  open/password/disabled code entry. Current source uses the single
+  `screener-v8` wire and has removed SQLite; production has not deployed this
+  room/access/UI slice and remains on the older v7 SQLite boundary.
 - docs/maintenance.md owns the reusable mechanism-simplification review. SQLite
   is its reference case because the bounded restart-experience loss did not
   justify the persistence surface; accepting that tradeoff changed the contract,

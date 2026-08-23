@@ -4,7 +4,7 @@ const AUTHORITY_MESSAGE_TYPES = new Set<ServerMessage["type"]>([
   "authenticated",
   "host-status",
   "sharing-stopped",
-  "viewer-access-revoked",
+  "viewer-grant-revoked",
   "room-closed",
   "error",
 ]);

@@ -517,29 +517,31 @@ describe("server configuration", () => {
     expect(config.siteAccessPassword).toBe("easy-key");
   });
 
-  it("requires site access protection for a persistent room database", () => {
-    expect(() => loadConfig({ ROOM_DATABASE_PATH: "rooms.sqlite" })).toThrow(
-      "ROOM_DATABASE_PATH requires SITE_ACCESS_PASSWORD",
+  it("defaults the room lease to 24 hours", () => {
+    expect(loadConfig({}).roomLeaseMs).toBe(86_400_000);
+    expect(loadConfig({ ROOM_LEASE_SECONDS: "3600" }).roomLeaseMs).toBe(
+      3_600_000,
     );
-
-    const config = loadConfig({
-      SITE_ACCESS_PASSWORD: "host-password-12",
-      ROOM_DATABASE_PATH: "rooms.sqlite",
-    });
-    expect(config.roomDatabasePath).toBe("rooms.sqlite");
+    expect(() => loadConfig({ ROOM_LEASE_SECONDS: "0" })).toThrow(
+      "ROOM_LEASE_SECONDS must be a positive integer",
+    );
   });
 
-  it("rejects an in-memory room database in production", () => {
-    expect(() =>
-      loadConfig({
-        NODE_ENV: "production",
-        PUBLIC_BASE_URL: "https://share.test",
-        SITE_ACCESS_PASSWORD: "host-password-12",
-        ROOM_DATABASE_PATH: ":memory:",
-        STUN_URLS: "stun:stun.test:3478",
-      }),
-    ).toThrow("ROOM_DATABASE_PATH must be file-backed in production");
+  it("bounds MAX_ROOMS to the four-digit code space", () => {
+    expect(loadConfig({ MAX_ROOMS: "9000" }).maxRooms).toBe(9_000);
+    expect(() => loadConfig({ MAX_ROOMS: "9001" })).toThrow(
+      "MAX_ROOMS must be between 1 and 9000",
+    );
   });
+
+  it.each(["ROOM_DATABASE_PATH", "ROOM_TTL_SECONDS"] as const)(
+    "rejects removed room persistence configuration even when %s is blank",
+    (name) => {
+      expect(() => loadConfig({ [name]: "" })).toThrow(
+        `${name} is no longer supported`,
+      );
+    },
+  );
 
   it.each(["x".repeat(7), "密码密码密码密码", "contains spaces", "x".repeat(129)])(
     "rejects a site access password outside the visible ASCII boundary",

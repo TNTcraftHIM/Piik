@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_VIEWER_DISPLAY_NAME,
   MAX_DISPLAY_NAME_CODE_POINTS,
-  MAX_HOST_CLAIM_TTL_SECONDS,
   MAX_MEDIA_ROUTE_REVISION,
   MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SFU_TOKEN_LENGTH,
@@ -24,7 +23,7 @@ import {
 } from "../src/shared/protocol.js";
 
 const token = "a".repeat(43);
-const roomId = "123456789012";
+const roomId = "1234";
 const viewerGrant = `g1.${roomId}.1787076000.${"b".repeat(43)}`;
 const qualitySettings = {
   resolution: "1080p",
@@ -85,7 +84,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v7");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v8");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -122,24 +121,23 @@ describe("client signaling protocol", () => {
     }
   });
 
-  it("accepts only the fixed provisional Host lease", () => {
+  it("accepts an atomic room creation profile", () => {
     expect(
-      createRoomRequestSchema.parse({ viewerPolicy: "private-link" }),
-    ).toEqual({ viewerPolicy: "private-link" });
+      createRoomRequestSchema.parse({ codeEntryPolicy: "open" }),
+    ).toEqual({ codeEntryPolicy: "open" });
     expect(
       createRoomRequestSchema.parse({
-        viewerPolicy: "private-link",
-        hostClaimTtlSeconds: MAX_HOST_CLAIM_TTL_SECONDS,
+        codeEntryPolicy: "password",
+        roomPassword: "room-password",
       }),
     ).toEqual({
-      viewerPolicy: "private-link",
-      hostClaimTtlSeconds: MAX_HOST_CLAIM_TTL_SECONDS,
+      codeEntryPolicy: "password",
+      roomPassword: "room-password",
     });
-    for (const hostClaimTtlSeconds of [0, 1, 299, 301, 1.5]) {
+    for (const codeEntryPolicy of ["private-link", "public-watch", 1]) {
       expect(
         createRoomRequestSchema.safeParse({
-          viewerPolicy: "private-link",
-          hostClaimTtlSeconds,
+          codeEntryPolicy,
         }).success,
       ).toBe(false);
     }
@@ -265,18 +263,24 @@ describe("client signaling protocol", () => {
         }).success,
       ).toBe(false);
     }
-    for (const action of ["public-watch", "rotate", "revoke"]) {
+    for (const policy of ["open", "password", "disabled"]) {
       expect(
         clientMessageSchema.safeParse({
-          type: "set-viewer-access",
-          action,
+          type: "set-code-entry-policy",
+          policy,
         }).success,
       ).toBe(true);
     }
     expect(
+      clientMessageSchema.safeParse({ type: "rotate-viewer-grant" }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ type: "revoke-viewer-grant" }).success,
+    ).toBe(true);
+    expect(
       clientMessageSchema.safeParse({
-        type: "set-viewer-access",
-        action: "private-link",
+        type: "set-code-entry-policy",
+        policy: "private-link",
       }).success,
     ).toBe(false);
   });
@@ -379,7 +383,7 @@ describe("client signaling protocol", () => {
       clientMessageSchema.safeParse({
         type: "authenticate",
         protocol: SIGNALING_PROTOCOL,
-        roomId: "1",
+        roomId: "1234",
         role: "viewer",
         clientId: "client_12345678",
       }).success,
@@ -397,7 +401,7 @@ describe("client signaling protocol", () => {
       clientMessageSchema.safeParse({
         type: "authenticate",
         protocol: SIGNALING_PROTOCOL,
-        roomId: "1".repeat(13),
+        roomId: "1".repeat(5),
         role: "viewer",
         clientId: "client_12345678",
       }).success,
@@ -839,7 +843,7 @@ describe("server signaling protocol", () => {
       hostOnline: true,
       connectionId: null,
       viewerPeerIds,
-      viewerPolicy: "private-link",
+      codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       iceConfig: {
         iceServers: [],

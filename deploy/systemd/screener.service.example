@@ -14,8 +14,6 @@ Restart=on-failure
 RestartSec=3s
 TimeoutStopSec=20s
 UMask=0077
-StateDirectory=screener
-StateDirectoryMode=0700
 
 NoNewPrivileges=true
 PrivateDevices=true

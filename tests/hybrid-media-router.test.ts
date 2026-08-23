@@ -6,7 +6,7 @@ import {
   type AuthenticatedRouteParticipant,
   type HybridAuthenticationState,
 } from "../src/server/hybrid-media-router.ts";
-import { RoomStore } from "../src/server/room-store.ts";
+import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
 import { SfuResourceAdmission } from "../src/server/sfu-resource-admission.ts";
 import { TurnAllocationAdmission } from "../src/server/turn-allocation-admission.ts";
 import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
@@ -15,13 +15,13 @@ const SHARE_GENERATION = "share_generation_12345678";
 
 function createStore(maxViewersPerRoom = 20) {
   return new RoomStore({
-    ttlMs: 60_000,
+    leaseMs: 60_000,
     maxRooms: 4,
     maxViewersPerRoom,
   });
 }
 
-function connectHost(store: RoomStore, room: ReturnType<RoomStore["createRoom"]>) {
+function connectHost(store: RoomStore, room: CreatedRoom) {
   const connected = store.connectParticipant({
     roomId: room.roomId,
     role: "host",
@@ -39,7 +39,7 @@ function connectHost(store: RoomStore, room: ReturnType<RoomStore["createRoom"]>
 
 function connectViewer(
   store: RoomStore,
-  room: ReturnType<RoomStore["createRoom"]>,
+  room: CreatedRoom,
   suffix: string,
 ): AuthenticatedRouteParticipant {
   const connected = store.connectParticipant({
@@ -160,7 +160,7 @@ function harness(
 describe("HybridMediaRouter v7 runtime", () => {
   it("orders exact prepare, commits only child proof, and rolls back above P", async () => {
     const { store, sent, router } = harness(2);
-    const room = store.createRoom();
+    const room = await store.createRoom();
     const host = connectHost(store, room);
     complete(router, host);
     const first = connectViewer(store, room, "first");
@@ -221,7 +221,7 @@ describe("HybridMediaRouter v7 runtime", () => {
 
   it("creates one Host publication and reuses exact Viewer subscriptions", async () => {
     const { store, sent, admission, router } = harness(1, true);
-    const room = store.createRoom();
+    const room = await store.createRoom();
     const host = connectHost(store, room);
     complete(router, host);
     const first = connectViewer(store, room, "sfu_first");
@@ -272,7 +272,7 @@ describe("HybridMediaRouter v7 runtime", () => {
 
   it("uses selected TURN only as the exact Viewer-parent edge transport", async () => {
     const { store, sent, turnAdmission, router } = harness(1, true, true);
-    const room = store.createRoom();
+    const room = await store.createRoom();
     const host = connectHost(store, room);
     complete(router, host);
     const parent = connectViewer(store, room, "selected_parent");
@@ -338,7 +338,7 @@ describe("HybridMediaRouter v7 runtime", () => {
 
   it("uses selected TURN as one Host-SFU ingress after direct ingress fails", async () => {
     const { store, sent, turnAdmission, router } = harness(1, true, true);
-    const room = store.createRoom();
+    const room = await store.createRoom();
     const host = connectHost(store, room);
     complete(router, host);
     const first = connectViewer(store, room, "ingress_first");

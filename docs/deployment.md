@@ -61,9 +61,9 @@ browser <---------- DTLS-SRTP/UDP ----------> LiveKit :7882
 The minimum runtime is Node.js 24 LTS and coturn 4.17.2 or a newer patched
 release. Provision a valid TLS certificate for the Web name. Enable operating system time
 synchronization and keep the Node application port reachable only from its
-reverse proxy. A single Node process is intentional. Active participants and
-signaling remain in memory; an optional protected SQLite file can restore room
-identity after a restart, but it does not restore live WebRTC connections.
+reverse proxy. A single Node process is intentional. Rooms, participants, and
+signaling remain in process memory; a restart intentionally invalidates every
+room and does not restore live WebRTC connections.
 
 Build and validate the exact revision on a build host before starting it:
 
@@ -152,6 +152,15 @@ instance/hostname and keep
 the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
 
+A memory-room release changes the application environment atomically: remove
+`ROOM_DATABASE_PATH` and `ROOM_TTL_SECONDS`, add `ROOM_LEASE_SECONDS`, and do
+not migrate or import SQLite rooms. Starting the candidate invalidates every
+current production room, Host token, invitation, password verifier, and route;
+open pages must refresh or explicitly create a replacement room. Keep the
+recorded old release plus its SQLite environment/config backup unchanged for
+rollback. Rolling back restores that exact old environment and database with the
+old binary; it does not attempt to carry candidate rooms into SQLite.
+
 A shared-public-IP instance can test candidate behavior while the old TURN
 service stays live, but it cannot prove the clean-port boundary or approve broad
 migration. The room-1 smoke uses this shape: nginx owns 443, LiveKit 1.13.5 owns
@@ -206,8 +215,7 @@ PORT=8787
 PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
 SITE_ACCESS_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
-ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
-ROOM_TTL_SECONDS=14400
+ROOM_LEASE_SECONDS=86400
 MAX_ROOMS=1000
 MAX_VIEWERS_PER_ROOM=20
 ENDPOINT_MEDIA_COPY_CAPACITY=2
@@ -248,7 +256,8 @@ production release remains on its recorded configuration until the four-value
 tuple is supplied atomically with current source. Only a controller-selected
 edge may receive a short-lived grant. Roll back by
 removing the application tuple before changing coturn or firewall state.
-Credentials never enter URLs, logs, browser persistence, room rows, or SQLite.
+Credentials never enter URLs, logs, durable server storage, or browser
+`localStorage`.
 
 Application release does not prove deletion of the matching physical coturn
 allocation. Keep the credential TTL short and configure coturn `user-quota` and
@@ -284,9 +293,11 @@ LiveKit, TLS, TURN, or another service. It authorizes room creation, Host role,
 and code-only Viewer attempts; it does not replace a private room grant or
 password. Local development and tests may omit it. Supplying a removed access
 key, even blank, fails startup.
-`ROOM_DATABASE_PATH` is optional but requires `SITE_ACCESS_PASSWORD`.
-Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
-applies only to those rooms.
+`ROOM_LEASE_SECONDS` defaults to 86,400 seconds and owns the dormant room
+lifetime. An actively connected Host prevents expiry; explicit stop or Host
+disconnect starts the lease, and only the exact Host token renews it before
+expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
+`ROOM_TTL_SECONDS` fail startup even when blank.
 Production `6b87732` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
@@ -303,11 +314,12 @@ TURN allocation admission.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `6b87732` runs the current source server and Browser assets
-atomically on `screener-v7`; stale Browser and executable-sender wires fail
-before room authority. Native senders and helpers are outside this release.
-Restore the exact prior environment, LiveKit configuration, database backup,
-server, and Web assets together when rolling back.
+Production release `6b87732` runs the deployed server and Browser assets
+atomically on `screener-v7`. The memory-room candidate advances server and
+Browser assets together to `screener-v8`; stale v7 Browser and executable-sender
+wires fail before room authority. Native senders and helpers are outside this
+release. Restore the exact prior environment, LiveKit configuration, database
+backup, server, and Web assets together when rolling back.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
@@ -334,11 +346,11 @@ committed, and draining generations remain charged until
 `DeleteRoom` succeeds and a follow-up lookup proves absence. Run only one
 application process until a shared atomic admission and lifecycle owner exists.
 
-For the first candidate canary, use an isolated instance and a protected
-persistent room whose ID is stable across restarts. Restart the application and
-verify startup removes a seeded stale managed LiveKit room before serving
-traffic. Hold the application port with another process and verify a competing
-startup makes zero LiveKit calls. Verify that both the persistent room and a
+For the first candidate canary, use an isolated instance and one recorded room.
+Restart the application, verify startup removes the now-stale managed LiveKit
+room before serving traffic, and create a fresh application room after startup.
+Hold the application port with another process and verify a competing
+startup makes zero LiveKit calls. Verify that both the replacement room and a
 second normal room contain
 `mediaMode: "peer-assisted"`, with independent route revisions and no shared
 room state or capacity bypass. Exercise join, offer and answer, stale-token
@@ -367,87 +379,54 @@ Only `POST /api/site-access` accepts the site access secret in an
 is no account database, JWT, session map, or logout endpoint.
 
 Before an access-boundary release, set `CHROME_PATH` to a local Chrome or
-Chromium executable and run `npm run gate:access-privacy`. The gate creates only
-a loopback room and temporary SQLite/profile state, navigates the fragment
-through CDP rather than a process argument, disposes its ephemeral browser
-context, and emits only fixed booleans and counts. It also checks the tracked
-nginx logging shape and runs the complete signaling suite containing the strong
-rotate/revoke teardown case. The room password enters only at the RoomStore
-boundary, so this run proves its raw SQLite non-persistence, not its WebSocket or
-log ingress. It never connects to production or accepts a production credential;
-exact production request/nginx/journal/database inspection remains separate.
+Chromium executable and run `npm run gate:access-privacy`. The gate creates a
+loopback in-memory room with an isolated browser profile, navigates the fragment
+through CDP rather than a process argument, disposes that context, and emits only
+fixed booleans and counts. It checks tracked request/nginx/application logs,
+browser storage, fragment cleanup, absence of a persistent room file, and runs
+the complete signaling suite containing the strong rotate/revoke teardown case.
+It never connects to production or accepts a production credential; exact
+production request/nginx/journal inspection remains separate.
 
 nginx limits this exact endpoint per source at `5r/m` with `burst=5 nodelay` and
 returns 429 when exhausted. The limiter uses nginx shared memory; do not add the
 secret, Authorization header, request body, or a new source-address field to
 logs. `POST /api/rooms` accepts only the site-access cookie and strict JSON
-with an explicit Viewer policy; a Bearer header is not an alternate creation
+with an explicit code-entry policy and optional room password; a Bearer header
+is not an alternate creation
 path. `/signal` still admits a cookie-free browser after Origin and capacity
 checks and records the cookie state at upgrade. Host requires it with the room
 Host token. A Viewer may omit it only when presenting a valid, unexpired grant
-for that exact room; otherwise the server rejects before evaluating public-watch
-or a room password.
+for that exact room; otherwise the server rejects before evaluating code entry.
 
-Private rooms are the default. Their invitation is
+Every room receives an independent invitation
 `/r/{code}#v={room-scoped-grant}`; the fragment does not enter HTTP or WebSocket
 request targets. The page validates it, writes it only to that room's
 `sessionStorage`, and immediately replaces the visible URL with `/r/{code}`.
-An independent tab without the fragment must first pass site access. A private
-room then requires its room password, while explicit `public-watch` accepts the
-numeric room code. Neither policy
-lets a Viewer create a room or authenticate as Host.
+The Host may update or revoke that grant without changing code-entry policy.
 
-Room allocation has two deliberately small policies:
+Room allocation and lifetime use one deliberately small model:
 
-- With `ROOM_DATABASE_PATH`, SQLite allocates positive decimal IDs starting at
-  `1`. These rooms do not expire, while each private Viewer invitation expires
-  after seven days unless rotated earlier. An explicit stop or capture
-  track ending stops the current publication and leaves viewers waiting; it does
-  not delete the room. A brief signaling disconnect does not stop otherwise
-  healthy P2P media.
-- Without `ROOM_DATABASE_PATH`, rooms use random numeric IDs and expire according
-  to `ROOM_TTL_SECONDS`; a private grant cannot outlive its room. Stopping sharing
-  does not immediately delete it. Public-watch remains available but explicit.
+- random unallocated codes come only from `1000` through `9999`, never duplicate
+  an active code, respect `MAX_ROOMS <= 9000`, and return on room release;
+- active Host sharing does not expire; stop, capture-track end, or Host
+  disconnect starts `ROOM_LEASE_SECONDS`;
+- only the exact Host token resumes and renews before expiry, Viewer activity
+  cannot, and expiry invalidates the code, credentials, verifier, participants,
+  and routes; and
+- process restart has the same fail-closed effect.
 
-The built-in `node:sqlite` schema v3 stores each room ID, a SHA-256 Host token
-digest, one nullable SHA-256 Viewer-grant digest, and optional validated Viewer
-password material in the same `STRICT` row. `NULL` means public-watch or no
-password; checked BLOBs mean private-link/password state. It must not contain
-plaintext tokens or grants, passwords, cookies, names, participants, SDP, ICE
-candidates, IP addresses, TURN credentials, or media.
-Protect and back up the file as service state. The tracked
-systemd unit creates `/var/lib/screener` with `StateDirectory=screener` and mode
-`0700`; the production path above is writable despite `ProtectSystem=strict`.
-The database is designed for one application process, not shared storage across
-multiple instances.
+Code-only entry is independent of the invitation: after site access, `open`
+accepts the four-digit code without a room password; `password` also requires
+the room password; and `disabled` rejects code-only entry while a valid grant
+still enters.
 
-For a simple consistent backup, stop `screener.service` before copying the
-SQLite file, then start it again. Restore while the service is stopped, restore
-ownership to the service account and mode `0600`, run SQLite
-`PRAGMA integrity_check`, and only then start the service. An online backup must
-use SQLite's [backup API](https://www.sqlite.org/backup.html) or `VACUUM INTO`;
-do not copy only the live main file while it may have an active journal.
-
-The current release migrates schema v1 or v2 to v3 and has no dual-schema
-runtime. For an existing deployment, stop the service and take a named,
-immutable copy before installing or starting the new binary. Confirm the
-stopped source reports `PRAGMA user_version = 1` or `2`, retain the backup
-outside the release directory, and record its checksum. On first v3 startup,
-one `BEGIN IMMEDIATE` transaction first gives v1 rows a checked nullable Viewer
-grant digest with a fresh fail-closed value, then gives v1/v2 rows the checked
-nullable password material and advances `user_version` to `3`.
-
-After startup, verify `PRAGMA integrity_check`, `user_version = 3`, service
-health, Host reclaim, invitation rotation, password update/removal, and a new
-Viewer join before removing the maintenance boundary. If rollback is required,
-stop the v3 service, preserve the v3 database separately for diagnosis, restore
-the exact pre-migration backup with service ownership and mode `0600`, verify
-its integrity and original user version, and only then start the matching old
-binary. Never point an old binary at the migrated v3 file.
-
-Enabling persistence does not migrate rooms that existed only in memory. The
-deployment restart invalidates those temporary links; the first subsequently
-created persistent room receives ID `1`.
+The server keeps only process-memory digests/verifiers for Host tokens, Viewer
+grants, and optional room passwords. There is no room database, schema,
+migration, writable room directory, or backup/restore step. The same browser may
+replay its Host display-name, code-entry, and optional-password creation profile
+when it explicitly creates a replacement room; this is local convenience, not
+server-side identity or cross-restart recovery.
 
 Production startup requires one to eight syntactically valid `stun:` URLs
 before the server listens. This validates shape only; it does not prove DNS,
@@ -507,7 +486,8 @@ Keep the proxy's access-log retention bounded and access controlled. Requests to
 `/r/{code}` put the room code in the path, so access logs can contain room codes
 as well as network metadata. They must not be treated as public artifacts. For
 a private room, the grant remains in the fragment and is not part of that
-request target. A public-watch code still requires prior site access.
+request target. A code-only entry still requires prior site access unless its
+policy is disabled; a valid grant remains the direct Viewer path.
 
 For a process-level liveness probe, send `GET /healthz`. A running process
 returns HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`; other

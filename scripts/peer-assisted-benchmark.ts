@@ -2657,7 +2657,6 @@ export async function main(): Promise<number> {
       LISTEN_HOST: "127.0.0.1",
       PUBLIC_BASE_URL: baseUrl,
       ALLOWED_ORIGINS: baseUrl,
-      ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "true",
       ENDPOINT_MEDIA_COPY_CAPACITY: String(config.expectedEndpointCap),
       MAX_VIEWERS_PER_ROOM: String(Math.max(
@@ -2669,7 +2668,7 @@ export async function main(): Promise<number> {
     server = await createScreenerServer({
       config: serverConfig,
       roomStore: new RoomStore({
-        ttlMs: serverConfig.roomTtlMs,
+        leaseMs: serverConfig.roomLeaseMs,
         maxRooms: serverConfig.maxRooms,
         maxViewersPerRoom: serverConfig.maxViewersPerRoom,
       }),

@@ -3,7 +3,7 @@ import {
   roomCodeSchema,
   viewerGrantSchema,
   type CreateRoomResponse,
-  type ViewerAccessPolicy,
+  type CodeEntryPolicy,
 } from "../../shared/protocol";
 import { createOpaqueId } from "./opaque-id";
 
@@ -22,7 +22,7 @@ export type HostRoomIdentity = Pick<
 > & { canonicalUrl: string };
 
 export interface HostRoomState extends HostRoomIdentity {
-  viewerPolicy: ViewerAccessPolicy | null;
+  codeEntryPolicy: CodeEntryPolicy | null;
   inviteUrl: string | null;
 }
 
@@ -40,17 +40,6 @@ export function roomRouteFromInput(value: string): string | null {
   return isValidRoomId(roomId) ? `/r/${roomId}` : null;
 }
 
-export function isHostRoomExpired(
-  room: HostRoomIdentity,
-  now = Date.now(),
-): boolean {
-  if (room.expiresAt === null) {
-    return false;
-  }
-  const expiresAt = Date.parse(room.expiresAt);
-  return !Number.isFinite(expiresAt) || expiresAt <= now;
-}
-
 export function clearHostRoom(): void {
   try {
     window.localStorage.removeItem(HOST_ROOM_STORAGE_KEY);
@@ -59,7 +48,7 @@ export function clearHostRoom(): void {
   }
 }
 
-export function readHostRoom(now = Date.now()): HostRoomIdentity | null {
+export function readHostRoom(): HostRoomIdentity | null {
   let stored: string | null;
   try {
     stored = window.localStorage.getItem(HOST_ROOM_STORAGE_KEY);
@@ -82,10 +71,6 @@ export function readHostRoom(now = Date.now()): HostRoomIdentity | null {
       expiresAt: parsed.data.expiresAt,
       canonicalUrl: canonicalViewerUrl(parsed.data.inviteUrl),
     };
-    if (isHostRoomExpired(room, now)) {
-      clearHostRoom();
-      return null;
-    }
     return room;
   } catch {
     clearHostRoom();
@@ -211,16 +196,14 @@ export function mergeAuthenticatedHostRoom(
   current: HostRoomState | null,
   activeRoomId: string,
   roomExpiresAt: string | null,
-  viewerPolicy: ViewerAccessPolicy,
+  codeEntryPolicy: CodeEntryPolicy,
 ): HostRoomState | null {
   if (!current || current.roomId !== activeRoomId) {
     return current;
   }
 
   let inviteUrl = current.inviteUrl;
-  if (viewerPolicy === "public-watch") {
-    inviteUrl = current.canonicalUrl;
-  } else if (current.viewerPolicy === null) {
+  if (inviteUrl === null) {
     const viewerGrant = readViewerGrant(current.roomId);
     if (viewerGrant) {
       const restoredInvite = new URL(current.canonicalUrl);
@@ -232,7 +215,7 @@ export function mergeAuthenticatedHostRoom(
   return {
     ...current,
     expiresAt: roomExpiresAt,
-    viewerPolicy,
+    codeEntryPolicy,
     inviteUrl,
   };
 }
