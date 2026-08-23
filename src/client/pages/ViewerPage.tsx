@@ -1728,6 +1728,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               metrics={relaySnapshot.metrics}
               direction="send"
               senderParameters={relaySnapshot.senderParameters}
+              audioSenderParameters={relaySnapshot.audioSenderParameters}
             />
           </section>
         )}

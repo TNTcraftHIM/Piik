@@ -34,6 +34,9 @@ const livekit = vi.hoisted(() => {
 
   class FakeSender {
     track: MediaStreamTrack;
+    failNextSetParameters = false;
+    deferNextSetParameters = false;
+    private releaseSetParameters: (() => void) | null = null;
     parameters: RTCRtpSendParameters = {
       codecs: [],
       encodings: [{}],
@@ -49,10 +52,20 @@ const livekit = vi.hoisted(() => {
     readonly getParameters = vi.fn(() => this.parameters);
     readonly setParameters = vi.fn(
       async (parameters: RTCRtpSendParameters): Promise<void> => {
+        if (this.failNextSetParameters) {
+          this.failNextSetParameters = false;
+          throw new Error("audio parameters rejected");
+        }
         const failure = state.nextSenderParameterError;
         if (failure) {
           state.nextSenderParameterError = null;
           throw failure;
+        }
+        if (this.deferNextSetParameters) {
+          this.deferNextSetParameters = false;
+          await new Promise<void>((resolve) => {
+            this.releaseSetParameters = resolve;
+          });
         }
         this.parameters = parameters;
       },
@@ -61,6 +74,11 @@ const livekit = vi.hoisted(() => {
       async (): Promise<RTCStatsReport> =>
         new Map() as unknown as RTCStatsReport,
     );
+
+    releaseDeferredSetParameters(): void {
+      this.releaseSetParameters?.();
+      this.releaseSetParameters = null;
+    }
   }
 
   class FakeLocalTrack {
@@ -97,6 +115,7 @@ const livekit = vi.hoisted(() => {
     readonly publications: Array<{
       track: FakeLocalTrack;
       videoTrack?: FakeLocalTrack;
+      audioTrack?: FakeLocalTrack;
       rawTrack: MediaStreamTrack;
       options: Record<string, unknown>;
     }> = [];
@@ -141,6 +160,7 @@ const livekit = vi.hoisted(() => {
         const publication = {
           track: localTrack,
           videoTrack: rawTrack.kind === "video" ? localTrack : undefined,
+          audioTrack: rawTrack.kind === "audio" ? localTrack : undefined,
           rawTrack,
           options,
         };
@@ -763,7 +783,7 @@ describe("SfuPublisher", () => {
     expect(publisher.getQualityWarning()).toBeNull();
   });
 
-  it("rejects an audio preset change while the share is active", async () => {
+  it("updates an active audio sender and retained options without republishing", async () => {
     const publisher = new SfuPublisher();
     await publisher.connect(connection);
     await publisher.activate(
@@ -772,6 +792,51 @@ describe("SfuPublisher", () => {
     );
     const room = livekit.state.rooms[0];
     const videoPublication = room.localParticipant.publications[0];
+    const audioPublication = room.localParticipant.publications[1];
+
+    await expect(
+      publisher.updateProfile({
+        ...qualityProfile,
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(true);
+
+    expect(videoPublication.track.sender.setParameters).toHaveBeenCalledOnce();
+    expect(audioPublication.track.sender.setParameters).toHaveBeenCalledTimes(2);
+    expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
+      256_000,
+    );
+    expect(audioPublication.options).toMatchObject({
+      audioPreset: { maxBitrate: 256_000 },
+      forceStereo: true,
+      dtx: false,
+    });
+    expect(publisher.getAudioSenderParameters()).toEqual({
+      requestedMaxBitrate: 256_000,
+      appliedMaxBitrate: 256_000,
+      mismatch: false,
+    });
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+
+    await room.localParticipant.republishAllTracks();
+    expect(room.localParticipant.republishedOptions[1]).toMatchObject({
+      audioPreset: { maxBitrate: 256_000 },
+      forceStereo: true,
+      dtx: false,
+    });
+  });
+
+  it("keeps media and prior audio readback when a live update fails", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(
+      stream(track("video", "video-1"), track("audio", "audio-1")),
+      { ...qualityProfile, screenAudioQuality: "music" },
+    );
+    const room = livekit.state.rooms[0];
+    const videoPublication = room.localParticipant.publications[0];
+    const audioPublication = room.localParticipant.publications[1];
+    audioPublication.track.sender.failNextSetParameters = true;
 
     await expect(
       publisher.updateProfile({
@@ -780,8 +845,104 @@ describe("SfuPublisher", () => {
       }),
     ).resolves.toBe(false);
 
+    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
+      128_000,
+    );
+    expect(publisher.getQualityWarning()).toContain(
+      "应用 SFU 音频发送参数失败",
+    );
+    expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
+      128_000,
+    );
+    expect(audioPublication.options).toMatchObject({
+      audioPreset: { maxBitrate: 256_000 },
+    });
     expect(videoPublication.track.sender.setParameters).toHaveBeenCalledOnce();
+    expect(room.disconnect).not.toHaveBeenCalled();
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+
+    await expect(
+      publisher.updateProfile({
+        ...qualityProfile,
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(true);
+    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
+      256_000,
+    );
+    expect(publisher.getQualityWarning()).toBeNull();
+  });
+
+  it("keeps rapid SFU audio updates last-wins", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(
+      stream(track("video", "video-1"), track("audio", "audio-1")),
+      { ...qualityProfile, screenAudioQuality: "music" },
+    );
+    const room = livekit.state.rooms[0];
+    const audioPublication = room.localParticipant.publications[1];
+    const audioSender = audioPublication.track.sender;
+    audioSender.deferNextSetParameters = true;
+
+    const saver = publisher.updateProfile({
+      ...qualityProfile,
+      screenAudioQuality: "saver",
+    });
+    await vi.waitFor(() =>
+      expect(audioSender.setParameters).toHaveBeenCalledTimes(2),
+    );
+    const music = publisher.updateProfile({
+      ...qualityProfile,
+      screenAudioQuality: "music",
+    });
+    expect(audioPublication.options).toMatchObject({
+      audioPreset: { maxBitrate: 128_000 },
+    });
+    audioSender.releaseDeferredSetParameters();
+
+    await expect(saver).resolves.toBe(false);
+    await expect(music).resolves.toBe(true);
+    expect(audioSender.parameters.encodings[0]?.maxBitrate).toBe(128_000);
+    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
+      128_000,
+    );
+    expect(room.localParticipant.republishAllTracks).not.toHaveBeenCalled();
+  });
+
+  it("reapplies the latest audio ceiling to a replacement sender after reconnect", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(
+      stream(track("video", "video-1"), track("audio", "audio-1")),
+      { ...qualityProfile, screenAudioQuality: "music" },
+    );
+    const room = livekit.state.rooms[0];
+    const audioPublication = room.localParticipant.publications[1];
+    const oldSender = audioPublication.track.sender;
+    oldSender.deferNextSetParameters = true;
+
+    const updating = publisher.updateProfile({
+      ...qualityProfile,
+      screenAudioQuality: "very-high",
+    });
+    await vi.waitFor(() =>
+      expect(oldSender.setParameters).toHaveBeenCalledTimes(2),
+    );
+    const replacementSender = audioPublication.track.replaceSenderForTest();
+
+    room.emit(RoomEvent.Reconnected);
+    oldSender.releaseDeferredSetParameters();
+
+    await expect(updating).resolves.toBe(false);
+    await vi.waitFor(() =>
+      expect(replacementSender.setParameters).toHaveBeenCalledOnce(),
+    );
+    expect(replacementSender.parameters.encodings[0]?.maxBitrate).toBe(256_000);
+    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
+      256_000,
+    );
+    expect(room.localParticipant.republishAllTracks).not.toHaveBeenCalled();
   });
 
   it("retains the active profile for LiveKit track restart and republish", async () => {

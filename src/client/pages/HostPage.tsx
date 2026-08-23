@@ -82,6 +82,7 @@ import {
   resolveScreenAudioQuality,
   SCREEN_AUDIO_QUALITY_LABELS,
   setMediaPaused,
+  videoQualitySettingsEqual,
   type DegradationPreference,
   type QualityProfileId,
   type QualitySettings,
@@ -120,7 +121,6 @@ import {
   reconcileBoundedMediaChildren,
 } from "../webrtc/media-assignment";
 import {
-  screenAudioQualityLockNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
   videoCodecLockNotice,
@@ -722,10 +722,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setSwitchingSource(false);
   }
 
-  function commitQuality(settings: QualitySettings): void {
+  function commitQuality(
+    settings: QualitySettings,
+    preserveAdvancedDraft = false,
+  ): void {
     qualitySettingsRef.current = settings;
     setQualitySettings(settings);
-    setAdvancedQuality(settings);
+    setAdvancedQuality((current) =>
+      preserveAdvancedDraft
+        ? { ...current, screenAudioQuality: settings.screenAudioQuality }
+        : settings,
+    );
   }
 
   function changeVideoCodec(videoCodec: VideoCodecPreference): void {
@@ -741,29 +748,27 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function changeScreenAudioQuality(
     screenAudioQuality: ScreenAudioQuality,
   ): void {
-    if (phase === "starting" || phase === "live") {
+    if (phase === "starting") {
       return;
     }
     const next = { ...qualitySettingsRef.current, screenAudioQuality };
-    qualitySettingsRef.current = next;
-    setQualitySettings(next);
-    setAdvancedQuality((current) => ({ ...current, screenAudioQuality }));
+    void changeQuality(next, true);
   }
 
-  async function changeQuality(nextProfile: QualitySettings): Promise<void> {
+  async function changeQuality(
+    nextProfile: QualitySettings,
+    preserveAdvancedDraft = false,
+  ): Promise<void> {
+    const previousProfile = qualitySettingsRef.current;
     if (
       phase === "live" &&
-      ((nextProfile.videoCodec ?? "automatic") !==
-        (qualitySettingsRef.current.videoCodec ?? "automatic") ||
-        resolveScreenAudioQuality(nextProfile.screenAudioQuality) !==
-          resolveScreenAudioQuality(
-            qualitySettingsRef.current.screenAudioQuality,
-          ))
+      (nextProfile.videoCodec ?? "automatic") !==
+        (previousProfile.videoCodec ?? "automatic")
     ) {
       return;
     }
     if (phase !== "live") {
-      commitQuality(nextProfile);
+      commitQuality(nextProfile, preserveAdvancedDraft);
       return;
     }
 
@@ -783,9 +788,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     qualityChangeRef.current = token;
     setChangingQuality(true);
     setNotice(null);
+    const videoChanged = !videoQualitySettingsEqual(
+      previousProfile,
+      nextProfile,
+    );
+    const audioChanged =
+      resolveScreenAudioQuality(previousProfile.screenAudioQuality) !==
+      resolveScreenAudioQuality(nextProfile.screenAudioQuality);
 
     try {
-      await applyCaptureProfile(activeStream, nextProfile);
+      if (videoChanged) {
+        await applyCaptureProfile(activeStream, nextProfile);
+      }
       if (
         !isCurrentGeneration(generation) ||
         qualityChangeRef.current !== token ||
@@ -794,8 +808,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         return;
       }
 
-      commitQuality(nextProfile);
-      setDetails(captureDetails(activeStream));
+      commitQuality(nextProfile, preserveAdvancedDraft);
+      if (videoChanged) {
+        setDetails(captureDetails(activeStream));
+      }
       const roomSettingsSent =
         !peerAssistedRef.current ||
         signalRef.current?.send({
@@ -828,7 +844,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             : null;
         const connectionWarning =
           failed > 0 || !sfuUpdated
-            ? "画质已切换，但部分观看连接未能应用新参数"
+            ? "分享设置已更新，但部分观看连接未能应用新参数"
             : null;
         const syncWarning = roomSettingsSent
           ? null
@@ -836,9 +852,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         const warning = [sfuWarning ?? connectionWarning, syncWarning]
           .filter((message): message is string => message !== null)
           .join("；");
-        setNotice(
-          warning || `画质已切换为 ${qualitySettingsLabel(nextProfile)}`,
-        );
+        const successNotice =
+          audioChanged && !videoChanged
+            ? `音频质量已切换为 ${SCREEN_AUDIO_QUALITY_LABELS[resolveScreenAudioQuality(nextProfile.screenAudioQuality)]}`
+            : videoChanged && audioChanged
+              ? "分享设置已应用"
+              : `画质已切换为 ${qualitySettingsLabel(nextProfile)}`;
+        setNotice(warning || successNotice);
       }
     } catch (error) {
       if (
@@ -1864,7 +1884,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const activeCodeEntryPolicy =
     room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
   const codecLockNotice = videoCodecLockNotice(phase);
-  const audioQualityLockNotice = screenAudioQualityLockNotice(phase);
 
   return (
     <div className="app-shell">
@@ -2316,14 +2335,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       </p>
                     )}
                   </fieldset>
-                  <fieldset
-                    className="control-group quality-priority"
-                    aria-describedby={
-                      audioQualityLockNotice
-                        ? "screen-audio-quality-lock-notice"
-                        : undefined
-                    }
-                  >
+                  <fieldset className="control-group quality-priority">
                     <legend>音频质量</legend>
                     <div className="segmented-control">
                       {(
@@ -2348,7 +2360,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           }
                           disabled={
                             phase === "starting" ||
-                            phase === "live" ||
+                            switchingSource ||
                             changingQuality
                           }
                           onClick={() =>
@@ -2359,14 +2371,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         </button>
                       ))}
                     </div>
-                    {audioQualityLockNotice && (
-                      <p
-                        id="screen-audio-quality-lock-notice"
-                        className="control-note"
-                      >
-                        {audioQualityLockNotice}
-                      </p>
-                    )}
                   </fieldset>
                   <button
                     className="button button-secondary"
@@ -2565,6 +2569,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   metrics={sfuPublisherSnapshot.metrics}
                   direction="send"
                   senderParameters={sfuPublisherSnapshot.senderParameters}
+                  audioSenderParameters={
+                    sfuPublisherSnapshot.audioSenderParameters
+                  }
                 />
               </article>
             )}
@@ -2624,6 +2631,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         metrics={snapshot.metrics}
                         direction="send"
                         senderParameters={snapshot.senderParameters}
+                        audioSenderParameters={snapshot.audioSenderParameters}
                         progressive
                       />
                     )}

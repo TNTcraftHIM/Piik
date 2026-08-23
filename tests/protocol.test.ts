@@ -513,6 +513,12 @@ describe("client signaling protocol", () => {
         qualitySettings: qualitySettingsWithCodec,
       }).success,
     ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-settings",
+        qualitySettings: { ...qualitySettings, resolution: "480p" },
+      }).success,
+    ).toBe(true);
     for (const screenAudioQuality of [
       "saver",
       "music",

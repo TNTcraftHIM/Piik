@@ -11,6 +11,7 @@ import {
 } from "../sfu/publisher";
 import type { ConnectionMetrics } from "../types";
 import type {
+  AudioSenderParameterReadback,
   QualityProfile,
   VideoSenderParameterReadback,
 } from "./quality";
@@ -30,6 +31,7 @@ interface HostPublisherTransport {
   getQualityWarning?(): string | null;
   getFailureStage?(): SfuPublisherFailureStage | null;
   getSenderParameters?(): VideoSenderParameterReadback | null;
+  getAudioSenderParameters?(): AudioSenderParameterReadback | null;
   disconnect(): Promise<void>;
 }
 
@@ -45,6 +47,7 @@ interface HostPublisherSlot {
 export interface HostSfuPublisherSnapshot {
   metrics: ConnectionMetrics;
   senderParameters: VideoSenderParameterReadback | null;
+  audioSenderParameters: AudioSenderParameterReadback | null;
 }
 
 interface HostSfuRouteEvents {
@@ -610,6 +613,8 @@ export class HostSfuRoute {
     this.events.onPublisherUpdate?.({
       metrics: { ...metrics },
       senderParameters: slot.publisher.getSenderParameters?.() ?? null,
+      audioSenderParameters:
+        slot.publisher.getAudioSenderParameters?.() ?? null,
     });
   }
 }

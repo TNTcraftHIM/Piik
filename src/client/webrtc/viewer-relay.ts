@@ -3,10 +3,7 @@ import type {
   PreparedRouteCandidate,
   SignalPayload,
 } from "../../shared/protocol";
-import {
-  resolveScreenAudioQuality,
-  type QualityProfile,
-} from "../media/quality";
+import type { QualityProfile } from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
 import { MAX_ENDPOINT_MEDIA_CHILDREN } from "./media-assignment";
@@ -183,12 +180,7 @@ export class ViewerRelay {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    if (
-      this.disposed ||
-      (this.stream !== null &&
-        resolveScreenAudioQuality(profile.screenAudioQuality) !==
-          resolveScreenAudioQuality(this.desiredProfile.screenAudioQuality))
-    ) {
+    if (this.disposed) {
       return Promise.resolve(false);
     }
     this.desiredProfile = profile;

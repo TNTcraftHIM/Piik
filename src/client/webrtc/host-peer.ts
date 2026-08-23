@@ -1,11 +1,16 @@
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
-import type { QualityProfile } from "../media/quality";
 import {
+  audioSenderParameterWarning,
   configureScreenAudioSender,
   configureVideoSender,
   resolveScreenAudioQuality,
+  screenAudioQualityEqual,
   senderParameterWarning,
+  videoQualitySettingsEqual,
+  type AudioSenderParameterReadback,
+  type QualityProfile,
+  type ScreenAudioQuality,
 } from "../media/quality";
 import {
   EMPTY_METRICS,
@@ -41,11 +46,18 @@ export class HostPeer {
   private statsTimer: number | null = null;
   private statsInFlight = false;
   private statsSamplingBlocked = false;
-  private senderWarning: string | null = null;
+  private videoSenderWarning: string | null = null;
+  private audioSenderWarning: string | null = null;
+  private appliedVideoProfile: QualityProfile | null = null;
+  private appliedAudioQuality: ScreenAudioQuality | null = null;
+  private appliedAudioSenderParameters:
+    | AudioSenderParameterReadback
+    | null = null;
   private limitationReason: string | null = null;
   private limitationSamples = 0;
   private disposed = false;
   private negotiating = false;
+  private profileRevision = 0;
   private senderMutationTail: Promise<void> = Promise.resolve();
   private snapshot: PeerSnapshot;
 
@@ -69,6 +81,7 @@ export class HostPeer {
       metrics: { ...EMPTY_METRICS },
       error: null,
       senderParameters: null,
+      audioSenderParameters: null,
       qualityWarning: null,
     };
     this.bindConnectionEvents();
@@ -161,28 +174,59 @@ export class HostPeer {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    if (
-      this.disposed ||
-      resolveScreenAudioQuality(profile.screenAudioQuality) !==
-        resolveScreenAudioQuality(this.desiredProfile.screenAudioQuality)
-    ) {
+    if (this.disposed) {
       return Promise.resolve(false);
     }
+    const requestedVideo =
+      !videoQualitySettingsEqual(this.desiredProfile, profile) ||
+      this.appliedVideoProfile === null ||
+      !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+    const requestedAudio =
+      !screenAudioQualityEqual(this.desiredProfile, profile) ||
+      this.appliedAudioQuality !==
+        resolveScreenAudioQuality(profile.screenAudioQuality);
     this.desiredProfile = profile;
+    const requestedRevision = ++this.profileRevision;
     return this.enqueueSenderMutation(async () => {
       const videoSender = this.videoSender;
-      if (this.disposed || !videoSender) {
+      const audioSender = this.audioSender;
+      if (
+        this.disposed ||
+        !videoSender ||
+        !audioSender ||
+        requestedRevision !== this.profileRevision
+      ) {
         return false;
       }
-      if (!(await this.configureSender(videoSender))) {
+      const updateVideo =
+        requestedVideo ||
+        this.appliedVideoProfile === null ||
+        !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+      const updateAudio =
+        requestedAudio ||
+        this.appliedAudioQuality !==
+          resolveScreenAudioQuality(profile.screenAudioQuality);
+      if (!updateVideo && !updateAudio) {
+        return true;
+      }
+      if (
+        !(await this.configureSender(videoSender, audioSender, {
+          profile,
+          profileRevision: requestedRevision,
+          video: updateVideo,
+          audio: updateAudio,
+        }))
+      ) {
         return false;
       }
-      if (this.disposed) {
+      if (this.disposed || requestedRevision !== this.profileRevision) {
         return false;
       }
-      this.statsAccumulator = createStatsAccumulator();
-      this.limitationReason = null;
-      this.limitationSamples = 0;
+      if (updateVideo) {
+        this.statsAccumulator = createStatsAccumulator();
+        this.limitationReason = null;
+        this.limitationSamples = 0;
+      }
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();
       return true;
@@ -372,7 +416,7 @@ export class HostPeer {
         ...this.snapshot,
         metrics,
         qualityWarning:
-          this.senderWarning ?? this.persistentLimitationWarning(),
+          this.combinedSenderWarning() ?? this.persistentLimitationWarning(),
       };
       this.emit();
     } catch {
@@ -391,45 +435,104 @@ export class HostPeer {
   private async configureSender(
     sender: RTCRtpSender,
     audioSender?: RTCRtpSender,
+    mutation: {
+      profile: QualityProfile;
+      profileRevision: number;
+      video: boolean;
+      audio: boolean;
+    } = {
+      profile: this.desiredProfile,
+      profileRevision: this.profileRevision,
+      video: true,
+      audio: true,
+    },
   ): Promise<boolean> {
-    try {
-      const senderParameters = await configureVideoSender(
-        sender,
-        this.desiredProfile,
-      );
-      if (audioSender?.track) {
-        await configureScreenAudioSender(
-          audioSender,
-          this.desiredProfile.screenAudioQuality,
-        );
+    const { profile, profileRevision } = mutation;
+    let senderParameters = this.snapshot.senderParameters ?? null;
+    let audioSenderParameters = this.appliedAudioSenderParameters;
+    let videoWarning = this.videoSenderWarning;
+    let audioWarning = this.audioSenderWarning;
+    let videoSucceeded = true;
+    let audioSucceeded = true;
+
+    if (mutation.video) {
+      try {
+        senderParameters = await configureVideoSender(sender, profile);
+        videoWarning = senderParameterWarning(senderParameters);
+      } catch (error) {
+        videoSucceeded = false;
+        videoWarning =
+          error instanceof Error && error.message
+            ? `应用发送参数失败：${error.message}`
+            : "应用发送参数失败";
       }
-      if (this.disposed) {
-        return false;
-      }
-      this.senderWarning = senderParameterWarning(senderParameters);
-      this.snapshot = {
-        ...this.snapshot,
-        senderParameters,
-        qualityWarning:
-          this.senderWarning ?? this.persistentLimitationWarning(),
-      };
-      this.emit();
-      return true;
-    } catch (error) {
-      if (this.disposed) {
-        return false;
-      }
-      this.senderWarning =
-        error instanceof Error && error.message
-          ? `应用发送参数失败：${error.message}`
-          : "应用发送参数失败";
-      this.snapshot = {
-        ...this.snapshot,
-        qualityWarning: this.senderWarning,
-      };
-      this.emit();
+    }
+
+    if (
+      this.disposed ||
+      profileRevision !== this.profileRevision ||
+      (mutation.video && this.videoSender !== sender)
+    ) {
       return false;
     }
+
+    if (mutation.audio && audioSender) {
+      if (audioSender.track) {
+        try {
+          audioSenderParameters = await configureScreenAudioSender(
+            audioSender,
+            profile.screenAudioQuality,
+          );
+          audioWarning = audioSenderParameterWarning(audioSenderParameters);
+        } catch (error) {
+          audioSucceeded = false;
+          audioWarning =
+            error instanceof Error && error.message
+              ? `应用音频发送参数失败：${error.message}`
+              : "应用音频发送参数失败";
+        }
+      } else {
+        audioSenderParameters = null;
+        audioWarning = null;
+      }
+    }
+
+    if (
+      this.disposed ||
+      profileRevision !== this.profileRevision ||
+      (mutation.video && this.videoSender !== sender) ||
+      (mutation.audio && this.audioSender !== audioSender)
+    ) {
+      return false;
+    }
+    this.videoSenderWarning = videoWarning;
+    this.audioSenderWarning = audioWarning;
+    if (mutation.video && videoSucceeded) {
+      this.appliedVideoProfile = profile;
+    }
+    if (mutation.audio && audioSucceeded) {
+      this.appliedAudioQuality = resolveScreenAudioQuality(
+        profile.screenAudioQuality,
+      );
+      this.appliedAudioSenderParameters = audioSenderParameters;
+    }
+    this.snapshot = {
+      ...this.snapshot,
+      senderParameters,
+      audioSenderParameters: this.appliedAudioSenderParameters,
+      qualityWarning:
+        this.combinedSenderWarning() ?? this.persistentLimitationWarning(),
+    };
+    this.emit();
+    return videoSucceeded && audioSucceeded;
+  }
+
+  private combinedSenderWarning(): string | null {
+    const warnings = [
+      this.videoSenderWarning,
+      this.audioSenderWarning,
+    ].filter((warning): warning is string => warning !== null);
+    return warnings.length > 0 ? warnings.join("；") : null;
   }
 
   private updateLimitationWarning(reason: string | null): void {

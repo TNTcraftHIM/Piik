@@ -537,9 +537,87 @@ describe("HostPeer source replacement", () => {
         ...QUALITY_PROFILES["1080p60"],
         screenAudioQuality: "very-high",
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
-    expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
+    expect(connection.senders[1]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
+      128_000,
+      256_000,
+    ]);
+    expect(peer.getSnapshot().audioSenderParameters).toEqual({
+      requestedMaxBitrate: 256_000,
+      appliedMaxBitrate: 256_000,
+      mismatch: false,
+    });
+  });
+
+  it("keeps media and prior audio readback when a live ceiling fails", async () => {
+    const video = createTrack("video", "video");
+    const audio = createTrack("audio", "audio");
+    const peer = createPeer(createStream(video, audio));
+
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    const audioSender = connection.senders[1]!;
+    audioSender.failNextSetParameters = true;
+
+    await expect(
+      peer.updateProfile({
+        ...QUALITY_PROFILES["720p30"],
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(false);
+
+    expect(audioSender.track).toBe(audio);
+    expect(audioSender.getParameters().encodings[0]?.maxBitrate).toBe(128_000);
+    expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(
+      128_000,
+    );
+    expect(peer.getSnapshot().qualityWarning).toContain(
+      "应用音频发送参数失败",
+    );
+
+    await expect(
+      peer.updateProfile({
+        ...QUALITY_PROFILES["720p30"],
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(true);
+    expect(audioSender.getParameters().encodings[0]?.maxBitrate).toBe(256_000);
+    expect(peer.getSnapshot().qualityWarning).toBeNull();
+  });
+
+  it("keeps rapid audio ceiling changes last-wins", async () => {
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), createTrack("audio", "audio")),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const audioSender = FakePeerConnection.latest!.senders[1]!;
+    audioSender.deferNextSetParameters = true;
+
+    const saver = peer.updateProfile({
+      ...QUALITY_PROFILES["720p30"],
+      screenAudioQuality: "saver",
+    });
+    await vi.waitFor(() =>
+      expect(audioSender.setParameters).toHaveBeenCalledTimes(2),
+    );
+    const veryHigh = peer.updateProfile({
+      ...QUALITY_PROFILES["720p30"],
+      screenAudioQuality: "very-high",
+    });
+    audioSender.releaseDeferredSetParameters();
+
+    await expect(saver).resolves.toBe(false);
+    await expect(veryHigh).resolves.toBe(true);
+    expect(audioSender.appliedMaxBitrates).toEqual([
+      128_000,
+      64_000,
+      256_000,
+    ]);
+    expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(
+      256_000,
+    );
   });
 
   it("accepts an answer without reapplying the selected profile", async () => {
@@ -1603,14 +1681,14 @@ describe("ViewerRelay downstream ownership", () => {
     });
   });
 
-  it("retains the locked audio preset for current and future children", async () => {
-    const lockedProfile = {
+  it("applies the latest audio ceiling to current and future children", async () => {
+    const initialProfile = {
       ...QUALITY_PROFILES["1080p60"],
       screenAudioQuality: "saver",
     } as const;
     const relay = new ViewerRelay(
       { iceServers: [] },
-      lockedProfile,
+      initialProfile,
       { sendSignal: () => true },
     );
     relay.setChildren(["first-audio-child"]);
@@ -1629,11 +1707,14 @@ describe("ViewerRelay downstream ownership", () => {
 
     await expect(
       relay.updateProfile({
-        ...lockedProfile,
+        ...initialProfile,
         screenAudioQuality: "very-high",
       }),
-    ).resolves.toBe(false);
-    expect(firstConnection.senders[1]?.appliedMaxBitrates).toEqual([64_000]);
+    ).resolves.toBe(true);
+    expect(firstConnection.senders[1]?.appliedMaxBitrates).toEqual([
+      64_000,
+      256_000,
+    ]);
 
     relay.setChildren(["second-audio-child"]);
     await vi.waitFor(() =>
@@ -1641,7 +1722,7 @@ describe("ViewerRelay downstream ownership", () => {
     );
     await vi.waitFor(() =>
       expect(FakePeerConnection.latest?.senders[1]?.appliedMaxBitrates).toEqual([
-        64_000,
+        256_000,
       ]),
     );
   });
