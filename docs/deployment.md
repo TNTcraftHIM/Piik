@@ -210,7 +210,7 @@ SITE_ACCESS_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
 ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 ROOM_TTL_SECONDS=14400
 MAX_ROOMS=1000
-MAX_VIEWERS_PER_ROOM=8
+MAX_VIEWERS_PER_ROOM=20
 ENDPOINT_MEDIA_COPY_CAPACITY=2
 
 STUN_URLS=stun:stun.example.com:3478
@@ -288,11 +288,10 @@ key, even blank, fails startup.
 `ROOM_DATABASE_PATH` is optional but requires `SITE_ACCESS_PASSWORD`.
 Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
-`MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
-limit in the deployed release, not current product policy or evidence that the
-publisher can sustain that many streams. The accepted source target is 20
-Viewers; deployment default promotion follows the route release's 20-Viewer
-smoke.
+Production `9461e20` defaults `MAX_VIEWERS_PER_ROOM` to 8 and accepts 1 through
+16. Current source accepts 1 through 20, and the next-release baseline above
+explicitly selects 20 after the route-release smoke passes. It is an admission
+limit, not evidence that the publisher can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
 the single server-authoritative steady outbound media-copy cap for Host and
 Viewer endpoints; role, browser, UA, and visibility do not create another tier.
@@ -307,9 +306,11 @@ Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
 Production release `9461e20` still runs the legacy Host-2/Browser-1 policy on
-wire `screener-v5`. Deploy the current source server, Web assets, and Native
-sender atomically on `screener-v6`; restore the exact prior environment and
-release together when rolling back.
+wire `screener-v5`. Deploy the current source server and Browser assets
+atomically on `screener-v7`; stale Browser and executable-sender wires must fail
+before room authority. Native senders and helpers are outside this release.
+Restore the exact prior environment, server, and Web assets together when
+rolling back.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive

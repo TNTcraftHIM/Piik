@@ -87,8 +87,9 @@ ADR-0005's current invariants rather than carried forward wholesale.
 The current accepted endpoint rule is one server-authoritative downstream
 capacity for every non-server endpoint, default `2` and statically configurable
 as `1`, `2`, or `3`; upstream receive is free and role or user agent does not
-create an exception. The separate SFU/TURN publication, subscription, transport,
-server-resource, and migration-overlap model is still pending.
+create an exception. ADR-0005 owns the implemented Browser source for SFU/TURN
+publication, subscription, transport, server admission, and migration overlap;
+its production release and real-network validation remain pending.
 
 ## Consequences
 

@@ -1,10 +1,11 @@
 # Project Documentation
 
 - [需求理解](./需求理解.md): current product scope, priorities, constraints, and acceptance criteria.
-- [方案设计](./方案设计.md): accepted implementation design; runtime migration and validation are tracked in the current TODO ledger.
+- [方案设计](./方案设计.md): accepted implementation design; unfinished production release and validation are tracked in the current TODO ledger.
 - [Project memory](./project-memory.md): durable current product and source snapshot to read at the start of future work.
 - [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
 - [Verification status](./verification-status.md): demand-loaded ledger of current cross-cutting evidence, open proof boundaries, and expensive-test applicability.
+- [Session handoff](./session-handoff.md): temporary bootstrap prompt that points a new session back to the canonical truth owners.
 - [Current TODO](./todo.md): unresolved work, active truth holds, and decisions that still require user confirmation.
 - [Deployment](./deployment.md): exact current/rollback production configuration, release operations, and transport evidence boundaries.
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
@@ -21,9 +22,9 @@
 - [Display name and presence boundaries](./research/display-name-presence.md): browser-local storage failure behavior, Unicode normalization, control-character policy, and the Web-only presence capability boundary.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): historical P2P-first baseline; later access and automatic-routing decisions supersede its stale current-state details.
-- [ADR-0002](./adr/0002-persistent-protected-rooms.md): site access, room-scoped private Viewer grants, explicit public-watch, rotation, and minimal SQLite persistence.
+- [ADR-0002](./adr/0002-memory-resident-protected-rooms.md): four-digit leased in-memory rooms, local Host defaults, scoped Viewer grants, and orthogonal code entry.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): historical standard-WebRTC peer-assisted experiment and reusable evidence.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted automatic P2P-first single-reconcile route model, capacity/accounting, fallback roles, and exact first-frame transaction; runtime migration remains in the current TODO.
+- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted and source-implemented automatic P2P-first single-reconcile route model, capacity/accounting, fallback roles, and exact first-frame transaction; production release and validation remain in the current TODO.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
 - [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted path-isolated `HIGH + at most one LOW` policy, optional idle-layer stop, evidence contract, and SVC boundary.
 - [ADR-0008](./adr/0008-window-scoped-audio-capture.md): browser window-audio hint and the Windows WASAPI process-loopback boundary.

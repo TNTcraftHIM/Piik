@@ -165,10 +165,9 @@ generation-matched disconnect resets the five-minute window, the ordinary
 transient room TTL still caps the room, and restart drops it. A pre-auth
 connection or authentication failure gets one same-room/token/client-generation
 retry without a second room POST. SQLite remained v2 and ordinary Web creation
-was unchanged. Current Web and source-only Native have since moved to
-`screener-v6`, production remains on `screener-v5`, and current room persistence
-is SQLite schema v3. Retaining this paragraph records the dated candidate
-boundary; it does not authorize new work against v2.
+was unchanged. This paragraph records only the dated candidate boundary; current
+source and production are owned by [status](../status.md), executable senders are
+outside the current release, and no new work is authorized against v2.
 Android stop/capture-failure cleanup keeps the established signaling socket until
 its single-thread teardown sends `abandon-room` and then performs a normal close;
 pending-work cancellation only blocks callbacks and cancels active HTTP. No ACK

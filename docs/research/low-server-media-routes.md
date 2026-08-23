@@ -5,7 +5,8 @@
   low latency, and bounded host media fanout
 - Status: research and dated route evidence. Current invariants and assisted
   transport roles are in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md);
-  runtime migration and validation are in [the TODO ledger](../todo.md).
+  Browser source migration is complete, while production release and validation
+  remain in [the TODO ledger](../todo.md).
 
 ## Historical Candidate Route Ladder
 
@@ -591,10 +592,10 @@ contract and is outside this wave.
 | Route | Where copies are emitted | Endpoint cost | Evidence status |
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per Viewer | Host upload and sender pipelines grow with Viewers | Baseline evidence; current capacity is owned by the product contract |
-| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Admission defaults to eight and permits 1-16; representative resource/quality gate remains eight viewers |
+| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current source admits up to 20; production remains default eight/maximum 16 until the 20-Viewer release smoke passes |
 | Native shared-encode host | Host targets one encode for standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Research evidence; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Research only; no current product authorization |
-| SFU service | SFU emits authorized subscription copies | Service pays measured egress; an authoritative Host publisher supplies media | Functional evidence exists; accepted topology/admission still needs runtime validation |
+| SFU service | SFU emits authorized subscription copies | Service pays measured egress; an authoritative Host publisher supplies media | Functional evidence and source topology/admission exist; production release and real-network validation remain open |
 | Additional server-assisted paths | SFU/TURN emits authorized copies | Additional central ingress, egress, or allocation cost | Accepted resource-admission input; validate each bounded path at release |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |

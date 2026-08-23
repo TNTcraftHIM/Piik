@@ -27,7 +27,10 @@ The current source no longer contains the rejected participant-wide config,
 issuer, authentication capability, refresh wire, or client propagation. Supplying any
 stale `PEER_ICE_TURN_*` key, even blank, fails startup. The replacement
 selected-edge config, wire, and rebuild now exist and are configured in
-production. They remain controller-selected and lack real relay-media evidence.
+production. They remain controller-selected. An isolated Host-SFU ingress canary
+proved selected TURN/UDP media; ordinary peer-selected media, deployment
+capacity, expiry, heterogeneous networks, and production-route behavior remain
+open.
 
 ## Production Canary
 

@@ -39,11 +39,11 @@ capacity:
 
 The server returns the final deployment value as
 `authenticated.endpointMediaCopyCapacity` on every successful signaling
-authentication. Web and Native clients validate `1..3`; a Native Host uses that
-same value for ordinary Viewer admission, authoritative peer-assisted child
-assignments, and physical sender slots. Room `maxViewers` is a separate
-participant-admission limit and never supplies a sender budget. A missing or
-invalid capacity fails before route authority is accepted.
+authentication. Browser Host and Viewer clients validate `1..3` and use the
+same value for authoritative child assignments and physical sender slots. Room
+`maxViewers` is a separate participant-admission limit and never supplies a
+sender budget. A missing or invalid capacity, old wire, or executable sender
+fails before route authority is accepted.
 
 Without the peer-assisted controller, signaling still admits at most that many
 active Host children per room. Excess admitted Viewers wait without an
@@ -355,7 +355,7 @@ Route and signaling authority is room-, role-, session-, share-, revision-, and
 connection-bound. LiveKit media credentials are short-lived and bound to the
 room, role, share, and publication generation so healthy media may survive a
 signaling reconnect. Server-assisted credentials remain memory-only and never
-appear in application page URLs, browser persistence, or SQLite. LiveKit places
+appear in application page URLs, browser persistence, or durable server storage. LiveKit places
 its short-lived JWT in the WebSocket transport request target, which must not be
 logged; no credential may enter application or proxy logs.
 Ordinary SFU transport terminates DTLS-SRTP at the SFU; the product must not

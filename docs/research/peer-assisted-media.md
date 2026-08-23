@@ -520,16 +520,11 @@ event arrives later. The application therefore needs a small text-message
 challenge rather than waiting for either protocol Ping/Pong or the old socket's
 close event.
 
-The retained compatibility seam is response-only opt-in under `screener-v6`:
-the Web client sends `signaling-challenge { sequence }`, and the server sends
-the exact `signaling-challenge-response { sequence }` only to that requesting
-socket. The Native sender's strict decoder rejects unknown server message
-types, so the server must never send this response unsolicited. Existing Web
-clients and Native senders do not opt in and therefore never receive the new
-message. A new server remains compatible with those old clients, but new Web
-assets and the signaling server still need an ordered, atomic deployment
-because an old server rejects the new client message. Supporting that reverse
-version skew would require explicit capability negotiation or a protocol bump.
+Under the current `screener-v7` Browser wire, the Web client sends
+`signaling-challenge { sequence }`, and the server sends the exact
+`signaling-challenge-response { sequence }` only to that requesting socket.
+Server and Browser assets deploy atomically; stale Browser and executable-sender
+wires fail before room authority, with no compatibility parser or response seam.
 
 The Web watchdog is eligible only while the current socket is authenticated,
 the share is online, and the endpoint has an active authoritative route (the

@@ -22,13 +22,13 @@
    +---- logical edge: direct/STUN -> exact selected TURN transport
    +---- source/ingress fallback: one Host publication -> SFU subscriptions
 
-当前自动模型由 ADR-0005 持有：健康 direct/peer 边保持 sticky；selected TURN 只替换 exact logical edge 的 transport；需要 server-fed ingress 时由一份 Host publication 服务精确授权的 SFU subscriptions。每条路径受端点发送容量、独立 server admission、generation 和 bounded failure 共同约束。room `1` 只是首个 bounded production smoke，retained-media 验收仍未完成。
+当前自动模型由 ADR-0005 持有：健康 direct/peer 边保持 sticky；selected TURN 只替换 exact logical edge 的 transport；需要 server-fed ingress 时由一份 Host publication 服务精确授权的 SFU subscriptions。每条路径受端点发送容量、独立 server admission、generation 和 bounded failure 共同约束。Browser source 已实现该模型；production release 与真实网络验收边界由 current status、TODO 和 verification ledger 持有。
 系统必须无感完成拓扑分配、恢复和必要迁移；大规模公开分享仍直接使用现有直播服务。
 ```
 
 “让画面跑起来”难度不高；“像 Discord/TeamSpeak 一样在不同 GPU、浏览器、NAT、运营商和弱网中都保持清晰、60 fps、低延迟”难度高。建议把产品分层：
 
-- 原型：Web、P2P、STUN、TURN，验证小范围多观看者；当前默认接入上限为八、可配置 1 至 16，但真实 1:8 仍待验证。
+- 原型：Web、P2P、STUN、TURN，验证小范围多观看者；当前产品接入上限为 20，发布前仍需完成 20-Viewer Browser smoke。
 - 可用 MVP：房间鉴权、短期 TURN 凭据、质量降档、ICE restart、统计与 30 分钟稳定性测试。
 - 产品化：Electron 分享端、Web/移动观看端、Windows 应用音频、硬件编码诊断和区域化 TURN。
 - Discord 级：原生捕获/编码引擎、多个捕获后端、GPU 零复制、进程树音频、广泛兼容与持续遥测，属于长期工程。
@@ -116,15 +116,15 @@ IETF 对 mesh/SFU 的拓扑说明见 [RFC 7667](https://www.rfc-editor.org/rfc/r
 
 ## 推荐的拓扑策略
 
-当前生产基线：
+当前 source 与 production 边界：
 
 - 生产已移除 exact-room allowlist，所有房间由 bounded peer-assisted/SFU controller 自动路由；ordinary peer 仍使用 STUN-only ICE。
-- 当前 PoC 默认允许八名观看者，部署者可配置 1 至 16，超额连接会被明确拒绝。该数值只控制接入，不代表 1:8 已通过性能验收；必须收集可用上行、实际发送码率、`qualityLimitationReason`、编码耗时和发送队列来确定真实可持续人数。
+- Production `9461e20` 默认允许八名观看者且只接受 1 至 16；当前 source 接受最多 20。该数值只控制接入，不代表 1:20 已通过性能验收；route release 仍需记录实际 sender、应用 CPU/内存与 SFU/TURN 用量。
 - 每条 ordinary peer 链路独立使用 STUN-only ICE；只有控制器选中的 exact logical edge 或 Host-SFU ingress 才会获得短期 TURN credential。
-- Exact release `9461e20` 的所有房间在 peer recovery 与 alternate parent 耗尽后可准备最多两个 SFU/UDP roots；这是已部署事实，不是未来固定 root 数的授权。首次 room `1` smoke 已观察到 participant entry，但 retained media 尚未验收。
+- Exact release `9461e20` 的所有房间在 peer recovery 与 alternate parent 耗尽后可准备最多两个 SFU/UDP roots；这是已部署事实，不是当前 source 的固定 root 数。当前 source 使用一份 Host publication 和精确 Viewer subscriptions，尚未发布。
 - 桌面和手机观看者使用同一个 Web 播放端；分享者不要求朋友安装完整客户端。
 
-当前接受的非服务器 endpoint downstream 默认值为二，并允许部署静态配置为一、二或三；分享端及 Viewer 遵守同一规则。ADR-0004 的可删除实验验证第三名及后续 viewer 可由客户端转发；ADR-0005 定义一份 Host publication、逐 Viewer SFU subscription、exact selected TURN edge transport 与独立 server admission，automatic controller 最初在 room `1` 受限部署，现已覆盖所有房间。retained SFU media、移动端矩阵和 broad rollout 仍未通过门槛；已关闭 PR #12 的显式整房 SFU 模式不再是当前方案。超过小房间上限时仍建议使用外部直播服务。观察项包括：
+当前接受的非服务器 endpoint downstream 默认值为二，并允许部署静态配置为一、二或三；分享端及 Viewer 遵守同一规则。ADR-0004 的可删除实验验证第三名及后续 Viewer 可由客户端转发；ADR-0005 定义一份 Host publication、逐 Viewer SFU subscription、exact selected TURN edge transport 与独立 server admission，当前 Browser source 已收敛为一个自动 controller。生产发布、真实 SFU/TURN、移动端和异构网络验收仍未完成；已关闭 PR #12 的显式整房 SFU 模式不再是当前方案。超过小房间上限时仍建议使用外部直播服务。观察项包括：
 
 - 正常工作负载持续超过实测可承载的 P2P 人数。
 - 当前 logical edge 的 direct/STUN transport 失败；controller 可为同一 edge 选择 selected TURN，或在 logical ingress 需要 server-fed source 时选择当前 Host publication 的 SFU subscription。
@@ -284,15 +284,13 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 ### 最小访问模型
 
-当前 access boundary 使用 production 必配的 `SITE_ACCESS_PASSWORD` 无状态 cookie 保护建房、Host role 和所有 code-only Viewer 入口；合法未过期的 exact-room fragment grant 可直接观看。没有 grant 时，服务端先要求 site access，再检查 public-watch 或 private room password；房间码只定位，cookie 也不替代私密房间授权。WebSocket upgrade 仍只做 Origin/容量检查并记录 cookie 状态，首条 `authenticate` 完成上述 role/room 授权。该边界不引入账号、JWT、服务端 session Map 或逐人 ACL。
+接受的 access boundary 使用 production 必配的 `SITE_ACCESS_PASSWORD` 无状态 cookie 保护建房、Host role 和所有 code-only Viewer 入口；合法未过期的 exact-room fragment grant 可直接观看。没有 grant 时，服务端先要求 site access，再检查 `open | password | disabled` code-only policy；房间码只定位，cookie 也不替代房间密码。WebSocket upgrade 仍只做 Origin/容量检查并记录 cookie 状态，首条 `authenticate` 完成上述 role/room 授权。该边界不引入账号、JWT、服务端 session Map 或逐人 ACL。
 
 RFC 3986 的规范事实是 fragment 在 URI dereference 前由 user agent 分离；WHATWG WebSockets 进一步规定含 fragment 的 constructor URL 必须抛 `SyntaxError`。因此把 256-bit room grant 放在 `/r/{code}#v=...`，再由页面在首个 WSS application message 发送，可以使它不进入 HTTP 或 WebSocket request-target。RFC 6750 对 OAuth bearer query 的警告并不直接规定本产品，但它提供了适用的安全类比：URI query 高概率被日志记录，不应承载此 grant。W3C Referrer Policy 的算法会从 referrer URL 移除 fragment，production 的 `no-referrer` header 再禁止整个 header；这是传输边界，不是“不会泄漏”的保证。
 
-W3C TAG 的 capability URL 指南指出 URL 仍会出现在地址栏、历史、扩展、同步服务、截图和转发路径中，建议高熵、到期与可撤销。目标因此使用 Node.js `randomBytes(32)` 的加密强随机量、完整 grant 的 SHA-256 摘要、有限期限，以及 Host rotate 或 locked revoke。浏览器首次严格解析后只写 room-scoped `sessionStorage`，立即 `history.replaceState` 到 canonical URL；刷新和页面内 WSS reconnect 可复用。HTML 标准明确新 auxiliary browsing context 可以复制同源 opener 的 session storage；这是已持有 bearer 的本地浏览器上下文转交边界，不是服务器扩大 room/role 权限，因此不增加导航状态机。独立且无 fragment/room key 的访问只进入中性密码路径，没有正确房间密码仍 fail closed。raw grant 不进入 `localStorage`、cookie、query、Referrer、SQLite、应用/代理日志或错误。OWASP 日志指南也明确把 access token、session identifier 和密码列为通常不应直接记录的数据。Fragment 降低服务端泄漏面，但 possession 仍等于该房间 Viewer 权限。
+W3C TAG 的 capability URL 指南指出 URL 仍会出现在地址栏、历史、扩展、同步服务、截图和转发路径中，建议高熵、到期与可撤销。目标因此使用 Node.js `randomBytes(32)` 的加密强随机量、完整 grant 的 SHA-256 摘要、有限期限，以及 Host rotate 或 locked revoke。浏览器首次严格解析后只写 room-scoped `sessionStorage`，立即 `history.replaceState` 到 canonical URL；刷新和页面内 WSS reconnect 可复用。HTML 标准明确新 auxiliary browsing context 可以复制同源 opener 的 session storage；这是已持有 bearer 的本地浏览器上下文转交边界，不是服务器扩大 room/role 权限，因此不增加导航状态机。raw grant 不进入 `localStorage`、cookie、query、Referrer、服务端持久存储、应用/代理日志或错误。OWASP 日志指南也明确把 access token、session identifier 和密码列为通常不应直接记录的数据。Fragment 降低服务端泄漏面，但 possession 仍等于该房间 Viewer 权限。
 
-持久化只在现有 `rooms` row 增加 nullable `viewer_grant_digest`；`NULL` 表示 public-watch，非空值以 `CHECK` 约束为 32-byte BLOB。SQLite `STRICT` table 只接受规定的类型名，因此不能声明 `BLOB(32)`；括号长度也不是 SQLite 的长度约束。官方迁移指南支持在 transaction 中完成 schema/data 变更，目标用一个 `BEGIN IMMEDIATE` 给每个 schema v1 旧行写入未生成对应 grant 的 fresh random locked-private digest，再更新 `user_version`。这是项目设计推论，不是 SQLite 自动提供的权限语义。上线前备份 v1；旧 binary 回滚恢复备份，不在 runtime 保留双 schema。
-
-来源（访问于 2026-08-19）：[RFC 3986 section 3.5](https://www.rfc-editor.org/rfc/rfc3986.html#section-3.5)、[WHATWG WebSockets](https://websockets.spec.whatwg.org/#the-websocket-interface)、[RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)、[RFC 6750 section 2.3](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.3)、[W3C Referrer Policy](https://www.w3.org/TR/referrer-policy/)、[W3C TAG Capability URLs](https://www.w3.org/TR/capability-urls/)、[HTML Web Storage](https://html.spec.whatwg.org/multipage/webstorage.html)、[Web Cryptography Level 2](https://www.w3.org/TR/WebCryptoAPI/)、[Node.js Crypto](https://nodejs.org/api/crypto.html)、[SQLite STRICT Tables](https://www.sqlite.org/stricttables.html)、[SQLite ALTER TABLE](https://www.sqlite.org/lang_altertable.html) 与 [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)。
+来源（访问于 2026-08-19）：[RFC 3986 section 3.5](https://www.rfc-editor.org/rfc/rfc3986.html#section-3.5)、[WHATWG WebSockets](https://websockets.spec.whatwg.org/#the-websocket-interface)、[RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)、[RFC 6750 section 2.3](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.3)、[W3C Referrer Policy](https://www.w3.org/TR/referrer-policy/)、[W3C TAG Capability URLs](https://www.w3.org/TR/capability-urls/)、[HTML Web Storage](https://html.spec.whatwg.org/multipage/webstorage.html)、[Web Cryptography Level 2](https://www.w3.org/TR/WebCryptoAPI/)、[Node.js Crypto](https://nodejs.org/api/crypto.html) 与 [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)。
 
 WebRTC 媒体本身使用 DTLS-SRTP 加密，但 direct P2P 仍可能让这组可信好友看到彼此网络地址。若房间政策要求完全隐藏 endpoint IP，ordinary direct/peer 不能满足，应使用明确的中央媒体路径或拒绝该连接；selected TURN 只隐藏获授权 edge 的 direct candidate，不是全房隐私开关。
 
@@ -334,8 +332,8 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 - WebRTC 使用 DTLS-SRTP。TURN 只能看到加密后的媒体包，但仍能看到地址、房间时序和流量元数据。
 - P2P 会让房间内双方得知网络地址。熟人首版可以接受，陌生人房间不能默认接受。
 - TURN 必须使用短期凭据、速率限制、每用户/房间配额和出口告警，不能提供匿名公共 relay。
-- site access password 只控制建房/Host role，不能作为私密观看凭据；private-link 接受 room-scoped grant 或可选逐房间 Viewer 密码，public-watch 的 room code 则明确不提供隐私。这些入口都不改变媒体 fanout/egress 上限。
-- raw Viewer grant 与 Host token 等同访问凭据：只保存摘要，禁止日志/遥测/错误/Referrer/SQLite 明文。显示名、room-scoped peer 后缀和 IP 诊断均不参与授权。
+- site access password 控制建房/Host role 和 code-only 尝试，不能替代 room-scoped grant 或可选逐房间 Viewer 密码；`open` room code 明确不提供隐私。这些入口都不改变媒体 fanout/egress 上限。
+- raw Viewer grant 与 Host token 等同访问凭据：服务器当前进程只保存摘要，禁止日志/遥测/错误/Referrer/持久存储明文。显示名、room-scoped peer 后缀和 IP 诊断均不参与授权。
 - 如果未来使用 SFU 且要求服务器看不到内容，再评估 SFrame/WebRTC Encoded Transform 和群组密钥管理。
 
 ## 参考代码优先级
@@ -398,7 +396,7 @@ WebRTC 标准没有承诺固定毫秒延迟。工程目标必须带网络条件�
 
 ## 最终建议
 
-1. 首版坚持 P2P-first，但明确只服务小房间；默认接入上限为八名、可配置 1 至 16，真实 1:8 测量完成前不把它写成性能承诺。
+1. 首版坚持 P2P-first，但明确只服务一名 Host 加最多 20 名 Viewer；20-Viewer smoke 只验证 admission、控制面和资源上界，不把它写成任意公网画质或持续性能承诺。
 2. Web 先行，目标 Windows Chrome/Edge；把 1080p60 写成 best effort，同时提供降档。
 3. 保留 ordinary STUN-only 配置。Controller 对 exact logical edge 先验证 direct/STUN，再按 ADR-0005 选择短期 authenticated selected TURN；需要 server-fed ingress 时复用唯一 Host publication 和精确 SFU subscription，Host-SFU ingress 本身也可经 selected TURN。coturn 只验证 credential 与 expiry，room/edge/revision 必须由应用重验。
 4. 观看端优先做成免安装响应式 Web；分享端先 Web 验证，再按捕获/音频实测升级 Electron。
