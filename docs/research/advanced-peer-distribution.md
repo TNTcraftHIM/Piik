@@ -240,10 +240,11 @@ reference boundaries, not universal prescriptions. Screener's separately owned
 15-second initial deadline remains a candidate pending mobile-network evidence.
 
 WebRTC/LiveKit first owns transient reconnect. A hard failure or non-paused
-decoded-frame stall wakes ADR-0005 once. The same room transaction may try a
-fresh connection to the same parent, another parent, exact selected TURN, or a
-Host-publication SFU subscription as ordinary bounded candidates under current
-capacity and server admission. There is no separate same-edge repair ladder.
+decoded-frame stall wakes ADR-0005 once and seeds the exact failed
+`parent + transport` tuple as already tried. The same room operation tries other
+direct parents, then different admitted transports and Host-publication SFU
+under current capacity and server admission. There is no separate same-edge
+repair ladder or persistent parent blacklist.
 Every completion is guarded by the current authenticated sessions, share
 generation, pending route revision, and candidate connection. Sustained bitrate,
 FPS, resolution, and blur remain diagnostic.

@@ -104,12 +104,13 @@ There is no independent maximum-depth policy. Acyclicity and room admission
 bound the graph, while shallowest-first ordering minimizes depth. Depth remains
 an observed acceptance metric.
 
-A candidate identity is one logical upstream plus one transport. For an invalid
-ordinary child edge, the operation may create a fresh direct/STUN connection to
-the same parent, another eligible peer parent, an admitted selected-TURN
-transport, or an SFU subscription. All eligible direct/STUN tuples use
-deterministic parent order before admitted selected-TURN tuples, followed by SFU
-fallback. If the Host has no usable direct first-level peer path, the operation
+A candidate identity is one logical upstream plus one transport. An operation
+opened by a failed edge seeds that exact current tuple as already tried, so the
+same parent and transport cannot immediately repeat. Other eligible direct/STUN
+parents use deterministic order first; a different transport on the old parent,
+such as admitted selected TURN after direct failure, may appear with the later
+transport candidates, followed by SFU fallback. A new external fact starts a new
+operation and may make the old tuple eligible again. If the Host has no usable direct first-level peer path, the operation
 prefers its single Host publication, using selected TURN for that ingress when
 needed, rather than enumerating Host-TURN Viewer edges. The operation records
 only exact tuples already tried; failure does not globally exclude that parent
