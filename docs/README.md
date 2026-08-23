@@ -18,6 +18,7 @@
 - [Native H.264 hardware decision](./research/native-h264-hardware-decision.md): bounded WebCodecs no-go, proved Media Foundation/NVIDIA hardware encode, the default-fmtp `42c01f` stop, and the retained interop boundary.
 - [Native H.264 opt-in path](./research/native-h264-opt-in-path.md): explicit H.264 sender mode, exact Pion profile registration, and one bounded Host/Viewer loopback with hardware caveats.
 - [Realtime quality adaptation](./research/realtime-quality-adaptation.md): diagnostic-only capture/send/receive correlation, production generation-rebuild evidence, path-isolated dual representations, and bounded simulcast/Dynacast/SVC checks.
+- [Browser background capture diagnostics](./research/browser-background-capture.md): browser lifecycle evidence, a privacy-bounded capture/send/receive experiment, interpretation gates, and non-goal keepalive mechanisms.
 - [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, standard readback limits, Opus negotiation boundaries, and the retained no-control decision.
 - [Display name and presence boundaries](./research/display-name-presence.md): browser-local storage failure behavior, Unicode normalization, control-character policy, and the Web-only presence capability boundary.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
