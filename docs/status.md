@@ -6,10 +6,10 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Production
 
-- `https://share.bonfire.icu` runs exact `a5b1fc62f609b996ead54f2a5db42ddd2f374fb9`, release `a5b1fc6`, wire `screener-v8`; `/opt/screener/backups/a5b1fc6-precutover-20260823T160319Z` retains its verified pre-cutover boundary and the immutable archive SHA-256 is `2c6223f13b1ae44e737f4088af3f62259581c58c20eb9583f4f4900f58387519`.
+- `https://share.bonfire.icu` runs exact `8f5b3f192ddd010ca01c969008e512191312736a`, release `8f5b3f1`, wire `screener-v8`; `/opt/screener/backups/8f5b3f1-precutover-20260823T182438Z` retains the exact previous application/environment/LiveKit/coturn/nft/unit boundary and the immutable archive SHA-256 is `09c18d3604b64b627b01164b5a8d954fcbaeb567ca12dedf0b89deaac72bd767`.
 - `screener`, LiveKit, coturn, and nginx are active; local/public health return 200 and all services report `NRestarts=0`. The v8 unit has no writable room `StateDirectory`, the process has no SQLite descriptor, and the old live SQLite path is absent.
 - Production admits one Host plus 20 Viewers, applies endpoint capacity `2`, rejects stale Browser and executable-sender wires before room authority, and runs the one-controller exact-candidate route model with one staged total deadline. Rooms use random free four-digit codes, a 24-hour dormant lease, restart loss, local Host creation preferences, independent Viewer grants, and `open | password | disabled` code entry. LiveKit remains dedicated with `room.auto_create: false`, `max_participants: 21`, and global admission `1` publication ingress / `20` subscription egress.
-- Production still has the superseded four-value selected-TURN environment tuple and authenticated coturn relay configuration. Accepted truth is now direct/STUN peer followed only by LiveKit SFU/UDP; this is not implemented or deployed until source, environment, coturn relay configuration, and firewall range are removed atomically. These deployment facts do not close the real heterogeneous-network, SFU, mobile, or endurance evidence boundaries.
+- Production media ports are STUN-only UDP 3478 and LiveKit UDP 7882; coturn TCP/TLS and relay ranges are disabled. The public Web ingress remains TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are internal-only. These deployment facts do not close the real heterogeneous-network, SFU, mobile, or endurance evidence boundaries.
 - SFU subscribers reconcile Host screen publications across connect, activation, participant arrival, track publication, and reconnect. A controlled production canary forced two SFU roots; both committed `route-ready`, reached active SFU assignments, and decoded 1920x1080 video. LiveKit runs at `warn`/Pion `error`, and the Screener unit waits boundedly for the same-host LiveKit control listener before startup.
 
 ## Current Source
@@ -18,8 +18,8 @@ This is the current execution index. Git history owns completed timelines; [veri
 - Current source implements one steady outbound media-copy cap for every non-server endpoint: default `2`, static `1/2/3`, a peer child or Host publication consumes one slot, upstream receive is free, and no Browser/UA/visibility tier exists. One shared guard owns the accounting and transition work is bounded by `min(C + 1, 3)`.
 - Current source and production admission support one Host plus up to `20` Viewers. Focused controller coverage includes `C=1/2/3`, a 20-Viewer graph, and the passed local 20-Viewer Browser smoke; real external-network media and resource measurements remain open.
 - The single Browser `screener-v8` boundary rejects stale Browser and executable-sender wires before room authority and carries the exact deployment cap plus exact prepare candidate in the authenticated route contract.
-- Current source also implements explicit no-default SFU ingress/egress capacities and exact `reserved | committed | draining` accounting. The listener owner reconciles its dedicated non-auto-create LiveKit namespace before serving, creates each generation before token issuance, releases only after delete-plus-absence proof, and reclaims Host-offline generations through bounded exact-participant checks. Application TURN URL/credential schema, messages, candidates, admission, relay-only clients, UI, gate, configuration, and tests are removed; stale TURN environment keys fail startup.
-- Current source implements automatic P2P-first routing with one active upstream, an acyclic source-reachable graph, exact Browser v7 prepare tuple, first-decoded-frame make-before-break, strict rollback revision, and bounded wait or failure.
+- Current source also implements explicit no-default SFU ingress/egress capacities and exact `reserved | committed | draining` accounting. The listener owner reconciles its dedicated non-auto-create LiveKit namespace before serving, creates each generation before token issuance, releases only after delete-plus-absence proof, and reclaims Host-offline generations through bounded exact-participant checks. Ordinary peer ICE is STUN-only and the sole application fallback is SFU/UDP; stale TURN environment keys fail startup.
+- Current source implements automatic P2P-first routing with one active upstream, an acyclic source-reachable graph, an exact prepare tuple, first-decoded-frame make-before-break, strict rollback revision, and bounded wait or failure.
 - One event-driven controller owns the committed graph and at most one room-serial child operation. The operation owns one deterministic candidate list/cursor, one current candidate and reservations, fact version, and one total deadline split only across direct and SFU stages. Failed candidates are operation-local; exhaustion retires invalid/overflow edges but retains healthy bootstrap media. Bounded-gap preflights resources, replans the remaining suffix, and restores a healthy retired edge through one final ordinary candidate. Admission commits synchronously before graph promotion; release uses the resource-set difference and room disposal returns all resources. One Host publication serves exact Viewer subscription handles, and actual global SFU release wakes registered waiting rooms.
 - Parent selection is deterministic rather than random or score-based: hard eligibility filters, then shallowest result, remaining sender capacity, stable join order, and peer identity. When a departed Host root frees a Host slot, a new or reparable child prefers that shallower Host result over another root's free slot; healthy old edges remain sticky and the controller does not periodically rebalance the whole graph. The exact candidate child's first new decoded frame is the only application media-ready event. Moderate bitrate, FPS, or visual degradation remains with stock WebRTC/LiveKit adaptation and diagnostics; only hard connection failure or a non-paused decoded-frame stall invalidates a route edge. Quality-driven local reparenting and topology evidence are accepted research/TODO work, not current behavior.
 - The direct-to-SFU source passed repository typecheck, all 531 Web tests in 41 files, and client/server production builds. Focused tests cover the direct-stage wake, Host-full virtual SFU bootstrap without a premature route error, SFU reuse, and a departed-root scenario in which new demand uses the freed Host slot without moving healthy descendants. No Native/executable suite or heterogeneous-network media run was performed.
@@ -29,10 +29,9 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Remove selected TURN from the application, wire, configuration, UI, tests, production environment, coturn relay mode, and relay firewall range while retaining STUN and SFU.
-2. Release live audio-ceiling mutation and paused-share codec switching on the deployed generation/transition boundary.
-3. Reproduce the H.264 startup report before any codec-specific repair, research quality-driven local reparenting, and build the strict-NAT emulator gate before any manually approved canary in an operator-owned test room.
-4. Add first-frame-driven Viewer connection stages, then finish the remaining accepted functional and real-network work.
+1. Release live audio-ceiling mutation and paused-share codec switching on the deployed generation/transition boundary.
+2. Reproduce the H.264 startup report before any codec-specific repair, research quality-driven local reparenting, and build the strict-NAT emulator gate before any manually approved canary in an operator-owned test room.
+3. Add first-frame-driven Viewer connection stages, then finish the remaining accepted functional and real-network work.
 
 ## Active Boundaries
 
@@ -44,7 +43,6 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Hold
 
-The Browser route, SFU subscription reconciliation, staged deadline, and memory-room slices are
-deployed. The active bounded change is removal of selected TURN from source and production; do not
-resume live-media, Native/executable, or broad repository cleanup until direct-to-SFU source and
-production postflight are coherent.
+The Browser route, SFU subscription reconciliation, two-stage deadline, direct-to-SFU transport,
+and memory-room slices are deployed. There is no active P0/P1 hold; wait for the owner to select the
+next TODO rather than beginning live-media, Native/executable, or broad repository cleanup.

@@ -298,11 +298,9 @@ deployment-wide.
 
 ## Current Deployment Boundary
 
-Production release `a5b1fc6` runs the `screener-v8` Browser runtime and still
-contains the superseded selected-TURN surface. Its exact configuration, rollback
-artifacts, and postflight evidence are owned by the deployment document. The
-direct-to-SFU contract is accepted but not deployed until the selected-TURN
-source and production configuration are removed atomically; real
+Production release `8f5b3f1` runs the `screener-v8` Browser runtime with only
+direct/STUN peer and LiveKit SFU/UDP routes. Its exact configuration, rollback
+artifacts, and postflight evidence are owned by the deployment document; real
 heterogeneous-network and SFU media validation remains open.
 
 ## Acceptance Boundary
