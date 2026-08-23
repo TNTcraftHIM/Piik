@@ -139,9 +139,9 @@ and one total operation deadline. Candidate failure advances the cursor without
 resetting that deadline. These fields do not become separate gates or state
 machines, and this route wave adds no
 assignment, media-binding, or proof generation to the wire.
-A `prepare` route update names that operation's exact child and its
-server-issued candidate connection identity. Parent and child therefore prepare
-the same connection even when the parent's child set is unchanged by a
+A `prepare` route update names that operation's exact child, selected transport,
+and server-issued candidate connection identity. Parent and child therefore
+prepare the same connection even when the parent's child set is unchanged by a
 direct/selected-transport replacement; neither endpoint infers candidate
 authority from an assignment-list difference.
 A stale or mismatched asynchronous result fails closed and cannot revive an old
