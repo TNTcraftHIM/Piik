@@ -144,6 +144,12 @@ and one total operation deadline. Candidate failure advances the cursor without
 resetting that deadline. These fields do not become separate gates or state
 machines, and this route wave adds no
 assignment, media-binding, or proof generation to the wire.
+The same one timer derives wake boundaries from the route classes actually
+present in the deterministic list: direct peer, selected TURN, and SFU. The
+total deadline is divided equally between those semantic stages, without fixed
+per-candidate milliseconds. Hard failures may advance through multiple tuples
+inside a stage; a silent tuple at its boundary skips the remaining tuples of
+that class so it cannot consume the selected/SFU suffix.
 A `prepare` route update names that operation's exact child, selected transport,
 and server-issued candidate connection identity. Parent and child therefore
 prepare the same connection even when the parent's child set is unchanged by a
@@ -309,7 +315,7 @@ deployment-wide.
 
 ## Current Deployment Boundary
 
-Production release `352c457` runs the `screener-v8` Browser runtime. Its exact
+Production release `d3ff9e7` runs the `screener-v8` Browser runtime. Its exact
 configuration, rollback artifacts, and postflight evidence are owned by the
 deployment document; real heterogeneous-network and SFU/TURN media validation
 remains open.

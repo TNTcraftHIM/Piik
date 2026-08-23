@@ -6,10 +6,11 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Production
 
-- `https://share.bonfire.icu` runs exact `352c4578954c399e56a2578cf3e22f5e0cfc2bad`, release `352c457`, wire `screener-v8`; `6b87732` is the immediate rollback release and `/opt/screener/backups/352c457-precutover-20260823T135843Z` retains its verified environment/unit/LiveKit/SQLite boundary.
+- `https://share.bonfire.icu` runs exact `d3ff9e7b7b4a8fe58db700565971aaeda638d2e9`, release `d3ff9e7`, wire `screener-v8`; `352c457` is the immediate rollback release and `/opt/screener/backups/d3ff9e7-precutover-20260823T150618Z` retains its verified environment/unit/LiveKit boundary.
 - `screener`, LiveKit, coturn, and nginx are active; local/public health return 200 and all services report `NRestarts=0`. The v8 unit has no writable room `StateDirectory`, the process has no SQLite descriptor, and the old live SQLite path is absent.
 - Production admits one Host plus 20 Viewers, applies endpoint capacity `2`, rejects stale v7 Browser and executable-sender wires before room authority, and runs the one-controller exact-candidate route model. Rooms use random free four-digit codes, a 24-hour dormant lease, restart loss, local Host creation preferences, independent Viewer grants, and `open | password | disabled` code entry. LiveKit remains dedicated with `room.auto_create: false`, `max_participants: 21`, global admission `1` publication ingress / `20` subscription egress; selected TURN has `2` logical allocations.
 - Production still has access/privacy controls, self-check, diagnostic export, signaling watchdog behavior, 64/128/256 audio choices, and selected-edge transport. These deployment facts do not close the real heterogeneous-network, SFU/TURN media, mobile, or endurance evidence boundaries.
+- SFU subscribers reconcile Host screen publications across connect, activation, participant arrival, track publication, and reconnect. A controlled production canary forced two SFU roots; both committed `route-ready`, reached active SFU assignments, and decoded 1920x1080 video. LiveKit runs at `warn`/Pion `error`, and the Screener unit waits boundedly for the same-host LiveKit control listener before startup.
 
 ## Current Source
 
@@ -42,6 +43,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Hold
 
-The Browser route and memory-room slices are implemented and deployed. Later TODO work is
-intentionally paused until the owner chooses the next slice; do not start live-media deployment,
-route/room rollback, Native/executable work, or broad cleanup without a new instruction.
+The Browser route, SFU subscription reconciliation, and memory-room slices are deployed, but room
+`9403` exposed a P1 fallback-budget regression: silent direct/selected candidates can consume the
+whole operation before an existing SFU publication is reused. Fix and deploy the one-timer staged
+deadline invariant before resuming live-media, Native/executable, or broad cleanup work.
