@@ -146,6 +146,10 @@ direct/selected-transport replacement; neither endpoint infers candidate
 authority from an assignment-list difference.
 A stale or mismatched asynchronous result fails closed and cannot revive an old
 edge.
+Successful candidate `P` is broadcast as active revision `P`. Failure, timeout,
+or authoritative abort keeps the previous committed graph content but advances
+and broadcasts one active rollback revision `R > P` before any later prepare;
+clients never infer rollback from silence or from an older revision.
 
 A route replacement uses make-before-break only when the typed endpoint and
 server-resource ledger atomically admits the required reservations. The old
