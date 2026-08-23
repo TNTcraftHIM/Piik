@@ -7,7 +7,7 @@
 
 The Draft #16/#18/#22/#23/#25/#28 ladder proved isolated WebCodecs/Pion
 properties, not integration with Screener's current rooms, signaling, ordinary
-browser viewers, or per-edge ICE/TURN. A native sender remains a later
+browser viewers, or per-edge ICE transport. A native sender remains a later
 optimization and must not be presented as available product behavior.
 
 ## Retained Boundary
@@ -33,7 +33,7 @@ The sole authorized run is `no-go-unclassified`; the retained evidence and
 probe limitations are recorded in the native sender research. The earliest
 missing checkpoint is viewer authentication, not a proven authentication
 failure. No viewer-1 acceptance means there is no two-viewer, third-viewer
-FIFO, or direct/TURN proof. The attempted native branch must not be opened or
+FIFO, or direct/SFU proof. The attempted native branch must not be opened or
 merged as product code from this state.
 
 ## 2026-08-20 Historical Wire Checkpoint
@@ -179,9 +179,9 @@ failed stage while synchronously retaining a bounded final-negative snapshot:
 5. Add viewer 3, prove no third edge and a host-side waiting observation while
    the viewer keeps its existing waiting state, then close viewer 1 and prove
    FIFO promotion plus decoding/rendering.
-6. Keep this candidate STUN-only. Ordinary Native ICE never receives TURN
-   candidates; any selected-edge or Host-SFU TURN attempt requires its own
-   generation-bound gate and does not widen or block the direct-path canary.
+6. Keep this candidate STUN-only. Direct failure remains inside ADR-0005's
+   dedicated Host-publication/SFU-subscription boundary; the Native canary does
+   not add another media transport or widen that route model.
 
 A commit-bound, short-lived evaluation artifact may package the current source
 to run these stages without a development toolchain. That artifact is not an

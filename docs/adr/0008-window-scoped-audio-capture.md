@@ -111,7 +111,7 @@ visual marker, while an independent voice process and notification emit
 different markers. Require an Opus inbound track and rendered video/audio,
 monotonic QPC timestamps, and a bounded A/V offset; verify the unrelated
 markers are absent and that target exit/silence stops or asks without widening
-capture. SFU/TURN, second Viewer, and endurance remain follow-up gates; paired
+capture. SFU/UDP, second Viewer, and endurance remain follow-up gates; paired
 WGC video completion is recorded below. On 2026-08-21, 100 20-ms chunks isolated a 440 Hz target from
 an independent 880 Hz process by 4017.8x. Chrome 151 then received one audio
 track and 495 inbound Opus packets while video decoded/rendered 296 frames.
@@ -144,10 +144,11 @@ runtime downgrade.
   The ZIP carries internal and external SHA-256 manifests plus exact linked Go
   dependency license files; it is neither an installer nor a release.
 
-## Follow-Up TODO
+## Remaining Evidence Boundary
 
-- Keep a second Viewer, SFU/TURN, endurance, and real-game A/V sync as separate
-  follow-ups; the one-Viewer H.264 and attributed `VideoEncode` gate passed.
-- Download and run the short-lived Windows x64 evaluation artifact; keep
-  explicit target selection default-off. A formal release remains blocked on
-  the project license, signing, and its own acceptance boundary.
+- A second Viewer, SFU/UDP, endurance, and real-game A/V sync remain unproven;
+  the one-Viewer H.264 and attributed `VideoEncode` gate passed.
+- The short-lived Windows x64 evaluation artifact is retained evidence, not an
+  instruction to download or run it. Native release work remains at the bottom
+  of the single project TODO ledger and still requires license, signing, and its
+  own acceptance boundary.

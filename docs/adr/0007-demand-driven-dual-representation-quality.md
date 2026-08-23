@@ -77,7 +77,7 @@ and stream generation across three stages:
 | Stage | Required evidence |
 | --- | --- |
 | A. Capture | `MediaStreamTrack.getSettings()` width, height, and frame rate |
-| B. Host outbound | actual width/FPS/bitrate, target or available bitrate when present, interval encode time, `qualityLimitationReason`, RTT, loss/retransmission, selected direct/TURN route, and derived negotiated video codec/profile/parameters plus `scalabilityMode` when applicable |
+| B. Host outbound | actual width/FPS/bitrate, target or available bitrate when present, interval encode time, `qualityLimitationReason`, RTT, loss/retransmission, selected direct/SFU route, and derived negotiated video codec/profile/parameters plus `scalabilityMode` when applicable |
 | C. Viewer inbound | actual width/FPS/bitrate, loss, jitter, interval decode/drop/freeze evidence, the corresponding derived codec/profile/parameters and applicable `scalabilityMode`, and actual decode behavior |
 
 Interpretation is deliberately ordered:
@@ -86,7 +86,7 @@ Interpretation is deliberately ordered:
 | --- | --- |
 | Capture is already low | capture or constraint problem |
 | Capture high, outbound low, reason `cpu` | sender encode/resource pressure |
-| Capture high, outbound low, reason `bandwidth` | congestion, uplink, GCC, or TURN/path pressure |
+| Capture high, outbound low, reason `bandwidth` | congestion, uplink, GCC, or current-path pressure |
 | Outbound healthy, inbound degraded | transport or receiver-path problem |
 | Inbound metrics healthy, image still blurry | insufficient bitrate/quantization, negotiated codec/profile/layer, or display scaling problem |
 
@@ -284,7 +284,7 @@ Negative:
   always-on or on demand; otherwise the quality gate does not pass.
 - Native relays show packet forwarding without an added decode/encode stage.
 - Spoofed, stale, duplicated, or rate-excessive viewer requests have no effect.
-- Controlled capture/CPU/bandwidth/TURN/receiver/display cases produce the
+- Controlled capture/CPU/bandwidth/direct/SFU/receiver/display cases produce the
   classifications in the evidence table without a room-wide downgrade.
 
 ## References

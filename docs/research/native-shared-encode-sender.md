@@ -27,7 +27,7 @@ described as one hardware or physical encode.
 
 The preferred first experiment is a standalone Windows C++ sender using a fixed
 libwebrtc revision. It keeps libwebrtc's mature PeerConnection, RTP/RTCP, pacing,
-NACK/RTX, DTLS-SRTP, ICE, and TURN behavior on each edge. Electron is not part of
+NACK/RTX, DTLS-SRTP, and ICE behavior on each edge. Electron is not part of
 the media experiment; it can only wrap a proven helper later.
 
 ## Minimal Risk Spike
@@ -346,8 +346,8 @@ memory, latency, quality, and upload measurements. A third host edge, custom
 RTP/SRTP, or a custom congestion-control framework remains out of scope. The
 #28 minimum-of-two policy is also out of scope for product code; retaining its
 evidence does not retain its policy. Ordinary Web and Native peer ICE stays
-STUN-only; optional selected-edge TURN follows the shared controller only after
-SFU/UDP fails and needs its own bounded transport gate.
+STUN-only. The sole application fallback remains ADR-0005's Host publication
+with exact SFU/UDP subscriptions; Native research adds no transport candidate.
 
 ## Primary Sources And License Boundary
 

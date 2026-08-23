@@ -13,8 +13,8 @@ ordinary browser Viewer could relay the received screen stream to another
 Viewer.
 
 This ADR records that experiment and its reusable evidence. It does not set the
-current endpoint capacity, SFU topology, TURN placement, fallback sequence, or
-resource accounting. ADR-0005 owns current routing invariants.
+current endpoint capacity, SFU topology, server-assisted transport, fallback
+sequence, or resource accounting. ADR-0005 owns current routing invariants.
 
 ## Experiment
 
@@ -37,9 +37,9 @@ bitrate, degradation-preference, codec, and screen-audio choices. Sender
 mutation was serialized and read back from the browser. Requested settings were
 treated as ceilings and preferences, never as proof of achieved media quality.
 
-Ordinary peer connections remained STUN-only. A TURN candidate would alter the
-transport of an authorized edge, not the graph semantics or downstream edge
-count.
+Ordinary peer connections remained STUN-only. In the dated experiment, a TURN
+candidate would have altered the transport of an authorized edge, not the graph
+semantics or downstream edge count.
 
 ## Evidence retained
 
@@ -80,16 +80,17 @@ claim unsupported by measurements.
 
 ## Current interpretation
 
-Peer relay remains a useful distributed-media candidate and deployed source
-contains portions of the experiment. Those portions must be evaluated against
-ADR-0005's current invariants rather than carried forward wholesale.
+Peer relay is part of the deployed Browser route owned by ADR-0005. This ADR
+retains only the experiment evidence used to evaluate that route; its historical
+policy and gates do not independently authorize current behavior.
 
 The current accepted endpoint rule is one server-authoritative downstream
 capacity for every non-server endpoint, default `2` and statically configurable
 as `1`, `2`, or `3`; upstream receive is free and role or user agent does not
-create an exception. ADR-0005 owns the implemented Browser source for SFU/TURN
-publication, subscription, transport, server admission, and migration overlap;
-its production release and real-network validation remain pending.
+create an exception. ADR-0005 owns the implemented and deployed Browser route
+for direct/SFU publication, subscription, transport, server admission, and
+migration overlap. Real heterogeneous-network and resource validation remains
+open.
 
 ## Consequences
 

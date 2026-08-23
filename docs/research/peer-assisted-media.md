@@ -6,7 +6,8 @@
   the earlier resource/quality gate remains eight
 - Status: historical evidence plus the deployed bounded controller;
   accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
-  the room-`1` rollout boundary; retained SFU media remains unverified.
+  the room-`1` rollout boundary and a controlled canary decoded SFU media;
+  heterogeneous-network, mobile, resource, and endurance evidence remains open.
 
 This document owns dated measurements and implementation evidence. Current
 capacity and routing authority live in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md)
@@ -20,24 +21,25 @@ evidence rather than current capacity policy. The accepted path uses standard
 WebRTC media, one active upstream per Viewer, a bounded acyclic peer graph, and
 one uniform non-server outbound capacity `C` configured as `1`, `2`, or `3`.
 Host publication and peer children consume physical sender slots under
-ADR-0005; SFU/TURN server resources use separate admission.
+ADR-0005; SFU server resources use separate admission.
 
 This path reuses WebRTC capture, codec negotiation, RTP, NACK/PLI/RTX, congestion
-control, jitter buffering, ICE, STUN, DTLS-SRTP, and browser rendering. An
-exact controller-authorized logical edge may also use selected TURN. Its
-cost is unavoidable in ordinary browsers: every relay decodes and re-encodes
+control, jitter buffering, ICE, STUN, DTLS-SRTP, and browser rendering. Ordinary
+peer edges are STUN-only; direct exhaustion may instead select the dedicated
+SFU/UDP path. The peer-relay cost is unavoidable in ordinary browsers: every relay decodes and re-encodes
 the screen stream. The first spike measures whether that cost is acceptable; it
 does not hide it or claim shared encoding.
 
-The accepted controller preserves healthy direct/peer UDP edges. Exact selected
-TURN may replace an authorized logical edge transport; one Host publication and
-per-Viewer SFU subscriptions provide server-fed ingress when selected by the
+The accepted controller preserves healthy direct/peer UDP edges. One Host
+publication and per-Viewer SFU subscriptions provide server-fed ingress when selected by the
 same bounded controller. Direct P2P remains the
 simplest path while a healthy endpoint sender slot is available; later Viewers
 may be assigned to peers automatically. ADR-0005 makes SFU capacity part of the flagship
 target while retaining peer descendants. The first production rollout used a
-room-`1` exact smoke; participant entry was observed, but retained SFU media
-remained unverified. Production later removed that room boundary.
+room-`1` exact smoke and observed only participant entry. Production later
+removed that room boundary; a controlled current-release canary subsequently
+committed two SFU assignments and decoded 1920x1080 video. That does not close
+the real-network or resource matrix.
 
 ## What Browsers Can Share
 
@@ -143,7 +145,7 @@ DataChannel avoids relay re-encoding, but the application must define:
 - decoder reset and generation changes; and
 - explicit failure when the codec or feature set is unsupported.
 
-DataChannel still provides ICE/TURN traversal, DTLS protection, SCTP
+DataChannel still provides ICE traversal, DTLS protection, SCTP
 fragmentation, partial reliability, and association-level congestion control.
 RFC 8831 warns that a large message can monopolize an SCTP association when
 message interleaving is unavailable and recommends limiting messages to 16 KB
@@ -195,8 +197,8 @@ Sources:
 
 The signaling server remains the topology authority. The source candidate uses
 a sticky, bounded DAG selected by one breadth-first walk. Here, one media edge
-means one downstream `RTCPeerConnection` carrying the shared stream; a later
-controller-selected TURN rebuild does not change the edge count.
+  means one downstream `RTCPeerConnection` carrying the shared stream; a
+  framework connection rebuild does not change the logical edge count.
 
 - the historical experiment gave the host and every ordinary Web viewer capacity
   for at most two children;
@@ -220,10 +222,11 @@ experiment rather than something hidden by a scheduler. Ordinary Web clients
 use the same capacity without UA or visibility classification; mobile devices
 remain non-blocking compatibility observations.
 
-Per-edge ICE remains independent. Ordinary peer edges are STUN-only; the
-controller may select authenticated TURN for an exact logical edge transport or
-the single Host-SFU ingress under the accepted route model. Peer assistance therefore reduces normal server media
-traffic but cannot promise zero server traffic in restrictive networks.
+Per-edge ICE remains independent. Ordinary peer edges are STUN-only; after the
+direct stage is exhausted, the same controller may select the room's single Host
+publication and an exact SFU/UDP subscription. Peer assistance therefore reduces
+normal server media traffic but cannot promise zero server traffic in restrictive
+networks.
 
 ## Implemented Bounded Quality Coordination
 
@@ -233,10 +236,12 @@ integer 15-60 fps, integer 2-12 Mbps, and the three standard degradation
 preferences; missing, extra, or out-of-range fields fail schema validation.
 The three visible presets are recommendations rather than wire IDs. The server
 stores the latest complete object in a room-count-bounded in-memory map,
-defaults to 1080p60 at 8 Mbps with clarity-first priority, includes it in
+currently defaults to 1080p60 at 8 Mbps with balanced priority, includes it in
 peer-assisted authenticated snapshots, and broadcasts host changes to online
 viewers. The value survives a stopped share, is removed with the room, and is
-not written to SQLite. Ordinary P2P authentication remains unchanged and
+not persisted. The accepted next default is the existing 1080p30 recommendation;
+advanced `480p` adds only an 854x480 resolution value, not a fourth preset.
+Ordinary P2P authentication remains unchanged and
 setting-control messages are forbidden in that mode.
 
 After peer-assisted authentication, the host reasserts its local selection
@@ -372,9 +377,9 @@ downstream capacity `C`:
 - each non-server parent has at most approximately `C * B` ordinary downstream
   upload, plus transport overhead;
 - aggregate viewer delivery still requires approximately `N * B` across hosts,
-  relays, and any TURN paths; and
-- signaling/STUN carry negligible media traffic, while a TURN path still incurs
-  relay ingress and egress for that edge.
+  relays, and SFU paths; and
+- signaling/STUN carry negligible media traffic, while an SFU path incurs
+  bounded publication ingress and subscription egress.
 
 Peer assistance distributes traffic; it does not eliminate it. The product
 keeps topology automatic and invisible while the server enforces the configured
@@ -471,8 +476,9 @@ All hard gates must pass:
    statistics are expected to show a new outbound RTP encoder at every hop; its
    encode time, CPU/GPU cost, and `qualityLimitationReason` are recorded rather
    than mislabeled as shared encoding.
-3. Excluding explicitly selected TURN edges, application-server media ingress
-   and egress remains zero. Host and relay upload stay within 20% of
+3. Under that dated gate, excluding its explicitly selected TURN edges,
+   application-server media ingress and egress remains zero. Host and relay
+   upload stay within 20% of
    `childCount * B`.
 4. First picture is at most 3 seconds, decoded 60 fps does not remain below 50
    for more than 5 seconds without an explicit failure, and depth-three p95
@@ -501,8 +507,9 @@ fallbacks.
 
 Passing these historical gates proved only that a second design phase was
 justified. ADR-0005 subsequently accepted the bounded controller; production
-first ran a room-`1` smoke and later removed that rollout boundary. Retained SFU
-media and broader audio/A-V verification remain open. The
+first ran a room-`1` smoke and later removed that rollout boundary. A controlled
+current-release canary decoded two SFU assignments; heterogeneous-network,
+resource, and broader audio/A-V verification remain open. The
 native host shared-encode sender is a separate planned phase regardless of this
 experiment's result and is not implemented here.
 
@@ -546,11 +553,8 @@ statistics, is not logged, and is limited by the server to at most one response
 per socket per second. The watchdog itself does not close or rebuild media,
 emit `route-failed`, or change route authority. Ordinary P2P and a duplicate
 same-revision SFU authority keep their healthy media while the new socket
-reauthenticates. An existing `peer-selected` TURN lease remains deliberately
-bound to both authenticated sessions: replacing either session invalidates that
-exceptional transport and leaves recovery to the existing bounded route path.
-Relaxing or carrying that security authority is a separate routing/protocol
-change, not part of signaling liveness detection.
+reauthenticates. The watchdog does not create or carry media-transport
+authority; route and SFU lifecycle remain owned by ADR-0005.
 
 ## License Boundary
 
