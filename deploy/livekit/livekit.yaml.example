@@ -23,11 +23,14 @@ room:
   # Keep this false so a stale participant token cannot recreate a drained room.
   auto_create: false
   # Screener enforces its configured admission limit before issuing a token.
-  # This server-side ceiling covers the repository's maximum 16 viewers + host.
-  max_participants: 17
+  # This server-side ceiling covers the repository's 20 viewers plus one Host.
+  max_participants: 21
 
 logging:
-  level: info
+  # Info-level join records include raw PublisherOffer SDP in LiveKit 1.13.5.
+  # Keep production at warn so credentials and media-path details stay out of
+  # the persistent journal; raise it only in an isolated, short-lived canary.
+  level: warn
   pion_level: error
 
 # External or embedded TURN, Redis, recording, ingress, egress, and webhooks are

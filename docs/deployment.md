@@ -514,8 +514,11 @@ webhook, external-TURN, and embedded-TURN service. It explicitly sets
 deployment's self-hosted STUN listener so pinned LiveKit cannot inherit its
 default public Google STUN servers. Do not add Redis for this one-node workload.
 The service journal is the diagnostic log; keep its retention finite and access
-restricted. Never enable debug/Pion packet logging continuously or persist JWTs,
-SDP, ICE candidates, API secrets, or full `/rtc` and `/rtc/*` request targets.
+restricted. Pinned LiveKit 1.13.5 includes raw PublisherOffer SDP in info-level
+join records, so the tracked production baseline uses `logging.level: warn` and
+`pion_level: error`. Raise either only in an isolated, short-lived canary and
+remove its journal afterward. Never persist JWTs, SDP, ICE candidates, API
+secrets, or full `/rtc` and `/rtc/*` request targets.
 
 Configure both the host firewall and the provider firewall independently:
 
