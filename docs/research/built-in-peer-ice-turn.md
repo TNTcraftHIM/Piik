@@ -10,27 +10,20 @@ transport design is owned by [ADR-0005](../adr/0005-automatic-hybrid-media-routi
 
 ## Decision
 
-Do not deploy or continue the built-in participant-wide candidate. Ordinary
-peer connections remain STUN-only. Exact release `9461e20` used its dated
+Do not deploy or continue either the participant-wide or selected-edge
+application candidate. Ordinary peer connections remain STUN-only and the sole
+application fallback is LiveKit SFU/UDP. Exact release `9461e20` used its dated
 SFU-then-selected-TURN recovery slice; current route authority is ADR-0005.
-
-TURN remains a compatibility transport, not a topology. The controller may
-authorize it only for an exact logical edge transport or the single Host-SFU
-publication path. No room, participant, or ordinary peer connection receives
-TURN candidates by default.
 
 This supersedes this document's former recommendation to place STUN plus TURN on
 every capable exact-room Web peer connection. Git history retains that analysis;
 the durable findings that still apply are summarized below.
 
-The current source no longer contains the rejected participant-wide config,
-issuer, authentication capability, refresh wire, or client propagation. Supplying any
-stale `PEER_ICE_TURN_*` key, even blank, fails startup. The replacement
-selected-edge config, wire, and rebuild now exist and are configured in
-production. They remain controller-selected. An isolated Host-SFU ingress canary
-proved selected TURN/UDP media; ordinary peer-selected media, deployment
-capacity, expiry, heterogeneous networks, and production-route behavior remain
-open.
+The participant-wide and selected-edge implementation sections below are dated
+evidence only. Their allocation, credential, authorization, rebuild, UI,
+configuration, and deployment surfaces have no current product authority. An
+isolated Host-SFU ingress canary proved historical selected TURN/UDP media, but
+did not establish a unique product need beyond the accepted SFU fallback.
 
 ## Production Canary
 

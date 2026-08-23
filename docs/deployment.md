@@ -1,8 +1,8 @@
 # Minimal Deployment
 
-Last verified against upstream documentation: 2026-08-23.
+Last verified against upstream documentation: 2026-08-24.
 
-This page records exact release `d3ff9e7` production facts and the current source
+This page records exact release `a5b1fc6` production facts and the current source
 deployment contract. Product direction and pending migrations are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -17,21 +17,19 @@ as the current controller's automatic final media fallback. This capacity is
 dormant unless the complete public URL, private API URL, key, secret, and capacity
 tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
-ICE/UDP only. Source no longer contains the rejected participant-wide Peer ICE TURN
-candidate; stale `PEER_ICE_TURN_*` keys fail startup even when blank. The
-selected-edge source tuple is enabled in production only for the controller's
-single exceptional edge. Production ordinary peer ICE remains STUN-only and the
-tracked coturn example remains `stun-only`; the shared host retains its older
-authenticated-relay daemon configuration and firewall range. The application
-does not pre-advertise TURN credentials to ordinary peers.
+ICE/UDP only. Ordinary peer ICE remains STUN-only and the tracked coturn example
+is STUN-only with TCP/TLS disabled. The accepted source contract configures no
+TURN, ICE/TCP, media TCP, or TLS-relayed media. Production still retains the
+superseded selected-edge environment tuple, authenticated-relay coturn
+configuration, TCP listener, and relay firewall range until the direct-to-SFU
+release removes them atomically.
 
-Production runs exact `d3ff9e7b7b4a8fe58db700565971aaeda638d2e9`, release
-`d3ff9e7`, from `/opt/screener/releases/d3ff9e7`. The immutable runtime archive
+Production runs exact `a5b1fc62f609b996ead54f2a5db42ddd2f374fb9`, release
+`a5b1fc6`, from `/opt/screener/releases/a5b1fc6`. The immutable runtime archive
 SHA-256 is
-`a7c3b7b7cf593f3933a1c194a07370131fd76b3d4c30768b5206e84ccf93b63d`.
-Immediate rollback is `/opt/screener/releases/352c457`, with the verified
-pre-cutover environment/LiveKit/unit backup at
-`/opt/screener/backups/d3ff9e7-precutover-20260823T150618Z`. Local and public
+`2c6223f13b1ae44e737f4088af3f62259581c58c20eb9583f4f4900f58387519`.
+Its verified pre-cutover boundary is
+`/opt/screener/backups/a5b1fc6-precutover-20260823T160319Z`. Local and public
 health return 200; Screener, LiveKit, coturn, and nginx are active with
 `NRestarts=0`.
 
@@ -42,7 +40,8 @@ one-controller exact-candidate route runtime, and stale-v7 rejection before
 room authority. The service unit has no writable room StateDirectory and the
 old live SQLite path is absent. LiveKit is dedicated, has `room.auto_create: false` and
 `max_participants: 21`, and is admitted to one global publication ingress plus
-twenty subscription egress handles. Selected TURN has two logical allocations.
+twenty subscription egress handles. The deployed selected-TURN allocation cap
+of two is a superseded production fact, not accepted behavior.
 These bounds are fail-safe admissions, not throughput or quality claims.
 The retained local 20-Viewer Browser smoke and open real-network boundaries are
 owned by [verification status](./verification-status.md).
@@ -142,19 +141,14 @@ subscriptions and allocations use independent deployment admission rather than
 an endpoint-cap or fixed-root rule.
 
 The repository requires STUN and ordinary peer connections receive STUN-only
-ICE. An existing logical edge prefers direct/peer UDP and may use exact selected
-TURN when configured; only an unavailable logical ingress uses the Host
-publication/SFU path. A Host-SFU ingress may itself use selected TURN. LiveKit
-participants receive only revision-bound `sfu-config` URL/token messages and
-negotiate within LiveKit's separate ICE domain. The selected-edge TURN
-config/wire is deployed in the current `352c457` release with one UDP URL, a
-120-second credential TTL, and two logical allocations. It was not exercised by
-a real media session during this cutover.
+ICE. An existing logical edge prefers direct/peer UDP; the only application
+suffix is the Host publication/SFU path. LiveKit participants receive only
+revision-bound `sfu-config` URL/token messages and negotiate within LiveKit's
+separate UDP-only ICE domain.
 
 `PEER_ASSISTED_MEDIA=true` is the process-wide topology/SFU switch. Every normal
-room gets its own bounded controller state; ordinary peer connections remain
-STUN-only and only the selected-edge source path may grant TURN to the
-controller's then-current edge. Run candidate releases on an isolated
+room gets its own bounded controller state and ordinary peer connections remain
+STUN-only. Run candidate releases on an isolated
 instance/hostname and keep
 the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
@@ -168,19 +162,14 @@ recorded old release plus its SQLite environment/config backup unchanged for
 rollback. Rolling back restores that exact old environment and database with the
 old binary; it does not attempt to carry candidate rooms into SQLite.
 
-A shared-public-IP instance can test candidate behavior while the old TURN
-service stays live, but it cannot prove the clean-port boundary or approve broad
-migration. The room-1 smoke uses this shape: nginx owns 443, LiveKit 1.13.5 owns
-UDP 7882, Peer ICE TURN is disabled, and LiveKit is fail-closed under a 192 MiB
+A shared-public-IP instance can test candidate behavior, but it cannot prove the
+clean-port boundary or approve broad migration. The room-1 smoke uses this
+shape: nginx owns 443, LiveKit 1.13.5 owns UDP 7882, and LiveKit is fail-closed under a 192 MiB
 high/256 MiB hard cgroup limit with restart disabled. Prefer a separate VM/IP
 for the full gate and verify representative external networks and devices.
 
-TURN REST authentication proves only HMAC and expiry to coturn. Coturn cannot
-verify a room, route, edge, or connection generation, so the application must
-bind issuance and parent/child rebuild to the current controller state, keep the
-attempt one-use and short-lived, and revalidate every asynchronous boundary.
-Never describe coturn itself as cryptographic selected-edge enforcement.
-HTTPS/WSS always remains TLS/TCP independently.
+Coturn provides STUN binding only and must reject allocation requests.
+HTTPS/WSS always remains TLS/TCP independently of the UDP-only media ladder.
 
 The 2026-08-20 exact-room canary used source `a11a73dfa79d`, inactive release
 `/opt/screener/releases/a11a73dfa79d-r4`, artifact SHA-256
@@ -242,61 +231,24 @@ SFU_INGRESS_CAPACITY=<MEASURED_DEPLOYMENT_INGRESS_COPIES>
 SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 ```
 
-To enable exact selected TURN after bounded peer and SFU recovery, add its
-complete tuple:
-
-```dotenv
-SELECTED_EDGE_TURN_URLS=turn:turn.example.com:3478?transport=udp
-SELECTED_EDGE_TURN_SHARED_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
-SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS=120
-SELECTED_EDGE_TURN_ALLOCATION_CAPACITY=<MEASURED_DEPLOYMENT_ALLOCATIONS>
-```
-
-The rejected `PEER_ICE_TURN_*` participant-wide tuple is removed; supplying any
-stale key, even blank, fails startup. Current source requires the complete
-four-value `SELECTED_EDGE_TURN_*` tuple with one explicit TURN/UDP URI, an
-independent secret, bounded TTL, and positive safe-integer logical-allocation
-capacity. Each exact peer-selected edge and Host-SFU ingress consumes one unit
-from the same process ledger before credential issuance; reserved, committed,
-and draining authorizations stay charged until exact logical release. The
-production release remains on its recorded configuration until the four-value
-tuple is supplied atomically with current source. Only a controller-selected
-edge may receive a short-lived grant. Roll back by
-removing the application tuple before changing coturn or firewall state.
-Credentials never enter URLs, logs, durable server storage, or browser
-`localStorage`.
-
-Application release does not prove deletion of the matching physical coturn
-allocation. Keep the credential TTL short and configure coturn `user-quota` and
-`total-quota` to bound allocations left by disconnect or process restart. A
-restarted single process begins a fresh logical ledger while old physical
-allocations expire under those coturn bounds; do not claim cross-restart
-reconstruction or per-allocation readback.
-
-Before a media canary, `npm run gate:turn-udp-allocation` provides the bounded
-UDP allocation check. It proves only that an authenticated relay candidate can
-be allocated over UDP; it does not prove a media route, recovery, quality, or
-performance. Set `CHROME_PATH` in the process environment and supply the
-complete selected-edge tuple either in that environment or as newline-delimited
-`KEY=value` records on stdin. Values containing `=` are preserved. The script
-uses an isolated Chrome profile and loopback-only in-memory credential response,
-then emits only status, relay-candidate count, transport protocol, and coarse ICE
-error-code buckets. Do not echo, log, or persist raw production environment
-input; never add TURN URLs, usernames, credentials, candidate addresses, or raw
-errors to the result.
+Supplying any stale `PEER_ICE_TURN_*` or `SELECTED_EDGE_TURN_*` key, even blank,
+fails startup. The cutover must remove all four production selected-edge keys
+before starting the new application, install the tracked STUN-only coturn
+configuration, and close TCP 3478/5349 plus every relay range. Keep the old
+release, its exact environment, coturn configuration, and firewall snapshot as
+one rollback unit; do not restore only part of that obsolete transport.
 
 `PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
 that a stale room-1 deployment cannot silently retain the old scope. With
 `PEER_ASSISTED_MEDIA=true`, every normal room receives peer-assisted routing,
 optional LiveKit fallback, and the same deployment resource/fanout/failure guards.
-Every ordinary peer connection remains STUN-only; selected-edge TURN is still
-issued only to a current controller-selected edge. There is no browser control,
+Every ordinary peer connection remains STUN-only. There is no browser control,
 percentage rollout, or second router.
 
 `ALLOWED_ORIGINS` must list exact `http` or `https` origins, never `*`.
 `SITE_ACCESS_PASSWORD` is required in production and must contain 8 through
 128 visible ASCII bytes (`0x21` through `0x7e`). It must not be reused for
-LiveKit, TLS, TURN, or another service. It authorizes room creation, Host role,
+LiveKit, TLS, or another service. It authorizes room creation, Host role,
 and code-only Viewer attempts; it does not replace a private room grant or
 password. Local development and tests may omit it. Supplying a removed access
 key, even blank, fails startup.
@@ -305,27 +257,24 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `352c457` accepts 1 through 20 and explicitly selects 20. This is an
+Production `a5b1fc6` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
 the single server-authoritative steady outbound media-copy cap for Host and
 Viewer endpoints; role, browser, UA, and visibility do not create another tier.
-A peer child or the Host's single SFU publication consumes one copy, upstream
-receive is free, a committed selected TURN transport for the same child does not
-consume a second copy, and an uncommitted selected carry does. Transition work
+A peer child or the Host's single SFU publication consumes one copy and upstream
+receive is free. Transition work
 may reach only `min(C + 1, 3)`. A Host already sending three copies at `C=3`
-must fail or wait before a fourth endpoint copy is issued; changing an existing
-copy to selected TURN remains the same endpoint copy and separately requires
-TURN allocation admission.
+must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `352c457` runs the deployed server and Browser assets
+Production release `a5b1fc6` runs the deployed server and Browser assets
 atomically on `screener-v8`; stale v7 Browser and executable-sender wires fail
 before room authority. Native senders and helpers are outside this release.
-Restore release `6b87732` with the exact precutover environment, unit, LiveKit
-configuration, and SQLite backup when rolling back.
+Restore only an exact recorded release with its matching environment, unit,
+LiveKit, coturn, and firewall snapshot when rolling back.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
@@ -362,20 +311,13 @@ second normal room contain
 room state or capacity bypass. Exercise join, offer and answer, stale-token
 reconnect after abort, Host signaling loss with and without a live Host
 participant, stop, restart, and room deletion in both rooms. Confirm each drain
-keeps capacity charged until the room is absent. Ordinary Web and
-Native-shaped clients remain STUN-only. With the selected-edge tuple, only
-the current controller-selected edge may receive a one-use grant; all other
-sessions and connections remain STUN-only. Roll back by disabling application
-issuance, stopping Screener, and proving every managed LiveKit room absent before
-restoring the exact recorded application/LiveKit configuration and release; or
-direct traffic to the unchanged old instance. Restore the coturn/firewall
-baseline only after the application no longer issues its selected-edge grant.
-Do not treat disabling
-`PEER_ASSISTED_MEDIA` alone as TURN rollback: disable the selected-edge tuple
-independently, and no removed old
-TURN wire is restored. During migration, remove the retired room-ID variable in
-the same coherent change; the process flag explicitly enables the all-room
-controller.
+keeps capacity charged until the room is absent. Ordinary Web clients remain
+STUN-only. Roll back by stopping Screener, proving every managed LiveKit room
+absent, and restoring the exact recorded application environment, application
+release, LiveKit configuration, coturn configuration, and firewall snapshot as
+one unit; or direct traffic to the unchanged old instance. During migration,
+remove retired route configuration in the same coherent change; the process
+flag explicitly enables the all-room controller.
 
 Only `POST /api/site-access` accepts the site access secret in an
 `Authorization: Bearer` header from an exact allowed Origin. Success returns a
@@ -442,12 +384,9 @@ any key is present, including with an empty value. Remove those obsolete keys
 from the candidate environment; startup fails instead of pretending they enable
 compatibility.
 
-The rejected candidate names `PEER_ICE_TURN_URLS`,
-`PEER_ICE_TURN_SHARED_SECRET`, and
-`PEER_ICE_TURN_CREDENTIAL_TTL_SECONDS` must remain absent from production and
-now fail startup even when blank. They are not aliases for the selected-edge
-tuple; ordinary peer edges remain STUN-only while only the current controller
-edge may use the configured selected-edge transport.
+The rejected `PEER_ICE_TURN_*` and `SELECTED_EDGE_TURN_*` candidate names must
+remain absent from production and fail startup even when blank. Ordinary peer
+edges remain STUN-only and the application has no TURN configuration surface.
 
 ## HTTPS and WSS ingress
 
@@ -543,14 +482,11 @@ canary pass silently.
 
 ## Self-hosted STUN
 
-This subsection describes the temporary STUN-only deployment template, not the
-enabled selected-edge production environment or the current shared-host coturn
-state. That host retains an older authenticated-relay configuration and TCP/UDP
-3478 plus UDP 49152-49251 firewall range. In this template Screener advertises
-no TURN credential and the canary audit found zero allocations; production
-selected-edge issuance remains limited to the controller's one configured edge
-and has one active Host-ingress forced-relay functional acceptance. Initial
-Host ingress and `peer-selected` last mile remain open.
+This subsection describes the accepted STUN-only deployment. Before the
+direct-to-SFU cutover, the shared production host still retains an older
+authenticated-relay configuration and TCP/UDP 3478 plus UDP 49152-49251
+firewall range; the atomic cutover replaces that configuration and closes those
+obsolete listeners/ranges.
 
 Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.example)
 to an untracked service-owned location and use the tracked
@@ -593,10 +529,8 @@ Run these checks from real external networks before calling the deployment usabl
    publication serves only the admitted SFU subscriptions over LiveKit UDP 7882.
    Peer descendants stay on ordinary direct UDP and every non-server endpoint
    obeys the configured `ENDPOINT_MEDIA_COPY_CAPACITY`.
-4. Force one controller-eligible edge past SFU/UDP and verify only that edge gets
-   the short-lived TURN server plus relay policy and selects TURN/UDP. Ordinary
-   peer PCs must stay STUN-only. Then block all UDP and verify bounded recovery
-   ends clearly without ICE/TCP, TURN/TCP, or a long pseudo-connected path.
+4. Block all UDP and verify bounded recovery ends clearly without ICE/TCP,
+   TURN, or a long pseudo-connected path.
 5. Exercise root departure, reconnect, SFU unavailable, route prepare rollback,
    stop, and source/profile changes. Unaffected subtrees must not migrate.
 6. Repeat at 1, 3, 5, and 20 viewers across representative consumer networks.
