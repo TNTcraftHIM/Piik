@@ -149,7 +149,7 @@ and server-issued candidate connection identity. Parent and child therefore
 prepare the same connection even when the parent's child set is unchanged by a
 direct/selected-transport replacement; neither endpoint infers candidate
 authority from an assignment-list difference.
-The Browser route release uses the single `screener-v7` wire. On each WebSocket,
+The current Browser runtime uses the single `screener-v8` wire. On each WebSocket,
 the server sends the exact prepare before its TURN grant or SFU configuration;
 the candidate child is queued before a peer parent is allowed to start its
 offer. WebSocket ordering is the companion-delivery contract, so clients keep
@@ -309,7 +309,7 @@ deployment-wide.
 
 ## Current Deployment Boundary
 
-Production release `6b87732` runs the `screener-v7` Browser runtime. Its exact
+Production release `352c457` runs the `screener-v8` Browser runtime. Its exact
 configuration, rollback artifacts, and postflight evidence are owned by the
 deployment document; real heterogeneous-network and SFU/TURN media validation
 remains open.

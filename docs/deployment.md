@@ -2,7 +2,7 @@
 
 Last verified against upstream documentation: 2026-08-23.
 
-This page records exact release `6b87732` production facts and the current source
+This page records exact release `352c457` production facts and the current source
 deployment contract. Product direction and pending migrations are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,20 +25,22 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production runs exact `6b87732b5f97b7836f628a2c333d0c3f05990c99`, release
-`6b87732`, from `/opt/screener/releases/6b87732`. The immutable source archive
+Production runs exact `352c4578954c399e56a2578cf3e22f5e0cfc2bad`, release
+`352c457`, from `/opt/screener/releases/352c457`. The immutable runtime archive
 SHA-256 is
-`3e88575e3842074f3ecb5dcbd548c159d13a113316d70f680ac6629e39a7f733`.
-Immediate rollback is `/opt/screener/releases/9461e20`, with the verified
-pre-cutover SQLite/environment/LiveKit backup at
-`/opt/screener/backups/6b87732-precutover-20260823T115350Z`. Local and public
-health return 200; Screener, LiveKit, coturn, and nginx are active, and the
-restarted Screener/LiveKit services report `NRestarts=0`.
+`d7feb021821b2af3db5180aed780da67ca582abfb3fe7a8805f6c6d88042bd3c`.
+Immediate rollback is `/opt/screener/releases/6b87732`, with the verified
+pre-cutover SQLite/environment/LiveKit/unit backup at
+`/opt/screener/backups/352c457-precutover-20260823T135843Z`. Local and public
+health return 200; Screener, LiveKit, coturn, and nginx are active with
+`NRestarts=0`.
 
-The release deploys the single Browser `screener-v7` wire, 20-Viewer room
-admission, the uniform endpoint media-copy cap `2`, the one-controller
-exact-candidate route runtime, and stale-client rejection before room
-authority. LiveKit is dedicated, has `room.auto_create: false` and
+The release deploys the single Browser `screener-v8` wire, random four-digit
+memory rooms with a 24-hour dormant lease, orthogonal grant/code admission,
+20-Viewer room admission, the uniform endpoint media-copy cap `2`, the
+one-controller exact-candidate route runtime, and stale-v7 rejection before
+room authority. The service unit has no writable room StateDirectory and the
+old live SQLite path is absent. LiveKit is dedicated, has `room.auto_create: false` and
 `max_participants: 21`, and is admitted to one global publication ingress plus
 twenty subscription egress handles. Selected TURN has two logical allocations.
 These bounds are fail-safe admissions, not throughput or quality claims.
@@ -140,7 +142,7 @@ TURN when configured; only an unavailable logical ingress uses the Host
 publication/SFU path. A Host-SFU ingress may itself use selected TURN. LiveKit
 participants receive only revision-bound `sfu-config` URL/token messages and
 negotiate within LiveKit's separate ICE domain. The selected-edge TURN
-config/wire is deployed in the current `6b87732` release with one UDP URL, a
+config/wire is deployed in the current `352c457` release with one UDP URL, a
 120-second credential TTL, and two logical allocations. It was not exercised by
 a real media session during this cutover.
 
@@ -298,7 +300,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `6b87732` accepts 1 through 20 and explicitly selects 20. This is an
+Production `352c457` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -314,12 +316,11 @@ TURN allocation admission.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `6b87732` runs the deployed server and Browser assets
-atomically on `screener-v7`. The memory-room candidate advances server and
-Browser assets together to `screener-v8`; stale v7 Browser and executable-sender
-wires fail before room authority. Native senders and helpers are outside this
-release. Restore the exact prior environment, LiveKit configuration, database
-backup, server, and Web assets together when rolling back.
+Production release `352c457` runs the deployed server and Browser assets
+atomically on `screener-v8`; stale v7 Browser and executable-sender wires fail
+before room authority. Native senders and helpers are outside this release.
+Restore release `6b87732` with the exact precutover environment, unit, LiveKit
+configuration, and SQLite backup when rolling back.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
