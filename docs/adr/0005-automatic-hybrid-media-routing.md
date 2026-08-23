@@ -227,21 +227,29 @@ For the single-process deployment, SFU admission is one injected authority with
 deployment-wide ingress and egress counters. Enabling LiveKit requires explicit
 positive safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values;
 neither has a product default and neither is derived from endpoint capacity,
-Viewer admission, or a fixed root count. One Host publication consumes one
-ingress unit and every SFU subscription consumes one egress unit. A concurrent
-candidate and every generation still draining from LiveKit remain charged in
-addition to the committed generation.
+Viewer admission, or a fixed root count. One exact room/share/publication entry
+owns the Host publication ingress, while an exact Viewer subscription handle
+under that entry owns one egress unit. The current publication is reused as
+Viewers enter or leave the SFU path; each child candidate reserves and commits
+only its own subscription handle. Reserved, committed, and draining handles,
+concurrent publication generations, and generations still draining from
+LiveKit all remain charged. A subscription that leaves the route remains
+charged as draining until its publication room is deleted and proven absent;
+reactivating that same Viewer handle does not charge it twice.
 
 The accepted self-hosted deployment contract dedicates one LiveKit instance to Screener,
 sets `room.auto_create: false`, and gives the application an explicit private
-`LIVEKIT_API_URL`. The controller reserves the exact room, share, and publication
-generation, creates that managed LiveKit room through `RoomService`, and only
-then issues tokens. Commit moves the old generation to `draining`; abort,
-timeout, participant loss, share rollover, room stop, and room deletion move
-their generation to the same state. `RoomService.DeleteRoom` must complete and a
-follow-up lookup must prove the room absent before its ingress or egress units
-are released. Because joining cannot recreate a deleted room, a stale
-self-hosted token cannot produce an off-ledger participant.
+`LIVEKIT_API_URL`. The controller reserves the exact publication and first
+subscription, creates that managed LiveKit room through `RoomService`, and only
+then issues tokens. Later SFU-fed children reserve an exact subscription under
+the same generation without republishing the Host. Publication replacement
+moves the old generation and all of its subscription handles to `draining`;
+abort, timeout, participant loss, share rollover, room stop, and room deletion
+apply the same typed lifecycle to the resources they own.
+`RoomService.DeleteRoom` must complete and a follow-up lookup must prove the
+room absent before that generation's ingress or egress units are released.
+Because joining cannot recreate a deleted room, a stale self-hosted token
+cannot produce an off-ledger participant.
 
 The single owner first binds the configured application listener exclusively;
 a competing process that cannot bind makes no LiveKit control-plane call. While
