@@ -6,16 +6,16 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Production
 
-- `https://share.bonfire.icu` runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`, release `9461e20`, wire `screener-v5`; `21d5cd9f7139` is the rollback release.
-- `screener`, LiveKit, coturn, and nginx are active; local/public health return 200, `screener` has `NRestarts=0`, and SQLite schema v3 remains protected with mode 0600.
-- Production has automatic routing, bad-relay handling, peer-quality make-before-break, Viewer/Host provisional parents, selected-edge transport, stable connection details, 64/128/256 audio choices, access/privacy controls, self-check, diagnostic export, and signaling watchdog behavior.
-- Exact deployed routing remains Host downstream `2`, ordinary Browser downstream `1`, deployment values `1/2`, fixed SFU roots `2`, and legacy publication/selected accounting. This is production fact only; it differs from the accepted endpoint-cap direction.
+- `https://share.bonfire.icu` runs exact `6b87732b5f97b7836f628a2c333d0c3f05990c99`, release `6b87732`, wire `screener-v7`; `9461e20` is the rollback release and its pre-cutover environment/config/SQLite backup is retained.
+- `screener`, LiveKit, coturn, and nginx are active; local/public health return 200, both restarted services report `NRestarts=0`, and SQLite schema v3 remains protected with mode 0600.
+- Production admits one Host plus 20 Viewers, applies endpoint capacity `2`, rejects stale Browser and executable-sender wires before room authority, and runs the one-controller exact-candidate route model. LiveKit is dedicated with `room.auto_create: false`, `max_participants: 21`, global admission `1` publication ingress / `20` subscription egress; selected TURN has `2` logical allocations.
+- Production still has access/privacy controls, self-check, diagnostic export, signaling watchdog behavior, 64/128/256 audio choices, and selected-edge transport. These deployment facts do not close the real heterogeneous-network, SFU/TURN media, mobile, or endurance evidence boundaries.
 
 ## Current Source
 
-- Canonical source is the root `main` branch; auxiliary branches and worktrees do not own current truth. The documentation-only route/room truth and handoff checkpoint is part of this canonical state; start dependent work only from that exact root `main` commit.
+- Canonical source is the root `main` branch; auxiliary branches and worktrees do not own current truth. Audit/integration boundaries require a clean root, and dependent work starts only from its exact commit.
 - Current source implements one steady outbound media-copy cap for every non-server endpoint: default `2`, static `1/2/3`, a peer child or Host publication consumes one slot, upstream receive is free, a committed selected TURN transport replaces the same copy while hidden carry consumes another, and no Browser/UA/visibility tier exists. One shared guard owns the accounting and transition work is bounded by `min(C + 1, 3)`.
-- Current source and accepted room admission support one Host plus up to `20` Viewers. Focused controller coverage includes `C=1/2/3` and a 20-Viewer graph; real Browser resource and media measurements remain release evidence.
+- Current source and production admission support one Host plus up to `20` Viewers. Focused controller coverage includes `C=1/2/3`, a 20-Viewer graph, and the passed local 20-Viewer Browser smoke; real external-network media and resource measurements remain open.
 - The single Browser `screener-v7` boundary rejects stale Browser and executable-sender wires before room authority and carries the exact deployment cap plus exact prepare candidate in the authenticated route contract.
 - Current source also implements explicit no-default SFU ingress/egress capacities and exact `reserved | committed | draining` accounting. The listener owner reconciles its dedicated non-auto-create LiveKit namespace before serving, creates each generation before token issuance, releases only after delete-plus-absence proof, and reclaims Host-offline generations through bounded exact-participant checks. Selected TURN has an independent explicit no-default deployment capacity; one process-local ledger charges every exact peer-selected edge and Host-SFU ingress through reserve, commit, drain, and release.
 - Current source implements automatic P2P-first routing with one active upstream, an acyclic source-reachable graph, exact Browser v7 prepare tuple, first-decoded-frame make-before-break, strict rollback revision, and bounded wait or failure.
@@ -27,26 +27,21 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Release the implemented generic route loop on the single Browser `screener-v7` wire after its remaining production acceptance boundary.
-2. Release live audio-ceiling mutation and paused-share codec switching on the resulting generation/transition boundary.
-3. Reproduce the H.264 startup report before any codec-specific repair, and build the strict-NAT emulator gate before any manually approved canary in an operator-owned test room.
-4. Add first-frame-driven Viewer connection stages, then implement the accepted memory-resident room/access slice and finish the remaining accepted functional and real-network work.
-5. Validate and deploy each coherent slice in this order with its focused browser/network/resource and rollback gates; distribution packaging remains outside this milestone.
+1. Release live audio-ceiling mutation and paused-share codec switching on the deployed generation/transition boundary.
+2. Reproduce the H.264 startup report before any codec-specific repair, and build the strict-NAT emulator gate before any manually approved canary in an operator-owned test room.
+3. Add first-frame-driven Viewer connection stages, then implement the accepted memory-resident room/access slice and finish the remaining accepted functional and real-network work.
+4. Validate and deploy each coherent slice in this order with its focused browser/network/resource and rollback gates; distribution packaging remains outside this milestone.
 
 ## Active Boundaries
 
 - `fix/configurable-relay-cap` is an old, incomplete draft and must not be merged as-is.
-- Open PR #192 and the Native stack are evidence/research, not pending product releases. Native senders, capture helpers, shared-encode executables, and their test binaries are outside the current route release and are not built or run in this milestone.
+- Open PR #192 and the Native stack are evidence/research, not pending product releases. Native senders, capture helpers, shared-encode executables, and their test binaries are outside the current Browser milestone and are not built or run.
 - Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
 - Room entry, sharing controls, ID lifetime, and storage semantics are settled in the owning requirements/design/ADR and queued after the route boundary. Current source remains divergent until that complete slice replaces the old access and persistence model atomically.
 - Real SFU/TURN recovery, heterogeneous networks, mobile lifecycle, audio/A-V device behavior, and endurance/resource measurements remain external acceptance evidence, not blockers for unrelated reversible work.
 
 ## Current Hold
 
-The route model and Browser source are complete and merged. Work is intentionally paused before
-production release or any later TODO until the owner chooses the next action. Production therefore
-remains on `9461e20` / `screener-v5`; source completion must not be reported as deployment.
-
-If the owner resumes the route release, do not repeat the full local suite. Run one resource-limited
-20-Viewer Browser smoke, then production preflight, deploy, postflight, and rollback verification.
-The dedicated LiveKit instance and measured SFU/TURN capacities remain required deployment inputs.
+The Browser route is implemented and deployed. Later TODO work is intentionally paused until the
+owner chooses the next slice; do not start live audio, codec switching, room implementation, route
+rollback, Native/executable work, or broad cleanup without a new instruction.

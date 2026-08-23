@@ -1,7 +1,7 @@
 # Project Documentation
 
 - [需求理解](./需求理解.md): current product scope, priorities, constraints, and acceptance criteria.
-- [方案设计](./方案设计.md): accepted implementation design; unfinished production release and validation are tracked in the current TODO ledger.
+- [方案设计](./方案设计.md): accepted implementation design; unfinished release and validation work is tracked in the current TODO ledger.
 - [Project memory](./project-memory.md): durable current product and source snapshot to read at the start of future work.
 - [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
 - [Verification status](./verification-status.md): demand-loaded ledger of current cross-cutting evidence, open proof boundaries, and expensive-test applicability.
@@ -24,7 +24,7 @@
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): historical P2P-first baseline; later access and automatic-routing decisions supersede its stale current-state details.
 - [ADR-0002](./adr/0002-memory-resident-protected-rooms.md): four-digit leased in-memory rooms, local Host defaults, scoped Viewer grants, and orthogonal code entry.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): historical standard-WebRTC peer-assisted experiment and reusable evidence.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted and source-implemented automatic P2P-first single-reconcile route model, capacity/accounting, fallback roles, and exact first-frame transaction; production release and validation remain in the current TODO.
+- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted, implemented, and deployed automatic P2P-first single-reconcile route model, capacity/accounting, fallback roles, and exact first-frame transaction; remaining real-network validation is tracked in verification status.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
 - [ADR-0007](./adr/0007-demand-driven-dual-representation-quality.md): accepted path-isolated `HIGH + at most one LOW` policy, optional idle-layer stop, evidence contract, and SVC boundary.
 - [ADR-0008](./adr/0008-window-scoped-audio-capture.md): browser window-audio hint and the Windows WASAPI process-loopback boundary.

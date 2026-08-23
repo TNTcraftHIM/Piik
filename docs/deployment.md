@@ -1,8 +1,8 @@
 # Minimal Deployment
 
-Last verified against upstream documentation: 2026-08-22.
+Last verified against upstream documentation: 2026-08-23.
 
-This page records exact release `9461e20` production facts and the current source
+This page records exact release `6b87732` production facts and the current source
 deployment contract. Product direction and pending migrations are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,26 +25,25 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production currently runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`
-from `/opt/screener/releases/9461e20`; immediate rollback is
-`/opt/screener/releases/21d5cd9f7139`. Local and public health return 200;
-Screener, LiveKit, coturn, and nginx are active, and Screener reports
-`NRestarts=0`.
+Production runs exact `6b87732b5f97b7836f628a2c333d0c3f05990c99`, release
+`6b87732`, from `/opt/screener/releases/6b87732`. The immutable source archive
+SHA-256 is
+`3e88575e3842074f3ecb5dcbd548c159d13a113316d70f680ac6629e39a7f733`.
+Immediate rollback is `/opt/screener/releases/9461e20`, with the verified
+pre-cutover SQLite/environment/LiveKit backup at
+`/opt/screener/backups/6b87732-precutover-20260823T115350Z`. Local and public
+health return 200; Screener, LiveKit, coturn, and nginx are active, and the
+restarted Screener/LiveKit services report `NRestarts=0`.
 
-The current release deploys the bounded pre-share health/WSS/STUN self-check,
-privacy-safe click-only diagnostic JSON export, room admission default eight
-with explicit limits from one through sixteen, bounded signaling-partition
-recovery, and peer-quality MBB. An ordinary Viewer with a peer/SFU upstream or
-the Host may own one separately budgeted provisional child. The endpoint-cap environment is unset,
-so the production default yields Host two and ordinary Browser Viewer one; the
-wire remains unchanged. The retained capacity-two/cap3 sixteen-Viewer
-and resource runs are historical ordinary-PC experiments only and do not define
-release policy or close performance gates.
-The release also deploys the identity-bound relayed-detail presentation, root <=2 controller/token invariant,
-Host-publication edge accounting, zero-child assignment/subscriber retention,
-and `dynacast: false` with ordered active `q,h`. These are bounded control-plane
-and publisher-configuration guarantees; real shaped LiveKit packet flow, BWE
-downshift/recovery, and resource cost remain open.
+The release deploys the single Browser `screener-v7` wire, 20-Viewer room
+admission, the uniform endpoint media-copy cap `2`, the one-controller
+exact-candidate route runtime, and stale-client rejection before room
+authority. LiveKit is dedicated, has `room.auto_create: false` and
+`max_participants: 21`, and is admitted to one global publication ingress plus
+twenty subscription egress handles. Selected TURN has two logical allocations.
+These bounds are fail-safe admissions, not throughput or quality claims.
+The retained local 20-Viewer Browser smoke and open real-network boundaries are
+owned by [verification status](./verification-status.md).
 
 ## Topology and prerequisites
 
@@ -141,9 +140,9 @@ TURN when configured; only an unavailable logical ingress uses the Host
 publication/SFU path. A Host-SFU ingress may itself use selected TURN. LiveKit
 participants receive only revision-bound `sfu-config` URL/token messages and
 negotiate within LiveKit's separate ICE domain. The selected-edge TURN
-config/wire is deployed in the current `9461e20` release with one UDP URL and a
-120-second credential TTL. It was not exercised by a real media session during
-this cutover.
+config/wire is deployed in the current `6b87732` release with one UDP URL, a
+120-second credential TTL, and two logical allocations. It was not exercised by
+a real media session during this cutover.
 
 `PEER_ASSISTED_MEDIA=true` is the process-wide topology/SFU switch. Every normal
 room gets its own bounded controller state; ordinary peer connections remain
@@ -198,7 +197,7 @@ manager or a cross-platform Node command such as:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Use this next-release baseline for the current source candidate:
+Use this production baseline template:
 
 ```dotenv
 NODE_ENV=production
@@ -288,10 +287,9 @@ key, even blank, fails startup.
 `ROOM_DATABASE_PATH` is optional but requires `SITE_ACCESS_PASSWORD`.
 Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
-Production `9461e20` defaults `MAX_VIEWERS_PER_ROOM` to 8 and accepts 1 through
-16. Current source accepts 1 through 20, and the next-release baseline above
-explicitly selects 20 after the route-release smoke passes. It is an admission
-limit, not evidence that the publisher can sustain that many streams.
+Production `6b87732` accepts 1 through 20 and explicitly selects 20. This is an
+admission limit, not evidence that every publisher, network, or quality profile
+can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
 the single server-authoritative steady outbound media-copy cap for Host and
 Viewer endpoints; role, browser, UA, and visibility do not create another tier.
@@ -305,12 +303,11 @@ TURN allocation admission.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `9461e20` still runs the legacy Host-2/Browser-1 policy on
-wire `screener-v5`. Deploy the current source server and Browser assets
-atomically on `screener-v7`; stale Browser and executable-sender wires must fail
+Production release `6b87732` runs the current source server and Browser assets
+atomically on `screener-v7`; stale Browser and executable-sender wires fail
 before room authority. Native senders and helpers are outside this release.
-Restore the exact prior environment, server, and Web assets together when
-rolling back.
+Restore the exact prior environment, LiveKit configuration, database backup,
+server, and Web assets together when rolling back.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
@@ -613,11 +610,11 @@ Run these checks from real external networks before calling the deployment usabl
    ends clearly without ICE/TCP, TURN/TCP, or a long pseudo-connected path.
 5. Exercise root departure, reconnect, SFU unavailable, route prepare rollback,
    stop, and source/profile changes. Unaffected subtrees must not migrate.
-6. Repeat at 1, 3, 5, and 8 viewers across representative consumer networks.
+6. Repeat at 1, 3, 5, and 20 viewers across representative consumer networks.
    Record selected protocol, RTT, bitrate, frame rate, packet loss, publisher
    upload/encode load, LiveKit ingress/egress, and final decoded quality. A real
-   1:20 session remains unverified until the route-release smoke passes; this
-   longer matrix remains the heterogeneous-network quality gate.
+   public-network 1:20 session remains unverified; the passed local synthetic
+   1:20 smoke does not replace this heterogeneous-network quality gate.
 
 References: [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2),
 [pinned turnserver documentation](https://github.com/coturn/coturn/blob/4.17.2/README.turnserver),

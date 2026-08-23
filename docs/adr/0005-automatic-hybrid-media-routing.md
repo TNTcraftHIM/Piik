@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted; source runtime implemented, production release pending
+- Status: Accepted; source runtime implemented and deployed
 - Date: 2026-08-20
 - Last updated: 2026-08-23
 
@@ -307,10 +307,12 @@ disappears. A multi-process application deployment requires a shared atomic
 admission and lifecycle owner before it may claim these values are
 deployment-wide.
 
-## Current Production Divergence
+## Current Deployment Boundary
 
-Production release `9461e20` predates the implemented source runtime. Its exact
-behavior and rollback boundary are owned by the deployment document.
+Production release `6b87732` runs the `screener-v7` Browser runtime. Its exact
+configuration, rollback artifacts, and postflight evidence are owned by the
+deployment document; real heterogeneous-network and SFU/TURN media validation
+remains open.
 
 ## Acceptance Boundary
 

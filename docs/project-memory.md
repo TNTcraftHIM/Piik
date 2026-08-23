@@ -29,16 +29,16 @@ Last updated: 2026-08-23
 - Canonical source is the root `main` branch. Audit/integration boundaries require it to be clean, and new branches/worktrees start from its exact commit only after accepted truth is merged.
 - Current source admits up to `20` Viewers and implements the uniform `1/2/3` endpoint cap, single Browser `screener-v7` wire, exact prepare candidate, first-decoded-frame commit, strict rollback revision, decoded-progress stall, and one event-driven room controller. Older Browser and executable-sender wires fail before room authority. SFU admission uses exact publication and Viewer-subscription handles with explicit no-default ingress/egress capacities and a listener-fenced dedicated LiveKit owner. Selected TURN uses its own explicit no-default deployment capacity and exact logical-allocation ledger shared by independent peer edges and Host-SFU ingress.
 - The accepted room model is not implemented on current source. Source still exposes mutually exclusive `private-link | public-watch`, random 12-digit temporary rooms, optional SQLite persistent rooms, and `ROOM_TTL_SECONDS`; production also remains SQLite-backed. Do not report four-digit leases, orthogonal code/grant access, local preference replay, or SQLite removal as shipped until that scoped implementation is validated and deployed.
-- Production runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`, release `9461e20`, wire `screener-v5`; `21d5cd9f7139` is the rollback release.
-- Production still enforces Host downstream `2`, ordinary Browser downstream `1`, deployment values `1/2`, a fixed SFU-root limit of `2`, and legacy publication/selected accounting. This is a dated implementation divergence, not current product policy.
-- Production has automatic routing, bad-relay corroboration, peer-quality make-before-break with Viewer and Host provisional parents, selected-edge transport, stable route/connection details, 64/128/256 audio choices, access controls, self-check, diagnostic export, and signaling watchdog behavior.
+- Production runs exact `6b87732b5f97b7836f628a2c333d0c3f05990c99`, release `6b87732`, wire `screener-v7`; `9461e20` is the rollback release.
+- Production implements the current endpoint-cap and route-controller contract, admits 20 Viewers, uses LiveKit admission of one publication ingress plus 20 subscription egress handles on a dedicated non-auto-create instance, and bounds selected TURN to two logical allocations.
+- Production retains access controls, self-check, diagnostic export, signaling watchdog behavior, 64/128/256 audio choices, and selected-edge transport. Real heterogeneous-network and SFU/TURN media evidence remains open.
 - `screener`, LiveKit, coturn, and nginx are healthy; local and public health return 200 and `screener` has `NRestarts=0`. Deployment detail is owned by [deployment](./deployment.md).
 - Chrome loopback, cap2/cap3, short resource, recovery, MBB, and A/V fixtures are bounded evidence only. They do not establish quality, resource limits, or product policy.
 
 ## Current Priority
 
 1. Keep this truth set and [the TODO ledger](./todo.md) concise and internally consistent.
-2. Release the converged Browser route source first. Then release live audio and paused video-codec switching, follow with evidence-led H.264 diagnosis, the strict-NAT emulator gate, connection feedback, the accepted memory-resident room/access slice, and the remaining functional roadmap. Distribution packaging starts only after those TODOs are complete. Parallel branches may finish earlier but do not change this merge/deployment order.
+2. Release live audio and paused video-codec switching next, follow with evidence-led H.264 diagnosis, the strict-NAT emulator gate, connection feedback, the accepted memory-resident room/access slice, and the remaining functional roadmap. Distribution packaging starts only after those TODOs are complete. Parallel branches may finish earlier but do not change this merge/deployment order.
 
 ## Working Rules
 

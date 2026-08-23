@@ -31,9 +31,10 @@ Current high-signal boundary:
 
 - docs/status.md owns the exact source/production/hold state.
 - docs/todo.md is the only executable work ledger and owns ordering.
-- ADR-0005 owns the accepted automatic route model. The Browser route source is
-  implemented on main but production remains on the older release; do not rerun
-  broad or executable/native test suites unless the current acceptance boundary
+- ADR-0005 owns the accepted automatic route model. The Browser `screener-v7`
+  source is implemented and deployed as release `6b87732`; real external-network
+  and SFU/TURN media evidence remains open. Do not rerun broad or
+  executable/native test suites unless the current acceptance boundary
   specifically requires them.
 - ADR-0002 owns the newly accepted room model: one process-memory RoomStore,
   random free four-digit codes, configurable 24-hour dormant leases, restart
