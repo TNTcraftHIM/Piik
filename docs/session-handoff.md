@@ -43,6 +43,16 @@ Current high-signal boundary:
   open/password/disabled code entry. Current source and production use the
   single `screener-v8` wire and no SQLite runtime; exact rollback artifacts are
   owned by the deployment document.
+- The owner authorized one atomic Browser v9 Now ledger. Accepted but not yet
+  implemented work includes live audio mutation, paused codec switching, typed
+  Viewer presentation, Host-on-demand route diagnostics, neutral room-code denial, responsive entry controls, a
+  default `1080p30` recommendation, and `480p` only as an advanced 854x480
+  resolution. Production remains exact v8 release `8f5b3f1` until a later
+  verified deployment; do not report any of this batch as implemented or live.
+- Ordinary browser ICE owns direct reachability. Do not build port prediction,
+  guessed candidates, NAT classification, TCP probes, quality scores, or
+  quality-driven reparenting. Current-path quality is diagnostic; a healthy
+  decoded edge remains sticky.
 - docs/maintenance.md owns the reusable mechanism-simplification review. SQLite
   is its reference case because the bounded restart-experience loss did not
   justify the persistence surface; accepting that tradeoff changed the contract,
@@ -55,7 +65,7 @@ Current high-signal boundary:
   material. Do not merge or delete them until their unique changes, references,
   and reparse/junction safety are checked against current main.
 
-First report back with: current branch/HEAD, dirty-file scope, accepted versus
-implemented versus deployed room/route state, and the next authorized TODO. Then
-follow the latest owner instruction without reviving stale agent or branch facts.
+Follow the current ledger in order, checkpoint accepted truth before dependent
+implementation, and report each verified integration/deployment boundary without
+reviving stale agent or branch facts.
 ```

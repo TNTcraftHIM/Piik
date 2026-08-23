@@ -1,8 +1,8 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted; source runtime implemented and deployed
+- Status: Accepted; route core implemented and deployed; v9 diagnostic delta not implemented or deployed
 - Date: 2026-08-20
-- Last updated: 2026-08-23
+- Last updated: 2026-08-24
 
 ## Context
 
@@ -220,6 +220,10 @@ second mutable graph.
   transport. An all-UDP-blocked network reaches a clear bounded failure; any
   future strict-firewall transport requires its own evidence and belongs inside
   LiveKit rather than becoming another application candidate.
+- Browser ICE connectivity checks are the authority for direct UDP reachability.
+  Screener does not synthesize remote candidates, predict ports, classify NAT
+  behavior, or use TCP reachability as a media-path probe. Direct exhaustion
+  advances to the SFU stage inside the same operation deadline.
 - Endpoint sender capacity is accounted independently from server ingress/egress, SFU
   subscriptions, and one bounded transition-overlap slot.
   Steady capacity is `1`, `2`, or `3` (default `2`); a transition may use
@@ -236,6 +240,11 @@ second mutable graph.
   WebRTC/LiveKit adaptation inputs; they do not change
   parent eligibility. Multiple bad child edges recover independently through the
   same loop and naturally empty an unusable relay.
+- A currently decoding exact edge remains sticky. Current-path loss, RTT,
+  jitter, bitrate, resolution, FPS, freeze, and limitation evidence cannot prove
+  the counterfactual quality of another parent, so Screener creates no weighted
+  route score, alternative-parent probe, hysteresis loop, or periodic
+  quality-driven reparenting.
 - Web clients derive active decoded progress from their existing periodic
   WebRTC/LiveKit stats sampling. One route-keyed last-progress deadline reports
   the exact edge once; it resets on route/connection change or decoded progress
@@ -244,8 +253,10 @@ second mutable graph.
   authority.
 - Authoritative pause aborts the pending child operation, including its current
   candidate and reservations, keeps the active graph, suppresses decoded-frame-
-  stall decisions, and leaves new participants waiting. Resume wakes a fresh
-  reconciliation. Healthy unaffected edges remain sticky.
+  stall decisions, and leaves new participants waiting. Resume normally wakes a
+  fresh reconciliation; when the accepted codec transaction owns a prepared
+  generation, that same room-serial owner handles Resume and settles first.
+  Healthy unaffected edges remain sticky.
 
 SFU remains a bounded fallback resource with independent deployment-wide
 admission. Resource exhaustion produces an explicit wait or failure; it never
@@ -254,6 +265,44 @@ Rooms that actually lose a candidate to deployment-wide admission register in
 one waiter set. An actual SFU usage decrease drains that set once, advances
 each waiting controller's external fact, and schedules normal reconciliation;
 there is no periodic capacity poll or resource-specific route controller.
+
+The accepted v9 Viewer wire adds one strict, revision-fenced `route-status`
+union only for states that the existing prepare/active `route-update` cannot
+express: `{ state: "waiting", reason: "sfu-admission" }` while this Viewer is
+waiting on central admission, or `{ state: "failed", reason:
+"route-exhausted" }` after the controller reaches its bounded terminal. It is
+sent only server-to-authenticated-Viewer and carries no text, identity,
+candidate, retry hint, or other topology data. Access, Host presence, signaling,
+media, and autoplay remain independent presentation inputs.
+
+The room-serial operation does not divide its per-child deadline by Viewer
+count, but simultaneous joins may form a linear queue. The deployed v8
+controller does not include a route-timing snapshot. The accepted v9 diagnostic
+extension observes existing route events without changing the controller: for
+each current child it keeps only the latest route-demand, operation-start,
+current-candidate-start, first-decoded-frame, and final-outcome timing. A new
+demand overwrites that child's record; authoritative share stop/replacement,
+confirmed departure, and room deletion remove it.
+
+An authenticated Host may request one snapshot only while creating the existing
+user-initiated local diagnostic export. The response reads the current graph,
+current operation, and latest records; the server does not push a periodic
+snapshot stream, start a timer, retain an event ring, log or persist the result,
+or create a second graph. Snapshot-local ordinals express parent/SFU relations
+but are not participant identities and must not be treated as stable across
+snapshots. Queue wait is the interval from the same route demand to operation
+start and remains `null` when either event is absent.
+
+The response uses only `direct | sfu | waiting | failed` final-route values and
+the closed rejection buckets `none`, `stale`, `endpoint-capacity`,
+`sfu-admission`, `candidate-failed`, `first-frame-timeout`,
+`operation-deadline`, and `aborted`. It never
+carries real peer, parent, session, connection or generation identity, SDP,
+candidates, addresses, credentials, or raw error text, and it has no route
+authority. A 20-Viewer burst reports the sample count and nearest-rank
+p50/p95/max without a pass threshold before any different concurrency model or
+deadline is accepted. Protocol tests must reject extra/private fields, deny the
+request to Viewers, and prove departure and room-deletion cleanup.
 
 For the single-process deployment, SFU admission is one injected authority with
 deployment-wide ingress and egress counters. Enabling LiveKit requires explicit
@@ -305,7 +354,9 @@ heterogeneous-network and SFU media validation remains open.
 
 ## Acceptance Boundary
 
-Before a revised controller ships:
+The deployed core's completed source and deployment evidence is indexed in
+`docs/verification-status.md`. Any revised controller must re-pass these source
+and deployment gates:
 
 - property tests cover capacity `1`, `2`, and `3`, one active upstream,
   acyclic and source-reachable assignments, stale generations, duplicate
@@ -326,12 +377,16 @@ Before a revised controller ships:
   ready, relay-ingress reparent with its subtree intact, disconnected relay and
   nested-disconnect convergence, effective capacity `0..C` and overflow drain,
   SFU-fed first-child use and pause/resume;
-- real-browser tests cover direct peer media, peer relay, SFU media, bounded
-  failure, and recovery;
 - deployment preflight proves the LiveKit instance is dedicated, uses
   `room.auto_create: false`, exposes `RoomService` only on its accepted private
   control origin, and can drain its managed namespace before traffic or
-  rollback;
+  rollback.
+
+The following external acceptance remains open without changing the deployed
+core's status:
+
+- real-browser tests cover direct peer media, peer relay, SFU media, bounded
+  failure, and recovery;
 - measured endpoint upload and server ingress/egress prove the accepted
   accounting under normal and migration overlap; and
 - every exhausted path reaches a clear bounded wait or failure without leaking
@@ -367,10 +422,13 @@ Positive:
 
 Negative:
 
-- production intentionally diverges until the implemented source is released;
+- one room-serial operation may create measurable queue-tail latency during a
+  burst;
 - make-before-break consumes explicit endpoint and server reservations and may
   require a bounded-gap cutover when no overlap slot exists; and
-- real SFU and target-network evidence is still required.
+- real SFU and target-network evidence is still required. The accepted v9
+  diagnostic extension is not part of deployed v8 and must ship atomically with
+  its single current protocol.
 
 ## Relationship to other ADRs
 

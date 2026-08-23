@@ -32,9 +32,32 @@ on 2024-05-22; the commit says it had already been disabled for several years
 and was not maintained. Current Chromium behavior must therefore not be
 described as automatically detecting game motion and forcing a 720p cap.
 
-## Production Degradation Report
+## Route Quality Authority
 
-On 2026-08-19 production `769de201f7cc` was reported to become severely blurry
+Current-path WebRTC stats can diagnose loss, RTT, jitter, bitrate, resolution,
+FPS, freeze, encode/decode work, and limitation reason, but they cannot prove the
+counterfactual quality of an unconnected parent. RFC 8836 assigns real-time
+congestion adaptation to the media transport. The Overcast, Narada, and NICE
+overlay algorithms require active measurements, periodic reevaluation,
+thresholds, or additional overlay state; those mechanisms conflict with
+Screener's one event-driven reconciliation loop, one room-serial child
+operation, and sticky healthy edges.
+
+Screener therefore does not compute a weighted route score, probe alternative
+parents, or reparent a currently decoding edge for bitrate, resolution, FPS,
+freeze ratio, RTT, jitter, loss, or limitation evidence. Only a hard
+`failed/closed` connection or the existing non-paused decoded-frame stall makes
+the exact edge invalid. The existing `parent-edge-quality-evidence` message has
+no route consumer and should be deleted rather than given a threshold-based
+meaning. Primary sources checked 2026-08-24: [RFC
+8836](https://www.rfc-editor.org/rfc/rfc8836.html),
+[Overcast](https://www.usenix.org/legacy/publications/library/proceedings/osdi2000/full_papers/jannotti/jannotti_html/index.html),
+[Narada](https://www.cs.cmu.edu/~srini/papers/papers/2002-Chu-jsac/2002-Chu-jsac.pdf),
+and [NICE](https://conferences.sigcomm.org/sigcomm/2002/papers/appmulti.pdf).
+
+## 2026-08-19 Then-Production Degradation Report
+
+The then-production release `769de201f7cc` was reported to become severely blurry
 while the host repeatedly showed a sustained native
 `qualityLimitationReason=bandwidth`, despite one capable viewer on the same LAN
 and the UI showing direct P2P. This is a user report, not yet an instrumented
@@ -61,7 +84,7 @@ Use this as the first A+B/C reproduction before any route change or dual-layer
 publication:
 
 1. Reproduce one wired LAN/direct viewer first, then Wi-Fi, two/three viewers,
-   and forced TURN, using the same high-motion scene for 60 to 90 seconds.
+   and SFU/UDP, using the same high-motion scene for 60 to 90 seconds.
 2. In one window record A capture; B actual/target/available outbound bitrate,
    dimensions/FPS, codec, encode cost, loss/RTT/retransmission, selected path,
    limitation, and PC/track generations; and C inbound decode/drop/freeze.
@@ -131,14 +154,32 @@ the application policy without those measurements. LiveKit's pinned client
 also contains an SDP start-bitrate mitigation for initial video blur, but
 Screener's accepted boundary forbids adding application SDP bitrate hacks.
 
-The same production release is also reported to reduce game-stream frame rate
-and consume noticeable Host resources. That report applies only to deployed
-`769de201f7cc`, not automatically to the newer diagnostics on `main`. The Web
+The same release was also reported to reduce game-stream frame rate and
+consume noticeable Host resources. That report applies only to
+`769de201f7cc`, not to current production or automatically to the newer
+diagnostics on `main`. The Web
 sender creates one independent `RTCRtpSender` per viewer and has no cross-PC
 shared-encoder guarantee; its muted local preview creates no media edge or
 server traffic but may still consume compositor/GPU work. Compare the exact
 release and current `main` under one fixture, with preview on/off as a separate
 binary intervention.
+
+Desktop background diagnosis must also separate three independent variables:
+Host document foreground/occluded/minimized state, captured source
+foreground/occluded/minimized state, and local preview play/pause. Record
+document visibility/focus, capture-track `muted`/`readyState`, actual codec,
+capture/outbound/inbound FPS and bitrate, resolution, frames, encode time, and
+limitation reason. The Screen Capture specification does not expose a page
+keepalive contract; Screen Wake Lock is released when its document is no longer
+visible, and browser page lifecycle may freeze JavaScript. Do not add fake
+activity or keepalive timers. If the capture source or browser/OS suppresses
+frames while minimized, record that standard capability boundary before any
+packaged Host work. Primary sources checked 2026-08-24: [Screen
+Capture](https://www.w3.org/TR/screen-capture/), [Screen Wake
+Lock](https://www.w3.org/TR/screen-wake-lock/), [Page Lifecycle
+API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api), and
+[Chromium desktop capture
+implementation](https://chromium.googlesource.com/chromium/src/+/master/content/browser/media/capture/desktop_capture_device.cc).
 
 ## SFU Profile Lifecycle And Publisher Evidence
 
@@ -201,11 +242,20 @@ a same-kind source. Mature WebRTC code such as Jitsi follows a codec preference
 change with renegotiation, while pinned LiveKit changes publication codec through
 its publish/republish lifecycle. Screener therefore starts with a paused-share
 transaction: fence the request by codec/media generation, serialize it with
-route mutation, renegotiate the frozen still-current peer/relay targets, and
-republish the SFU generation when present. A zero-target share only saves the
-future preference. Because paused tracks cannot prove decoded progress, proof
-occurs on resume; failure pauses again and runs a bounded old-preference
-rollback. Passing an empty codec list restores default browser preferences.
+route mutation, boundedly renegotiate the frozen still-current peer/relay
+targets, and republish the SFU generation when present. Preparation never
+resumes an explicitly paused share. When preparation settles, it stops only the
+running preparation deadline: one room-serial codec mutation owner remains as
+bounded in-memory prepared state, holds no timer while paused, and excludes
+route mutation. The user's ordinary Resume is handled inside that same owner. It
+atomically revalidates the exact frozen bindings, starts the decoded-progress
+proof deadline, and only then enables the source. A zero-target share saves the
+future preference and commits without media proof. If forward proof fails, the
+owner first restores authoritative paused state and then runs bounded
+old-preference rollback preparation. A prepared rollback again holds no timer
+and waits for the user's next ordinary Resume to start its decoded proof; no
+transaction path resumes the share automatically. Passing an empty codec list
+restores default browser preferences.
 This is a deliberate paused bounded-gap path. Unpaused make-before-break is a
 later extension rather than a second codec mechanism.
 
@@ -320,7 +370,7 @@ Product inference from those facts: use the following ordered classification:
 | --- | --- |
 | Capture low | capture or constraints |
 | Capture high; outbound low; `cpu` | encoder/resource pressure |
-| Capture high; outbound low; `bandwidth` | GCC, uplink, or TURN/path pressure |
+| Capture high; outbound low; `bandwidth` | GCC, uplink, or current-path pressure |
 | Outbound healthy; inbound low | transport or receiver path |
 | Inbound healthy; image visibly blurry | bitrate/quantization, codec, or display scaling |
 
@@ -377,9 +427,11 @@ one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
-The shared `HIGH+LOW` publication remains unimplemented,
-and browser support remains subject to the controlled matrix. Physically
-stopping an unused `LOW` is a resource optimization rather than a prerequisite.
+The current SFU publisher already configures the shared ordered `q,h`
+`HIGH+LOW` publication. Real LiveKit per-subscriber BWE downshift/recovery,
+hardware and game-resource cost, and heterogeneous-network behavior remain open
+acceptance evidence. Physically stopping an unused `LOW` is a resource
+optimization rather than a prerequisite.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -655,7 +707,7 @@ latency, CPU, and memory conflict and must be balanced. Its native encoder
 tuning and hardware integration are not available to a browser-only sender and
 must not be presented as settings this project already has.
 
-## Current Policy
+## Current V8 And Accepted V9 Policy
 
 The three user-visible profiles remain ceilings rather than promised rates:
 
@@ -665,10 +717,13 @@ The three user-visible profiles remain ceilings rather than promised rates:
 | 1080p30 | 1920x1080 at 30 fps | 5 Mbps |
 | 720p30 | 1280x720 at 30 fps | 3 Mbps |
 
-The middle profile is an explicit manual 1080p30 ceiling: choosing it trades a
-60 fps ceiling for a 1080p capture bound. LiveKit currently uses the same
-1080p30 at 5 Mbps screen-share preset, but neither preset guarantees the emitted
-resolution, frame rate, or bitrate.
+Current v8 defaults to `1080p60`; accepted v9 changes the default to the middle
+`1080p30` ceiling. Choosing it trades a 60 fps ceiling for a 1080p capture bound.
+The recommended set remains exactly the three profiles above. Accepted v9 adds
+`480p` only as an advanced `854x480` resolution whose frame rate and bitrate are
+selected independently, not as a fourth profile or preset ID. LiveKit currently
+uses the same 1080p30 at 5 Mbps screen-share preset, but neither preset
+guarantees the emitted resolution, frame rate, or bitrate.
 
 - Initial capture supplies `ideal` and `max` bounds for resolution and frame
   rate; the actual result is read back from `MediaStreamTrack.getSettings()`.
@@ -680,14 +735,16 @@ resolution, frame rate, or bitrate.
   and `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
-- The folded “advanced video” panel accepts only 720p/1080p/1440p, integer
-  15-60 fps, 2-12 Mbps, the three preferences, and Automatic/H.264/VP8. The
-  first codec-switch product boundary is a generation-fenced renegotiation and
-  SFU republish while sharing is explicitly paused; pause or `replaceTrack()`
-  alone does not switch codec. The panel is now Share advanced settings and
-  also offers live-switchable 64/128/256 kbps audio sender ceilings, default
-  128, on the existing Opus path. Display capture does
-  not standardize channel-count or sample-rate control. The peer receive
+- The current v8 Share advanced settings panel accepts only
+  720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, the three preferences, and
+  Automatic/H.264/VP8. Its 64/128/256 kbps audio ceiling, default 128, is
+  selected before sharing and applied when senders are created; v8 locks audio
+  mutation during an active share. Accepted v9 adds advanced `854x480` and
+  live-switchable audio ceilings on the existing Opus path. The first
+  codec-switch product boundary is a generation-fenced renegotiation and SFU
+  republish while sharing is explicitly paused; pause or `replaceTrack()` alone
+  does not switch codec. Display capture does not standardize channel-count or
+  sample-rate control. The peer receive
   contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
   LiveKit's explicit high-quality stereo/forceStereo option; the selected sender
   ceiling remains separate from negotiated and observed bitrate.
@@ -745,7 +802,7 @@ Use the same static UI scene and deterministic high-motion game scene at
 720p30, 1080p30, and 1080p60. Correlate A capture, B outbound, and C inbound at
 the same interval. Record actual dimensions/FPS/bitrate, limitation reason,
 codec, encoder implementation, interval encode/decode cost, drops/freezes,
-jitter, RTT, loss/retransmission, selected direct/TURN path, and host CPU/GPU.
+jitter, RTT, loss/retransmission, selected direct/SFU path, and host CPU/GPU.
 A live profile change must preserve peer connection IDs, avoid a second source
 prompt, and visibly converge to the requested bounds.
 

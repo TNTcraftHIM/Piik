@@ -6,9 +6,11 @@ Status: peer and SFU routes already use stereo and a 128 kbps default, but users
 still report speech-gated movie/game audio, including on a phone connected
 directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
 local speech processing unless the request disables it. The source request is
-explicit, and Share advanced settings now provide bounded 64/128/256 kbps
-sender ceilings across P2P, browser relay, and SFU. Target-device audible proof
-remains open.
+explicit. Current v8 exposes bounded 64/128/256 kbps choices before sharing and
+applies the selected ceiling when each P2P, browser-relay, or SFU sender is
+created; it does not mutate an already-active sender. Accepted v9 live mutation
+and applied readback are not implemented or deployed. Target-device audible
+proof remains open.
 
 ## Scope And Decision
 
@@ -46,18 +48,19 @@ stereo music in a 64--128 kbps sweet spot, and LiveKit 2.22.0 names 128 kbps
 `musicHighQualityStereo`. Requested, applied, negotiated, and observed states
 remain separate.
 
-The advanced panel is named Share advanced settings. The 64/128/256 choice is
-a sender `maxBitrate` ceiling on the existing Opus path, so it can change during
-an active share through serialized `getParameters()`/`setParameters()` updates
-and readback; it does not require audio codec renegotiation. The existing wire
-distributes a last-wins desired profile; each endpoint applies it locally, keeps
-media and the old applied ceiling on failure, and does not claim room-wide
-convergence without a remote applied acknowledgement. On the declared
-Chrome/Edge screen-audio Host baseline, pinned LiveKit 2.22.0 can update the
-existing audio sender without republish. Firefox's initial publish path may also
-write the preset into Opus fmtp, so a sender-only increase is not claimed there
-until real readback and receive evidence pass. A future microphone/voice feature
-remains a separate track and processing path with its own
+The advanced panel is named Share advanced settings. Current v8 stores the
+64/128/256 choice and applies that sender `maxBitrate` ceiling on the existing
+Opus path when it creates a sender; changing the choice during an active share
+does not update an existing sender. Accepted v9, which is not implemented or
+deployed, serializes `getParameters()`/`setParameters()` updates and readback,
+keeps media and the old applied ceiling on failure, and does not claim room-wide
+convergence without a remote applied acknowledgement. This does not require
+audio codec renegotiation. On the declared Chrome/Edge screen-audio Host
+baseline, pinned LiveKit 2.22.0 can update an existing audio sender without
+republish. Firefox's initial publish path may also write the preset into Opus
+fmtp, so a sender-only increase is not claimed there until real readback and
+receive evidence pass. A future microphone/voice feature remains a separate
+track and processing path with its own
 AEC/noise-suppression/DTX contract. It must not turn movie or game audio into a
 voice-processed source.
 
@@ -340,9 +343,8 @@ browser congestion control:
    are distinct repair mechanisms; retaining one neither proves, replaces nor
    disables the other, and no FEC switch is exposed or reimplemented.
 
-Applying the receive preference in every browser answer covers direct P2P,
-browser-relay children and selected-edge TURN because TURN changes the ICE
-transport, not the peer SDP contract. SFU uses the equivalent SDK contract.
+Applying the receive preference in every browser answer covers direct P2P and
+browser-relay children. SFU uses the equivalent SDK contract.
 An SFU-only change is not acceptable: moving between peer and SFU routes would
 otherwise change channel behavior. Native/Pion sender routes retain their own
 explicit encoded-track contract and need a focused compatibility check before
@@ -425,7 +427,7 @@ protected-content silence, and WASAPI device/service errors report
 `unavailable`/`silent` and stop or ask. The implementation never widens to
 whole-system loopback. The first acceptance smoke is one direct Viewer with a
 known target tone/visual marker and independent voice/notification markers;
-SFU/TURN, a second Viewer, endurance, and native WGC video replacement remain
+SFU/UDP, a second Viewer, endurance, and native WGC video replacement remain
 later gates.
 
 ### Retained P1 Result (2026-08-21)
@@ -444,7 +446,7 @@ audio track and 495 inbound Opus packets while video decoded/rendered 296
 frames. There was no fatal or encoder error. The sole failed assertion was the
 existing generic Pion two-second outbound snapshot, which also missed fresh
 deltas in earlier video loopbacks. This is functional evidence, not packaging,
-real-game sync, second-Viewer, SFU/TURN, or endurance evidence.
+real-game sync, second-Viewer, SFU/UDP, or endurance evidence.
 
 Run one bounded matrix rather than a full route Cartesian product: exact
 production and current `main` on Windows Chrome/Edge for tab/window/monitor,
@@ -452,9 +454,9 @@ audio selected/unselected, and a simultaneous voice call; then the native
 candidate on current Windows 11 with game parent and child audio, an independent
 voice process, notifications, no render stream, and process restart. Windows 10
 records the explicit unsupported/unresolved result rather than a fake fallback.
-Direct is the primary route; one browser-relay and one
-SFU-subscription audio check cover route preservation. Test exact selected-edge
-TURN and Host-SFU TURN transport as separate authorized connectivity gates.
+Direct is the primary route; one browser-relay and one SFU-subscription audio
+check cover route preservation. Ordinary peer ICE remains STUN-only and current
+SFU media remains UDP-only; this audio matrix does not add a transport path.
 Correlate capture settings, negotiated codec/derived fmtp,
 actual outbound/inbound bitrate, loss, jitter, concealment, jitter buffer, and
 A/V playout timing using a distinguishable stereo fixture plus game/film audio.
@@ -462,11 +464,13 @@ A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 ## UI And Voice Boundary
 
 Share advanced settings offers exactly 64/128/256 kbps and defaults to 128.
-The choice can change during the active share. P2P, browser relay, and SFU
-senders read the latest desired profile and keep endpoint-local applied
-readback rather than claiming one room-wide applied commit. It remains a sender
-ceiling, not a guaranteed or constant bitrate. Do not expose sample rate,
-channel count, codec, DTX, RED, FEC, an arbitrary slider, or a second audio
+Current v8 applies the selected choice before sharing and to any newly created
+P2P, browser-relay, or SFU sender; it does not live-update an active sender.
+Accepted v9 live mutation is not implemented or deployed. That extension reads
+the latest desired profile into each sender and keeps endpoint-local applied
+readback rather than claiming one room-wide applied commit. The setting remains
+a sender ceiling, not a guaranteed or constant bitrate. Do not expose sample
+rate, channel count, codec, DTX, RED, FEC, an arbitrary slider, or a second audio
 adaptation loop.
 
 If microphone voice enters scope, treat it as a separate source/track with an

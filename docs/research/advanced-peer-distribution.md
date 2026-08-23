@@ -34,28 +34,28 @@ experience automatic, and meets the latency and queue limits below.
 ## Cost Accounting
 
 Let `B` be one complete stream bitrate, `N` the viewer count, and `r` repair
-overhead. Protocol headers, retransmission, and TURN overhead are additional.
+overhead. Protocol headers and retransmission overhead are additional.
 
 | Route | Host upload | Central media traffic | Encode work |
 | --- | ---: | ---: | --- |
-| Current full-stream browser chains | at most `2B` | zero except TURN edges | host up to two encoders; every relay encodes again |
-| Native full-stream RTP relay | at most `2B` | zero except TURN edges | relay zero encode; native host can share one encode |
-| Two encoded-object stripe trees | about `(1+r)B` | zero except TURN edges | host one encode; relay zero encode |
+| Current full-stream browser chains | at most `2B` | zero on direct peer edges; SFU legs are accounted separately | host up to two encoders; every relay encodes again |
+| Native full-stream RTP relay | at most `2B` | zero on direct peer edges | relay zero encode; native host can share one encode |
+| Two encoded-object stripe trees | about `(1+r)B` | zero on direct peer edges | host one encode; relay zero encode |
 | Host publication with bounded SFU subscriptions | measured `B_pub` | per-subscriber egress; see low-server model | one publication may carry at most two active representations; physical encoder count remains measured evidence |
 | Full central SFU/MoQ fanout | about `B` | ingress `B`, egress `N*B` | a possible bounded fallback result, never the default topology or mode |
 
 Useful last-hop traffic remains approximately `N*B`; these routes only decide
-which nodes emit the copies. Exact publication/subscription, TURN-hop, and billing
+which nodes emit the copies. Exact SFU publication/subscription and billing
 accounting is owned by [Low-Server-Cost Media Routes](./low-server-media-routes.md).
-TURN is edge transport; it is not a peer/SFU topology.
 
 ## Candidate 1: Native RTP Relay
 
-This is the nearest-term high-confidence optimization. A native helper can read
+This is a retained Native research direction, not a current milestone. A
+native helper can read
 encoded RTP from one WebRTC receiver and write the payload to at most two
 independent downstream browser PeerConnections without decoding and encoding
 the video again. Each downstream edge keeps its own SSRC, pacing, RTCP,
-DTLS-SRTP, ICE, and TURN behavior.
+DTLS-SRTP, and ICE behavior.
 
 Draft PR [#16](https://github.com/TNTcraftHIM/Screener/pull/16) passes an earlier
 in-process transport oracle: one Pion v4.2.18 `TrackLocalStaticRTP.WriteRTP`
@@ -64,15 +64,16 @@ sequence number, and timestamp plus binding-specific SSRCs. It contains no
 encoder or browsers, so it is not evidence for one physical encode, end-to-end
 compatibility, feedback arbitration, congestion control, or latency.
 
-The next Go/Pion spike is video-only VP8 at 720p30 with one browser upstream
-and two unchanged browser children. It must prove:
+If an owning decision reopens it, the retained Go/Pion gate is video-only VP8 at
+720p30 with one browser upstream and two unchanged browser children. It must
+prove:
 
 - zero relay video-encoder calls and at least 40% lower relay CPU than browser
   remote-track forwarding;
 - no more than 25 ms added p95 relay latency;
 - per-child bytes no more than 110% of input payload bitrate;
 - bounded queue age below 100 ms;
-- PLI, NACK/RTX, 1% loss, one direct edge, and one TURN edge; and
+- PLI, NACK/RTX, and one direct edge under both clean and 1% loss conditions; and
 - reparented first picture within one second after failure detection.
 
 This lowers relay compute and generational quality loss. It does not lower host
@@ -119,7 +120,7 @@ and application-side picture composition.
 ## Candidate 3: Browser Encoded Objects
 
 WebCodecs can encode once and expose `EncodedVideoChunk` values. WebRTC
-DataChannel can carry framed chunks over peer ICE/TURN paths. This is the
+DataChannel can carry framed chunks over peer ICE paths. This is the
 credible pure-browser route to encoded forwarding and later two-tree striping,
 but it replaces the browser's RTP media receiver with application framing,
 pacing, a jitter buffer, keyframe requests, a WebCodecs renderer, and eventually
@@ -173,7 +174,7 @@ central fallback and keep it only if, at equal quality and egress, latency or
 server CPU improves at least 20% over the SFU reference and draft-version churn
 is isolated behind a small adapter.
 
-## Candidate 6: Bounded Capability-Aware Local Reparenting
+## Current Bounded Local Reconciliation Conclusion
 
 This is the research basis for ADR-0005's bounded local reconciliation. Narada and Overcast
 demonstrate measurement-driven overlay improvement, but neither supplies a
@@ -238,7 +239,9 @@ and a four-second state reconciliation that requires three consecutive
 mismatches before a full reconnect. Jitsi Videobridge similarly defaults to a
 15-second first-transfer timeout and an eight-second inactivity limit. These are
 reference boundaries, not universal prescriptions. Screener's separately owned
-15-second initial deadline remains a candidate pending mobile-network evidence.
+15-second initial deadline is a deployed implementation value, not an accepted
+experience target; mobile-network evidence may justify revisiting the one total
+deadline only through ADR-0005.
 
 WebRTC/LiveKit first owns transient reconnect. A hard failure or non-paused
 decoded-frame stall wakes ADR-0005 once and seeds the exact failed
@@ -254,19 +257,20 @@ The first room-1 production trace on 2026-08-20 observed two short Host
 participants while two roots remained for roughly 4.6 seconds; all ended with
 client-requested leave, no track publication survived, and neither service
 restarted. This proves LiveKit participant entry. The timing is consistent with
-the current one-shot grant refresh and Peer-failback state machine, but logs do
+the then-current one-shot grant refresh and recovery state machine, but logs do
 not prove those transitions and cannot distinguish
 connect, source, video publish, sender configuration, optional audio publish, or
-transport failure. The next bounded diagnostic exposes only that local enum to
-the Host and deliberately keeps raw errors, URLs, tokens, candidates, and
-addresses out of wire and logs.
+transport failure. The accepted v9 diagnostic, which is not part of deployed
+v8, exposes only a closed local stage/outcome enum to an on-demand Host snapshot
+and deliberately keeps raw errors, URLs, tokens, candidates, and addresses out
+of wire and logs.
 
 ## Automatic Route Controller Boundary
 
-The accepted controller preserves healthy peer edges and chooses transport per
-logical edge: direct/STUN first, then exact selected TURN when authorized. A
+The accepted controller preserves healthy peer edges and chooses one route per
+logical edge: direct/STUN first, then the dedicated SFU/UDP path when needed. A
 server-fed ingress uses the room's single Host publication plus exact SFU
-subscriptions; it is not a fixed rung inserted between every peer edge and TURN.
+subscriptions; it is not a fixed rung inserted between every peer edge.
 Every attempt ends in bounded success, wait, or failure.
 
 Native full-stream relay and striped-object routes remain the bounded candidates
@@ -275,11 +279,10 @@ into the current route model.
 
 The SFU uses one authoritative Host publication and exact per-Viewer
 subscriptions. SFU-fed and peer-fed endpoints use the same provisional-child
-first-frame transaction. Server ingress/egress and
-TURN allocations use deployment-wide admission rather than a fixed root count
-or room-wide lease. The SFU/UDP and optional selected-edge TURN accounting lives in
-[Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005 owns the
-accepted behavior.
+first-frame transaction. Server ingress/egress uses deployment-wide admission
+rather than a fixed root count or room-wide lease. The SFU/UDP accounting lives
+in [Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005 owns
+the accepted behavior.
 
 The controller is automatic and invisible. It uses participant metadata, route
 revisions, endpoint capacity, server admission, and discrete exact-edge failure;
@@ -348,8 +351,6 @@ Sources checked on 2026-08-20 through 2026-08-23:
   observable path boundaries and the centralized low-latency alternative.
 - [LiveKit client 2.22 room events](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
   - pinned reconnect/reconnected behavior; no implementation source was copied.
-- [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html) - per-edge relay
-  transport rather than a room topology.
 - [MOQT draft](https://datatracker.ietf.org/doc/draft-ietf-moq-transport/) and
   [moq-dev/moq](https://github.com/moq-dev/moq) - core MIT/Apache-2.0; its OBS
   plugin is separately GPL-2.0-or-later and remains study-only.

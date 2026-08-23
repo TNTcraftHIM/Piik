@@ -11,24 +11,24 @@
 ## Current Transport Conclusion
 
 Screener's application route ladder is only direct/STUN peer followed by the
-dedicated LiveKit SFU over UDP. The selected peer-edge/Host-ingress TURN/UDP
-candidate is rejected: when outbound UDP can reach a public server, SFU/UDP
-covers the product's bounded central fallback while one Host publication serves
-multiple Viewers; when all outbound UDP is blocked, TURN/UDP adds no reachability.
-The extra credential issuer, route tuple, logical-allocation ledger, relay-only
-rebuild, configuration, UI, deployment, and test surfaces have no remaining
-consumer that justifies their whole-system cost.
+dedicated LiveKit SFU over UDP. One Host publication can serve multiple exact
+Viewer subscriptions, so this remains a bounded central fallback rather than an
+always-SFU topology. When all outbound UDP is blocked, both accepted paths end
+in a clear bounded failure. Screener configures no TURN, ICE/TCP, media TCP, or
+TLS-relayed media path.
 
-This conclusion does not claim that the TURN standard has no use. WebRTC
-requires TURN support for endpoint-dependent NAT combinations, and LiveKit can
-offer ICE/TCP or TURN/TLS for strict firewalls. Screener currently accepts a
-smaller UDP-only boundary and fails clearly when it is unreachable. If real
-target-network evidence later requires broader coverage, transport selection
-belongs inside LiveKit rather than becoming a third Screener route class. The
-pinned LiveKit 1.13.5 configuration exposes `rtc.tcp_port`, external TURN, and
-embedded TURN/TLS as framework capabilities; none is enabled by this decision.
+WebRTC and LiveKit expose broader framework transport capabilities, but those
+capabilities do not authorize another Screener route. Any future strict-firewall
+coverage requires real target-network evidence and a new accepted decision, and
+must remain inside LiveKit rather than become a third application route class.
+The pinned LiveKit 1.13.5 configuration exposes `rtc.tcp_port`, external TURN,
+and embedded TURN/TLS; none is enabled by the current product contract.
 
-Primary sources checked 2026-08-24: [WebRTC transports, RFC
+Primary sources checked 2026-08-24: [ICE, RFC
+8445](https://www.rfc-editor.org/rfc/rfc8445.html), [NAT traversal and port
+prediction, RFC 5128](https://www.rfc-editor.org/rfc/rfc5128.html#section-5.2),
+[Experimental NAT behavior discovery, RFC
+5780](https://www.rfc-editor.org/rfc/rfc5780.html), [WebRTC transports, RFC
 8835](https://www.rfc-editor.org/rfc/rfc8835.html), [LiveKit connection
 reliability](https://docs.livekit.io/intro/basics/connect/), [LiveKit self-hosted
 deployment](https://docs.livekit.io/transport/self-hosting/deployment/), and the
@@ -49,8 +49,8 @@ re-encoding closed that browser-relay candidate. Native sender work remained a
 separate research track. Closed
 PR #12's explicit whole-room SFU mode is superseded. ADR-0005 and merged PR #17
 own the automatic cross-mode controller. Production first enabled it only for
-room `1` and later removed that rollout boundary. The deployed release observed
-participant entry but did not retain media. On 2026-08-21, a latest-source run
+room `1` and later removed that rollout boundary. That first room-`1` release
+observed participant entry but did not retain media. On 2026-08-21, a latest-source run
 forced the first direct edge to fail and then passed one local SFU/UDP root with
 Chrome 151, LiveKit 1.13.5, and pinned client 2.22.0. LiveKit produced two sender
 RIDs in `q,h` order; Screener's former `q,f` guard caused the Host publisher to
@@ -58,8 +58,10 @@ fail closed at `sender-config`. After correcting that contract, Viewer inbound
 packets and decoded/rendered frames increased, endpoint edges stayed bounded,
 and both clients left cleanly. TURN did not participate in that first run. A
 later exact-source canary against the then-production media tuple proved the
-historical Host-ingress selected relay described below. Both are functional, not
-performance, evidence; public-room and browser-diversity validation remain open.
+historical Host-ingress selected relay described below. The current `8f5b3f1`
+production canary subsequently committed two SFU assignments and decoded
+1920x1080 video. These are functional, not performance, evidence; heterogeneous
+networks, mobile, resources, and endurance remain open.
 
 ## Token-Free SFU Standby Prewarm
 
@@ -126,7 +128,7 @@ only by its actual committed children and those edges are already counted in
 where a publisher leg separately uses TURN, retain host upload
 `B_pub`, TURN ingress `B_pub`, TURN egress `B_pub`, and SFU ingress `B_pub` as
 distinct interface/service traffic. Any separately TURN-relayed LiveKit
-subscription or controller-selected peer edge adds TURN ingress and egress equal
+subscription or historical selected-edge peer leg adds TURN ingress and egress equal
 to that leg's measured bitrate. These are one logical useful payload copy but
 real physical hops, so NIC, service, and billing counters must never be folded.
 SFU
@@ -195,12 +197,16 @@ supports one fresh, generation-bound P2P opportunity after a discrete network
 change or explicit reconnect; it does not support periodic probing, a carrier
 "kept channel" assumption, or a universal hard-NAT traversal claim.
 
-### Deployable Browser-First Priorities
+### Real-Network Measurement Inputs
+
+These are isolated measurement inputs for the accepted real-network ledger, not
+authority to change production DNS, firewall, STUN count, or route behavior.
 
 **1. Dual-stack Web, STUN, and SFU**
 
-- Smallest change: publish working `AAAA` records, bind every public endpoint on
-  IPv6, and open the same bounded UDP paths. Browser ICE already gathers and
+- Measurement setup: on an operator-owned isolated deployment, publish working
+  `AAAA` records, bind every public endpoint on IPv6, and open the same bounded
+  UDP paths. Browser ICE already gathers and
   intermixes IPv4/IPv6 candidates; do not add application candidate ordering.
   Product code can remain unchanged; any retained evidence is only a sanitized
   selected-address-family enum tied to the existing opaque generation.
@@ -216,9 +222,10 @@ change or explicit reconnect; it does not support periodic probing, a carrier
 
 **2. Exactly two independent-destination STUN servers**
 
-- Smallest change: set the existing `STUN_URLS` list to two URLs. Current server
-  code already accepts the list and sends both URLs in one ICE server entry.
-  Existing schema capacity for eight URLs is not a product recommendation.
+- Measurement setup: use an isolated `STUN_URLS` list with two independent
+  destinations. Current server code already accepts the list and sends both
+  URLs in one ICE server entry. Existing schema capacity for eight URLs is not a
+  product recommendation or production change.
 - Dependency: each URL must resolve to a different public destination IP;
   separate failure domains and dual-stack coverage are preferable. Current
   libwebrtc tests show that equal observed mappings are deduplicated while two
@@ -232,67 +239,26 @@ change or explicit reconnect; it does not support periodic probing, a carrier
 - Stop line: two STUN destinations improve address-family/failure diversity and
   can expose mapping differences in an owned canary; they do not reveal the
   mapping that a peer destination will receive and do not solve two endpoint-
-  dependent mappers. Do not add a third server or a NAT classifier without a
-  measured failure that the second server fixes.
+  dependent mappers. Do not add a third server or a NAT classifier; neither is
+  part of the accepted Browser route model.
 
-**3. SFU-to-P2P recovery**
+### Ordinary-Browser ICE Boundary
 
-- WebRTC/LiveKit first owns network change and reconnect. Only an exact hard
-  failure or non-paused decoded-frame stall wakes the room reconciliation used
-  for every child.
-- The existing SFU edge remains active when usable. One P2P candidate receives
-  standard ICE checks and commits only after its child decodes the first new
-  frame; failure releases it and preserves SFU.
-- No polling loop, periodic probing, or second route controller
-  is authorized. Capacity and server admission use ADR-0005.
+Browser ICE connectivity checks are the only accepted direct UDP reachability
+authority. RFC 8445 already tests authenticated candidate pairs and produces an
+actually usable nominated pair; a TCP connection, a claimed NAT label, or two
+STUN observations cannot predict whether that UDP media pair is reachable.
+RFC 5128 also limits port prediction to favorable mapping behavior and notes
+that randomized or multi-level mappings defeat it. RFC 5780 is Experimental,
+observes behavior only toward its STUN destinations, and explicitly does not
+replace ICE.
 
-### Isolated Bounded Guessed-Candidate Spike
-
-WebRTC does not expose raw UDP, but the WebRTC API lets the application signal a
-remote ICE candidate and call `addIceCandidate()`. An owned experiment can
-therefore inject a small, explicitly capped set of nearby
-remote-port candidate guesses for one edge generation and let the browser ICE
-agents send authenticated connectivity checks. The initial harness ceiling of
-eight guesses across both endpoints is a safety fixture to bound abuse and ICE
-work, not a product constant or evidence that eight is optimal. This is bounded
-port prediction, not the birthday-paradox technique proposed for native peers
-with hundreds of sockets and probes.
-
-RFC 5780 behavior discovery is Experimental, requires a STUN server that
-supports alternate addresses, observes only current behavior toward those test
-destinations, and explicitly does not replace ICE. It may help an owned emulator
-confirm that a mapping pattern exists, but route decisions must still use actual
-operating connectivity and media evidence. A NAT label or two observed ports do
-not authorize a guessed production path.
-
-- Current status: zero product or production integration and not yet eligible
-  for a production canary. Use an isolated test page or harness and
-  a sequential endpoint-dependent NAT emulator fixture. Reuse existing candidate
-  signaling and ICE generations; do not mutate SDP or create a second production
-  protocol.
-- Dependency: two controlled STUN destination IPs, a deterministic owned NAT
-  emulator, the same ICE base/socket across observations and peer checks, an
-  allowlisted test room, and a hard maximum of eight extra candidate guesses in
-  total across both endpoints per edge generation. No guessed address, candidate
-  string, or SDP may be retained.
-- Acceptance: ordinary ICE must deterministically fail direct connection in the
-  emulator; then the bounded variant must reach decoded media within the current
-  15-second route window in at least 90 of 100 runs on the exact stable Chrome
-  and Firefox releases recorded in the matrix, with no more than eight injected
-  guesses in total and no candidate-error or resource-growth regression. Actual
-  connectivity-check packets may exceed eight because guesses pair with local
-  candidates and ICE retransmits checks; the candidate budget is not a packet
-  budget. Safari is measured separately before any product decision. Only an
-  emulator pass permits one manually approved canary in an operator-owned test
-  room. Both endpoints must explicitly consent, and the canary must be default-off
-  behind a kill switch and bound to one exact room, logical edge, ICE generation,
-  deadline, and aggregate candidate budget. It is still not general production
-  evidence.
-- Stop line: reject the candidate if it needs raw sockets, extra peer
-  connections, browser-specific SDP rewriting, more than eight total guesses,
-  unbounded retries, a longer black-screen deadline, or fails the two-engine
-  repeatability gate. A failure closes this candidate in favor of bounded
-  SFU/UDP; it does not justify a native sender by itself.
+Screener therefore does not synthesize remote candidates, guess adjacent ports,
+classify NAT behavior, or probe TCP reachability. Direct ICE exhaustion advances
+to SFU/UDP within the existing total operation deadline; when all UDP is blocked,
+both accepted paths end in a clear bounded failure. This preserves one candidate
+model and avoids adding mappings, ICE/DTLS work, abuse surface, or magic guess
+budgets that ordinary browser APIs cannot make reliable.
 
 ### Ordinary-Browser Hard Boundaries
 
@@ -324,33 +290,40 @@ not authorize a guessed production path.
 
 The shared acceptance matrix remains EIM/EIM, one endpoint-dependent mapper,
 two endpoint-dependent mappers including cellular-to-cellular, all UDP blocked,
-and a Wi-Fi-to-cellular change. Record only sanitized route kind, address family,
-generation, time to first decoded frame, loss, RTT, bitrate, and SFU bytes. Keep
-credentials short-lived and generation-scoped and retain ingress/egress caps.
+and a Wi-Fi-to-cellular change. It measures ordinary ICE/STUN, SFU/UDP, and clear
+failure without injecting candidates. Record only sanitized route kind, address
+family, generation, queue/candidate/first-frame timing, loss, RTT, bitrate, and
+SFU bytes. Keep credentials short-lived and generation-scoped and retain
+ingress/egress caps.
 
-## Privacy-Safe ICE Evidence Candidate
+## Privacy-Safe Route Diagnostic Boundary
 
 Start with locally retained, redacted `webrtc-internals` as manual ground truth.
-Only then may one exact allowlisted room record, without changing its route:
+The deployed v8 product already has a user-initiated local stats export; it does
+not have the accepted v9 route-timing snapshot. V9 may observe only existing
+join, route-demand, operation-start, candidate-start, first-decoded-frame,
+settle, share-stop, departure, and room-delete events. It keeps one latest
+timing/outcome record per current child; a new demand overwrites that record,
+and authoritative share stop/replacement, confirmed departure, or room deletion
+removes it. It creates no timer, event ring, backend telemetry stream, or route
+input.
 
-- selected local/remote candidate type and protocol plus local
-  `relayProtocol`;
-- selected address family reduced locally to `ipv4|ipv6`, without retaining the
-  source address;
-- `iceGatheringState`, `iceConnectionState`, and `connectionState` transitions
-  with monotonic event-derived establishment duration;
-- `selectedCandidatePairChanges` when implemented, reported only as a delta
-  from the current opaque connection/ICE-restart generation baseline;
-- RTT, loss, and actual/available bitrate for the selected RTP-bound path; and
-- `icecandidateerror.errorCode` bucketed as
-  `3xx|4xx|5xx|6xx|701|other`.
+Only an authenticated Host's explicit local-export action may request one
+current snapshot. The response projects the current graph, current operation,
+and latest records through snapshot-local ordinals that are not participant
+identities. It includes relative queue/candidate/first-frame timing, operation
+reason/stage/cursor, and final route `direct | sfu | waiting | failed`. A current
+candidate may expose only the closed rejection bucket `none`, `stale`,
+`endpoint-capacity`, `sfu-admission`, `candidate-failed`,
+`first-frame-timeout`, `operation-deadline`, or `aborted`. Queue wait is measured
+from route demand to operation start. Missing timing remains `null`; no consumer
+reconstructs past events from the current graph.
 
-Never retain raw `errorText`, address, port, URL, candidate strings, SDP, or
-device/network identifiers. Stats members may be absent, and the pair-change
-counter is transport-lifetime state, so events and generation baselines prevent
-old connection or ICE-restart history from being attributed to a new route.
-Use opaque generations only. This is a bounded diagnostic manifest, not a
-backend telemetry schema or controller input.
+Never retain or emit raw `errorText`, address, port, URL, candidate strings,
+SDP, credentials, display name, or real peer/parent/session/connection/generation
+identity. The server does not log, persist, or periodically push the snapshot,
+and Viewers cannot request it. Current-path ICE/RTP stats remain local to the
+page that owns the connection and have no route authority.
 
 ### Local Diagnostic Export Boundary
 
@@ -391,31 +364,23 @@ one controller-selected authenticated TURN/UDP rebuild before failure. That
 ordering and accounting are historical implementation evidence, not current
 route authority.
 
-STUN/ICE discovers and checks paths. RFC 8656 TURN allocates a relayed address
-and continuously carries media when selected; it is not a handshake helper or
-topology. Ordinary PCs do not gather relay candidates, so healthy paths consume
-no idle allocation. Exact-room, complete-tuple, current-generation and one-use
-controller gates prevent participant-wide or process-wide rollout.
+The historical candidate relied on RFC 8656 TURN allocation carrying media
+rather than acting as a handshake helper or topology. It kept ordinary PCs
+STUN-only and used exact-room, complete-tuple, generation, and one-use gates to
+contain its isolated rollout. Those gates describe the measured candidate only;
+they do not authorize a current transport.
 
-Coturn validates a REST bearer's HMAC and expiry, not the originating room,
-peer edge, revision, parent, or connection generation. Application issuance and
-both endpoint rebuilds therefore must revalidate the controller's current edge
-identity and consume the attempt on success, failure, expiry, or generation
-change. This is application selected-edge enforcement plus TTL, fanout, and
-quota containment, not coturn-side cryptographic edge binding. The failed
-built-in alternative and retained standards evidence are in
+At that checkpoint, coturn validated bearer HMAC and expiry but not Screener's
+room, edge, revision, parent, or connection identity. The application therefore
+bound issuance and both endpoint rebuilds to the candidate's exact identity and
+consumed the attempt on success, failure, expiry, or generation change. The
+failed built-in alternative and retained standards evidence are in
 [Built-In Peer ICE TURN Candidate](./built-in-peer-ice-turn.md).
 
-Pinned LiveKit 1.13.5 can advertise authenticated TURN to LiveKit participants,
-but that separate ICE domain covers publisher/subscriber connections to the
-SFU, not ordinary peer PCs. Selected-edge coturn uses independent configuration
-and credentials. LiveKit TURN cannot rescue an unavailable SFU; the application
-controller selects whether independent coturn may rebuild one failed peer edge.
-
-Pinned client 2.22.0 accepts a per-connect `rtcConfig`; its engine retains
-explicit ICE servers when constructing the publisher PeerConnection. A selected
-Host ingress can therefore supply only its coturn server plus relay policy
-without advertising that credential to ordinary peer PCs.
+Pinned LiveKit 1.13.5 and client 2.22.0 exposed TURN and per-connect `rtcConfig`
+capabilities used to explain the historical Host-ingress experiment. That
+separate ICE domain and its coturn credential were never authority for ordinary
+peer PCs and are not part of the current product route.
 
 Ordinary peer ICE remains STUN-only. Both the participant-wide and selected-edge
 TURN candidates are rejected product paths; their canary evidence remains below
@@ -427,7 +392,7 @@ instances rather than a process-wide old-release compatibility branch. HTTPS/WSS
 
 ### Historical Host-Ingress Functional Evidence
 
-On 2026-08-21 the tracked standalone gate reused the production selected-edge
+On 2026-08-21 the tracked standalone gate reused the then-production selected-edge
 tuple parser and credential issuer, supplied the short-lived credential only to
 an isolated loopback Chrome page, and returned a sanitized result: one UDP relay
 candidate and an otherwise non-blocking `701` error bucket. No URL, username,
@@ -435,7 +400,7 @@ credential, candidate address, or raw error text was emitted or persisted.
 
 The canonical Chrome 151 product canary then used exact deployed Web source
 `16f6eab27bdfb1c15cdbd814a35864f4f18be767` in a local Screener room while
-connecting to the production LiveKit 1.13.5 and coturn tuple. After direct media
+connecting to the then-production LiveKit 1.13.5 and coturn tuple. After direct media
 and active SFU media, a temporary DEV-only hook failed the refreshed publisher
 once; the normal application failure path requested `host-sfu-ingress` and the
 hook was removed after the run. The relay-policy publisher had only a TURN
@@ -457,17 +422,16 @@ TURN-only server set, `relayProtocol`, and transmitted media together; the
 not latency, quality, capacity, expiry, mobile, resource, or bandwidth behavior.
 Coturn 4.17.2 documents `stun-only` as ignoring TURN requests and provides
 `no-tcp` and `no-tls`; it marks `no-dtls` deprecated, so the tracked temporary
-template does not use that switch. The shared production host instead retains its old
-authenticated-relay daemon and TCP/UDP 3478 plus UDP 49152-49251 rules. The
-rejected participant-wide candidate advertised no TURN credential, and that
-historical post-canary audit found zero allocations. This baseline is not the
-later selected-edge functional evidence above.
+template did not use that switch. At that dated checkpoint, the shared host
+still retained an authenticated-relay daemon and TCP/UDP 3478 plus UDP
+49152-49251 rules. Current production instead runs coturn as STUN-only UDP 3478
+and LiveKit media on UDP 7882, with coturn TCP/TLS and relay ranges disabled.
+The historical participant-wide canary advertised no TURN credential and its
+post-canary audit found zero allocations.
 
-No public port is selected by this decision. LiveKit documents ICE/UDP mux as
-optional and its pinned sample recommends a multi-port UDP mux range at least
-as wide as the CPU count for performance. Embedded TURN/UDP defaults to 3478.
-The current nginx template has no HTTP/3 listener, but that fact alone does not
-prove one UDP port is the best production layout.
+That historical candidate selected no new public port. LiveKit's optional
+ICE/UDP mux, multi-port sample, and embedded TURN defaults are framework facts,
+not current Screener deployment recommendations.
 
 For `K` equal-representation first-level deliveries that cannot use direct media:
 
@@ -486,7 +450,9 @@ benchmarks and the Jitsi profiling breakdown establish capacity and component
 categories only. Different machines and implementations cannot support a
 universal relay/SFU CPU ratio or a claimed fixed percentage saving.
 
-One bounded exact-room gate owns rollout evidence:
+### Current Direct/SFU External Acceptance
+
+One bounded exact-room gate owns the still-open direct/SFU evidence:
 
 1. On the same host and NIC, measure LiveKit SFU UDP at 8 and 12 Mbps with one
    publication and one, two, and twenty subscriptions. Record CPU seconds/GiB,
@@ -584,27 +550,6 @@ example benchmark cannot supply Screener defaults. A later multi-process
 Screener deployment needs a shared atomic ledger; independent process-local
 counters would not be deployment-wide admission.
 
-## Deployment-Wide TURN Admission
-
-Selected TURN needs its own deployment admission because coturn REST credentials
-authenticate a bounded bearer but do not enforce Screener's room, edge, session,
-revision, or connection identity. The current single-process boundary is one
-O(1) logical-allocation ledger with an explicit positive safe-integer capacity
-and no default. Each exact `peer-selected` transport and Host-SFU ingress
-transport reserves one unit before credential issuance; reserved, committed, and
-draining authorizations remain charged until the application releases that exact
-identity. Independent edges may therefore coexist without a room-wide lease
-rule, while exhaustion returns to the existing bounded fallback path.
-
-Coturn exposes no application control-plane operation that deletes and reads
-back one exact Screener allocation. The logical ledger therefore does not claim
-physical allocation drain proof. Short credential TTL plus coturn `user-quota`
-and `total-quota` bound allocations that outlive a logical authorization or an
-application restart. A restarted single process starts a new logical owner and
-cannot reconstruct the old in-memory ledger; a multi-process or stronger
-cross-restart claim would require a shared atomic owner or a coturn control
-contract and is outside this wave.
-
 ## Route Screening
 
 | Route | Where copies are emitted | Endpoint cost | Evidence status |
@@ -613,8 +558,8 @@ contract and is outside this wave.
 | Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Source and production admit up to 20; the local 20-Viewer smoke passed, while heterogeneous networks remain open |
 | Native shared-encode host | Host targets one encode for standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Research evidence; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Research only; no current product authorization |
-| SFU service | SFU emits authorized subscription copies | Service pays bounded egress; an authoritative Host publisher supplies media | Source topology/admission are deployed; real LiveKit media and network validation remain open |
-| SFU fallback | SFU emits authorized copies | Additional central ingress and egress cost | Accepted resource-admission input; validate the bounded path at release |
+| SFU service | SFU emits authorized subscription copies | Service pays bounded egress; an authoritative Host publisher supplies media | Source topology/admission are deployed and a controlled production canary decoded media; heterogeneous-network and resource validation remains open |
+| SFU fallback | SFU emits authorized copies | Additional central ingress and egress cost | Deployed bounded path; real heterogeneous-network and resource acceptance remains open |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |
 | MoQ | Publishers and MoQ relays emit object copies | New transport, packaging, player, relay, and auth stack | Optional central-fallback benchmark; still pays server egress |

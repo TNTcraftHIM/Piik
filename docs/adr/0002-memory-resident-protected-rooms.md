@@ -1,6 +1,6 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; implemented and deployed
+- Status: Accepted; v8 room model implemented and deployed; v9 neutral code-only denial pending
 - Date: 2026-08-23
 
 ## Context
@@ -101,6 +101,21 @@ all code-only Viewer attempts. A valid room grant may bypass that site gate only
 for the exact Viewer role and room. Neither a code, room password, nor Viewer
 grant can create a room or become Host authority.
 
+The accepted `screener-v9` room-entry boundary adds exactly one
+`ROOM_ACCESS_DENIED` result. It applies only after site access to a well-formed
+code-only Viewer attempt whose expected admission rejects an unknown or expired
+room, disabled code entry, an absent or incorrect room password, a full room, or
+another bounded admission refusal. Every such case uses the same code, public
+message, and connection-close behavior, so neither the wire nor the UI reveals
+room existence or code-entry policy. The UI may offer an optional room-password
+retry and tell the Viewer to use an invitation link supplied by the Host; it
+does not request, discover, or mint an invitation through the server.
+
+Exact-room grant failures remain `INVALID_TOKEN`, Host authentication retains
+its independent role-specific outcomes, and unexpected internal faults remain
+the generic `SERVER_ERROR`. None of those paths is folded into
+`ROOM_ACCESS_DENIED`.
+
 ## Consequences
 
 - Normal operation and the 24-hour renewable-room experience require only one
@@ -136,15 +151,25 @@ grant can create a room or become Host authority.
   storage does not. No fingerprint or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
   of application/proxy logs and server durable storage.
+- On `screener-v9`, every expected denial of a well-formed, site-authorized
+  code-only attempt yields only `ROOM_ACCESS_DENIED` with the same public
+  message and connection-close behavior. Tests cover unknown/expired rooms,
+  disabled entry, absent/wrong passwords, full and bounded admission, while
+  exact-room grant, Host-authentication, and unexpected-server-fault paths keep
+  their independent typed outcomes.
 
 ## Implementation Status
 
-Current source implements this decision and has removed the old room modes,
-12-digit codes, SQLite persistence, `ROOM_DATABASE_PATH`, `ROOM_TTL_SECONDS`,
-and migration surface atomically on the single `screener-v8` wire. Focused source coverage spans allocation,
-leases, orthogonal grant/code admission, rotate/revoke, password policy, local
-profile replay, restart loss, HTTP, signaling, and browser storage privacy.
-Production release `352c457` runs this `screener-v8` model. The atomic cutover,
+Current source implements the v8 room, storage, and authorization core of this
+decision and has removed the old room modes, 12-digit codes, SQLite persistence,
+`ROOM_DATABASE_PATH`, `ROOM_TTL_SECONDS`, and migration surface atomically on
+the single `screener-v8` wire. Focused source coverage spans allocation, leases,
+orthogonal grant/code admission, rotate/revoke, password policy, local profile
+replay, restart loss, HTTP, signaling, and browser storage privacy.
+Production release `8f5b3f1` runs this `screener-v8` model. The atomic cutover,
 restart-loss smoke, orthogonal grant/code admission, stale-v7 rejection,
 no-SQLite runtime, and read-only rollback restoration checks passed; exact
 operational evidence is owned by deployment and verification status.
+The `ROOM_ACCESS_DENIED` boundary above is accepted for the atomic
+`screener-v9` checkpoint but is not implemented in current source or deployed
+in production.
