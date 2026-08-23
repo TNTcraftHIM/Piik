@@ -31,17 +31,17 @@ Current high-signal boundary:
 
 - docs/status.md owns the exact source/production/hold state.
 - docs/todo.md is the only executable work ledger and owns ordering.
-- ADR-0005 owns the accepted automatic route model. The Browser `screener-v7`
-  source is implemented and deployed as release `6b87732`; real external-network
+- ADR-0005 owns the accepted automatic route model. The Browser route remains
+  implemented and deployed in release `352c457`; real external-network
   and SFU/TURN media evidence remains open. Do not rerun broad or
   executable/native test suites unless the current acceptance boundary
   specifically requires them.
 - ADR-0002 owns the source-implemented room model: one process-memory RoomStore,
   random free four-digit codes, configurable 24-hour dormant leases, restart
   loss, local Host preference replay, an independent expiring Viewer grant, and
-  open/password/disabled code entry. Current source uses the single
-  `screener-v8` wire and has removed SQLite; production has not deployed this
-  room/access/UI slice and remains on the older v7 SQLite boundary.
+  open/password/disabled code entry. Current source and production use the
+  single `screener-v8` wire and no SQLite runtime; `6b87732` plus the verified
+  precutover SQLite snapshot remains the immediate rollback boundary.
 - docs/maintenance.md owns the reusable mechanism-simplification review. SQLite
   is its reference case because the bounded restart-experience loss did not
   justify the persistence surface; accepting that tradeoff changed the contract,

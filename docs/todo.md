@@ -12,10 +12,6 @@ Only items in **Now** are executable after their stated decision gate. A branch 
 4. **Gate the strict-NAT guessed-candidate experiment.** Build only the isolated endpoint-dependent NAT emulator and browser harness first. Standard ICE must fail in the owned fixture, the capped candidate set must pass the documented repeatability, deadline, privacy, and cleanup gates in stable Chrome and Firefox, and fallback must remain unchanged. Only then may one manually approved, operator-owned test room run a default-off, kill-switched canary with explicit consent from both endpoints and exact room/edge/generation/budget bounds; failure closes the candidate. Do not ship guessed candidates to ordinary rooms or infer NAT type from IP, UA, carrier, or two STUN observations.
 5. **Make Viewer connection progress explicit.** Derive one stable stage from existing access, route, peer/SFU, media, autoplay, and bounded-failure state. Keep the overlay until a composited current-generation frame, show `Play` only for actual autoplay rejection, preserve a still-valid old frame during recovery, and expose retry only through the bounded controller. Measure the existing token-free SFU prewarm and route stages before adding another connection mechanism.
 
-## Queued After Connection Feedback
-
-1. **Release memory-resident rooms and clear sharing controls.** The `screener-v8` source implementation and local gates are complete. At this accepted release boundary, run production preflight, atomically replace `ROOM_DATABASE_PATH` / `ROOM_TTL_SECONDS` with `ROOM_LEASE_SECONDS`, deploy server and Browser assets together, verify old v7 clients fail before room authority, confirm restart-wide room loss and same-browser preference replay, then run postflight and rollback verification. Do not migrate SQLite rooms or preserve a v7 compatibility path.
-
 ## Accepted Later Roadmap
 
 These items are real product work, ordered after the current release boundary; they are not permission to resume an old branch wholesale.

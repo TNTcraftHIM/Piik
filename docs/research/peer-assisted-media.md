@@ -520,7 +520,7 @@ event arrives later. The application therefore needs a small text-message
 challenge rather than waiting for either protocol Ping/Pong or the old socket's
 close event.
 
-Under the current `screener-v7` Browser wire, the Web client sends
+Under the current `screener-v8` Browser wire, the Web client sends
 `signaling-challenge { sequence }`, and the server sends the exact
 `signaling-challenge-response { sequence }` only to that requesting socket.
 Server and Browser assets deploy atomically; stale Browser and executable-sender
