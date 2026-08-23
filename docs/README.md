@@ -11,8 +11,8 @@
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, runtime relay-capacity extension, and abandon gates.
-- [Low-server-cost media routes](./research/low-server-media-routes.md): Host-publication/SFU distribution, selected-edge TURN, hop-level accounting, privacy-safe ICE evidence, and bounded transport gates.
-- [Built-in peer ICE TURN candidate](./research/built-in-peer-ice-turn.md): rejected canary record, retained standards/resource findings, and the selected-edge replacement boundary.
+- [Low-server-cost media routes](./research/low-server-media-routes.md): Host-publication/SFU distribution, direct-to-SFU conclusion, hop-level accounting, privacy-safe ICE evidence, and bounded transport gates.
+- [Built-in peer ICE TURN candidate](./research/built-in-peer-ice-turn.md): historical evidence for the rejected participant-wide and selected-edge TURN candidates.
 - [Advanced peer distribution](./research/advanced-peer-distribution.md): generic local-reconcile evidence plus multi-tree/SVC, encoded-object relay, native RTP forwarding, FEC/network-coding, and MoQ gates.
 - [Native shared-encode sender](./research/native-shared-encode-sender.md): consolidated Draft #16/#18/#22/#23/#25/#28 ladder, unclassified product-gate failure, staged revalidation, and stop line.
 - [Native H.264 hardware decision](./research/native-h264-hardware-decision.md): bounded WebCodecs no-go, proved Media Foundation/NVIDIA hardware encode, the default-fmtp `42c01f` stop, and the retained interop boundary.

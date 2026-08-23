@@ -53,11 +53,9 @@ set.
 
 Capacity counts active outbound media copies produced by a non-server endpoint:
 an ordinary peer child consumes one slot and the Host's single SFU publication
-consumes one Host slot. An upstream receive edge is free. A committed selected
-TURN transport replaces the transport of its logical edge and consumes the same
-single steady slot; a parallel media-producing candidate requires a separately
-reserved transition slot. SFU subscriptions consume server egress, not endpoint
-capacity.
+consumes one Host slot. An upstream receive edge is free. A parallel
+media-producing candidate requires a separately reserved transition slot. SFU
+subscriptions consume server egress, not endpoint capacity.
 
 ### Active topology
 
@@ -76,9 +74,10 @@ revision:
   bounded failure.
 
 Direct or peer UDP remains the first media choice. Ordinary peer
-`RTCPeerConnection` instances receive STUN candidates only; TURN candidates are
-not distributed to ordinary peer edges by default. HTTPS and WSS continue to
-use TLS/TCP independently of media transport.
+`RTCPeerConnection` instances receive STUN candidates only. The sole
+application fallback is the dedicated LiveKit SFU over UDP; Screener configures
+no TURN, ICE/TCP, media TCP, or TLS-relayed media. HTTPS and WSS continue to use
+TLS/TCP independently of media transport.
 
 Routing is event-driven. Join, capacity release or reduction, endpoint departure,
 current-edge hard failure, and a non-paused decoded-frame stall wake the same
@@ -106,20 +105,19 @@ so blocked state never hides a physical copy or server resource. A healthy edge
 used only for SFU bootstrap remains committed if bootstrap cannot start.
 
 There is no independent maximum-depth policy. Acyclicity and room admission
-bound the graph, while shallowest-first ordering minimizes depth. Depth remains
-an observed acceptance metric.
+bound the graph, while shallowest-first ordering minimizes depth. If a departed
+Host root releases a Host slot, a new or orphaned child therefore prefers that
+shallower Host result over another root's deeper slot. Healthy committed edges
+remain sticky; the controller does not periodically rebalance the graph. Depth
+remains an observed acceptance metric.
 
-A candidate identity is one logical upstream plus one transport. An operation
-opened by a failed edge seeds that exact current tuple as already tried, so the
-same parent and transport cannot immediately repeat. Other eligible direct/STUN
-parents use deterministic order first; a different transport on the old parent,
-such as admitted selected TURN after direct failure, may appear with the later
-transport candidates, followed by SFU fallback. A new external fact starts a new
-operation and may make the old tuple eligible again. If the Host has no usable direct first-level peer path, the operation
-prefers its single Host publication, using selected TURN for that ingress when
-needed, rather than enumerating Host-TURN Viewer edges. The operation records
-only exact tuples already tried; failure does not globally exclude that parent
-from later room events.
+A candidate identity is one logical upstream path. An operation opened by a
+failed edge seeds that exact current candidate as already tried, so the same
+parent cannot immediately repeat. Other eligible direct/STUN parents use
+deterministic order first, followed by SFU reuse or direct Host publication
+ingress. A new external fact starts a new operation and may make the old
+candidate eligible again. The operation records only exact candidates already
+tried; failure does not globally exclude that parent from later room events.
 
 If an SFU subscription is needed while the Host has no publication and all Host
 slots are occupied, reconciliation uses the same child operation to convert one
@@ -145,23 +143,22 @@ resetting that deadline. These fields do not become separate gates or state
 machines, and this route wave adds no
 assignment, media-binding, or proof generation to the wire.
 The same one timer derives wake boundaries from the route classes actually
-present in the deterministic list: direct peer, selected TURN, and SFU. The
-total deadline is divided equally between those semantic stages, without fixed
-per-candidate milliseconds. Hard failures may advance through multiple tuples
-inside a stage; a silent tuple at its boundary skips the remaining tuples of
-that class so it cannot consume the selected/SFU suffix.
-A `prepare` route update names that operation's exact child, selected transport,
-and server-issued candidate connection identity. Parent and child therefore
-prepare the same connection even when the parent's child set is unchanged by a
-direct/selected-transport replacement; neither endpoint infers candidate
-authority from an assignment-list difference.
-The current Browser runtime uses the single `screener-v8` wire. On each WebSocket,
-the server sends the exact prepare before its TURN grant or SFU configuration;
-the candidate child is queued before a peer parent is allowed to start its
-offer. WebSocket ordering is the companion-delivery contract, so clients keep
-no reordering inbox. Duplicate current companions are idempotent and stale ones
-are ignored. Native v6 and executable senders are outside this release and fail
-the protocol boundary rather than receiving a compatibility path.
+present in the deterministic list: direct peer and SFU. The total deadline is
+divided equally between those semantic stages, without fixed per-candidate
+milliseconds. Hard failures may advance through multiple candidates inside a
+stage; a silent direct candidate at its boundary skips the remaining direct
+candidates so it cannot consume the SFU suffix.
+A `prepare` route update names that operation's exact child, route kind, and
+server-issued candidate connection identity. Parent and child therefore
+prepare the same connection; neither endpoint infers candidate authority from
+an assignment-list difference.
+The current Browser runtime uses one internal wire. On each WebSocket, the
+server sends the exact prepare before its SFU configuration; the candidate child
+is queued before a peer parent is allowed to start its offer. WebSocket ordering
+is the companion-delivery contract, so clients keep no reordering inbox.
+Duplicate current companions are idempotent and stale ones are ignored. Native
+and executable senders are outside this release and fail the protocol boundary
+rather than receiving a compatibility path.
 A stale or mismatched asynchronous result fails closed and cannot revive an old
 edge.
 Successful candidate `P` is broadcast as active revision `P`. Failure, timeout,
@@ -171,9 +168,7 @@ clients never infer rollback from silence or from an older revision.
 One room-wide monotonic allocator owns active, prepare, rollback, retirement,
 and prune revisions. A direct peer transport may adopt a fresh WebRTC connection
 identity during its framework-owned rebuild only for the exact current
-parent/child sessions; that identity update does not change topology. Selected
-TURN remains session-bound and must retire through the same rollback primitive
-when either authenticated session changes.
+parent/child sessions; that identity update does not change topology.
 
 A route replacement uses make-before-break only when the typed endpoint and
 server-resource ledger atomically admits the required reservations. The old
@@ -220,15 +215,13 @@ second mutable graph.
   candidate; SFU-fed and peer-fed endpoints use the same provisional-child
   transaction and each child edge commits independently. Viewer republishing
   into a second SFU publication is outside the current product.
-- TURN is a selected transport for an existing authorized logical edge or the
-  Host-to-SFU ingress. It is not a topology node, a second source, or a global
-  room lease. Existing direct/STUN edges remain preferred; a failed selected
-  edge may use exact TURN, and an unavailable logical peer path may fall back to
-  an SFU subscription. If the Host has no direct first-level path, one Host
-  publication over direct or selected TURN is preferred to repeated Host-TURN
-  peer edges.
+- The only server-assisted route is an SFU subscription backed by the Host's
+  one direct-ingress publication. Screener configures no TURN or media TCP
+  transport. An all-UDP-blocked network reaches a clear bounded failure; any
+  future strict-firewall transport requires its own evidence and belongs inside
+  LiveKit rather than becoming another application candidate.
 - Endpoint sender capacity is accounted independently from server ingress/egress, SFU
-  subscriptions, TURN allocations, and one bounded transition-overlap slot.
+  subscriptions, and one bounded transition-overlap slot.
   Steady capacity is `1`, `2`, or `3` (default `2`); a transition may use
   `min(steadyCap + 1, 3)` only for one fenced, deadline-bound handoff and must
   return to steady bounds at commit. There is no fixed SFU-root count or
@@ -254,23 +247,13 @@ second mutable graph.
   stall decisions, and leaves new participants waiting. Resume wakes a fresh
   reconciliation. Healthy unaffected edges remain sticky.
 
-SFU and TURN remain bounded fallback resources with independent deployment-wide
-admission. Resource exhaustion produces the next bounded candidate, an explicit
-wait, or failure; it never creates unbounded central fanout.
+SFU remains a bounded fallback resource with independent deployment-wide
+admission. Resource exhaustion produces an explicit wait or failure; it never
+creates unbounded central fanout.
 Rooms that actually lose a candidate to deployment-wide admission register in
-one waiter set. An actual SFU/TURN usage decrease drains that set once, advances
+one waiter set. An actual SFU usage decrease drains that set once, advances
 each waiting controller's external fact, and schedules normal reconciliation;
 there is no periodic capacity poll or resource-specific route controller.
-
-For the single-process deployment, selected TURN uses one injected allocation
-authority with an explicitly configured positive safe-integer capacity and no
-product default. Each exact `peer-selected` transport and Host-SFU ingress
-transport consumes one unit. The controller reserves that unit before issuing a
-credential, commits only the matching current identity, and keeps reserved,
-committed, and draining entries charged until their logical authorization is
-released. Independent logical edges may coexist up to this deployment capacity;
-the capacity is not derived from endpoint media-copy capacity, Viewer admission,
-or a room-wide lease count.
 
 For the single-process deployment, SFU admission is one injected authority with
 deployment-wide ingress and egress counters. Enabling LiveKit requires explicit
@@ -315,10 +298,12 @@ deployment-wide.
 
 ## Current Deployment Boundary
 
-Production release `d3ff9e7` runs the `screener-v8` Browser runtime. Its exact
-configuration, rollback artifacts, and postflight evidence are owned by the
-deployment document; real heterogeneous-network and SFU/TURN media validation
-remains open.
+Production release `a5b1fc6` runs the `screener-v8` Browser runtime and still
+contains the superseded selected-TURN surface. Its exact configuration, rollback
+artifacts, and postflight evidence are owned by the deployment document. The
+direct-to-SFU contract is accepted but not deployed until the selected-TURN
+source and production configuration are removed atomically; real
+heterogeneous-network and SFU media validation remains open.
 
 ## Acceptance Boundary
 
@@ -342,9 +327,9 @@ Before a revised controller ships:
 - focused controller tests cover first-frame commit, candidate failure and stale
   ready, relay-ingress reparent with its subtree intact, disconnected relay and
   nested-disconnect convergence, effective capacity `0..C` and overflow drain,
-  SFU-fed first-child use, selected TURN on the same edge, and pause/resume;
-- real-browser tests cover direct peer media, peer relay, server-assisted media,
-  selected transport when configured, failure, and recovery;
+  SFU-fed first-child use and pause/resume;
+- real-browser tests cover direct peer media, peer relay, SFU media, bounded
+  failure, and recovery;
 - deployment preflight proves the LiveKit instance is dedicated, uses
   `room.auto_create: false`, exposes `RoomService` only on its accepted private
   control origin, and can drain its managed namespace before traffic or
@@ -387,7 +372,7 @@ Negative:
 - production intentionally diverges until the implemented source is released;
 - make-before-break consumes explicit endpoint and server reservations and may
   require a bounded-gap cutover when no overlap slot exists; and
-- real SFU/TURN and target-network evidence is still required.
+- real SFU and target-network evidence is still required.
 
 ## Relationship to other ADRs
 
@@ -402,7 +387,6 @@ Negative:
 - [WebRTC](https://w3c.github.io/webrtc-pc/)
 - [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/)
 - [WebRTC transports, RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html)
-- [TURN, RFC 8656](https://www.rfc-editor.org/rfc/rfc8656.html)
 - [RTP topologies, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667.html)
 - [PIM-SM Join/Prune behavior, RFC 7761](https://www.rfc-editor.org/rfc/rfc7761.html)
 - [ICE connectivity checks and candidate checklists, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html)
