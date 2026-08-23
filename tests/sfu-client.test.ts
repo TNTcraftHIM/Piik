@@ -250,6 +250,7 @@ const livekit = vi.hoisted(() => {
 
 const RoomEvent = {
   Disconnected: "disconnected",
+  ParticipantConnected: "participant-connected",
   ParticipantDisconnected: "participant-disconnected",
   Reconnected: "reconnected",
   Reconnecting: "reconnecting",
@@ -1229,6 +1230,48 @@ describe("SfuPublisher", () => {
 });
 
 describe("SfuSubscriber", () => {
+  it("reconciles a Host publication announced while connect is pending", async () => {
+    const gate = deferred();
+    livekit.state.connectGate = gate.promise;
+    const subscriber = new SfuSubscriber({ onStream: vi.fn() });
+    const connecting = subscriber.connect(connection);
+    await vi.waitFor(() => expect(livekit.state.rooms).toHaveLength(1));
+    const room = livekit.state.rooms[0];
+    const host = new livekit.FakeRemoteParticipant("host");
+    const hostVideo = new livekit.FakeRemotePublication(
+      "host-video-pending",
+      Track.Source.ScreenShare,
+    );
+    host.add(hostVideo);
+
+    room.emit(RoomEvent.TrackPublished, hostVideo, host);
+    expect(hostVideo.setSubscribed).not.toHaveBeenCalled();
+    gate.resolve();
+    await expect(connecting).resolves.toBe(true);
+
+    expect(subscriber.activate()).toBe(true);
+    expect(hostVideo.setSubscribed).toHaveBeenCalledWith(true);
+    expect(hostVideo.setVideoQuality).toHaveBeenCalledWith(VideoQuality.HIGH);
+  });
+
+  it("reconciles a Host participant that appears after activation", async () => {
+    const subscriber = new SfuSubscriber({ onStream: vi.fn() });
+    await subscriber.connect(connection);
+    const room = livekit.state.rooms[0];
+    expect(subscriber.activate()).toBe(true);
+
+    const host = new livekit.FakeRemoteParticipant("host");
+    const hostVideo = new livekit.FakeRemotePublication(
+      "host-video-late",
+      Track.Source.ScreenShare,
+    );
+    host.add(hostVideo);
+    room.emit(RoomEvent.ParticipantConnected, host);
+
+    expect(hostVideo.setSubscribed).toHaveBeenCalledWith(true);
+    expect(hostVideo.setVideoQuality).toHaveBeenCalledWith(VideoQuality.HIGH);
+  });
+
   it("keeps the assigned screen subscription at a HIGH ceiling", async () => {
     const gate = deferred();
     livekit.state.connectGate = gate.promise;

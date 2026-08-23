@@ -30,6 +30,11 @@ interface SubscribedTrack {
   onEnded: () => void;
 }
 
+interface KnownHostPublication {
+  publication: RemoteTrackPublication;
+  participant: RemoteParticipant;
+}
+
 type SubscriberState =
   | "idle"
   | "connecting"
@@ -50,6 +55,10 @@ export class SfuSubscriber {
   private readonly stream = new MediaStream();
   private streamEmitted = false;
   private readonly desiredTrackSids = new Set<string>();
+  private readonly knownHostPublications = new Map<
+    string,
+    KnownHostPublication
+  >();
   private state: SubscriberState = "idle";
   private statsAccumulator: StatsAccumulator = createStatsAccumulator();
   private statsTimer: ReturnType<typeof setInterval> | null = null;
@@ -110,12 +119,7 @@ export class SfuSubscriber {
     const generation = this.generation;
     this.state = "active";
     try {
-      const host = room.remoteParticipants.get(HOST_IDENTITY);
-      if (host) {
-        for (const publication of host.trackPublications.values()) {
-          this.subscribeIfAllowed(publication, host, this.sdk);
-        }
-      }
+      this.reconcileHostSubscriptions(room, this.sdk, generation);
       return true;
     } catch (error) {
       if (this.owns(room, generation)) {
@@ -169,11 +173,24 @@ export class SfuSubscriber {
     room.on(
       sdk.RoomEvent.TrackPublished,
       (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-        if (this.state !== "active" || !this.owns(room, generation)) {
+        if (!this.owns(room, generation)) {
           return;
         }
         try {
-          this.subscribeIfAllowed(publication, participant, sdk);
+          this.rememberHostPublication(publication, participant, sdk);
+        } catch {
+          void this.failClosed(room, generation);
+        }
+      },
+    );
+    room.on(
+      sdk.RoomEvent.ParticipantConnected,
+      (participant: RemoteParticipant) => {
+        if (!this.owns(room, generation)) {
+          return;
+        }
+        try {
+          this.rememberHostParticipant(participant, sdk);
         } catch {
           void this.failClosed(room, generation);
         }
@@ -220,6 +237,7 @@ export class SfuSubscriber {
       sdk.RoomEvent.TrackUnpublished,
       (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         if (this.owns(room, generation) && participant.identity === HOST_IDENTITY) {
+          this.knownHostPublications.delete(publication.trackSid);
           this.desiredTrackSids.delete(publication.trackSid);
           this.removeTrack(publication.trackSid);
         }
@@ -229,6 +247,11 @@ export class SfuSubscriber {
       sdk.RoomEvent.ParticipantDisconnected,
       (participant: RemoteParticipant) => {
         if (this.owns(room, generation) && participant.identity === HOST_IDENTITY) {
+          for (const [sid, known] of this.knownHostPublications) {
+            if (known.participant === participant) {
+              this.knownHostPublications.delete(sid);
+            }
+          }
           this.desiredTrackSids.clear();
           this.clearMedia(true);
         }
@@ -241,6 +264,7 @@ export class SfuSubscriber {
     });
     room.on(sdk.RoomEvent.Reconnected, () => {
       if (this.owns(room, generation) && this.state === "active") {
+        this.reconcileHostSubscriptions(room, sdk, generation);
         this.events.onState?.("connected");
         void this.updateStats();
       }
@@ -267,12 +291,64 @@ export class SfuSubscriber {
     ) {
       return;
     }
+    if (this.desiredTrackSids.has(publication.trackSid)) {
+      return;
+    }
     this.desiredTrackSids.add(publication.trackSid);
     publication.setSubscribed(true);
     if (publication.source === sdk.Track.Source.ScreenShare) {
       // HIGH is a ceiling. LiveKit's per-subscriber BWE may still forward LOW
       // while this path is constrained and return to HIGH after recovery.
       publication.setVideoQuality(sdk.VideoQuality.HIGH);
+    }
+  }
+
+  private rememberHostParticipant(
+    participant: RemoteParticipant,
+    sdk: LiveKit,
+  ): void {
+    if (participant.identity !== HOST_IDENTITY) {
+      return;
+    }
+    for (const publication of participant.trackPublications.values()) {
+      this.rememberHostPublication(publication, participant, sdk);
+    }
+  }
+
+  private rememberHostPublication(
+    publication: RemoteTrackPublication,
+    participant: RemoteParticipant,
+    sdk: LiveKit,
+  ): void {
+    if (
+      participant.identity !== HOST_IDENTITY ||
+      !isScreenSource(publication.source, sdk.Track)
+    ) {
+      return;
+    }
+    this.knownHostPublications.set(publication.trackSid, {
+      publication,
+      participant,
+    });
+    if (this.state === "active") {
+      this.subscribeIfAllowed(publication, participant, sdk);
+    }
+  }
+
+  private reconcileHostSubscriptions(
+    room: Room,
+    sdk: LiveKit,
+    generation: number,
+  ): void {
+    if (!this.owns(room, generation) || this.state !== "active") {
+      return;
+    }
+    const host = room.remoteParticipants.get(HOST_IDENTITY);
+    if (host) {
+      this.rememberHostParticipant(host, sdk);
+    }
+    for (const { publication, participant } of this.knownHostPublications.values()) {
+      this.subscribeIfAllowed(publication, participant, sdk);
     }
   }
 
@@ -474,6 +550,7 @@ export class SfuSubscriber {
     this.room = null;
     this.sdk = null;
     this.desiredTrackSids.clear();
+    this.knownHostPublications.clear();
     this.clearMedia(notifyStream);
     return room;
   }
