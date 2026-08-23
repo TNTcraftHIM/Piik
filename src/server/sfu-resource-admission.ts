@@ -4,6 +4,10 @@ export interface SfuResourceFence {
   publicationGeneration: string;
 }
 
+export interface SfuSubscriptionFence extends SfuResourceFence {
+  viewerPeerId: string;
+}
+
 export interface SfuResourceAdmissionOptions {
   readonly ingressCapacity: number;
   readonly egressCapacity: number;
@@ -14,19 +18,27 @@ export interface SfuResourceUsage {
   egress: number;
 }
 
-interface SfuResourceEntry {
-  fence: SfuResourceFence;
-  egress: number;
+type ResourceState = "reserved" | "committed" | "draining";
+
+interface SubscriptionEntry {
+  fence: SfuSubscriptionFence;
+  state: ResourceState;
+  reservedFromDraining: boolean;
 }
 
-interface RoomSfuResources {
-  committed?: SfuResourceEntry;
-  reserved?: SfuResourceEntry;
-  draining: Map<string, SfuResourceEntry>;
+interface PublicationEntry {
+  fence: SfuResourceFence;
+  state: ResourceState;
+  subscriptions: Map<string, SubscriptionEntry>;
+  legacyEgress?: number;
+}
+
+interface RoomResources {
+  publications: Map<string, PublicationEntry>;
 }
 
 export class SfuResourceAdmission {
-  private readonly rooms = new Map<string, RoomSfuResources>();
+  private readonly rooms = new Map<string, RoomResources>();
   private readonly ingressCapacity: number;
   private readonly egressCapacity: number;
   private ingressInUse = 0;
@@ -39,110 +51,220 @@ export class SfuResourceAdmission {
     this.egressCapacity = options.egressCapacity;
   }
 
-  reserve(fence: SfuResourceFence, egress: number): boolean {
+  reservePublication(fence: SfuResourceFence): boolean {
     assertFence(fence);
-    assertPositiveSafeInteger(egress, "SFU egress reservation");
     const room = this.rooms.get(fence.roomId);
-    if (room?.reserved) {
-      return sameEntry(room.reserved, fence, egress);
-    }
-    if (room?.committed && sameFence(room.committed.fence, fence)) {
-      return room.committed.egress === egress;
-    }
-    if (room?.draining.has(fenceKey(fence))) {
-      return false;
+    const existing = room?.publications.get(publicationKey(fence));
+    if (existing) {
+      return existing.state !== "draining" && sameFence(existing.fence, fence);
     }
     if (
       this.ingressInUse >= this.ingressCapacity ||
-      egress > this.egressCapacity - this.egressInUse
+      [...(room?.publications.values() ?? [])].some(
+        (publication) => publication.state === "reserved",
+      )
     ) {
       return false;
     }
 
-    const resources: RoomSfuResources = room ?? { draining: new Map() };
-    resources.reserved = { fence: { ...fence }, egress };
+    const resources = room ?? { publications: new Map() };
+    resources.publications.set(publicationKey(fence), {
+      fence: cloneFence(fence),
+      state: "reserved",
+      subscriptions: new Map(),
+    });
+    this.rooms.set(fence.roomId, resources);
+    this.ingressInUse += 1;
+    return true;
+  }
+
+  reserveSubscription(fence: SfuSubscriptionFence): boolean {
+    assertSubscriptionFence(fence);
+    const publication = this.publication(fence);
+    if (!publication || publication.state === "draining") {
+      return false;
+    }
+    const existing = publication.subscriptions.get(fence.viewerPeerId);
+    if (existing) {
+      if (!sameSubscriptionFence(existing.fence, fence)) return false;
+      if (existing.state === "reserved" || existing.state === "committed") {
+        return true;
+      }
+      if (publication.state !== "committed") return false;
+      existing.state = "reserved";
+      existing.reservedFromDraining = true;
+      return true;
+    }
+    if (this.egressInUse >= this.egressCapacity) return false;
+
+    publication.subscriptions.set(fence.viewerPeerId, {
+      fence: cloneSubscriptionFence(fence),
+      state: "reserved",
+      reservedFromDraining: false,
+    });
+    this.egressInUse += 1;
+    return true;
+  }
+
+  commitPublication(fence: SfuResourceFence): readonly SfuResourceFence[] | null {
+    assertFence(fence);
+    const room = this.rooms.get(fence.roomId);
+    const publication = room?.publications.get(publicationKey(fence));
+    if (!room || !publication || !sameFence(publication.fence, fence)) {
+      return null;
+    }
+    if (publication.state === "committed") return [];
+    if (publication.state !== "reserved") return null;
+
+    const draining: SfuResourceFence[] = [];
+    for (const other of room.publications.values()) {
+      if (other === publication || other.state !== "committed") continue;
+      this.markDraining(other);
+      draining.push(cloneFence(other.fence));
+    }
+    publication.state = "committed";
+    for (const subscription of publication.subscriptions.values()) {
+      if (subscription.state === "reserved") {
+        subscription.state = "committed";
+        subscription.reservedFromDraining = false;
+      }
+    }
+    return draining;
+  }
+
+  commitSubscription(fence: SfuSubscriptionFence): boolean {
+    assertSubscriptionFence(fence);
+    const publication = this.publication(fence);
+    const subscription = publication?.subscriptions.get(fence.viewerPeerId);
+    if (
+      publication?.state !== "committed" ||
+      !subscription ||
+      !sameSubscriptionFence(subscription.fence, fence)
+    ) {
+      return false;
+    }
+    if (subscription.state === "committed") return true;
+    if (subscription.state !== "reserved") return false;
+    subscription.state = "committed";
+    subscription.reservedFromDraining = false;
+    return true;
+  }
+
+  releaseSubscription(fence: SfuSubscriptionFence): boolean {
+    assertSubscriptionFence(fence);
+    const publication = this.publication(fence);
+    const subscription = publication?.subscriptions.get(fence.viewerPeerId);
+    if (
+      !publication ||
+      !subscription ||
+      !sameSubscriptionFence(subscription.fence, fence)
+    ) {
+      return false;
+    }
+    if (subscription.state === "reserved") {
+      if (subscription.reservedFromDraining) {
+        subscription.state = "draining";
+        subscription.reservedFromDraining = false;
+      } else {
+        publication.subscriptions.delete(fence.viewerPeerId);
+        this.subtractEgress(1);
+      }
+      return true;
+    }
+    if (subscription.state === "committed") {
+      subscription.state = "draining";
+    }
+    return true;
+  }
+
+  /** Compatibility wrapper for the pre-controller aggregate reservation. */
+  reserve(fence: SfuResourceFence, egress: number): boolean {
+    assertFence(fence);
+    assertPositiveSafeInteger(egress, "SFU egress reservation");
+    const existing = this.publication(fence);
+    if (existing) {
+      return (
+        existing.state !== "draining" && existing.legacyEgress === egress
+      );
+    }
+    const room = this.rooms.get(fence.roomId);
+    if (
+      this.ingressInUse >= this.ingressCapacity ||
+      egress > this.egressCapacity - this.egressInUse ||
+      [...(room?.publications.values() ?? [])].some(
+        (publication) => publication.state === "reserved",
+      )
+    ) {
+      return false;
+    }
+
+    const resources = room ?? { publications: new Map() };
+    const publication: PublicationEntry = {
+      fence: cloneFence(fence),
+      state: "reserved",
+      subscriptions: new Map(),
+      legacyEgress: egress,
+    };
+    for (let index = 0; index < egress; index += 1) {
+      const viewerPeerId = `legacy_${index}`;
+      publication.subscriptions.set(viewerPeerId, {
+        fence: { ...cloneFence(fence), viewerPeerId },
+        state: "reserved",
+        reservedFromDraining: false,
+      });
+    }
+    resources.publications.set(publicationKey(fence), publication);
     this.rooms.set(fence.roomId, resources);
     this.ingressInUse += 1;
     this.egressInUse += egress;
     return true;
   }
 
+  /** Compatibility wrapper for the pre-controller aggregate commit. */
   commit(fence: SfuResourceFence): readonly SfuResourceFence[] | null {
-    assertFence(fence);
-    const room = this.rooms.get(fence.roomId);
-    if (room?.committed && sameFence(room.committed.fence, fence)) {
-      return [];
-    }
-    if (!room?.reserved || !sameFence(room.reserved.fence, fence)) {
-      return null;
-    }
-
-    const draining: SfuResourceFence[] = [];
-    if (room.committed) {
-      this.addDraining(room, room.committed);
-      draining.push({ ...room.committed.fence });
-    }
-    room.committed = room.reserved;
-    room.reserved = undefined;
-    return draining;
+    return this.commitPublication(fence);
   }
 
   beginDrain(fence: SfuResourceFence): boolean {
     assertFence(fence);
-    const room = this.rooms.get(fence.roomId);
-    if (!room) {
-      return false;
-    }
-
-    if (room.draining.has(fenceKey(fence))) {
-      return true;
-    }
-    let entry: SfuResourceEntry | undefined;
-    if (room.reserved && sameFence(room.reserved.fence, fence)) {
-      entry = room.reserved;
-      room.reserved = undefined;
-    }
-    if (room.committed && sameFence(room.committed.fence, fence)) {
-      entry = room.committed;
-      room.committed = undefined;
-    }
-    if (!entry) {
-      return false;
-    }
-    this.addDraining(room, entry);
+    const publication = this.publication(fence);
+    if (!publication) return false;
+    this.markDraining(publication);
     return true;
   }
 
   completeDrain(fence: SfuResourceFence): boolean {
     assertFence(fence);
     const room = this.rooms.get(fence.roomId);
-    const entry = room?.draining.get(fenceKey(fence));
-    if (!room || !entry) {
+    const key = publicationKey(fence);
+    const publication = room?.publications.get(key);
+    if (
+      !room ||
+      !publication ||
+      publication.state !== "draining" ||
+      !sameFence(publication.fence, fence)
+    ) {
       return false;
     }
-    room.draining.delete(fenceKey(fence));
-    this.subtract(entry);
-    this.deleteEmptyRoom(fence.roomId, room);
+
+    room.publications.delete(key);
+    this.ingressInUse -= 1;
+    this.subtractEgress(publication.subscriptions.size);
+    this.assertNoUnderflow();
+    if (room.publications.size === 0) this.rooms.delete(fence.roomId);
     return true;
   }
 
   beginDrainRoom(roomId: string): readonly SfuResourceFence[] {
-    if (!roomId) {
-      throw new Error("SFU resource room ID is invalid");
-    }
+    if (!roomId) throw new Error("SFU resource room ID is invalid");
     const room = this.rooms.get(roomId);
-    if (!room) {
-      return [];
+    if (!room) return [];
+    for (const publication of room.publications.values()) {
+      this.markDraining(publication);
     }
-    if (room.reserved) {
-      this.addDraining(room, room.reserved);
-      room.reserved = undefined;
-    }
-    if (room.committed) {
-      this.addDraining(room, room.committed);
-      room.committed = undefined;
-    }
-    return [...room.draining.values()].map((entry) => ({ ...entry.fence }));
+    return [...room.publications.values()].map((publication) =>
+      cloneFence(publication.fence),
+    );
   }
 
   beginDrainAll(): readonly SfuResourceFence[] {
@@ -155,35 +277,49 @@ export class SfuResourceAdmission {
     return { ingress: this.ingressInUse, egress: this.egressInUse };
   }
 
-  private subtract(entry: SfuResourceEntry): void {
-    this.ingressInUse -= 1;
-    this.egressInUse -= entry.egress;
+  private publication(
+    fence: SfuResourceFence,
+  ): PublicationEntry | undefined {
+    const publication = this.rooms
+      .get(fence.roomId)
+      ?.publications.get(publicationKey(fence));
+    return publication && sameFence(publication.fence, fence)
+      ? publication
+      : undefined;
+  }
+
+  private markDraining(publication: PublicationEntry): void {
+    publication.state = "draining";
+    for (const subscription of publication.subscriptions.values()) {
+      subscription.state = "draining";
+      subscription.reservedFromDraining = false;
+    }
+  }
+
+  private subtractEgress(count: number): void {
+    this.egressInUse -= count;
+    this.assertNoUnderflow();
+  }
+
+  private assertNoUnderflow(): void {
     if (this.ingressInUse < 0 || this.egressInUse < 0) {
       throw new Error("SFU resource accounting underflow");
     }
   }
-
-  private addDraining(room: RoomSfuResources, entry: SfuResourceEntry): void {
-    room.draining.set(fenceKey(entry.fence), entry);
-  }
-
-  private deleteEmptyRoom(roomId: string, room: RoomSfuResources): void {
-    if (!room.committed && !room.reserved && room.draining.size === 0) {
-      this.rooms.delete(roomId);
-    }
-  }
 }
 
-function fenceKey(fence: SfuResourceFence): string {
+function publicationKey(fence: SfuResourceFence): string {
   return `${fence.shareGeneration}\u0000${fence.publicationGeneration}`;
 }
 
-function sameEntry(
-  entry: SfuResourceEntry,
-  fence: SfuResourceFence,
-  egress: number,
-): boolean {
-  return entry.egress === egress && sameFence(entry.fence, fence);
+function cloneFence(fence: SfuResourceFence): SfuResourceFence {
+  return { ...fence };
+}
+
+function cloneSubscriptionFence(
+  fence: SfuSubscriptionFence,
+): SfuSubscriptionFence {
+  return { ...fence };
 }
 
 function sameFence(left: SfuResourceFence, right: SfuResourceFence): boolean {
@@ -194,9 +330,23 @@ function sameFence(left: SfuResourceFence, right: SfuResourceFence): boolean {
   );
 }
 
+function sameSubscriptionFence(
+  left: SfuSubscriptionFence,
+  right: SfuSubscriptionFence,
+): boolean {
+  return sameFence(left, right) && left.viewerPeerId === right.viewerPeerId;
+}
+
 function assertFence(fence: SfuResourceFence): void {
   if (!fence.roomId || !fence.shareGeneration || !fence.publicationGeneration) {
     throw new Error("SFU resource fence is invalid");
+  }
+}
+
+function assertSubscriptionFence(fence: SfuSubscriptionFence): void {
+  assertFence(fence);
+  if (!fence.viewerPeerId) {
+    throw new Error("SFU subscription fence is invalid");
   }
 }
 

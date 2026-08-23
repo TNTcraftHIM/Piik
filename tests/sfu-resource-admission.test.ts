@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   SfuResourceAdmission,
   type SfuResourceFence,
+  type SfuSubscriptionFence,
 } from "../src/server/sfu-resource-admission.ts";
 
-function fence(
+function publication(
   roomId: string,
   publicationGeneration: string,
   shareGeneration = `share_${roomId}`,
@@ -13,8 +14,15 @@ function fence(
   return { roomId, shareGeneration, publicationGeneration };
 }
 
+function subscription(
+  fence: SfuResourceFence,
+  viewerPeerId: string,
+): SfuSubscriptionFence {
+  return { ...fence, viewerPeerId };
+}
+
 describe("SfuResourceAdmission", () => {
-  it("requires explicit positive safe capacities", () => {
+  it("requires explicit capacities and enforces ingress and egress independently", () => {
     for (const ingressCapacity of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
       expect(
         () => new SfuResourceAdmission({ ingressCapacity, egressCapacity: 1 }),
@@ -23,102 +31,208 @@ describe("SfuResourceAdmission", () => {
     expect(
       () => new SfuResourceAdmission({ ingressCapacity: 1, egressCapacity: 0 }),
     ).toThrow("positive safe integer");
-  });
 
-  it("enforces deployment-wide ingress and egress across rooms", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 2,
+      egressCapacity: 2,
+    });
+    const first = publication("1", "publication_first");
+    const second = publication("2", "publication_second");
+    expect(admission.reservePublication(first)).toBe(true);
+    expect(admission.reservePublication(second)).toBe(true);
+    expect(
+      admission.reservePublication(publication("3", "publication_third")),
+    ).toBe(false);
+    expect(admission.reserveSubscription(subscription(first, "viewer_a"))).toBe(
+      true,
+    );
+    expect(admission.reserveSubscription(subscription(first, "viewer_b"))).toBe(
+      true,
+    );
+    expect(
+      admission.reserveSubscription(subscription(second, "viewer_c")),
+    ).toBe(false);
+    expect(admission.usage()).toEqual({ ingress: 2, egress: 2 });
+  });
+
+  it("keeps exact publication and subscription operations idempotent", () => {
+    const admission = new SfuResourceAdmission({
+      ingressCapacity: 1,
+      egressCapacity: 1,
+    });
+    const active = publication("1", "publication_active");
+    const viewer = subscription(active, "viewer_a");
+    expect(admission.reservePublication(active)).toBe(true);
+    expect(admission.reservePublication({ ...active })).toBe(true);
+    expect(admission.reserveSubscription(viewer)).toBe(true);
+    expect(admission.reserveSubscription({ ...viewer })).toBe(true);
+    expect(admission.commitSubscription(viewer)).toBe(false);
+    expect(admission.commitPublication(active)).toEqual([]);
+    expect(admission.commitPublication({ ...active })).toEqual([]);
+    expect(admission.commitSubscription(viewer)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
+
+    const stale = publication("1", "publication_stale");
+    expect(admission.reserveSubscription(subscription(stale, "viewer_a"))).toBe(
+      false,
+    );
+    expect(admission.commitPublication(stale)).toBeNull();
+    expect(admission.commitSubscription(subscription(active, "viewer_b"))).toBe(
+      false,
+    );
+    expect(admission.releaseSubscription(subscription(active, "viewer_b"))).toBe(
+      false,
+    );
+    expect(admission.beginDrain(stale)).toBe(false);
+  });
+
+  it("commits a new publication and its subscriptions before draining the old generation", () => {
+    const admission = new SfuResourceAdmission({
+      ingressCapacity: 2,
+      egressCapacity: 3,
+    });
+    const first = publication("1", "publication_first");
+    const second = publication("1", "publication_second");
+    const firstViewer = subscription(first, "viewer_a");
+    expect(admission.reservePublication(first)).toBe(true);
+    expect(admission.reserveSubscription(firstViewer)).toBe(true);
+    expect(admission.commitPublication(first)).toEqual([]);
+
+    expect(admission.reservePublication(second)).toBe(true);
+    expect(admission.reserveSubscription(subscription(second, "viewer_b"))).toBe(
+      true,
+    );
+    expect(admission.reserveSubscription(subscription(second, "viewer_c"))).toBe(
+      true,
+    );
+    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
+    expect(admission.commitPublication(second)).toEqual([first]);
+    expect(admission.commitSubscription(subscription(second, "viewer_b"))).toBe(
+      true,
+    );
+    expect(admission.reservePublication(first)).toBe(false);
+    expect(admission.reserveSubscription(firstViewer)).toBe(false);
+
+    expect(admission.completeDrain(first)).toBe(true);
+    expect(admission.completeDrain(first)).toBe(false);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
+  });
+
+  it("refunds a new reserved subscription when its candidate aborts", () => {
+    const admission = new SfuResourceAdmission({
+      ingressCapacity: 1,
+      egressCapacity: 2,
+    });
+    const active = publication("1", "publication_active");
+    const first = subscription(active, "viewer_a");
+    const candidate = subscription(active, "viewer_b");
+    expect(admission.reservePublication(active)).toBe(true);
+    expect(admission.reserveSubscription(first)).toBe(true);
+    expect(admission.commitPublication(active)).toEqual([]);
+
+    expect(admission.reserveSubscription(candidate)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
+    expect(admission.releaseSubscription(candidate)).toBe(true);
+    expect(admission.releaseSubscription(candidate)).toBe(false);
+    expect(admission.commitSubscription(candidate)).toBe(false);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
+  });
+
+  it("reactivates a draining subscription in the current generation without double charging", () => {
+    const admission = new SfuResourceAdmission({
+      ingressCapacity: 1,
+      egressCapacity: 1,
+    });
+    const active = publication("1", "publication_active");
+    const viewer = subscription(active, "viewer_a");
+    expect(admission.reservePublication(active)).toBe(true);
+    expect(admission.reserveSubscription(viewer)).toBe(true);
+    expect(admission.commitPublication(active)).toEqual([]);
+    expect(admission.releaseSubscription(viewer)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
+
+    expect(admission.reserveSubscription(viewer)).toBe(true);
+    expect(admission.reserveSubscription(viewer)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
+    expect(admission.releaseSubscription(viewer)).toBe(true);
+    expect(
+      admission.reserveSubscription(subscription(active, "viewer_b")),
+    ).toBe(false);
+    expect(admission.reserveSubscription(viewer)).toBe(true);
+    expect(admission.commitSubscription(viewer)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
+  });
+
+  it("keeps departed subscription egress charged until publication drain proof", () => {
+    const admission = new SfuResourceAdmission({
+      ingressCapacity: 1,
+      egressCapacity: 1,
+    });
+    const active = publication("1", "publication_active");
+    const viewer = subscription(active, "viewer_a");
+    expect(admission.reservePublication(active)).toBe(true);
+    expect(admission.reserveSubscription(viewer)).toBe(true);
+    expect(admission.commitPublication(active)).toEqual([]);
+    expect(admission.releaseSubscription(viewer)).toBe(true);
+    expect(
+      admission.reserveSubscription(subscription(active, "viewer_b")),
+    ).toBe(false);
+    expect(admission.beginDrain(active)).toBe(true);
+    expect(admission.beginDrain(active)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
+    expect(admission.completeDrain(active)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
+  });
+
+  it("drains every reserved and committed generation exactly once", () => {
+    const admission = new SfuResourceAdmission({
+      ingressCapacity: 3,
       egressCapacity: 4,
     });
-    expect(admission.reserve(fence("1", "publication_a"), 2)).toBe(true);
-    expect(admission.reserve(fence("2", "publication_b"), 2)).toBe(true);
-    expect(admission.usage()).toEqual({ ingress: 2, egress: 4 });
+    const active = publication("1", "publication_active");
+    const replacement = publication("1", "publication_replacement");
+    const other = publication("2", "publication_other");
+    expect(admission.reservePublication(active)).toBe(true);
+    expect(admission.reserveSubscription(subscription(active, "viewer_a"))).toBe(
+      true,
+    );
+    expect(admission.commitPublication(active)).toEqual([]);
+    expect(admission.reservePublication(replacement)).toBe(true);
+    expect(
+      admission.reserveSubscription(subscription(replacement, "viewer_b")),
+    ).toBe(true);
+    expect(admission.reservePublication(other)).toBe(true);
+    expect(admission.reserveSubscription(subscription(other, "viewer_c"))).toBe(
+      true,
+    );
 
-    expect(admission.reserve(fence("3", "publication_c"), 1)).toBe(false);
-    expect(admission.usage()).toEqual({ ingress: 2, egress: 4 });
+    const firstRoom = admission.beginDrainRoom("1");
+    expect(firstRoom).toEqual([active, replacement]);
+    expect(admission.beginDrainRoom("1")).toEqual(firstRoom);
+    expect(admission.beginDrainAll()).toEqual([active, replacement, other]);
+    expect(admission.usage()).toEqual({ ingress: 3, egress: 3 });
+    for (const fence of [active, replacement, other]) {
+      expect(admission.completeDrain(fence)).toBe(true);
+      expect(admission.completeDrain(fence)).toBe(false);
+    }
+    expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
-  it("charges old and candidate generations until exact drain proof", () => {
+  it("keeps the aggregate API available while the router migrates", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 2,
-      egressCapacity: 5,
+      egressCapacity: 3,
     });
-    const first = fence("1", "publication_first");
-    const second = fence("1", "publication_second");
+    const first = publication("1", "publication_first");
+    const second = publication("1", "publication_second");
     expect(admission.reserve(first, 1)).toBe(true);
+    expect(admission.reserve(first, 1)).toBe(true);
+    expect(admission.reserve(first, 2)).toBe(false);
     expect(admission.commit(first)).toEqual([]);
     expect(admission.reserve(second, 2)).toBe(true);
-    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
-
-    expect(admission.commit(fence("1", "publication_stale"))).toBeNull();
     expect(admission.commit(second)).toEqual([first]);
     expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
     expect(admission.completeDrain(first)).toBe(true);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
-    expect(admission.completeDrain(first)).toBe(false);
-  });
-
-  it("makes duplicate operations idempotent without weakening fences", () => {
-    const admission = new SfuResourceAdmission({
-      ingressCapacity: 2,
-      egressCapacity: 3,
-    });
-    const pending = fence("1", "publication_pending");
-    expect(admission.reserve(pending, 2)).toBe(true);
-    expect(admission.reserve(pending, 2)).toBe(true);
-    expect(admission.reserve(pending, 1)).toBe(false);
-    expect(admission.reserve(fence("1", "publication_other"), 1)).toBe(false);
-    expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
-
-    expect(admission.beginDrain(pending)).toBe(true);
-    expect(admission.beginDrain(pending)).toBe(true);
-    expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
-    expect(admission.completeDrain(pending)).toBe(true);
-    expect(admission.completeDrain(pending)).toBe(false);
-    expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
-  });
-
-  it("moves a room's committed and reserved resources into draining together", () => {
-    const admission = new SfuResourceAdmission({
-      ingressCapacity: 2,
-      egressCapacity: 4,
-    });
-    const active = fence("1", "publication_active");
-    expect(admission.reserve(active, 1)).toBe(true);
-    expect(admission.commit(active)).toEqual([]);
-    expect(admission.reserve(fence("1", "publication_candidate"), 2)).toBe(
-      true,
-    );
-
-    const draining = admission.beginDrainRoom("1");
-    expect(draining).toHaveLength(2);
-    expect(admission.beginDrainRoom("1")).toEqual(draining);
-    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
-    for (const resourceFence of draining) {
-      expect(admission.completeDrain(resourceFence)).toBe(true);
-    }
-    expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
-  });
-
-  it("moves every room to draining before its process owner closes", () => {
-    const admission = new SfuResourceAdmission({
-      ingressCapacity: 2,
-      egressCapacity: 3,
-    });
-    const active = fence("1", "publication_active");
-    expect(admission.reserve(active, 1)).toBe(true);
-    expect(admission.commit(active)).toEqual([]);
-    expect(admission.reserve(fence("2", "publication_pending"), 2)).toBe(
-      true,
-    );
-
-    const draining = admission.beginDrainAll();
-    expect(draining).toHaveLength(2);
-    expect(admission.beginDrainAll()).toEqual(draining);
-    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
-    for (const resourceFence of draining) {
-      expect(admission.completeDrain(resourceFence)).toBe(true);
-    }
-    expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 });
