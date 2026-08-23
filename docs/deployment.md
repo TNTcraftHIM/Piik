@@ -129,11 +129,11 @@ instance, and its tracked configuration sets `room.auto_create: false`.
 
 The accepted target for `share.bonfire.icu` remains distributed and automatic:
 direct/peer UDP first, with one Host publication available to authorized SFU
-subscriptions when a logical edge cannot use peer transport. An SFU-fed Viewer
-may continue as a peer relay only after independent outbound proof; strict
-fallback Viewers remain leaves. Server-assisted subscriptions and allocations
-use independent deployment admission rather than an endpoint-cap or fixed-root
-rule.
+subscriptions when a logical edge cannot use peer transport. SFU-fed and
+peer-fed endpoints use the same provisional-child transaction, and the exact
+candidate child's first newly decoded frame commits that edge. Server-assisted
+subscriptions and allocations use independent deployment admission rather than
+an endpoint-cap or fixed-root rule.
 
 The repository requires STUN and ordinary peer connections receive STUN-only
 ICE. An existing logical edge prefers direct/peer UDP and may use exact selected

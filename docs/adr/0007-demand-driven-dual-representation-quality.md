@@ -29,13 +29,10 @@ Use path-isolated dual representations:
    publishes one shared `HIGH+LOW` pair and lets LiveKit BWE independently
    choose and recover the forwarded layer for each subscriber. If that gate
    passes, Screener does not add a media-layer selector.
-3. Correlated sender/viewer evidence and asymmetric windows classify topology
-   eligibility and diagnostics only. An observed downshift is `suspect`; a
-   confirmed `FALLBACK` relay parent cannot remain a parent. The edge-versus-
-   parent scope, same-edge C+B handling, local repair, and drain actions are
-   owned by ADR-0005's `EdgeHealth`/`RelayEligibility` controller; this ADR
-   does not turn representation evidence into a second topology authority or
-   command ordinary built-in layer changes.
+3. Sender/viewer evidence diagnoses capture, encode, transport, receive, and
+   decode behavior. It does not change topology or command ordinary built-in
+   layer changes. ADR-0005 reacts only to an exact child edge's hard connection
+   failure or non-paused decoded-frame stall.
 4. Explicit subscriber quality or sender layer activation is considered only
    if the built-in candidate fails its bounded gate. Deactivating an unused
    `LOW` is a resource optimization, not an acceptance requirement.
@@ -54,12 +51,9 @@ cannot reliably provide the one shared `LOW`, either always-on or on demand,
 fails quality acceptance; optimize its encode path or mark
 that cohort unsupported. Never protect a weak path by reducing `HIGH`.
 
-The durable topology states use explicit predicates and asymmetric
-entry/recovery windows; `suspect` is the sampling interval before a transition,
-not a third media mode. There is no weighted score, device ranking,
-machine-learning controller, custom media selector, or continuous room-wide
-optimizer. Exact thresholds remain implementation inputs until the controlled
-quality matrix establishes them.
+There is no weighted score, device ranking, machine-learning controller, custom
+media selector, or continuous room-wide optimizer. Representation evidence does
+not create route states.
 
 The topology and representation budgets are independent invariants. Each
 non-server endpoint follows ADR-0005 steady outbound media-copy capacity `C`
@@ -69,25 +63,16 @@ encoded packets without decoding or re-encoding. Future dual-tree or striped
 delivery may reduce host upload from about two full copies toward one copy plus
 necessary redundancy, but it does not block this decision.
 
-The application must not stably retain a confirmed `FALLBACK` relay parent as a
-parent. A later planned or explicit `LOW` fallback is leaf-only: complete a
-generation-guarded child evacuation before changing its quality, and preserve
-the prior assignment and quality if evacuation fails or becomes stale. An SFU
-may make an unannounced congestion-protection downshift before the application
-can react. Treat that observation as `suspect`, not confirmed `FALLBACK`; the
-representation evidence may contribute to the bounded topology evidence, but
-ADR-0005 decides whether it is an edge-local reparent or a relay-parent
-cordon/repair/drain. C+B from one edge alone never proves parent-wide failure;
-parent drain requires the independent-edge or hard-failure conditions in
-ADR-0005. This cannot promise packet-level preemption, so the root-with-
-children gate must bound temporary descendant impact before default enablement.
-Re-advertising relay capacity still needs the longer recovery window and a
-cooldown. A viewer's advisory request cannot trigger this sequence by itself.
+LiveKit may downshift an SFU subscription before the application observes it.
+That is normal per-subscriber adaptation and does not alter relay eligibility.
+If the exact ingress later hard-fails or stops decoding while unpaused,
+ADR-0005 reparents that Viewer as a child and retains its subtree. A viewer's
+advisory quality request cannot trigger route mutation by itself.
 
 ## Evidence Contract
 
-Before enabling quality-aware topology changes, correlate the same time
-interval and stream generation across three stages:
+For diagnosis and representation acceptance, correlate the same time interval
+and stream generation across three stages:
 
 | Stage | Required evidence |
 | --- | --- |
@@ -111,25 +96,18 @@ field, stream/stat ID change, or counter reset. Missing values remain unknown;
 they are not zeros.
 
 Implementation is staged. First correlate A and B locally in one sampling tick,
-with an explicit interval, media/stat identity, and valid deltas. Only after
-that probe is trustworthy may the product add a minimal authenticated C report
-for the few receive/decode signals required by the topology predicate. The B/C
-correlation uses normalized fields derived from negotiated parameters/stats and
-actual decode behavior; it must never upload raw SDP, raw stats, candidate
-addresses, or raw device/network identifiers. Opaque server-issued path and
-connection-generation IDs remain required for authorization and correlation,
-and the evidence carries ADR-0005's exact route identity: room/share
-generation, both endpoint sessions, assignment/connection generation,
-media-binding generation, route revision, and publication generation when
-applicable.
+with an explicit interval, media/stat identity, and valid deltas. A minimal
+authenticated C report may add receive/decode diagnosis after that probe is
+trustworthy. The B/C correlation uses normalized fields derived from negotiated
+parameters/stats and actual decode behavior; it must never upload raw SDP, raw
+stats, candidate addresses, or raw device/network identifiers. Opaque
+server-issued path and connection IDs authorize diagnostic correlation only.
 Do not build a general telemetry schema.
 
 A viewer may request `LOW`, but the request is advisory. It must be carried on
 an authenticated, current room/path session and be rate-limited and deduplicated.
-The topology classifier accepts it only when viewer receive/decode behavior and
-derived negotiated codec/profile/parameters (including applicable
-`scalabilityMode`) agree with sender transport/GCC and encode evidence. A
-request alone cannot lower quality or start a representation.
+It may be shown with matching sender/viewer diagnosis, but it cannot lower
+quality, start a representation, or change topology.
 
 UA, platform, and device-model detection does not participate in quality or
 relay-capacity selection. Browser capability queries can guide a bounded probe,
@@ -141,8 +119,7 @@ Inspect standard capabilities in order and stop at the first accepted path
 before custom dual-representation media. Static API or pinned-protocol
 incompatibilities can close a candidate without a browser run; runtime media
 gates start only after the A+B/C evidence contract is trustworthy. These
-results do not create an application media-layer selector; the asymmetric
-evidence windows remain limited to topology eligibility and diagnostics:
+results do not create an application media-layer selector or route authority:
 
 1. **Web P2P simulcast: rejected
    (`no-go-web-p2p-simulcast-layer-selection`).** WebRTC exposes
@@ -180,12 +157,8 @@ evidence windows remain limited to topology eligibility and diagnostics:
    Screener's
    subscriber does not attach a `RemoteTrack`, so LiveKit `adaptiveStream` is not
    directly usable without changing that ownership; it is not required for the
-   SFU bandwidth-adaptation candidate. Before default enablement, a separate
-   root-with-children gate must inject an autonomous downshift and observe it as
-   suspect. ADR-0005 then chooses local repair, edge-local reparent, or
-   RelayEligibility parent drain; only that drain branch evacuates children and
-   limits temporary descendant impact. No confirmed `FALLBACK` root may retain
-   children. If built-in selection
+   SFU bandwidth-adaptation candidate. A root with children uses the same
+   built-in BWE; an automatic downshift does not mutate topology. If built-in selection
    fails the product gates, test explicit standard subscriber quality selection
    before sender activation/deactivation. The gate must prove that a healthy
    P2P/`HIGH` path is unchanged, no third layer appears, the expected layer is
@@ -199,8 +172,8 @@ evidence windows remain limited to topology eligibility and diagnostics:
    prevents the pinned multi-codec path from enabling it automatically.
    The 2026-08-22 executable preflight verifies this configuration, retains a
    zero-child subscriber, and rejects excess central roots. Per-subscriber BWE,
-   actual layer forwarding, hardware cost, and root-with-children behavior
-   remain unverified, so no runtime performance claim follows. If the always-on
+   actual layer forwarding for leaves and relay roots, and hardware cost remain
+   unverified, so no runtime performance claim follows. If the always-on
    cost fails, test manual standard sender activation/deactivation next;
    custom/native dual encoding follows only if built-in and manual standard
    primitives fail.
@@ -264,7 +237,7 @@ Positive:
   subscriber; its idle deactivation is allowed but not required. Physical
   encoder instances and resource cost remain measured outcomes.
 - Encode cost is bounded independently of viewer count.
-- The topology classifier and its evidence remain inspectable.
+- The diagnostic evidence remains inspectable.
 
 Negative:
 
@@ -288,7 +261,7 @@ Negative:
 - Do not start or retain `LOW` when its measured hardware, game, or upload cost
   violates budget.
 - Do not add a composite health score or media selector when built-in adaptation
-  plus topology predicates suffice.
+  and ADR-0005 edge recovery suffice.
 
 ## Verification Gates
 
@@ -302,13 +275,9 @@ Negative:
 - Representation count never exceeds two. Host and relay endpoint media copies
   follow ADR-0005 steady capacity `C`; the two-edge result is only the bounded
   experiment configuration.
-- A later planned/explicit `LOW` fallback evacuates children first and preserves the
-  prior state on stale/failed evacuation. An autonomous BWE downshift enters
-  `suspect`; ADR-0005's bounded edge/parent evidence then chooses local repair,
-  child reparent, or parent drain, and no confirmed `FALLBACK` relay parent
-  retains downstream capacity. The root-with-children gate measures temporary
-  descendant impact before default enablement.
-- Relay capacity returns only after the longer stable recovery plus cooldown.
+- Built-in BWE downshift and recovery remain local to each SFU subscription and
+  do not change topology. Exact ingress failure is handled only by ADR-0005's
+  generic child reparent operation.
 - An unavailable/over-budget `LOW` fails visibly for weak paths while healthy
   paths and `HIGH` remain unchanged.
 - Every supported sender cohort can reliably provide the one shared `LOW`,

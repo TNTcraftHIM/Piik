@@ -57,8 +57,8 @@ hypothesis, not a conclusion. A further report that quality may remain low
 after the old viewer leaves and a new viewer joins must likewise be tested
 against lifecycle evidence rather than assumed.
 
-Use this as the first A+B/C reproduction before quality-aware topology
-classification or dual-layer publication:
+Use this as the first A+B/C reproduction before any route change or dual-layer
+publication:
 
 1. Reproduce one wired LAN/direct viewer first, then Wi-Fi, two/three viewers,
    and forced TURN, using the same high-motion scene for 60 to 90 seconds.
@@ -76,9 +76,9 @@ classification or dual-layer publication:
 
 A single-edge rebuild passes only if the affected viewer recovers, unaffected
 viewers neither migrate nor interrupt, and the host-edge cap holds. Only proven
-generation-specific failure can justify a later automatic one-edge recovery
-with sustained-bandwidth and healthy-counterpart evidence, cooldown, and a
-generation guard. Do not add periodic reconnect, blindly raise a ceiling, or
+generation-specific hard failure or non-paused decoded-frame stall can justify
+automatic one-edge recovery under the current route attempt. Do not add
+periodic reconnect, blindly raise a ceiling, or
 change the current routing behavior before this gate.
 
 Missing `scaleResolutionDownBy` is not itself a root cause for a single encoding
@@ -377,7 +377,7 @@ one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
-The topology classifier and shared `HIGH+LOW` publication remain unimplemented,
+The shared `HIGH+LOW` publication remains unimplemented,
 and browser support remains subject to the controlled matrix. Physically
 stopping an unused `LOW` is a resource optimization rather than a prerequisite.
 
@@ -414,11 +414,10 @@ passes, Screener does not add a media-layer selector. The hard active
 representation/layer limit is two, never one per viewer, and stopping idle
 `LOW` remains optional.
 
-Correlated sender/viewer evidence and asymmetric entry/recovery windows classify
-topology eligibility and diagnostics only. An observed BWE downshift is
-`suspect`; sustained evidence confirms `FALLBACK`, removes parent capacity, and
-longer recovery plus cooldown can restore that capacity. These application
-states do not command ordinary built-in layer changes.
+Sender/viewer evidence diagnoses capture, encode, transport, receive, and decode
+behavior. It does not classify topology eligibility. An observed BWE downshift
+is ordinary per-subscriber adaptation and does not command route or media-layer
+changes.
 
 `LOW` itself is conditional: if no qualified hardware/power-efficient media
 path exists or the additional representation exceeds the measured
@@ -435,17 +434,10 @@ remains protected in either case.
 A viewer's `LOW` request is advisory and must be authenticated, session-bound,
 rate-limited, deduplicated, and corroborated by sender transport/encode and
 viewer receive/decode stats. UA or device-model detection is not quality or
-relay-capacity evidence. A valid report may affect confirmed topology eligibility; it does not
-command built-in WebRTC/LiveKit media adaptation.
-
-The application must not stably retain a confirmed `FALLBACK` parent. For a
-later planned or explicit quality fallback it evacuates children under the current generation
-before setting `LOW`, preserving the prior state on failure. Built-in SFU BWE
-can downshift before application evidence exists; record that as `suspect`, then
-evacuate and set capacity zero only after bounded correlated confirmation. The
-system cannot promise packet-level preemption of that congestion response, so a
-root-with-children gate must measure and bound temporary descendant impact
-before default enablement.
+relay-capacity evidence. A valid report does not change topology or command
+built-in WebRTC/LiveKit media adaptation. Built-in SFU BWE may downshift and
+recover a subscription without any Screener route action; only the exact
+ingress's hard failure or non-paused decoded-frame stall wakes ADR-0005.
 
 An ordinary non-scalable stream cannot yield a second independent quality by
 packet forwarding alone. The alternatives are a second representation,
@@ -480,17 +472,15 @@ a product no-go. The Firefox branch's 4x scale, 10 bps, and non-standard
 layer; it does not invalidate the always-on two-layer candidate.
 
 The next runtime gate must publish exactly `HIGH+LOW` with standard
-simulcast/send encodings, leave each zero-descendant SFU leaf's ceiling at
-`HIGH`, and first test built-in per-subscriber SFU bandwidth adaptation and
+simulcast/send encodings, leave each SFU subscription's ceiling at `HIGH`, and
+test built-in per-subscriber SFU bandwidth adaptation and
 recovery. Start with Dynacast off for a deterministic always-on measurement;
 pinned cumulative
 Dynacast-on is another always-on form, not a third representation. Prove the
 received layer, the two-layer ceiling, unchanged healthy P2P/`HIGH`, and
 hardware encoder, game FPS/p1 low, CPU/GPU, interval encode cost, upload, and
-per-layer byte budgets. Before default enablement, a separate root-with-children
-gate must inject an autonomous downshift, observe `suspect`, evacuate after
-bounded confirmation, and limit temporary descendant impact; no confirmed
-`FALLBACK` root may retain children. Screener's current publisher always
+per-layer byte budgets for both leaves and relay roots. An autonomous downshift
+does not evacuate children or alter route state. Screener's current publisher always
 configures exactly two ordered `q`/`h` encodings whenever an SFU publication is
 active, explicitly constructs `Room({ dynacast: false })`, disables backup-codec
 publication, and its subscriber sets a `HIGH` ceiling after selectively
@@ -527,8 +517,8 @@ This preflight does not start LiveKit 1.13.5, a browser, or a network shaper. It
 therefore does not prove packet receipt/forwarding, autonomous BWE downshift and
 recovery, actual `LOW`/`HIGH` dimensions, per-layer bytes, encoder count, CPU/GPU,
 game frame time, or upload cost. Those remain acceptance requirements for the
-isolated zero-descendant run below; root-with-children behavior remains a later
-default-on gate.
+isolated run below; relay-root behavior remains resource and quality evidence,
+not a route gate.
 
 ### Per-Flow Shaping Preflight
 
@@ -774,8 +764,7 @@ oscillates or makes the wrong tradeoff on supported machines, revise that
 explicit option before enabling ADR-0007. Its acceptance matrix must prove that built-in
 LiveKit BWE independently moves one shaped SFU leaf to the shared `LOW` and back
 while a healthy leaf remains `HIGH`, without an application media selector. The
-application's asymmetric evidence windows must affect only confirmed topology
-eligibility and diagnostics. Each supported sender cohort must provide `LOW`
+application's evidence windows remain diagnostic only. Each supported sender cohort must provide `LOW`
 within measured hardware, game, and upload budgets; idle-layer resource release
 is a separate optimization.
 

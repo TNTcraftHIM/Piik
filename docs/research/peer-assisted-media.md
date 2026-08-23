@@ -287,21 +287,15 @@ its affected descendant and resumed advancing frames in 5,380 ms while the Host
 remained within two media edges. The requested synthetic source was 1280x720 at
 30 fps, but observed final samples remained 320x180 at roughly 9-11 fps. This is
 real local `RTCPeerConnection` media and hard-participant-departure evidence. It
-does not exercise correlated bad-quality detection or provisional MBB, a silent
+does not exercise decoded-frame-stall recovery or provisional MBB, a silent
 socket partition, SFU, TURN, a public network, game capture, or resource quality.
 
 A 2026-08-22 opt-in `BENCHMARK_CANARY=viewer-mbb` run on the same Chrome build
-used one Host and three Viewers. The harness injected three valid two-second
-viewer-quality windows and parent-limited proof messages through the existing
-authenticated socket, then observed the real provisional `RTCPeerConnection`
-retain the old edge, promote to a Viewer candidate, and keep the same connection
-identity while decoded frames advanced. It also checked the ordinary one-edge
-cap and absence of route-failed messages. The report contains only booleans and
-sanitized counters; it emits no participant IDs, SDP, or ICE candidates. The
-windows are synthetic control input, so this proves the state-transition and
-continuity path only, not bad-relay detector quality, network performance, or a
-real heterogeneous route. Host-candidate and signaling-response-blackhole
-canaries remain deferred.
+used one Host and three Viewers. It observed a real provisional
+`RTCPeerConnection` retain the old edge, promote the candidate, preserve the
+connection identity, and continue decoded-frame progress within the ordinary
+edge cap. This is reusable make-before-break control evidence only; its
+synthetic trigger is not route policy or heterogeneous-network evidence.
 
 A 2026-08-21 local Chrome 151 capacity-two run used one Host and five Viewers
 with a synthetic 720p30 stream. Host and relay fanout peaked at two; one Viewer

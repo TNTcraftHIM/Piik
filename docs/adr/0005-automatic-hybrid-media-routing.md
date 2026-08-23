@@ -30,8 +30,10 @@ capacity:
 - an upstream receive edge does not consume this downstream budget;
 - role, browser, user agent, device class, and page visibility do not create a
   different release tier;
-- a client advertisement may reduce its usable capacity but cannot exceed the
-  deployment value; and
+- a connected endpoint's server-authoritative effective downstream capacity is
+  the deployment value clamped by its current `0..C` availability advertisement;
+  `0` means it currently accepts no downstream child and does not create another
+  release tier; and
 - one named configuration value and one shared implementation boundary own the
   policy. Route code must not repeat literal policy numbers.
 
@@ -78,39 +80,62 @@ Direct or peer UDP remains the first media choice. Ordinary peer
 not distributed to ordinary peer edges by default. HTTPS and WSS continue to
 use TLS/TCP independently of media transport.
 
-Routing is event-driven. Join, capacity release, endpoint departure, current-edge
-failure, and accepted path-health evidence may open a bounded reassignment. The
-controller does not continuously optimize the room, infer policy from a user
-agent, or aggregate unrelated paths into a room-wide quality score.
+Routing is event-driven. Join, capacity release or reduction, endpoint departure,
+current-edge hard failure, and a non-paused decoded-frame stall wake the same
+reconciliation loop. The controller otherwise leaves the room unchanged.
 
 Parent selection is deterministic and local. The controller first filters on
-current authority, source reachability, acyclicity, depth, sender reservations,
-relay eligibility, exact-edge exclusion/cooldown, and server admission. It then
+current authority, source reachability, acyclicity, effective downstream
+capacity, sender reservations, candidate tuples already tried by the current
+operation, and server admission.
+It then
 orders eligible parents lexicographically by the shallowest resulting depth,
 the greatest remaining steady sender capacity, stable join order, and peer
 identity. It prepares one candidate at a time. The candidate's standard ICE
-checklist proves connectivity and current-generation RTP plus decoded frames
-prove media; raw addresses, a claimed NAT class, geography, user agent, or a
+checklist proves transport connectivity; the exact candidate child's first new
+decoded video frame is the application media-ready event. Raw addresses, a
+claimed NAT class, geography, user agent, or a
 weighted room-wide score never choose a parent. A failed candidate releases its
-reservation before the next candidate is attempted. Join and hard-failure repair
-accept the first candidate that reaches the media-usable floor; a soft-quality
-move also needs the quality owner to prove recovery and improvement over the
-still-healthy old edge.
+reservation before the next candidate is attempted. The first candidate that
+reaches the media-usable floor commits; otherwise the loop reaches the next
+candidate, an explicit wait, or bounded failure.
+
+There is no independent maximum-depth policy. Acyclicity and room admission
+bound the graph, while shallowest-first ordering minimizes depth. Depth remains
+an observed acceptance metric.
+
+A candidate identity is one logical upstream plus one transport. For an invalid
+ordinary child edge, the operation may create a fresh direct/STUN connection to
+the same parent, another eligible peer parent, an admitted selected-TURN
+transport, or an SFU subscription. All eligible direct/STUN tuples use
+deterministic parent order before admitted selected-TURN tuples, followed by SFU
+fallback. If the Host has no usable direct first-level peer path, the operation
+prefers its single Host publication, using selected TURN for that ingress when
+needed, rather than enumerating Host-TURN Viewer edges. The operation records
+only exact tuples already tried; failure does not globally exclude that parent
+from later room events.
 
 ### Authorization and transition
 
-Every prepare, signal, recovery, commit, and rollback is bound to the exact
-room, share generation, endpoint sessions, route revision, assignment
-generation, connection identity, media-binding generation, and publication
-generation when one exists.
+Every prepare, signal, recovery, commit, and rollback is bound to the
+authenticated room and endpoint sessions, current share generation, base route
+revision, and unique pending revision. Connection identity fences the candidate
+PeerConnection, and publication generation remains owned by the SFU resource
+lifecycle.
+A single pending child-operation object aggregates these bindings, the
+deterministic candidate list and cursor, its current candidate and reservations,
+and one total operation deadline. Candidate failure advances the cursor without
+resetting that deadline. These fields do not become separate gates or state
+machines, and this route wave adds no
+assignment, media-binding, or proof generation to the wire.
 A stale or mismatched asynchronous result fails closed and cannot revive an old
 edge.
 
 A route replacement uses make-before-break only when the typed endpoint and
 server-resource ledger atomically admits the required reservations. The old
-route remains authoritative until the new route proves current-generation media
-with a live track, positive RTP progress, and decoded-frame progress. ICE
-`connected` alone is insufficient. Commit promotes that exact candidate
+route remains authoritative until the exact candidate child decodes its first
+new video frame. ICE `connected` alone is insufficient. Commit promotes that
+exact candidate
 atomically; timeout, failure, stale identity, or revoked authority destroys it,
 releases reservations idempotently, and keeps or restores the previous valid
 route. When a full sender has no overlap slot, the controller may preconnect
@@ -123,26 +148,28 @@ server fanout, or an untracked parallel route.
 
 ## Accepted Assisted-Route Model
 
-One room controller owns three operations: allocate/distribute, child reparent,
-and relay abdicate/drain. It is the only owner of the committed graph, pending
-target, and transition lifecycle. Topology helpers retain participant metadata
-and purely plan candidates; they do not retain a second mutable route graph.
-The operations share one target snapshot, one pending transition, one resource
-ledger, and monotonic room/session/revision fences.
+One room controller owns the committed graph, one pending child operation, and one
+event-driven reconciliation loop. Allocate/distribute, child reparent, and relay
+abdicate/drain are inputs to that loop rather than separate state machines.
+Topology helpers retain participant metadata and choose candidates without a
+second mutable graph.
 
+- The loop first removes disconnected childless participants, then selects one
+  connected waiting Viewer or one child whose parent is disconnected,
+  lacks effective capacity for that child, or owns the exact failed edge. It
+  prepares one upstream change and wakes again after commit, abort, or another
+  room event.
+- A relay whose ingress fails is itself the child being reparented; its subtree
+  remains attached. A disconnected endpoint, or one with effective downstream
+  capacity `0`, accepts no new children. Direct or deterministic overflow children
+  are reparented one at a time by the same loop, and disconnected leaves are
+  removed naturally.
 - The Host is the only source publisher. There is at most one authoritative Host
   publication per share generation, and every SFU-fed Viewer subscribes to it.
-  An SFU-fed Viewer is not a committed relay parent merely because it advertises
-  capacity or proves its SFU ingress. The controller may reserve one formal
-  sender slot and prepare one exact provisional ordinary-child edge as the proof
-  transaction. Connected transport, a live video track, and positive current-
-  window RTP-receive and decoded-frame deltas at that child prove the outbound
-  path end to end; exact sender ownership and controller admission prove resource
-  and slot availability. Only atomic commit makes the Viewer relay-eligible.
-  Failure, timeout, stale authority, pause, or identity change destroys the
-  candidate and leaves the Viewer a leaf. Every later child still requires its
-  own exact media proof. Viewer republishing into a second SFU publication is
-  outside the current product.
+  Any source-reachable endpoint with effective capacity may be a parent
+  candidate; SFU-fed and peer-fed endpoints use the same provisional-child
+  transaction and each child edge commits independently. Viewer republishing
+  into a second SFU publication is outside the current product.
 - TURN is a selected transport for an existing authorized logical edge or the
   Host-to-SFU ingress. It is not a topology node, a second source, or a global
   room lease. Existing direct/STUN edges remain preferred; a failed selected
@@ -156,45 +183,20 @@ ledger, and monotonic room/session/revision fences.
   `min(steadyCap + 1, 3)` only for one fenced, deadline-bound handoff and must
   return to steady bounds at commit. There is no fixed SFU-root count or
   room-wide selected-lease count.
-- Every candidate carries exact room, share, endpoint sessions, route revision,
-  assignment/connection generations, publication generation when applicable,
-  and media-binding generation. Reserve, prepare, current-generation media
-  proof, atomic commit, drain, and idempotent release are one transaction.
-  TTL cleans abandoned reservations; it never revokes a healthy committed edge.
-- A child that observes its own upstream as bad uses correlated C+B evidence
-  for that edge and invokes child-scoped reparent. If an exact current ordinary
-  peer edge stops current-generation RTP and decoded-frame progress while
-  signaling and the PeerConnection remain present, expiry of the bounded parent-
-  proof deadline authorizes hard reparent of that child if the stall remains,
-  whether matching positive non-server-parent outbound-media proof arrived or
-  not. Parent sending or non-response does not change parent eligibility.
-  Downstream evidence drains a relay only when the trigger has at least one
-  distinct current sibling edge and every current authoritative child edge has
-  independently completed a current-generation unusable proof. Positive
-  progress, unknown evidence, or unfinished proof on any current child blocks
-  that drain; positive progress clears the exact edge's unusable evidence. A
-  lone child is reparented without draining its parent. A relay parent enters
-  `suspect` for its own ingress evidence, stops accepting new children, and
-  repairs that ingress with reparent or branch-preserving `replaceIngress`.
-  Parent/session hard failure or failed ingress repair independently authorizes
-  drain. An endpoint-wide sender/resource failure independently authorizes drain
-  only when a concrete server-verifiable producer establishes that scope; a
-  generic per-edge failure remains edge-scoped. Host source failures instead use
-  publication repair and child migration. Drain retains a healthy ingress and
-  replaces or removes a failed ingress in the same target. If a new ingress
-  restores downstream media, the subtree remains unchanged. Hard failure
-  preempts confirmed parent drain, which preempts a single-edge soft reparent. A
-  feasible child migration is never blocked by a sibling with no destination.
-- Unexpired evidence follows its exact edge identity across unrelated route
-  revisions and broadcasts; the controller advances its revision guard without
-  resetting unaffected siblings. Identity change, positive progress, or
-  successful migration clears only that edge's evidence. An authoritative pause
-  stops and clears current-generation quality correlation. Resume starts a fresh
-  baseline, so intentional pause silence cannot trigger reparent or drain.
-- Healthy edges are sticky. Join, departure, capacity release, hard failure,
-  confirmed ineligibility, server-resource change, and explicit ingress restore
-  are the route-changing events. Quality evidence changes topology eligibility,
-  not built-in media layers and not a second route authority.
+- Candidate-list creation, reserve, prepare, the child's first decoded frame,
+  atomic commit, abort, and idempotent release are one bounded child operation.
+  Its one total deadline cleans abandoned reservations and never revokes a
+  healthy committed edge.
+- A child invalidates only its own exact edge after PeerConnection hard failure
+  or a named non-paused interval without a newly decoded frame. Bitrate, FPS,
+  resolution, blur, and sender statistics remain diagnostics or stock
+  WebRTC/LiveKit adaptation inputs; they do not change
+  parent eligibility. Multiple bad child edges recover independently through the
+  same loop and naturally empty an unusable relay.
+- Authoritative pause aborts the pending child operation, including its current
+  candidate and reservations, keeps the active graph, suppresses decoded-frame-
+  stall decisions, and leaves new participants waiting. Resume wakes a fresh
+  reconciliation. Healthy unaffected edges remain sticky.
 
 SFU and TURN remain bounded fallback resources with independent deployment-wide
 admission. Resource exhaustion produces the next bounded candidate, an explicit
@@ -247,7 +249,7 @@ deployment-wide.
 
 Production release `9461e20` predates this revision. Its exact behavior is owned
 by the deployment document. Generation guards, scoped authorization,
-media-proven transitions, and bounded recovery remain reusable only where they
+first-decoded-frame transitions, and bounded recovery remain reusable only where they
 satisfy this ADR.
 
 That release remains a deployment fact and rollback reference. It must not be
@@ -262,8 +264,8 @@ Before a revised controller ships:
 - property tests cover capacity `1`, `2`, and `3`, one active upstream,
   acyclic and source-reachable assignments, stale generations, duplicate
   signals, departure, rollback, and admission exhaustion;
-- route changes preserve unaffected branches and never commit before media
-  proof;
+- route changes preserve unaffected branches and never commit before the exact
+  candidate child's first decoded-frame ready;
 - SFU lifecycle tests keep reserved, committed, and draining generations charged
   until deletion plus absence proof, reject stale-token room recreation, prove a
   competing listener owner makes no LiveKit call, fence startup against stale or
@@ -271,19 +273,13 @@ Before a revised controller ships:
   without cutting a live Host participant, and keep two rooms under one global
   capacity owner;
 - candidate lists are deterministic under input permutation, preserve a healthy
-  current edge, prefer the shallowest least-loaded eligible parent, and try only
-  the next eligible candidate after exact failure and idempotent cleanup;
-- quality tests distinguish child-scoped C+B reparent from parent-scoped drain;
-  require at least two current children and independently unusable proof on all
-  current child edges; prove that same-edge C+B, a healthy/unknown/unresolved
-  sibling, or a lone child cannot drain a parent; and cover independent
-  parent/session hard failure and failed-ingress-repair drain;
-- quality tests bind evidence to exact media identity, preserve unaffected-edge
-  evidence across unrelated revisions, clear only changed or recovered edges,
-  suspend and clear correlation during authoritative pause, and start a fresh
-  baseline on resume. They include a Viewer that is both child and parent, the
-  Host-source publication-repair exception, bounded child-only recovery while
-  signaling remains present, and suspect/local-repair before drain;
+  current edge, prefer the shallowest least-loaded parent with capacity, and
+  advance one cursor after exact failure and idempotent cleanup without resetting
+  the total operation deadline;
+- focused controller tests cover first-frame commit, candidate failure and stale
+  ready, relay-ingress reparent with its subtree intact, disconnected relay and
+  nested-disconnect convergence, effective capacity `0..C` and overflow drain,
+  SFU-fed first-child use, selected TURN on the same edge, and pause/resume;
 - real-browser tests cover direct peer media, peer relay, server-assisted media,
   selected transport when configured, failure, and recovery;
 - deployment preflight proves the LiveKit instance is dedicated, uses
@@ -335,8 +331,8 @@ Negative:
 - ADR-0001 owns the original browser P2P baseline.
 - ADR-0004 is historical evidence about browser peer relay and re-encoding; it
   does not set current capacity or server-assisted policy.
-- ADR-0007 owns path-quality evidence and representation behavior. Quality may
-  affect route eligibility but does not become a second route controller.
+- ADR-0007 owns diagnostic path-quality evidence and representation behavior;
+  it does not create route eligibility.
 
 ## References
 

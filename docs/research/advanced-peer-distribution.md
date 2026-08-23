@@ -1,12 +1,12 @@
 # Advanced Peer Distribution
 
-- Research date: 2026-08-21
+- Research date: 2026-08-23
 - Scope: at most eight trusted viewers, sub-second interactive media, endpoint
   downstream fanout at most two, and minimal central-server media egress
-- Status: bounded C+B local reparenting and admission rescue are deployed;
-  one-root healthy SFU reselection is deployed but browser/media/production-route
-  evidence is unverified; relay-capacity `0 -> 1`, multi-root reselection, and
-  advanced encoded-media routes remain unimplemented candidates
+- Status: deterministic peer distribution and provisional make-before-break are
+  retained evidence; current routing converges through ADR-0005's single
+  child-reparent reconciliation, while advanced encoded-media routes remain
+  unimplemented candidates
 
 This document is research evidence, not current architecture or a backlog. See
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) for accepted routing
@@ -41,10 +41,10 @@ overhead. Protocol headers, retransmission, and TURN overhead are additional.
 | Native full-stream RTP relay | at most `2B` | zero except TURN edges | relay zero encode; native host can share one encode |
 | Two encoded-object stripe trees | about `(1+r)B` | zero except TURN edges | host one encode; relay zero encode |
 | Host publication with bounded SFU subscriptions | measured `B_pub` | per-subscriber egress; see low-server model | one publication may carry at most two active representations; physical encoder count remains measured evidence |
-| Full central SFU/MoQ fanout | about `B` | ingress `B`, egress `N*B` | comparison class, not the accepted fallback shape |
+| Full central SFU/MoQ fanout | about `B` | ingress `B`, egress `N*B` | a possible bounded fallback result, never the default topology or mode |
 
 Useful last-hop traffic remains approximately `N*B`; these routes only decide
-which nodes emit the copies. Exact `B_pub`/`B_i`, root, TURN-hop, and billing
+which nodes emit the copies. Exact publication/subscription, TURN-hop, and billing
 accounting is owned by [Low-Server-Cost Media Routes](./low-server-media-routes.md).
 TURN is edge transport; it is not a peer/SFU topology.
 
@@ -174,7 +174,7 @@ is isolated behind a small adapter.
 
 ## Candidate 6: Bounded Capability-Aware Local Reparenting
 
-This remains a bounded topology candidate outside ADR-0004. Narada and Overcast
+This is the research basis for ADR-0005's bounded local reconciliation. Narada and Overcast
 demonstrate measurement-driven overlay improvement, but neither supplies a
 maintained WebRTC RTP/RTCP routing library. BitTorrent/WebTorrent and P2P Media
 Loader use chunk-pull swarms and
@@ -183,176 +183,47 @@ Their exploration and hysteresis ideas are useful, but none is a drop-in route
 controller for sub-second screen sharing. A mature SFU is the directly reusable
 low-latency alternative, with central egress rather than audience forwarding.
 
-The first quality-driven slice reuses the authenticated Viewer C window and
-existing route intent, plus one strict parent-to-server B message. Signaling
-binds C to room, Viewer session, connection ID, active revision, parent
-peer/session, sequence, two-second rate and 2 KiB size, then forwards the same
-sanitized object. The current parent answers that exact sequence within five
-seconds only when its current outbound sample has a positive `packetsSent`
-delta. The existing discriminated proof is `sending` for diagnostic liveness,
-`sender-limited` only for an exact `qualityLimitationReason` of `cpu` or
-`bandwidth`, or `remote-loss` when that interval has at least 100 sent packets
-and RTCP-reported remote loss divided by sent packets is at least 30%; it never
-carries a null placeholder. One current connection cannot reuse the same
-`sampleTimestampMs` for multiple C sequences; fractional stats windows are
-rounded before applying the protocol bounds. The
-server accepts one B from the bound parent session and generation. The router
-may retain C while awaiting B, but advances only when B is hard and C is either
-severe or relatively degraded. The relative case exists only below a Viewer
-relay: the relay's own latest correlated C must still match its session, active
-route and connection and be at most five seconds old; the child must receive
-less than two-thirds of that actual inbound FPS. The configured FPS ceiling is
-not evidence. `sending`, either report alone, and healthy or ambiguous pairs
-reset or do not advance the streak.
-It holds at most one pending/streak state per connected Viewer and one room
-cooldown, with no timer or weighted score. One confirmed child event stays
-edge-local. Corroboration from two distinct current children can affect relay
-parent eligibility only when the configured ordinary capacity makes that state
-reachable; it does not define the capacity policy.
+This product has too few children per relay to infer parent-wide quality from a
+small set of sibling samples. Mature outlier detection requires materially more
+independent hosts and request volume before statistical ejection; route policy
+therefore does not use sender/viewer correlation, sibling voting, relative FPS,
+or a room score. Those metrics remain diagnostic.
 
-The accepted controller target also handles an exact ordinary peer edge whose
-signaling and PeerConnection remain present while current-generation RTP and
-decoded-frame progress stop. If the stall remains when the bounded parent-proof
-deadline expires, only that child enters hard reparent whether matching positive
-non-server-parent outbound-media proof arrived or not. Parent sending and parent
-non-response are both edge-local here; parent cordon/drain still requires a hard
-endpoint failure, explicit sender/resource failure, failed ingress repair, or
-independent downstream evidence.
+The application consumes only an exact child edge's hard connection failure or
+a non-paused interval with no newly decoded frame. That child enters ADR-0005's
+single reconciliation loop. If the child is itself a relay, changing its ingress
+retains its subtree. If several downstream edges fail, each child reparents
+independently and the old relay naturally empties. WebRTC and LiveKit retain
+transport connectivity, consent, congestion control, reconnection, and SFU
+stream-state ownership.
 
-The conservative Viewer C hard predicates are: freeze duration at least half
-of the one-to-five-second window; positive received-packet delta with zero
-decoded frames; or at least 100 received-plus-lost packets with loss at least
-30%. Parent B must independently report the exact `cpu`/`bandwidth` sender
-limitation or at least 100 sent packets with remote loss divided by sent packets
-at least 30%. Three consecutive windows of the same severe or relative kind are
-required. A healthy or incomplete correlated window, any Viewer/parent session,
-connection, route revision or parent change, or a gap over five seconds clears
-the streak. Severe and relative-FPS quality evidence each tries one parent through
-make-before-break: either a Viewer whose active upstream is peer/SFU or the Host.
-Session/share/revision plus one strict ordinary-capacity reservation are required
-before breadth-first selection continues. No candidate, probe failure, or timeout keeps
-the old edge without SFU, TURN, or an error. A started attempt spends a
-30-second room migration
-budget, so a new public Viewer identity cannot bypass it. Per-edge state clears
-on authentication/generation change, disconnect/removal and route replacement;
-room stop/delete also clears the cooldown.
-
-The candidate is bound to the exact Viewer/parent sessions, active and pending
-route revisions, share lifecycle and a separate connection ID. Its parent owns
-one provisional child PC outside the active child map and never auto-retries it
-with another connection ID. Signaling keeps
-the old connection ID authoritative until the Viewer proves positive RTP,
-positive decoded-frame progress and a live video track on the candidate; commit
-then promotes that same PC and changes topology, route and active connection
-identity together. Failure after ready retains the exact provisional identity
-across repeated matching active updates; the candidate parent stays fail-closed
-and the target Viewer probe owns recovery. Rollback or another edge's
-authoritative failure clears or aborts the soft probe before using the ordinary
-ladder. A
-successful relative move holds the old parent for 30 seconds or until its
-session changes. A real active-route failure remains a separate hard recovery
-trigger and can reuse an otherwise playable old parent.
-
-W3C defines outbound `packetsSent` as the local cumulative RTP packet count.
-`remote-inbound-rtp.packetsLost` is remote receiver data delivered by RTCP and
-the corresponding stats object does not exist until that RTCP first arrives;
-absence is therefore not zero. W3C's video-only `qualityLimitationReason` stays
-an exact local sender predicate rather than an encoder score. Parent B and
-Viewer C are gathered by stock browsers at separate endpoints, but RTCP remote
-loss is receiver-originated and neither report is cryptographically independent
-or resistant to colluding authenticated participants. W3C also defines
-Viewer-side
-`packetsReceived`, `packetsLost`, `framesDecoded`, `freezeCount` and
-`totalFreezesDuration`; its WebRTC 1.0 diagnostic example treats loss over 30%
-as a likely culprit. It does not define route-migration thresholds. The 50%
-freeze share, two-thirds FPS ratio, 100-packet floor, three windows,
-five-second gap and 30-second
-cooldown are falsifiable candidate constants for production calibration, not
-standards-derived or claimed optimum values.
-
-One correlated pair still attributes a problem only to its current
-parent-to-child edge generation: remote loss comes from that child and
-`qualityLimitationReason` belongs to one outbound stream. Two independently
-confirmed current children may provide bounded corroboration for that relay
-parent, but do not prove device-wide quality or create a numeric score. Existing
-children keep their old edge when no authorized alternate exists. The triggering
-child uses media-proven make-before-break, and current Viewer/SFU-upstream and
-Host provisional-parent paths preserve the candidate connection identity.
+Every upstream change uses one bounded transaction. The candidate is bound to
+the authenticated endpoint sessions, share generation, base and pending route
+revisions, and candidate connection. A usable old edge stays authoritative until
+the candidate child decodes its first new video frame. That single event already
+proves the candidate's ICE/DTLS/RTP/decode path; failure or deadline expiry
+releases the candidate and wakes the same loop for the next choice.
 
 For `N` Viewers a peer tree still has `N` media edges and approximately `N*B`
 useful upload in aggregate. Local reparenting redistributes that traffic; it does
-not eliminate it. Reordering a healthy tree therefore needs a discrete current
-benefit rather than a continuous optimizer.
+not eliminate it. The controller therefore keeps a healthy tree sticky and only
+handles waiting or invalid edges.
 
-The source admission-rescue slice is limited to its discrete capacity case. If
-a relay-capable viewer is unassigned because two zero-capacity roots occupy
-both host slots, it inserts that viewer above
-one deterministic childless root:
+Candidate inputs remain discrete: an active authenticated session,
+effective capacity with a free downstream slot, acyclicity, source reachability,
+and server admission. Standard ICE owns candidate-pair
+priority, pruning, connectivity checks, peer-reflexive discovery, and nomination
+inside one `RTCPeerConnection`; the application does not build another ping mesh.
 
-```text
-host -> new relay -> existing leaf
-host -> other root
-```
-
-At the exact release that introduced this rescue, the move kept Host fanout at
-two and Browser Viewer fanout at one. The router permits it only on an active peer-only route with no SFU
-publication or pending prepare, when the connected candidate currently has no
-upstream or children, offers relay capacity, and has no failed-parent
-history. The host must have exactly two children and the chosen child must be a
-connected, childless, zero-capacity leaf. Existing server join order chooses the
-oldest eligible leaf. One synchronous topology snapshot changes the host,
-candidate, and leaf; one route revision replaces both upstream generations and
-clears their old connection IDs. The Host reconciler closes every stale child
-edge before starting replacement children, so its physical fanout does not
-temporarily exceed two.
-
-Eligibility remains discrete: an active authenticated session, explicit relay
-capacity, compatible representation, a free downstream slot, acyclicity, and
-depth/edge budgets. The implemented rescue never moves a candidate that already
-has an upstream, never handles a failed-path intent, and never selects a root by
-quality. An authenticated viewer can still lie about its relay capacity, so the
-exact-room canary and ordinary route-failure recovery remain required; the lie
-can cause at most this one local move before the candidate is no longer
-unassigned. Broader experiments may react to a hard media failure, a reviewed
-threshold-crossing event from correlated path evidence, or a proven native
-capacity change, but never a continuous optimizer. Standard ICE already owns
-candidate-pair priority, pruning, connectivity checks, peer-reflexive discovery,
-and nomination inside one `RTCPeerConnection`; the application should not build
-a second ping mesh. Route selection first applies exact authority, reachability,
-acyclicity, depth, sender-slot, eligibility, exclusion/cooldown, and server
-admission filters, then uses a small lexicographic order: shallowest resulting
-tree, most remaining steady sender slots, stable join order, and peer identity.
-Only the selected provisional edge receives real connectivity and media proof;
-failure releases it before the next candidate. Do not use a weighted score,
-UA/device model, IP geography, claimed NAT type, or one party's unverified
-report. Keep healthy assignments sticky, move only one affected subtree, use
-separate enter and recovery thresholds plus a cooldown, and disable proactive
-moves for the share after repeated rollback.
-
-Use make-before-break only when the new parent has a free ordinary downstream
-slot under the server-authoritative configured cap. A provisional child reserves
-that slot until commit or rollback. Admission rescue
-starts with both host slots occupied, so it is break-before-make: retire the
-chosen host-to-leaf media edge before activating host-to-new-relay media. A
-control-only `RTCPeerConnection` may prewarm ICE but cannot prove media uplink:
-WebRTC exposes `availableOutgoingBitrate` only after congestion-controlled RTP
-has used that candidate pair. Zero interruption, active standby media, and a
-hard endpoint edge limit cannot all be guaranteed at once.
-
-Any calibration study must retain configured fanout limits at every sampled
-instant; unaffected branches
-must not freeze; make-before-break must decode at every affected receiver on the
-new path before retiring the old edge, while break-before-make must do so within
-one second p95 after the break and before declaring the move successful. Stable
-reference runs must not migrate; each move must record one discrete benefit,
-avoid reversal during cooldown, and restore the prior deterministic route on
-rollback. Reject this candidate if it needs all-pairs probing, a continuous
-optimizer, temporary fanout above budget, self-reported geography or device
-quality, or cannot beat the unchanged route. The earlier admission-rescue case
-remains valid. The implemented quality slice moves only the affected
-Viewer-rooted subtree, keeps its old edge until the candidate decodes, and does
-not enter SFU or selected-edge TURN. Those transports remain available only to
-the separate real-failure route owner.
+The controller orders eligible parents by shallowest resulting tree, remaining
+steady sender slots, stable join order, and peer identity. It keeps healthy
+assignments sticky and changes only one child upstream per room transaction. A
+provisional child reserves the required endpoint and server resources until
+commit or abort. If an old edge is usable, make-before-break retains it until the
+candidate child decodes; a hard-invalid edge uses the same transaction without
+pretending the old media still works. No weighted score, UA/device model, IP
+geography, claimed NAT type, cooldown optimizer, or role-specific rescue path is
+part of selection.
 
 ## Staged Connection Recovery Evidence
 
@@ -368,17 +239,14 @@ mismatches before a full reconnect. Jitsi Videobridge similarly defaults to a
 reference boundaries, not universal prescriptions. Screener's separately owned
 15-second initial deadline remains a candidate pending mobile-network evidence.
 
-The peer-local repair phase is bounded: show progress while initial ICE still
-advances, attempt one ICE restart on hard failure, and rebuild the same logical
-edge at most once under current transport authority. If that edge remains
-unusable, emit one exact failed-edge event to the ADR-0005 controller. The
-controller may reparent the child, authorize selected TURN for an exact edge, or
-choose a Host-publication SFU ingress under current capacity and server
-admission; these are not a fixed global retry ladder. Each success cancels the
-remaining work. Every completion is guarded by the current session, route
-revision, assignment/connection generation, and cooldown. Connected-but-bad
-media is a separate correlated-quality trigger and must not be treated as a
-connection retry.
+WebRTC/LiveKit first owns transient reconnect. A hard failure or non-paused
+decoded-frame stall wakes ADR-0005 once. The same room transaction may try a
+fresh connection to the same parent, another parent, exact selected TURN, or a
+Host-publication SFU subscription as ordinary bounded candidates under current
+capacity and server admission. There is no separate same-edge repair ladder.
+Every completion is guarded by the current authenticated sessions, share
+generation, pending route revision, and candidate connection. Sustained bitrate,
+FPS, resolution, and blur remain diagnostic.
 
 The first room-1 production trace on 2026-08-20 observed two short Host
 participants while two roots remained for roughly 4.6 seconds; all ended with
@@ -404,30 +272,21 @@ above; passing their own gates may change capability, but does not insert them
 into the current route model.
 
 The SFU uses one authoritative Host publication and exact per-Viewer
-subscriptions. SFU-fed Viewers may retain bounded peer descendants when their
-outbound relay eligibility is independently proven. Server ingress/egress and
+subscriptions. SFU-fed and peer-fed endpoints use the same provisional-child
+first-frame transaction. Server ingress/egress and
 TURN allocations use deployment-wide admission rather than a fixed root count
 or room-wide lease. The SFU/UDP and optional selected-edge TURN accounting lives in
 [Low-Server-Cost Media Routes](./low-server-media-routes.md). ADR-0005 owns the
-accepted target; the current source still contains legacy controller slices and
-the one-root healthy-reselection behavior described below. None changes the sticky
-local reparenting candidate above.
+accepted behavior.
 
-The controller must be automatic and invisible. It uses explicit capability
-bits, route revisions, media generations, edge budgets, and discrete failures;
-it does not expose topology choices to host or viewers. Initial hard triggers
-are capacity, maximum depth, ICE/media failure, unsupported codec, and bounded
-send-queue overflow. Measurements may later justify additional triggers.
-
-For healthy SFU-to-peer reselection, W3C inbound RTP counters expose the needed
-bounded observations: `packetsReceived` counts received RTP packets and
-`framesDecoded` counts successfully decoded video frames. Neither ICE state nor
-a track object alone proves decodable progress. Pinned LiveKit client 2.22.0
-already exposes reconnecting/reconnected room events, so recovery is a discrete
-trigger; no network-type poll or new timer is required. The current source arms
-the same two-window gate when a refreshed signaling session receives an
-authoritative sticky SFU assignment. This avoids immediately reversing an
-ordinary peer-to-SFU fallback, whose initial authenticated assignment was peer.
+The controller is automatic and invisible. It uses participant metadata, route
+revisions, endpoint capacity, server admission, and discrete exact-edge failure;
+it exposes no topology choices. One reconcile loop handles join, waiting,
+disconnect, effective-capacity overflow, and failed edges. W3C
+`framesDecoded` counts successfully decoded video frames, so the first new
+candidate frame is the only application readiness event. LiveKit owns SFU
+reconnection and stream state; the application adds no network-type poll or
+SFU-specific timer.
 
 The overlap edge is physical: an active Host SFU publication consumes one steady
 sender slot, and a media-producing provisional peer candidate consumes another.
@@ -436,12 +295,12 @@ Browser tier. A free steady slot permits ordinary make-before-break; otherwise a
 single fenced `TransitionOverlapSlot` may raise the physical count only to
 `min(C + 1, 3)`. A full `C=3` endpoint must wait, use a bounded-gap transition,
 or fail before creating a fourth copy. Failed or stale probes restore the prior
-controller revision and release their reservation without writing ordinary
-failed-parent state.
+controller revision and release their reservation before reconciliation
+continues.
 
 ## Sources And License Boundary
 
-Sources checked on 2026-08-20, 2026-08-21, and 2026-08-22:
+Sources checked on 2026-08-20 through 2026-08-23:
 
 - [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/),
   [Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/),
@@ -458,9 +317,12 @@ Sources checked on 2026-08-20, 2026-08-21, and 2026-08-22:
   [room defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts),
   and [state reconciliation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
   - pinned implementation behavior, not a universal timeout prescription.
-- [Kubernetes cordon/drain](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands)
-  - operational analogy for stopping new children before bounded evacuation;
-  no scheduler or disruption framework is copied.
+- [Kubernetes controllers](https://kubernetes.io/docs/concepts/architecture/controller/)
+  - event-driven desired/current reconciliation reference; no scheduler or
+  disruption framework is copied.
+- [Envoy outlier detection](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/outlier_detection.proto)
+  - statistical host ejection defaults require at least five hosts and material
+  request volume, unlike Screener's one-to-three child sample.
 - [LiveKit server 1.13.5 participant quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/participant.go)
   and [connection scorer](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/connectionquality/scorer.go)
   - Apache-2.0; studied only, with no source copied.

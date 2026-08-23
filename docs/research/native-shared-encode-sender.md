@@ -257,8 +257,8 @@ room-wide minimum controller.
 
 ADR-0007 keeps stock WebRTC GCC per direct/peer path. Each SFU path starts with
 a `HIGH` ceiling and built-in BWE selects from one shared `HIGH+LOW` pair. App
-evidence affects topology eligibility and diagnostics, not ordinary layer
-selection. `LOW` may already be active, and idle stop depends on the resource
+evidence is diagnostic and does not select routes or ordinary layers. `LOW` may
+already be active, and idle stop depends on the resource
 gate. The active representation/layer limit is two, never one per viewer; the
 the host follows the configured non-server outbound media-copy capacity; the
 two-edge result in this experiment is a historical configuration, not a fixed
@@ -269,21 +269,18 @@ measured encoder/CPU/GPU game or upload load is unacceptable, `LOW` fails closed
 for weak paths while healthy paths keep `HIGH`. `LOW` may remain active when
 that measured budget passes; stopping it while idle is an optimization.
 
-The app's `HIGH`/`FALLBACK` states and asymmetric windows only classify topology
-eligibility, not media layers, and do not form a composite score. Viewer
-requests are authenticated, rate-limited, deduplicated advice and need sender
-transport/encode plus viewer receive/decode corroboration. UA and device
-identity do not participate.
+The app does not derive topology eligibility from representation state. Viewer
+quality requests are authenticated, rate-limited, deduplicated diagnostic advice
+and do not form a composite score. UA and device identity do not participate.
 
 A native relay forwards the selected encoded packets and must not decode or
 re-encode them. An ordinary non-scalable representation cannot be forwarded
 into a second quality; the bounded choices are a second encode, SVC, or
 transcoding. ADR-0007 statically closes current Web P2P simulcast and
 Web/LiveKit SVC as cross-path shortcuts, but keeps pinned LiveKit exactly-two
-simulcast with built-in SFU bandwidth adaptation on zero-descendant leaves as
-the priority runtime candidate. A root-with-children downshift/evacuation gate
-must pass before default enablement. Explicit subscriber quality is next if
-built-in selection fails; manual sender activation follows if always-on cost
+simulcast with built-in SFU bandwidth adaptation as the priority runtime
+candidate. SFU BWE does not change topology. Explicit subscriber quality is next
+if built-in selection fails; manual sender activation follows if always-on cost
 fails; custom/native dual encode is last. A future native SVC decision may
 reopen only with an explicit hardware encoder contract, at most two decodable
 layers, one encoded

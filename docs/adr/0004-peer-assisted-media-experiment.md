@@ -54,8 +54,8 @@ The experiment established these durable facts:
   safety invariant;
 - route replacement must be bound to exact sessions, revision, share
   generation, assignment generation, and connection identity;
-- ICE `connected` is not media proof; positive RTP, decoded-frame progress, and
-  a live current-generation track are required before switching; and
+- ICE `connected` is not application readiness; the exact candidate child's
+  first newly decoded frame is required before switching; and
 - loopback tests can prove graph and signaling invariants but cannot establish
   real-device encoding cost, target-network latency, or production capacity.
 

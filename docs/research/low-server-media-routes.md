@@ -72,50 +72,41 @@ select the current resource model.
 ## Traffic Conservation And The Impossible Triangle
 
 This is an engineering accounting identity, not a named theorem. Let `B` be
-the measured useful media bitrate for one same-representation branch, `B_pub`
-the actual SFU publication bitrate, `B_i` server-fed subscriber `i`'s selected
-bitrate, `N` the Viewer count, `R` the number of server-fed subscribers, and `D`
-their peer descendants. Thus `N = R + D` for this screening model. For the
-equal-representation baseline,
-useful last-hop delivery is approximately `N*B`. Ignoring protocol overhead:
+the measured useful media bitrate for one same-representation edge, `B_pub` the
+actual SFU publication bitrate, `N` the Viewer count, `P` the number of Viewer
+upstreams carried by peer edges, and `S` the number carried by SFU subscriptions.
+Thus `N = P + S`. Split peer edges by sender: `H` are Host-to-Viewer and `V` are
+Viewer-to-Viewer, so `P = H + V`. Useful last-hop delivery is approximately
+`N*B`. Ignoring protocol overhead:
 
 `host last-hop copies + peer last-hop copies + server last-hop copies = N * B`
 
 | Full-stream shape | Host upload | Viewer-relay upload | Central media traffic |
 | --- | ---: | ---: | ---: |
-| Peer roots, direct edges | `R*B` | `D*B` | none |
-| Peer roots, all `R` seed edges through TURN | `R*B` | `D*B` | TURN ingress `R*B` + egress `R*B` |
-| SFU virtual parent to the same relay seeds | `B_pub` | `D*B` | SFU ingress `B_pub` + egress `sum(B_i)` |
-| Same-representation full-room SFU | `B` | `0` | SFU ingress `B` + egress `N*B` |
+| Peer-only, `S=0` | `H*B` | `V*B` | none |
+| Mixed peer/SFU, `S>0` | `H*B + B_pub` | `V*B` | SFU ingress `B_pub` + egress `sum(B_s)` |
+| Same-representation full-room SFU, `S=N` | `B` | `0` | SFU ingress `B` + egress `N*B` |
 
-The table's `R*B` and `D*B` rows are equal-representation screening cases with
-`E=0`.
-With mixed root representations, direct peer-root traffic is `sum(B_i)` and
-descendant upload is `sum(B_edge)`. SFU host upload and ingress are `B_pub`, the
-sum of all actively published representations; if simulcast `HIGH` and `LOW`
-both remain active, that may be `B_HIGH+B_LOW`, not one root bitrate. The
-SFU-fed relay-seed row, not full-room SFU, is the retained fallback shape. For equal
-representations, `B_pub = B` and `sum(B_i) = R*B`. Publisher-to-SFU and every
-SFU-to-seed subscriber transport are independent ICE connections and may use a
-separately deployed LiveKit transport. Ordinary descendants are STUN-only;
-selected coturn is issued only for an exact authorized edge or Host-SFU ingress.
+For mixed representations, replace `H*B` and `V*B` with the sums of their
+actual peer-edge bitrates, and use each SFU subscription's selected `B_s`. SFU
+host upload and ingress are `B_pub`, the sum of all actively published
+representations; if simulcast `HIGH` and `LOW` both remain active, that may be
+`B_HIGH+B_LOW`. Publisher-to-SFU and every SFU subscription are independent ICE
+connections. Whether a subscribed endpoint also sends peer edges is represented
+only by its actual committed children and those edges are already counted in
+`V`. Ordinary peer edges are STUN-only; selected coturn is issued only for an
+exact authorized edge or Host-SFU ingress.
 If a
 publisher leg separately uses LiveKit TURN, retain host upload
 `B_pub`, TURN ingress `B_pub`, TURN egress `B_pub`, and SFU ingress `B_pub` as
-distinct interface/service traffic. A relayed root leg likewise adds TURN
-ingress and egress `B_i`; a selected-edge relay adds both directions for that
-edge's actual bitrate. They are one logical useful payload copy but real
-physical hops, so NIC, service, and billing counters must never be folded.
-
-If `E>0`, SFU relay-seed/exception egress is
-`sum(B_i) + sum(B_exc,j)` and central SFU traffic is
-`B_pub + sum(B_i) + sum(B_exc,j)`. Peer descendant upload remains
-`sum(B_edge)`. Any separately TURN-relayed LiveKit subscription or
-controller-selected peer edge adds TURN ingress and egress equal to that leg's
-measured bitrate. Server-fed subscriptions are never hidden inside endpoint
-child capacity or the equal-representation formulas. Their ingress, egress and
-TURN allocations are admitted explicitly; `R` is a measured scenario variable,
-not a fixed product root limit.
+distinct interface/service traffic. Any separately TURN-relayed LiveKit
+subscription or controller-selected peer edge adds TURN ingress and egress equal
+to that leg's measured bitrate. These are one logical useful payload copy but
+real physical hops, so NIC, service, and billing counters must never be folded.
+SFU
+subscriptions are never hidden inside endpoint child capacity. Their ingress,
+egress, and TURN allocations are admitted explicitly; `S` is a measured route
+result, not a fixed root limit.
 
 RTP/RTCP/SRTP, DTLS, ICE/TURN and IP headers, retransmission, FEC, and redundant
 paths only add traffic. W3C candidate-pair byte counters exclude some transport
@@ -192,7 +183,7 @@ change or explicit reconnect; it does not support periodic probing, a carrier
 - Acceptance: owned desktop, Wi-Fi, and cellular probes select an IPv6 P2P path
   and an IPv6 SFU/selected-TURN path where available; broken IPv6 still reaches
   the IPv4 ladder within the current route deadline. Retain only an `ipv4|ipv6`
-  enum with the existing opaque generation and media proof, never a raw address.
+  enum with the exact candidate first-frame transaction, never a raw address.
 - Stop line: if any required public media endpoint has no routed IPv6, record the
   deployment as incomplete and keep the IPv4 ladder. Do not build a custom IPv6
   selector or claim NAT bypass from an `AAAA` record alone.
@@ -218,30 +209,16 @@ change or explicit reconnect; it does not support periodic probing, a carrier
   dependent mappers. Do not add a third server or a NAT classifier without a
   measured failure that the second server fixes.
 
-**3. Healthy SFU-to-P2P bounded re-probe**
+**3. SFU-to-P2P recovery**
 
-- Historical checkpoint: production `27ad90d` had the first deployed one-root slice: it
-  reserves bounded capacity, keeps the healthy SFU route playing, proves one
-  fresh P2P generation with current decoded-media progress, then commits
-  atomically and closes the old route. Source `4c9174d` additionally
-  retains one cooldown-time opportunity as a current tuple and requires two new
-  evidence windows at expiry. Later production deployed that bounded continuation
-  and subsequent peer-quality MBB work. Exact current capacity, SFU, TURN, and
-  accounting semantics remain unaccepted pending the holistic route model. None
-  of these generations polls network state.
-- Retained candidate: a discrete network-change or explicit-reconnect event may
-  open one opportunity through that same controller after cooldown. It must not
-  create a second route controller or treat an ICE restart on the SFU
-  `RTCPeerConnection` as P2P discovery.
-- Acceptance: an owned viewer that fell back to SFU changes Wi-Fi/cellular,
-  receives one bounded fresh probe, and moves to P2P without playback loss or
-  duplicate active edges. A failed probe leaves the healthy SFU route unchanged;
-  stale answers or repeated browser events cannot start another generation or
-  leak capacity.
-- Stop line: no polling loop and no periodic probing. If one discrete probe
-  causes SFU playback regression, overlapping offers, cap violation, or route
-  churn, keep the healthy SFU route and fix the generation/commit boundary before
-  another rollout.
+- WebRTC/LiveKit first owns network change and reconnect. Only an exact hard
+  failure or non-paused decoded-frame stall wakes the room reconciliation used
+  for every child.
+- The existing SFU edge remains active when usable. One P2P candidate receives
+  standard ICE checks and commits only after its child decodes the first new
+  frame; failure releases it and preserves SFU.
+- No polling loop, periodic probing, or second route controller
+  is authorized. Capacity and server admission use ADR-0005.
 
 ### Isolated Bounded Guessed-Candidate Spike
 
@@ -302,7 +279,7 @@ not authorize a guessed production path.
   after a connectivity check succeeds. RFC 8863's recommended 39.5-second PAC
   timer is an ICE-agent failure boundary, not a JavaScript tuning API. Do not
   extend Screener's current route deadline to 40 seconds; measure late recovery
-  behind a playing SFU route through the bounded re-probe instead.
+  behind a playing SFU route through an isolated measurement instead.
 - The April 2026 ICE-renomination draft requires opt-in from both ICE agents and
   the W3C `RTCConfiguration` exposes no renomination switch. Historical
   libwebrtc native code has a disabled-by-default flag for an older renomination
@@ -470,19 +447,19 @@ as wide as the CPU count for performance. Embedded TURN/UDP defaults to 3478.
 The current nginx template has no HTTP/3 listener, but that fact alone does not
 prove one UDP port is the best production layout.
 
-For one equal representation of measured bitrate `B` and `R` roots:
+For `K` equal-representation first-level deliveries that cannot use direct media:
 
-- `R` TURN seed edges: host upload `R*B`, server ingress `R*B`, server egress
-  `R*B`, total central traffic `2R*B`;
-- one SFU publisher to `R` roots: host upload `B`, server ingress `B`, server
-  egress `R*B`, total central traffic `(R+1)*B`.
+- `K` individual Host-to-Viewer selected-TURN edges: host upload `K*B`, server
+  ingress `K*B`, server egress `K*B`, total central traffic `2K*B`;
+- one Host publication with `K` SFU subscriptions: host upload `B`, server
+  ingress `B`, server egress `K*B`, total central traffic `(K+1)*B`.
 
-At `R=1` useful-payload traffic is equal, so the identity alone gives neither
+At `K=1` useful-payload traffic is equal, so the identity alone gives neither
 route a preference; CPU and allocation cost require the same-host benchmark.
-At `R=2`, the equal-representation SFU case halves host upload and
+At `K=2`, the equal-representation SFU case halves host upload and
 central ingress and reduces total central traffic from `4B` to `3B`, with the
 same `2B` egress. Mixed representations replace `B` with measured `B_pub` and
-`sum(B_i)`; a HIGH+LOW publication may erase that advantage. Public LiveKit
+`sum(B_s)`; a HIGH+LOW publication may erase that advantage. Public LiveKit
 benchmarks and the Jitsi profiling breakdown establish capacity and component
 categories only. Different machines and implementations cannot support a
 universal coturn/SFU CPU ratio or a claimed fixed percentage saving.
