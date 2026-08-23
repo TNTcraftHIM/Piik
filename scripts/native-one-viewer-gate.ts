@@ -376,12 +376,11 @@ async function main(): Promise<void> {
       PUBLIC_BASE_URL: baseUrl,
       ALLOWED_ORIGINS: baseUrl,
       SITE_ACCESS_PASSWORD: accessKey,
-      ROOM_DATABASE_PATH: "",
       PEER_ASSISTED_MEDIA: "true",
       STUN_URLS: "",
     });
     const roomStore = new ObservedRoomStore({
-      ttlMs: config.roomTtlMs,
+      leaseMs: config.roomLeaseMs,
       maxRooms: config.maxRooms,
       maxViewersPerRoom: config.maxViewersPerRoom,
     }, () => senderLedger.record({ hostWssAuthenticated: true }));
@@ -416,7 +415,7 @@ async function main(): Promise<void> {
     const version = await waitForVersion(debugPort, chrome);
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 5_000);
     report.stages.preflight = {
-      serverInMemory: config.roomDatabasePath === undefined,
+      serverInMemory: true,
       peerAssistedEnabled: config.peerAssistedMedia,
       oneViewerOnly: true,
       videoSource: gateVideoSource,

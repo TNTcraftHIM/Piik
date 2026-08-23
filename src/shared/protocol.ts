@@ -6,8 +6,8 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v7";
-export const ROOM_CODE_LENGTH = 12;
+export const SIGNALING_PROTOCOL = "screener-v8";
+export const ROOM_CODE_LENGTH = 4;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
@@ -114,7 +114,7 @@ export const viewerGrantSchema = z
   .string()
   .min(50)
   .max(96)
-  .regex(/^g1\.[1-9]\d{0,11}\.[1-9]\d{0,12}\.[A-Za-z0-9_-]{43}$/);
+  .regex(/^g1\.[1-9]\d{3}\.[1-9]\d{0,12}\.[A-Za-z0-9_-]{43}$/);
 
 export const viewerPasswordSchema = z
   .string()
@@ -122,11 +122,12 @@ export const viewerPasswordSchema = z
   .max(MAX_VIEWER_PASSWORD_LENGTH)
   .regex(/^[\x21-\x7e]+$/);
 
-export const viewerAccessPolicySchema = z.enum([
-  "private-link",
-  "public-watch",
+export const codeEntryPolicySchema = z.enum([
+  "open",
+  "password",
+  "disabled",
 ]);
-export type ViewerAccessPolicy = z.infer<typeof viewerAccessPolicySchema>;
+export type CodeEntryPolicy = z.infer<typeof codeEntryPolicySchema>;
 
 const liveKitWebSocketUrlSchema = z
   .string()
@@ -143,7 +144,7 @@ const liveKitWebSocketUrlSchema = z
 
 export const roomCodeSchema = z
   .string()
-  .min(1)
+  .length(ROOM_CODE_LENGTH)
   .max(ROOM_CODE_LENGTH)
   .regex(/^[1-9]\d*$/);
 
@@ -619,8 +620,18 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
-      type: z.literal("set-viewer-access"),
-      action: z.enum(["public-watch", "rotate", "revoke"]),
+      type: z.literal("set-code-entry-policy"),
+      policy: codeEntryPolicySchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("rotate-viewer-grant"),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("revoke-viewer-grant"),
     })
     .strict(),
   z
@@ -675,7 +686,7 @@ const authenticatedMessageShape = {
   connectionId: opaqueIdSchema.nullable(),
   viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   iceConfig: iceConfigSchema,
-  viewerPolicy: viewerAccessPolicySchema,
+  codeEntryPolicy: codeEntryPolicySchema,
   viewerAuthorizationGeneration: opaqueIdSchema,
 };
 
@@ -845,8 +856,14 @@ export const serverMessageSchema = z.union([
     }),
   z
     .object({
-      type: z.literal("viewer-access-updated"),
-      viewerPolicy: viewerAccessPolicySchema,
+      type: z.literal("code-entry-policy-updated"),
+      codeEntryPolicy: codeEntryPolicySchema,
+      viewerPasswordEnabled: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("viewer-grant-updated"),
       viewerAuthorizationGeneration: opaqueIdSchema,
       inviteUrl: z.string().url().max(2048).nullable(),
       viewerGrantExpiresAt: z.string().datetime().nullable(),
@@ -854,7 +871,7 @@ export const serverMessageSchema = z.union([
     .strict(),
   z
     .object({
-      type: z.literal("viewer-access-revoked"),
+      type: z.literal("viewer-grant-revoked"),
       viewerAuthorizationGeneration: opaqueIdSchema,
     })
     .strict(),
@@ -886,19 +903,17 @@ export const createRoomResponseSchema = z
     roomId: roomCodeSchema,
     hostToken: tokenSchema,
     inviteUrl: z.string().url().max(2048),
-    viewerPolicy: viewerAccessPolicySchema,
+    codeEntryPolicy: codeEntryPolicySchema,
     viewerGrantExpiresAt: z.string().datetime().nullable(),
     expiresAt: z.string().datetime().nullable(),
   })
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;
 
-export const MAX_HOST_CLAIM_TTL_SECONDS = 5 * 60;
-
 export const createRoomRequestSchema = z
   .object({
-    viewerPolicy: viewerAccessPolicySchema,
-    hostClaimTtlSeconds: z.literal(MAX_HOST_CLAIM_TTL_SECONDS).optional(),
+    codeEntryPolicy: codeEntryPolicySchema,
+    roomPassword: viewerPasswordSchema.nullable().optional(),
   })
   .strict();
 

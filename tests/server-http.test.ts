@@ -1,7 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,21 +15,10 @@ import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 const allowedOrigin = "http://allowed.test";
 const siteAccessPassword = "instance-access-password";
 let runningServer: ScreenerServer | undefined;
-const temporaryDirectories: string[] = [];
-
 afterEach(async () => {
   await runningServer?.close();
   runningServer = undefined;
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
 });
-
-function temporaryDatabasePath(): string {
-  const directory = mkdtempSync(join(tmpdir(), "screener-http-"));
-  temporaryDirectories.push(directory);
-  return join(directory, "rooms.sqlite");
-}
 
 function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
@@ -43,7 +28,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
     siteAccessPassword,
-    roomTtlMs: 14_400_000,
+    roomLeaseMs: 86_400_000,
     maxRooms: 10,
     maxViewersPerRoom: 8,
     peerAssistedMedia: false,
@@ -94,8 +79,8 @@ async function login(baseUrl: string): Promise<Response> {
 async function createRoom(
   baseUrl: string,
   cookie?: string,
-  viewerPolicy: "private-link" | "public-watch" = "private-link",
-  hostClaimTtlSeconds?: number,
+  codeEntryPolicy: "open" | "password" | "disabled" = "open",
+  roomPassword?: string,
 ): Promise<Response> {
   return fetch(`${baseUrl}/api/rooms`, {
     method: "POST",
@@ -105,8 +90,8 @@ async function createRoom(
       ...(cookie ? { Cookie: cookie } : {}),
     },
     body: JSON.stringify({
-      viewerPolicy,
-      ...(hostClaimTtlSeconds === undefined ? {} : { hostClaimTtlSeconds }),
+      codeEntryPolicy,
+      ...(roomPassword === undefined ? {} : { roomPassword }),
     }),
   });
 }
@@ -264,12 +249,12 @@ describe("room HTTP API", () => {
         "Content-Type": "application/json",
         Origin: allowedOrigin,
       },
-      body: JSON.stringify({ viewerPolicy: "private-link" }),
+      body: JSON.stringify({ codeEntryPolicy: "open" }),
     });
     expect(bearerBypass.status).toBe(401);
   });
 
-  it("creates a private room with a fragment-only Viewer grant", async () => {
+  it("creates a room with an independent fragment-only Viewer grant", async () => {
     const baseUrl = await start();
     const authenticated = await login(baseUrl);
     const response = await createRoom(baseUrl, cookiePair(authenticated));
@@ -278,15 +263,16 @@ describe("room HTTP API", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     const body = createRoomResponseSchema.parse(await response.json());
     const invite = new URL(body.inviteUrl);
-    expect(body.roomId).toMatch(/^\d{12}$/);
+    expect(body.roomId).toMatch(/^[1-9]\d{3}$/);
     expect(invite.origin).toBe("https://share.example.test");
     expect(invite.pathname).toBe(`/r/${body.roomId}`);
     expect(invite.hash).toMatch(
       new RegExp(`^#v=g1\\.${body.roomId}\\.\\d+\\.[A-Za-z0-9_-]{43}$`),
     );
     expect(invite.search).toBe("");
-    expect(body.viewerPolicy).toBe("private-link");
+    expect(body.codeEntryPolicy).toBe("open");
     expect(body.viewerGrantExpiresAt).toBeTruthy();
+    expect(body.expiresAt).toBeTruthy();
     expect("iceConfig" in body).toBe(false);
   });
 
@@ -304,42 +290,41 @@ describe("room HTTP API", () => {
     );
   });
 
-  it("accepts only the admitted fixed provisional Host lease", async () => {
+  it("applies a password creation profile atomically", async () => {
     const baseUrl = await start();
-    expect((await createRoom(baseUrl, undefined, "private-link", 300)).status).toBe(
-      401,
-    );
-
     const authenticated = await login(baseUrl);
     const cookie = cookiePair(authenticated);
-    expect((await createRoom(baseUrl, cookie, "private-link", 300)).status).toBe(
-      201,
+    const response = await createRoom(
+      baseUrl,
+      cookie,
+      "password",
+      "room-password",
     );
-    expect((await createRoom(baseUrl, cookie, "private-link", 301)).status).toBe(
-      400,
-    );
-    expect((await createRoom(baseUrl, cookie, "private-link", 299)).status).toBe(
-      400,
-    );
+    expect(response.status).toBe(201);
+    expect(createRoomResponseSchema.parse(await response.json())).toMatchObject({
+      codeEntryPolicy: "password",
+    });
+
+    const missingPassword = await createRoom(baseUrl, cookie, "password");
+    expect(missingPassword.status).toBe(400);
   });
 
-  it("allows explicit public-watch creation without site access in local mode", async () => {
+  it("allows explicit open creation without site access in local mode", async () => {
     const baseUrl = await start(
       testConfig({ siteAccessPassword: undefined }),
     );
-    const response = await createRoom(baseUrl, undefined, "public-watch");
+    const response = await createRoom(baseUrl, undefined, "open");
     expect(response.status).toBe(201);
     const body = createRoomResponseSchema.parse(await response.json());
     expect(body).toMatchObject({
-      viewerPolicy: "public-watch",
-      viewerGrantExpiresAt: null,
+      codeEntryPolicy: "open",
+      viewerGrantExpiresAt: expect.any(String),
     });
-    expect(new URL(body.inviteUrl).hash).toBe("");
+    expect(new URL(body.inviteUrl).hash).toContain("#v=");
   });
 
-  it("persists sequential protected rooms across server restarts", async () => {
-    const config = testConfig({ roomDatabasePath: temporaryDatabasePath() });
-    let baseUrl = await start(config);
+  it("allocates unique four-digit codes concurrently", async () => {
+    const baseUrl = await start();
     const authenticated = await login(baseUrl);
     const cookie = cookiePair(authenticated);
     const create = () => createRoom(baseUrl, cookie);
@@ -350,19 +335,8 @@ describe("room HTTP API", () => {
         createRoomResponseSchema.parse(await response.json()),
       ),
     );
-    expect(
-      rooms.map((room) => Number(room.roomId)).sort((left, right) => left - right),
-    ).toEqual([1, 2]);
-    expect(rooms.every((room) => room.expiresAt === null)).toBe(true);
-
-    await runningServer?.close();
-    runningServer = undefined;
-    baseUrl = await start(config);
-    const third = await createRoom(baseUrl, cookie);
-    expect(createRoomResponseSchema.parse(await third.json())).toMatchObject({
-      roomId: "3",
-      expiresAt: null,
-    });
+    expect(new Set(rooms.map((room) => room.roomId)).size).toBe(2);
+    expect(rooms.every((room) => room.expiresAt !== null)).toBe(true);
   });
 
   it("rejects malformed room requests and foreign browser origins", async () => {
@@ -382,7 +356,7 @@ describe("room HTTP API", () => {
     const foreign = await fetch(`${baseUrl}/api/rooms`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: "https://foreign.test" },
-      body: JSON.stringify({ viewerPolicy: "private-link" }),
+      body: JSON.stringify({ codeEntryPolicy: "open" }),
     });
     expect(foreign.status).toBe(403);
   });

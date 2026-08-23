@@ -31,7 +31,7 @@ interface GateReport {
   otherSessionGrantMatches: number; localGrantMatches: number;
   cookieGrantMatches: number; resourceGrantMatches: number;
   requestLeakCount: number; nginxLogLeakCount: number; nginxConfigSafe: boolean;
-  appLogLeakCount: number; sqliteLeakCount: number; leakAuditCompleted: boolean;
+  appLogLeakCount: number; persistentRoomFileCount: number; leakAuditCompleted: boolean;
   rotateRevokeCasePresent: boolean; cleanupPassed: boolean;
 }
 interface BrowserAudit {
@@ -52,9 +52,8 @@ function diagnosticText(values: readonly unknown[]): string {
     try { return JSON.stringify(value) ?? ""; } catch { return ""; }
   }).join(" ");
 }
-async function sqliteFiles(profile: string): Promise<Buffer[]> {
-  const names = (await readdir(profile)).filter((name) => name.startsWith("rooms.sqlite"));
-  return Promise.all(names.map((name) => readFile(join(profile, name))));
+async function persistentRoomFiles(profile: string): Promise<string[]> {
+  return (await readdir(profile)).filter((name) => name.startsWith("rooms.sqlite"));
 }
 async function main(): Promise<void> {
   const report: GateReport = {
@@ -65,7 +64,7 @@ async function main(): Promise<void> {
     canonicalRoomPath: false, roomSessionGrantMatches: 0,
     otherSessionGrantMatches: 0, localGrantMatches: 0, cookieGrantMatches: 0,
     resourceGrantMatches: 0, requestLeakCount: 0, nginxLogLeakCount: 0,
-    nginxConfigSafe: false, appLogLeakCount: 0, sqliteLeakCount: 0,
+    nginxConfigSafe: false, appLogLeakCount: 0, persistentRoomFileCount: 0,
     leakAuditCompleted: false, rotateRevokeCasePresent: false,
     cleanupPassed: false,
   };
@@ -96,8 +95,8 @@ async function main(): Promise<void> {
     const config: ServerConfig = {
       nodeEnv: "production", port: appPort, listenHost: "127.0.0.1",
       publicBaseUrl: new URL(baseUrl), allowedOrigins: new Set([baseUrl]),
-      siteAccessPassword: sitePassword, roomDatabasePath: join(profile, "rooms.sqlite"),
-      roomTtlMs: 14_400_000, maxRooms: 4, maxViewersPerRoom: 2,
+      siteAccessPassword: sitePassword, roomLeaseMs: 86_400_000,
+      maxRooms: 4, maxViewersPerRoom: 2, endpointMediaCopyCapacity: 2,
       peerAssistedMedia: false, stunUrls: [],
     };
     server = await createScreenerServer({ config, staticDirectory: resolve(root, "dist/client") });
@@ -116,12 +115,12 @@ async function main(): Promise<void> {
     const createdResponse = await fetch(`${baseUrl}/api/rooms`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie, Origin: baseUrl },
-      body: JSON.stringify({ viewerPolicy: "private-link" }),
+      body: JSON.stringify({ codeEntryPolicy: "open" }),
     });
     const room = createRoomResponseSchema.parse(await createdResponse.json());
     const invite = new URL(room.inviteUrl);
     const grant = new URLSearchParams(invite.hash.slice(1)).get("v") ?? "";
-    if (!grant) throw new Error("Private room did not return a Viewer grant");
+    if (!grant) throw new Error("Room creation did not return a Viewer grant");
     server.roomStore.connectParticipant({
       roomId: room.roomId, role: "host", token: room.hostToken,
       clientId: "privacy-gate-host", sessionId: "privacy-gate-host-session",
@@ -175,8 +174,8 @@ async function main(): Promise<void> {
     report.requestLeakCount = leakCount(requestRecords, transportSecrets);
     report.nginxLogLeakCount = leakCount(nginxLines, transportSecrets);
     report.nginxConfigSafe = !/\$(?:http_authorization|request_body)(?:\b|_)/.test(nginxConfig);
-    report.appLogLeakCount = leakCount(appLogs, transportSecrets);
-    report.sqliteLeakCount = leakCount(await sqliteFiles(profile), [...transportSecrets, roomPassword]);
+    report.appLogLeakCount = leakCount(appLogs, [...transportSecrets, roomPassword]);
+    report.persistentRoomFileCount = (await persistentRoomFiles(profile)).length;
     report.leakAuditCompleted = true;
   } catch {
     // The report intentionally exposes no exception text or secret-bearing diagnostics.
@@ -197,7 +196,7 @@ async function main(): Promise<void> {
     report.cookieGrantMatches === 0 && report.resourceGrantMatches === 0 &&
     report.leakAuditCompleted && report.requestLeakCount === 0 &&
     report.nginxLogLeakCount === 0 && report.nginxConfigSafe &&
-    report.appLogLeakCount === 0 && report.sqliteLeakCount === 0 &&
+    report.appLogLeakCount === 0 && report.persistentRoomFileCount === 0 &&
     report.rotateRevokeCasePresent && report.cleanupPassed;
   process.stdout.write(`${JSON.stringify(report)}\n`);
   process.exitCode = report.passed ? 0 : 1;

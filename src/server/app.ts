@@ -19,7 +19,6 @@ import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SfuRoomControl } from "./sfu-room-control.js";
 import { SfuResourceAdmission } from "./sfu-resource-admission.js";
 import { TurnAllocationAdmission } from "./turn-allocation-admission.js";
-import { RoomDatabase } from "./room-database.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer, type SignalingOptions } from "./signaling.js";
 
@@ -94,12 +93,9 @@ export async function createScreenerServer(
   const roomStore =
     options.roomStore ??
     new RoomStore({
-      ttlMs: config.roomTtlMs,
+      leaseMs: config.roomLeaseMs,
       maxRooms: config.maxRooms,
       maxViewersPerRoom: config.maxViewersPerRoom,
-      database: config.roomDatabasePath
-        ? new RoomDatabase(config.roomDatabasePath)
-        : undefined,
       now,
     });
   const siteAccess = new SiteAccess({
@@ -398,9 +394,9 @@ async function handleRequest(
     }
 
     try {
-      const room = roomStore.createRoom(
-        parsedRequest.data.viewerPolicy,
-        parsedRequest.data.hostClaimTtlSeconds,
+      const room = await roomStore.createRoom(
+        parsedRequest.data.codeEntryPolicy,
+        parsedRequest.data.roomPassword ?? null,
       );
       const inviteUrl = new URL(`/r/${room.roomId}`, config.publicBaseUrl);
       if (room.viewerGrant) {
@@ -410,7 +406,7 @@ async function handleRequest(
         roomId: room.roomId,
         hostToken: room.hostToken,
         inviteUrl: inviteUrl.toString(),
-        viewerPolicy: room.viewerPolicy,
+        codeEntryPolicy: room.codeEntryPolicy,
         viewerGrantExpiresAt: room.viewerGrantExpiresAt,
         expiresAt: room.expiresAt,
       };
@@ -418,6 +414,10 @@ async function handleRequest(
     } catch (error) {
       if (error instanceof RoomStoreError && error.code === "ROOM_LIMIT") {
         sendJson(response, 503, { error: "Room capacity reached" });
+        return;
+      }
+      if (error instanceof RoomStoreError && error.code === "INVALID_TOKEN") {
+        sendJson(response, 400, { error: "Invalid room request" });
         return;
       }
       throw error;

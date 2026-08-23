@@ -266,10 +266,10 @@ describe("client session identity", () => {
       },
     });
     const room = {
-      roomId: "7",
+      roomId: "1234",
       hostToken: "a".repeat(32),
-      inviteUrl: `https://share.test/r/7#v=g1.7.1893456000.${"b".repeat(43)}`,
-      viewerPolicy: "private-link" as const,
+      inviteUrl: `https://share.test/r/1234#v=g1.1234.1893456000.${"b".repeat(43)}`,
+      codeEntryPolicy: "open" as const,
       viewerGrantExpiresAt: "2026-08-25T00:00:00.000Z",
       expiresAt: null,
     };
@@ -277,20 +277,20 @@ describe("client session identity", () => {
     writeHostRoom(room);
 
     expect(readHostRoom()).toEqual({
-      roomId: "7",
+      roomId: "1234",
       hostToken: "a".repeat(32),
-      canonicalUrl: "https://share.test/r/7",
+      canonicalUrl: "https://share.test/r/1234",
       expiresAt: null,
     });
     expect(values.get("screener:host-room:v1")).toBe(
       JSON.stringify({
-        roomId: "7",
+        roomId: "1234",
         hostToken: "a".repeat(32),
         expiresAt: null,
-        inviteUrl: "https://share.test/r/7",
+        inviteUrl: "https://share.test/r/1234",
       }),
     );
-    expect([...values.values()].join(" ")).not.toContain("g1.7.");
+    expect([...values.values()].join(" ")).not.toContain("g1.1234.");
     clearHostRoom();
     expect(readHostRoom()).toBeNull();
   });
@@ -300,9 +300,9 @@ describe("client session identity", () => {
       [
         "screener:host-room:v1",
         JSON.stringify({
-          roomId: "9",
+          roomId: "1234",
           hostToken: "h".repeat(32),
-          inviteUrl: "https://share.test/r/9",
+          inviteUrl: "https://share.test/r/1234",
           expiresAt: null,
         }),
       ],
@@ -316,14 +316,14 @@ describe("client session identity", () => {
     });
 
     expect(readHostRoom()).toEqual({
-      roomId: "9",
+      roomId: "1234",
       hostToken: "h".repeat(32),
-      canonicalUrl: "https://share.test/r/9",
+      canonicalUrl: "https://share.test/r/1234",
       expiresAt: null,
     });
   });
 
-  it("discards expired or malformed host room records", () => {
+  it("keeps expired host records for server judgment and discards malformed records", () => {
     const values = new Map<string, string>();
     const removeItem = vi.fn((key: string) => values.delete(key));
     vi.stubGlobal("window", {
@@ -334,27 +334,27 @@ describe("client session identity", () => {
       },
     });
     const expired = {
-      roomId: "12",
+      roomId: "1234",
       hostToken: "b".repeat(32),
-      canonicalUrl: "https://share.test/r/12",
+      canonicalUrl: "https://share.test/r/1234",
       expiresAt: "2026-08-18T00:00:00.000Z",
     };
 
     writeHostRoom(expired);
-    expect(readHostRoom(Date.parse(expired.expiresAt) + 1)).toBeNull();
-    expect(removeItem).toHaveBeenCalledOnce();
+    expect(readHostRoom()).toMatchObject({ roomId: "1234" });
+    expect(removeItem).not.toHaveBeenCalled();
 
     values.set("screener:host-room:v1", "not-json");
     expect(readHostRoom()).toBeNull();
-    expect(removeItem).toHaveBeenCalledTimes(2);
+    expect(removeItem).toHaveBeenCalledOnce();
   });
 
   it("consumes a Viewer grant fragment once into room-scoped session storage", () => {
     const values = new Map<string, string>();
     const replaceState = vi.fn();
-    const grant = `g1.7.1893456000.${"c".repeat(43)}`;
+    const grant = `g1.1234.1893456000.${"c".repeat(43)}`;
     vi.stubGlobal("window", {
-      location: new URL(`https://share.test/r/7#v=${grant}`),
+      location: new URL(`https://share.test/r/1234#v=${grant}`),
       history: { state: { navigation: 1 }, replaceState },
       sessionStorage: {
         getItem: (key: string) => values.get(key) ?? null,
@@ -363,22 +363,22 @@ describe("client session identity", () => {
       },
     });
 
-    expect(readViewerRoute()).toEqual({ roomId: "7", viewerGrant: grant });
-    expect(values.get("screener:viewer-grant:7")).toBe(grant);
+    expect(readViewerRoute()).toEqual({ roomId: "1234", viewerGrant: grant });
+    expect(values.get("screener:viewer-grant:1234")).toBe(grant);
     expect(replaceState).toHaveBeenCalledWith(
       { navigation: 1 },
       "",
-      "/r/7",
+      "/r/1234",
     );
     expect(readViewerGrant("8")).toBeNull();
   });
 
   it("fails malformed Viewer fragments closed without leaking across rooms", () => {
     const values = new Map<string, string>();
-    const oldGrant = `g1.7.1893456000.${"d".repeat(43)}`;
-    values.set("screener:viewer-grant:7", oldGrant);
+    const oldGrant = `g1.1234.1893456000.${"d".repeat(43)}`;
+    values.set("screener:viewer-grant:1234", oldGrant);
     vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/7#v=malformed"),
+      location: new URL("https://share.test/r/1234#v=malformed"),
       history: { state: null, replaceState: vi.fn() },
       sessionStorage: {
         getItem: (key: string) => values.get(key) ?? null,
@@ -387,13 +387,13 @@ describe("client session identity", () => {
       },
     });
 
-    expect(readViewerRoute()).toEqual({ roomId: "7" });
-    expect(readViewerGrant("7")).toBeNull();
+    expect(readViewerRoute()).toEqual({ roomId: "1234" });
+    expect(readViewerGrant("1234")).toBeNull();
     replaceViewerInvite(
       "8",
-      `https://share.test/r/8#v=g1.7.1893456000.${"e".repeat(43)}`,
+      `https://share.test/r/8#v=g1.1234.1893456000.${"e".repeat(43)}`,
     );
-    expect(readViewerGrant("7")).toBeNull();
+    expect(readViewerGrant("1234")).toBeNull();
     expect(readViewerGrant("8")).toBeNull();
   });
 
@@ -406,17 +406,17 @@ describe("client session identity", () => {
         removeItem: (key: string) => values.delete(key),
       },
     });
-    const firstGrant = `g1.7.1893456000.${"g".repeat(43)}`;
-    const rotatedGrant = `g1.7.1893456000.${"h".repeat(43)}`;
+    const firstGrant = `g1.1234.1893456000.${"g".repeat(43)}`;
+    const rotatedGrant = `g1.1234.1893456000.${"h".repeat(43)}`;
 
-    replaceViewerInvite("7", `https://share.test/r/7#v=${firstGrant}`);
-    replaceViewerInvite("7", `https://share.test/r/7#v=${rotatedGrant}`);
+    replaceViewerInvite("1234", `https://share.test/r/1234#v=${firstGrant}`);
+    replaceViewerInvite("1234", `https://share.test/r/1234#v=${rotatedGrant}`);
 
-    expect(readViewerGrant("7")).toBe(rotatedGrant);
-    expect(readViewerGrant("7")).toBe(rotatedGrant);
+    expect(readViewerGrant("1234")).toBe(rotatedGrant);
+    expect(readViewerGrant("1234")).toBe(rotatedGrant);
 
-    replaceViewerInvite("7", null);
-    expect(readViewerGrant("7")).toBeNull();
+    replaceViewerInvite("1234", null);
+    expect(readViewerGrant("1234")).toBeNull();
   });
 
   it("keeps the latest rotated or revoked invite through Host re-authentication", () => {
@@ -428,15 +428,15 @@ describe("client session identity", () => {
         removeItem: (key: string) => values.delete(key),
       },
     });
-    const oldInvite = `https://share.test/r/7#v=g1.7.1893456000.${"i".repeat(43)}`;
-    const rotatedInvite = `https://share.test/r/7#v=g1.7.1893456000.${"j".repeat(43)}`;
-    replaceViewerInvite("7", oldInvite);
+    const oldInvite = `https://share.test/r/1234#v=g1.1234.1893456000.${"i".repeat(43)}`;
+    const rotatedInvite = `https://share.test/r/1234#v=g1.1234.1893456000.${"j".repeat(43)}`;
+    replaceViewerInvite("1234", oldInvite);
     const activeRoom = {
-      roomId: "7",
+      roomId: "1234",
       hostToken: "h".repeat(32),
-      canonicalUrl: "https://share.test/r/7",
+      canonicalUrl: "https://share.test/r/1234",
       expiresAt: null,
-      viewerPolicy: "private-link" as const,
+      codeEntryPolicy: "open" as const,
       inviteUrl: oldInvite,
     };
 
@@ -445,7 +445,7 @@ describe("client session identity", () => {
         { ...activeRoom, inviteUrl: rotatedInvite },
         activeRoom.roomId,
         null,
-        "private-link",
+        "open",
       )?.inviteUrl,
     ).toBe(rotatedInvite);
     expect(
@@ -453,14 +453,23 @@ describe("client session identity", () => {
         { ...activeRoom, inviteUrl: null },
         activeRoom.roomId,
         null,
-        "private-link",
+        "open",
+      )?.inviteUrl,
+    ).toBe(oldInvite);
+    replaceViewerInvite(activeRoom.roomId, null);
+    expect(
+      mergeAuthenticatedHostRoom(
+        { ...activeRoom, inviteUrl: null },
+        activeRoom.roomId,
+        null,
+        "open",
       )?.inviteUrl,
     ).toBeNull();
   });
 
   it("removes an expired Viewer grant from room-scoped session storage", () => {
     const values = new Map<string, string>([
-      ["screener:viewer-grant:7", `g1.7.1.${"f".repeat(43)}`],
+      ["screener:viewer-grant:1234", `g1.1234.1.${"f".repeat(43)}`],
     ]);
     const removeItem = vi.fn((key: string) => values.delete(key));
     vi.stubGlobal("window", {
@@ -471,8 +480,8 @@ describe("client session identity", () => {
       },
     });
 
-    expect(readViewerGrant("7")).toBeNull();
-    expect(removeItem).toHaveBeenCalledWith("screener:viewer-grant:7");
+    expect(readViewerGrant("1234")).toBeNull();
+    expect(removeItem).toHaveBeenCalledWith("screener:viewer-grant:1234");
   });
 });
 
@@ -541,23 +550,23 @@ describe("site access API", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(createRoom("private-link")).rejects.toBeInstanceOf(ApiError);
+    await expect(createRoom("open", null)).rejects.toBeInstanceOf(ApiError);
 
     const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
     expect(headers.has("Authorization")).toBe(false);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
-      JSON.stringify({ viewerPolicy: "private-link" }),
+      JSON.stringify({ codeEntryPolicy: "open" }),
     );
   });
 
-  it("accepts a persistent room without an expiry", async () => {
+  it("accepts an active room with a lease deadline", async () => {
     const room = {
-      roomId: "42",
+      roomId: "1234",
       hostToken: "c".repeat(32),
-      inviteUrl: `https://share.test/r/42#v=g1.42.1893456000.${"f".repeat(43)}`,
-      viewerPolicy: "private-link",
+      inviteUrl: `https://share.test/r/1234#v=g1.1234.1893456000.${"f".repeat(43)}`,
+      codeEntryPolicy: "open",
       viewerGrantExpiresAt: "2026-08-25T00:00:00.000Z",
-      expiresAt: null,
+      expiresAt: "2026-08-24T00:00:00.000Z",
     };
     vi.stubGlobal(
       "fetch",
@@ -569,21 +578,21 @@ describe("site access API", () => {
       ),
     );
 
-    await expect(createRoom("private-link")).resolves.toEqual(room);
+    await expect(createRoom("open", null)).resolves.toEqual(room);
   });
 });
 
 describe("room codes", () => {
-  it("accepts one to twelve decimal digits without a leading zero", () => {
-    expect(isValidRoomId("1")).toBe(true);
-    expect(isValidRoomId("123456789012")).toBe(true);
-    expect(isValidRoomId("12345678901")).toBe(true);
+  it("accepts exactly four decimal digits without a leading zero", () => {
+    expect(isValidRoomId("1000")).toBe(true);
+    expect(isValidRoomId("9999")).toBe(true);
+    expect(isValidRoomId("123")).toBe(false);
+    expect(isValidRoomId("12345")).toBe(false);
     expect(isValidRoomId("0")).toBe(false);
-    expect(isValidRoomId("012345")).toBe(false);
-    expect(isValidRoomId("1234567890123")).toBe(false);
-    expect(isValidRoomId("12345678901a")).toBe(false);
-    expect(roomRouteFromInput(" 42 ")).toBe("/r/42");
-    expect(roomRouteFromInput("042")).toBeNull();
+    expect(isValidRoomId("0123")).toBe(false);
+    expect(isValidRoomId("123a")).toBe(false);
+    expect(roomRouteFromInput(" 1234 ")).toBe("/r/1234");
+    expect(roomRouteFromInput("0123")).toBeNull();
   });
 });
 
@@ -615,13 +624,13 @@ describe("client signaling recovery policy", () => {
     }
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/123456789012"),
+      location: new URL("https://share.test/r/1234"),
       setTimeout,
       clearTimeout,
     });
     const signal = new SignalingClient(
       {
-        roomId: "123456789012",
+        roomId: "1234",
         role: "viewer",
         clientId: "viewer-client",
       },
@@ -640,7 +649,7 @@ describe("client signaling recovery policy", () => {
     Object.defineProperty(authenticated, "data", {
       value: JSON.stringify({
         type: "authenticated",
-        protocol: "screener-v7",
+        protocol: "screener-v8",
         role: "viewer",
         peerId: "viewer_12345678",
         roomExpiresAt: null,
@@ -650,7 +659,7 @@ describe("client signaling recovery policy", () => {
         connectionId: null,
         viewerPeerIds: [],
         iceConfig: { iceServers: [] },
-        viewerPolicy: "private-link",
+        codeEntryPolicy: "open",
         viewerAuthorizationGeneration: "viewer_generation_12345678",
       }),
     });
@@ -683,7 +692,7 @@ describe("client signaling recovery policy", () => {
     }
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/123456789012"),
+      location: new URL("https://share.test/r/1234"),
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
     });
@@ -692,7 +701,7 @@ describe("client signaling recovery policy", () => {
     const onTerminated = vi.fn();
     const signal = new SignalingClient(
       {
-        roomId: "123456789012",
+        roomId: "1234",
         role: "host",
         token: "h".repeat(43),
         clientId: "host-client",
@@ -714,7 +723,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v7",
+        protocol: "screener-v8",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -724,7 +733,7 @@ describe("client signaling recovery policy", () => {
         connectionId: null,
         viewerPeerIds: [],
         iceConfig: { iceServers: [] },
-        viewerPolicy: "private-link",
+        codeEntryPolicy: "open",
         viewerAuthorizationGeneration: "viewer_generation_12345678",
       });
     };
@@ -806,14 +815,14 @@ describe("client signaling recovery policy", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("document", documentTarget);
     vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/123456789012"),
+      location: new URL("https://share.test/r/1234"),
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
     });
     const onMessage = vi.fn();
     const signal = new SignalingClient(
       {
-        roomId: "123456789012",
+        roomId: "1234",
         role: "viewer",
         clientId: "viewer-client",
       },
@@ -839,7 +848,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v7",
+      protocol: "screener-v8",
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -849,7 +858,7 @@ describe("client signaling recovery policy", () => {
       connectionId: "connection_12345678",
       viewerPeerIds: [],
       iceConfig: { iceServers: [] },
-      viewerPolicy: "private-link",
+      codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       mediaMode: "peer-assisted",
       mediaAssignment: { parentPeerId: null, childPeerIds: [] },
@@ -942,14 +951,14 @@ describe("client signaling recovery policy", () => {
       }
       vi.stubGlobal("WebSocket", FakeWebSocket);
       vi.stubGlobal("window", {
-        location: new URL("https://share.test/r/123456789012"),
+        location: new URL("https://share.test/r/1234"),
         setTimeout,
         clearTimeout,
       });
       const onTerminated = vi.fn();
       const signal = new SignalingClient(
         {
-          roomId: "123456789012",
+          roomId: "1234",
           role: "viewer",
           clientId: "viewer-client",
         },
@@ -967,7 +976,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v7",
+        protocol: "screener-v8",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });
@@ -1003,7 +1012,7 @@ describe("client signaling recovery policy", () => {
     }
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/123456789012"),
+      location: new URL("https://share.test/r/1234"),
       setTimeout,
       clearTimeout,
     });
@@ -1012,7 +1021,7 @@ describe("client signaling recovery policy", () => {
     const onMessage = vi.fn();
     const signal = new SignalingClient(
       {
-        roomId: "123456789012",
+        roomId: "1234",
         role: "host",
         token: "h".repeat(43),
         clientId: "host-client",

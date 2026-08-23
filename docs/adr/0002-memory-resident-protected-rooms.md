@@ -1,6 +1,6 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; implementation pending
+- Status: Accepted; source implemented, production release pending
 - Date: 2026-08-23
 
 ## Context
@@ -139,11 +139,11 @@ grant can create a room or become Host authority.
 
 ## Implementation Status
 
-This ADR is the accepted target, not a claim about current source or production.
-Current source still has `private-link | public-watch`, random 12-digit temporary
-rooms, optional SQLite persistent rooms, `ROOM_TTL_SECONDS`, and the v3 migration
-surface. Production still runs that SQLite-backed release. The implementation
-must replace those surfaces atomically, delete the database code and old
-configuration rather than preserve compatibility, update deployment guidance,
-and pass the gates above before status reports this decision as source-complete
-or deployed.
+Current source implements this decision and has removed the old room modes,
+12-digit codes, SQLite persistence, `ROOM_DATABASE_PATH`, `ROOM_TTL_SECONDS`,
+and migration surface atomically on the single `screener-v8` wire. Focused source coverage spans allocation,
+leases, orthogonal grant/code admission, rotate/revoke, password policy, local
+profile replay, restart loss, HTTP, signaling, and browser storage privacy.
+Production still runs the older SQLite-backed release; do not report this
+decision as deployed until the new source is released and its deployment checks
+pass.

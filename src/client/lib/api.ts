@@ -1,7 +1,7 @@
 import {
   createRoomResponseSchema,
   type CreateRoomResponse,
-  type ViewerAccessPolicy,
+  type CodeEntryPolicy,
 } from "../../shared/protocol";
 
 export interface SiteAccessStatus {
@@ -102,7 +102,8 @@ export async function authenticateSiteAccess(
 }
 
 export async function createRoom(
-  viewerPolicy: ViewerAccessPolicy,
+  codeEntryPolicy: CodeEntryPolicy,
+  roomPassword: string | null,
 ): Promise<CreateRoomResponse> {
   const response = await fetch("/api/rooms", {
     method: "POST",
@@ -110,7 +111,10 @@ export async function createRoom(
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ viewerPolicy }),
+    body: JSON.stringify({
+      codeEntryPolicy,
+      ...(roomPassword === null ? {} : { roomPassword }),
+    }),
   });
 
   const body = await responseBody(response);
