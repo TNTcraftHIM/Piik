@@ -2,6 +2,7 @@ import type {
   ClientMessage,
   MediaRoutePhase,
   ParticipantRouteAssignment,
+  PreparedRouteCandidate,
   ServerMessage,
 } from "../../shared/protocol";
 import { SfuSubscriber } from "../sfu/subscriber";
@@ -40,9 +41,14 @@ interface ViewerSfuRouteEvents {
     assignment: ParticipantRouteAssignment,
     revision?: number,
   ) => boolean | void | Promise<boolean | void>;
-  preparePeer?: (assignment: ParticipantRouteAssignment | null, revision?: number) => void;
+  preparePeer?: (
+    assignment: ParticipantRouteAssignment | null,
+    revision?: number,
+    candidate?: PreparedRouteCandidate,
+  ) => void;
   prepareChild?: (
-    childPeerIds: readonly string[] | null,
+    candidate: PreparedRouteCandidate | null,
+    childPeerIds?: readonly string[],
     revision?: number,
   ) => void;
   activateChildren?: (
@@ -83,7 +89,10 @@ export class ViewerSfuRoute {
   private paused = false;
   private closed = false;
 
-  constructor(private readonly events: ViewerSfuRouteEvents) {}
+  constructor(
+    private readonly viewerPeerId: string,
+    private readonly events: ViewerSfuRouteEvents,
+  ) {}
 
   accept(update: RouteUpdateInput, acknowledge = true): RouteUpdateResult {
     if (this.closed) {
@@ -112,12 +121,21 @@ export class ViewerSfuRoute {
       }
     }
     if (update.phase === "prepare") {
-      this.events.prepareChild?.(update.assignment.childPeerIds, update.revision);
-      const mediaUpstream = this.route.getMediaAssignment()?.upstream;
+      const candidate = update.candidate;
+      const ownsUpstreamCandidate = candidate.childPeerId === this.viewerPeerId;
+      const ownsChildCandidate =
+        candidate.transport !== "sfu" &&
+        update.assignment.childPeerIds.includes(candidate.childPeerId);
+      this.events.prepareChild?.(
+        ownsChildCandidate ? candidate : null,
+        ownsChildCandidate ? update.assignment.childPeerIds : undefined,
+        ownsChildCandidate ? update.revision : undefined,
+      );
       const needsPeerCandidate =
+        ownsUpstreamCandidate &&
+        candidate.transport !== "sfu" &&
         update.assignment.upstream.kind === "peer" &&
-        (mediaUpstream?.kind !== "peer" ||
-          mediaUpstream.peerId !== update.assignment.upstream.peerId);
+        candidate.connectionId.length > 0;
       const replacedPeerCandidate = this.pendingPeerRevision !== null;
       if (replacedPeerCandidate) {
         this.pendingPeerRevision = null;
@@ -125,7 +143,7 @@ export class ViewerSfuRoute {
       }
       if (needsPeerCandidate && update.assignment.upstream.kind === "peer") {
         this.pendingPeerRevision = update.revision;
-        this.events.preparePeer?.(update.assignment, update.revision);
+        this.events.preparePeer?.(update.assignment, update.revision, candidate);
       } else if (
         update.assignment.upstream.kind !== "peer" &&
         !replacedPeerCandidate
@@ -135,7 +153,11 @@ export class ViewerSfuRoute {
       if (this.pending?.revision !== update.revision) {
         this.clearPending();
       }
-      if (update.assignment.upstream.kind !== "sfu") {
+      if (
+        !ownsUpstreamCandidate ||
+        candidate.transport !== "sfu" ||
+        update.assignment.upstream.kind !== "sfu"
+      ) {
         this.clearPending();
       }
       return result;
@@ -153,21 +175,6 @@ export class ViewerSfuRoute {
     }
     void this.queueActiveRoute(token, acknowledge);
     return result;
-  }
-
-  beginSelectedPeerCandidate(revision: number, parentPeerId: string): boolean {
-    const assignment = this.route.getPlannedAssignment();
-    if (
-      this.paused ||
-      this.route.getRevision() !== revision ||
-      this.route.getPhase() !== "prepare" ||
-      assignment?.upstream.kind !== "peer" ||
-      assignment.upstream.peerId !== parentPeerId
-    ) {
-      return false;
-    }
-    this.pendingPeerRevision = revision;
-    return true;
   }
 
   setPaused(paused: boolean): void {
@@ -253,7 +260,15 @@ export class ViewerSfuRoute {
     const token = this.route.token();
     const assignment = this.route.getPlannedAssignment();
     const phase = this.route.getPhase();
-    if (!token || !phase || assignment?.upstream.kind !== "sfu") {
+    const candidate = this.route.getPreparedCandidate();
+    if (
+      !token ||
+      !phase ||
+      assignment?.upstream.kind !== "sfu" ||
+      (phase === "prepare" &&
+        (candidate?.childPeerId !== this.viewerPeerId ||
+          candidate.transport !== "sfu"))
+    ) {
       return;
     }
 
@@ -555,15 +570,7 @@ export class ViewerSfuRoute {
     const changed = slot.mediaAvailable !== available;
     slot.mediaAvailable = available;
     this.events.onSfuVideoAvailability?.(available);
-    if (!changed) {
-      return;
-    }
-    if (!available) {
-      this.events.send({
-        type: "route-media-unavailable",
-        revision: slot.revision,
-      });
-    }
+    if (!changed || this.paused) return;
   }
 
   private commitMedia(token: RouteOperationToken): void {

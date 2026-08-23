@@ -30,7 +30,6 @@ interface PublicationEntry {
   fence: SfuResourceFence;
   state: ResourceState;
   subscriptions: Map<string, SubscriptionEntry>;
-  legacyEgress?: number;
 }
 
 interface RoomResources {
@@ -115,6 +114,9 @@ export class SfuResourceAdmission {
     }
     if (publication.state === "committed") return [];
     if (publication.state !== "reserved") return null;
+    if (![...publication.subscriptions.values()].some((entry) => entry.state === "reserved")) {
+      return null;
+    }
 
     const draining: SfuResourceFence[] = [];
     for (const other of room.publications.values()) {
@@ -175,54 +177,6 @@ export class SfuResourceAdmission {
       subscription.state = "draining";
     }
     return true;
-  }
-
-  /** Compatibility wrapper for the pre-controller aggregate reservation. */
-  reserve(fence: SfuResourceFence, egress: number): boolean {
-    assertFence(fence);
-    assertPositiveSafeInteger(egress, "SFU egress reservation");
-    const existing = this.publication(fence);
-    if (existing) {
-      return (
-        existing.state !== "draining" && existing.legacyEgress === egress
-      );
-    }
-    const room = this.rooms.get(fence.roomId);
-    if (
-      this.ingressInUse >= this.ingressCapacity ||
-      egress > this.egressCapacity - this.egressInUse ||
-      [...(room?.publications.values() ?? [])].some(
-        (publication) => publication.state === "reserved",
-      )
-    ) {
-      return false;
-    }
-
-    const resources = room ?? { publications: new Map() };
-    const publication: PublicationEntry = {
-      fence: cloneFence(fence),
-      state: "reserved",
-      subscriptions: new Map(),
-      legacyEgress: egress,
-    };
-    for (let index = 0; index < egress; index += 1) {
-      const viewerPeerId = `legacy_${index}`;
-      publication.subscriptions.set(viewerPeerId, {
-        fence: { ...cloneFence(fence), viewerPeerId },
-        state: "reserved",
-        reservedFromDraining: false,
-      });
-    }
-    resources.publications.set(publicationKey(fence), publication);
-    this.rooms.set(fence.roomId, resources);
-    this.ingressInUse += 1;
-    this.egressInUse += egress;
-    return true;
-  }
-
-  /** Compatibility wrapper for the pre-controller aggregate commit. */
-  commit(fence: SfuResourceFence): readonly SfuResourceFence[] | null {
-    return this.commitPublication(fence);
   }
 
   beginDrain(fence: SfuResourceFence): boolean {

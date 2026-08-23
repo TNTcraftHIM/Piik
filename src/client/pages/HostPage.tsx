@@ -27,6 +27,7 @@ import {
   type CreateRoomResponse,
   type IceConfig,
   type ParticipantPresenceEntry,
+  type PreparedRouteCandidate,
   type ServerMessage,
   type ViewerAccessPolicy,
 } from "../../shared/protocol";
@@ -272,6 +273,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const retiredConnectionsRef = useRef(new Map<string, string>());
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
+  const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
   const hostPeerIdRef = useRef<string | null>(null);
   const viewerQualityEvidenceRef = useRef(
     new Map<string, ViewerQualityEvidencePresentation>(),
@@ -411,6 +413,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       hostProvisionalChildRef.current?.discard();
       hostProvisionalChildRef.current = null;
       activeHostChildPeerIdsRef.current = [];
+      endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
       hostPeerIdRef.current = null;
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
         window.clearTimeout(timer),
@@ -526,6 +529,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     hostProvisionalChildRef.current?.discard();
     hostProvisionalChildRef.current = null;
     activeHostChildPeerIdsRef.current = [];
+    endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
@@ -909,6 +913,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function prepareHostChild(
     revision: number,
     assignment: HostRouteAssignment,
+    candidate: PreparedRouteCandidate,
     generation: number,
   ): boolean {
     const stream = streamRef.current;
@@ -950,8 +955,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     return hostProvisionalChildRef.current.prepare({
       revision,
       assignment,
+      candidate,
       activeChildPeerIds: activeHostChildPeerIdsRef.current,
-      maxMediaEdges: MAX_ENDPOINT_MEDIA_CHILDREN,
+      maxMediaEdges: endpointMediaCopyCapacityRef.current,
       iceConfig,
       stream,
       profile: qualitySettingsRef.current,
@@ -969,7 +975,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       revision,
       assignment,
       activeChildPeerIds,
-      maxMediaEdges: MAX_ENDPOINT_MEDIA_CHILDREN,
+      maxMediaEdges: endpointMediaCopyCapacityRef.current,
     }) ?? { kind: "ordinary" as const };
     if (activation.kind === "promote") {
       hostProvisionalChildRef.current = null;
@@ -1106,7 +1112,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     reconcileBoundedMediaChildren(
       peersRef.current.keys(),
       childPeerIds,
-      MAX_ENDPOINT_MEDIA_CHILDREN,
+      endpointMediaCopyCapacityRef.current,
       removePeer,
       (peerId) => {
         void startPeer(peerId, generation).catch((error: unknown) => {
@@ -1129,6 +1135,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     if (message.type === "authenticated" && message.role === "host") {
       discardPreparedHostChild();
       hostPeerIdRef.current = message.peerId;
+      endpointMediaCopyCapacityRef.current = message.endpointMediaCopyCapacity;
       setViewerAccessUpdating(false);
       clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
@@ -1193,20 +1200,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         }
         return;
       }
-      const iceConfig = iceConfigRef.current;
-      const activeStream = streamRef.current;
-      if (
-        peerAssistedRef.current &&
-        message.parentPeerId === hostPeerIdRef.current &&
-        iceConfig &&
-        activeStream
-      ) {
-        hostProvisionalChildRef.current?.prepareSelectedTurn(message, {
-          iceConfig,
-          stream: activeStream,
-          profile: qualitySettingsRef.current,
-        });
-      }
       return;
     }
     if (message.type === "viewer-access-updated") {
@@ -1249,8 +1242,20 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "route-update") {
       if (peerAssistedRef.current) {
+        const route = ensureHostSfuRoute(generation);
+        const accepted = route.accept(message);
+        if (accepted === "stale") return;
         if (message.phase === "prepare") {
-          prepareHostChild(message.revision, message.assignment, generation);
+          if (message.candidate.transport === "direct") {
+            prepareHostChild(
+              message.revision,
+              message.assignment,
+              message.candidate,
+              generation,
+            );
+          } else {
+            discardPreparedHostChild();
+          }
         } else {
           activatePreparedHostChild(message.revision, message.assignment);
         }
@@ -1261,10 +1266,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           activeRouteRevisionRef.current = message.revision;
           clearAllViewerQualityEvidence();
         }
-        const route = ensureHostSfuRoute(generation);
-        void route
-          .acceptAndWait(message)
-          .then(() => showHostSfuQualityWarning(route, generation));
+        showHostSfuQualityWarning(route, generation);
       }
       return;
     }

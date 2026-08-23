@@ -96,6 +96,7 @@ interface Participant {
   joinOrder: number;
   effectiveDownstreamCapacity: number;
   blockedAtFactVersion?: number;
+  failedTuple?: { key: string; factVersion: number };
 }
 
 interface Attempt<Resource> {
@@ -168,6 +169,7 @@ interface HostPublication<Resource> {
   usable: boolean;
   physicalActive: boolean;
   resource: Resource;
+  failedIngress?: { ingress: "direct" | "selected-turn"; factVersion: number };
 }
 
 export class RoomRouteController<Resource = unknown> {
@@ -176,6 +178,7 @@ export class RoomRouteController<Resource = unknown> {
   private hostPublication: HostPublication<Resource> | null = null;
   private operation?: ChildOperation<Resource>;
   private revision = 0;
+  private latestRevision = 0;
   private factVersion = 0;
   private nextJoinOrder = 0;
   private paused = false;
@@ -210,8 +213,14 @@ export class RoomRouteController<Resource = unknown> {
       const released: Resource[] = [];
       const previousSessionId = current.sessionId;
       if (previousSessionId !== input.sessionId) {
+        const revisionBefore = this.revision;
+        released.push(...this.abortOperation());
         current.sessionId = input.sessionId;
-        released.push(...this.rebindCommittedSession(input.peerId, input.sessionId));
+        const rebound = this.rebindCommittedSession(input.peerId, input.sessionId);
+        released.push(...rebound.released);
+        if (rebound.retired && this.revision === revisionBefore) {
+          this.revision = this.allocateRevision();
+        }
         changed = true;
       }
       if (current.departureConfirmed) {
@@ -326,6 +335,10 @@ export class RoomRouteController<Resource = unknown> {
       edge.usable = false;
       child.blockedAtFactVersion = undefined;
       this.touchFacts();
+      child.failedTuple = {
+        key: edgeTupleKey(edge),
+        factVersion: this.factVersion,
+      };
     }
     return true;
   }
@@ -344,7 +357,39 @@ export class RoomRouteController<Resource = unknown> {
     if (publication.usable) {
       publication.usable = false;
       this.touchFacts();
+      publication.failedIngress = {
+        ingress: publication.ingress,
+        factVersion: this.factVersion,
+      };
     }
+    return true;
+  }
+
+  adoptDirectConnection(input: EdgeGuard & { newConnectionId: string }): boolean {
+    const edge = this.upstreamByViewer.get(input.childPeerId);
+    if (
+      this.operation?.childPeerId === input.childPeerId ||
+      this.revision !== input.routeRevision ||
+      !edge ||
+      edge.kind !== "peer" ||
+      edge.transport !== "direct" ||
+      !edge.usable ||
+      !edge.physicalActive ||
+      edge.childSessionId !== input.childSessionId ||
+      edge.parentSessionId !== input.parentSessionId ||
+      edge.connectionId !== input.connectionId ||
+      !input.newConnectionId
+    ) {
+      return false;
+    }
+    if (input.newConnectionId === edge.connectionId) return true;
+    edge.connectionId = input.newConnectionId;
+    const child = this.participants.get(input.childPeerId);
+    if (child) {
+      child.blockedAtFactVersion = undefined;
+      child.failedTuple = undefined;
+    }
+    this.touchFacts();
     return true;
   }
 
@@ -360,7 +405,7 @@ export class RoomRouteController<Resource = unknown> {
     edge.physicalActive = false;
     edge.usable = false;
     child.blockedAtFactVersion = undefined;
-    this.revision = this.nextRevision();
+    this.revision = this.allocateRevision();
     if (this.operation) this.operation.baseRevision = this.revision;
     this.touchFacts();
     return edge.transport === "direct" ? [] : [edge.resource];
@@ -380,7 +425,7 @@ export class RoomRouteController<Resource = unknown> {
         publication.connectionId !== guard.connectionId) return [];
     publication.physicalActive = false;
     publication.usable = false;
-    this.revision = this.nextRevision();
+    this.revision = this.allocateRevision();
     if (this.operation) this.operation.baseRevision = this.revision;
     this.touchFacts();
     return [publication.resource];
@@ -409,6 +454,10 @@ export class RoomRouteController<Resource = unknown> {
       const child = this.participants.get(childPeerId)!;
       const candidates = this.buildCandidates(childPeerId, bootstrap !== undefined);
       if (candidates.length === 0) {
+        if (this.retireInvalidOperationEdge(childPeerId, released)) {
+          this.revision = this.allocateRevision();
+          this.touchFacts();
+        }
         child.blockedAtFactVersion = this.factVersion;
         continue;
       }
@@ -470,7 +519,7 @@ export class RoomRouteController<Resource = unknown> {
     }
     operation.current = {
       tuple,
-      revision: this.nextRevision(),
+      revision: this.allocateRevision(),
       connectionId: input.connectionId,
       childSessionId: operation.childSessionId,
       parentSessionId: tuple.kind === "peer" ? this.participants.get(tuple.parentPeerId)?.sessionId ?? undefined : undefined,
@@ -512,6 +561,7 @@ export class RoomRouteController<Resource = unknown> {
     }
     const released = [...validation.released];
     const retirement = plan.endpointTransition.retire;
+    let restoreTuple: CandidateTuple | undefined;
     if (retirement.kind === "edge") {
       const edge = this.upstreamByViewer.get(retirement.childPeerId);
       if (!edge || edge.kind !== "peer" || !edge.physicalActive ||
@@ -521,6 +571,13 @@ export class RoomRouteController<Resource = unknown> {
           edge.transport !== retirement.transport ||
           edge.connectionId !== retirement.connectionId) {
         return { accepted: false, operation: this.operationSnapshot(), released };
+      }
+      if (edge.usable) {
+        restoreTuple = {
+          kind: "peer",
+          parentPeerId: edge.parentPeerId,
+          transport: edge.transport,
+        };
       }
       if (edge.transport === "selected-turn") released.push(edge.resource);
       this.upstreamByViewer.delete(retirement.childPeerId);
@@ -535,13 +592,13 @@ export class RoomRouteController<Resource = unknown> {
       released.push(...this.removePublicationGeneration(retirement.generation));
     }
     this.advanceActiveRevision(operation);
+    this.touchFacts();
     const nextTuple = retirement.kind === "publication" && plan.tuple.kind === "sfu" &&
       plan.tuple.publication === "replace"
       ? { ...plan.tuple, publication: "create" as const }
       : plan.tuple;
-    const nextPlan = this.planCandidate(operation.childPeerId, nextTuple);
-    if (!nextPlan) {
-      operation.cursor += 1;
+    this.replanRemaining(operation, nextTuple, restoreTuple);
+    if (operation.cursor >= operation.candidates.length) {
       const advanced = this.validateOrAdvance(nowMs);
       return {
         accepted: true,
@@ -550,16 +607,28 @@ export class RoomRouteController<Resource = unknown> {
         released: [...released, ...advanced.released],
       };
     }
-    operation.candidates[operation.cursor] = nextPlan;
     return { accepted: true, operation: this.operationSnapshot(), released };
   }
 
-  candidateReady(guard: CandidateGuard, nowMs: number): SettleResult<Resource> {
+  candidateReady(
+    guard: CandidateGuard,
+    nowMs: number,
+    commitReservation: (reservation: CandidateReservation<Resource>) => boolean = () => true,
+  ): SettleResult<Resource> {
     const validation = this.validateOrAdvance(nowMs);
     const operation = this.operation;
     const attempt = operation?.current;
     if (!operation || !attempt || !this.guardMatches(guard, operation, attempt)) {
       return { accepted: false, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
+    }
+    if (!commitReservation(attempt.reservation)) {
+      const failed = this.validateOrAdvance(nowMs, guard);
+      return {
+        accepted: false,
+        exhausted: failed.exhausted,
+        activeRevision: this.revision,
+        released: [...validation.released, ...failed.released],
+      };
     }
     const released = [...validation.released, ...this.commitAttempt(operation, attempt)];
     return { accepted: true, activeRevision: this.revision, released };
@@ -578,6 +647,22 @@ export class RoomRouteController<Resource = unknown> {
     return { accepted: validation.expired, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
   }
 
+  dispose(): readonly Resource[] {
+    const resources = new Set<Resource>();
+    if (this.operation?.current) {
+      for (const resource of reservationResources(this.operation.current.reservation)) {
+        resources.add(resource);
+      }
+    }
+    for (const resource of this.committedResources()) resources.add(resource);
+    this.operation = undefined;
+    this.upstreamByViewer.clear();
+    this.hostPublication = null;
+    this.participants.clear();
+    this.paused = true;
+    return [...resources];
+  }
+
   private validateOrAdvance(nowMs: number, failedGuard?: CandidateGuard): {
     released: Resource[]; exhausted?: boolean; expired: boolean; consumedGuard: boolean;
   } {
@@ -589,7 +674,7 @@ export class RoomRouteController<Resource = unknown> {
       if (operation.current) released.push(...reservationResources(operation.current.reservation));
       if (operation.current) this.advanceActiveRevision(operation);
       const factsChanged = operation.builtAtFactVersion !== this.factVersion;
-      this.blockAndClear(operation, !factsChanged);
+      this.blockAndClear(operation, !factsChanged, released);
       return { ...result, exhausted: !factsChanged, expired: true };
     }
     if (this.participants.get(operation.childPeerId)?.sessionId !== operation.childSessionId) {
@@ -601,6 +686,9 @@ export class RoomRouteController<Resource = unknown> {
 
     while ((operation = this.operation)) {
       const attempt = operation.current;
+      if (!attempt && operation.builtAtFactVersion !== this.factVersion) {
+        this.replanRemaining(operation);
+      }
       if (attempt) {
         const guardFailed = failedGuard && this.guardMatches(failedGuard, operation, attempt);
         const plan = operation.candidates[operation.cursor];
@@ -610,6 +698,7 @@ export class RoomRouteController<Resource = unknown> {
         operation.current = undefined;
         operation.cursor += 1;
         result.consumedGuard = Boolean(guardFailed);
+        this.replanRemaining(operation);
       }
       while (operation.cursor < operation.candidates.length &&
              !this.candidateValid(operation.childPeerId, operation.candidates[operation.cursor]!)) {
@@ -617,21 +706,18 @@ export class RoomRouteController<Resource = unknown> {
       }
       if (operation.cursor < operation.candidates.length) return result;
       const factsChanged = operation.builtAtFactVersion !== this.factVersion;
-      this.blockAndClear(operation, !factsChanged);
+      this.blockAndClear(operation, !factsChanged, released);
       result.exhausted = !factsChanged;
     }
     return result;
   }
 
   private commitAttempt(operation: ChildOperation<Resource>, attempt: Attempt<Resource>): Resource[] {
-    const released: Resource[] = [];
+    const beforeResources = new Set(this.committedResources());
     const old = this.upstreamByViewer.get(operation.childPeerId);
-    if ("overlap" in attempt.reservation && attempt.reservation.overlap !== undefined) released.push(attempt.reservation.overlap);
 
     if (attempt.tuple.kind === "sfu" && attempt.tuple.publication === "replace") {
-      released.push(...this.removePublicationGeneration(this.hostPublication!.generation));
-    } else if (old && old.transport !== "direct" && old.physicalActive) {
-      released.push(old.resource);
+      this.removePublicationGeneration(this.hostPublication!.generation);
     }
 
     if (attempt.tuple.kind === "peer") {
@@ -676,18 +762,30 @@ export class RoomRouteController<Resource = unknown> {
     this.operation = undefined;
     this.touchFacts();
     const participant = this.participants.get(operation.childPeerId);
-    if (participant) participant.blockedAtFactVersion = undefined;
+    if (participant) {
+      participant.blockedAtFactVersion = undefined;
+      participant.failedTuple = undefined;
+    }
     if (old?.kind === "sfu" && !this.hasSfuSubscribers() && this.hostPublication) {
-      if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
       this.hostPublication = null;
     }
     this.assertGraph();
+    const afterResources = new Set(this.committedResources());
+    const released = [...beforeResources].filter((resource) => !afterResources.has(resource));
+    if ("overlap" in attempt.reservation && attempt.reservation.overlap !== undefined) {
+      released.push(attempt.reservation.overlap);
+    }
     return released;
   }
 
   private buildCandidates(childPeerId: string, sfuOnly: boolean): CandidatePlan[] {
-    const failed = this.upstreamByViewer.get(childPeerId);
-    const failedKey = failed?.usable === false ? edgeTupleKey(failed) : undefined;
+    const child = this.participants.get(childPeerId)!;
+    const failedKey = child.failedTuple?.factVersion === this.factVersion
+      ? child.failedTuple.key
+      : undefined;
+    const failedIngress = this.hostPublication?.failedIngress?.factVersion === this.factVersion
+      ? this.hostPublication.failedIngress.ingress
+      : undefined;
     const descendants = this.descendantsOf(childPeerId);
     const parents = [...this.participants.values()]
       .filter((parent) => parent.sessionId && !parent.departureConfirmed && parent.peerId !== childPeerId &&
@@ -716,6 +814,7 @@ export class RoomRouteController<Resource = unknown> {
       }
     }
     return candidates.filter((candidate, index, all) => tupleKey(candidate) !== failedKey &&
+      !(candidate.kind === "sfu" && candidate.publication !== "reuse" && candidate.ingress === failedIngress) &&
       all.findIndex((other) => tupleKey(other) === tupleKey(candidate)) === index)
       .map((candidate) => this.planCandidate(childPeerId, candidate))
       .filter((candidate): candidate is CandidatePlan => candidate !== null &&
@@ -749,7 +848,7 @@ export class RoomRouteController<Resource = unknown> {
         const participant = this.participants.get(id);
         const edge = this.upstreamByViewer.get(id);
         return participant?.sessionId && participant.blockedAtFactVersion !== this.factVersion &&
-          edge?.kind === "peer" && edge.transport === "direct" && edge.usable;
+          edge?.kind === "peer" && edge.transport === "direct" && edge.usable && edge.physicalActive;
       })
       .sort((left, right) => compareParticipant(this.participants.get(right)!, this.participants.get(left)!))[0];
   }
@@ -764,14 +863,27 @@ export class RoomRouteController<Resource = unknown> {
   private overflowChildren(): string[] {
     const result: string[] = [];
     for (const parent of this.participants.values()) {
-      const capacity = Math.max(0, parent.effectiveDownstreamCapacity - (parent.role === "host" && this.hostPublication ? 1 : 0));
-      const children = this.childrenOf(parent.peerId).filter((id) => {
+      const overflow = this.overflowPeerChildren(parent.peerId).filter((id) => {
         const child = this.participants.get(id);
         return child?.sessionId && !child.departureConfirmed && child.blockedAtFactVersion !== this.factVersion;
-      }).sort((left, right) => compareParticipant(this.participants.get(left)!, this.participants.get(right)!));
-      result.push(...children.slice(capacity).reverse());
+      });
+      result.push(...overflow.reverse());
     }
     return result;
+  }
+
+  private overflowPeerChildren(parentPeerId: string): string[] {
+    const parent = this.participants.get(parentPeerId);
+    if (!parent) return [];
+    const publicationCopies = parent.role === "host" && this.hostPublication?.physicalActive ? 1 : 0;
+    const capacity = Math.max(0, parent.effectiveDownstreamCapacity - publicationCopies);
+    return this.childrenOf(parentPeerId)
+      .filter((id) => {
+        const edge = this.upstreamByViewer.get(id);
+        return edge?.kind === "peer" && edge.physicalActive;
+      })
+      .sort((left, right) => compareParticipant(this.participants.get(left)!, this.participants.get(right)!))
+      .slice(capacity);
   }
 
   private candidateValid(childPeerId: string, plan: CandidatePlan, attempt?: Attempt<Resource>): boolean {
@@ -836,7 +948,7 @@ export class RoomRouteController<Resource = unknown> {
     }
     if (producerPeerId !== this.options.hostPeerId || !this.hostPublication?.physicalActive) return null;
     const replacesPublication = tuple.kind === "sfu" && tuple.publication === "replace";
-    const releasesLastPublication = tuple.kind === "peer" && old?.kind === "sfu" &&
+    const releasesLastPublication = tuple.kind === "peer" && old?.kind === "sfu" && old.physicalActive &&
       this.sfuSubscriberCount() === 1;
     if (!replacesPublication && !releasesLastPublication) return null;
     return {
@@ -883,7 +995,7 @@ export class RoomRouteController<Resource = unknown> {
         if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
         this.hostPublication = null;
       }
-      this.revision = this.nextRevision();
+      this.revision = this.allocateRevision();
       this.touchFacts();
     }
     return removed;
@@ -898,14 +1010,71 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private advanceActiveRevision(operation: ChildOperation<Resource>): void {
-    this.revision = this.nextRevision();
+    this.revision = this.allocateRevision();
     operation.baseRevision = this.revision;
   }
 
-  private blockAndClear(operation: ChildOperation<Resource>, block = true): void {
+  private blockAndClear(
+    operation: ChildOperation<Resource>,
+    block = true,
+    released: Resource[] = [],
+  ): void {
     const child = this.participants.get(operation.childPeerId);
-    if (block && child) child.blockedAtFactVersion = this.factVersion;
     this.operation = undefined;
+    if (!block || !child) return;
+    if (this.retireInvalidOperationEdge(operation.childPeerId, released)) {
+      this.revision = this.allocateRevision();
+      this.touchFacts();
+    }
+    child.blockedAtFactVersion = this.factVersion;
+  }
+
+  private retireInvalidOperationEdge(childPeerId: string, released: Resource[]): boolean {
+    const edge = this.upstreamByViewer.get(childPeerId);
+    if (!edge || !this.edgeRequiresMove(childPeerId, edge)) return false;
+    if (edge.transport !== "direct" && edge.physicalActive) released.push(edge.resource);
+    edge.physicalActive = false;
+    edge.usable = false;
+    if (edge.kind === "sfu" && !this.hasSfuSubscribers() && this.hostPublication) {
+      if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
+      this.hostPublication.physicalActive = false;
+      this.hostPublication.usable = false;
+    }
+    return true;
+  }
+
+  private edgeRequiresMove(childPeerId: string, edge: CommittedEdge<Resource>): boolean {
+    if (!edge.usable || !edge.physicalActive) return true;
+    if (edge.kind === "sfu") {
+      return !this.hostPublication?.usable ||
+        !this.hostPublication.physicalActive ||
+        this.hostPublication.generation !== edge.publicationGeneration;
+    }
+    if (this.participants.get(edge.parentPeerId)?.departureConfirmed) return true;
+    return this.overflowPeerChildren(edge.parentPeerId).includes(childPeerId);
+  }
+
+  private replanRemaining(
+    operation: ChildOperation<Resource>,
+    firstTuple?: CandidateTuple,
+    restoreTuple?: CandidateTuple,
+  ): void {
+    const prefix = operation.candidates.slice(0, operation.cursor);
+    const tuples = operation.candidates
+      .slice(operation.cursor)
+      .map((candidate) => candidate.tuple);
+    if (firstTuple) {
+      if (tuples.length === 0) tuples.push(firstTuple);
+      else tuples[0] = firstTuple;
+    }
+    if (restoreTuple && !tuples.some((tuple) => tupleKey(tuple) === tupleKey(restoreTuple))) {
+      tuples.push(restoreTuple);
+    }
+    const replanned = tuples
+      .map((tuple) => this.planCandidate(operation.childPeerId, tuple))
+      .filter((plan): plan is CandidatePlan => plan !== null);
+    operation.candidates = [...prefix, ...replanned];
+    operation.builtAtFactVersion = this.factVersion;
   }
 
   private operationSnapshot(): OperationSnapshot | undefined {
@@ -963,8 +1132,8 @@ export class RoomRouteController<Resource = unknown> {
   private targetFits(parentPeerId: string, childPeerId: string): boolean {
     const parent = this.participants.get(parentPeerId)!;
     const edge = this.upstreamByViewer.get(childPeerId);
-    const already = edge?.kind === "peer" && edge.parentPeerId === parentPeerId;
-    const releasesLastPublication = parent.role === "host" && edge?.kind === "sfu" &&
+    const already = edge?.kind === "peer" && edge.parentPeerId === parentPeerId && edge.physicalActive;
+    const releasesLastPublication = parent.role === "host" && edge?.kind === "sfu" && edge.physicalActive &&
       this.sfuSubscriberCount() === 1;
     return this.usedSlots(parentPeerId) - (releasesLastPublication ? 1 : 0) +
       (already ? 0 : 1) <= parent.effectiveDownstreamCapacity;
@@ -973,9 +1142,10 @@ export class RoomRouteController<Resource = unknown> {
   private publicationFits(childPeerId: string, replacing: boolean): boolean {
     const host = this.participants.get(this.options.hostPeerId);
     const edge = this.upstreamByViewer.get(childPeerId);
-    const releasesHost = edge?.kind === "peer" && edge.parentPeerId === this.options.hostPeerId;
+    const releasesHost = edge?.kind === "peer" && edge.parentPeerId === this.options.hostPeerId && edge.physicalActive;
+    const replacesPhysicalPublication = replacing && Boolean(this.hostPublication?.physicalActive);
     const nextSlots = this.usedSlots(this.options.hostPeerId) - (releasesHost ? 1 : 0) +
-      (replacing ? 0 : 1);
+      (replacesPhysicalPublication ? 0 : 1);
     return Boolean(host?.sessionId && !host.departureConfirmed && nextSlots <= host.effectiveDownstreamCapacity);
   }
 
@@ -985,14 +1155,13 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private usedSlots(peerId: string): number {
-    const participant = this.participants.get(peerId);
-    return this.childrenOf(peerId).length + (participant?.role === "host" && this.hostPublication ? 1 : 0);
+    return this.physicalCopies(peerId);
   }
 
   private remaining(parentPeerId: string, childPeerId: string): number {
     const parent = this.participants.get(parentPeerId)!;
     const edge = this.upstreamByViewer.get(childPeerId);
-    const already = edge?.kind === "peer" && edge.parentPeerId === parentPeerId;
+    const already = edge?.kind === "peer" && edge.parentPeerId === parentPeerId && edge.physicalActive;
     return parent.effectiveDownstreamCapacity - this.usedSlots(parentPeerId) - (already ? 0 : 1);
   }
 
@@ -1012,43 +1181,59 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private hasSfuSubscribers(): boolean {
-    return [...this.upstreamByViewer.values()].some((edge) => edge.kind === "sfu");
+    return [...this.upstreamByViewer.values()].some((edge) => edge.kind === "sfu" && edge.physicalActive);
   }
 
   private sfuSubscriberCount(): number {
-    return [...this.upstreamByViewer.values()].filter((edge) => edge.kind === "sfu").length;
+    return [...this.upstreamByViewer.values()].filter((edge) => edge.kind === "sfu" && edge.physicalActive).length;
   }
 
-  private rebindCommittedSession(peerId: string, sessionId: string): Resource[] {
-    const released: Resource[] = [];
+  private committedResources(): Resource[] {
+    const resources: Resource[] = [];
+    for (const edge of this.upstreamByViewer.values()) {
+      if (edge.transport !== "direct" && edge.physicalActive) resources.push(edge.resource);
+    }
+    if (this.hostPublication?.physicalActive) resources.push(this.hostPublication.resource);
+    return resources;
+  }
+
+  private rebindCommittedSession(
+    peerId: string,
+    sessionId: string,
+  ): { released: Resource[]; retired: boolean } {
+    const released = new Set<Resource>();
+    let retired = false;
     const ownEdge = this.upstreamByViewer.get(peerId);
     if (ownEdge?.kind === "peer" && ownEdge.transport === "selected-turn") {
-      if (ownEdge.physicalActive) released.push(ownEdge.resource);
+      if (ownEdge.physicalActive) released.add(ownEdge.resource);
       ownEdge.physicalActive = false;
       ownEdge.usable = false;
+      retired = true;
     } else if (ownEdge) {
       ownEdge.childSessionId = sessionId;
     }
     for (const edge of this.upstreamByViewer.values()) {
       if (edge.kind !== "peer" || edge.parentPeerId !== peerId) continue;
       if (edge.transport === "selected-turn") {
-        if (edge.physicalActive) released.push(edge.resource);
+        if (edge.physicalActive) released.add(edge.resource);
         edge.physicalActive = false;
         edge.usable = false;
+        retired = true;
       } else {
         edge.parentSessionId = sessionId;
       }
     }
     if (peerId === this.options.hostPeerId && this.hostPublication) {
       if (this.hostPublication.ingress === "selected-turn") {
-        if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
+        if (this.hostPublication.physicalActive) released.add(this.hostPublication.resource);
         this.hostPublication.physicalActive = false;
         this.hostPublication.usable = false;
+        retired = true;
       } else {
         this.hostPublication.hostSessionId = sessionId;
       }
     }
-    return released;
+    return { released: [...released], retired };
   }
 
   private removePublicationGeneration(generation: string): Resource[] {
@@ -1099,9 +1284,10 @@ export class RoomRouteController<Resource = unknown> {
 
   private touchFacts(): void { this.factVersion += 1; }
 
-  private nextRevision(): number {
-    if (this.revision >= MAX_MEDIA_ROUTE_REVISION) throw new Error("Media route revision space exhausted");
-    return this.revision + 1;
+  private allocateRevision(): number {
+    if (this.latestRevision >= MAX_MEDIA_ROUTE_REVISION) throw new Error("Media route revision space exhausted");
+    this.latestRevision += 1;
+    return this.latestRevision;
   }
 }
 

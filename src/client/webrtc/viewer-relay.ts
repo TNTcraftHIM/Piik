@@ -1,5 +1,6 @@
 import type {
   IceConfig,
+  PreparedRouteCandidate,
   ServerMessage,
   SignalPayload,
 } from "../../shared/protocol";
@@ -22,6 +23,7 @@ type SelectedEdgeTurn = Extract<
 interface PreparedChild {
   revision: number;
   childPeerId: string;
+  candidate: PreparedRouteCandidate;
   peer: HostPeer;
   failed: boolean;
   replacesConnectionId: string | null;
@@ -34,6 +36,7 @@ export class ViewerRelay {
   private readonly snapshots = new Map<string, PeerSnapshot>();
   private preparedChild: PreparedChild | null = null;
   private preparedRevision: number | null = null;
+  private preparedCandidate: PreparedRouteCandidate | null = null;
   private plannedChildPeerIds: string[] = [];
   private syncQueue = Promise.resolve();
   private disposed = false;
@@ -42,6 +45,7 @@ export class ViewerRelay {
     private iceConfig: IceConfig,
     private desiredProfile: QualityProfile,
     private readonly events: ViewerRelayEvents,
+    private readonly maxMediaEdges = MAX_ENDPOINT_MEDIA_CHILDREN,
   ) {}
 
   getSnapshot(childPeerId?: string): PeerSnapshot | null {
@@ -60,38 +64,37 @@ export class ViewerRelay {
     routeRevision: number,
     now = Date.now(),
   ): boolean {
-    const stream = this.stream;
     if (
       this.disposed ||
-      !stream ||
       message.parentPeerId !== parentPeerId ||
       message.revision !== routeRevision ||
       Date.parse(message.expiresAt) <= now ||
       this.preparedRevision !== routeRevision ||
-      !this.plannedChildPeerIds.includes(message.viewerPeerId)
+      this.preparedCandidate?.transport !== "selected-turn" ||
+      this.preparedCandidate.childPeerId !== message.viewerPeerId ||
+      this.preparedCandidate.connectionId !== message.newConnectionId
     ) {
       return false;
     }
     const prepared = this.preparedChild;
-    if (prepared && prepared.childPeerId !== message.viewerPeerId) {
-      return false;
-    }
     if (prepared?.peer.connectionId === message.newConnectionId) {
       return !prepared.failed;
     }
-    const oldConnectionId =
-      prepared?.peer.connectionId ??
-      this.peers.get(message.viewerPeerId)?.connectionId;
-    if (oldConnectionId !== message.oldConnectionId) {
-      return false;
-    }
+    const stream = this.stream;
+    if (!stream) return false;
     this.discardPreparedPeer();
-    this.startPreparedChild(message.revision, message.viewerPeerId, stream, message);
+    this.startPreparedChild(
+      message.revision,
+      this.preparedCandidate,
+      stream,
+      message,
+    );
     return true;
   }
 
   prepareChild(
     revision: number,
+    candidate: PreparedRouteCandidate,
     plannedChildPeerIds: readonly string[],
   ): boolean {
     const stream = this.stream;
@@ -99,10 +102,12 @@ export class ViewerRelay {
     if (
       this.disposed ||
       !stream ||
+      candidate.transport === "sfu" ||
+      !planned.includes(candidate.childPeerId) ||
       planned.length !== plannedChildPeerIds.length ||
       planned.length < this.childPeerIds.length ||
       planned.length > this.childPeerIds.length + 1 ||
-      planned.length > MAX_ENDPOINT_MEDIA_CHILDREN ||
+      planned.length > this.maxMediaEdges ||
       this.childPeerIds.some((peerId) => !planned.includes(peerId))
     ) {
       this.discardPreparedChild();
@@ -110,6 +115,7 @@ export class ViewerRelay {
     }
     if (
       this.preparedRevision === revision &&
+      sameCandidate(this.preparedCandidate, candidate) &&
       samePeerIds(this.plannedChildPeerIds, planned)
     ) {
       return this.preparedChild ? !this.preparedChild.failed : true;
@@ -117,14 +123,11 @@ export class ViewerRelay {
 
     this.discardPreparedChild();
     this.preparedRevision = revision;
+    this.preparedCandidate = { ...candidate };
     this.plannedChildPeerIds = planned;
-    const childPeerId = planned.find(
-      (peerId) => !this.childPeerIds.includes(peerId),
-    );
-    if (!childPeerId) {
-      return true;
+    if (candidate.transport === "direct") {
+      this.startPreparedChild(revision, candidate, stream);
     }
-    this.startPreparedChild(revision, childPeerId, stream);
     return true;
   }
 
@@ -142,11 +145,13 @@ export class ViewerRelay {
     if (
       prepared?.revision === revision &&
       !prepared.failed &&
+      prepared.candidate.connectionId === prepared.peer.connectionId &&
       childPeerIds.includes(prepared.childPeerId) &&
       (extendsActive || replacesActive)
     ) {
       this.preparedChild = null;
       this.preparedRevision = null;
+      this.preparedCandidate = null;
       this.plannedChildPeerIds = [];
       this.peers.set(prepared.childPeerId, prepared.peer);
       replacedPeer?.dispose();
@@ -160,6 +165,7 @@ export class ViewerRelay {
 
   discardPreparedChild(): void {
     this.preparedRevision = null;
+    this.preparedCandidate = null;
     this.plannedChildPeerIds = [];
     this.discardPreparedPeer();
   }
@@ -183,7 +189,7 @@ export class ViewerRelay {
     }
     const nextChildPeerIds = [...new Set(childPeerIds)].slice(
       0,
-      MAX_ENDPOINT_MEDIA_CHILDREN,
+      this.maxMediaEdges,
     );
     for (const childPeerId of this.childPeerIds) {
       if (!nextChildPeerIds.includes(childPeerId)) {
@@ -330,17 +336,24 @@ export class ViewerRelay {
 
   private startPreparedChild(
     revision: number,
-    childPeerId: string,
+    candidate: PreparedRouteCandidate,
     stream: MediaStream,
     selectedTurn?: SelectedEdgeTurn,
   ): void {
-    const peer = this.createPeer(childPeerId, stream, selectedTurn);
+    const peer = this.createPeer(
+      candidate.childPeerId,
+      stream,
+      candidate.connectionId,
+      selectedTurn,
+    );
     this.preparedChild = {
       revision,
-      childPeerId,
+      childPeerId: candidate.childPeerId,
+      candidate: { ...candidate },
       peer,
       failed: false,
-      replacesConnectionId: selectedTurn?.oldConnectionId ?? null,
+      replacesConnectionId:
+        this.peers.get(candidate.childPeerId)?.connectionId ?? null,
     };
     void peer
       .start()
@@ -470,6 +483,7 @@ export class ViewerRelay {
   private createPeer(
     childPeerId: string,
     stream: MediaStream,
+    connectionId?: string,
     selectedTurn?: SelectedEdgeTurn,
   ): HostPeer {
     let peer: HostPeer;
@@ -511,7 +525,7 @@ export class ViewerRelay {
         },
       },
       selectedTurn !== undefined,
-      selectedTurn?.newConnectionId,
+      connectionId,
     );
     return peer;
   }
@@ -539,6 +553,17 @@ export class ViewerRelay {
     peer?.dispose();
   }
 
+}
+
+function sameCandidate(
+  left: PreparedRouteCandidate | null,
+  right: PreparedRouteCandidate,
+): boolean {
+  return (
+    left?.childPeerId === right.childPeerId &&
+    left.connectionId === right.connectionId &&
+    left.transport === right.transport
+  );
 }
 
 function samePeerIds(left: readonly string[], right: readonly string[]): boolean {

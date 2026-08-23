@@ -2,13 +2,21 @@ import type {
   ClientMessage,
   MediaRoutePhase,
   ParticipantRouteAssignment,
+  PreparedRouteCandidate,
 } from "../../shared/protocol";
 
-export interface RouteUpdateInput {
-  revision: number;
-  phase: MediaRoutePhase;
-  assignment: ParticipantRouteAssignment;
-}
+export type RouteUpdateInput =
+  | {
+      revision: number;
+      phase: "prepare";
+      assignment: ParticipantRouteAssignment;
+      candidate: PreparedRouteCandidate;
+    }
+  | {
+      revision: number;
+      phase: "active";
+      assignment: ParticipantRouteAssignment;
+    };
 
 export interface RouteOperationToken {
   revision: number;
@@ -35,6 +43,7 @@ export class MediaRouteTransition {
   private plannedAssignment: ParticipantRouteAssignment | null = null;
   private activeAssignment: ParticipantRouteAssignment | null = null;
   private mediaAssignment: ParticipantRouteAssignment | null = null;
+  private preparedCandidate: PreparedRouteCandidate | null = null;
   private generation = 0;
 
   accept(update: RouteUpdateInput): RouteUpdateResult {
@@ -45,6 +54,9 @@ export class MediaRouteTransition {
       if (
         !this.plannedAssignment ||
         !sameAssignment(this.plannedAssignment, update.assignment) ||
+        (this.phase === "prepare" &&
+          update.phase === "prepare" &&
+          !sameCandidate(this.preparedCandidate, update.candidate)) ||
         (this.phase === "active" && update.phase === "prepare")
       ) {
         return "stale";
@@ -57,6 +69,8 @@ export class MediaRouteTransition {
     this.revision = update.revision;
     this.phase = update.phase;
     this.plannedAssignment = cloneAssignment(update.assignment);
+    this.preparedCandidate =
+      update.phase === "prepare" ? { ...update.candidate } : null;
     if (update.phase === "active") {
       this.activeAssignment = cloneAssignment(update.assignment);
     }
@@ -113,14 +127,30 @@ export class MediaRouteTransition {
     return this.mediaAssignment ? cloneAssignment(this.mediaAssignment) : null;
   }
 
+  getPreparedCandidate(): PreparedRouteCandidate | null {
+    return this.preparedCandidate ? { ...this.preparedCandidate } : null;
+  }
+
   reset(): void {
     this.revision = -1;
     this.phase = null;
     this.plannedAssignment = null;
     this.activeAssignment = null;
     this.mediaAssignment = null;
+    this.preparedCandidate = null;
     this.generation += 1;
   }
+}
+
+function sameCandidate(
+  left: PreparedRouteCandidate | null,
+  right: PreparedRouteCandidate,
+): boolean {
+  return (
+    left?.childPeerId === right.childPeerId &&
+    left.connectionId === right.connectionId &&
+    left.transport === right.transport
+  );
 }
 
 export function reportActivePeerRouteFailure(

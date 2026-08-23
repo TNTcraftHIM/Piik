@@ -549,7 +549,7 @@ export class SignalingServer {
         ? this.hybridMediaRouter!.connectParticipant(routeParticipant)
         : undefined;
     } catch {
-      console.error("Peer relay topology did not assign an authenticated participant");
+      console.error("Media router did not assign an authenticated participant");
       this.sendError(socket, "SERVER_ERROR", "Media assignment failed");
       socket.close(1011, "Media assignment failed");
       return;
@@ -629,6 +629,13 @@ export class SignalingServer {
     }
 
     if (hybridState) {
+      if (participant.role === "host") {
+        this.hybridMediaRouter!.setPaused(
+          participant.roomId,
+          this.pausedShareGenerationsByRoom.get(participant.roomId) ===
+            shareGeneration,
+        );
+      }
       this.hybridMediaRouter!.completeAuthentication(
         routeParticipant,
         hybridState,
@@ -785,16 +792,6 @@ export class SignalingServer {
           message.downstreamEdges,
         );
         return;
-      case "sfu-reselection-ready":
-        if (!this.isHybridMediaEnabled()) {
-          this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
-          return;
-        }
-        this.hybridMediaRouter!.handleHealthySfuReselection(
-          { ...authenticated, sessionId: this.socketStates.get(socket)!.sessionId },
-          message.revision,
-        );
-        return;
       case "route-ready":
         if (!this.isHybridMediaEnabled()) {
           this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
@@ -939,6 +936,9 @@ export class SignalingServer {
           );
         } else {
           this.pausedShareGenerationsByRoom.delete(authenticated.roomId);
+        }
+        if (this.isHybridMediaEnabled()) {
+          this.hybridMediaRouter!.setPaused(authenticated.roomId, message.paused);
         }
         for (const viewer of this.options.roomStore.getConnectedViewers(
           authenticated.roomId,
@@ -1205,15 +1205,6 @@ export class SignalingServer {
       acceptedAtMs: now,
       parentEvidenceAccepted: false,
     });
-    if (this.isHybridMediaEnabled()) {
-      this.hybridMediaRouter!.handleViewerQualityEvidence({
-        roomId: source.roomId,
-        viewerSessionId: viewerState.sessionId,
-        parentSessionId: parent.sessionId,
-        evidence: forwarded,
-      });
-    }
-
     const host = this.options.roomStore.getConnectedHost(source.roomId);
     if (!host || host.sessionId === parent.sessionId) {
       return;
@@ -1282,12 +1273,6 @@ export class SignalingServer {
     }
 
     gate.parentEvidenceAccepted = true;
-    this.hybridMediaRouter!.handleParentEdgeQualityEvidence({
-      roomId: source.roomId,
-      viewerSessionId: viewer.sessionId,
-      parentSessionId: sourceState.sessionId,
-      evidence: message,
-    });
   }
 
   private routeSignal(
@@ -1517,6 +1502,7 @@ export class SignalingServer {
       this.hybridMediaRouter!.disconnectParticipant(
         disconnected.roomId,
         disconnected.peerId,
+        state.sessionId,
       );
     }
     if (disconnected.role === "host") {

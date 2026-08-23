@@ -86,6 +86,19 @@ describe("SfuResourceAdmission", () => {
     expect(admission.beginDrain(stale)).toBe(false);
   });
 
+  it("does not commit a publication without its first exact subscription", () => {
+    const admission = new SfuResourceAdmission({
+      ingressCapacity: 1,
+      egressCapacity: 1,
+    });
+    const pending = publication("1", "publication_pending");
+    expect(admission.reservePublication(pending)).toBe(true);
+    expect(admission.commitPublication(pending)).toBeNull();
+    expect(admission.beginDrain(pending)).toBe(true);
+    expect(admission.completeDrain(pending)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
+  });
+
   it("commits a new publication and its subscriptions before draining the old generation", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 2,
@@ -218,21 +231,4 @@ describe("SfuResourceAdmission", () => {
     expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
-  it("keeps the aggregate API available while the router migrates", () => {
-    const admission = new SfuResourceAdmission({
-      ingressCapacity: 2,
-      egressCapacity: 3,
-    });
-    const first = publication("1", "publication_first");
-    const second = publication("1", "publication_second");
-    expect(admission.reserve(first, 1)).toBe(true);
-    expect(admission.reserve(first, 1)).toBe(true);
-    expect(admission.reserve(first, 2)).toBe(false);
-    expect(admission.commit(first)).toEqual([]);
-    expect(admission.reserve(second, 2)).toBe(true);
-    expect(admission.commit(second)).toEqual([first]);
-    expect(admission.usage()).toEqual({ ingress: 2, egress: 3 });
-    expect(admission.completeDrain(first)).toBe(true);
-    expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
-  });
 });

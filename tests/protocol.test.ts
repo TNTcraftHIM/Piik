@@ -76,7 +76,7 @@ const parentEdgeQualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
-  it("keeps the Native sender on the same signaling version", () => {
+  it("keeps executable senders outside the Browser v7 release", () => {
     const nativeWire = readFileSync(
       join(
         import.meta.dirname,
@@ -85,9 +85,8 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(nativeWire).toMatch(
-      new RegExp(`signalingProtocol\\s*=\\s*"${SIGNALING_PROTOCOL}"`),
-    );
+    expect(SIGNALING_PROTOCOL).toBe("screener-v7");
+    expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {
@@ -730,13 +729,7 @@ describe("client signaling protocol", () => {
     },
   );
 
-  it("accepts bounded route acknowledgements, failures, and SFU recovery events", () => {
-    expect(
-      clientMessageSchema.safeParse({
-        type: "sfu-reselection-ready",
-        revision: 7,
-      }).success,
-    ).toBe(true);
+  it("accepts bounded route acknowledgements and failures", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "route-ready",
@@ -789,12 +782,6 @@ describe("client signaling protocol", () => {
       clientMessageSchema.safeParse({
         type: "refresh-sfu",
         revision: 1.5,
-      }).success,
-    ).toBe(false);
-    expect(
-      clientMessageSchema.safeParse({
-        type: "sfu-reselection-ready",
-        revision: -1,
       }).success,
     ).toBe(false);
   });
@@ -1107,6 +1094,11 @@ describe("server signaling protocol", () => {
         revision: 9,
         phase: "prepare",
         assignment,
+        candidate: {
+          childPeerId: "child_12345678",
+          connectionId: "connection_12345678",
+          transport: "direct",
+        },
       }).success,
     ).toBe(true);
     expect(

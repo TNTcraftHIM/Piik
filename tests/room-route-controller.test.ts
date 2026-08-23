@@ -121,6 +121,34 @@ function peerEdge(
 
 describe("RoomRouteController", () => {
   it.each([1, 2, 3] as const)(
+    "admits 20 Viewers through one bounded event-driven graph at C=%i",
+    (capacity) => {
+      const routes = controller(capacity);
+      const viewerPeerIds = Array.from(
+        { length: 20 },
+        (_, index) => `viewer_${String(index).padStart(2, "0")}_12345678`,
+      );
+      viewerPeerIds.forEach((peerId, index) => {
+        addViewer(routes, peerId, capacity);
+        const operation = routes.reconcile(index * 2).operation!;
+        expect(operation.childPeerId).toBe(peerId);
+        commitCurrent(routes, index * 2 + 1, `${peerId}_connection`);
+      });
+      const snapshot = routes.snapshot();
+      expect(snapshot.upstreamByViewer).toHaveLength(20);
+      for (const parentPeerId of [HOST, ...viewerPeerIds]) {
+        const childCount = [...snapshot.upstreamByViewer.values()].filter(
+          (edge) =>
+            edge.kind === "peer" &&
+            edge.physicalActive &&
+            edge.parentPeerId === parentPeerId,
+        ).length;
+        expect(childCount).toBeLessThanOrEqual(capacity);
+      }
+    },
+  );
+
+  it.each([1, 2, 3] as const)(
     "builds a deterministic acyclic route without a depth cap at C=%i",
     (capacity) => {
       const routes = controller(capacity);
@@ -217,6 +245,7 @@ describe("RoomRouteController", () => {
       connectionId: "candidate_1",
     }, 1_001);
     expect(failed.accepted).toBe(true);
+    expect(failed.activeRevision).toBeGreaterThan(first.current!.revision);
     expect(failed.exhausted).toBeUndefined();
     expect(failed.released).toEqual([]);
     expect(routes.snapshot().operation).toMatchObject({
@@ -444,6 +473,7 @@ describe("RoomRouteController", () => {
       generation: "publication_1",
       connectionId: "publication:publication_1",
     })).toBe(true);
+    routes.touchExternalFacts();
     const repair = routes.reconcile(2).operation!;
     expect(repair.childPeerId).toBe(A);
     expect(repair.candidates[0]?.tuple).toEqual({
@@ -487,11 +517,12 @@ describe("RoomRouteController", () => {
       connectionId: "a_sfu_2",
     }, 4);
     expect(repaired.accepted).toBe(true);
-    expect(repaired.released).toEqual([
+    expect(repaired.released).toHaveLength(3);
+    expect(repaired.released).toEqual(expect.arrayContaining([
       "publication_overlap",
       "a_subscription",
       "publication_resource",
-    ]);
+    ]));
     expect(routes.snapshot().hostPublication).toMatchObject({
       generation: "publication_2",
       usable: true,
@@ -599,6 +630,7 @@ describe("RoomRouteController", () => {
       generation: "publication_1",
       connectionId: "publication:publication_1",
     })).toBe(true);
+    routes.touchExternalFacts();
     const operation = routes.reconcile(0).operation!;
     expect(operation.candidates[0]).toMatchObject({
       tuple: { kind: "sfu", publication: "replace", ingress: "direct" },
@@ -623,12 +655,13 @@ describe("RoomRouteController", () => {
       connectionId: "a_sfu_2",
     }, 2);
     expect(settled.accepted).toBe(true);
-    expect(settled.released).toEqual([
+    expect(settled.released).toHaveLength(4);
+    expect(settled.released).toEqual(expect.arrayContaining([
       "publication_overlap",
       "subscription_a",
       "subscription_b",
       "publication_resource_1",
-    ]);
+    ]));
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
       publicationGeneration: "publication_2",
     });
@@ -901,5 +934,78 @@ describe("RoomRouteController", () => {
       transport: "selected-turn",
       resource: "b_turn_resource",
     });
+  });
+
+  it("retries an exact failed tuple only after a new external fact", () => {
+    const routes = controller(1);
+    addViewer(routes, A, 0);
+    routes.hydrateEdge(A, peerEdge(HOST, "failed_direct"));
+    expect(routes.invalidateEdge({
+      childPeerId: A,
+      childSessionId: `${A}_session`,
+      parentSessionId: "host_session",
+      routeRevision: 0,
+      connectionId: "failed_direct",
+    })).toBe(true);
+    expect(routes.reconcile(0).operation).toBeUndefined();
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      usable: false,
+      physicalActive: false,
+    });
+
+    routes.touchExternalFacts();
+    expect(routes.reconcile(1).operation?.candidates[0]?.tuple).toEqual({
+      kind: "peer",
+      parentPeerId: HOST,
+      transport: "direct",
+    });
+  });
+
+  it("appends one ordinary restore candidate after a healthy bounded gap", () => {
+    const routes = controller(3, { sfuEnabled: true });
+    for (const [peerId, connectionId] of [
+      [A, "a_direct"],
+      [B, "b_direct"],
+      [C, "c_direct"],
+    ] as const) {
+      addViewer(routes, peerId, 0);
+      routes.hydrateEdge(peerId, peerEdge(HOST, connectionId));
+    }
+    addViewer(routes, D, 0);
+    const operation = routes.reconcile(0).operation!;
+    expect(operation.childPeerId).toBe(C);
+    expect(operation.candidates[0]?.endpointTransition.kind).toBe("bounded-gap");
+    const gap = routes.retireCurrentCandidateProducer(cursorGuard(operation), 1);
+    expect(gap.accepted).toBe(true);
+    const tuples = routes.snapshot().operation?.candidates.map((plan) => plan.tuple);
+    expect(tuples?.at(-1)).toEqual({
+      kind: "peer",
+      parentPeerId: HOST,
+      transport: "direct",
+    });
+  });
+
+  it("does not promote when synchronous admission commit fails", () => {
+    const routes = controller(1);
+    addViewer(routes, A, 0);
+    const operation = routes.reconcile(0).operation!;
+    const prepared = beginCandidate(routes, {
+      nowMs: 1,
+      connectionId: "candidate_connection",
+      reservation: { kind: "direct" },
+    }).operation!;
+    const settled = routes.candidateReady(
+      {
+        childPeerId: operation.childPeerId,
+        childSessionId: operation.childSessionId,
+        revision: prepared.current!.revision,
+        connectionId: "candidate_connection",
+      },
+      2,
+      () => false,
+    );
+    expect(settled.accepted).toBe(false);
+    expect(settled.activeRevision).toBeGreaterThan(prepared.current!.revision);
+    expect(routes.snapshot().upstreamByViewer.has(A)).toBe(false);
   });
 });

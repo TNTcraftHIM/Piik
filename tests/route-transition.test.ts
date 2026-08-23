@@ -72,8 +72,15 @@ function createFakePublisher(log: string[], label: string) {
 }
 
 type SubscriberEvents = Parameters<
-  NonNullable<ConstructorParameters<typeof ViewerSfuRoute>[0]["createSubscriber"]>
+  NonNullable<ConstructorParameters<typeof ViewerSfuRoute>[1]["createSubscriber"]>
 >[0];
+
+const candidate = (
+  revision: number,
+  childPeerId = "viewer_12345678",
+  transport: "direct" | "selected-turn" | "sfu" = "direct",
+  connectionId = `candidate_${revision}_12345678`,
+) => ({ childPeerId, connectionId, transport });
 
 function createFakeSubscriber(events: SubscriberEvents, log: string[], label: string) {
   return {
@@ -106,7 +113,12 @@ describe("minimal route transition contracts", () => {
     const oldToken = route.token()!;
     expect(route.markMediaActive(oldToken)).toBe(true);
 
-    route.accept({ revision: 2, phase: "prepare", assignment: nextAssignment });
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: nextAssignment,
+      candidate: candidate(2),
+    });
     expect(route.getMediaAssignment()).toEqual(oldAssignment);
     expect(route.markMediaActive(route.token()!)).toBe(false);
 
@@ -121,7 +133,7 @@ describe("minimal route transition contracts", () => {
   it("keeps duplicate peer prepare idempotent and releases it before takeover", async () => {
     const prepared: Array<{ parentPeerId: string | null; revision?: number }> = [];
     const activatePeer = vi.fn(() => true);
-    const route = new ViewerSfuRoute({
+    const route = new ViewerSfuRoute("viewer_12345678", {
       activatePeer,
       preparePeer: (assignment, revision) =>
         prepared.push({
@@ -147,6 +159,7 @@ describe("minimal route transition contracts", () => {
         revision: 2,
         phase: "prepare",
         assignment: nextAssignment,
+        candidate: candidate(2),
       }),
     ).toBe("accepted");
     expect(prepared).toEqual([
@@ -158,6 +171,7 @@ describe("minimal route transition contracts", () => {
         revision: 2,
         phase: "prepare",
         assignment: nextAssignment,
+        candidate: candidate(2),
       }),
     ).toBe("duplicate");
     expect(prepared).toEqual([
@@ -168,6 +182,7 @@ describe("minimal route transition contracts", () => {
       revision: 3,
       phase: "prepare",
       assignment: peerAssignment("third-parent"),
+      candidate: candidate(3),
     });
     expect(prepared.slice(-2)).toEqual([
       { parentPeerId: null },
@@ -178,6 +193,7 @@ describe("minimal route transition contracts", () => {
       revision: 4,
       phase: "prepare",
       assignment: viewerSfuAssignment(),
+      candidate: candidate(4, "viewer_12345678", "sfu"),
     });
     expect(prepared.at(-1)).toEqual({ parentPeerId: null });
   });
@@ -257,6 +273,7 @@ describe("minimal route transition contracts", () => {
       revision: 2,
       phase: "prepare",
       assignment: hostAssignment("publication-b"),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
     });
     await route.acceptConfig(sfuConfig(2));
     expect(publishers[1]?.activate).toHaveBeenCalledOnce();
@@ -291,8 +308,13 @@ describe("minimal route transition contracts", () => {
       revision: 2,
       phase: "prepare",
       assignment: hostAssignment("publication-b"),
+      candidate: candidate(
+        2,
+        "viewer_12345678",
+        "sfu",
+        "selected-connection",
+      ),
     });
-    await route.acceptConfig(sfuConfig(2));
     expect(
       route.startSelectedEdgeTurn({
         type: "selected-edge-turn",
@@ -310,10 +332,10 @@ describe("minimal route transition contracts", () => {
         },
       }),
     ).toBe(true);
+    await route.acceptConfig(sfuConfig(2));
 
-    await vi.waitFor(() => expect(publishers).toHaveLength(2));
-    expect(publishers[0]?.disconnect).toHaveBeenCalled();
-    expect(publishers[1]?.connect).toHaveBeenCalledWith({
+    await vi.waitFor(() => expect(publishers).toHaveLength(1));
+    expect(publishers[0]?.connect).toHaveBeenCalledWith({
       url: "wss://sfu.example.test",
       token: "token-2",
       rtcConfig: {
@@ -334,7 +356,7 @@ describe("minimal route transition contracts", () => {
     const messages: ClientMessage[] = [];
     const streams: MediaStream[] = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
-    const route = new ViewerSfuRoute({
+    const route = new ViewerSfuRoute("viewer_12345678", {
       activatePeer: () => true,
       reconcileSfuChildren: () => undefined,
       onSfuStream: (stream) => streams.push(stream),
@@ -370,6 +392,7 @@ describe("minimal route transition contracts", () => {
       revision: 2,
       phase: "prepare",
       assignment: viewerSfuAssignment(),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
     });
     await route.acceptConfig(sfuConfig(2));
     const pendingStream = {} as MediaStream;
@@ -403,7 +426,7 @@ describe("minimal route transition contracts", () => {
   it("discards a paused pending subscriber and ignores its later evidence", async () => {
     const messages: ClientMessage[] = [];
     let subscriber!: ReturnType<typeof createFakeSubscriber>;
-    const route = new ViewerSfuRoute({
+    const route = new ViewerSfuRoute("viewer_12345678", {
       activatePeer: () => true,
       reconcileSfuChildren: () => undefined,
       onSfuStream: () => undefined,
@@ -421,6 +444,7 @@ describe("minimal route transition contracts", () => {
       revision: 3,
       phase: "prepare",
       assignment: viewerSfuAssignment(),
+      candidate: candidate(3, "viewer_12345678", "sfu"),
     });
     await route.acceptConfig(sfuConfig(3));
     route.setPaused(true);

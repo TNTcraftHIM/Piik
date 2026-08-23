@@ -193,8 +193,15 @@ export class HostSfuRoute {
     const token = this.route.token();
     const assignment = this.route.getPlannedAssignment();
     const phase = this.route.getPhase();
+    const candidate = this.route.getPreparedCandidate();
     const publicationGeneration = assignment?.sfuPublicationGeneration;
-    if (!token || !phase || !assignment || !publicationGeneration) {
+    if (
+      !token ||
+      !phase ||
+      !assignment ||
+      !publicationGeneration ||
+      (phase === "prepare" && candidate?.transport !== "sfu")
+    ) {
       return;
     }
     this.lastConfig = message;
@@ -228,7 +235,7 @@ export class HostSfuRoute {
     const selectedEdgeTurn =
       this.selectedEdgeTurn?.revision === message.revision &&
       this.selectedEdgeTurn.publicationGeneration === publicationGeneration &&
-      this.selectedEdgeTurn.oldConnectionId === publicationGeneration
+      this.selectedEdgeTurn.newConnectionId === candidate?.connectionId
         ? this.selectedEdgeTurn
         : null;
     this.selectedEdgeTurn = null;
@@ -299,6 +306,8 @@ export class HostSfuRoute {
       this.closed ||
       !this.route.acceptsConfig(message.revision) ||
       this.route.getPhase() !== "prepare" ||
+      this.route.getPreparedCandidate()?.transport !== "sfu" ||
+      this.route.getPreparedCandidate()?.connectionId !== message.newConnectionId ||
       Date.parse(message.expiresAt) <= Date.now()
     ) {
       return false;
@@ -317,12 +326,6 @@ export class HostSfuRoute {
     }
     if (pending?.connectionId === message.newConnectionId) {
       return !pending.failed;
-    }
-    if (
-      (pending?.connectionId ?? publicationGeneration) !==
-      message.oldConnectionId
-    ) {
-      return false;
     }
     this.clearPending();
     this.selectedEdgeTurn = message;

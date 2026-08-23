@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v6";
+export const SIGNALING_PROTOCOL = "screener-v7";
 export const ROOM_CODE_LENGTH = 12;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
@@ -343,6 +343,17 @@ export const signalPayloadSchema = z.discriminatedUnion("kind", [
 ]);
 export type SignalPayload = z.infer<typeof signalPayloadSchema>;
 
+export const preparedRouteCandidateSchema = z
+  .object({
+    childPeerId: opaqueIdSchema,
+    connectionId: opaqueIdSchema,
+    transport: z.enum(["direct", "selected-turn", "sfu"]),
+  })
+  .strict();
+export type PreparedRouteCandidate = z.infer<
+  typeof preparedRouteCandidateSchema
+>;
+
 export const mediaAssignmentSchema = z
   .object({
     parentPeerId: opaqueIdSchema.nullable(),
@@ -573,12 +584,6 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
-      type: z.literal("sfu-reselection-ready"),
-      revision: mediaRouteRevisionSchema,
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("route-ready"),
       revision: mediaRouteRevisionSchema,
       phase: mediaRoutePhaseSchema,
@@ -736,14 +741,25 @@ export const serverMessageSchema = z.union([
       mediaAssignment: mediaAssignmentSchema,
     })
     .strict(),
-  z
-    .object({
-      type: z.literal("route-update"),
-      revision: mediaRouteRevisionSchema,
-      phase: mediaRoutePhaseSchema,
-      assignment: participantRouteAssignmentSchema,
-    })
-    .strict(),
+  z.discriminatedUnion("phase", [
+    z
+      .object({
+        type: z.literal("route-update"),
+        revision: mediaRouteRevisionSchema,
+        phase: z.literal("prepare"),
+        assignment: participantRouteAssignmentSchema,
+        candidate: preparedRouteCandidateSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("route-update"),
+        revision: mediaRouteRevisionSchema,
+        phase: z.literal("active"),
+        assignment: participantRouteAssignmentSchema,
+      })
+      .strict(),
+  ]),
   z
     .object({
       type: z.literal("sfu-config"),

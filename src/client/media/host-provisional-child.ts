@@ -1,18 +1,13 @@
 import type {
   IceConfig,
   ParticipantRouteAssignment,
-  ServerMessage,
+  PreparedRouteCandidate,
   SignalPayload,
 } from "../../shared/protocol";
 import { countEndpointMediaCopies } from "../../shared/media-copy-accounting";
 import { HostPeer } from "../webrtc/host-peer";
 import type { PeerSnapshot } from "../types";
 import type { QualityProfile } from "./quality";
-
-type SelectedEdgeTurn = Extract<
-  ServerMessage,
-  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
->;
 
 interface HostProvisionalInput {
   revision: number;
@@ -22,6 +17,7 @@ interface HostProvisionalInput {
 }
 
 interface HostProvisionalPrepareInput extends HostProvisionalInput {
+  candidate: PreparedRouteCandidate;
   iceConfig: IceConfig;
   stream: MediaStream;
   profile: QualityProfile;
@@ -40,7 +36,7 @@ export type HostPreparedChildActivation =
 
 interface PreparedHostChild {
   revision: number;
-  peerId: string;
+  candidate: PreparedRouteCandidate;
   peer: HostPeer;
   failed: boolean;
   replacesConnectionId: string | null;
@@ -49,6 +45,7 @@ interface PreparedHostChild {
 export class HostProvisionalChild {
   private prepared: PreparedHostChild | null = null;
   private preparedRevision: number | null = null;
+  private preparedCandidate: PreparedRouteCandidate | null = null;
   private plannedChildPeerIds: string[] = [];
   private promotedPeer: HostPeer | null = null;
   private signalingPeer: HostPeer | null = null;
@@ -63,75 +60,45 @@ export class HostProvisionalChild {
     }
     if (
       this.preparedRevision === input.revision &&
+      sameCandidate(this.preparedCandidate, input.candidate) &&
       samePeerIds(this.plannedChildPeerIds, planned)
     ) {
       return this.prepared ? !this.prepared.failed : true;
     }
-    const peerId = planned.find(
-      (candidate) => !input.activeChildPeerIds.includes(candidate),
-    );
 
     this.discard();
     this.preparedRevision = input.revision;
+    this.preparedCandidate = { ...input.candidate };
     this.plannedChildPeerIds = planned;
-    if (!peerId) {
-      return true;
-    }
-    if (this.events.activeConnectionId?.(peerId)) {
+    if (
+      this.events.activeConnectionId?.(input.candidate.childPeerId) ===
+      input.candidate.connectionId
+    ) {
       this.discard();
       return false;
     }
-    this.startPrepared(input.revision, peerId, input);
-    return true;
-  }
-
-  prepareSelectedTurn(
-    message: SelectedEdgeTurn,
-    input: Pick<HostProvisionalPrepareInput, "iceConfig" | "stream" | "profile">,
-    now = Date.now(),
-  ): boolean {
-    if (
-      this.preparedRevision !== message.revision ||
-      !this.plannedChildPeerIds.includes(message.viewerPeerId) ||
-      Date.parse(message.expiresAt) <= now
-    ) {
-      return false;
+    if (input.candidate.transport === "direct") {
+      this.startPrepared(input.revision, input.candidate, input);
     }
-    const prepared = this.prepared;
-    if (prepared && prepared.peerId !== message.viewerPeerId) {
-      return false;
-    }
-    if (prepared?.peer.connectionId === message.newConnectionId) {
-      return !prepared.failed;
-    }
-    const oldConnectionId =
-      prepared?.peer.connectionId ??
-      this.events.activeConnectionId?.(message.viewerPeerId);
-    if (oldConnectionId !== message.oldConnectionId) {
-      return false;
-    }
-    this.discardPeer();
-    this.startPrepared(message.revision, message.viewerPeerId, input, message);
     return true;
   }
 
   private startPrepared(
     revision: number,
-    peerId: string,
+    candidate: PreparedRouteCandidate,
     input: Pick<HostProvisionalPrepareInput, "iceConfig" | "stream" | "profile">,
-    selectedTurn?: SelectedEdgeTurn,
   ): void {
     let peer: HostPeer;
     peer = new HostPeer(
-      peerId,
-      selectedTurn
-        ? { iceServers: [selectedTurn.iceServer] }
-        : input.iceConfig,
+      candidate.childPeerId,
+      input.iceConfig,
       input.stream,
       input.profile,
       {
         sendSignal: (targetPeerId, payload) =>
-          this.signalingPeer === peer && targetPeerId === peerId
+          this.signalingPeer === peer &&
+          targetPeerId === candidate.childPeerId &&
+          payload.connectionId === candidate.connectionId
             ? this.events.sendSignal(targetPeerId, payload)
             : false,
         onUpdate: (snapshot) => {
@@ -146,16 +113,17 @@ export class HostProvisionalChild {
           }
         },
       },
-      selectedTurn !== undefined,
-      selectedTurn?.newConnectionId,
+      false,
+      candidate.connectionId,
     );
     this.signalingPeer = peer;
     this.prepared = {
       revision,
-      peerId,
+      candidate: { ...candidate },
       peer,
       failed: false,
-      replacesConnectionId: selectedTurn?.oldConnectionId ?? null,
+      replacesConnectionId:
+        this.events.activeConnectionId?.(candidate.childPeerId) ?? null,
     };
     void peer
       .start()
@@ -172,7 +140,8 @@ export class HostProvisionalChild {
     return Boolean(
       prepared &&
         !prepared.failed &&
-        prepared.peerId === fromPeerId &&
+        prepared.candidate.childPeerId === fromPeerId &&
+        prepared.candidate.connectionId === payload.connectionId &&
         prepared.peer.connectionId === payload.connectionId,
     );
   }
@@ -212,22 +181,28 @@ export class HostProvisionalChild {
   activate(input: HostProvisionalInput): HostPreparedChildActivation {
     const prepared = this.prepared;
     const currentConnectionId = prepared
-      ? this.events.activeConnectionId?.(prepared.peerId) ?? null
+      ? this.events.activeConnectionId?.(prepared.candidate.childPeerId) ?? null
       : null;
     if (
       prepared &&
       !prepared.failed &&
       this.preparedRevision === input.revision &&
       prepared.revision === input.revision &&
-      input.assignment.childPeerIds.includes(prepared.peerId) &&
-      (!input.activeChildPeerIds.includes(prepared.peerId) ||
+      this.preparedCandidate?.connectionId === prepared.candidate.connectionId &&
+      input.assignment.childPeerIds.includes(prepared.candidate.childPeerId) &&
+      (!input.activeChildPeerIds.includes(prepared.candidate.childPeerId) ||
         prepared.replacesConnectionId === currentConnectionId)
     ) {
       this.prepared = null;
       this.preparedRevision = null;
+      this.preparedCandidate = null;
       this.plannedChildPeerIds = [];
       this.promotedPeer = prepared.peer;
-      return { kind: "promote", peerId: prepared.peerId, peer: prepared.peer };
+      return {
+        kind: "promote",
+        peerId: prepared.candidate.childPeerId,
+        peer: prepared.peer,
+      };
     }
     this.discard();
     return { kind: "ordinary" };
@@ -235,6 +210,7 @@ export class HostProvisionalChild {
 
   discard(): void {
     this.preparedRevision = null;
+    this.preparedCandidate = null;
     this.plannedChildPeerIds = [];
     this.discardPeer();
   }
@@ -267,10 +243,12 @@ export class HostProvisionalChild {
 }
 
 function validPlannedHostChildren(
-  input: HostProvisionalInput,
+  input: HostProvisionalPrepareInput,
 ): string[] | null {
   const childPeerIds = [...new Set(input.assignment.childPeerIds)];
   if (
+    input.candidate.transport !== "direct" ||
+    !childPeerIds.includes(input.candidate.childPeerId) ||
     childPeerIds.length !== input.assignment.childPeerIds.length ||
     childPeerIds.length < input.activeChildPeerIds.length ||
     childPeerIds.length > input.activeChildPeerIds.length + 1 ||
@@ -285,6 +263,17 @@ function validPlannedHostChildren(
     return null;
   }
   return childPeerIds;
+}
+
+function sameCandidate(
+  left: PreparedRouteCandidate | null,
+  right: PreparedRouteCandidate,
+): boolean {
+  return (
+    left?.childPeerId === right.childPeerId &&
+    left.connectionId === right.connectionId &&
+    left.transport === right.transport
+  );
 }
 
 function samePeerIds(left: readonly string[], right: readonly string[]): boolean {
