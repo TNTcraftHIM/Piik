@@ -289,7 +289,10 @@ key, even blank, fails startup.
 Omit the database path to keep random temporary rooms; `ROOM_TTL_SECONDS`
 applies only to those rooms.
 `MAX_VIEWERS_PER_ROOM` defaults to 8 and accepts 1 through 16. It is an admission
-limit, not evidence that the publisher can sustain that many streams.
+limit in the deployed release, not current product policy or evidence that the
+publisher can sustain that many streams. The accepted source target is 20
+Viewers; deployment default promotion follows the route release's 20-Viewer
+smoke.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
 the single server-authoritative steady outbound media-copy cap for Host and
 Viewer endpoints; role, browser, UA, and visibility do not create another tier.
@@ -612,7 +615,8 @@ Run these checks from real external networks before calling the deployment usabl
 6. Repeat at 1, 3, 5, and 8 viewers across representative consumer networks.
    Record selected protocol, RTT, bitrate, frame rate, packet loss, publisher
    upload/encode load, LiveKit ingress/egress, and final decoded quality. A real
-   1:8 session remains unverified until this matrix passes.
+   1:20 session remains unverified until the route-release smoke passes; this
+   longer matrix remains the heterogeneous-network quality gate.
 
 References: [coturn 4.17.2 release](https://github.com/coturn/coturn/releases/tag/4.17.2),
 [pinned turnserver documentation](https://github.com/coturn/coturn/blob/4.17.2/README.turnserver),

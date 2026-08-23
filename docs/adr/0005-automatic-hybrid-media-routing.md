@@ -116,6 +116,16 @@ needed, rather than enumerating Host-TURN Viewer edges. The operation records
 only exact tuples already tried; failure does not globally exclude that parent
 from later room events.
 
+If an SFU subscription is needed while the Host has no publication and all Host
+slots are occupied, reconciliation uses the same child operation to convert one
+deterministic current Host direct child into the first SFU subscriber. It uses
+the affected child when that child is already a Host direct child; otherwise it
+uses the newest connected Host direct child in stable join order. The candidate
+creates the single Host publication, preserves that child's subtree, and commits
+on its first newly decoded frame. The publication then replaces the released
+Host peer slot, and the next reconciliation handles the original waiting or
+failed child. This creates no bootstrap state or second graph.
+
 ### Authorization and transition
 
 Every prepare, signal, recovery, commit, and rollback is bound to the

@@ -5,6 +5,7 @@ Last updated: 2026-08-23
 ## Current Product Truth
 
 - Build private, low-latency game screen sharing for one broadcaster and a small group of trusted friends. Public or large broadcasts belong on OBS/Twitch-class services.
+- A room supports one Host and up to `20` authenticated Viewers. Admission is independent of endpoint fanout and SFU/TURN capacity; the event-driven route controller must remain efficient at that bound without all-pairs probing.
 - Authenticated Hosts and shipped clients are trusted media participants in these private rooms; route authority, generation fencing, and server admission remain fail-closed.
 - Web is the current delivery target. Viewers join from desktop or mobile browsers; a packaged or native sender is a later optimization.
 - Keep routing automatic and media distributed. Direct/peer UDP is preferred; centralized media is fallback infrastructure, not the default topology.
@@ -22,7 +23,7 @@ Last updated: 2026-08-23
 ## Current Source And Production
 
 - Canonical source is the clean `main` branch. New branches and worktrees start from its exact current commit after accepted truth is merged.
-- Current source implements the uniform `1/2/3` endpoint cap through one shared accounting guard, advances Web/server/Native to `screener-v6`, rejects v5 before room authority, and carries the exact deployment cap in every authenticated snapshot so ordinary Host authorization, Native admission, peer-assisted assignments, and sender slots use the same authority. Its current SFU-fed-leaf and route-quality behavior predates the accepted generic reconciliation model. SFU admission uses explicit no-default ingress/egress capacities, exact `reserved | committed | draining` lifecycle accounting, and a listener-fenced dedicated LiveKit owner. Selected TURN uses its own explicit no-default deployment capacity and exact logical-allocation ledger shared by independent peer edges and Host-SFU ingress.
+- Current source implements the uniform `1/2/3` endpoint cap through one shared accounting guard, advances Web/server/Native to `screener-v6`, rejects v5 before room authority, and carries the exact deployment cap in every authenticated snapshot so ordinary Host authorization, Native admission, peer-assisted assignments, and sender slots use the same authority. Its current room admission still stops at `16` Viewers, and its SFU-fed-leaf and route-quality behavior predates the accepted `20`-Viewer generic reconciliation model. SFU admission uses explicit no-default ingress/egress capacities, exact `reserved | committed | draining` lifecycle accounting, and a listener-fenced dedicated LiveKit owner. Selected TURN uses its own explicit no-default deployment capacity and exact logical-allocation ledger shared by independent peer edges and Host-SFU ingress.
 - Production runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`, release `9461e20`, wire `screener-v5`; `21d5cd9f7139` is the rollback release.
 - Production still enforces Host downstream `2`, ordinary Browser downstream `1`, deployment values `1/2`, a fixed SFU-root limit of `2`, and legacy publication/selected accounting. This is a dated implementation divergence, not current product policy.
 - Production has automatic routing, bad-relay corroboration, peer-quality make-before-break with Viewer and Host provisional parents, selected-edge transport, stable route/connection details, 64/128/256 audio choices, access controls, self-check, diagnostic export, and signaling watchdog behavior.
@@ -37,6 +38,7 @@ Last updated: 2026-08-23
 ## Working Rules
 
 - Discussion and evidence are inputs, not executable TODOs. Accepted semantics are written to their owners before implementation.
+- Prefer standards and mature framework behavior, then one general reconciliation mechanism. Repair an invariant before adding a case branch; a specialized gate, probe, timer, state container, or test requires evidence that the general mechanism cannot cover the failure.
 - Current documents state the current model directly. Rejected alternatives and removal narratives are deleted; Git history owns them.
 - Old branches may contribute scoped code or evidence only after reconciliation. Their memory, requirements, ADRs, status, and deployment snapshots never overwrite newer mainline truth.
 - Preserve dirty, unique, open-stack, and evidence worktrees until their disposition is explicitly decided. Workspace counts are sampled on demand rather than stored here.

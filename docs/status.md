@@ -15,6 +15,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 - Canonical source is the clean `main` branch; auxiliary branches and worktrees do not own current truth.
 - Current source implements one steady outbound media-copy cap for every non-server endpoint: default `2`, static `1/2/3`, a peer child or Host publication consumes one slot, upstream receive is free, a committed selected TURN transport replaces the same copy while hidden carry consumes another, and no Browser/UA/visibility tier exists. One shared guard owns the accounting and transition work is bounded by `min(C + 1, 3)`.
+- Accepted room admission is one Host plus up to `20` Viewers. Current source still validates at most `16`; the route release must update that bound and pass one 20-Viewer smoke without changing endpoint or server-resource accounting.
 - The v6 release boundary rejects v5 before room authority and carries the exact deployment cap in every authenticated snapshot so ordinary Host authorization, Native admission, peer-assisted child assignments, and sender slots share the server authority. Current `main` still carries the legacy childless-SFU-fed and route-quality slices that the pending generic reconciliation replaces.
 - Current source also implements explicit no-default SFU ingress/egress capacities and exact `reserved | committed | draining` accounting. The listener owner reconciles its dedicated non-auto-create LiveKit namespace before serving, creates each generation before token issuance, releases only after delete-plus-absence proof, and reclaims Host-offline generations through bounded exact-participant checks. Selected TURN has an independent explicit no-default deployment capacity; one process-local ledger charges every exact peer-selected edge and Host-SFU ingress through reserve, commit, drain, and release.
 - Automatic P2P-first routing, one active upstream, an acyclic source-reachable graph, exact attempt authority, first-decoded-frame make-before-break, and bounded failure remain accepted.
@@ -24,7 +25,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Complete and release the generic route reconciliation loop with deterministic parent selection and one first-frame candidate transaction.
+1. Complete and release the generic route reconciliation loop with deterministic parent selection, one first-frame candidate transaction, and efficient admission through 20 Viewers.
 2. Release live audio-ceiling mutation and paused-share codec switching on the resulting generation/transition boundary.
 3. Reproduce the H.264 startup report before any codec-specific repair, and build the strict-NAT emulator gate before any manually approved canary in an operator-owned test room.
 4. Add first-frame-driven Viewer connection stages and finish the remaining accepted functional and real-network work.

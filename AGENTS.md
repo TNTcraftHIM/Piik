@@ -3,6 +3,7 @@
 ## 1. Decision And Durable Truth
 
 - Highest priority: before implementation, cleanup, or deployment, settle the meaning against the whole product model and evidence, challenge contradictions or needless complexity, and write the accepted decision to its owning truth documents. Discussions, examples, review suggestions, experiments, checkboxes, and agent ideas are inputs, not implementation authority; never turn a partial interpretation into code or a branch.
+- Apply Occam's razor as "simple, not simplistic": prefer standards, mature framework behavior, and one small general mechanism that covers the product model. When a concrete failure appears, fix the owning invariant or reconciliation loop first; add a case-specific branch, gate, probe, timer, state container, or test only when evidence shows the general mechanism cannot cover it. Do not implement by repeatedly patching examples.
 - Before dependent work starts, update every affected owning requirement, design, ADR or research conclusion, plus `docs/project-memory.md` and `docs/status.md` when their snapshots change. Checkpoint the consistent truth in Git; chat is not durable truth.
 - If semantics remain disputed, record the hold in `docs/todo.md` and freeze only dependent work. Do not encode a guess as accepted truth.
 - **Current-truth ("Dongpo pork") rule:** after a correction, current docs, UI, code, comments, configuration, and PR copy state only the accepted behavior and rationale that still constrains it. Remove rejected alternatives and explanations of their removal; Git history owns that history.
@@ -16,12 +17,13 @@
 
 ## 3. Product Contract
 
-- Build private, low-latency game screen sharing for one broadcaster and a small group of trusted friends, not a public or large-scale streaming service.
+- Build private, low-latency game screen sharing for one broadcaster and up to `20` authenticated Viewers, not a public or large-scale streaming service.
 - A normal desktop or mobile browser is the initial Viewer target. A packaged sender or native capture helper is a later optimization.
 - Keep media distributed and automatic. Central services own rooms, authentication, signaling, STUN, observability, and bounded fallback resources; do not silently make the product always-SFU.
 - STUN and direct/peer UDP remain first. Ordinary peer edges receive no TURN candidates by default, and every accepted path ends in bounded success or clear failure. HTTPS/WSS transport is independent of media transport.
 - Every non-server endpoint uses one server-authoritative steady outbound media-copy cap: default `2`, configurable as `1`, `2`, or `3`. A peer child or the Host's single SFU publication consumes one slot; upstream receive is free, selected TURN replaces the transport of the same copy, and SFU subscriber egress is accounted at the server. Browser role, UA, visibility, and client advertisement do not create another tier.
-- The accepted route model is one room controller with three operations: allocate/distribute, child reparent, and relay abdicate/drain. SFU is one Host publication with per-Viewer subscriptions; TURN is a selected transport for an authorized edge or Host-SFU ingress, not a topology node. These paths use exact generations, media proof, bounded overlap, and independent server admission; they do not create a fixed root-count or room-wide lease rule.
+- The accepted route model is one committed graph, one event-driven reconciliation loop, and at most one room-serial child operation. That operation owns one deterministic candidate list/cursor, one current candidate with its reservations, and one total deadline; its exact child commits on the first newly decoded frame. Join/waiting, child reparent, relay ingress repair with subtree retention, confirmed departure, and effective-capacity reduction all use this operation. A failed exact `parent + transport` tuple is already tried for that operation, so other direct parents come first; another transport on the old parent may follow, and no persistent parent blacklist is created.
+- WebRTC and LiveKit own ICE/DTLS/consent, congestion control, transient reconnect, and SFU stream state. Screener does not add all-pairs endpoint probing, parent-wide quality inference, a weighted route score, periodic rebalancing, or an independent depth cap. SFU is one Host publication with per-Viewer subscriptions; TURN is a selected transport for an authorized edge or Host-SFU ingress, not a topology node. Endpoint overlap and SFU/TURN resources remain independently admitted and bounded.
 
 ## 4. Canonical Repository And Integration
 

@@ -1,8 +1,9 @@
 # Advanced Peer Distribution
 
 - Research date: 2026-08-23
-- Scope: at most eight trusted viewers, sub-second interactive media, endpoint
-  downstream fanout at most two, and minimal central-server media egress
+- Scope: current route admission up to twenty trusted viewers, sub-second
+  interactive media, endpoint downstream cap `1..3`, and minimal central-server
+  media egress; retained advanced-media measurements may cover smaller cohorts
 - Status: deterministic peer distribution and provisional make-before-break are
   retained evidence; current routing converges through ADR-0005's single
   child-reparent reconciliation, while advanced encoded-media routes remain

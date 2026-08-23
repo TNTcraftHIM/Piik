@@ -1,8 +1,9 @@
 # Peer-Assisted Media Research
 
 - Research date: 2026-08-22
-- Scope: one game-screen broadcaster, explicit admission up to sixteen trusted
-  viewers, with the retained resource/quality gate at eight
+- Scope: one game-screen broadcaster and an accepted admission target of twenty
+  trusted viewers; retained executable evidence currently reaches sixteen and
+  the earlier resource/quality gate remains eight
 - Status: historical evidence plus the deployed bounded controller;
   accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
   the room-`1` rollout boundary; retained SFU media remains unverified.
@@ -437,9 +438,9 @@ This historical gate assumed default-off configuration through
 rooms.
 It uses the existing standard WebRTC screen stream, current Chrome/Edge as the
 controlled relay cohort, Android Chrome and iOS Safari as compatibility
-observations, and the configured downstream edge cap. The runner accepts the
-shared room admission ceiling of sixteen while the representative
-resource/quality gate remains at eight. It may carry the existing screen-audio
+observations, and the configured downstream edge cap. The runner must accept the
+shared room admission ceiling of twenty; the current retained run reaches
+sixteen while the representative resource/quality gate remains at eight. It may carry the existing screen-audio
 track when the browser provides one. SVC/simulcast,
 custom encoded transport, FEC changes, multi-tree striping, transcoding,
 background mobile relay, and the later ADR-0005 SFU controller are outside this
