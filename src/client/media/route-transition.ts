@@ -16,6 +16,18 @@ export interface RouteOperationToken {
 }
 
 export type RouteUpdateResult = "accepted" | "duplicate" | "stale";
+export type PeerSignalOwner = "pending" | "active";
+
+export function exactPeerSignalOwner(
+  connectionId: string,
+  pendingConnectionId: string | null,
+  activeConnectionId: string | null,
+): PeerSignalOwner | null {
+  if (connectionId === pendingConnectionId) {
+    return "pending";
+  }
+  return connectionId === activeConnectionId ? "active" : null;
+}
 
 export class MediaRouteTransition {
   private revision = -1;

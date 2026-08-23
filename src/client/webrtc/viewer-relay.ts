@@ -14,41 +14,27 @@ import { MAX_ENDPOINT_MEDIA_CHILDREN } from "./media-assignment";
 interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
-  onSelectedEdgeFailed?: (
-    childPeerId: string,
-    connectionId: string,
-    revision: number,
-  ) => void;
 }
 type SelectedEdgeTurn = Extract<
   ServerMessage,
   { type: "selected-edge-turn"; edgeKind: "peer-selected" }
 >;
-interface SelectedChildConnection {
-  peerId: string;
-  connectionId: string;
-  revision: number;
-  pendingCarryRevision: number | null;
-}
 interface PreparedChild {
   revision: number;
   childPeerId: string;
   peer: HostPeer;
+  failed: boolean;
+  replacesConnectionId: string | null;
 }
-type FailedPreparedChild = Omit<PreparedChild, "peer"> & { connectionId: string };
 
 export class ViewerRelay {
   private childPeerIds: string[] = [];
   private stream: MediaStream | null = null;
   private readonly peers = new Map<string, HostPeer>();
   private readonly snapshots = new Map<string, PeerSnapshot>();
-  private readonly retiredConnections = new Map<string, string>();
-  private readonly selectedChildConnections = new Map<
-    string,
-    SelectedChildConnection
-  >();
   private preparedChild: PreparedChild | null = null;
-  private failedPreparedChild: FailedPreparedChild | null = null;
+  private preparedRevision: number | null = null;
+  private plannedChildPeerIds: string[] = [];
   private syncQueue = Promise.resolve();
   private disposed = false;
 
@@ -68,69 +54,40 @@ export class ViewerRelay {
       : null;
   }
 
-  startSelectedEdgeTurn(
+  prepareSelectedEdgeTurn(
     message: SelectedEdgeTurn,
     parentPeerId: string,
     routeRevision: number,
     now = Date.now(),
   ): boolean {
     const stream = this.stream;
-    const currentPeer = this.peers.get(message.viewerPeerId);
-    const connectionId =
-      currentPeer?.connectionId ??
-      this.retiredConnections.get(message.viewerPeerId);
-    const selected = this.selectedChildConnections.get(message.viewerPeerId);
-    if (
-      selected?.peerId === message.viewerPeerId &&
-      selected.connectionId === message.newConnectionId &&
-      currentPeer?.connectionId === selected.connectionId &&
-      message.parentPeerId === parentPeerId &&
-      message.revision >= selected.revision
-    ) {
-      selected.revision = message.revision;
-      selected.pendingCarryRevision = message.revision;
-      return true;
-    }
     if (
       this.disposed ||
       !stream ||
       message.parentPeerId !== parentPeerId ||
       message.revision !== routeRevision ||
       Date.parse(message.expiresAt) <= now ||
-      connectionId !== message.oldConnectionId ||
-      (!this.childPeerIds.includes(message.viewerPeerId) &&
-        this.childPeerIds.length >= MAX_ENDPOINT_MEDIA_CHILDREN)
+      this.preparedRevision !== routeRevision ||
+      !this.plannedChildPeerIds.includes(message.viewerPeerId)
     ) {
       return false;
     }
-    this.disposePeer(message.viewerPeerId);
-    if (!this.childPeerIds.includes(message.viewerPeerId)) {
-      this.childPeerIds.push(message.viewerPeerId);
+    const prepared = this.preparedChild;
+    if (prepared && prepared.childPeerId !== message.viewerPeerId) {
+      return false;
     }
-    this.selectedChildConnections.set(message.viewerPeerId, {
-      peerId: message.viewerPeerId,
-      connectionId: message.newConnectionId,
-      revision: message.revision,
-      pendingCarryRevision: null,
-    });
-    this.startPeer(message.viewerPeerId, stream, 0, message);
+    if (prepared?.peer.connectionId === message.newConnectionId) {
+      return !prepared.failed;
+    }
+    const oldConnectionId =
+      prepared?.peer.connectionId ??
+      this.peers.get(message.viewerPeerId)?.connectionId;
+    if (oldConnectionId !== message.oldConnectionId) {
+      return false;
+    }
+    this.discardPreparedPeer();
+    this.startPreparedChild(message.revision, message.viewerPeerId, stream, message);
     return true;
-  }
-
-  clearSelectedEdgeTurn(): void {
-    for (const peerId of [...this.selectedChildConnections.keys()]) {
-      this.clearSelectedChildConnection(peerId);
-    }
-  }
-
-  acceptActiveRevision(revision: number): void {
-    for (const [peerId, selected] of [...this.selectedChildConnections]) {
-      if (selected.pendingCarryRevision === revision) {
-        selected.pendingCarryRevision = null;
-      } else {
-        this.clearSelectedChildConnection(peerId);
-      }
-    }
   }
 
   prepareChild(
@@ -139,71 +96,62 @@ export class ViewerRelay {
   ): boolean {
     const stream = this.stream;
     const planned = [...new Set(plannedChildPeerIds)];
-    const childPeerId = planned.find(
-      (peerId) => !this.childPeerIds.includes(peerId),
-    );
     if (
       this.disposed ||
       !stream ||
       planned.length !== plannedChildPeerIds.length ||
-      planned.length !== this.childPeerIds.length + 1 ||
+      planned.length < this.childPeerIds.length ||
+      planned.length > this.childPeerIds.length + 1 ||
       planned.length > MAX_ENDPOINT_MEDIA_CHILDREN ||
-      this.childPeerIds.some((peerId) => !planned.includes(peerId)) ||
-      !childPeerId ||
-      this.peers.has(childPeerId)
+      this.childPeerIds.some((peerId) => !planned.includes(peerId))
     ) {
       this.discardPreparedChild();
       return false;
     }
     if (
-      this.preparedChild?.revision === revision &&
-      this.preparedChild.childPeerId === childPeerId
+      this.preparedRevision === revision &&
+      samePeerIds(this.plannedChildPeerIds, planned)
     ) {
-      return true;
-    }
-    if (
-      this.failedPreparedChild?.revision === revision &&
-      this.failedPreparedChild.childPeerId === childPeerId
-    ) {
-      return false;
+      return this.preparedChild ? !this.preparedChild.failed : true;
     }
 
     this.discardPreparedChild();
-    const peer = this.createPeer(childPeerId, stream);
-    this.preparedChild = { revision, childPeerId, peer };
-    void peer
-      .start()
-      .catch(() => false)
-      .then((started) => {
-        if (!started && this.preparedChild?.peer === peer) {
-          this.failPreparedChild(peer);
-        }
-      });
+    this.preparedRevision = revision;
+    this.plannedChildPeerIds = planned;
+    const childPeerId = planned.find(
+      (peerId) => !this.childPeerIds.includes(peerId),
+    );
+    if (!childPeerId) {
+      return true;
+    }
+    this.startPreparedChild(revision, childPeerId, stream);
     return true;
   }
 
   activateChildren(revision: number, childPeerIds: readonly string[]): void {
     const prepared = this.preparedChild;
-    const failed = this.failedPreparedChild;
     const extendsActive =
       childPeerIds.length === this.childPeerIds.length + 1 &&
       this.childPeerIds.every((peerId) => childPeerIds.includes(peerId));
+    const replacedPeer = prepared
+      ? this.peers.get(prepared.childPeerId) ?? null
+      : null;
+    const replacesActive =
+      replacedPeer?.connectionId === prepared?.replacesConnectionId;
     let promotedPeerId: string | null = null;
     if (
       prepared?.revision === revision &&
+      !prepared.failed &&
       childPeerIds.includes(prepared.childPeerId) &&
-      extendsActive
+      (extendsActive || replacesActive)
     ) {
       this.preparedChild = null;
+      this.preparedRevision = null;
+      this.plannedChildPeerIds = [];
       this.peers.set(prepared.childPeerId, prepared.peer);
+      replacedPeer?.dispose();
       this.snapshots.set(prepared.childPeerId, prepared.peer.getSnapshot());
       promotedPeerId = prepared.childPeerId;
-    } else if (
-      failed?.revision === revision &&
-      childPeerIds.includes(failed.childPeerId) &&
-      extendsActive
-    ) {
-      return;
     } else {
       this.discardPreparedChild();
     }
@@ -211,20 +159,19 @@ export class ViewerRelay {
   }
 
   discardPreparedChild(): void {
+    this.preparedRevision = null;
+    this.plannedChildPeerIds = [];
+    this.discardPreparedPeer();
+  }
+
+  private discardPreparedPeer(): void {
     const prepared = this.preparedChild;
     this.preparedChild = null;
-    this.failedPreparedChild = null;
     prepared?.peer.dispose();
   }
 
   setChildren(childPeerIds: readonly string[]): void {
-    const failedChildPeerId = this.failedPreparedChild?.childPeerId;
-    this.reconcileChildren(
-      failedChildPeerId
-        ? childPeerIds.filter((peerId) => peerId !== failedChildPeerId)
-        : childPeerIds,
-      null,
-    );
+    this.reconcileChildren(childPeerIds, null);
   }
 
   private reconcileChildren(
@@ -238,20 +185,6 @@ export class ViewerRelay {
       0,
       MAX_ENDPOINT_MEDIA_CHILDREN,
     );
-    for (const selectedPeerId of this.selectedChildConnections.keys()) {
-      if (!nextChildPeerIds.includes(selectedPeerId)) {
-        if (nextChildPeerIds.length >= MAX_ENDPOINT_MEDIA_CHILDREN) {
-          const removableIndex = nextChildPeerIds.findLastIndex(
-            (peerId) => !this.selectedChildConnections.has(peerId),
-          );
-          if (removableIndex < 0) {
-            continue;
-          }
-          nextChildPeerIds.splice(removableIndex, 1);
-        }
-        nextChildPeerIds.push(selectedPeerId);
-      }
-    }
     for (const childPeerId of this.childPeerIds) {
       if (!nextChildPeerIds.includes(childPeerId)) {
         this.disposePeer(childPeerId);
@@ -260,9 +193,6 @@ export class ViewerRelay {
     this.childPeerIds = nextChildPeerIds;
     for (const childPeerId of this.childPeerIds) {
       const peer = this.peers.get(childPeerId);
-      if (this.selectedChildConnections.has(childPeerId)) {
-        continue;
-      }
       if (
         this.stream &&
         childPeerId !== promotedPeerId &&
@@ -310,6 +240,7 @@ export class ViewerRelay {
   ): number {
     const prepared = this.preparedChild;
     return prepared?.childPeerId === fromPeerId &&
+      !prepared.failed &&
       prepared.peer.connectionId === connectionId
       ? prepared.revision
       : activeRevision;
@@ -323,6 +254,7 @@ export class ViewerRelay {
     const prepared = this.preparedChild;
     if (
       prepared?.revision === routeRevision &&
+      !prepared.failed &&
       prepared.childPeerId === fromPeerId &&
       prepared.peer.connectionId === payload.connectionId
     ) {
@@ -330,14 +262,10 @@ export class ViewerRelay {
       return true;
     }
     const peer = this.peers.get(fromPeerId);
-    const selected = this.selectedChildConnections.get(fromPeerId);
     if (
       !this.childPeerIds.includes(fromPeerId) ||
       !peer ||
-      peer.connectionId !== payload.connectionId ||
-      (selected?.peerId === fromPeerId &&
-        (selected.connectionId !== payload.connectionId ||
-          selected.revision !== routeRevision))
+      peer.connectionId !== payload.connectionId
     ) {
       return false;
     }
@@ -386,7 +314,6 @@ export class ViewerRelay {
   stop(): void {
     this.stream = null;
     this.discardPreparedChild();
-    this.clearSelectedEdgeTurn();
     this.disposePeers();
   }
 
@@ -397,9 +324,32 @@ export class ViewerRelay {
     this.disposed = true;
     this.stream = null;
     this.discardPreparedChild();
-    this.selectedChildConnections.clear();
     this.childPeerIds = [];
     this.disposePeers();
+  }
+
+  private startPreparedChild(
+    revision: number,
+    childPeerId: string,
+    stream: MediaStream,
+    selectedTurn?: SelectedEdgeTurn,
+  ): void {
+    const peer = this.createPeer(childPeerId, stream, selectedTurn);
+    this.preparedChild = {
+      revision,
+      childPeerId,
+      peer,
+      failed: false,
+      replacesConnectionId: selectedTurn?.oldConnectionId ?? null,
+    };
+    void peer
+      .start()
+      .catch(() => false)
+      .then((started) => {
+        if (!started && this.preparedChild?.peer === peer) {
+          this.failPreparedChild(peer);
+        }
+      });
   }
 
   private async syncStream(
@@ -484,7 +434,6 @@ export class ViewerRelay {
     childPeerId: string,
     stream: MediaStream,
     attempt = 0,
-    selectedTurn?: SelectedEdgeTurn,
   ): void {
     if (
       this.disposed ||
@@ -495,17 +444,13 @@ export class ViewerRelay {
       return;
     }
 
-    const peer = this.createPeer(childPeerId, stream, selectedTurn);
+    const peer = this.createPeer(childPeerId, stream);
     this.peers.set(childPeerId, peer);
     void peer
       .start()
       .catch(() => false)
       .then((started) => {
         if (started || this.peers.get(childPeerId) !== peer) {
-          return;
-        }
-        if (selectedTurn) {
-          this.failSelectedChild(childPeerId, peer.connectionId);
           return;
         }
         this.disposePeer(childPeerId);
@@ -557,10 +502,6 @@ export class ViewerRelay {
             snapshot.peerId === childPeerId &&
             snapshot.connectionId === peer.connectionId
           ) {
-            if (selectedTurn && snapshot.connectionState === "failed") {
-              this.failSelectedChild(childPeerId, peer.connectionId);
-              return;
-            }
             this.snapshots.set(childPeerId, {
               ...snapshot,
               metrics: { ...snapshot.metrics },
@@ -575,34 +516,12 @@ export class ViewerRelay {
     return peer;
   }
 
-  private failSelectedChild(childPeerId: string, connectionId: string): void {
-    const selected = this.selectedChildConnections.get(childPeerId);
-    if (
-      selected?.peerId !== childPeerId ||
-      selected.connectionId !== connectionId
-    ) {
-      return;
-    }
-    this.events.onSelectedEdgeFailed?.(
-      childPeerId,
-      connectionId,
-      selected.revision,
-    );
-    this.disposePeer(childPeerId);
-  }
-
   private failPreparedChild(peer: HostPeer): void {
     const prepared = this.preparedChild;
     if (prepared?.peer !== peer) {
       return;
     }
-    this.preparedChild = null;
-    const { revision, childPeerId } = prepared;
-    this.failedPreparedChild = {
-      revision,
-      childPeerId,
-      connectionId: peer.connectionId,
-    };
+    prepared.failed = true;
     peer.dispose();
   }
 
@@ -614,39 +533,17 @@ export class ViewerRelay {
 
   private disposePeer(childPeerId: string): void {
     const peer = this.peers.get(childPeerId);
-    if (
-      peer &&
-      this.selectedChildConnections.get(childPeerId)?.connectionId ===
-        peer.connectionId
-    ) {
-      this.selectedChildConnections.delete(childPeerId);
-      this.childPeerIds = this.childPeerIds.filter(
-        (peerId) => peerId !== childPeerId,
-      );
-    }
-    if (peer) {
-      this.retiredConnections.delete(childPeerId);
-      this.retiredConnections.set(childPeerId, peer.connectionId);
-      while (this.retiredConnections.size > MAX_ENDPOINT_MEDIA_CHILDREN) {
-        const oldestPeerId = this.retiredConnections.keys().next().value;
-        if (typeof oldestPeerId === "string") {
-          this.retiredConnections.delete(oldestPeerId);
-        }
-      }
-    }
     this.peers.delete(childPeerId);
     this.snapshots.delete(childPeerId);
     this.events.onUpdate?.(this.getSnapshot());
     peer?.dispose();
   }
 
-  private clearSelectedChildConnection(childPeerId: string): void {
-    if (!this.selectedChildConnections.delete(childPeerId)) {
-      return;
-    }
-    this.childPeerIds = this.childPeerIds.filter(
-      (peerId) => peerId !== childPeerId,
-    );
-    this.disposePeer(childPeerId);
-  }
+}
+
+function samePeerIds(left: readonly string[], right: readonly string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((peerId, index) => peerId === right[index])
+  );
 }

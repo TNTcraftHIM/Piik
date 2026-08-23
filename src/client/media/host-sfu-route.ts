@@ -40,7 +40,6 @@ interface HostPublisherSlot {
   connected: boolean;
   active: boolean;
   failed: boolean;
-  acknowledgeActive: boolean;
   connectionId: string;
   selectedEdgeTurn: boolean;
 }
@@ -71,6 +70,7 @@ export class HostSfuRoute {
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
   private resyncing = false;
+  private paused = false;
   private closed = false;
   private lastConfig: Extract<ServerMessage, { type: "sfu-config" }> | null =
     null;
@@ -81,13 +81,17 @@ export class HostSfuRoute {
 
   constructor(private readonly events: HostSfuRouteEvents) {}
 
-  accept(update: RouteUpdateInput, acknowledge = true): RouteUpdateResult {
+  accept(update: RouteUpdateInput): RouteUpdateResult {
     if (this.closed) {
       return "stale";
     }
     const previousRevision = this.route.getRevision();
     const result = this.route.accept(update);
     if (result === "stale") {
+      return result;
+    }
+    if (this.paused) {
+      this.clearPending();
       return result;
     }
     if (previousRevision !== update.revision) {
@@ -116,16 +120,15 @@ export class HostSfuRoute {
 
     const token = this.route.token();
     if (token && !this.resyncing) {
-      void this.queueActivation(token, acknowledge);
+      void this.queueActivation(token);
     }
     return result;
   }
 
   async acceptAndWait(
     update: RouteUpdateInput,
-    acknowledge = true,
   ): Promise<RouteUpdateResult> {
-    const result = this.accept(update, acknowledge);
+    const result = this.accept(update);
     await this.transitionTail;
     return result;
   }
@@ -134,7 +137,7 @@ export class HostSfuRoute {
     update: RouteUpdateInput,
   ): Promise<RouteUpdateResult> {
     this.lastFailureStage = null;
-    const result = this.accept(update, false);
+    const result = this.accept(update);
     if (result !== "stale" || this.closed) {
       await this.transitionTail;
       return result;
@@ -176,7 +179,7 @@ export class HostSfuRoute {
     this.resyncing = false;
     const token = this.route.token();
     if (token && this.route.getPhase() === "active") {
-      await this.queueActivation(token, false);
+      await this.queueActivation(token);
     }
     return accepted;
   }
@@ -184,7 +187,7 @@ export class HostSfuRoute {
   async acceptConfig(
     message: Extract<ServerMessage, { type: "sfu-config" }>,
   ): Promise<void> {
-    if (this.closed || !this.route.acceptsConfig(message.revision)) {
+    if (this.closed || this.paused || !this.route.acceptsConfig(message.revision)) {
       return;
     }
     const token = this.route.token();
@@ -198,10 +201,8 @@ export class HostSfuRoute {
 
     if (this.active?.publicationGeneration === publicationGeneration) {
       this.active.revision = message.revision;
-      if (phase === "prepare" && this.active.connected) {
-        this.ready(message.revision, "prepare");
-      } else if (phase === "active" && this.active.active) {
-        await this.queueActivation(token, true);
+      if (phase === "active" && this.active.active) {
+        await this.queueActivation(token);
       }
       return;
     }
@@ -210,9 +211,6 @@ export class HostSfuRoute {
       this.pending.publicationGeneration === publicationGeneration &&
       !this.pending.failed
     ) {
-      if (this.pending.connected && phase === "prepare") {
-        this.ready(message.revision, "prepare");
-      }
       return;
     }
 
@@ -241,7 +239,6 @@ export class HostSfuRoute {
       connected: false,
       active: false,
       failed: false,
-      acknowledgeActive: false,
       connectionId: selectedEdgeTurn?.newConnectionId ?? publicationGeneration,
       selectedEdgeTurn: selectedEdgeTurn !== null,
     };
@@ -271,14 +268,23 @@ export class HostSfuRoute {
         return;
       }
       slot.connected = true;
-      if (phase === "prepare") {
-        this.ready(message.revision, "prepare");
-      } else if (!this.resyncing) {
-        await this.queueActivation(token, true);
+      if (!(await this.preparePublisher(slot))) {
+        return;
+      }
+      if (phase === "active" && !this.resyncing) {
+        await this.queueActivation(token);
       }
     } catch {
       await disconnectPublisher(publisher);
       this.handleFailure(slot);
+    }
+  }
+
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    if (paused) {
+      this.clearPending();
+      this.selectedEdgeTurn = null;
     }
   }
 
@@ -292,20 +298,33 @@ export class HostSfuRoute {
     if (
       this.closed ||
       !this.route.acceptsConfig(message.revision) ||
+      this.route.getPhase() !== "prepare" ||
       Date.parse(message.expiresAt) <= Date.now()
     ) {
       return false;
     }
     const assignment = this.route.getPlannedAssignment();
     const publicationGeneration = assignment?.sfuPublicationGeneration;
+    const pending = this.pending;
     if (
       !publicationGeneration ||
       publicationGeneration !== message.publicationGeneration ||
-      message.oldConnectionId !== publicationGeneration ||
-      this.active?.publicationGeneration === publicationGeneration
+      (pending !== null &&
+        (pending.revision !== message.revision ||
+          pending.publicationGeneration !== publicationGeneration))
     ) {
       return false;
     }
+    if (pending?.connectionId === message.newConnectionId) {
+      return !pending.failed;
+    }
+    if (
+      (pending?.connectionId ?? publicationGeneration) !==
+      message.oldConnectionId
+    ) {
+      return false;
+    }
+    this.clearPending();
     this.selectedEdgeTurn = message;
     if (this.lastConfig?.revision === message.revision) {
       void this.acceptConfig(this.lastConfig);
@@ -314,9 +333,14 @@ export class HostSfuRoute {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    return this.active?.active
-      ? this.active.publisher.updateProfile(profile).catch(() => false)
-      : Promise.resolve(true);
+    const slots = this.publishingSlots();
+    return slots.length === 0
+      ? Promise.resolve(true)
+      : Promise.all(
+          slots.map((slot) =>
+            slot.publisher.updateProfile(profile).catch(() => false),
+          ),
+        ).then((results) => results.every(Boolean));
   }
 
   getQualityWarning(): string | null {
@@ -335,9 +359,21 @@ export class HostSfuRoute {
   }
 
   replaceStream(stream: MediaStream): Promise<boolean> {
-    return this.active
-      ? this.active.publisher.replaceStream(stream).catch(() => false)
-      : Promise.resolve(true);
+    const slots = this.publishingSlots();
+    return slots.length === 0
+      ? Promise.resolve(true)
+      : Promise.all(
+          slots.map((slot) =>
+            slot.publisher.replaceStream(stream).catch(() => false),
+          ),
+        ).then((results) => results.every(Boolean));
+  }
+
+  private publishingSlots(): HostPublisherSlot[] {
+    return [...new Set([this.active, this.pending])].filter(
+      (slot): slot is HostPublisherSlot =>
+        slot !== null && slot.active && !slot.failed,
+    );
   }
 
   async failActivePublisher(): Promise<void> {
@@ -382,17 +418,14 @@ export class HostSfuRoute {
     });
   }
 
-  private queueActivation(
-    token: RouteOperationToken,
-    acknowledge: boolean,
-  ): Promise<void> {
+  private queueActivation(token: RouteOperationToken): Promise<void> {
     return this.queueTransition(async () => {
       if (this.closed || this.resyncing || !this.route.owns(token, "active")) {
         return;
       }
       const assignment = this.route.getActiveAssignment();
       if (assignment) {
-        await this.activate(assignment, token, acknowledge);
+        await this.activate(assignment, token);
       }
     });
   }
@@ -406,7 +439,6 @@ export class HostSfuRoute {
   private async activate(
     assignment: ParticipantRouteAssignment,
     token: RouteOperationToken,
-    acknowledge: boolean,
   ): Promise<void> {
     const publicationGeneration = assignment.sfuPublicationGeneration;
     if (publicationGeneration === null) {
@@ -416,7 +448,7 @@ export class HostSfuRoute {
         return;
       }
       this.events.reconcileChildren(assignment.childPeerIds);
-      this.commitMedia(token, acknowledge);
+      this.commitMedia(token);
       return;
     }
 
@@ -429,9 +461,7 @@ export class HostSfuRoute {
       this.active.revision = token.revision;
       this.clearPending();
       if (this.active.active) {
-        this.commitMedia(token, acknowledge);
-      } else {
-        this.active.acknowledgeActive ||= acknowledge;
+        this.commitMedia(token);
       }
       return;
     }
@@ -441,89 +471,84 @@ export class HostSfuRoute {
       !pending ||
       pending.revision !== token.revision ||
       pending.publicationGeneration !== publicationGeneration ||
-      !pending.connected
+      !pending.connected ||
+      !pending.active
     ) {
-      await this.retireActive();
-      if (acknowledge && this.route.owns(token, "active")) {
+      if (this.route.owns(token, "active")) {
         this.requestRecovery(token.revision);
       }
       return;
     }
 
-    await this.retireActive(pending);
-    if (!this.route.owns(token, "active")) {
-      this.clearPending(pending);
-      return;
-    }
     this.pending = null;
+    const previous = this.active;
     this.active = pending;
-    pending.acknowledgeActive ||= acknowledge;
-    const publishedStream = this.events.getStream();
-    const publishedProfile = this.events.getProfile();
-    if (!publishedStream) {
+    if (!this.route.markMediaActive(token)) {
+      this.active = previous;
       await disconnectPublisher(pending.publisher);
-      this.handleFailure(pending);
       return;
     }
-
-    try {
-      const activated = await pending.publisher.activate(
-        publishedStream,
-        publishedProfile,
-      );
-      const activeToken = this.currentActiveToken(pending);
-      if (!activated || !activeToken) {
-        if (this.active === pending) {
-          this.active = null;
-        }
-        await disconnectPublisher(pending.publisher);
-        if (!activated && activeToken) {
-          this.handleFailure(pending);
-        }
-        return;
+    this.lastFailureStage = null;
+    this.recovery = null;
+    if (previous && previous !== pending) {
+      if (previous.active) {
+        await previous.publisher.deactivate().catch(() => false);
       }
-      pending.active = true;
+      await disconnectPublisher(previous.publisher);
+    }
+  }
 
+  private async preparePublisher(slot: HostPublisherSlot): Promise<boolean> {
+    const stream = this.events.getStream();
+    const profile = this.events.getProfile();
+    if (!stream) {
+      this.handleFailure(slot);
+      return false;
+    }
+    try {
+      if (!(await slot.publisher.activate(stream, profile))) {
+        this.handleFailure(slot);
+        await disconnectPublisher(slot.publisher);
+        return false;
+      }
+      if (this.pending !== slot || !this.ownsPublisherSlot(slot)) {
+        await disconnectPublisher(slot.publisher);
+        return false;
+      }
+      slot.active = true;
       const latestStream = this.events.getStream();
       if (
         latestStream &&
-        latestStream !== publishedStream &&
-        !(await pending.publisher.replaceStream(latestStream))
+        latestStream !== stream &&
+        !(await slot.publisher.replaceStream(latestStream))
       ) {
-        await disconnectPublisher(pending.publisher);
-        this.handleFailure(pending);
-        return;
+        this.handleFailure(slot);
+        await disconnectPublisher(slot.publisher);
+        return false;
       }
       const latestProfile = this.events.getProfile();
       if (
-        latestProfile !== publishedProfile &&
-        !(await pending.publisher.updateProfile(latestProfile))
+        latestProfile !== profile &&
+        !(await slot.publisher.updateProfile(latestProfile))
       ) {
-        await disconnectPublisher(pending.publisher);
-        this.handleFailure(pending);
-        return;
+        this.handleFailure(slot);
+        await disconnectPublisher(slot.publisher);
+        return false;
       }
+      return this.pending === slot && this.ownsPublisherSlot(slot);
     } catch {
-      await disconnectPublisher(pending.publisher);
-      this.handleFailure(pending);
-      return;
+      this.handleFailure(slot);
+      await disconnectPublisher(slot.publisher);
+      return false;
     }
+  }
 
-    const activeToken = this.currentActiveToken(pending);
-    if (!activeToken) {
-      if (this.active === pending) {
-        this.active = null;
-      }
-      await disconnectPublisher(pending.publisher);
-      return;
-    }
-    if (!this.route.owns(token, "active")) {
-      pending.acknowledgeActive = false;
-      return;
-    }
-    const acknowledgeActive = pending.acknowledgeActive;
-    pending.acknowledgeActive = false;
-    this.commitMedia(activeToken, acknowledgeActive);
+  private ownsPublisherSlot(slot: HostPublisherSlot): boolean {
+    return (
+      this.route.getRevision() === slot.revision &&
+      this.route.getPlannedAssignment()?.sfuPublicationGeneration ===
+        slot.publicationGeneration
+    );
   }
 
   private currentActiveToken(
@@ -542,15 +567,12 @@ export class HostSfuRoute {
     return token;
   }
 
-  private commitMedia(token: RouteOperationToken, acknowledge: boolean): void {
+  private commitMedia(token: RouteOperationToken): void {
     if (!this.route.markMediaActive(token)) {
       return;
     }
     this.lastFailureStage = null;
     this.recovery = null;
-    if (acknowledge) {
-      this.ready(token.revision, "active");
-    }
   }
 
   private clearPending(expected?: HostPublisherSlot): void {
@@ -646,10 +668,6 @@ export class HostSfuRoute {
       phase,
       connectionId,
     });
-  }
-
-  private ready(revision: number, phase: MediaRoutePhase): void {
-    this.events.send({ type: "route-ready", revision, phase });
   }
 
   private handlePublisherStats(

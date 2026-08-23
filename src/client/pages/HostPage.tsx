@@ -92,11 +92,7 @@ import {
   type HostSfuPublisherSnapshot,
 } from "../media/host-sfu-route";
 import {
-  acceptHostSelectedChildrenRevision,
-  carryHostSelectedChild,
-  hostSelectedChildForConnection,
   HostProvisionalChild,
-  type ActiveSelectedHostChild,
 } from "../media/host-provisional-child";
 import {
   ParentEdgeQualityEvidenceReporter,
@@ -134,18 +130,10 @@ type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
 >;
-type SelectedEdgeTurn = Extract<
-  ServerMessage,
-  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
->;
 type HostRouteAssignment = Extract<
   ServerMessage,
   { type: "route-update" }
 >["assignment"];
-interface FailedActiveHostChild {
-  revision: number;
-  peerId: string;
-}
 
 interface CaptureDetails {
   resolution: string;
@@ -282,11 +270,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
   const retiredConnectionsRef = useRef(new Map<string, string>());
-  const selectedHostChildrenRef = useRef(
-    new Map<string, ActiveSelectedHostChild>(),
-  );
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
-  const failedActiveHostChildRef = useRef<FailedActiveHostChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const hostPeerIdRef = useRef<string | null>(null);
   const viewerQualityEvidenceRef = useRef(
@@ -424,10 +408,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
       retiredConnectionsRef.current.clear();
-      selectedHostChildrenRef.current.clear();
       hostProvisionalChildRef.current?.discard();
       hostProvisionalChildRef.current = null;
-      failedActiveHostChildRef.current = null;
       activeHostChildPeerIdsRef.current = [];
       hostPeerIdRef.current = null;
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
@@ -541,10 +523,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
     retiredConnectionsRef.current.clear();
-    selectedHostChildrenRef.current.clear();
     hostProvisionalChildRef.current?.discard();
     hostProvisionalChildRef.current = null;
-    failedActiveHostChildRef.current = null;
     activeHostChildPeerIdsRef.current = [];
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
@@ -878,6 +858,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     sharingPausedRef.current = nextPaused;
     setSharingPaused(nextPaused);
+    hostSfuRouteRef.current?.setPaused(nextPaused);
+    if (nextPaused) {
+      discardPreparedHostChild();
+    }
     signalRef.current?.setSharingPaused(nextPaused);
     setNotice(nextPaused ? "音视频分享已暂停" : "音视频分享已恢复");
   }
@@ -908,7 +892,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       retiredConnectionsRef.current.set(peerId, peer.connectionId);
       peer.dispose();
     }
-    selectedHostChildrenRef.current.delete(peerId);
     peersRef.current.delete(peerId);
     setPeerSnapshots((current) => {
       const next = new Map(current);
@@ -945,7 +928,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         isCurrentGeneration(generation) && signalRef.current === signal
           ? signal.send({ type: "signal", targetPeerId, payload })
           : false,
-      hasActivePeer: (peerId) => peersRef.current.has(peerId),
+      activeConnectionId: (peerId) =>
+        peersRef.current.get(peerId)?.connectionId ?? null,
       onPromotedStreamFailure: (peer) => {
         if (
           isCurrentGeneration(generation) &&
@@ -967,7 +951,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       revision,
       assignment,
       activeChildPeerIds: activeHostChildPeerIdsRef.current,
-      selectedPeerIds: selectedHostChildrenRef.current.keys(),
       maxMediaEdges: MAX_ENDPOINT_MEDIA_CHILDREN,
       iceConfig,
       stream,
@@ -986,26 +969,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       revision,
       assignment,
       activeChildPeerIds,
-      selectedPeerIds: selectedHostChildrenRef.current.keys(),
       maxMediaEdges: MAX_ENDPOINT_MEDIA_CHILDREN,
     }) ?? { kind: "ordinary" as const };
     if (activation.kind === "promote") {
       hostProvisionalChildRef.current = null;
-      failedActiveHostChildRef.current = null;
+      const previous = peersRef.current.get(activation.peerId);
       peersRef.current.set(activation.peerId, activation.peer);
+      previous?.dispose();
       updatePeerSnapshot(activation.peer.getSnapshot());
-    } else if (activation.kind === "failed") {
-      hostProvisionalChildRef.current = null;
-      failedActiveHostChildRef.current = {
-        revision,
-        peerId: activation.peerId,
-      };
-      return;
     } else {
       discardPreparedHostChild();
-      if (failedActiveHostChildRef.current?.revision !== revision) {
-        failedActiveHostChildRef.current = null;
-      }
     }
     activeHostChildPeerIdsRef.current = childPeerIds;
   }
@@ -1014,7 +987,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     peerId: string,
     generation: number,
     attempt = 0,
-    selectedTurn?: SelectedEdgeTurn,
   ): Promise<void> {
     if (!isCurrentGeneration(generation)) {
       return;
@@ -1023,7 +995,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     // negotiation whose offer or answer may have been lost with the WebSocket.
     const existing = peersRef.current.get(peerId);
     if (existing) {
-      if (!selectedTurn && existing.isConnected()) {
+      if (existing.isConnected()) {
         return;
       }
       removePeer(peerId);
@@ -1035,32 +1007,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
 
-    const reportSelectedTurnFailure = (connectionId: string): void => {
-      const selected = hostSelectedChildForConnection(
-        selectedHostChildrenRef.current,
-        peerId,
-        connectionId,
-      );
-      if (
-        !selectedTurn ||
-        !selected ||
-        !isCurrentGeneration(generation) ||
-        signalRef.current !== signal
-      ) {
-        return;
-      }
-      signal.send({
-        type: "route-failed",
-        revision: selected.currentRouteRevision,
-        phase: "active",
-        connectionId,
-      });
-    };
-
     let peer: HostPeer;
     peer = new HostPeer(
       peerId,
-      selectedTurn ? { iceServers: [selectedTurn.iceServer] } : iceConfig,
+      iceConfig,
       activeStream,
       qualitySettingsRef.current,
       {
@@ -1073,17 +1023,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             isCurrentGeneration(generation) &&
             peersRef.current.get(peerId) === peer
           ) {
-            if (selectedTurn && snapshot.connectionState === "failed") {
-              reportSelectedTurnFailure(peer.connectionId);
-              removePeer(peerId);
-              return;
-            }
             updatePeerSnapshot(snapshot);
           }
         },
       },
-      selectedTurn !== undefined,
-      selectedTurn?.newConnectionId,
     );
     peersRef.current.set(peerId, peer);
     let started: boolean;
@@ -1091,7 +1034,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       started = await peer.start();
     } catch (error) {
       if (peersRef.current.get(peerId) === peer) {
-        reportSelectedTurnFailure(peer.connectionId);
         removePeer(peerId);
       }
       throw error;
@@ -1100,9 +1042,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
 
-    reportSelectedTurnFailure(peer.connectionId);
     removePeer(peerId);
-    if (selectedTurn || !isCurrentGeneration(generation) || attempt >= 1) {
+    if (!isCurrentGeneration(generation) || attempt >= 1) {
       return;
     }
     window.setTimeout(() => {
@@ -1162,28 +1103,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     childPeerIds: string[],
     generation: number,
   ): void {
-    const failedPrepared = failedActiveHostChildRef.current;
-    const authoritativeChildPeerIds =
-      failedPrepared?.revision === activeRouteRevisionRef.current
-        ? childPeerIds.filter((peerId) => peerId !== failedPrepared.peerId)
-        : childPeerIds;
-    const selectedPeerIds: string[] = [];
-    for (const [peerId, selected] of selectedHostChildrenRef.current) {
-      const selectedIsCurrent =
-        selected.currentRouteRevision === activeRouteRevisionRef.current &&
-        peersRef.current.get(peerId)?.connectionId === selected.connectionId;
-      if (selectedIsCurrent) {
-        selectedPeerIds.push(peerId);
-      } else {
-        selectedHostChildrenRef.current.delete(peerId);
-      }
-    }
-    const effectiveChildPeerIds = [
-      ...new Set([...authoritativeChildPeerIds, ...selectedPeerIds]),
-    ];
     reconcileBoundedMediaChildren(
       peersRef.current.keys(),
-      effectiveChildPeerIds,
+      childPeerIds,
       MAX_ENDPOINT_MEDIA_CHILDREN,
       removePeer,
       (peerId) => {
@@ -1206,10 +1128,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "authenticated" && message.role === "host") {
       discardPreparedHostChild();
-      failedActiveHostChildRef.current = null;
-      for (const peerId of [...selectedHostChildrenRef.current.keys()]) {
-        removePeer(peerId);
-      }
       hostPeerIdRef.current = message.peerId;
       setViewerAccessUpdating(false);
       clearAllViewerQualityEvidence();
@@ -1275,40 +1193,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         }
         return;
       }
-      const current = peersRef.current.get(message.viewerPeerId);
+      const iceConfig = iceConfigRef.current;
+      const activeStream = streamRef.current;
       if (
         peerAssistedRef.current &&
         message.parentPeerId === hostPeerIdRef.current &&
-        current?.connectionId === message.newConnectionId &&
-        carryHostSelectedChild(
-          selectedHostChildrenRef.current,
-          message.viewerPeerId,
-          message.newConnectionId,
-          message.revision,
-        )
+        iceConfig &&
+        activeStream
       ) {
-        return;
-      }
-      const oldConnectionId =
-        current?.connectionId ??
-        retiredConnectionsRef.current.get(message.viewerPeerId);
-      if (
-        peerAssistedRef.current &&
-        message.parentPeerId === hostPeerIdRef.current &&
-        message.revision === activeRouteRevisionRef.current &&
-        Date.parse(message.expiresAt) > Date.now() &&
-        oldConnectionId === message.oldConnectionId
-      ) {
-        if (current) {
-          removePeer(message.viewerPeerId);
-        }
-        selectedHostChildrenRef.current.set(message.viewerPeerId, {
-          peerId: message.viewerPeerId,
-          connectionId: message.newConnectionId,
-          currentRouteRevision: message.revision,
-          pendingCarryRevision: null,
+        hostProvisionalChildRef.current?.prepareSelectedTurn(message, {
+          iceConfig,
+          stream: activeStream,
+          profile: qualitySettingsRef.current,
         });
-        void startPeer(message.viewerPeerId, generation, 0, message);
       }
       return;
     }
@@ -1357,14 +1254,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         } else {
           activatePreparedHostChild(message.revision, message.assignment);
         }
-        if (message.phase === "active") {
-          for (const peerId of acceptHostSelectedChildrenRevision(
-            selectedHostChildrenRef.current,
-            message.revision,
-          )) {
-            removePeer(peerId);
-          }
-        }
         if (
           message.phase === "active" &&
           message.revision !== activeRouteRevisionRef.current
@@ -1392,10 +1281,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       return;
     }
-    if (message.type === "media-assignment") {
+      if (message.type === "media-assignment") {
       if (peerAssistedRef.current && !hostSfuRouteRef.current) {
         discardPreparedHostChild();
-        failedActiveHostChildRef.current = null;
         activeHostChildPeerIdsRef.current = [
           ...message.mediaAssignment.childPeerIds,
         ];

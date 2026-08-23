@@ -1,6 +1,7 @@
 import type {
   IceConfig,
   ParticipantRouteAssignment,
+  ServerMessage,
   SignalPayload,
 } from "../../shared/protocol";
 import { countEndpointMediaCopies } from "../../shared/media-copy-accounting";
@@ -8,68 +9,15 @@ import { HostPeer } from "../webrtc/host-peer";
 import type { PeerSnapshot } from "../types";
 import type { QualityProfile } from "./quality";
 
-export interface HostPreparedChildIdentity {
-  revision: number;
-  peerId: string;
-  failedConnectionId: string | null;
-}
-
-export interface ActiveSelectedHostChild {
-  peerId: string;
-  connectionId: string;
-  currentRouteRevision: number;
-  pendingCarryRevision: number | null;
-}
-
-export function hostSelectedChildForConnection(
-  children: ReadonlyMap<string, ActiveSelectedHostChild>,
-  peerId: string,
-  connectionId: string,
-): ActiveSelectedHostChild | undefined {
-  const child = children.get(peerId);
-  return child?.connectionId === connectionId ? child : undefined;
-}
-
-export function carryHostSelectedChild(
-  children: Map<string, ActiveSelectedHostChild>,
-  peerId: string,
-  connectionId: string,
-  revision: number,
-): boolean {
-  const child = hostSelectedChildForConnection(
-    children,
-    peerId,
-    connectionId,
-  );
-  if (!child || revision < child.currentRouteRevision) {
-    return false;
-  }
-  child.currentRouteRevision = revision;
-  child.pendingCarryRevision = revision;
-  return true;
-}
-
-export function acceptHostSelectedChildrenRevision(
-  children: Map<string, ActiveSelectedHostChild>,
-  revision: number,
-): string[] {
-  const removedPeerIds: string[] = [];
-  for (const [peerId, child] of children) {
-    if (child.pendingCarryRevision === revision) {
-      child.pendingCarryRevision = null;
-    } else {
-      children.delete(peerId);
-      removedPeerIds.push(peerId);
-    }
-  }
-  return removedPeerIds;
-}
+type SelectedEdgeTurn = Extract<
+  ServerMessage,
+  { type: "selected-edge-turn"; edgeKind: "peer-selected" }
+>;
 
 interface HostProvisionalInput {
   revision: number;
   assignment: ParticipantRouteAssignment;
   activeChildPeerIds: readonly string[];
-  selectedPeerIds: Iterable<string>;
   maxMediaEdges: number;
 }
 
@@ -81,53 +29,104 @@ interface HostProvisionalPrepareInput extends HostProvisionalInput {
 
 interface HostProvisionalChildEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
-  hasActivePeer?: (peerId: string) => boolean;
+  activeConnectionId?: (peerId: string) => string | null;
   onPromotedStreamFailure?: (peer: HostPeer) => void;
   onPromotedUpdate?: (peer: HostPeer, snapshot: PeerSnapshot) => void;
 }
 
-export type HostPreparedChildResolution =
-  | { kind: "ordinary" }
-  | { kind: "promote"; peerId: string }
-  | { kind: "failed"; peerId: string; connectionId: string };
-
 export type HostPreparedChildActivation =
-  | Exclude<HostPreparedChildResolution, { kind: "promote" }>
+  | { kind: "ordinary" }
   | { kind: "promote"; peerId: string; peer: HostPeer };
 
-interface PreparedHostChild extends HostPreparedChildIdentity {
+interface PreparedHostChild {
+  revision: number;
+  peerId: string;
   peer: HostPeer;
+  failed: boolean;
+  replacesConnectionId: string | null;
 }
 
 export class HostProvisionalChild {
   private prepared: PreparedHostChild | null = null;
+  private preparedRevision: number | null = null;
+  private plannedChildPeerIds: string[] = [];
   private promotedPeer: HostPeer | null = null;
   private signalingPeer: HostPeer | null = null;
 
   constructor(private readonly events: HostProvisionalChildEvents) {}
 
   prepare(input: HostProvisionalPrepareInput): boolean {
-    const peerId = plannedHostProvisionalChild(input);
-    if (
-      this.promotedPeer ||
-      !peerId ||
-      this.events.hasActivePeer?.(peerId)
-    ) {
+    const planned = validPlannedHostChildren(input);
+    if (this.promotedPeer || !planned) {
       this.discard();
       return false;
     }
     if (
-      this.prepared?.revision === input.revision &&
-      this.prepared.peerId === peerId
+      this.preparedRevision === input.revision &&
+      samePeerIds(this.plannedChildPeerIds, planned)
     ) {
-      return this.prepared.failedConnectionId === null;
+      return this.prepared ? !this.prepared.failed : true;
     }
+    const peerId = planned.find(
+      (candidate) => !input.activeChildPeerIds.includes(candidate),
+    );
 
     this.discard();
+    this.preparedRevision = input.revision;
+    this.plannedChildPeerIds = planned;
+    if (!peerId) {
+      return true;
+    }
+    if (this.events.activeConnectionId?.(peerId)) {
+      this.discard();
+      return false;
+    }
+    this.startPrepared(input.revision, peerId, input);
+    return true;
+  }
+
+  prepareSelectedTurn(
+    message: SelectedEdgeTurn,
+    input: Pick<HostProvisionalPrepareInput, "iceConfig" | "stream" | "profile">,
+    now = Date.now(),
+  ): boolean {
+    if (
+      this.preparedRevision !== message.revision ||
+      !this.plannedChildPeerIds.includes(message.viewerPeerId) ||
+      Date.parse(message.expiresAt) <= now
+    ) {
+      return false;
+    }
+    const prepared = this.prepared;
+    if (prepared && prepared.peerId !== message.viewerPeerId) {
+      return false;
+    }
+    if (prepared?.peer.connectionId === message.newConnectionId) {
+      return !prepared.failed;
+    }
+    const oldConnectionId =
+      prepared?.peer.connectionId ??
+      this.events.activeConnectionId?.(message.viewerPeerId);
+    if (oldConnectionId !== message.oldConnectionId) {
+      return false;
+    }
+    this.discardPeer();
+    this.startPrepared(message.revision, message.viewerPeerId, input, message);
+    return true;
+  }
+
+  private startPrepared(
+    revision: number,
+    peerId: string,
+    input: Pick<HostProvisionalPrepareInput, "iceConfig" | "stream" | "profile">,
+    selectedTurn?: SelectedEdgeTurn,
+  ): void {
     let peer: HostPeer;
     peer = new HostPeer(
       peerId,
-      input.iceConfig,
+      selectedTurn
+        ? { iceServers: [selectedTurn.iceServer] }
+        : input.iceConfig,
       input.stream,
       input.profile,
       {
@@ -147,13 +146,16 @@ export class HostProvisionalChild {
           }
         },
       },
+      selectedTurn !== undefined,
+      selectedTurn?.newConnectionId,
     );
     this.signalingPeer = peer;
     this.prepared = {
-      revision: input.revision,
+      revision,
       peerId,
       peer,
-      failedConnectionId: null,
+      failed: false,
+      replacesConnectionId: selectedTurn?.oldConnectionId ?? null,
     };
     void peer
       .start()
@@ -163,14 +165,13 @@ export class HostProvisionalChild {
           this.fail(peer);
         }
       });
-    return true;
   }
 
   ownsSignal(fromPeerId: string, payload: SignalPayload): boolean {
     const prepared = this.prepared;
     return Boolean(
       prepared &&
-        prepared.failedConnectionId === null &&
+        !prepared.failed &&
         prepared.peerId === fromPeerId &&
         prepared.peer.connectionId === payload.connectionId,
     );
@@ -210,29 +211,35 @@ export class HostProvisionalChild {
 
   activate(input: HostProvisionalInput): HostPreparedChildActivation {
     const prepared = this.prepared;
-    const activation = resolveHostPreparedChildActivation({
-      ...input,
-      prepared,
-    });
-    if (activation.kind === "promote") {
-      if (prepared) {
-        this.prepared = null;
-        this.promotedPeer = prepared.peer;
-        return { ...activation, peer: prepared.peer };
-      }
-      this.discard();
-      return { kind: "ordinary" };
-    }
-    if (activation.kind === "failed") {
+    const currentConnectionId = prepared
+      ? this.events.activeConnectionId?.(prepared.peerId) ?? null
+      : null;
+    if (
+      prepared &&
+      !prepared.failed &&
+      this.preparedRevision === input.revision &&
+      prepared.revision === input.revision &&
+      input.assignment.childPeerIds.includes(prepared.peerId) &&
+      (!input.activeChildPeerIds.includes(prepared.peerId) ||
+        prepared.replacesConnectionId === currentConnectionId)
+    ) {
       this.prepared = null;
-      prepared?.peer.dispose();
-      return activation;
+      this.preparedRevision = null;
+      this.plannedChildPeerIds = [];
+      this.promotedPeer = prepared.peer;
+      return { kind: "promote", peerId: prepared.peerId, peer: prepared.peer };
     }
     this.discard();
-    return activation;
+    return { kind: "ordinary" };
   }
 
   discard(): void {
+    this.preparedRevision = null;
+    this.plannedChildPeerIds = [];
+    this.discardPeer();
+  }
+
+  private discardPeer(): void {
     const prepared = this.prepared;
     this.prepared = null;
     if (this.signalingPeer === prepared?.peer) {
@@ -242,7 +249,7 @@ export class HostProvisionalChild {
   }
 
   private livePeer(): HostPeer | null {
-    return this.prepared?.failedConnectionId === null
+    return this.prepared && !this.prepared.failed
       ? this.prepared.peer
       : null;
   }
@@ -251,7 +258,7 @@ export class HostProvisionalChild {
     if (this.prepared?.peer !== peer) {
       return;
     }
-    this.prepared.failedConnectionId = peer.connectionId;
+    this.prepared.failed = true;
     if (this.signalingPeer === peer) {
       this.signalingPeer = null;
     }
@@ -259,48 +266,30 @@ export class HostProvisionalChild {
   }
 }
 
-export function plannedHostProvisionalChild(
+function validPlannedHostChildren(
   input: HostProvisionalInput,
-): string | null {
+): string[] | null {
   const childPeerIds = [...new Set(input.assignment.childPeerIds)];
-  const peerId = childPeerIds.find(
-    (candidate) => !input.activeChildPeerIds.includes(candidate),
-  );
   if (
     childPeerIds.length !== input.assignment.childPeerIds.length ||
-    childPeerIds.length !== input.activeChildPeerIds.length + 1 ||
+    childPeerIds.length < input.activeChildPeerIds.length ||
+    childPeerIds.length > input.activeChildPeerIds.length + 1 ||
     input.activeChildPeerIds.some(
       (candidate) => !childPeerIds.includes(candidate),
     ) ||
     countEndpointMediaCopies({
       childPeerIds: input.assignment.childPeerIds,
       publicationGeneration: input.assignment.sfuPublicationGeneration,
-      selectedChildPeerIds: input.selectedPeerIds,
     }) > input.maxMediaEdges
   ) {
     return null;
   }
-  return peerId ?? null;
+  return childPeerIds;
 }
 
-export function resolveHostPreparedChildActivation(
-  input: HostProvisionalInput & {
-    prepared: HostPreparedChildIdentity | null;
-  },
-): HostPreparedChildResolution {
-  const peerId = plannedHostProvisionalChild(input);
-  if (
-    !peerId ||
-    input.prepared?.revision !== input.revision ||
-    input.prepared.peerId !== peerId
-  ) {
-    return { kind: "ordinary" };
-  }
-  return input.prepared.failedConnectionId
-    ? {
-        kind: "failed",
-        peerId,
-        connectionId: input.prepared.failedConnectionId,
-      }
-    : { kind: "promote", peerId };
+function samePeerIds(left: readonly string[], right: readonly string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((peerId, index) => peerId === right[index])
+  );
 }

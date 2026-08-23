@@ -60,6 +60,7 @@ import {
   ViewerQualityEvidenceReporter,
 } from "../media/viewer-quality-evidence";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
+import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
 import {
   applyViewerVolume,
@@ -75,7 +76,6 @@ import type {
 import {
   limitMediaAssignment,
   MAX_ENDPOINT_MEDIA_CHILDREN,
-  retainSelectedMediaParent,
   viewerRestartMessage,
   viewerSignalMessage,
 } from "../webrtc/media-assignment";
@@ -95,20 +95,17 @@ type SelectedEdgeTurn = Extract<
   ServerMessage,
   { type: "selected-edge-turn"; edgeKind: "peer-selected" }
 >;
-interface ActiveSelectedEdgeTurn {
-  grant: SelectedEdgeTurn;
-  currentRouteRevision: number;
-  pendingCarryRevision: number | null;
-}
 interface SfuUpstreamState {
   connectionState: "connected" | "reconnecting";
   metrics: ConnectionMetrics | null;
 }
-interface PeerProbe {
+interface PendingPeerRoute {
   revision: number;
   parentPeerId: string;
   peer: ViewerPeer | null;
-  ready: boolean;
+  readySent: boolean;
+  selectedTurn: SelectedEdgeTurn | null;
+  candidateConnectionId: string | null;
   stream: MediaStream | null;
   snapshot: PeerSnapshot | null;
 }
@@ -272,12 +269,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let preparedParentSignals: Array<
       Extract<ServerMessage, { type: "signal" }>
     > = [];
-    let peerProbe: PeerProbe | null = null;
-    let retiredUpstream: {
-      parentPeerId: string;
-      connectionId: string;
-    } | null = null;
-    let selectedEdgeTurn: ActiveSelectedEdgeTurn | null = null;
+    let pendingPeer: PendingPeerRoute | null = null;
     const messageAuthority = new ViewerMessageAuthority();
     let sfuStandbyPrewarmer: SfuStandbyPrewarmer | null = null;
     let relayChildEvidenceCurrent: ViewerQualityEvidencePresentation | null =
@@ -438,20 +430,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   payload,
                 })
               : false,
-          onSelectedEdgeFailed: (
-            _childPeerId,
-            connectionId,
-            revision,
-          ) => {
-            if (active && peerAssisted) {
-              signal.send({
-                type: "route-failed",
-                revision,
-                phase: "active",
-                connectionId,
-              });
-            }
-          },
           onUpdate: (snapshot) => {
             if (active) {
               setRelaySnapshot(snapshot);
@@ -501,35 +479,31 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
     }
 
-    function discardPeerProbe(): void {
-      const probe = peerProbe;
-      peerProbe = null;
+    function discardPendingPeer(): void {
+      const probe = pendingPeer;
+      pendingPeer = null;
       prepareParent(null);
       probe?.peer?.dispose();
     }
 
-    function peerProbeHasCurrentMedia(
-      probe: PeerProbe,
-    ): probe is PeerProbe & { peer: ViewerPeer; stream: MediaStream; snapshot: PeerSnapshot } {
-      const { snapshot, stream } = probe;
+    function pendingPeerHasDecodedFrame(
+      probe: PendingPeerRoute,
+    ): probe is PendingPeerRoute & { peer: ViewerPeer; snapshot: PeerSnapshot } {
+      const { snapshot } = probe;
       return (
         snapshot !== null &&
-        stream !== null &&
         snapshot.peerId === probe.parentPeerId &&
         probe.peer?.hasConnectionId(snapshot.connectionId) === true &&
-        snapshot.connectionState === "connected" &&
-        (snapshot.metrics.intervalPacketsReceived ?? 0) > 0 &&
-        (snapshot.metrics.intervalFramesDecoded ?? 0) > 0 &&
-        stream.getVideoTracks().some((track) => track.readyState === "live")
+        (snapshot.metrics.intervalFramesDecoded ?? 0) > 0
       );
     }
 
-    function provePeerProbe(): void {
-      const probe = peerProbe;
-      if (!probe || probe.ready || !peerProbeHasCurrentMedia(probe)) {
+    function provePendingPeer(): void {
+      const probe = pendingPeer;
+      if (!probe || probe.readySent || !pendingPeerHasDecodedFrame(probe)) {
         return;
       }
-      probe.ready = signal.send({
+      probe.readySent = signal.send({
         type: "route-ready",
         revision: probe.revision,
         phase: "prepare",
@@ -547,28 +521,22 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return;
           }
           if (revision !== undefined) {
-            const probe = peerProbe;
+            const probe = pendingPeer;
             if (
               !probe ||
-              !probe.ready ||
+              !probe.readySent ||
               probe.revision !== revision ||
               assignment.upstream.kind !== "peer" ||
               assignment.upstream.peerId !== probe.parentPeerId ||
-              !peerProbeHasCurrentMedia(probe)
+              !probe.peer ||
+              !probe.stream ||
+              !probe.snapshot
             ) {
-              if (probe?.ready && probe.snapshot) {
-                signal.send({
-                  type: "route-failed",
-                  revision,
-                  phase: "active",
-                  connectionId: probe.snapshot.connectionId,
-                });
-              }
-              discardPeerProbe();
+              discardPendingPeer();
               return false;
             }
             const previousPeer = peerRef.current;
-            peerProbe = null;
+            pendingPeer = null;
             prepareParent(null);
             peerRef.current = probe.peer;
             previousPeer?.dispose();
@@ -601,13 +569,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           if (!active || viewerSfuRoute !== route) {
             return;
           }
-          discardPeerProbe();
+          discardPendingPeer();
           if (revision !== undefined && assignment?.upstream.kind === "peer") {
-            peerProbe = {
+            pendingPeer = {
               revision,
               parentPeerId: assignment.upstream.peerId,
               peer: null,
-              ready: false,
+              readySent: false,
+              selectedTurn: null,
+              candidateConnectionId: null,
               stream: null,
               snapshot: null,
             };
@@ -666,8 +636,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
           }
         },
-        onHealthySfu: (revision) =>
-          signal.send({ type: "sfu-reselection-ready", revision }),
         onSfuVideoAvailability: (available) => {
           if (!active || viewerSfuRoute !== route || available) {
             return;
@@ -697,7 +665,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           );
           setStatusText("正在播放");
           if (initialVideoStream) {
-            if (!peerProbe) {
+            if (!pendingPeer) {
               peerRef.current?.dispose();
               peerRef.current = null;
               setPeerSnapshot(null);
@@ -713,7 +681,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
     function clearViewerSfuRoute(): void {
       const route = viewerSfuRoute;
-      discardPeerProbe();
+      discardPendingPeer();
       viewerSfuRoute = null;
       setSfuUpstream(null);
       void route?.disconnect();
@@ -751,7 +719,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     function clearUpstreamState(): void {
       qualityEvidenceReporter.reset();
       const peer = peerRef.current;
-      retiredUpstream = peer?.getConnectionIdentity() ?? retiredUpstream;
       peer?.dispose();
       peerRef.current = null;
       setRemoteStream(null);
@@ -781,49 +748,66 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       reconcileRelayChildren(previousChildPeerIds);
     }
 
-    function ensurePeerProbe(): ViewerPeer | null {
-      const probe = peerProbe;
+    function ensurePendingPeerRoute(): ViewerPeer | null {
+      const probe = pendingPeer;
       if (!probe || !currentIceConfig) return null;
       if (probe.peer) return probe.peer;
-      const peer: ViewerPeer = new ViewerPeer(currentIceConfig, {
-        sendSignal: (targetPeerId, payload) =>
-          signal.send(viewerSignalMessage(peerAssisted, targetPeerId, payload)),
-        sendRestartRequest: () => false,
-        onStream: (stream) => {
-          if (peerProbe === probe) {
-            probe.stream = stream;
-            provePeerProbe();
-          } else if (active && peerRef.current === peer) {
-            setRemoteStream(stream);
-            ensureViewerRelay()?.setStream(stream);
-            setStatusText("正在播放");
-          }
+      const peer: ViewerPeer = new ViewerPeer(
+        probe.selectedTurn
+          ? { iceServers: [probe.selectedTurn.iceServer] }
+          : currentIceConfig,
+        {
+          sendSignal: (targetPeerId, payload) =>
+            signal.send(viewerSignalMessage(peerAssisted, targetPeerId, payload)),
+          sendRestartRequest: () => false,
+          onStream: (stream) => {
+            if (pendingPeer === probe) {
+              probe.stream = stream;
+              provePendingPeer();
+            } else if (active && peerRef.current === peer) {
+              setRemoteStream(stream);
+              ensureViewerRelay()?.setStream(stream);
+              setStatusText("正在播放");
+            }
+          },
+          onUpdate: (snapshot) => {
+            if (pendingPeer === probe) {
+              probe.snapshot = snapshot;
+              probe.candidateConnectionId = snapshot.connectionId;
+              provePendingPeer();
+            } else if (active && peerRef.current === peer) {
+              qualityEvidenceReporter.offer(snapshot, currentRouteRevision);
+              setPeerSnapshot(snapshot);
+              setStatusText(
+                snapshot.connectionState === "connected"
+                  ? "已连接"
+                  : "正在恢复连接",
+              );
+            }
+          },
+          onRecoveryExhausted: (parentPeerId, connectionId): boolean => {
+            if (pendingPeer === probe && peer.hasConnectionId(connectionId)) {
+              signal.send({
+                type: "route-failed",
+                revision: probe.revision,
+                phase: "prepare",
+                connectionId,
+              });
+              probe.candidateConnectionId = connectionId;
+              probe.peer = null;
+              probe.stream = null;
+              probe.snapshot = null;
+              probe.readySent = false;
+              peer.dispose();
+              return true;
+            }
+            return peerRef.current === peer && viewerSfuRoute
+              ? viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId)
+              : true;
+          },
         },
-        onUpdate: (snapshot) => {
-          if (peerProbe === probe) {
-            probe.snapshot = snapshot;
-            provePeerProbe();
-          } else if (active && peerRef.current === peer) {
-            qualityEvidenceReporter.offer(snapshot, currentRouteRevision);
-            setPeerSnapshot(snapshot);
-            setStatusText(
-              snapshot.connectionState === "connected"
-                ? "已连接"
-                : "正在恢复连接",
-            );
-          }
-        },
-        onRecoveryExhausted: (parentPeerId, connectionId): boolean => {
-          if (peerProbe === probe && peer.hasConnectionId(connectionId)) {
-            viewerSfuRoute?.reportPeerProbeFailure(parentPeerId, connectionId, probe.ready);
-            discardPeerProbe();
-            return true;
-          }
-          return peerRef.current === peer && viewerSfuRoute
-            ? viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId)
-            : true;
-        },
-      });
+        probe.selectedTurn !== null,
+      );
       probe.peer = peer;
       return peer;
     }
@@ -836,9 +820,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return null;
       }
       const peer = new ViewerPeer(
-        selectedEdgeTurn
-          ? { iceServers: [selectedEdgeTurn.grant.iceServer] }
-          : currentIceConfig,
+        currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
             signal.send(
@@ -885,21 +867,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             }
           },
           onRecoveryExhausted: (parentPeerId, connectionId) => {
-            if (
-              selectedEdgeTurn?.grant.parentPeerId === parentPeerId &&
-              selectedEdgeTurn.grant.newConnectionId === connectionId
-            ) {
-              signal.send({
-                type: "route-failed",
-                revision: selectedEdgeTurn.currentRouteRevision,
-                phase: "active",
-                connectionId,
-              });
-              selectedEdgeTurn = null;
-              clearUpstreamState();
-              setStatusText("无法建立媒体连接");
-              return true;
-            }
             if (viewerSfuRoute) {
               return viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId);
             }
@@ -907,7 +874,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return true;
           },
         },
-        selectedEdgeTurn !== null,
       );
       peerRef.current = peer;
       return peer;
@@ -918,12 +884,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
-        const hadSelectedUpstream = selectedEdgeTurn !== null;
-        selectedEdgeTurn = null;
-        if (hadSelectedUpstream) {
-          clearUpstreamState();
-        }
-        viewerRelay?.clearSelectedEdgeTurn();
         viewerAuthenticated = true;
         setAccessState("ready");
         setViewerPasswordDraft("");
@@ -950,7 +910,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             ? message.routeRevision
             : 0;
         if (nextRouteRevision !== currentRouteRevision) {
-          viewerRelay?.clearSelectedEdgeTurn();
           clearRelayChildEvidence();
         }
         currentRouteRevision = nextRouteRevision;
@@ -970,11 +929,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
         setHostOnline(message.hostOnline);
-        setHostPaused(message.hostPaused ?? false);
+        const sharingPaused = message.hostPaused ?? false;
+        setHostPaused(sharingPaused);
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
           void viewerRelay?.updateProfile(currentQualitySettings);
-          await ensureViewerSfuRoute().resyncAuthoritative(
+          const route = ensureViewerSfuRoute();
+          route.setPaused(sharingPaused);
+          await route.resyncAuthoritative(
             {
               revision: message.routeRevision,
               phase: "active",
@@ -983,9 +945,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           );
           if (!active || !messageAuthority.owns(authorityToken)) {
             return;
-          }
-          if (message.routeAssignment.upstream.kind === "sfu") {
-            ensureViewerSfuRoute().armHealthySfuReselection(message.routeRevision);
           }
         }
         if (
@@ -1031,54 +990,61 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           return;
         }
         if (message.parentPeerId === currentPeerId) {
-          ensureViewerRelay()?.startSelectedEdgeTurn(
+          ensureViewerRelay()?.prepareSelectedEdgeTurn(
             message,
             currentPeerId,
-            currentRouteRevision,
+            message.revision,
           );
           return;
         }
+        let probe = pendingPeer;
         if (
-          selectedEdgeTurn?.grant.parentPeerId === message.parentPeerId &&
-          selectedEdgeTurn.grant.viewerPeerId === message.viewerPeerId &&
-          selectedEdgeTurn.grant.newConnectionId === message.newConnectionId &&
-          message.revision >= selectedEdgeTurn.currentRouteRevision
-        ) {
-          selectedEdgeTurn.currentRouteRevision = message.revision;
-          selectedEdgeTurn.pendingCarryRevision = message.revision;
-          return;
-        }
-        if (
-          message.revision !== currentRouteRevision ||
-          Date.parse(message.expiresAt) <= Date.now()
+          !viewerSfuRoute?.beginSelectedPeerCandidate(
+            message.revision,
+            message.parentPeerId,
+          )
         ) {
           return;
         }
-        const currentIdentity =
-          peerRef.current?.getConnectionIdentity() ?? retiredUpstream;
+        if (!probe) {
+          probe = pendingPeer = {
+            revision: message.revision,
+            parentPeerId: message.parentPeerId,
+            peer: null,
+            readySent: false,
+            selectedTurn: null,
+            candidateConnectionId: null,
+            stream: null,
+            snapshot: null,
+          };
+          prepareParent(message.parentPeerId);
+        }
+        if (probe.selectedTurn?.newConnectionId === message.newConnectionId) {
+          return;
+        }
+        const activeIdentity = peerRef.current?.getConnectionIdentity();
+        const oldConnectionId =
+          probe?.candidateConnectionId ??
+          probe?.peer?.getConnectionIdentity()?.connectionId ??
+          (activeIdentity?.parentPeerId === message.parentPeerId
+            ? activeIdentity.connectionId
+            : null);
         if (
           message.viewerPeerId !== currentPeerId ||
-          currentIdentity?.parentPeerId !== message.parentPeerId ||
-          currentIdentity.connectionId !== message.oldConnectionId
+          probe?.revision !== message.revision ||
+          probe.parentPeerId !== message.parentPeerId ||
+          Date.parse(message.expiresAt) <= Date.now() ||
+          oldConnectionId !== message.oldConnectionId
         ) {
           return;
         }
-        selectedEdgeTurn = {
-          grant: message,
-          currentRouteRevision: message.revision,
-          pendingCarryRevision: null,
-        };
-        clearViewerSfuRoute();
-        clearUpstreamState();
-        acceptAssignedRoute(message.revision, {
-          kind: "peer",
-          peerId: message.parentPeerId,
-        });
-        currentAssignment = {
-          parentPeerId: message.parentPeerId,
-          childPeerIds: currentAssignment.childPeerIds,
-        };
-        setStatusText("正在恢复连接");
+        probe.peer?.dispose();
+        probe.peer = null;
+        probe.readySent = false;
+        probe.selectedTurn = message;
+        probe.candidateConnectionId = null;
+        probe.stream = null;
+        probe.snapshot = null;
         return;
       }
       if (message.type === "route-update") {
@@ -1087,39 +1053,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             message.phase === "active" &&
             message.revision >= currentRouteRevision
           ) {
-            viewerRelay?.acceptActiveRevision(message.revision);
-            if (selectedEdgeTurn) {
-              if (
-                selectedEdgeTurn.pendingCarryRevision === message.revision
-              ) {
-                selectedEdgeTurn.pendingCarryRevision = null;
-              } else {
-                selectedEdgeTurn = null;
-                clearUpstreamState();
-              }
-            }
             if (message.revision !== currentRouteRevision) {
               clearRelayChildEvidence();
             }
             currentRouteRevision = message.revision;
-            if (selectedEdgeTurn) {
-              applyMediaAssignment(
-                {
-                  parentPeerId: selectedEdgeTurn.grant.parentPeerId,
-                  childPeerIds: message.assignment.childPeerIds,
-                },
-                true,
-              );
-              acceptAssignedRoute(
-                message.revision,
-                {
-                  kind: "peer",
-                  peerId: selectedEdgeTurn.grant.parentPeerId,
-                },
-                "active",
-              );
-              return;
-            }
           }
           const result = ensureViewerSfuRoute().accept(message);
           if (result !== "stale") {
@@ -1144,15 +1081,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "media-assignment") {
         if (peerAssisted && !viewerSfuRoute) {
-          applyMediaAssignment(
-            selectedEdgeTurn
-              ? retainSelectedMediaParent(
-                  message.mediaAssignment,
-                  selectedEdgeTurn.grant.parentPeerId,
-                )
-              : message.mediaAssignment,
-            selectedEdgeTurn !== null,
-          );
+          applyMediaAssignment(message.mediaAssignment);
         }
         return;
       }
@@ -1164,8 +1093,34 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "signal") {
-        if (peerAssisted && peerProbe?.parentPeerId === message.fromPeerId) {
-          await ensurePeerProbe()?.acceptSignal(message.fromPeerId, message.payload);
+        if (peerAssisted && pendingPeer?.parentPeerId === message.fromPeerId) {
+          if (currentAssignment.parentPeerId !== message.fromPeerId) {
+            await ensurePendingPeerRoute()?.acceptSignal(
+              message.fromPeerId,
+              message.payload,
+            );
+            return;
+          }
+          const activeIdentity = peerRef.current?.getConnectionIdentity();
+          const owner = exactPeerSignalOwner(
+            message.payload.connectionId,
+            pendingPeer.selectedTurn?.newConnectionId ??
+              pendingPeer.candidateConnectionId,
+            activeIdentity?.parentPeerId === message.fromPeerId
+              ? activeIdentity.connectionId
+              : null,
+          );
+          if (owner === "pending") {
+            await ensurePendingPeerRoute()?.acceptSignal(
+              message.fromPeerId,
+              message.payload,
+            );
+          } else if (owner === "active") {
+            await peerRef.current?.acceptSignal(
+              message.fromPeerId,
+              message.payload,
+            );
+          }
           return;
         }
         if (
@@ -1218,6 +1173,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentHostOnline = message.online;
         setHostOnline(message.online);
         setHostPaused(message.paused);
+        viewerSfuRoute?.setPaused(message.paused);
         if (!message.online && !peerRef.current?.isConnected()) {
           setStatusText("等待开始分享");
         } else if (message.online && !peerRef.current?.isConnected()) {
@@ -1230,7 +1186,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "sharing-stopped") {
-        selectedEdgeTurn = null;
         setSfuStandbyUrl(null);
         setAssignedRoute(null);
         currentHostOnline = false;
