@@ -25,7 +25,7 @@ Last updated: 2026-08-23
 ## Current Source And Production
 
 - Canonical source is the clean `main` branch. New branches and worktrees start from its exact current commit after accepted truth is merged.
-- Current source admits up to `20` Viewers, implements the uniform `1/2/3` endpoint cap through one shared accounting guard, advances Web/server/Native to `screener-v6`, rejects v5 before room authority, and carries the exact deployment cap in every authenticated snapshot so ordinary Host authorization, Native admission, peer-assisted assignments, and sender slots use the same authority. Its SFU-fed-leaf and route-quality behavior still predates the accepted generic reconciliation model. SFU admission uses explicit no-default ingress/egress capacities, exact `reserved | committed | draining` lifecycle accounting, and a listener-fenced dedicated LiveKit owner. Selected TURN uses its own explicit no-default deployment capacity and exact logical-allocation ledger shared by independent peer edges and Host-SFU ingress.
+- Current source admits up to `20` Viewers and implements the uniform `1/2/3` endpoint cap, single Browser `screener-v7` wire, exact prepare candidate, first-decoded-frame commit, strict rollback revision, decoded-progress stall, and one event-driven room controller. Older Browser and executable-sender wires fail before room authority. SFU admission uses exact publication and Viewer-subscription handles with explicit no-default ingress/egress capacities and a listener-fenced dedicated LiveKit owner. Selected TURN uses its own explicit no-default deployment capacity and exact logical-allocation ledger shared by independent peer edges and Host-SFU ingress.
 - Production runs exact `9461e207af62b4f38f6b7a8aa16f8beb49e0e4ee`, release `9461e20`, wire `screener-v5`; `21d5cd9f7139` is the rollback release.
 - Production still enforces Host downstream `2`, ordinary Browser downstream `1`, deployment values `1/2`, a fixed SFU-root limit of `2`, and legacy publication/selected accounting. This is a dated implementation divergence, not current product policy.
 - Production has automatic routing, bad-relay corroboration, peer-quality make-before-break with Viewer and Host provisional parents, selected-edge transport, stable route/connection details, 64/128/256 audio choices, access controls, self-check, diagnostic export, and signaling watchdog behavior.
@@ -35,7 +35,7 @@ Last updated: 2026-08-23
 ## Current Priority
 
 1. Keep this truth set and [the TODO ledger](./todo.md) concise and internally consistent.
-2. Complete and release the remaining route-controller convergence first. Then release live audio and paused video-codec switching, follow with evidence-led H.264 diagnosis, the strict-NAT emulator gate, connection feedback, and the remaining functional roadmap. Distribution packaging starts only after those TODOs are complete. Parallel branches may finish earlier but do not change this merge/deployment order.
+2. Release the converged Browser route source first. Then release live audio and paused video-codec switching, follow with evidence-led H.264 diagnosis, the strict-NAT emulator gate, connection feedback, and the remaining functional roadmap. Distribution packaging starts only after those TODOs are complete. Parallel branches may finish earlier but do not change this merge/deployment order.
 
 ## Working Rules
 

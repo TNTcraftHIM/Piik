@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted route model; runtime migration pending
+- Status: Accepted; source runtime implemented, production release pending
 - Date: 2026-08-20
 - Last updated: 2026-08-23
 
@@ -309,15 +309,8 @@ deployment-wide.
 
 ## Current Production Divergence
 
-Production release `9461e20` predates this revision. Its exact behavior is owned
-by the deployment document. Generation guards, scoped authorization,
-first-decoded-frame transitions, and bounded recovery remain reusable only where they
-satisfy this ADR.
-
-That release remains a deployment fact and rollback reference. It must not be
-merged wholesale into a new route implementation. After this model is merged,
-retained code and tests are transplanted from current `main` by invariant;
-obsolete policy is replaced at its owner.
+Production release `9461e20` predates the implemented source runtime. Its exact
+behavior and rollback boundary are owned by the deployment document.
 
 ## Acceptance Boundary
 
@@ -383,7 +376,7 @@ Positive:
 
 Negative:
 
-- the deployed controller intentionally diverges until this model is migrated;
+- production intentionally diverges until the implemented source is released;
 - make-before-break consumes explicit endpoint and server reservations and may
   require a bounded-gap cutover when no overlap slot exists; and
 - real SFU/TURN and target-network evidence is still required.
