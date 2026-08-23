@@ -32,10 +32,8 @@ Current high-signal boundary:
 - docs/status.md owns the exact source/production/hold state.
 - docs/todo.md is the only executable work ledger and owns ordering.
 - ADR-0005 owns the accepted automatic route model: direct/STUN peer followed
-  only by the dedicated LiveKit SFU/UDP fallback. Current source removes the
-  complete selected-TURN application surface; production release `a5b1fc6`
-  still contains its old source/configuration, so atomic deployment is the
-  active boundary. Real external-network
+  only by the dedicated LiveKit SFU/UDP fallback. Current source and production
+  release `8f5b3f1` implement that two-stage model. Real external-network
   and SFU media evidence remains open. Do not rerun broad or
   executable/native test suites unless the current acceptance boundary
   specifically requires them.

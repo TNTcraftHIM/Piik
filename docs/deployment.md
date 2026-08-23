@@ -2,7 +2,7 @@
 
 Last verified against upstream documentation: 2026-08-24.
 
-This page records exact release `a5b1fc6` production facts and the current source
+This page records exact release `8f5b3f1` production facts and the current source
 deployment contract. Product direction and pending migrations are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -17,19 +17,16 @@ as the current controller's automatic final media fallback. This capacity is
 dormant unless the complete public URL, private API URL, key, secret, and capacity
 tuple is configured. It does not replace the P2P path,
 the peer-assisted experiment, or required STUN discovery. LiveKit remains
-ICE/UDP only. Ordinary peer ICE remains STUN-only and the tracked coturn example
-is STUN-only with TCP/TLS disabled. The accepted source contract configures no
-TURN, ICE/TCP, media TCP, or TLS-relayed media. Production still retains the
-superseded selected-edge environment tuple, authenticated-relay coturn
-configuration, TCP listener, and relay firewall range until the direct-to-SFU
-release removes them atomically.
+ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
+tracked STUN-only configuration with TCP/TLS disabled. The source and production
+configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `a5b1fc62f609b996ead54f2a5db42ddd2f374fb9`, release
-`a5b1fc6`, from `/opt/screener/releases/a5b1fc6`. The immutable runtime archive
+Production runs exact `8f5b3f192ddd010ca01c969008e512191312736a`, release
+`8f5b3f1`, from `/opt/screener/releases/8f5b3f1`. The immutable runtime archive
 SHA-256 is
-`2c6223f13b1ae44e737f4088af3f62259581c58c20eb9583f4f4900f58387519`.
-Its verified pre-cutover boundary is
-`/opt/screener/backups/a5b1fc6-precutover-20260823T160319Z`. Local and public
+`09c18d3604b64b627b01164b5a8d954fcbaeb567ca12dedf0b89deaac72bd767`.
+Its verified rollback boundary is
+`/opt/screener/backups/8f5b3f1-precutover-20260823T182438Z`. Local and public
 health return 200; Screener, LiveKit, coturn, and nginx are active with
 `NRestarts=0`.
 
@@ -40,8 +37,8 @@ one-controller exact-candidate route runtime, and stale-v7 rejection before
 room authority. The service unit has no writable room StateDirectory and the
 old live SQLite path is absent. LiveKit is dedicated, has `room.auto_create: false` and
 `max_participants: 21`, and is admitted to one global publication ingress plus
-twenty subscription egress handles. The deployed selected-TURN allocation cap
-of two is a superseded production fact, not accepted behavior.
+twenty subscription egress handles. Coturn listens only on UDP 3478 for STUN;
+LiveKit media listens on UDP 7882.
 These bounds are fail-safe admissions, not throughput or quality claims.
 The retained local 20-Viewer Browser smoke and open real-network boundaries are
 owned by [verification status](./verification-status.md).
@@ -105,6 +102,8 @@ service. If a host lacks the `sqlite3` CLI, use the pinned Node runtime's
 `node:sqlite` API or stop before the first write. After a start, poll health for
 a short bounded window instead of treating one request during startup as a
 failed release; retain the last failure while still enforcing the deadline.
+After starting coturn, likewise wait boundedly for its UDP 3478 socket before
+asserting STUN readiness; `ActiveState=active` can precede socket readiness.
 
 Run `npm start` under a service supervisor that injects the environment, restarts
 on failure, and applies bounded logs. For a simple untracked environment file,
@@ -171,26 +170,6 @@ for the full gate and verify representative external networks and devices.
 Coturn provides STUN binding only and must reject allocation requests.
 HTTPS/WSS always remains TLS/TCP independently of the UDP-only media ladder.
 
-The 2026-08-20 exact-room canary used source `a11a73dfa79d`, inactive release
-`/opt/screener/releases/a11a73dfa79d-r4`, artifact SHA-256
-`C954185869A3A15CCCE642AB72A4CF90770476C117D61182D7728280C30A036F`, and
-backup `/opt/screener/backups/turn-a11-20260820T065933Z`. The candidate
-switch completed at 14:59:33 +08. Local authenticated coturn allocation and
-application/deployment gates passed, but the real direct Host plus Pion Viewer
-did not establish its peer connection. The forced-relay test was therefore not
-run. Issuance was removed first, then coturn and its firewall rules returned to
-the pre-canary authenticated-relay baseline: TCP/UDP 3478 and UDP 49152-49251.
-Exact `7fea60ef6f2ad14a9ac1c23a89a523d91bbb97e4` was restored and advertises no
-TURN credential. The final lock-free check at 15:12:40 +08 found active
-services, zero allocations, and matching health, configuration, firewall, and
-SQLite state.
-No canary test process, browser profile, or transient firewall rule remained.
-The retained release is inactive. This is a canary no-go, not TURN deployment
-or media evidence. Two earlier attempts changed no durable state: one stopped
-before backup/write because `sqlite3` was absent, and one rolled back after a
-single health request landed in the normal startup window. The preflight and
-bounded-poll rules above are the retained fixes.
-
 ## Production application environment
 
 Keep the real values in the process secret store or an untracked, access-restricted
@@ -232,11 +211,10 @@ SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 ```
 
 Supplying any stale `PEER_ICE_TURN_*` or `SELECTED_EDGE_TURN_*` key, even blank,
-fails startup. The cutover must remove all four production selected-edge keys
-before starting the new application, install the tracked STUN-only coturn
-configuration, and close TCP 3478/5349 plus every relay range. Keep the old
-release, its exact environment, coturn configuration, and firewall snapshot as
-one rollback unit; do not restore only part of that obsolete transport.
+fails startup. Production contains none of those keys, uses the tracked
+STUN-only coturn configuration, and keeps TCP 3478/5349 plus every relay range
+closed. A rollback restores an exact recorded release, environment, coturn
+configuration, and firewall snapshot as one unit.
 
 `PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
 that a stale room-1 deployment cannot silently retain the old scope. With
@@ -257,7 +235,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `a5b1fc6` accepts 1 through 20 and explicitly selects 20. This is an
+Production `8f5b3f1` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -270,7 +248,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `a5b1fc6` runs the deployed server and Browser assets
+Production release `8f5b3f1` runs the deployed server and Browser assets
 atomically on `screener-v8`; stale v7 Browser and executable-sender wires fail
 before room authority. Native senders and helpers are outside this release.
 Restore only an exact recorded release with its matching environment, unit,
@@ -482,11 +460,9 @@ canary pass silently.
 
 ## Self-hosted STUN
 
-This subsection describes the accepted STUN-only deployment. Before the
-direct-to-SFU cutover, the shared production host still retains an older
-authenticated-relay configuration and TCP/UDP 3478 plus UDP 49152-49251
-firewall range; the atomic cutover replaces that configuration and closes those
-obsolete listeners/ranges.
+This subsection describes the accepted and deployed STUN-only boundary.
+Production uses the tracked configuration and keeps TCP 3478/5349 plus every
+relay range closed.
 
 Copy [`deploy/coturn/turnserver.conf.example`](../deploy/coturn/turnserver.conf.example)
 to an untracked service-owned location and use the tracked
