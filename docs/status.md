@@ -34,7 +34,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 ## Active Boundaries
 
 - `fix/configurable-relay-cap` is an old, incomplete draft and must not be merged as-is.
-- Open PR #192 and the Native stack are evidence/research, not pending product releases.
+- Open PR #192 and the Native stack are evidence/research, not pending product releases. Native senders, capture helpers, shared-encode executables, and their test binaries are outside the current route release and are not built or run in this milestone.
 - Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
 - Real SFU/TURN recovery, heterogeneous networks, mobile lifecycle, audio/A-V device behavior, and endurance/resource measurements remain external acceptance evidence, not blockers for unrelated reversible work.
 
@@ -43,4 +43,4 @@ This is the current execution index. Git history owns completed timelines; [veri
 Implement the minimal controller-convergence wave from the accepted truth checkpoint. The route release
 still requires measured TURN and SFU capacities, a
 dedicated LiveKit instance with the documented private control-plane contract,
-and the focused real-network and Native `C=1/2/3` acceptance matrix.
+and focused Browser `C=1/2/3` plus 20-Viewer acceptance.
