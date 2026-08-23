@@ -141,7 +141,7 @@ function harness(
   return { store, sent, admission, router };
 }
 
-describe("HybridMediaRouter v7 runtime", () => {
+describe("HybridMediaRouter v9 runtime", () => {
   it("wakes at the derived direct boundary and prepares SFU automatically", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -169,8 +169,7 @@ describe("HybridMediaRouter v7 runtime", () => {
           .get(viewer.sessionId)
           ?.some(
             (message) =>
-              message.type === "error" &&
-              message.message === "No usable media route is available",
+              message.type === "route-status" && message.state === "failed",
           ),
       ).toBe(false);
     } finally {
@@ -236,11 +235,183 @@ describe("HybridMediaRouter v7 runtime", () => {
           .get(waiting.sessionId)
           ?.some(
             (message) =>
-              message.type === "error" &&
-              message.message === "No usable media route is available",
+              message.type === "route-status" && message.state === "failed",
           ),
       ).toBe(false);
     } finally {
+      await router.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports bounded route exhaustion without raw error text", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { store, sent, router } = harness(2, true, 300);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const viewer = connectViewer(store, room, "route-exhausted");
+      complete(router, viewer);
+
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(viewer.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({
+          type: "route-status",
+          state: "failed",
+          reason: "route-exhausted",
+        }),
+      );
+      expect(
+        sent
+          .get(viewer.sessionId)
+          ?.some(
+            (message) =>
+              message.type === "error" &&
+              message.message.includes("media route"),
+          ),
+      ).toBe(false);
+    } finally {
+      await router.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports typed exhaustion when the exact candidate fails", async () => {
+    const { store, sent, router } = harness(1);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const viewer = connectViewer(store, room, "candidate-failed");
+      complete(router, viewer);
+
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)).toBeDefined(),
+      );
+      const prepared = preparedFor(sent, viewer.sessionId)!;
+      router.handleRouteFailed(viewer, {
+        type: "route-failed",
+        revision: prepared.revision,
+        phase: "prepare",
+        connectionId: prepared.candidate.connectionId,
+      });
+
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(viewer.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({
+          state: "failed",
+          reason: "route-exhausted",
+        }),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("reports typed exhaustion when reconciliation has no candidate", async () => {
+    const { store, sent, router } = harness(1);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+
+      const first = connectViewer(store, room, "only-slot");
+      complete(router, first);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, first.sessionId)).toBeDefined(),
+      );
+      const firstPrepare = preparedFor(sent, first.sessionId)!;
+      router.handleRouteReady(first, {
+        type: "route-ready",
+        revision: firstPrepare.revision,
+        phase: "prepare",
+      });
+
+      const blocked = connectViewer(store, room, "no-candidate");
+      complete(router, blocked);
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(blocked.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({
+          state: "failed",
+          reason: "route-exhausted",
+        }),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("reports only SFU admission waiting while bounded capacity is unavailable", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { store, sent, admission, router } = harness(2, true, 300);
+    const capacityFences = [
+      {
+        roomId: "9001",
+        shareGeneration: "capacity_share_a",
+        publicationGeneration: "capacity_publication_a",
+      },
+      {
+        roomId: "9002",
+        shareGeneration: "capacity_share_b",
+        publicationGeneration: "capacity_publication_b",
+      },
+    ] as const;
+    try {
+      for (const fence of capacityFences) {
+        expect(admission?.reservePublication(fence)).toBe(true);
+      }
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const viewer = connectViewer(store, room, "sfu-admission-wait");
+      complete(router, viewer);
+
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(viewer.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({
+          type: "route-status",
+          state: "waiting",
+          reason: "sfu-admission",
+        }),
+      );
+    } finally {
+      for (const fence of capacityFences) {
+        admission?.beginDrain(fence);
+        admission?.completeDrain(fence);
+      }
       await router.close();
       vi.useRealTimers();
     }

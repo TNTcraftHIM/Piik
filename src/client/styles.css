@@ -447,7 +447,7 @@ h3 {
 .room-code-entry.is-inline {
   display: grid;
   min-width: 0;
-  grid-column: 3;
+  width: min(520px, calc(100% - 20px));
   grid-template-columns: minmax(0, 1fr) 44px;
   gap: 8px;
 }
@@ -781,6 +781,8 @@ h3 {
 .invite-primary,
 .room-entry-policy {
   min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
 }
 
 .invite-actions {
@@ -818,7 +820,7 @@ h3 {
 
 .viewer-password-control {
   display: grid;
-  grid-template-columns: auto minmax(160px, 240px) 40px 40px;
+  grid-template-columns: minmax(0, 1fr) 40px 40px;
   width: 100%;
   gap: 6px;
   align-items: center;
@@ -827,8 +829,19 @@ h3 {
 }
 
 .viewer-password-control > label {
+  grid-column: 1 / -1;
   color: var(--muted);
   font-size: 12px;
+}
+
+.access-password-retry {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.access-diagnostic-action {
+  justify-self: end;
 }
 
 .viewer-password-control .input-with-icon {
@@ -1394,10 +1407,6 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .room-code-entry.is-inline {
-    grid-column: 1 / -1;
-  }
-
   .viewer-title-row {
     flex-wrap: wrap;
   }
@@ -1449,12 +1458,15 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .viewer-password-control {
-    grid-template-columns: minmax(0, 1fr) 40px 40px;
+  .room-entry-policy {
+    padding-top: 12px;
+    padding-left: 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
   }
 
-  .viewer-password-control > label {
-    grid-column: 1 / -1;
+  .viewer-password-control {
+    grid-template-columns: minmax(0, 1fr) 40px 40px;
   }
 
   .viewer-stats .stats-grid {

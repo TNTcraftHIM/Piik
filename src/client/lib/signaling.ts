@@ -27,6 +27,7 @@ interface SignalingEvents {
 const FATAL_SIGNAL_ERRORS = new Set([
   "AUTH_REQUIRED",
   "INVALID_TOKEN",
+  "ROOM_ACCESS_DENIED",
   "ROOM_EXPIRED",
   "ROOM_FULL",
   "HOST_ALREADY_CONNECTED",

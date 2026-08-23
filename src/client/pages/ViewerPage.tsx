@@ -1,4 +1,5 @@
 import {
+  Download,
   KeyRound,
   LoaderCircle,
   Maximize2,
@@ -12,7 +13,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
   MAX_VIEWER_PASSWORD_LENGTH,
@@ -40,7 +41,11 @@ import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
-import { downloadDiagnosticReport, type DiagnosticConnectionInput } from "../lib/diagnostic-export";
+import {
+  downloadDiagnosticReport,
+  type DiagnosticConnectionInput,
+  type ViewerDiagnosticInput,
+} from "../lib/diagnostic-export";
 import { DecodedFrameStallDetector } from "../media/decoded-frame-stall";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
@@ -57,6 +62,17 @@ import {
   ViewerQualityEvidenceReporter,
 } from "../media/viewer-quality-evidence";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
+import {
+  INITIAL_VIEWER_PRESENTATION_STATE,
+  deriveViewerPresentation,
+  reduceViewerPresentation,
+  type ViewerFailureCode,
+  type ViewerRouteKind,
+} from "../media/viewer-presentation";
+import {
+  isAutoplayPolicyRejection,
+  observeCompositedVideoFrame,
+} from "../media/video-frame-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
 import {
@@ -68,7 +84,6 @@ import {
 import type {
   ConnectionMetrics,
   PeerSnapshot,
-  SignalConnectionState,
 } from "../types";
 import {
   limitMediaAssignment,
@@ -102,16 +117,26 @@ interface PendingPeerRoute {
   snapshot: PeerSnapshot | null;
 }
 
+interface RemoteMediaBinding {
+  stream: MediaStream;
+  generation: number;
+  revision: number;
+  videoTrackKey: string;
+}
+
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
-  const [accessState, setAccessState] = useState<
-    "checking" | "ready" | "denied"
-  >("checking");
-  const [signalStatus, setSignalStatus] =
-    useState<SignalConnectionState>("offline");
-  const [statusText, setStatusText] = useState("正在连接");
+  const [presentationState, dispatchPresentation] = useReducer(
+    reduceViewerPresentation,
+    INITIAL_VIEWER_PRESENTATION_STATE,
+  );
+  const presentation = deriveViewerPresentation(presentationState);
+  const accessState = presentationState.access;
+  const signalStatus = presentationState.signal;
   const [hostOnline, setHostOnline] = useState(false);
-  const [hostPaused, setHostPaused] = useState(false);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteMedia, setRemoteMedia] = useState<RemoteMediaBinding | null>(
+    null,
+  );
+  const remoteStream = remoteMedia?.stream ?? null;
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
   const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
   const [assignedRoute, setAssignedRoute] = useState<{
@@ -122,7 +147,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [relayChildEvidence, setRelayChildEvidence] =
     useState<ViewerQualityEvidencePresentation | null>(null);
-  const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [playbackVolume, setPlaybackVolume] = useState(
     DEFAULT_VIEWER_VOLUME_STATE,
   );
@@ -143,6 +167,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     password: string;
     sequence: number;
   } | null>(null);
+  const [viewerPasswordExpanded, setViewerPasswordExpanded] = useState(false);
+  const [localNotice, setLocalNotice] = useState<
+    "fullscreen-unavailable" | null
+  >(null);
 
   const qualityLimitation = useMemo(
     () =>
@@ -170,20 +198,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   function clearParticipantPresence(): void {
     setParticipantPresence(null);
-    setHostPaused(false);
   }
 
   function clearHostPresence(): void {
     setParticipantPresence((current) =>
       current?.filter((participant) => participant.role !== "host") ?? null,
     );
-    setHostPaused(false);
   }
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
+  const remoteMediaRef = useRef<RemoteMediaBinding | null>(null);
+  const mediaGenerationRef = useRef(0);
   const { muted, volumePercent } = playbackVolume;
   const routePresentation = viewerRouteEvidence(
     assignedRoute?.upstream ?? null,
@@ -228,6 +256,58 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       metrics: metricsFromQualityEvidence(freshRelayChildEvidence),
     });
   }
+  const viewerDiagnosticState: ViewerDiagnosticInput = {
+    authenticated: presentationState.revision !== null,
+    stage: presentation.stage,
+    revision: presentationState.revision,
+    failureCode: presentation.failureCode,
+    signalState: presentationState.signal,
+    hostState: presentationState.host,
+    routeKind:
+      assignedRoute === null
+        ? "none"
+        : routeKindFromAssignment(assignedRoute.upstream),
+    frameProof: presentation.hasCurrentFrame
+      ? "current"
+      : presentation.hasRetainedFrame
+        ? "previous"
+        : "none",
+  };
+
+  function bindRemoteStream(stream: MediaStream, revision: number): void {
+    const videoTrackKey = stream
+      .getVideoTracks()
+      .map((track) => track.id)
+      .sort()
+      .join(":");
+    const current = remoteMediaRef.current;
+    if (
+      current?.stream === stream &&
+      current.revision === revision &&
+      current.videoTrackKey === videoTrackKey
+    ) {
+      return;
+    }
+    const next: RemoteMediaBinding = {
+      stream,
+      revision,
+      videoTrackKey,
+      generation: ++mediaGenerationRef.current,
+    };
+    remoteMediaRef.current = next;
+    setRemoteMedia(next);
+    dispatchPresentation({
+      type: "media-bound",
+      generation: next.generation,
+      revision: next.revision,
+    });
+  }
+
+  function clearRemoteMedia(): void {
+    remoteMediaRef.current = null;
+    setRemoteMedia(null);
+    dispatchPresentation({ type: "media-cleared" });
+  }
 
   function acceptAssignedRoute(
     revision: number,
@@ -239,11 +319,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         ? current
         : { revision, phase, upstream },
     );
+    dispatchPresentation({
+      type: "route",
+      revision,
+      phase,
+      kind: routeKindFromAssignment(upstream),
+    });
   }
 
   useEffect(() => {
     let active = true;
-    let viewerAuthenticated = false;
+    let hadAuthenticated = false;
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
     let currentHostPaused = false;
@@ -295,7 +381,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       {
         onStatus: (status) => {
           if (active) {
-            setSignalStatus(status);
+            dispatchPresentation({ type: "signal", signal: status });
           }
         },
         onTerminated: (message) => {
@@ -306,12 +392,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setSfuStandbyUrl(null);
           setAssignedRoute(null);
           clearViewerSfuRoute();
-          clearPeerState();
+          clearPeerState(true);
           clearParticipantPresence();
-          if (!viewerAuthenticated) {
-            setAccessState("denied");
-          }
-          setStatusText(message);
+          dispatchPresentation({
+            type: "access",
+            access: "denied",
+            failure: viewerTerminationFailure(message),
+          });
         },
         onAccessRequired: () => {
           if (active) {
@@ -319,11 +406,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             setSfuStandbyUrl(null);
             setAssignedRoute(null);
             clearViewerSfuRoute();
-            clearPeerState();
+            clearPeerState(true);
             clearParticipantPresence();
-            viewerAuthenticated = false;
-            setAccessState("denied");
-            setStatusText("邀请无效或已失效");
+            dispatchPresentation({
+              type: "access",
+              access: "denied",
+              failure: "INVALID_TOKEN",
+            });
           }
         },
         onMessage: (message) => {
@@ -561,10 +650,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               true,
             );
             ensureViewerRelay()?.setStream(probe.stream);
-            setRemoteStream(probe.stream);
+            bindRemoteStream(probe.stream, revision);
             setPeerSnapshot(probe.snapshot);
             setSfuUpstream(null);
-            setStatusText("正在播放");
             return true;
           }
           applyMediaAssignment({
@@ -639,12 +727,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           );
           reconcileRelayChildren(previousChildPeerIds, revision);
         },
-        onSfuUpdate: (metrics) => {
+        onSfuUpdate: (metrics, revision) => {
           if (active && viewerSfuRoute === route) {
             if (metrics) {
               observeActiveDecodedFrames(
                 "sfu",
-                String(currentRouteRevision),
+                String(revision),
                 metrics.intervalFramesDecoded,
               );
             }
@@ -653,25 +741,37 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
           }
         },
-        onSfuState: (state) => {
+        onSfuState: (state, revision) => {
           if (active && viewerSfuRoute === route) {
             setSfuUpstream((current) =>
               current ? { ...current, connectionState: state } : null,
             );
+            dispatchPresentation({
+              type: "connection",
+              revision,
+              connection: state,
+            });
           }
         },
-        onSfuVideoAvailability: (available) => {
+        onSfuVideoAvailability: (available, revision) => {
           if (!active || viewerSfuRoute !== route || available) {
             return;
           }
           setSfuUpstream((current) =>
             current ? { ...current, connectionState: "reconnecting" } : current,
           );
-          setStatusText(
-            currentHostOnline ? "正在恢复连接" : "等待开始分享",
-          );
+          dispatchPresentation({
+            type: "connection",
+            revision,
+            connection: "reconnecting",
+          });
         },
-        onSfuStream: (nextStream, assignment, initialVideoStream) => {
+        onSfuStream: (
+          nextStream,
+          assignment,
+          initialVideoStream,
+          revision,
+        ) => {
           if (!active || viewerSfuRoute !== route) {
             return;
           }
@@ -683,12 +783,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           reconcileRelayChildren(previousChildPeerIds);
           const relay = ensureViewerRelay();
           relay?.setStream(nextStream);
-          setRemoteStream(nextStream);
+          bindRemoteStream(nextStream, revision);
           setSfuUpstream(
             (current) =>
               current ?? { connectionState: "connected", metrics: null },
           );
-          setStatusText("正在播放");
           if (initialVideoStream) {
             if (!pendingPeer) {
               peerRef.current?.dispose();
@@ -741,18 +840,25 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
     }
 
-    function clearUpstreamState(): void {
+    function clearUpstreamState(clearMedia = false): void {
       qualityEvidenceReporter.reset();
       const peer = peerRef.current;
       peer?.dispose();
       peerRef.current = null;
-      setRemoteStream(null);
       setPeerSnapshot(null);
-      setPlaybackBlocked(false);
+      if (clearMedia) {
+        clearRemoteMedia();
+      } else {
+        dispatchPresentation({
+          type: "connection",
+          revision: currentRouteRevision,
+          connection: "reconnecting",
+        });
+      }
     }
 
-    function clearPeerState(): void {
-      clearUpstreamState();
+    function clearPeerState(clearMedia = false): void {
+      clearUpstreamState(clearMedia);
       clearRelayChildEvidence();
       viewerRelay?.stop();
     }
@@ -768,7 +874,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
       if (!preserveUpstream && previousParentId !== nextAssignment.parentPeerId) {
         clearUpstreamState();
-        setStatusText("正在恢复连接");
       }
       reconcileRelayChildren(previousChildPeerIds);
     }
@@ -788,9 +893,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               probe.stream = stream;
               provePendingPeer();
             } else if (active && peerRef.current === peer) {
-              setRemoteStream(stream);
+              bindRemoteStream(stream, currentRouteRevision);
               ensureViewerRelay()?.setStream(stream);
-              setStatusText("正在播放");
             }
           },
           onUpdate: (snapshot) => {
@@ -807,11 +911,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               );
               qualityEvidenceReporter.offer(snapshot, currentRouteRevision);
               setPeerSnapshot(snapshot);
-              setStatusText(
-                snapshot.connectionState === "connected"
-                  ? "已连接"
-                  : "正在恢复连接",
-              );
+              dispatchPresentation({
+                type: "connection",
+                revision: currentRouteRevision,
+                connection: connectionFact(snapshot.connectionState),
+              });
             }
           },
           onRecoveryExhausted: (parentPeerId, connectionId): boolean => {
@@ -864,8 +968,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             ),
           onStream: (nextStream) => {
             if (active) {
-              setRemoteStream(nextStream);
-              setStatusText("正在播放");
+              bindRemoteStream(nextStream, currentRouteRevision);
               // Audio and video can arrive as separate track events on the
               // same MediaStream, so refresh both downstream senders each time.
               ensureViewerRelay()?.setStream(nextStream);
@@ -885,25 +988,25 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 snapshot.connectionState === "failed"
               ) {
                 clearPeerState();
-                setStatusText("等待开始分享");
                 return;
               }
               setPeerSnapshot(snapshot);
-              if (snapshot.connectionState === "connected") {
-                setStatusText("已连接");
-              } else if (
-                snapshot.connectionState === "failed" ||
-                snapshot.connectionState === "disconnected"
-              ) {
-                setStatusText("正在恢复连接");
-              }
+              dispatchPresentation({
+                type: "connection",
+                revision: currentRouteRevision,
+                connection: connectionFact(snapshot.connectionState),
+              });
             }
           },
           onRecoveryExhausted: (parentPeerId, connectionId) => {
             if (viewerSfuRoute) {
               return viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId);
             }
-            setStatusText("无法建立媒体连接");
+            dispatchPresentation({
+              type: "failure",
+              failure: "ROUTE_EXHAUSTED",
+              revision: currentRouteRevision,
+            });
             return true;
           },
         },
@@ -917,8 +1020,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
-        viewerAuthenticated = true;
-        setAccessState("ready");
+        hadAuthenticated = true;
+        dispatchPresentation({ type: "access", access: "ready" });
         setViewerPasswordDraft("");
         setViewerPasswordError(null);
         clearRelayChildEvidence();
@@ -947,15 +1050,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           clearRelayChildEvidence();
         }
         currentRouteRevision = nextRouteRevision;
-        setAssignedRoute(
-          nextPeerAssisted && "routeAssignment" in message
-            ? {
-                revision: message.routeRevision,
-                phase: "active",
-                upstream: message.routeAssignment.upstream,
-              }
-            : null,
-        );
+        if (nextPeerAssisted && "routeAssignment" in message) {
+          acceptAssignedRoute(
+            message.routeRevision,
+            message.routeAssignment.upstream,
+          );
+        } else {
+          setAssignedRoute(null);
+          dispatchPresentation({
+            type: "route",
+            revision: 0,
+            phase: "active",
+            kind: message.hostOnline ? "p2p" : "none",
+          });
+        }
         const relayCapacity = relayCapacityMessageForBrowser(nextPeerAssisted);
         if (relayCapacity) {
           signal.send(relayCapacity);
@@ -966,7 +1074,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         const sharingPaused = message.hostPaused ?? false;
         currentHostPaused = sharingPaused;
         decodedFrameStall.setPaused(sharingPaused);
-        setHostPaused(sharingPaused);
+        dispatchPresentation({
+          type: "host",
+          host: sharingPaused
+            ? "paused"
+            : message.hostOnline
+              ? "online"
+              : "stopped",
+        });
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
           void viewerRelay?.updateProfile(currentQualitySettings);
@@ -990,7 +1105,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         ) {
           clearPeerState();
         }
-        setStatusText(message.hostOnline ? "正在连接" : "等待开始分享");
         const peer = peerRef.current;
         peer?.updateIceConfig(message.iceConfig);
         viewerRelay?.updateIceConfig(message.iceConfig);
@@ -1038,6 +1152,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
           }
         }
+        return;
+      }
+      if (message.type === "route-status") {
+        dispatchPresentation({
+          type: "route-status",
+          revision: message.revision,
+          state: message.state,
+        });
         return;
       }
       if (message.type === "viewer-quality-evidence") {
@@ -1123,7 +1245,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         const peer = ensurePeer();
         if (!peer) {
-          setStatusText("正在连接");
           return;
         }
         await peer.acceptSignal(message.fromPeerId, message.payload);
@@ -1144,13 +1265,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentHostPaused = message.paused;
         decodedFrameStall.setPaused(message.paused);
         setHostOnline(message.online);
-        setHostPaused(message.paused);
+        dispatchPresentation({
+          type: "host",
+          host: message.paused
+            ? "paused"
+            : message.online
+              ? "online"
+              : "offline",
+        });
         viewerSfuRoute?.setPaused(message.paused);
-        if (!message.online && !peerRef.current?.isConnected()) {
-          setStatusText("等待开始分享");
-        } else if (message.online && !peerRef.current?.isConnected()) {
-          setStatusText("正在连接");
-        }
         return;
       }
       if (message.type === "viewer-presence") {
@@ -1164,10 +1287,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentHostPaused = false;
         decodedFrameStall.reset();
         clearViewerSfuRoute();
-        clearPeerState();
+        clearPeerState(true);
         clearHostPresence();
         setHostOnline(false);
-        setStatusText("等待开始分享");
+        dispatchPresentation({ type: "host", host: "stopped" });
         return;
       }
       if (message.type === "viewer-grant-revoked") {
@@ -1178,27 +1301,32 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           return;
         }
         viewerAuthorizationGeneration = null;
-        viewerAuthenticated = false;
-        setAccessState("denied");
         clearViewerGrant(roomId);
         setSfuStandbyUrl(null);
         setAssignedRoute(null);
         clearViewerSfuRoute();
-        clearPeerState();
+        clearPeerState(true);
         clearParticipantPresence();
-        setStatusText("邀请已失效，请向分享者获取新链接");
+        dispatchPresentation({
+          type: "access",
+          access: "denied",
+          failure: "INVALID_TOKEN",
+        });
         signal.stop();
         return;
       }
       if (message.type === "room-closed") {
-        viewerAuthenticated = false;
-        setAccessState("denied");
         setSfuStandbyUrl(null);
         setAssignedRoute(null);
         clearViewerSfuRoute();
-        clearPeerState();
+        clearPeerState(true);
         clearParticipantPresence();
-        setStatusText(message.reason === "expired" ? "房间已过期" : "房间已关闭");
+        dispatchPresentation({
+          type: "access",
+          access: "denied",
+          failure:
+            message.reason === "expired" ? "ROOM_EXPIRED" : "ROOM_CLOSED",
+        });
         signal.stop();
         return;
       }
@@ -1206,13 +1334,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         if (message.code === "PEER_NOT_FOUND" && !currentHostOnline) {
           clearPeerState();
           clearHostPresence();
-          setStatusText("等待开始分享");
+          dispatchPresentation({ type: "host", host: "offline" });
           return;
         }
         if (
           [
             "AUTH_REQUIRED",
             "INVALID_TOKEN",
+            "ROOM_ACCESS_DENIED",
             "ROOM_EXPIRED",
             "ROOM_FULL",
           ].includes(message.code)
@@ -1220,20 +1349,40 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           setSfuStandbyUrl(null);
           setAssignedRoute(null);
           clearViewerSfuRoute();
-          clearPeerState();
+          clearPeerState(true);
           clearParticipantPresence();
-          viewerAuthenticated = false;
-          setAccessState("denied");
+          const failure =
+            hadAuthenticated &&
+            (message.code === "INVALID_TOKEN" ||
+              message.code === "ROOM_ACCESS_DENIED")
+              ? "ROOM_LOST"
+              : viewerFailureFromServerCode(message.code);
+          dispatchPresentation({
+            type: "access",
+            access: "denied",
+            failure,
+          });
         }
         if (message.code === "INVALID_TOKEN") {
           clearViewerGrant(roomId);
           if (!viewerGrant && viewerPasswordAttempt) {
             setViewerPasswordError("无法加入房间，请重试");
           }
-          setStatusText("邀请无效或已失效");
           return;
         }
-        setStatusText(message.message);
+        if (message.code === "ROOM_ACCESS_DENIED") {
+          if (viewerPasswordAttempt) {
+            setViewerPasswordError("当前无法通过房间号加入");
+            setViewerPasswordExpanded(true);
+          }
+          return;
+        }
+        const failure = viewerFailureFromServerCode(message.code);
+        if (failure) {
+          dispatchPresentation({ type: "failure", failure });
+        } else if (message.code !== "PEER_NOT_FOUND") {
+          dispatchPresentation({ type: "failure", failure: "SERVER_ERROR" });
+        }
       }
     }
 
@@ -1262,17 +1411,47 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) {
+    if (!video || !remoteMedia) {
+      if (video) {
+        video.srcObject = null;
+      }
       return;
     }
-    video.srcObject = remoteStream;
-    if (remoteStream) {
-      void video.play().then(
-        () => setPlaybackBlocked(false),
-        () => setPlaybackBlocked(true),
-      );
-    }
-  }, [remoteStream]);
+    video.srcObject = remoteMedia.stream;
+    const stopObserving = observeCompositedVideoFrame(
+      video,
+      remoteMedia.stream,
+      () =>
+        dispatchPresentation({
+          type: "frame-presented",
+          generation: remoteMedia.generation,
+          revision: remoteMedia.revision,
+        }),
+    );
+    void video.play().then(
+      () =>
+        dispatchPresentation({
+          type: "autoplay-cleared",
+          generation: remoteMedia.generation,
+        }),
+      (error: unknown) => {
+        if (isAutoplayPolicyRejection(error)) {
+          dispatchPresentation({
+            type: "autoplay-blocked",
+            generation: remoteMedia.generation,
+            revision: remoteMedia.revision,
+          });
+        } else {
+          dispatchPresentation({
+            type: "playback-failed",
+            generation: remoteMedia.generation,
+            revision: remoteMedia.revision,
+          });
+        }
+      },
+    );
+    return stopObserving;
+  }, [remoteMedia]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1280,17 +1459,44 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       return;
     }
     applyViewerVolume(video, playbackVolume);
-  }, [muted, remoteStream, volumePercent]);
+  }, [muted, remoteMedia, volumePercent]);
+
+  useEffect(() => {
+    dispatchPresentation({
+      type: "retry-available",
+      available: Boolean(
+        peerSnapshot ||
+          (assignedRoute?.phase === "active" &&
+            assignedRoute.upstream.kind === "sfu"),
+      ),
+    });
+  }, [assignedRoute, peerSnapshot]);
 
   async function playVideo(): Promise<void> {
-    if (!videoRef.current) {
+    const binding = remoteMediaRef.current;
+    if (!videoRef.current || !binding) {
       return;
     }
     try {
       await videoRef.current.play();
-      setPlaybackBlocked(false);
-    } catch {
-      setPlaybackBlocked(true);
+      dispatchPresentation({
+        type: "autoplay-cleared",
+        generation: binding.generation,
+      });
+    } catch (error) {
+      if (isAutoplayPolicyRejection(error)) {
+        dispatchPresentation({
+          type: "autoplay-blocked",
+          generation: binding.generation,
+          revision: binding.revision,
+        });
+      } else {
+        dispatchPresentation({
+          type: "playback-failed",
+          generation: binding.generation,
+          revision: binding.revision,
+        });
+      }
     }
   }
 
@@ -1330,7 +1536,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         video.webkitEnterFullscreen?.();
       }
     } catch {
-      setStatusText("当前浏览器无法进入全屏");
+      setLocalNotice("fullscreen-unavailable");
     }
   }
 
@@ -1341,9 +1547,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         ? signalRef.current?.reconnect() === true
         : peerRef.current?.requestRecovery() === true;
     if (!requested) {
-      setStatusText(hostOnline ? "正在连接" : "等待开始分享");
+      dispatchPresentation({
+        type: "connection",
+        revision: assignedRoute?.revision ?? 0,
+        connection: hostOnline ? "connecting" : "idle",
+      });
     } else {
-      setStatusText("正在恢复连接");
+      dispatchPresentation({
+        type: "connection",
+        revision: assignedRoute?.revision ?? 0,
+        connection: "reconnecting",
+      });
     }
   }
 
@@ -1370,7 +1584,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       return;
     }
     setViewerPasswordError(null);
-    setAccessState("checking");
+    dispatchPresentation({
+      type: "access",
+      access: "checking",
+      failure: null,
+    });
     setViewerPasswordAttempt((current) => ({
       password: viewerPasswordDraft,
       sequence: (current?.sequence ?? 0) + 1,
@@ -1378,6 +1596,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }
 
   if (accessState !== "ready") {
+    const codeOnlyDenied =
+      !viewerGrant && presentationState.failure === "ROOM_ACCESS_DENIED";
+    const canRefresh = [
+      "ROOM_LOST",
+      "STALE_CLIENT",
+      "SERVER_ERROR",
+      "SESSION_REPLACED",
+      "SIGNAL_TERMINATED",
+    ].includes(presentationState.failure ?? "");
     return (
       <div className="app-shell">
         <main className="access-workspace access-workspace-full">
@@ -1386,42 +1613,89 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <LoaderCircle size={20} className="spin" aria-hidden="true" />
               正在加入房间
             </div>
-          ) : viewerGrant ? (
-            <section className="access-panel">
-              <h1>无法访问</h1>
-            </section>
           ) : (
-            <form className="access-panel" onSubmit={submitViewerPassword}>
+            <section className="access-panel">
               <div>
-                <h1>加入房间</h1>
-                <p className="section-meta">请输入当前房间的密码</p>
-              </div>
-              <label className="token-field">
-                <span>房间密码</span>
-                <span className="input-with-icon">
-                  <KeyRound size={16} aria-hidden="true" />
-                  <input
-                    type="password"
-                    value={viewerPasswordDraft}
-                    maxLength={MAX_VIEWER_PASSWORD_LENGTH}
-                    autoComplete="current-password"
-                    autoFocus
-                    onChange={(event) => {
-                      setViewerPasswordDraft(event.target.value);
-                      setViewerPasswordError(null);
-                    }}
-                  />
-                </span>
-              </label>
-              {viewerPasswordError && (
-                <p className="access-error" role="alert">
-                  {viewerPasswordError}
+                <h1>{presentation.message}</h1>
+                <p className="section-meta">
+                  {codeOnlyDenied
+                    ? "请使用分享者提供的邀请链接，或尝试房间密码。"
+                    : viewerGrant
+                      ? "请向分享者获取新的邀请链接。"
+                      : "请检查入口后重试。"}
                 </p>
+              </div>
+              {codeOnlyDenied && !viewerPasswordExpanded && (
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  aria-expanded="false"
+                  aria-controls="viewer-password-retry"
+                  onClick={() => setViewerPasswordExpanded(true)}
+                >
+                  <KeyRound size={16} aria-hidden="true" />
+                  输入房间密码
+                </button>
               )}
-              <button className="button button-primary" type="submit">
-                加入
+              {codeOnlyDenied && viewerPasswordExpanded && (
+                <form
+                  id="viewer-password-retry"
+                  className="access-password-retry"
+                  onSubmit={submitViewerPassword}
+                >
+                  <label className="token-field">
+                    <span>房间密码</span>
+                    <span className="input-with-icon">
+                      <KeyRound size={16} aria-hidden="true" />
+                      <input
+                        type="password"
+                        value={viewerPasswordDraft}
+                        maxLength={MAX_VIEWER_PASSWORD_LENGTH}
+                        autoComplete="current-password"
+                        autoFocus
+                        onChange={(event) => {
+                          setViewerPasswordDraft(event.target.value);
+                          setViewerPasswordError(null);
+                        }}
+                      />
+                    </span>
+                  </label>
+                  {viewerPasswordError && (
+                    <p className="access-error" role="alert">
+                      {viewerPasswordError}
+                    </p>
+                  )}
+                  <button className="button button-primary" type="submit">
+                    加入
+                  </button>
+                </form>
+              )}
+              {canRefresh && (
+                <button
+                  className="button button-primary"
+                  type="button"
+                  onClick={() => window.location.reload()}
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  刷新页面
+                </button>
+              )}
+              <button
+                className="icon-button access-diagnostic-action"
+                type="button"
+                title="下载脱敏连接诊断"
+                aria-label="下载脱敏连接诊断"
+                onClick={() =>
+                  downloadDiagnosticReport(
+                    "viewer",
+                    diagnosticConnections,
+                    viewerDiagnosticState,
+                  )
+                }
+              >
+                <Download size={17} aria-hidden="true" />
               </button>
-            </form>
+            </section>
           )}
         </main>
       </div>
@@ -1543,15 +1817,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             autoPlay
             playsInline
             muted={muted}
-            onPlaying={() => setPlaybackBlocked(false)}
           />
-          {!remoteStream && (
-            <div className="stage-placeholder">
+          {presentation.overlay === "blocking" && !presentation.showPlay && (
+            <div className="stage-placeholder" role="status">
               <VideoOff size={36} strokeWidth={1.5} aria-hidden="true" />
-              <span>{statusText}</span>
+              <span>{presentation.message}</span>
             </div>
           )}
-          {playbackBlocked && remoteStream && !hostPaused && (
+          {presentation.showPlay && (
             <button
               type="button"
               className="play-overlay"
@@ -1561,16 +1834,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               播放
             </button>
           )}
-          {hostOnline && hostPaused && (
+          {presentation.overlay === "status" && !presentation.showPlay && (
             <div className="stage-overlay" role="status">
-              分享者已暂停
+              {presentation.message}
             </div>
           )}
         </section>
 
         <div className="viewer-toolbar">
           <div className="toolbar-status" role="status" aria-live="polite">
-            {statusText}
+            {presentation.message}
           </div>
           <div className="toolbar-actions">
             <div className="viewer-volume-control">
@@ -1602,13 +1875,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               className="icon-button"
               title="恢复连接"
               aria-label="恢复连接"
-              disabled={
-                !peerSnapshot &&
-                !(
-                  assignedRoute?.phase === "active" &&
-                  assignedRoute.upstream.kind === "sfu"
-                )
-              }
+              disabled={!presentation.retryAvailable}
               onClick={retryConnection}
             >
               <RefreshCw size={19} />
@@ -1625,6 +1892,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             </button>
           </div>
         </div>
+
+        {presentation.notice && (
+          <div className="notice" role="status">
+            {presentation.notice}
+          </div>
+        )}
+        {localNotice === "fullscreen-unavailable" && (
+          <div className="notice notice-error" role="status">
+            当前浏览器无法进入全屏
+          </div>
+        )}
 
         {participantPresence && (
           <section
@@ -1670,19 +1948,23 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         <ConnectionDetailsToggle
           checked={showConnectionDetails}
           onChange={setShowConnectionDetails}
-          onExport={diagnosticConnections.length > 0
-            ? () => downloadDiagnosticReport("viewer", diagnosticConnections)
-            : undefined}
+          onExport={() =>
+            downloadDiagnosticReport(
+              "viewer",
+              diagnosticConnections,
+              viewerDiagnosticState,
+            )
+          }
         />
 
         {routePresentation.evidence === peerSnapshot && peerSnapshot?.error && (
           <div className="notice notice-error" role="status">
-            {peerSnapshot.error}
+            P2P 媒体连接异常
           </div>
         )}
         {relaySnapshot?.error && (
           <div className="notice notice-error" role="status">
-            {relaySnapshot.error}
+            下游媒体连接异常
           </div>
         )}
         {qualityLimitation && (
@@ -1728,4 +2010,61 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       </main>
     </div>
   );
+}
+
+function routeKindFromAssignment(
+  upstream: ParticipantRouteAssignment["upstream"],
+): ViewerRouteKind {
+  return upstream.kind === "peer"
+    ? "p2p"
+    : upstream.kind === "sfu"
+      ? "sfu"
+      : "none";
+}
+
+function connectionFact(
+  state: RTCPeerConnectionState,
+): "idle" | "connecting" | "connected" | "reconnecting" | "failed" {
+  switch (state) {
+    case "connected":
+      return "connected";
+    case "new":
+    case "connecting":
+      return "connecting";
+    case "disconnected":
+      return "reconnecting";
+    case "failed":
+    case "closed":
+      return "failed";
+  }
+}
+
+function viewerFailureFromServerCode(
+  code: Extract<ServerMessage, { type: "error" }>["code"],
+): ViewerFailureCode | null {
+  switch (code) {
+    case "ROOM_ACCESS_DENIED":
+      return "ROOM_ACCESS_DENIED";
+    case "INVALID_TOKEN":
+    case "AUTH_REQUIRED":
+      return "INVALID_TOKEN";
+    case "ROOM_EXPIRED":
+      return "ROOM_EXPIRED";
+    case "ROOM_FULL":
+      return "ROOM_FULL";
+    case "SERVER_ERROR":
+      return "SERVER_ERROR";
+    default:
+      return null;
+  }
+}
+
+function viewerTerminationFailure(message: string): ViewerFailureCode {
+  if (message === "页面版本已更新，请刷新后重试") {
+    return "STALE_CLIENT";
+  }
+  if (message === "此页面的会话已被另一个标签页接管") {
+    return "SESSION_REPLACED";
+  }
+  return "SIGNAL_TERMINATED";
 }

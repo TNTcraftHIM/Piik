@@ -517,7 +517,7 @@ describe("WebSocket signaling", () => {
       }),
     );
     expect(await wrongViewer.inbox.next("error")).toMatchObject({
-      code: "INVALID_TOKEN",
+      code: "ROOM_ACCESS_DENIED",
     });
 
     const passwordViewer = await openClient(harness.webSocketUrl);
@@ -576,7 +576,7 @@ describe("WebSocket signaling", () => {
       }),
     );
     expect(await removedPasswordViewer.inbox.next("error")).toMatchObject({
-      code: "INVALID_TOKEN",
+      code: "ROOM_ACCESS_DENIED",
     });
   });
 
@@ -1182,6 +1182,123 @@ describe("WebSocket signaling", () => {
     await expect(
       authenticate(host, harness.room, "host", "host-client-protected"),
     ).resolves.toMatchObject({ role: "host" });
+  });
+
+  it("collapses every site-authorized code-only refusal without room enumeration", async () => {
+    let now = Date.UTC(2026, 7, 24, 12);
+    const siteAccessPassword = "protected-instance-password";
+    const harness = await startHarness({
+      siteAccessPassword,
+      maxViewersPerRoom: 1,
+      now: () => now,
+    });
+    const login = await fetch(`${harness.baseUrl}/api/site-access`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${siteAccessPassword}`,
+        Origin: allowedOrigin,
+      },
+    });
+    let cookie = login.headers.get("set-cookie")?.split(";", 1)[0];
+    expect(cookie).toBeTruthy();
+
+    const disabled = await harness.roomStore.createRoom("disabled");
+    const protectedRoom = await harness.roomStore.createRoom(
+      "password",
+      "correct-password",
+    );
+    const expiring = await harness.roomStore.createRoom("open");
+    const unusedRoomId = Array.from({ length: 9_000 }, (_, index) =>
+      String(1_000 + index),
+    ).find(
+      (roomId) =>
+        ![
+          harness.room.roomId,
+          disabled.roomId,
+          protectedRoom.roomId,
+          expiring.roomId,
+        ].includes(roomId),
+    )!;
+
+    const admitted = await openClient(harness.webSocketUrl, cookie);
+    await authenticate(
+      admitted,
+      harness.room,
+      "viewer",
+      "admitted-viewer",
+      1,
+      undefined,
+      { codeOnly: true },
+    );
+
+    async function expectNeutralDenial(
+      roomId: string,
+      clientId: string,
+      viewerPassword?: string,
+    ): Promise<void> {
+      const client = await openClient(harness.webSocketUrl, cookie);
+      const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+        client.socket.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        ),
+      );
+      client.socket.send(
+        JSON.stringify({
+          type: "authenticate",
+          protocol: SIGNALING_PROTOCOL,
+          roomId,
+          role: "viewer",
+          clientId,
+          ...(viewerPassword ? { viewerPassword } : {}),
+        }),
+      );
+      expect(await client.inbox.next("error")).toEqual({
+        type: "error",
+        code: "ROOM_ACCESS_DENIED",
+        message: "Room access denied",
+      });
+      expect(await closed).toEqual({
+        code: 4003,
+        reason: "Authentication failed",
+      });
+    }
+
+    await expectNeutralDenial(unusedRoomId, "unknown-room-viewer");
+    await expectNeutralDenial(disabled.roomId, "disabled-room-viewer");
+    await expectNeutralDenial(protectedRoom.roomId, "missing-password-viewer");
+    await expectNeutralDenial(
+      protectedRoom.roomId,
+      "wrong-password-viewer",
+      "wrong-password",
+    );
+    await expectNeutralDenial(harness.room.roomId, "full-room-viewer");
+
+    now += 86_400_001;
+    const renewedLogin = await fetch(`${harness.baseUrl}/api/site-access`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${siteAccessPassword}`,
+        Origin: allowedOrigin,
+      },
+    });
+    cookie = renewedLogin.headers.get("set-cookie")?.split(";", 1)[0];
+    expect(cookie).toBeTruthy();
+    await expectNeutralDenial(expiring.roomId, "expired-room-viewer");
+
+    const expiredGrant = await openClient(harness.webSocketUrl, cookie);
+    expiredGrant.socket.send(
+      JSON.stringify({
+        type: "authenticate",
+        protocol: SIGNALING_PROTOCOL,
+        roomId: expiring.roomId,
+        role: "viewer",
+        clientId: "expired-grant-viewer",
+        viewerGrant: expiring.viewerGrant,
+      }),
+    );
+    expect(await expiredGrant.inbox.next("error")).toMatchObject({
+      code: "INVALID_TOKEN",
+    });
   });
 
   it("does not expire an active room and arms its lease after Host disconnect", async () => {

@@ -457,10 +457,7 @@ export class SignalingServer {
       if (!(error instanceof RoomStoreError)) {
         console.error("Signaling authentication failed unexpectedly");
       }
-      const code =
-        error instanceof RoomStoreError && error.code !== "ROOM_LIMIT"
-          ? error.code
-          : "SERVER_ERROR";
+      const code = authenticationErrorCode(message, error);
       this.sendError(socket, code, authenticationErrorMessage(code));
       socket.close(4003, "Authentication failed");
       return;
@@ -2031,6 +2028,8 @@ function viewerConnectionKey(roomId: string, peerId: string): string {
 
 function authenticationErrorMessage(code: ErrorCode): string {
   switch (code) {
+    case "ROOM_ACCESS_DENIED":
+      return "Room access denied";
     case "ROOM_EXPIRED":
       return "Room has expired";
     case "ROOM_FULL":
@@ -2042,6 +2041,22 @@ function authenticationErrorMessage(code: ErrorCode): string {
     default:
       return "Authentication failed";
   }
+}
+
+function authenticationErrorCode(
+  message: Extract<ClientMessage, { type: "authenticate" }>,
+  error: unknown,
+): ErrorCode {
+  if (!(error instanceof RoomStoreError) || error.code === "ROOM_LIMIT") {
+    return "SERVER_ERROR";
+  }
+  if (message.role !== "viewer") {
+    return error.code;
+  }
+  if (!message.viewerGrant) {
+    return "ROOM_ACCESS_DENIED";
+  }
+  return error.code === "ROOM_EXPIRED" ? "INVALID_TOKEN" : error.code;
 }
 
 function rejectUpgrade(socket: Duplex, status: number, message: string): void {

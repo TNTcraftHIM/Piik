@@ -1,7 +1,6 @@
 import {
   Check,
   Copy,
-  Hash,
   KeyRound,
   LockKeyhole,
   Maximize2,
@@ -34,7 +33,7 @@ import { AppHeader } from "../components/AppHeader";
 import { ConnectionSelfCheck } from "../components/ConnectionSelfCheck";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
 import { RoomCode } from "../components/RoomCode";
-import { RoomCodeEntry } from "../components/RoomCodeEntry";
+import { StageEntryActions } from "../components/StageEntryActions";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
   MediaRouteBadge,
@@ -2062,41 +2061,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 {phase === "ended" && room && (
                   <span className="stage-status">已停止分享</span>
                 )}
-                <div className="entry-actions">
-                  <button
-                    className="entry-action"
-                    type="button"
-                    title="开始分享屏幕"
-                    onClick={() => {
-                      setJoiningRoom(false);
-                      void startSharing();
-                    }}
-                  >
-                    <MonitorUp size={18} aria-hidden="true" />
-                    开始分享
-                  </button>
-                  <span className="entry-divider" aria-hidden="true">
-                    或
-                  </span>
-                  <button
-                    className="entry-action"
-                    type="button"
-                    title="输入房间码加入观看"
-                    aria-expanded={joiningRoom}
-                    aria-controls="host-room-code-entry"
-                    onClick={() => setJoiningRoom((current) => !current)}
-                  >
-                    <Hash size={18} aria-hidden="true" />
-                    加入房间
-                  </button>
-                  {joiningRoom && (
-                    <RoomCodeEntry
-                      id="host-room-code-entry"
-                      autoFocus
-                      inline
-                    />
-                  )}
-                </div>
+                <StageEntryActions
+                  joiningRoom={joiningRoom}
+                  onStartSharing={() => {
+                    setJoiningRoom(false);
+                    void startSharing();
+                  }}
+                  onJoinToggle={() =>
+                    setJoiningRoom((current) => !current)
+                  }
+                />
               </div>
             ) : (
               <div className="stage-placeholder">

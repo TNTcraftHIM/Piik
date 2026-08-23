@@ -66,7 +66,7 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
-  it("keeps executable senders outside the Browser v7 release", () => {
+  it("keeps executable senders outside the Browser-only v9 checkpoint", () => {
     const nativeWire = readFileSync(
       join(
         import.meta.dirname,
@@ -75,7 +75,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v8");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v9");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -123,6 +123,65 @@ describe("client signaling protocol", () => {
         roomId,
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps Viewer route status as a strict crossed union", () => {
+    expect(
+      serverMessageSchema.parse({
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+      }),
+    ).toEqual({
+      type: "route-status",
+      revision: 3,
+      state: "waiting",
+      reason: "sfu-admission",
+    });
+    expect(
+      serverMessageSchema.parse({
+        type: "route-status",
+        revision: 4,
+        state: "failed",
+        reason: "route-exhausted",
+      }),
+    ).toEqual({
+      type: "route-status",
+      revision: 4,
+      state: "failed",
+      reason: "route-exhausted",
+    });
+    for (const invalid of [
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "route-exhausted",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "failed",
+        reason: "sfu-admission",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+        retryAfterMs: 1_000,
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+        peerId: "private-peer-id",
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(invalid).success).toBe(false);
+    }
   });
 
   it("accepts an atomic room creation profile", () => {
@@ -195,15 +254,17 @@ describe("client signaling protocol", () => {
         clientId: "client_12345678",
       }).success,
     ).toBe(false);
-    expect(
-      clientMessageSchema.safeParse({
-        type: "authenticate",
-        protocol: "screener-v3",
-        roomId,
-        role: "viewer",
-        clientId: "client_12345678",
-      }).success,
-    ).toBe(false);
+    for (const protocol of ["screener-v8", "screener-v3"]) {
+      expect(
+        clientMessageSchema.safeParse({
+          type: "authenticate",
+          protocol,
+          roomId,
+          role: "viewer",
+          clientId: "client_12345678",
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("normalizes display names and rejects misleading Unicode boundaries", () => {

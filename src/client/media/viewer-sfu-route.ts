@@ -61,10 +61,14 @@ interface ViewerSfuRouteEvents {
     stream: MediaStream,
     assignment: ParticipantRouteAssignment,
     initialVideoStream: boolean,
+    revision: number,
   ) => void;
-  onSfuVideoAvailability?: (available: boolean) => void;
-  onSfuUpdate?: (metrics: ConnectionMetrics | null) => void;
-  onSfuState?: (state: "connected" | "reconnecting") => void;
+  onSfuVideoAvailability?: (available: boolean, revision: number) => void;
+  onSfuUpdate?: (metrics: ConnectionMetrics | null, revision: number) => void;
+  onSfuState?: (
+    state: "connected" | "reconnecting",
+    revision: number,
+  ) => void;
   send: (message: ClientMessage) => boolean;
   createSubscriber?: (
     events: {
@@ -309,12 +313,12 @@ export class ViewerSfuRoute {
             void this.queueTransition(() => this.promotePendingSfu(slot));
           }
         } else if (this.active === slot && !slot.failed) {
-          this.events.onSfuUpdate?.(metrics);
+          this.events.onSfuUpdate?.(metrics, slot.revision);
         }
       },
       onState: (state: "connected" | "reconnecting") => {
         if (this.active === slot && !slot.failed) {
-          this.events.onSfuState?.(state);
+          this.events.onSfuState?.(state, slot.revision);
         }
       },
       onDisconnected: () => this.handleFailure(slot),
@@ -393,7 +397,10 @@ export class ViewerSfuRoute {
       const active = this.active;
       this.pending = null;
       this.active = null;
-      this.events.onSfuUpdate?.(null);
+      this.events.onSfuUpdate?.(
+        null,
+        active?.revision ?? pending?.revision ?? this.route.getRevision() ?? 0,
+      );
       if (active?.activated) {
         try {
           active.subscriber.deactivate();
@@ -513,7 +520,7 @@ export class ViewerSfuRoute {
       const assignment = this.route.getMediaAssignment();
       if (assignment?.upstream.kind === "sfu") {
         slot.mediaAvailable = true;
-        this.events.onSfuStream(stream, assignment, false);
+        this.events.onSfuStream(stream, assignment, false, slot.revision);
       }
       return;
     }
@@ -543,7 +550,7 @@ export class ViewerSfuRoute {
     }
     this.recovery = null;
     slot.mediaAvailable = true;
-    this.events.onSfuStream(slot.stream, assignment, true);
+    this.events.onSfuStream(slot.stream, assignment, true, slot.revision);
     if (previous && previous !== slot) {
       try {
         previous.subscriber.deactivate();
@@ -569,7 +576,7 @@ export class ViewerSfuRoute {
     }
     const changed = slot.mediaAvailable !== available;
     slot.mediaAvailable = available;
-    this.events.onSfuVideoAvailability?.(available);
+    this.events.onSfuVideoAvailability?.(available, slot.revision);
     if (!changed || this.paused) return;
   }
 
@@ -595,7 +602,7 @@ export class ViewerSfuRoute {
     }
     const active = this.active;
     this.active = null;
-    this.events.onSfuUpdate?.(null);
+    this.events.onSfuUpdate?.(null, active.revision);
     if (active.activated) {
       try {
         active.subscriber.deactivate();
@@ -617,7 +624,7 @@ export class ViewerSfuRoute {
     }
     if (wasActive) {
       this.active = null;
-      this.events.onSfuUpdate?.(null);
+      this.events.onSfuUpdate?.(null, slot.revision);
     }
 
     const assignment = this.route.getPlannedAssignment();

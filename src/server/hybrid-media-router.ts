@@ -776,12 +776,12 @@ export class HybridMediaRouter {
       this.releaseResources(begun.released);
       if (!begun.accepted || !begun.operation?.current) {
         if (begun.exhausted) {
-          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
-            type: "route-status",
-            revision: controller.snapshot().revision,
-            state: "failed",
-            reason: "route-exhausted",
-          });
+        this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+          type: "route-status",
+          revision: controller.snapshot().revision,
+          state: "failed",
+          reason: "route-exhausted",
+        });
         }
         continue;
       }

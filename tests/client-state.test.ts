@@ -14,6 +14,7 @@ import {
   clearHostRoom,
   getStableClientId,
   isValidRoomId,
+  parseAppRoute,
   mergeAuthenticatedHostRoom,
   readHostRoom,
   readViewerGrant,
@@ -591,8 +592,37 @@ describe("room codes", () => {
     expect(isValidRoomId("0")).toBe(false);
     expect(isValidRoomId("0123")).toBe(false);
     expect(isValidRoomId("123a")).toBe(false);
-    expect(roomRouteFromInput(" 1234 ")).toBe("/r/1234");
+    expect(roomRouteFromInput("1234")).toBe("/r/1234");
+    expect(roomRouteFromInput(" 1234 ")).toBeNull();
+    expect(roomRouteFromInput("１２３４")).toBeNull();
     expect(roomRouteFromInput("0123")).toBeNull();
+  });
+
+  it("classifies routes without normalizing malformed room input", () => {
+    expect(parseAppRoute("/")).toEqual({ kind: "host" });
+    expect(parseAppRoute("/join")).toEqual({ kind: "join" });
+    expect(parseAppRoute("/join/")).toEqual({ kind: "join" });
+    expect(parseAppRoute("/r/1000")).toEqual({
+      kind: "viewer",
+      roomId: "1000",
+    });
+    expect(parseAppRoute("/r/9999/")).toEqual({
+      kind: "viewer",
+      roomId: "9999",
+    });
+    for (const pathname of [
+      "/r",
+      "/r/",
+      "/r/123",
+      "/r/12345",
+      "/r/0000",
+      "/r/abcd",
+      "/r/１２３４",
+      "/r/1234/extra",
+    ]) {
+      expect(parseAppRoute(pathname)).toEqual({ kind: "malformed-room" });
+    }
+    expect(parseAppRoute("/other")).toEqual({ kind: "unknown" });
   });
 });
 
@@ -649,7 +679,7 @@ describe("client signaling recovery policy", () => {
     Object.defineProperty(authenticated, "data", {
       value: JSON.stringify({
         type: "authenticated",
-        protocol: "screener-v8",
+        protocol: "screener-v9",
         role: "viewer",
         peerId: "viewer_12345678",
         roomExpiresAt: null,
@@ -723,7 +753,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v8",
+        protocol: "screener-v9",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -848,7 +878,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v8",
+      protocol: "screener-v9",
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -976,7 +1006,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v8",
+        protocol: "screener-v9",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });

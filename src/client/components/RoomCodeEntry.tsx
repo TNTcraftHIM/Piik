@@ -1,6 +1,5 @@
 import { Hash, LogIn } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { ROOM_CODE_LENGTH } from "../../shared/protocol";
 import { roomRouteFromInput } from "../lib/session";
 
 interface RoomCodeEntryProps {
@@ -18,7 +17,7 @@ export function RoomCodeEntry({ id, autoFocus = false, inline = false }: RoomCod
     event.preventDefault();
     const route = roomRouteFromInput(roomId);
     if (!route) {
-      setError("房间码格式不正确");
+      setError("房间号必须是 1000..9999 的四位数字");
       return;
     }
     window.location.assign(route);
@@ -46,14 +45,12 @@ export function RoomCodeEntry({ id, autoFocus = false, inline = false }: RoomCod
             id={inputId}
             value={roomId}
             inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={ROOM_CODE_LENGTH}
             autoComplete="off"
             autoFocus={autoFocus}
             placeholder={inline ? "房间码" : undefined}
             aria-invalid={error ? "true" : undefined}
             onChange={(event) => {
-              setRoomId(event.target.value.replace(/\D/g, ""));
+              setRoomId(event.target.value);
               setError(null);
             }}
           />
