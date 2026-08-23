@@ -1,0 +1,9 @@
+# Install as /etc/systemd/system/screener.service.d/livekit-readiness.conf only
+# when this Screener instance is configured with the same-host LiveKit owner.
+
+[Unit]
+Wants=livekit.service
+After=livekit.service
+
+[Service]
+ExecStartPre=/bin/sh -c 'attempt=0; until curl -sS --max-time 1 -o /dev/null http://127.0.0.1:7880 2>/dev/null; do attempt=$((attempt + 1)); [ "$attempt" -ge 30 ] && exit 1; sleep 1; done'

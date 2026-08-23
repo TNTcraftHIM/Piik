@@ -1404,7 +1404,7 @@ export class HybridMediaRouter {
         );
       }
       this.requestPump(roomId);
-    }, Math.max(0, operation.deadlineAtMs - this.now()));
+    }, Math.max(0, operation.wakeAtMs - this.now()));
     timer.unref();
     room.deadlineTimer = timer;
   }

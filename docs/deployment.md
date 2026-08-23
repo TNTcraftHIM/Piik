@@ -2,7 +2,7 @@
 
 Last verified against upstream documentation: 2026-08-23.
 
-This page records exact release `352c457` production facts and the current source
+This page records exact release `d3ff9e7` production facts and the current source
 deployment contract. Product direction and pending migrations are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,13 +25,13 @@ tracked coturn example remains `stun-only`; the shared host retains its older
 authenticated-relay daemon configuration and firewall range. The application
 does not pre-advertise TURN credentials to ordinary peers.
 
-Production runs exact `352c4578954c399e56a2578cf3e22f5e0cfc2bad`, release
-`352c457`, from `/opt/screener/releases/352c457`. The immutable runtime archive
+Production runs exact `d3ff9e7b7b4a8fe58db700565971aaeda638d2e9`, release
+`d3ff9e7`, from `/opt/screener/releases/d3ff9e7`. The immutable runtime archive
 SHA-256 is
-`d7feb021821b2af3db5180aed780da67ca582abfb3fe7a8805f6c6d88042bd3c`.
-Immediate rollback is `/opt/screener/releases/6b87732`, with the verified
-pre-cutover SQLite/environment/LiveKit/unit backup at
-`/opt/screener/backups/352c457-precutover-20260823T135843Z`. Local and public
+`a7c3b7b7cf593f3933a1c194a07370131fd76b3d4c30768b5206e84ccf93b63d`.
+Immediate rollback is `/opt/screener/releases/352c457`, with the verified
+pre-cutover environment/LiveKit/unit backup at
+`/opt/screener/backups/d3ff9e7-precutover-20260823T150618Z`. Local and public
 health return 200; Screener, LiveKit, coturn, and nginx are active with
 `NRestarts=0`.
 
@@ -125,6 +125,11 @@ private to nginx and the Screener process uses
 `LIVEKIT_API_URL=http://127.0.0.1:7880` for `RoomService`; WebRTC media reaches
 LiveKit directly on UDP 7882. No unrelated application may create rooms on this
 instance, and its tracked configuration sets `room.auto_create: false`.
+Install
+[`screener-livekit-readiness.conf.example`](../deploy/systemd/screener-livekit-readiness.conf.example)
+as a `screener.service.d` drop-in on this layout. `After=` orders the services,
+while the bounded `ExecStartPre` waits for TCP 7880 readiness; ActiveState alone
+does not prove the LiveKit control listener is accepting connections.
 
 ## Candidate boundary and rollback
 

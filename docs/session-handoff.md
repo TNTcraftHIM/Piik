@@ -32,7 +32,7 @@ Current high-signal boundary:
 - docs/status.md owns the exact source/production/hold state.
 - docs/todo.md is the only executable work ledger and owns ordering.
 - ADR-0005 owns the accepted automatic route model. The Browser route remains
-  implemented and deployed in release `352c457`; real external-network
+  implemented and deployed in release `d3ff9e7`; real external-network
   and SFU/TURN media evidence remains open. Do not rerun broad or
   executable/native test suites unless the current acceptance boundary
   specifically requires them.

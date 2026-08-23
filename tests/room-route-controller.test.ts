@@ -148,6 +148,113 @@ describe("RoomRouteController", () => {
     },
   );
 
+  it("keeps healthy branches while 18 silent Viewers fall back serially", () => {
+    const routes = controller(2, {
+      selectedTurnEnabled: true,
+      sfuEnabled: true,
+    });
+    addViewer(routes, B, 2);
+    routes.hydrateHostPublication(
+      "publication_generation",
+      "publication_resource",
+    );
+    routes.hydrateEdge(B, {
+      kind: "sfu",
+      publicationGeneration: "publication_generation",
+      transport: "sfu",
+      connectionId: "b_sfu",
+      usable: true,
+      physicalActive: true,
+      resource: "b_subscription",
+    });
+    addViewer(routes, C, 0);
+    routes.hydrateEdge(C, peerEdge(HOST, "c_from_host"));
+    const waiting = Array.from(
+      { length: 18 },
+      (_, index) => `silent_${String(index).padStart(2, "0")}_12345678`,
+    );
+    waiting.forEach((peerId) => addViewer(routes, peerId, 0));
+
+    let nowMs = 0;
+    waiting.forEach((peerId, index) => {
+      const directOperation = routes.reconcile(nowMs).operation!;
+      expect(directOperation.childPeerId).toBe(peerId);
+      beginCandidate(routes, {
+        nowMs: nowMs + 1,
+        connectionId: `${peerId}_silent_direct`,
+        reservation: { kind: "direct" },
+      });
+      routes.operationExpired(directOperation.wakeAtMs);
+
+      const selectedOperation = routes.snapshot().operation!;
+      expect(
+        selectedOperation.candidates[selectedOperation.cursor]!.tuple,
+      ).toMatchObject({ kind: "peer", transport: "selected-turn" });
+      beginCandidate(routes, {
+        nowMs: selectedOperation.wakeAtMs - 1,
+        connectionId: `${peerId}_silent_turn`,
+        reservation: {
+          kind: "selected-turn",
+          edge: `${peerId}_turn_resource`,
+        },
+      });
+      const selectedExpired = routes.operationExpired(
+        selectedOperation.wakeAtMs,
+      );
+      expect(selectedExpired.released).toEqual([
+        `${peerId}_turn_resource`,
+      ]);
+
+      const sfuOperation = routes.snapshot().operation!;
+      expect(sfuOperation.candidates[sfuOperation.cursor]!.tuple).toEqual({
+        kind: "sfu",
+        publication: "reuse",
+        ingress: "existing",
+      });
+      const prepared = beginCandidate(routes, {
+        nowMs: selectedOperation.wakeAtMs + 1,
+        connectionId: `${peerId}_sfu`,
+        reservation: {
+          kind: "sfu-reuse",
+          edge: `${peerId}_subscription`,
+        },
+      }).operation!;
+      expect(
+        routes.candidateReady(
+          {
+            childPeerId: peerId,
+            childSessionId: `${peerId}_session`,
+            revision: prepared.current!.revision,
+            connectionId: `${peerId}_sfu`,
+          },
+          selectedOperation.wakeAtMs + 2,
+        ).accepted,
+      ).toBe(true);
+      nowMs = selectedOperation.wakeAtMs + 3;
+
+      expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+        kind: "sfu",
+        connectionId: "b_sfu",
+      });
+      expect(routes.snapshot().upstreamByViewer.get(C)).toMatchObject({
+        kind: "peer",
+        parentPeerId: HOST,
+        connectionId: "c_from_host",
+      });
+      expect(routes.snapshot().upstreamByViewer.get(peerId)).toMatchObject({
+        kind: "sfu",
+        usable: true,
+      });
+      expect(routes.snapshot().upstreamByViewer.size).toBe(index + 3);
+    });
+
+    expect(routes.snapshot().upstreamByViewer.size).toBe(20);
+    expect(routes.snapshot().hostPublication).toMatchObject({
+      generation: "publication_generation",
+      usable: true,
+    });
+  });
+
   it.each([1, 2, 3] as const)(
     "builds a deterministic acyclic route without a depth cap at C=%i",
     (capacity) => {
@@ -331,6 +438,171 @@ describe("RoomRouteController", () => {
       "turn_edge",
       "overlap_slot",
     ]);
+  });
+
+  it("reserves one derived deadline stage for direct, selected TURN, and SFU", () => {
+    const routes = controller(2, {
+      selectedTurnEnabled: true,
+      sfuEnabled: true,
+    });
+    addViewer(routes, B, 2);
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    addViewer(routes, A, 0);
+
+    const operation = routes.reconcile(0).operation!;
+    expect(operation.deadlineAtMs).toBe(10_000);
+    expect(operation.wakeAtMs).toBe(Math.floor(10_000 / 3));
+    expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual(
+      expect.arrayContaining([
+        { kind: "peer", parentPeerId: B, transport: "direct" },
+        { kind: "peer", parentPeerId: B, transport: "selected-turn" },
+        { kind: "sfu", publication: "create", ingress: "direct" },
+      ]),
+    );
+
+    beginCandidate(routes, {
+      nowMs: 1,
+      connectionId: "silent_direct",
+      reservation: { kind: "direct" },
+    });
+    const directExpired = routes.operationExpired(operation.wakeAtMs);
+    expect(directExpired).toMatchObject({ accepted: true });
+    expect(directExpired.exhausted).toBeUndefined();
+    expect(routes.snapshot().operation).toMatchObject({
+      deadlineAtMs: 10_000,
+      wakeAtMs: Math.floor((10_000 * 2) / 3),
+      current: undefined,
+    });
+    expect(
+      routes.snapshot().operation!.candidates[
+        routes.snapshot().operation!.cursor
+      ]!.tuple,
+    ).toMatchObject({ kind: "peer", transport: "selected-turn" });
+
+    beginCandidate(routes, {
+      nowMs: operation.wakeAtMs + 1,
+      connectionId: "silent_selected_turn",
+      reservation: { kind: "selected-turn", edge: "turn_edge" },
+    });
+    const selectedExpired = routes.operationExpired(
+      Math.floor((10_000 * 2) / 3),
+    );
+    expect(selectedExpired).toMatchObject({ accepted: true });
+    expect(selectedExpired.released).toEqual(["turn_edge"]);
+    expect(
+      routes.snapshot().operation!.candidates[
+        routes.snapshot().operation!.cursor
+      ]!.tuple,
+    ).toMatchObject({ kind: "sfu" });
+    expect(routes.snapshot().operation!.wakeAtMs).toBe(10_000);
+
+    const prepared = beginCandidate(routes, {
+      nowMs: 7_000,
+      connectionId: "sfu_subscription",
+      publicationGeneration: "publication_generation",
+      publicationConnectionId: "publication_connection",
+      reservation: {
+        kind: "sfu-create",
+        edge: "sfu_edge",
+        publication: "sfu_publication",
+      },
+    }).operation!;
+    expect(
+      routes.candidateReady(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: prepared.current!.revision,
+          connectionId: "sfu_subscription",
+        },
+        9_000,
+      ).accepted,
+    ).toBe(true);
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      kind: "sfu",
+      usable: true,
+    });
+  });
+
+  it("reaches a healthy SFU reuse stage after silent peer transports", () => {
+    const routes = controller(2, {
+      selectedTurnEnabled: true,
+      sfuEnabled: true,
+    });
+    addViewer(routes, B, 2);
+    routes.hydrateHostPublication(
+      "publication_generation",
+      "publication_resource",
+    );
+    routes.hydrateEdge(B, {
+      kind: "sfu",
+      publicationGeneration: "publication_generation",
+      transport: "sfu",
+      connectionId: "b_sfu",
+      usable: true,
+      physicalActive: true,
+      resource: "b_subscription",
+    });
+    addViewer(routes, C, 0);
+    routes.hydrateEdge(C, peerEdge(HOST, "c_from_host"));
+    addViewer(routes, A, 0);
+
+    const operation = routes.reconcile(0).operation!;
+    expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual(
+      expect.arrayContaining([
+        { kind: "peer", parentPeerId: B, transport: "direct" },
+        { kind: "peer", parentPeerId: B, transport: "selected-turn" },
+        { kind: "sfu", publication: "reuse", ingress: "existing" },
+      ]),
+    );
+
+    beginCandidate(routes, {
+      nowMs: 1,
+      connectionId: "silent_direct",
+      reservation: { kind: "direct" },
+    });
+    routes.operationExpired(operation.wakeAtMs);
+    beginCandidate(routes, {
+      nowMs: operation.wakeAtMs + 1,
+      connectionId: "silent_selected",
+      reservation: { kind: "selected-turn", edge: "turn_edge" },
+    });
+    routes.operationExpired(Math.floor((10_000 * 2) / 3));
+
+    expect(
+      routes.snapshot().operation!.candidates[
+        routes.snapshot().operation!.cursor
+      ]!.tuple,
+    ).toEqual({
+      kind: "sfu",
+      publication: "reuse",
+      ingress: "existing",
+    });
+    const prepared = beginCandidate(routes, {
+      nowMs: 7_000,
+      connectionId: "a_sfu_reuse",
+      reservation: { kind: "sfu-reuse", edge: "a_subscription" },
+    }).operation!;
+    expect(
+      routes.candidateReady(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: prepared.current!.revision,
+          connectionId: "a_sfu_reuse",
+        },
+        8_000,
+      ).accepted,
+    ).toBe(true);
+    expect(routes.snapshot().hostPublication).toMatchObject({
+      generation: "publication_generation",
+      usable: true,
+    });
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      kind: "sfu",
+      publicationGeneration: "publication_generation",
+      usable: true,
+    });
   });
 
   it("retains another exact failed edge while one child operation is busy", () => {

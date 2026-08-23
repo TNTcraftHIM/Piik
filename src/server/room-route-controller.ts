@@ -129,6 +129,7 @@ export interface OperationSnapshot {
   candidates: readonly CandidatePlan[];
   cursor: number;
   deadlineAtMs: number;
+  wakeAtMs: number;
   current?: { tuple: CandidateTuple; revision: number; connectionId: string };
 }
 
@@ -677,6 +678,9 @@ export class RoomRouteController<Resource = unknown> {
       this.blockAndClear(operation, !factsChanged, released);
       return { ...result, exhausted: !factsChanged, expired: true };
     }
+    if (this.advanceExpiredCandidateStage(operation, nowMs, released)) {
+      result.expired = true;
+    }
     if (this.participants.get(operation.childPeerId)?.sessionId !== operation.childSessionId) {
       if (operation.current) released.push(...reservationResources(operation.current.reservation));
       if (operation.current) this.advanceActiveRevision(operation);
@@ -1084,8 +1088,70 @@ export class RoomRouteController<Resource = unknown> {
       baseRevision: operation.baseRevision, factVersion: operation.builtAtFactVersion,
       candidates: operation.candidates.map(cloneCandidatePlan),
       cursor: operation.cursor, deadlineAtMs: operation.deadlineAtMs,
+      wakeAtMs: this.operationWakeAt(operation),
       current: operation.current ? { tuple: { ...operation.current.tuple }, revision: operation.current.revision,
         connectionId: operation.current.connectionId } : undefined };
+  }
+
+  private advanceExpiredCandidateStage(
+    operation: ChildOperation<Resource>,
+    nowMs: number,
+    released: Resource[],
+  ): boolean {
+    const plan = operation.current
+      ? { tuple: operation.current.tuple }
+      : operation.candidates[operation.cursor];
+    if (!plan) {
+      return false;
+    }
+    const stage = candidateStage(plan.tuple);
+    const stageDeadlineAtMs = this.stageDeadlineAt(operation, stage);
+    if (
+      stageDeadlineAtMs >= operation.deadlineAtMs ||
+      nowMs < stageDeadlineAtMs
+    ) {
+      return false;
+    }
+    if (operation.current) {
+      released.push(...reservationResources(operation.current.reservation));
+      this.advanceActiveRevision(operation);
+      operation.current = undefined;
+      operation.cursor += 1;
+    }
+    while (
+      operation.cursor < operation.candidates.length &&
+      candidateStage(operation.candidates[operation.cursor]!.tuple) === stage
+    ) {
+      operation.cursor += 1;
+    }
+    return true;
+  }
+
+  private operationWakeAt(operation: ChildOperation<Resource>): number {
+    const tuple =
+      operation.current?.tuple ?? operation.candidates[operation.cursor]?.tuple;
+    return tuple
+      ? this.stageDeadlineAt(operation, candidateStage(tuple))
+      : operation.deadlineAtMs;
+  }
+
+  private stageDeadlineAt(
+    operation: ChildOperation<Resource>,
+    stage: CandidateStage,
+  ): number {
+    const stages = candidateStages(operation.candidates);
+    const index = stages.indexOf(stage);
+    if (index === -1 || index === stages.length - 1) {
+      return operation.deadlineAtMs;
+    }
+    const startedAtMs =
+      operation.deadlineAtMs - this.options.operationTimeoutMs;
+    return (
+      startedAtMs +
+      Math.floor(
+        (this.options.operationTimeoutMs * (index + 1)) / stages.length,
+      )
+    );
   }
 
   private guardMatches(guard: CandidateGuard, operation: ChildOperation<Resource>, attempt: Attempt<Resource>): boolean {
@@ -1297,6 +1363,24 @@ function compareParticipant(left: Participant, right: Participant): number {
 
 function tupleKey(tuple: CandidateTuple): string {
   return tuple.kind === "peer" ? `peer:${tuple.parentPeerId}:${tuple.transport}` : `sfu:${tuple.publication}:${tuple.ingress}`;
+}
+
+type CandidateStage = "direct" | "selected-turn" | "sfu";
+
+function candidateStage(tuple: CandidateTuple): CandidateStage {
+  if (tuple.kind === "sfu") {
+    return "sfu";
+  }
+  return tuple.transport;
+}
+
+function candidateStages(candidates: readonly CandidatePlan[]): CandidateStage[] {
+  const stages = new Set(
+    candidates.map((candidate) => candidateStage(candidate.tuple)),
+  );
+  return (["direct", "selected-turn", "sfu"] as const).filter((stage) =>
+    stages.has(stage),
+  );
 }
 
 function edgeTupleKey<Resource>(edge: CommittedEdge<Resource>): string {

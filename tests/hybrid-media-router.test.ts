@@ -97,6 +97,7 @@ function harness(
   endpointMediaCopyCapacity: 1 | 2 | 3,
   withSfu = false,
   withSelectedTurn = false,
+  prepareTimeoutMs?: number,
 ) {
   const store = createStore();
   const sent = new Map<string, ServerMessage[]>();
@@ -117,6 +118,7 @@ function harness(
             url: "wss://sfu.example.test",
             admission,
             roomControl,
+            ...(prepareTimeoutMs ? { prepareTimeoutMs } : {}),
             tokenIssuer: {
               async issueToken({ peerId }) {
                 return `token-${peerId}`;
@@ -158,6 +160,43 @@ function harness(
 }
 
 describe("HybridMediaRouter v7 runtime", () => {
+  it("wakes at the derived direct boundary and prepares SFU automatically", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { store, sent, router } = harness(2, true, false, 300);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const viewer = connectViewer(store, room, "staged-deadline");
+      complete(router, viewer);
+
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      expect(
+        sent
+          .get(viewer.sessionId)
+          ?.some(
+            (message) =>
+              message.type === "error" &&
+              message.message === "No usable media route is available",
+          ),
+      ).toBe(false);
+    } finally {
+      await router.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("orders exact prepare, commits only child proof, and rolls back above P", async () => {
     const { store, sent, router } = harness(2);
     const room = await store.createRoom();
