@@ -294,25 +294,14 @@ func (peer *peer) snapshot(now time.Time) PeerDiagnostics {
 func selectedRoute(report webrtc.StatsReport, pair webrtc.ICECandidatePairStats) string {
 	local, localOK := report[pair.LocalCandidateID].(webrtc.ICECandidateStats)
 	remote, remoteOK := report[pair.RemoteCandidateID].(webrtc.ICECandidateStats)
-	if localOK && local.CandidateType == webrtc.ICECandidateTypeRelay {
-		return "turn-" + relayTransport(local)
-	}
-	if remoteOK && remote.CandidateType == webrtc.ICECandidateTypeRelay {
-		return "turn-unknown"
+	if localOK && local.CandidateType == webrtc.ICECandidateTypeRelay ||
+		remoteOK && remote.CandidateType == webrtc.ICECandidateTypeRelay {
+		return "unknown"
 	}
 	if !localOK || !remoteOK {
 		return "unknown"
 	}
 	return "direct-" + candidateProtocol(local)
-}
-
-func relayTransport(candidate webrtc.ICECandidateStats) string {
-	switch strings.ToLower(candidate.RelayProtocol) {
-	case "udp", "tcp", "tls":
-		return strings.ToLower(candidate.RelayProtocol)
-	default:
-		return "unknown"
-	}
 }
 
 func candidateProtocol(candidate webrtc.ICECandidateStats) string {

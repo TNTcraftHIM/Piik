@@ -2,12 +2,11 @@ import { MAX_MEDIA_ROUTE_REVISION } from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 
 export type CandidateTuple =
-  | { kind: "peer"; parentPeerId: string; transport: "direct" | "selected-turn" }
-  | { kind: "sfu"; publication: "reuse" | "create" | "replace"; ingress: "existing" | "direct" | "selected-turn" };
+  | { kind: "peer"; parentPeerId: string; transport: "direct" }
+  | { kind: "sfu"; publication: "reuse" | "create" | "replace" };
 
 export type CandidateReservation<Resource> =
   | { kind: "direct"; overlap?: Resource }
-  | { kind: "selected-turn"; edge: Resource; overlap?: Resource }
   | { kind: "sfu-reuse"; edge: Resource; overlap?: Resource }
   | { kind: "sfu-create"; edge: Resource; publication: Resource; overlap?: Resource };
 
@@ -18,7 +17,7 @@ export type EndpointRetirement =
     childSessionId: string;
     parentPeerId: string;
     parentSessionId: string;
-    transport: "direct" | "selected-turn";
+    transport: "direct";
     connectionId: string;
   }
   | {
@@ -40,12 +39,10 @@ export interface CandidatePlan {
 
 export type CommittedEdge<Resource> =
   | { kind: "peer"; childSessionId: string; parentPeerId: string; parentSessionId: string; transport: "direct"; connectionId: string; usable: boolean; physicalActive: boolean }
-  | { kind: "peer"; childSessionId: string; parentPeerId: string; parentSessionId: string; transport: "selected-turn"; connectionId: string; usable: boolean; physicalActive: boolean; resource: Resource }
   | { kind: "sfu"; childSessionId: string; publicationGeneration: string; transport: "sfu"; connectionId: string; usable: boolean; physicalActive: boolean; resource: Resource };
 
 export type CommittedEdgeSeed<Resource> =
   | Omit<Extract<CommittedEdge<Resource>, { transport: "direct" }>, "childSessionId" | "parentSessionId">
-  | Omit<Extract<CommittedEdge<Resource>, { transport: "selected-turn" }>, "childSessionId" | "parentSessionId">
   | Omit<Extract<CommittedEdge<Resource>, { transport: "sfu" }>, "childSessionId">;
 
 export interface ParticipantInput {
@@ -83,8 +80,6 @@ export interface ControllerOptions {
   hostPeerId: string;
   endpointMediaCopyCapacity: number;
   operationTimeoutMs: number;
-  selectedTurnEnabled?: boolean;
-  hostSfuSelectedTurnEnabled?: boolean;
   sfuEnabled?: boolean;
 }
 
@@ -166,11 +161,9 @@ interface HostPublication<Resource> {
   generation: string;
   hostSessionId: string;
   connectionId: string;
-  ingress: "direct" | "selected-turn";
   usable: boolean;
   physicalActive: boolean;
   resource: Resource;
-  failedIngress?: { ingress: "direct" | "selected-turn"; factVersion: number };
 }
 
 export class RoomRouteController<Resource = unknown> {
@@ -306,7 +299,6 @@ export class RoomRouteController<Resource = unknown> {
     generation: string,
     resource: Resource,
     connectionId = `publication:${generation}`,
-    ingress: "direct" | "selected-turn" = "direct",
   ): void {
     if (this.operation) throw new Error("Cannot hydrate while an operation is active");
     const hostSessionId = this.participants.get(this.options.hostPeerId)?.sessionId;
@@ -315,7 +307,6 @@ export class RoomRouteController<Resource = unknown> {
       generation,
       hostSessionId,
       connectionId,
-      ingress,
       usable: true,
       physicalActive: true,
       resource,
@@ -358,10 +349,6 @@ export class RoomRouteController<Resource = unknown> {
     if (publication.usable) {
       publication.usable = false;
       this.touchFacts();
-      publication.failedIngress = {
-        ingress: publication.ingress,
-        factVersion: this.factVersion,
-      };
     }
     return true;
   }
@@ -580,7 +567,6 @@ export class RoomRouteController<Resource = unknown> {
           transport: edge.transport,
         };
       }
-      if (edge.transport === "selected-turn") released.push(edge.resource);
       this.upstreamByViewer.delete(retirement.childPeerId);
     } else {
       const publication = this.hostPublication;
@@ -711,7 +697,8 @@ export class RoomRouteController<Resource = unknown> {
       if (operation.cursor < operation.candidates.length) return result;
       const factsChanged = operation.builtAtFactVersion !== this.factVersion;
       this.blockAndClear(operation, !factsChanged, released);
-      result.exhausted = !factsChanged;
+      result.exhausted =
+        !factsChanged && !this.bootstrapForBlockedDemand();
     }
     return result;
   }
@@ -727,15 +714,10 @@ export class RoomRouteController<Resource = unknown> {
     if (attempt.tuple.kind === "peer") {
       const parentSessionId = this.participants.get(attempt.tuple.parentPeerId)?.sessionId;
       if (!parentSessionId) throw new Error("Candidate parent session is unavailable");
-      this.upstreamByViewer.set(operation.childPeerId, attempt.tuple.transport === "direct" ? {
+      this.upstreamByViewer.set(operation.childPeerId, {
         kind: "peer", childSessionId: operation.childSessionId,
         parentPeerId: attempt.tuple.parentPeerId, parentSessionId, transport: "direct",
         connectionId: attempt.connectionId, usable: true, physicalActive: true,
-      } : {
-        kind: "peer", childSessionId: operation.childSessionId,
-        parentPeerId: attempt.tuple.parentPeerId, parentSessionId, transport: "selected-turn",
-        connectionId: attempt.connectionId, usable: true, physicalActive: true,
-        resource: (attempt.reservation as Extract<CandidateReservation<Resource>, { kind: "selected-turn" }>).edge,
       });
     } else {
       const generation = attempt.publicationGeneration!;
@@ -749,7 +731,6 @@ export class RoomRouteController<Resource = unknown> {
           generation,
           hostSessionId,
           connectionId: attempt.publicationConnectionId,
-          ingress: attempt.tuple.ingress === "selected-turn" ? "selected-turn" : "direct",
           usable: true,
           physicalActive: true,
           resource: reservation.publication,
@@ -787,9 +768,6 @@ export class RoomRouteController<Resource = unknown> {
     const failedKey = child.failedTuple?.factVersion === this.factVersion
       ? child.failedTuple.key
       : undefined;
-    const failedIngress = this.hostPublication?.failedIngress?.factVersion === this.factVersion
-      ? this.hostPublication.failedIngress.ingress
-      : undefined;
     const descendants = this.descendantsOf(childPeerId);
     const parents = [...this.participants.values()]
       .filter((parent) => parent.sessionId && !parent.departureConfirmed && parent.peerId !== childPeerId &&
@@ -800,25 +778,16 @@ export class RoomRouteController<Resource = unknown> {
     const candidates: CandidateTuple[] = [];
     if (!sfuOnly) {
       for (const parent of parents) candidates.push({ kind: "peer", parentPeerId: parent.peerId, transport: "direct" });
-      if (this.options.selectedTurnEnabled) {
-        for (const parent of parents) if (parent.role !== "host") {
-          candidates.push({ kind: "peer", parentPeerId: parent.peerId, transport: "selected-turn" });
-        }
-      }
     }
     if (this.options.sfuEnabled) {
       if (this.hostPublication?.usable && this.hostPublication.physicalActive) {
-        candidates.push({ kind: "sfu", publication: "reuse", ingress: "existing" });
+        candidates.push({ kind: "sfu", publication: "reuse" });
       } else if (this.hostPublication || this.publicationFits(childPeerId, false)) {
         const publication = this.hostPublication ? "replace" : "create";
-        candidates.push({ kind: "sfu", publication, ingress: "direct" });
-        if (this.options.hostSfuSelectedTurnEnabled) {
-          candidates.push({ kind: "sfu", publication, ingress: "selected-turn" });
-        }
+        candidates.push({ kind: "sfu", publication });
       }
     }
     return candidates.filter((candidate, index, all) => tupleKey(candidate) !== failedKey &&
-      !(candidate.kind === "sfu" && candidate.publication !== "reuse" && candidate.ingress === failedIngress) &&
       all.findIndex((other) => tupleKey(other) === tupleKey(candidate)) === index)
       .map((candidate) => this.planCandidate(childPeerId, candidate))
       .filter((candidate): candidate is CandidatePlan => candidate !== null &&
@@ -971,7 +940,7 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private assertReservation(tuple: CandidateTuple, reservation: CandidateReservation<Resource>, overlap: boolean): void {
-    const expected = tuple.kind === "peer" ? tuple.transport === "direct" ? "direct" : "selected-turn" :
+    const expected = tuple.kind === "peer" ? "direct" :
       tuple.publication === "reuse" ? "sfu-reuse" : "sfu-create";
     if (reservation.kind !== expected) throw new Error("Candidate reservation kind does not match tuple");
     if (overlap && !("overlap" in reservation && reservation.overlap !== undefined)) {
@@ -1036,7 +1005,7 @@ export class RoomRouteController<Resource = unknown> {
   private retireInvalidOperationEdge(childPeerId: string, released: Resource[]): boolean {
     const edge = this.upstreamByViewer.get(childPeerId);
     if (!edge || !this.edgeRequiresMove(childPeerId, edge)) return false;
-    if (edge.transport !== "direct" && edge.physicalActive) released.push(edge.resource);
+    if (edge.kind === "sfu" && edge.physicalActive) released.push(edge.resource);
     edge.physicalActive = false;
     edge.usable = false;
     if (edge.kind === "sfu" && !this.hasSfuSubscribers() && this.hostPublication) {
@@ -1139,7 +1108,7 @@ export class RoomRouteController<Resource = unknown> {
     operation: ChildOperation<Resource>,
     stage: CandidateStage,
   ): number {
-    const stages = candidateStages(operation.candidates);
+    const stages = this.operationStages(operation);
     const index = stages.indexOf(stage);
     if (index === -1 || index === stages.length - 1) {
       return operation.deadlineAtMs;
@@ -1152,6 +1121,40 @@ export class RoomRouteController<Resource = unknown> {
         (this.options.operationTimeoutMs * (index + 1)) / stages.length,
       )
     );
+  }
+
+  private operationStages(
+    operation: ChildOperation<Resource>,
+  ): CandidateStage[] {
+    const stages = candidateStages(operation.candidates);
+    if (
+      !stages.includes("sfu") &&
+      this.bootstrapCandidateAvailable()
+    ) {
+      stages.push("sfu");
+    }
+    return stages;
+  }
+
+  private bootstrapCandidateAvailable(): boolean {
+    if (
+      !this.options.sfuEnabled ||
+      this.hostPublication ||
+      this.hostHasPublicationSlot()
+    ) {
+      return false;
+    }
+    return this.childrenOf(this.options.hostPeerId).some((id) => {
+      const participant = this.participants.get(id);
+      const edge = this.upstreamByViewer.get(id);
+      return Boolean(
+        participant?.sessionId &&
+          edge?.kind === "peer" &&
+          edge.transport === "direct" &&
+          edge.usable &&
+          edge.physicalActive,
+      );
+    });
   }
 
   private guardMatches(guard: CandidateGuard, operation: ChildOperation<Resource>, attempt: Attempt<Resource>): boolean {
@@ -1257,7 +1260,7 @@ export class RoomRouteController<Resource = unknown> {
   private committedResources(): Resource[] {
     const resources: Resource[] = [];
     for (const edge of this.upstreamByViewer.values()) {
-      if (edge.transport !== "direct" && edge.physicalActive) resources.push(edge.resource);
+      if (edge.kind === "sfu" && edge.physicalActive) resources.push(edge.resource);
     }
     if (this.hostPublication?.physicalActive) resources.push(this.hostPublication.resource);
     return resources;
@@ -1268,38 +1271,18 @@ export class RoomRouteController<Resource = unknown> {
     sessionId: string,
   ): { released: Resource[]; retired: boolean } {
     const released = new Set<Resource>();
-    let retired = false;
     const ownEdge = this.upstreamByViewer.get(peerId);
-    if (ownEdge?.kind === "peer" && ownEdge.transport === "selected-turn") {
-      if (ownEdge.physicalActive) released.add(ownEdge.resource);
-      ownEdge.physicalActive = false;
-      ownEdge.usable = false;
-      retired = true;
-    } else if (ownEdge) {
+    if (ownEdge) {
       ownEdge.childSessionId = sessionId;
     }
     for (const edge of this.upstreamByViewer.values()) {
       if (edge.kind !== "peer" || edge.parentPeerId !== peerId) continue;
-      if (edge.transport === "selected-turn") {
-        if (edge.physicalActive) released.add(edge.resource);
-        edge.physicalActive = false;
-        edge.usable = false;
-        retired = true;
-      } else {
-        edge.parentSessionId = sessionId;
-      }
+      edge.parentSessionId = sessionId;
     }
     if (peerId === this.options.hostPeerId && this.hostPublication) {
-      if (this.hostPublication.ingress === "selected-turn") {
-        if (this.hostPublication.physicalActive) released.add(this.hostPublication.resource);
-        this.hostPublication.physicalActive = false;
-        this.hostPublication.usable = false;
-        retired = true;
-      } else {
-        this.hostPublication.hostSessionId = sessionId;
-      }
+      this.hostPublication.hostSessionId = sessionId;
     }
-    return { released: [...released], retired };
+    return { released: [...released], retired: false };
   }
 
   private removePublicationGeneration(generation: string): Resource[] {
@@ -1362,29 +1345,29 @@ function compareParticipant(left: Participant, right: Participant): number {
 }
 
 function tupleKey(tuple: CandidateTuple): string {
-  return tuple.kind === "peer" ? `peer:${tuple.parentPeerId}:${tuple.transport}` : `sfu:${tuple.publication}:${tuple.ingress}`;
+  return tuple.kind === "peer" ? `peer:${tuple.parentPeerId}` : `sfu:${tuple.publication}`;
 }
 
-type CandidateStage = "direct" | "selected-turn" | "sfu";
+type CandidateStage = "direct" | "sfu";
 
 function candidateStage(tuple: CandidateTuple): CandidateStage {
   if (tuple.kind === "sfu") {
     return "sfu";
   }
-  return tuple.transport;
+  return "direct";
 }
 
 function candidateStages(candidates: readonly CandidatePlan[]): CandidateStage[] {
   const stages = new Set(
     candidates.map((candidate) => candidateStage(candidate.tuple)),
   );
-  return (["direct", "selected-turn", "sfu"] as const).filter((stage) =>
+  return (["direct", "sfu"] as const).filter((stage) =>
     stages.has(stage),
   );
 }
 
 function edgeTupleKey<Resource>(edge: CommittedEdge<Resource>): string {
-  return edge.kind === "peer" ? `peer:${edge.parentPeerId}:${edge.transport}` : "sfu:reuse:existing";
+  return edge.kind === "peer" ? `peer:${edge.parentPeerId}` : "sfu:reuse";
 }
 
 function cloneCandidatePlan(plan: CandidatePlan): CandidatePlan {

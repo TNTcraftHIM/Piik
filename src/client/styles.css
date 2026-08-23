@@ -989,7 +989,6 @@ h3 {
 }
 
 .status-badge,
-.path-badge,
 .diagnostic-badge {
   display: inline-flex;
   min-height: 24px;
@@ -1011,15 +1010,13 @@ h3 {
   background: currentColor;
 }
 
-.status-good,
-.path-direct {
+.status-good {
   border-color: #2d6844;
   color: #78e6a4;
   background: var(--green-soft);
 }
 
 .status-warning,
-.path-relay,
 .diagnostic-badge {
   border-color: #6a5224;
   color: #f3c86f;
@@ -1032,8 +1029,7 @@ h3 {
   background: var(--red-soft);
 }
 
-.status-neutral,
-.path-unknown {
+.status-neutral {
   color: var(--muted);
   background: var(--surface-raised);
 }

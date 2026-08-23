@@ -19,7 +19,7 @@ const F = "viewer_f_12345678";
 
 function controller(
   capacity: 1 | 2 | 3 = 2,
-  options: { selectedTurnEnabled?: boolean; sfuEnabled?: boolean } = {},
+  options: { sfuEnabled?: boolean } = {},
 ) {
   const routes = new RoomRouteController<string>({
     hostPeerId: HOST,
@@ -149,10 +149,7 @@ describe("RoomRouteController", () => {
   );
 
   it("keeps healthy branches while 18 silent Viewers fall back serially", () => {
-    const routes = controller(2, {
-      selectedTurnEnabled: true,
-      sfuEnabled: true,
-    });
+    const routes = controller(2, { sfuEnabled: true });
     addViewer(routes, B, 2);
     routes.hydrateHostPublication(
       "publication_generation",
@@ -186,33 +183,13 @@ describe("RoomRouteController", () => {
       });
       routes.operationExpired(directOperation.wakeAtMs);
 
-      const selectedOperation = routes.snapshot().operation!;
-      expect(
-        selectedOperation.candidates[selectedOperation.cursor]!.tuple,
-      ).toMatchObject({ kind: "peer", transport: "selected-turn" });
-      beginCandidate(routes, {
-        nowMs: selectedOperation.wakeAtMs - 1,
-        connectionId: `${peerId}_silent_turn`,
-        reservation: {
-          kind: "selected-turn",
-          edge: `${peerId}_turn_resource`,
-        },
-      });
-      const selectedExpired = routes.operationExpired(
-        selectedOperation.wakeAtMs,
-      );
-      expect(selectedExpired.released).toEqual([
-        `${peerId}_turn_resource`,
-      ]);
-
       const sfuOperation = routes.snapshot().operation!;
       expect(sfuOperation.candidates[sfuOperation.cursor]!.tuple).toEqual({
         kind: "sfu",
         publication: "reuse",
-        ingress: "existing",
       });
       const prepared = beginCandidate(routes, {
-        nowMs: selectedOperation.wakeAtMs + 1,
+        nowMs: directOperation.wakeAtMs + 1,
         connectionId: `${peerId}_sfu`,
         reservation: {
           kind: "sfu-reuse",
@@ -227,10 +204,10 @@ describe("RoomRouteController", () => {
             revision: prepared.current!.revision,
             connectionId: `${peerId}_sfu`,
           },
-          selectedOperation.wakeAtMs + 2,
+          directOperation.wakeAtMs + 2,
         ).accepted,
       ).toBe(true);
-      nowMs = selectedOperation.wakeAtMs + 3;
+      nowMs = directOperation.wakeAtMs + 3;
 
       expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
         kind: "sfu",
@@ -333,10 +310,7 @@ describe("RoomRouteController", () => {
   });
 
   it("advances one candidate cursor without resetting the operation deadline", () => {
-    const routes = controller(2, {
-      selectedTurnEnabled: true,
-      sfuEnabled: true,
-    });
+    const routes = controller(2, { sfuEnabled: true });
     addViewer(routes, A, 2);
     const operation = routes.reconcile(1_000).operation!;
     const deadline = operation.deadlineAtMs;
@@ -394,69 +368,21 @@ describe("RoomRouteController", () => {
     expect(routes.reconcile(deadline + 1).operation).toBeUndefined();
     routes.touchExternalFacts();
     expect(routes.reconcile(deadline + 2).operation?.childPeerId).toBe(A);
-
-    const overlap = controller(2, { selectedTurnEnabled: true });
-    addViewer(overlap, A, 1);
-    addViewer(overlap, B, 0);
-    overlap.hydrateEdge(A, peerEdge(HOST, "a_parent"));
-    overlap.hydrateEdge(B, peerEdge(A, "b_direct"));
-    expect(overlap.invalidateEdge({
-      childPeerId: B,
-      childSessionId: `${B}_session`,
-      parentSessionId: `${A}_session`,
-      routeRevision: 0,
-      connectionId: "b_direct",
-    })).toBe(true);
-    overlap.reconcile(0);
-    const hostAttempt = beginCandidate(overlap, {
-      nowMs: 1,
-      connectionId: "b_host",
-      reservation: { kind: "direct" },
-    }).operation!;
-    overlap.candidateFailed({
-      childPeerId: B,
-      childSessionId: `${B}_session`,
-      revision: hostAttempt.current!.revision,
-      connectionId: "b_host",
-    }, 2);
-    expect(() => beginCandidate(overlap, {
-      nowMs: 3,
-      connectionId: "b_turn",
-      reservation: { kind: "selected-turn", edge: "turn_edge" },
-    })).toThrow("endpoint overlap reservation");
-    beginCandidate(overlap, {
-      nowMs: 3,
-      connectionId: "b_turn",
-      reservation: {
-        kind: "selected-turn",
-        edge: "turn_edge",
-        overlap: "overlap_slot",
-      },
-    });
-    overlap.setEffectiveCapacity(A, `${A}_session`, 0);
-    expect(overlap.reconcile(4).released).toEqual([
-      "turn_edge",
-      "overlap_slot",
-    ]);
   });
 
-  it("reserves one derived deadline stage for direct, selected TURN, and SFU", () => {
-    const routes = controller(2, {
-      selectedTurnEnabled: true,
-      sfuEnabled: true,
-    });
+  it("reserves one derived deadline stage for direct and SFU", () => {
+    const routes = controller(2, { sfuEnabled: true });
     addViewer(routes, B, 2);
     routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
     addViewer(routes, A, 0);
 
     const operation = routes.reconcile(0).operation!;
     expect(operation.deadlineAtMs).toBe(10_000);
-    expect(operation.wakeAtMs).toBe(Math.floor(10_000 / 3));
+    expect(operation.wakeAtMs).toBe(5_000);
     expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual(
       expect.arrayContaining([
         { kind: "peer", parentPeerId: B, transport: "direct" },
-        { kind: "peer", parentPeerId: B, transport: "selected-turn" },
-        { kind: "sfu", publication: "create", ingress: "direct" },
+        { kind: "sfu", publication: "create" },
       ]),
     );
 
@@ -470,31 +396,14 @@ describe("RoomRouteController", () => {
     expect(directExpired.exhausted).toBeUndefined();
     expect(routes.snapshot().operation).toMatchObject({
       deadlineAtMs: 10_000,
-      wakeAtMs: Math.floor((10_000 * 2) / 3),
+      wakeAtMs: 10_000,
       current: undefined,
     });
     expect(
       routes.snapshot().operation!.candidates[
         routes.snapshot().operation!.cursor
       ]!.tuple,
-    ).toMatchObject({ kind: "peer", transport: "selected-turn" });
-
-    beginCandidate(routes, {
-      nowMs: operation.wakeAtMs + 1,
-      connectionId: "silent_selected_turn",
-      reservation: { kind: "selected-turn", edge: "turn_edge" },
-    });
-    const selectedExpired = routes.operationExpired(
-      Math.floor((10_000 * 2) / 3),
-    );
-    expect(selectedExpired).toMatchObject({ accepted: true });
-    expect(selectedExpired.released).toEqual(["turn_edge"]);
-    expect(
-      routes.snapshot().operation!.candidates[
-        routes.snapshot().operation!.cursor
-      ]!.tuple,
     ).toMatchObject({ kind: "sfu" });
-    expect(routes.snapshot().operation!.wakeAtMs).toBe(10_000);
 
     const prepared = beginCandidate(routes, {
       nowMs: 7_000,
@@ -524,11 +433,8 @@ describe("RoomRouteController", () => {
     });
   });
 
-  it("reaches a healthy SFU reuse stage after silent peer transports", () => {
-    const routes = controller(2, {
-      selectedTurnEnabled: true,
-      sfuEnabled: true,
-    });
+  it("reaches a healthy SFU reuse stage after silent peer transport", () => {
+    const routes = controller(2, { sfuEnabled: true });
     addViewer(routes, B, 2);
     routes.hydrateHostPublication(
       "publication_generation",
@@ -551,8 +457,7 @@ describe("RoomRouteController", () => {
     expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual(
       expect.arrayContaining([
         { kind: "peer", parentPeerId: B, transport: "direct" },
-        { kind: "peer", parentPeerId: B, transport: "selected-turn" },
-        { kind: "sfu", publication: "reuse", ingress: "existing" },
+        { kind: "sfu", publication: "reuse" },
       ]),
     );
 
@@ -562,12 +467,6 @@ describe("RoomRouteController", () => {
       reservation: { kind: "direct" },
     });
     routes.operationExpired(operation.wakeAtMs);
-    beginCandidate(routes, {
-      nowMs: operation.wakeAtMs + 1,
-      connectionId: "silent_selected",
-      reservation: { kind: "selected-turn", edge: "turn_edge" },
-    });
-    routes.operationExpired(Math.floor((10_000 * 2) / 3));
 
     expect(
       routes.snapshot().operation!.candidates[
@@ -576,7 +475,6 @@ describe("RoomRouteController", () => {
     ).toEqual({
       kind: "sfu",
       publication: "reuse",
-      ingress: "existing",
     });
     const prepared = beginCandidate(routes, {
       nowMs: 7_000,
@@ -602,6 +500,37 @@ describe("RoomRouteController", () => {
       kind: "sfu",
       publicationGeneration: "publication_generation",
       usable: true,
+    });
+  });
+
+  it("reserves a stage for Host-full SFU bootstrap before it is a tuple", () => {
+    const routes = controller(2, { sfuEnabled: true });
+    addViewer(routes, B, 2);
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    addViewer(routes, C, 0);
+    routes.hydrateEdge(C, peerEdge(HOST, "c_from_host"));
+    addViewer(routes, A, 0);
+
+    const operation = routes.reconcile(0).operation!;
+    expect(operation.candidates.some((candidate) => candidate.tuple.kind === "sfu"))
+      .toBe(false);
+    expect(operation.wakeAtMs).toBe(5_000);
+    beginCandidate(routes, {
+      nowMs: 1,
+      connectionId: "a_silent_direct",
+      reservation: { kind: "direct" },
+    });
+    const blocked = routes.operationExpired(operation.wakeAtMs);
+    expect(blocked).toMatchObject({ accepted: true });
+    expect(blocked.exhausted).toBe(false);
+    expect(blocked.released).toEqual([]);
+    expect(routes.snapshot().operation).toBeUndefined();
+
+    const bootstrap = routes.reconcile(operation.wakeAtMs + 1).operation!;
+    expect(bootstrap.childPeerId).toBe(C);
+    expect(bootstrap.candidates[0]!.tuple).toMatchObject({
+      kind: "sfu",
+      publication: "create",
     });
   });
 
@@ -660,6 +589,53 @@ describe("RoomRouteController", () => {
       }, 3).accepted,
     ).toBe(true);
     expect(routes.reconcile(3).operation?.childPeerId).toBe(B);
+  });
+
+  it("uses a freed Host slot for new demand without moving healthy descendants", () => {
+    const routes = controller(2);
+    addViewer(routes, A, 2);
+    addViewer(routes, B, 2);
+    addViewer(routes, C, 0);
+    addViewer(routes, D, 0);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_root"));
+    routes.hydrateEdge(B, peerEdge(HOST, "b_root"));
+    routes.hydrateEdge(C, peerEdge(A, "c_from_a"));
+    routes.hydrateEdge(D, peerEdge(B, "d_from_b"));
+
+    expect(routes.confirmDeparture(B)).toBe(true);
+    const repair = routes.reconcile(0).operation!;
+    expect(repair.childPeerId).toBe(D);
+    expect(repair.candidates[0]!.tuple).toEqual({
+      kind: "peer",
+      parentPeerId: A,
+      transport: "direct",
+    });
+    commitCurrent(routes, 1, "d_from_a");
+    expect(routes.reconcile(2).operation).toBeUndefined();
+    expect(routes.snapshot().upstreamByViewer.has(B)).toBe(false);
+
+    addViewer(routes, E, 0);
+    const join = routes.reconcile(3).operation!;
+    expect(join.childPeerId).toBe(E);
+    expect(join.candidates[0]!.tuple).toEqual({
+      kind: "peer",
+      parentPeerId: HOST,
+      transport: "direct",
+    });
+    commitCurrent(routes, 4, "e_from_host");
+
+    expect(routes.snapshot().upstreamByViewer.get(C)).toMatchObject({
+      parentPeerId: A,
+      connectionId: "c_from_a",
+    });
+    expect(routes.snapshot().upstreamByViewer.get(D)).toMatchObject({
+      parentPeerId: A,
+      connectionId: "d_from_a",
+    });
+    expect(routes.snapshot().upstreamByViewer.get(E)).toMatchObject({
+      parentPeerId: HOST,
+      connectionId: "e_from_host",
+    });
   });
 
   it("keeps grace media, then reparents a confirmed relay departure", () => {
@@ -757,7 +733,6 @@ describe("RoomRouteController", () => {
     expect(routes.snapshot().operation?.candidates[1]?.tuple).toEqual({
       kind: "sfu",
       publication: "replace",
-      ingress: "direct",
     });
     expect(() => beginCandidate(routes, {
       nowMs: 3,
@@ -810,7 +785,6 @@ describe("RoomRouteController", () => {
     expect(bootstrapOperation.candidates[0]?.tuple).toEqual({
       kind: "sfu",
       publication: "create",
-      ingress: "direct",
     });
     expect(() => beginCandidate(bootstrap, {
       nowMs: 2,
@@ -905,7 +879,7 @@ describe("RoomRouteController", () => {
     routes.touchExternalFacts();
     const operation = routes.reconcile(0).operation!;
     expect(operation.candidates[0]).toMatchObject({
-      tuple: { kind: "sfu", publication: "replace", ingress: "direct" },
+      tuple: { kind: "sfu", publication: "replace" },
       endpointTransition: { kind: "overlap", producerPeerId: HOST },
     });
     const prepared = beginCandidate(routes, {
@@ -941,30 +915,25 @@ describe("RoomRouteController", () => {
     expect(routes.reconcile(3).operation?.childPeerId).toBe(B);
   });
 
-  it("releases session-bound transports while rebinding direct media", () => {
+  it("rebinds direct and SFU media to replacement sessions", () => {
     const peerRoutes = controller(2);
     addViewer(peerRoutes, A, 1);
     addViewer(peerRoutes, B, 0);
-    peerRoutes.hydrateEdge(A, {
-      kind: "peer",
-      parentPeerId: HOST,
-      transport: "selected-turn",
-      connectionId: "a_selected",
-      usable: true,
-      physicalActive: true,
-      resource: "a_turn_allocation",
-    });
-    peerRoutes.hydrateEdge(B, peerEdge(HOST, "b_direct"));
+    peerRoutes.hydrateEdge(A, peerEdge(HOST, "a_direct"));
+    peerRoutes.hydrateEdge(B, peerEdge(A, "b_direct"));
     expect(peerRoutes.upsertParticipant({
       peerId: A,
       role: "viewer",
       sessionId: "a_replacement",
       effectiveDownstreamCapacity: 1,
-    })).toEqual(["a_turn_allocation"]);
+    })).toEqual([]);
     expect(peerRoutes.snapshot().upstreamByViewer.get(A)).toMatchObject({
-      childSessionId: `${A}_session`,
-      usable: false,
-      physicalActive: false,
+      childSessionId: "a_replacement",
+      usable: true,
+      physicalActive: true,
+    });
+    expect(peerRoutes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+      parentSessionId: "a_replacement",
     });
     expect(peerRoutes.upsertParticipant({
       peerId: B,
@@ -981,14 +950,13 @@ describe("RoomRouteController", () => {
     const sfuRoutes = controller(1, { sfuEnabled: true });
     addViewer(sfuRoutes, A, 0);
     sfuRoutes.hydrateHostPublication(
-      "selected_publication",
-      "selected_ingress_resource",
-      "selected_ingress_connection",
-      "selected-turn",
+      "publication",
+      "publication_resource",
+      "publication_connection",
     );
     sfuRoutes.hydrateEdge(A, {
       kind: "sfu",
-      publicationGeneration: "selected_publication",
+      publicationGeneration: "publication",
       transport: "sfu",
       connectionId: "subscription_connection",
       usable: true,
@@ -1000,12 +968,11 @@ describe("RoomRouteController", () => {
       role: "host",
       sessionId: "host_replacement",
       effectiveDownstreamCapacity: 1,
-    })).toEqual(["selected_ingress_resource"]);
+    })).toEqual([]);
     expect(sfuRoutes.snapshot().hostPublication).toMatchObject({
-      hostSessionId: "host_session",
-      ingress: "selected-turn",
-      usable: false,
-      physicalActive: false,
+      hostSessionId: "host_replacement",
+      usable: true,
+      physicalActive: true,
     });
     expect(sfuRoutes.upsertParticipant({
       peerId: A,
@@ -1155,57 +1122,6 @@ describe("RoomRouteController", () => {
       connectionId: "a_host_direct",
     }, 13).accepted).toBe(true);
     expect(routes.snapshot().hostPublication).toBeNull();
-  });
-
-  it("retires one exact peer edge for a C=3 bounded gap", () => {
-    const routes = controller(3, { selectedTurnEnabled: true });
-    addViewer(routes, A, 3);
-    routes.hydrateEdge(A, peerEdge(HOST, "a_direct"));
-    for (const peerId of [B, C, D]) {
-      addViewer(routes, peerId, 0);
-      routes.hydrateEdge(peerId, peerEdge(A, `${peerId}_from_a`));
-    }
-    routes.invalidateEdge({
-      childPeerId: B,
-      childSessionId: `${B}_session`,
-      parentSessionId: `${A}_session`,
-      routeRevision: 0,
-      connectionId: `${B}_from_a`,
-    });
-    const first = routes.reconcile(0).operation!;
-    expect(first.candidates[0]?.tuple).toMatchObject({
-      kind: "peer",
-      parentPeerId: HOST,
-      transport: "direct",
-    });
-    expect(skipCandidate(routes, 1).accepted).toBe(true);
-    const bounded = routes.snapshot().operation!;
-    expect(bounded.candidates[bounded.cursor]).toMatchObject({
-      tuple: { kind: "peer", parentPeerId: A, transport: "selected-turn" },
-      endpointTransition: {
-        kind: "bounded-gap",
-        producerPeerId: A,
-        retire: { kind: "edge", childPeerId: B, connectionId: `${B}_from_a` },
-      },
-    });
-    const gap = routes.retireCurrentCandidateProducer(cursorGuard(bounded), 2);
-    expect(gap).toMatchObject({ accepted: true, released: [] });
-    const prepared = beginCandidate(routes, {
-      nowMs: 3,
-      connectionId: "b_selected_turn",
-      reservation: { kind: "selected-turn", edge: "b_turn_resource" },
-    }).operation!;
-    expect(routes.candidateReady({
-      childPeerId: B,
-      childSessionId: `${B}_session`,
-      revision: prepared.current!.revision,
-      connectionId: "b_selected_turn",
-    }, 4).accepted).toBe(true);
-    expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
-      parentPeerId: A,
-      transport: "selected-turn",
-      resource: "b_turn_resource",
-    });
   });
 
   it("retries an exact failed tuple only after a new external fact", () => {

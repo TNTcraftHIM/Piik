@@ -11,7 +11,6 @@ import type {
 } from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
-import type { SelectedEdgeTurnConfig } from "./config.js";
 import {
   RoomRouteController,
   type CandidateCursorGuard,
@@ -29,13 +28,6 @@ import type {
   SfuResourceFence,
   SfuSubscriptionFence,
 } from "./sfu-resource-admission.js";
-import {
-  issueSelectedEdgeTurnCredential,
-  type HostSfuIngressTurnIdentity,
-  type PeerSelectedEdgeTurnIdentity,
-  type SelectedEdgeTurnIdentity,
-} from "./selected-edge-turn.js";
-import type { TurnAllocationAdmission } from "./turn-allocation-admission.js";
 
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
 
@@ -47,11 +39,6 @@ interface RouteResourceBase {
   released: boolean;
 }
 
-interface TurnRouteResource extends RouteResourceBase {
-  kind: "turn";
-  fence: SelectedEdgeTurnIdentity;
-}
-
 interface SfuSubscriptionRouteResource extends RouteResourceBase {
   kind: "sfu-subscription";
   fence: SfuSubscriptionFence;
@@ -60,7 +47,6 @@ interface SfuSubscriptionRouteResource extends RouteResourceBase {
 interface SfuPublicationRouteResource extends RouteResourceBase {
   kind: "sfu-publication";
   fence: SfuResourceFence;
-  ingressTurn?: TurnRouteResource;
 }
 
 interface OverlapRouteResource extends RouteResourceBase {
@@ -69,7 +55,6 @@ interface OverlapRouteResource extends RouteResourceBase {
 }
 
 type RouteResource =
-  | TurnRouteResource
   | SfuSubscriptionRouteResource
   | SfuPublicationRouteResource
   | OverlapRouteResource;
@@ -101,20 +86,12 @@ interface PreparedCandidate {
   connectionId: string;
   publicationGeneration?: string;
   publicationConnectionId?: string;
-  peerGrant?: Extract<
-    ServerMessage,
-    { type: "selected-edge-turn"; edgeKind: "peer-selected" }
-  >;
-  hostIngressGrant?: Extract<
-    ServerMessage,
-    { type: "selected-edge-turn"; edgeKind: "host-sfu-ingress" }
-  >;
   hostSfuConfig?: Extract<ServerMessage, { type: "sfu-config" }>;
   viewerSfuConfig?: Extract<ServerMessage, { type: "sfu-config" }>;
 }
 
 type PrepareResult =
-  | { kind: "denied"; serverAdmission: "turn" | "sfu" | false }
+  | { kind: "denied"; serverAdmission: "sfu" | false }
   | { kind: "ready"; prepared: PreparedCandidate };
 
 export interface SfuFallbackOptions {
@@ -127,16 +104,10 @@ export interface SfuFallbackOptions {
   hostOfflineCheckMs?: number;
 }
 
-export interface SelectedEdgeTurnOptions {
-  config: SelectedEdgeTurnConfig;
-  admission: TurnAllocationAdmission;
-}
-
 export interface HybridMediaRouterOptions {
   roomStore: RoomStore;
   endpointMediaCopyCapacity: number;
   sfuFallback?: SfuFallbackOptions;
-  selectedEdgeTurn?: SelectedEdgeTurnOptions;
   sendToSession: (sessionId: string, message: ServerMessage) => void;
   getConnectionId: (roomId: string, viewerPeerId: string) => string | undefined;
   setConnectionId: (roomId: string, viewerPeerId: string, connectionId: string) => void;
@@ -178,9 +149,6 @@ export class HybridMediaRouter {
   constructor(private readonly options: HybridMediaRouterOptions) {
     assertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity);
     this.now = options.now ?? Date.now;
-    if (options.selectedEdgeTurn && !options.sfuFallback) {
-      throw new Error("Selected-edge TURN requires SFU fallback");
-    }
     if (options.sfuFallback) new URL(options.sfuFallback.url);
   }
 
@@ -190,12 +158,6 @@ export class HybridMediaRouter {
     this.resourceWaiterRoomIds.clear();
     for (const check of this.hostOfflineChecks.values()) clearTimeout(check.timer);
     this.hostOfflineChecks.clear();
-    const turnAdmission = this.options.selectedEdgeTurn?.admission;
-    if (turnAdmission) {
-      for (const fence of turnAdmission.beginDrainAll()) {
-        turnAdmission.completeDrain(fence);
-      }
-    }
     const fallback = this.options.sfuFallback;
     if (!fallback) return;
     for (const fence of fallback.admission.beginDrainAll()) this.scheduleSfuDrain(fence);
@@ -319,7 +281,7 @@ export class HybridMediaRouter {
     );
   }
 
-  selectedEdgeTurnSignalAuthorization(input: {
+  peerSignalAuthorization(input: {
     roomId: string;
     sourcePeerId: string;
     sourceSessionId: string;
@@ -391,14 +353,6 @@ export class HybridMediaRouter {
       return adopted;
     }
     return input.connectionId === edge.connectionId;
-  }
-
-  markSelectedEdgeTurnAnswered(
-    _roomId: string,
-    _viewerPeerId: string,
-    _connectionId: string,
-  ): void {
-    // Resource admission commits only with exact child media proof.
   }
 
   setViewerRelayCapacity(
@@ -637,8 +591,6 @@ export class HybridMediaRouter {
       endpointMediaCopyCapacity: this.options.endpointMediaCopyCapacity,
       operationTimeoutMs:
         this.options.sfuFallback?.prepareTimeoutMs ?? DEFAULT_ROUTE_OPERATION_TIMEOUT_MS,
-      selectedTurnEnabled: Boolean(this.options.selectedEdgeTurn),
-      hostSfuSelectedTurnEnabled: Boolean(this.options.selectedEdgeTurn),
       sfuEnabled: Boolean(this.options.sfuFallback),
     });
     room.controller.upsertParticipant({
@@ -723,9 +675,6 @@ export class HybridMediaRouter {
             "No usable media route is available",
           );
         }
-        if (preparation.serverAdmission === "turn" && skipped.exhausted) {
-          this.resourceWaiterRoomIds.add(roomId);
-        }
         continue;
       }
       let currentOperation = controller.snapshot().operation;
@@ -795,64 +744,13 @@ export class HybridMediaRouter {
         ? overlapResource(plan.endpointTransition.producerPeerId)
         : undefined;
     if (plan.tuple.kind === "peer") {
-      if (plan.tuple.transport === "direct") {
-        return {
-          kind: "ready",
-          prepared: {
-            connectionId,
-            reservation: { kind: "direct", ...(overlap ? { overlap } : {}) },
-          },
-        };
-      }
-      const parent = this.connectedPeer(roomId, plan.tuple.parentPeerId);
-      const selected = this.options.selectedEdgeTurn;
-      if (!parent || !selected) return { kind: "denied", serverAdmission: false };
-      const oldConnectionId =
-        snapshot.upstreamByViewer.get(operation.childPeerId)?.connectionId ?? connectionId;
-      const fence: PeerSelectedEdgeTurnIdentity = {
-        edgeKind: "peer-selected",
-        roomId,
-        shareGeneration,
-        revision,
-        parentPeerId: parent.peerId,
-        parentSessionId: parent.sessionId,
-        viewerPeerId: operation.childPeerId,
-        viewerSessionId: operation.childSessionId,
-        oldConnectionId,
-        newConnectionId: connectionId,
+      return {
+        kind: "ready",
+        prepared: {
+          connectionId,
+          reservation: { kind: "direct", ...(overlap ? { overlap } : {}) },
+        },
       };
-      if (!selected.admission.reserve(fence)) {
-        return { kind: "denied", serverAdmission: "turn" };
-      }
-      const resource = turnResource(fence);
-      try {
-        const credential = issueSelectedEdgeTurnCredential(selected.config, fence, this.now());
-        return {
-          kind: "ready",
-          prepared: {
-            connectionId,
-            reservation: {
-              kind: "selected-turn",
-              edge: resource,
-              ...(overlap ? { overlap } : {}),
-            },
-            peerGrant: {
-              type: "selected-edge-turn",
-              edgeKind: "peer-selected",
-              revision,
-              parentPeerId: parent.peerId,
-              viewerPeerId: operation.childPeerId,
-              oldConnectionId,
-              newConnectionId: connectionId,
-              expiresAt: credential.expiresAt,
-              iceServer: credential.iceServer,
-            },
-          },
-        };
-      } catch {
-        this.releaseResource(resource);
-        return { kind: "denied", serverAdmission: false };
-      }
     }
 
     const fallback = this.options.sfuFallback;
@@ -918,9 +816,7 @@ export class HybridMediaRouter {
 
     return await this.prepareNewPublication(
       roomId,
-      room,
       operation,
-      plan,
       revision,
       connectionId,
       shareGeneration,
@@ -931,13 +827,11 @@ export class HybridMediaRouter {
 
   private async prepareNewPublication(
     roomId: string,
-    room: RoomRuntime,
     operation: OperationSnapshot,
-    plan: CandidatePlan,
     revision: number,
     connectionId: string,
     shareGeneration: string,
-    host: { peerId: string; sessionId: string },
+    host: { peerId: string },
     overlap?: OverlapRouteResource,
   ): Promise<PrepareResult> {
     const fallback = this.options.sfuFallback!;
@@ -960,61 +854,8 @@ export class HybridMediaRouter {
       return { kind: "denied", serverAdmission: "sfu" };
     }
     const subscription = subscriptionResource(subscriptionFence);
-    let ingressTurn: TurnRouteResource | undefined;
-    let hostIngressGrant: PreparedCandidate["hostIngressGrant"];
-    const publicationConnectionId =
-      plan.tuple.kind === "sfu" && plan.tuple.ingress === "selected-turn"
-        ? connectionId
-        : publicationGeneration;
-    if (plan.tuple.kind === "sfu" && plan.tuple.ingress === "selected-turn") {
-      const selected = this.options.selectedEdgeTurn;
-      if (!selected) {
-        this.releaseResource(subscription);
-        fallback.admission.beginDrain(publicationFence);
-        this.scheduleSfuDrain(publicationFence);
-        return { kind: "denied", serverAdmission: false };
-      }
-      const fence: HostSfuIngressTurnIdentity = {
-        edgeKind: "host-sfu-ingress",
-        roomId,
-        shareGeneration,
-        revision,
-        hostPeerId: host.peerId,
-        hostSessionId: host.sessionId,
-        publicationGeneration,
-        oldConnectionId:
-          room.controller?.snapshot().hostPublication?.connectionId ?? publicationGeneration,
-        newConnectionId: connectionId,
-      };
-      if (!selected.admission.reserve(fence)) {
-        this.releaseResource(subscription);
-        fallback.admission.beginDrain(publicationFence);
-        this.scheduleSfuDrain(publicationFence);
-        return { kind: "denied", serverAdmission: "turn" };
-      }
-      ingressTurn = turnResource(fence);
-      try {
-        const credential = issueSelectedEdgeTurnCredential(selected.config, fence, this.now());
-        hostIngressGrant = {
-          type: "selected-edge-turn",
-          edgeKind: "host-sfu-ingress",
-          revision,
-          hostPeerId: host.peerId,
-          publicationGeneration,
-          oldConnectionId: fence.oldConnectionId,
-          newConnectionId: connectionId,
-          expiresAt: credential.expiresAt,
-          iceServer: credential.iceServer,
-        };
-      } catch {
-        this.releaseResource(ingressTurn);
-        this.releaseResource(subscription);
-        fallback.admission.beginDrain(publicationFence);
-        this.scheduleSfuDrain(publicationFence);
-        return { kind: "denied", serverAdmission: false };
-      }
-    }
-    const publication = publicationResource(publicationFence, ingressTurn);
+    const publicationConnectionId = publicationGeneration;
+    const publication = publicationResource(publicationFence);
     try {
       await fallback.roomControl.createRoom(publicationFence);
       const [hostToken, viewerToken] = await Promise.all([
@@ -1047,7 +888,6 @@ export class HybridMediaRouter {
             publication,
             ...(overlap ? { overlap } : {}),
           },
-          hostIngressGrant,
           hostSfuConfig: {
             type: "sfu-config",
             revision,
@@ -1097,7 +937,6 @@ export class HybridMediaRouter {
       const parent = this.connectedPeer(roomId, current.tuple.parentPeerId);
       if (!parent) return;
       this.options.sendToSession(child.sessionId, childUpdate);
-      if (prepared.peerGrant) this.options.sendToSession(child.sessionId, prepared.peerGrant);
       this.options.sendToSession(parent.sessionId, {
         type: "route-update",
         revision: current.revision,
@@ -1105,7 +944,6 @@ export class HybridMediaRouter {
         assignment: assignments.get(parent.peerId) ?? emptyAssignment(),
         candidate,
       });
-      if (prepared.peerGrant) this.options.sendToSession(parent.sessionId, prepared.peerGrant);
       return;
     }
     const host = this.options.roomStore.getConnectedHost(roomId);
@@ -1117,9 +955,6 @@ export class HybridMediaRouter {
         assignment: assignments.get(host.peerId) ?? emptyAssignment(),
         candidate,
       });
-      if (prepared.hostIngressGrant) {
-        this.options.sendToSession(host.sessionId, prepared.hostIngressGrant);
-      }
       this.options.sendToSession(host.sessionId, prepared.hostSfuConfig);
     }
     this.options.sendToSession(child.sessionId, childUpdate);
@@ -1314,10 +1149,6 @@ export class HybridMediaRouter {
     reservation: CandidateReservation<RouteResource>,
   ): boolean {
     if (reservation.kind === "direct") return true;
-    if (reservation.kind === "selected-turn") {
-      return reservation.edge.kind === "turn" &&
-        this.options.selectedEdgeTurn?.admission.commit(reservation.edge.fence) === true;
-    }
     if (reservation.kind === "sfu-reuse") {
       return reservation.edge.kind === "sfu-subscription" &&
         this.options.sfuFallback?.admission.commitSubscription(
@@ -1325,14 +1156,6 @@ export class HybridMediaRouter {
         ) === true;
     }
     if (reservation.publication.kind !== "sfu-publication") return false;
-    if (
-      reservation.publication.ingressTurn &&
-      this.options.selectedEdgeTurn?.admission.commit(
-        reservation.publication.ingressTurn.fence,
-      ) !== true
-    ) {
-      return false;
-    }
     const draining = this.options.sfuFallback?.admission.commitPublication(
       reservation.publication.fence,
     );
@@ -1353,19 +1176,10 @@ export class HybridMediaRouter {
     if (resource.released) return;
     resource.released = true;
     if (resource.kind === "overlap") return;
-    if (resource.kind === "turn") {
-      const admission = this.options.selectedEdgeTurn?.admission;
-      if (admission?.beginDrain(resource.fence)) {
-        admission.completeDrain(resource.fence);
-        this.wakeResourceWaiters();
-      }
-      return;
-    }
     if (resource.kind === "sfu-subscription") {
       this.options.sfuFallback?.admission.releaseSubscription(resource.fence);
       return;
     }
-    if (resource.ingressTurn) this.releaseResource(resource.ingressTurn);
     if (this.options.sfuFallback?.admission.beginDrain(resource.fence)) {
       this.scheduleSfuDrain(resource.fence);
     }
@@ -1585,10 +1399,6 @@ export class HybridMediaRouter {
     for (const fence of this.options.sfuFallback?.admission.beginDrainRoom(roomId) ?? []) {
       this.scheduleSfuDrain(fence);
     }
-    const turnAdmission = this.options.selectedEdgeTurn?.admission;
-    for (const fence of turnAdmission?.beginDrainRoom(roomId) ?? []) {
-      turnAdmission!.completeDrain(fence);
-    }
     this.wakeResourceWaiters();
   }
 
@@ -1658,10 +1468,6 @@ function overlapResource(endpointPeerId: string): OverlapRouteResource {
   return { kind: "overlap", endpointPeerId, released: false };
 }
 
-function turnResource(fence: SelectedEdgeTurnIdentity): TurnRouteResource {
-  return { kind: "turn", fence, released: false };
-}
-
 function subscriptionResource(
   fence: SfuSubscriptionFence,
 ): SfuSubscriptionRouteResource {
@@ -1670,13 +1476,11 @@ function subscriptionResource(
 
 function publicationResource(
   fence: SfuResourceFence,
-  ingressTurn?: TurnRouteResource,
 ): SfuPublicationRouteResource {
   return {
     kind: "sfu-publication",
     fence,
     released: false,
-    ...(ingressTurn ? { ingressTurn } : {}),
   };
 }
 

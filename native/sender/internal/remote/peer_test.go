@@ -6,7 +6,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-func TestSelectedRouteTreatsARemoteRelayCandidateAsTURN(t *testing.T) {
+func TestSelectedRouteLeavesARemoteRelayCandidateUnknown(t *testing.T) {
 	report := webrtc.StatsReport{
 		"local": webrtc.ICECandidateStats{
 			ID:            "local",
@@ -20,12 +20,12 @@ func TestSelectedRouteTreatsARemoteRelayCandidateAsTURN(t *testing.T) {
 		},
 	}
 	pair := webrtc.ICECandidatePairStats{LocalCandidateID: "local", RemoteCandidateID: "remote"}
-	if route := selectedRoute(report, pair); route != "turn-unknown" {
-		t.Fatalf("selected route = %q, want turn-unknown", route)
+	if route := selectedRoute(report, pair); route != "unknown" {
+		t.Fatalf("selected route = %q, want unknown", route)
 	}
 }
 
-func TestSelectedRouteUsesOnlyTheLocalRelayProtocol(t *testing.T) {
+func TestSelectedRouteLeavesALocalRelayCandidateUnknown(t *testing.T) {
 	report := webrtc.StatsReport{
 		"local": webrtc.ICECandidateStats{
 			ID: "local", Protocol: "udp", CandidateType: webrtc.ICECandidateTypeRelay,
@@ -35,14 +35,8 @@ func TestSelectedRouteUsesOnlyTheLocalRelayProtocol(t *testing.T) {
 		},
 	}
 	pair := webrtc.ICECandidatePairStats{LocalCandidateID: "local", RemoteCandidateID: "remote"}
-	if route := selectedRoute(report, pair); route != "turn-unknown" {
-		t.Fatalf("selected route without local relayProtocol = %q", route)
-	}
-	local := report["local"].(webrtc.ICECandidateStats)
-	local.RelayProtocol = "tcp"
-	report["local"] = local
-	if route := selectedRoute(report, pair); route != "turn-tcp" {
-		t.Fatalf("selected route with local relayProtocol = %q", route)
+	if route := selectedRoute(report, pair); route != "unknown" {
+		t.Fatalf("selected route = %q, want unknown", route)
 	}
 }
 

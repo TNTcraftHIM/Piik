@@ -113,7 +113,6 @@ export class HostProvisionalChild {
           }
         },
       },
-      false,
       candidate.connectionId,
     );
     this.signalingPeer = peer;

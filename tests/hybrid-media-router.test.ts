@@ -8,7 +8,6 @@ import {
 } from "../src/server/hybrid-media-router.ts";
 import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
 import { SfuResourceAdmission } from "../src/server/sfu-resource-admission.ts";
-import { TurnAllocationAdmission } from "../src/server/turn-allocation-admission.ts";
 import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const SHARE_GENERATION = "share_generation_12345678";
@@ -96,7 +95,6 @@ function activeAfter(
 function harness(
   endpointMediaCopyCapacity: 1 | 2 | 3,
   withSfu = false,
-  withSelectedTurn = false,
   prepareTimeoutMs?: number,
 ) {
   const store = createStore();
@@ -106,9 +104,6 @@ function harness(
     ? new SfuResourceAdmission({ ingressCapacity: 2, egressCapacity: 20 })
     : undefined;
   const roomControl = withSfu ? new FakeSfuRoomControl() : undefined;
-  const turnAdmission = withSelectedTurn
-    ? new TurnAllocationAdmission({ capacity: 20 })
-    : undefined;
   const router = new HybridMediaRouter({
     roomStore: store,
     endpointMediaCopyCapacity,
@@ -124,19 +119,6 @@ function harness(
                 return `token-${peerId}`;
               },
             },
-          },
-        }
-      : {}),
-    ...(turnAdmission
-      ? {
-          selectedEdgeTurn: {
-            config: {
-              urls: ["turn:turn.example.test:3478?transport=udp"] as const,
-              sharedSecret: "t".repeat(32),
-              credentialTtlSeconds: 120,
-              allocationCapacity: 20,
-            },
-            admission: turnAdmission,
           },
         }
       : {}),
@@ -156,14 +138,14 @@ function harness(
     },
     getShareGeneration: () => SHARE_GENERATION,
   });
-  return { store, sent, admission, turnAdmission, router };
+  return { store, sent, admission, router };
 }
 
 describe("HybridMediaRouter v7 runtime", () => {
   it("wakes at the derived direct boundary and prepares SFU automatically", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const { store, sent, router } = harness(2, true, false, 300);
+    const { store, sent, router } = harness(2, true, 300);
     try {
       const room = await store.createRoom();
       const host = connectHost(store, room);
@@ -185,6 +167,73 @@ describe("HybridMediaRouter v7 runtime", () => {
       expect(
         sent
           .get(viewer.sessionId)
+          ?.some(
+            (message) =>
+              message.type === "error" &&
+              message.message === "No usable media route is available",
+          ),
+      ).toBe(false);
+    } finally {
+      await router.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the direct boundary to bootstrap SFU when every Host slot is full", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { store, sent, router } = harness(2, true, 300);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+
+      const firstRoot = connectViewer(store, room, "first-root");
+      complete(router, firstRoot);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, firstRoot.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const firstPrepare = preparedFor(sent, firstRoot.sessionId)!;
+      router.handleRouteReady(firstRoot, {
+        type: "route-ready",
+        revision: firstPrepare.revision,
+        phase: "prepare",
+      });
+      router.setViewerRelayCapacity(firstRoot, 2);
+
+      const secondRoot = connectViewer(store, room, "second-root");
+      complete(router, secondRoot);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, secondRoot.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const secondPrepare = preparedFor(sent, secondRoot.sessionId)!;
+      router.handleRouteReady(secondRoot, {
+        type: "route-ready",
+        revision: secondPrepare.revision,
+        phase: "prepare",
+      });
+
+      const waiting = connectViewer(store, room, "waiting");
+      complete(router, waiting);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, waiting.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, secondRoot.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      expect(
+        sent
+          .get(waiting.sessionId)
           ?.some(
             (message) =>
               message.type === "error" &&
@@ -309,124 +358,4 @@ describe("HybridMediaRouter v7 runtime", () => {
     await router.close();
   });
 
-  it("uses selected TURN only as the exact Viewer-parent edge transport", async () => {
-    const { store, sent, turnAdmission, router } = harness(1, true, true);
-    const room = await store.createRoom();
-    const host = connectHost(store, room);
-    complete(router, host);
-    const parent = connectViewer(store, room, "selected_parent");
-    complete(router, parent);
-    await vi.waitFor(() => expect(preparedFor(sent, parent.sessionId)).toBeDefined());
-    const parentPrepare = preparedFor(sent, parent.sessionId)!;
-    router.handleRouteReady(parent, {
-      type: "route-ready",
-      revision: parentPrepare.revision,
-      phase: "prepare",
-    });
-    router.setViewerRelayCapacity(parent, 1);
-
-    const child = connectViewer(store, room, "selected_child");
-    complete(router, child);
-    await vi.waitFor(() =>
-      expect(preparedFor(sent, child.sessionId)?.candidate.transport).toBe("direct"),
-    );
-    const direct = preparedFor(sent, child.sessionId)!;
-    expect(direct.assignment.upstream).toEqual({
-      kind: "peer",
-      peerId: parent.peerId,
-    });
-    router.handleRouteReady(child, {
-      type: "route-ready",
-      revision: direct.revision,
-      phase: "prepare",
-    });
-
-    router.handleRouteFailed(child, {
-      type: "route-failed",
-      revision: direct.revision,
-      phase: "active",
-      connectionId: direct.candidate.connectionId,
-    });
-    await vi.waitFor(() =>
-      expect(preparedFor(sent, child.sessionId)?.candidate.transport).toBe(
-        "selected-turn",
-      ),
-    );
-    const selected = preparedFor(sent, child.sessionId)!;
-    expect(
-      sent
-        .get(child.sessionId)
-        ?.some(
-          (message) =>
-            message.type === "selected-edge-turn" &&
-            message.edgeKind === "peer-selected" &&
-            message.newConnectionId === selected.candidate.connectionId,
-        ),
-    ).toBe(true);
-    router.handleRouteReady(child, {
-      type: "route-ready",
-      revision: selected.revision,
-      phase: "prepare",
-    });
-    await vi.waitFor(() =>
-      expect(turnAdmission?.usage()).toEqual({ allocations: 1 }),
-    );
-    await router.close();
-    expect(turnAdmission?.usage()).toEqual({ allocations: 0 });
-  });
-
-  it("uses selected TURN as one Host-SFU ingress after direct ingress fails", async () => {
-    const { store, sent, turnAdmission, router } = harness(1, true, true);
-    const room = await store.createRoom();
-    const host = connectHost(store, room);
-    complete(router, host);
-    const first = connectViewer(store, room, "ingress_first");
-    complete(router, first);
-    await vi.waitFor(() => expect(preparedFor(sent, first.sessionId)).toBeDefined());
-    const direct = preparedFor(sent, first.sessionId)!;
-    router.handleRouteReady(first, {
-      type: "route-ready",
-      revision: direct.revision,
-      phase: "prepare",
-    });
-
-    const waiting = connectViewer(store, room, "ingress_waiting");
-    complete(router, waiting);
-    await vi.waitFor(() =>
-      expect(preparedFor(sent, first.sessionId)?.candidate.transport).toBe("sfu"),
-    );
-    const directIngress = preparedFor(sent, first.sessionId)!;
-    router.handleRouteFailed(first, {
-      type: "route-failed",
-      revision: directIngress.revision,
-      phase: "prepare",
-      connectionId: directIngress.candidate.connectionId,
-    });
-
-    await vi.waitFor(() => {
-      const prepared = preparedFor(sent, first.sessionId);
-      expect(prepared?.revision).toBeGreaterThan(directIngress.revision);
-      return prepared;
-    });
-    const selectedIngress = preparedFor(sent, first.sessionId)!;
-    expect(
-      sent
-        .get(host.sessionId)
-        ?.some(
-          (message) =>
-            message.type === "selected-edge-turn" &&
-            message.edgeKind === "host-sfu-ingress" &&
-            message.revision === selectedIngress.revision,
-        ),
-    ).toBe(true);
-    router.handleRouteReady(first, {
-      type: "route-ready",
-      revision: selectedIngress.revision,
-      phase: "prepare",
-    });
-    await vi.waitFor(() =>
-      expect(turnAdmission?.usage()).toEqual({ allocations: 1 }),
-    );
-    await router.close();
-  });
 });

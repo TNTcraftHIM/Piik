@@ -342,8 +342,8 @@ async function main(): Promise<void> {
         ? "Hardware status is the helper's hardware-only MF contract; physical VideoEncode use requires correlated OS telemetry."
         : "This run proves one WebCodecs object, not one physical or hardware encoder.",
       windowTargetTitle
-        ? "The loopback run does not prove public STUN, restrictive networks, TURN, packaging, or endurance."
-        : "The loopback run does not prove public STUN, restrictive networks, TURN, audio, packaging, or endurance.",
+        ? "The loopback run does not prove public STUN, SFU, restrictive networks, packaging, or endurance."
+        : "The loopback run does not prove public STUN, SFU, restrictive networks, audio, packaging, or endurance.",
     ],
   };
   let server: ScreenerServer | null = null;
@@ -998,7 +998,7 @@ function requireChecks(checks: Record<string, boolean>): void {
 }
 
 function safeRoute(value: string | undefined): string {
-  return new Set(["direct-udp", "direct-tcp", "turn-udp", "turn-tcp", "turn-tls", "turn-unknown"])
+  return new Set(["direct-udp", "direct-tcp"])
     .has(value ?? "") ? value! : "unknown";
 }
 

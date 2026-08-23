@@ -112,8 +112,6 @@ type serverMessage struct {
 	RouteAssignment           participantRouteAssignment
 	RouteRevision             int64
 	RoutePhase                string
-	EdgeKind                  string
-	NewConnectionID           string
 }
 
 func readServerMessage(ctx context.Context, conn *websocket.Conn) (serverMessage, error) {
@@ -209,18 +207,6 @@ func decodeServerMessage(payload []byte) (serverMessage, error) {
 			return serverMessage{}, errors.New("SFU configuration message is invalid")
 		}
 		return serverMessage{Type: wire.Type, RouteRevision: wire.Revision}, nil
-	case "selected-edge-turn":
-		var wire struct {
-			Type            string `json:"type"`
-			EdgeKind        string `json:"edgeKind"`
-			Revision        int64  `json:"revision"`
-			NewConnectionID string `json:"newConnectionId"`
-		}
-		if err := json.Unmarshal(payload, &wire); err != nil || wire.Revision < 0 || wire.Revision > maxRouteRevision ||
-			(wire.EdgeKind != "host-sfu-ingress" && wire.EdgeKind != "peer-selected") || !validOpaqueID(wire.NewConnectionID) {
-			return serverMessage{}, errors.New("selected-edge TURN message is invalid")
-		}
-		return serverMessage{Type: wire.Type, EdgeKind: wire.EdgeKind, RouteRevision: wire.Revision, NewConnectionID: wire.NewConnectionID}, nil
 	case "viewer-quality-evidence":
 		if err := validateViewerQualityEvidence(payload); err != nil {
 			return serverMessage{}, err

@@ -38,7 +38,6 @@ import { RoomCodeEntry } from "../components/RoomCodeEntry";
 import { qualityLimitationSummary } from "../components/connection-details";
 import {
   MediaRouteBadge,
-  PathBadge,
   PeerStatusBadge,
   SignalStatusBadge,
   WarningBanner,
@@ -1188,20 +1187,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         if (!currentViewerIds.has(peerId)) {
           removePeer(peerId);
         }
-      }
-      return;
-    }
-    if (message.type === "selected-edge-turn") {
-      if (message.edgeKind === "host-sfu-ingress") {
-        if (
-          peerAssistedRef.current &&
-          message.hostPeerId === hostPeerIdRef.current &&
-          Date.parse(message.expiresAt) > Date.now()
-        ) {
-          const route = ensureHostSfuRoute(generation);
-          route.startSelectedEdgeTurn(message);
-        }
-        return;
       }
       return;
     }
@@ -2630,9 +2615,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       <MediaRouteBadge
                         route={viewer.upstream.kind === "peer" ? "p2p" : "sfu"}
                       />
-                      {snapshot?.metrics.path === "relay" && (
-                        <PathBadge metrics={snapshot.metrics} />
-                      )}
                     </div>
                   )}
                   {showConnectionDetails &&

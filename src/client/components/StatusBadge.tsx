@@ -1,11 +1,7 @@
-import { CircleAlert, Network, Radio, Server, Wifi, WifiOff } from "lucide-react";
-import type {
-  ConnectionMetrics,
-  SignalConnectionState,
-} from "../types";
+import { CircleAlert, Network, Server } from "lucide-react";
+import type { SignalConnectionState } from "../types";
 import {
   MEDIA_ROUTE_PRESENTATION,
-  mediaTransportPresentation,
   ROUTING_STATUS_PRESENTATION,
 } from "./status-badge-model";
 
@@ -58,32 +54,6 @@ export function PeerStatusBadge({
     closed: { tone: "neutral", label: "已关闭" },
   };
   return <Badge {...labels[state]} />;
-}
-
-export function PathBadge({ metrics }: { metrics: ConnectionMetrics }) {
-  const presentation = mediaTransportPresentation(metrics);
-  if (metrics.path === "direct") {
-    return (
-      <span className="path-badge path-direct" title={presentation.title}>
-        <Wifi size={14} aria-hidden="true" />
-        {presentation.label}
-      </span>
-    );
-  }
-  if (metrics.path === "relay") {
-    return (
-      <span className="path-badge path-relay" title={presentation.title}>
-        <Radio size={14} aria-hidden="true" />
-        {presentation.label}
-      </span>
-    );
-  }
-  return (
-    <span className="path-badge path-unknown" title={presentation.title}>
-      <WifiOff size={14} aria-hidden="true" />
-      {presentation.label}
-    </span>
-  );
 }
 
 export function MediaRouteBadge({ route }: { route: "p2p" | "sfu" }) {

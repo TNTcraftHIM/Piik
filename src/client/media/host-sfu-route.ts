@@ -40,8 +40,6 @@ interface HostPublisherSlot {
   connected: boolean;
   active: boolean;
   failed: boolean;
-  connectionId: string;
-  selectedEdgeTurn: boolean;
 }
 
 export interface HostSfuPublisherSnapshot {
@@ -72,12 +70,6 @@ export class HostSfuRoute {
   private resyncing = false;
   private paused = false;
   private closed = false;
-  private lastConfig: Extract<ServerMessage, { type: "sfu-config" }> | null =
-    null;
-  private selectedEdgeTurn: Extract<
-    ServerMessage,
-    { type: "selected-edge-turn"; edgeKind: "host-sfu-ingress" }
-  > | null = null;
 
   constructor(private readonly events: HostSfuRouteEvents) {}
 
@@ -97,8 +89,6 @@ export class HostSfuRoute {
     if (previousRevision !== update.revision) {
       this.recovery = null;
       this.lastFailureStage = null;
-      this.lastConfig = null;
-      this.selectedEdgeTurn = null;
     }
     if (update.phase === "prepare") {
       if (
@@ -204,8 +194,6 @@ export class HostSfuRoute {
     ) {
       return;
     }
-    this.lastConfig = message;
-
     if (this.active?.publicationGeneration === publicationGeneration) {
       this.active.revision = message.revision;
       if (phase === "active" && this.active.active) {
@@ -232,13 +220,6 @@ export class HostSfuRoute {
         onDisconnected: () => this.handleFailure(slot),
         onStats: (metrics) => this.handlePublisherStats(slot, metrics),
       });
-    const selectedEdgeTurn =
-      this.selectedEdgeTurn?.revision === message.revision &&
-      this.selectedEdgeTurn.publicationGeneration === publicationGeneration &&
-      this.selectedEdgeTurn.newConnectionId === candidate?.connectionId
-        ? this.selectedEdgeTurn
-        : null;
-    this.selectedEdgeTurn = null;
     slot = {
       revision: message.revision,
       publicationGeneration,
@@ -246,22 +227,12 @@ export class HostSfuRoute {
       connected: false,
       active: false,
       failed: false,
-      connectionId: selectedEdgeTurn?.newConnectionId ?? publicationGeneration,
-      selectedEdgeTurn: selectedEdgeTurn !== null,
     };
     this.pending = slot;
     try {
       const connected = await publisher.connect({
         url: message.url,
         token: message.token,
-        ...(selectedEdgeTurn
-          ? {
-              rtcConfig: {
-                iceServers: [selectedEdgeTurn.iceServer],
-                iceTransportPolicy: "relay",
-              },
-            }
-          : {}),
       });
       if (!connected) {
         if (this.pending === slot && this.route.owns(token)) {
@@ -291,48 +262,7 @@ export class HostSfuRoute {
     this.paused = paused;
     if (paused) {
       this.clearPending();
-      this.selectedEdgeTurn = null;
     }
-  }
-
-  /** Apply one controller-selected TURN grant to the next SFU publisher PC. */
-  startSelectedEdgeTurn(
-    message: Extract<
-      ServerMessage,
-      { type: "selected-edge-turn"; edgeKind: "host-sfu-ingress" }
-    >,
-  ): boolean {
-    if (
-      this.closed ||
-      !this.route.acceptsConfig(message.revision) ||
-      this.route.getPhase() !== "prepare" ||
-      this.route.getPreparedCandidate()?.transport !== "sfu" ||
-      this.route.getPreparedCandidate()?.connectionId !== message.newConnectionId ||
-      Date.parse(message.expiresAt) <= Date.now()
-    ) {
-      return false;
-    }
-    const assignment = this.route.getPlannedAssignment();
-    const publicationGeneration = assignment?.sfuPublicationGeneration;
-    const pending = this.pending;
-    if (
-      !publicationGeneration ||
-      publicationGeneration !== message.publicationGeneration ||
-      (pending !== null &&
-        (pending.revision !== message.revision ||
-          pending.publicationGeneration !== publicationGeneration))
-    ) {
-      return false;
-    }
-    if (pending?.connectionId === message.newConnectionId) {
-      return !pending.failed;
-    }
-    this.clearPending();
-    this.selectedEdgeTurn = message;
-    if (this.lastConfig?.revision === message.revision) {
-      void this.acceptConfig(this.lastConfig);
-    }
-    return true;
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
@@ -401,8 +331,6 @@ export class HostSfuRoute {
     this.resyncing = false;
     this.route.reset();
     this.recovery = null;
-    this.lastConfig = null;
-    this.selectedEdgeTurn = null;
     await this.queueTransition(async () => {
       const pending = this.pending;
       const active = this.active;
@@ -626,24 +554,17 @@ export class HostSfuRoute {
     }
     if (phase === "prepare") {
       if (matchesPlannedRoute || wasActive) {
-        this.routeFailed(
-          revision,
-          "prepare",
-          slot.selectedEdgeTurn ? slot.connectionId : null,
-        );
+        this.routeFailed(revision, "prepare", null);
       }
       return;
     }
     if (!matchesPlannedRoute) {
       return;
     }
-    this.requestRecovery(revision, slot);
+    this.requestRecovery(revision);
   }
 
-  private requestRecovery(
-    revision: number,
-    failedSlot?: HostPublisherSlot,
-  ): void {
+  private requestRecovery(revision: number): void {
     if (!this.recovery || this.recovery.revision !== revision) {
       this.recovery = { revision, refreshed: false };
     }
@@ -653,11 +574,7 @@ export class HostSfuRoute {
         return;
       }
     }
-    this.routeFailed(
-      revision,
-      "active",
-      failedSlot?.selectedEdgeTurn ? failedSlot.connectionId : null,
-    );
+    this.routeFailed(revision, "active", null);
   }
 
   private routeFailed(

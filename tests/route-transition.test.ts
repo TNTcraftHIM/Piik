@@ -78,7 +78,7 @@ type SubscriberEvents = Parameters<
 const candidate = (
   revision: number,
   childPeerId = "viewer_12345678",
-  transport: "direct" | "selected-turn" | "sfu" = "direct",
+  transport: "direct" | "sfu" = "direct",
   connectionId = `candidate_${revision}_12345678`,
 ) => ({ childPeerId, connectionId, transport });
 
@@ -288,67 +288,6 @@ describe("minimal route transition contracts", () => {
     expect(publishers[0]?.deactivate).toHaveBeenCalledOnce();
     expect(publishers[0]?.disconnect).toHaveBeenCalledOnce();
     expect(publishers[1]?.disconnect).not.toHaveBeenCalled();
-  });
-
-  it("replaces one pending Host publication with selected TURN transport", async () => {
-    const publishers: ReturnType<typeof createFakePublisher>[] = [];
-    const route = new HostSfuRoute({
-      getStream: () => ({}) as MediaStream,
-      getProfile: () => QUALITY_PROFILES["720p30"],
-      reconcileChildren: () => undefined,
-      send: () => true,
-      createPublisher: () => {
-        const publisher = createFakePublisher([], `publisher-${publishers.length + 1}`);
-        publishers.push(publisher);
-        return publisher;
-      },
-    });
-
-    route.accept({
-      revision: 2,
-      phase: "prepare",
-      assignment: hostAssignment("publication-b"),
-      candidate: candidate(
-        2,
-        "viewer_12345678",
-        "sfu",
-        "selected-connection",
-      ),
-    });
-    expect(
-      route.startSelectedEdgeTurn({
-        type: "selected-edge-turn",
-        edgeKind: "host-sfu-ingress",
-        revision: 2,
-        hostPeerId: "host_12345678",
-        publicationGeneration: "publication-b",
-        oldConnectionId: "publication-b",
-        newConnectionId: "selected-connection",
-        expiresAt: "2099-01-01T00:00:00.000Z",
-        iceServer: {
-          urls: ["turn:turn.example.test:3478?transport=udp"],
-          username: "1787230000:opaque_identity_12345678",
-          credential: "short-lived-credential",
-        },
-      }),
-    ).toBe(true);
-    await route.acceptConfig(sfuConfig(2));
-
-    await vi.waitFor(() => expect(publishers).toHaveLength(1));
-    expect(publishers[0]?.connect).toHaveBeenCalledWith({
-      url: "wss://sfu.example.test",
-      token: "token-2",
-      rtcConfig: {
-        iceServers: [
-          {
-            urls: ["turn:turn.example.test:3478?transport=udp"],
-            username: "1787230000:opaque_identity_12345678",
-            credential: "short-lived-credential",
-          },
-        ],
-        iceTransportPolicy: "relay",
-      },
-    });
   });
 
   it("uses the subscriber first decoded frame as the only SFU prepare ready", async () => {

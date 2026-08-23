@@ -55,13 +55,11 @@ export class HostPeer {
     private stream: MediaStream,
     private desiredProfile: QualityProfile,
     private readonly events: HostPeerEvents,
-    private readonly relayOnly = false,
     connectionId = createOpaqueId(),
   ) {
     this.connectionId = connectionId;
     this.connection = new RTCPeerConnection({
       iceServers: iceConfig.iceServers,
-      ...(relayOnly ? { iceTransportPolicy: "relay" } : {}),
     });
     this.snapshot = {
       peerId,
@@ -235,7 +233,7 @@ export class HostPeer {
   }
 
   updateIceConfig(iceConfig: IceConfig): void {
-    if (this.disposed || this.relayOnly) {
+    if (this.disposed) {
       return;
     }
     try {

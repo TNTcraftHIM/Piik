@@ -11,14 +11,10 @@ import {
 import { SiteAccess } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import { createIceConfig } from "./ice.js";
-import type {
-  SelectedEdgeTurnOptions,
-  SfuFallbackOptions,
-} from "./hybrid-media-router.js";
+import type { SfuFallbackOptions } from "./hybrid-media-router.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SfuRoomControl } from "./sfu-room-control.js";
 import { SfuResourceAdmission } from "./sfu-resource-admission.js";
-import { TurnAllocationAdmission } from "./turn-allocation-admission.js";
 import { RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer, type SignalingOptions } from "./signaling.js";
 
@@ -56,7 +52,6 @@ export async function createScreenerServer(
   const livekitFallback = config.livekitFallback;
   let sfuFallback: SfuFallbackOptions | undefined;
   let sfuRoomControl: SfuRoomControl | undefined;
-  let selectedEdgeTurn: SelectedEdgeTurnOptions | undefined;
   if (livekitFallback) {
     sfuRoomControl =
       options.sfuRoomControl ??
@@ -80,14 +75,6 @@ export async function createScreenerServer(
         egressCapacity: livekitFallback.egressCapacity,
       }),
       roomControl: sfuRoomControl,
-    };
-  }
-  if (config.selectedEdgeTurn) {
-    selectedEdgeTurn = {
-      config: config.selectedEdgeTurn,
-      admission: new TurnAllocationAdmission({
-        capacity: config.selectedEdgeTurn.allocationCapacity,
-      }),
     };
   }
   const roomStore =
@@ -147,7 +134,6 @@ export async function createScreenerServer(
     peerAssistedMedia: config.peerAssistedMedia,
     endpointMediaCopyCapacity: config.endpointMediaCopyCapacity,
     ...(sfuFallback ? { sfuFallback } : {}),
-    ...(selectedEdgeTurn ? { selectedEdgeTurn } : {}),
     ice: iceOptions,
     allowedOrigins: config.allowedOrigins,
     siteAccessAtUpgrade: (request) =>

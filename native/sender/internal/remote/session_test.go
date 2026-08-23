@@ -430,20 +430,8 @@ func TestPeerAssistedHostUsesOnlyAuthoritativeRoutes(t *testing.T) {
 	if err = session.handle(sfuUpdate); err != nil {
 		t.Fatal(err)
 	}
-	selected := serverMessage{Type: "selected-edge-turn", EdgeKind: "host-sfu-ingress", RouteRevision: 9, NewConnectionID: "connection-new"}
-	if err = session.handle(selected); err != nil {
-		t.Fatal(err)
-	}
-	connectionID := "connection-new"
-	assertRouteStatus(t, receiveRouteStatus(t, received), "route-failed", 9, "active", &connectionID)
-	if err = session.handle(selected); err != nil {
-		t.Fatal(err)
-	}
-	if err = session.handle(sfuUpdate); err != nil {
-		t.Fatal(err)
-	}
 	if err = session.handle(serverMessage{Type: "error", Code: "PEER_NOT_FOUND"}); err != nil {
-		t.Fatal("bounded selected-edge fallback became fatal")
+		t.Fatal("bounded route failure became fatal")
 	}
 	select {
 	case payload := <-received:

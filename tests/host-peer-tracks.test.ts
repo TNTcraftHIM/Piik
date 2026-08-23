@@ -305,30 +305,6 @@ function createStream(
   } as unknown as MediaStream;
 }
 
-const selectedTurnIceServer = {
-  urls: ["turn:turn.example.test:3478?transport=udp"],
-  username: "1787230000:opaque_identity_12345678",
-  credential: "short-lived-credential",
-};
-
-function selectedEdgeTurn(
-  viewerPeerId: string,
-  oldConnectionId: string,
-  newConnectionId: string,
-) {
-  return {
-    type: "selected-edge-turn" as const,
-    edgeKind: "peer-selected" as const,
-    revision: 7,
-    parentPeerId: "selected-parent",
-    viewerPeerId,
-    oldConnectionId,
-    newConnectionId,
-    expiresAt: "2099-08-20T12:00:00.000Z",
-    iceServer: selectedTurnIceServer,
-  };
-}
-
 function createPeer(
   stream: MediaStream,
   onUpdate: (snapshot: PeerSnapshot) => void = () => undefined,
@@ -1149,9 +1125,11 @@ describe("ViewerRelay downstream ownership", () => {
   const routeCandidate = (
     revision: number,
     childPeerId: string,
-    transport: "direct" | "selected-turn" = "direct",
-    connectionId = `relay-candidate-${revision}`,
-  ) => ({ childPeerId, connectionId, transport });
+  ) => ({
+    childPeerId,
+    connectionId: `relay-candidate-${revision}`,
+    transport: "direct" as const,
+  });
 
   it("promotes the exact prepared child connection within the current Viewer cap", async () => {
     const signals: Array<{ peerId: string; connectionId: string }> = [];
@@ -1314,79 +1292,6 @@ describe("ViewerRelay downstream ownership", () => {
       relay.prepareChild(4, routeCandidate(4, "child-3"), ["child-0", "child-1", "child-2", "child-3"]),
     ).toBe(false);
     expect(FakePeerConnection.activeCount).toBe(3);
-    relay.dispose();
-  });
-
-  it("replaces the exact prepared child with selected TURN in the same slot", async () => {
-    const signals: Array<{ peerId: string; connectionId: string }> = [];
-    const relay = new ViewerRelay(
-      { iceServers: [] },
-      QUALITY_PROFILES["720p30"],
-      {
-        sendSignal: (peerId, payload) => {
-          signals.push({ peerId, connectionId: payload.connectionId });
-          return true;
-        },
-      },
-    );
-    relay.setChildren(["selected-child"]);
-    relay.setStream(createStream(createTrack("video", "selected-video"), null));
-    await vi.waitFor(() => expect(signals).toHaveLength(1));
-    const activeConnection = FakePeerConnection.latest!;
-    const activeConnectionId = signals[0]!.connectionId;
-    activeConnection.connectionState = "connected";
-    expect(
-      relay.prepareChild(
-        7,
-        routeCandidate(7, "selected-child", "selected-turn", "selected-connection"),
-        ["selected-child"],
-      ),
-    ).toBe(true);
-    expect(FakePeerConnection.latest).toBe(activeConnection);
-
-    expect(
-      relay.prepareSelectedEdgeTurn(
-        selectedEdgeTurn(
-          "selected-child",
-          activeConnectionId,
-          "selected-connection",
-        ),
-        "selected-parent",
-        7,
-      ),
-    ).toBe(true);
-    await vi.waitFor(() => expect(signals).toHaveLength(2));
-    const selectedConnection = FakePeerConnection.latest!;
-    expect(activeConnection.connectionState).toBe("connected");
-    expect(selectedConnection.configurations).toEqual([
-      {
-        iceServers: [selectedTurnIceServer],
-        iceTransportPolicy: "relay",
-      },
-    ]);
-    expect(signals[1]).toEqual({
-      peerId: "selected-child",
-      connectionId: "selected-connection",
-    });
-
-    await expect(
-      relay.acceptSignal(
-        "selected-child",
-        {
-          kind: "description",
-          connectionId: "selected-connection",
-          description: { type: "answer", sdp: "selected-answer" },
-        },
-        7,
-      ),
-    ).resolves.toBe(true);
-    selectedConnection.connectionState = "connected";
-    relay.activateChildren(7, ["selected-child"]);
-    expect(activeConnection.connectionState).toBe("closed");
-    expect(relay.getSnapshot("selected-child")?.connectionId).toBe(
-      "selected-connection",
-    );
-    expect(FakePeerConnection.activeCount).toBe(1);
     relay.dispose();
   });
 

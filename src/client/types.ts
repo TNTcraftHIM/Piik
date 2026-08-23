@@ -4,7 +4,7 @@ export type SignalConnectionState =
   | "reconnecting"
   | "offline";
 
-export type MediaPath = "direct" | "relay" | "unknown";
+export type MediaPath = "direct" | "unknown";
 
 export interface ConnectionMetrics {
   sampleTimestampMs: number | null;
@@ -24,7 +24,6 @@ export interface ConnectionMetrics {
   mediaSourceFramesPerSecond: number | null;
   path: MediaPath;
   iceProtocol: string | null;
-  localRelayProtocol: string | null;
   localCandidateType: string | null;
   remoteCandidateType: string | null;
   localCandidateAddress: string | null;
@@ -105,7 +104,6 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   mediaSourceFramesPerSecond: null,
   path: "unknown",
   iceProtocol: null,
-  localRelayProtocol: null,
   localCandidateType: null,
   remoteCandidateType: null,
   localCandidateAddress: null,
