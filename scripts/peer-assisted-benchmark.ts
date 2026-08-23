@@ -989,8 +989,7 @@ export function buildBenchmarkInitScript(options: {
     let transitionRevision = -1;
     let transitionPhase = null;
     let plannedRouteAssignment = null;
-    const canary = { droppedProofs: 0, prepareUpdates: 0, activeUpdates: 0, routeFailed: 0 };
-    let dropParentProof = false;
+    const canary = { prepareUpdates: 0, activeUpdates: 0, routeFailed: 0 };
     const nativeSends = new WeakMap();
 
     function isOpaqueId(value) {
@@ -1175,11 +1174,6 @@ export function buildBenchmarkInitScript(options: {
         socket.send = function(data) {
           let parsed = null;
           if (typeof data === "string") { try { parsed = JSON.parse(data); } catch {} }
-          if (dropParentProof && parsed?.type === "parent-edge-quality-evidence") {
-            canary.droppedProofs += 1;
-            handleSignalMessage(data, "out", socket);
-            return undefined;
-          }
           const result = nativeSend.call(socket, data);
           handleSignalMessage(data, "out", socket);
           return result;
@@ -1439,24 +1433,15 @@ export function buildBenchmarkInitScript(options: {
       };
     }
 
-    function configureCanary(value) {
-      if (!value || typeof value.dropParentProof !== "boolean") return false;
-      dropParentProof = value.dropParentProof;
-      return true;
-    }
     function canarySnapshot() {
       return { ...canary, connectionCount: connections.length, maxActiveOutboundMediaEdges: state.maxActiveOutboundMediaEdges };
     }
     function sendViewerQualityEvidence(message) {
       return message?.type === "viewer-quality-evidence" && sendCanaryMessage(message);
     }
-    function sendParentEdgeQualityEvidence(message) {
-      return message?.type === "parent-edge-quality-evidence" && sendCanaryMessage(message);
-    }
-
     Object.defineProperty(globalThis, "__SCREENER_BENCHMARK__", {
       configurable: false,
-      value: { sample, progress, snapshot, canarySnapshot, configureCanary, sendViewerQualityEvidence, sendParentEdgeQualityEvidence, stop: () => clearInterval(videoObserver) },
+      value: { sample, progress, snapshot, canarySnapshot, sendViewerQualityEvidence, stop: () => clearInterval(videoObserver) },
     });
   })();`;
 }
@@ -2288,11 +2273,9 @@ async function runViewerMbbCanary(
     if (!targetHandle || !parentHandle || !candidateHandle || !old || target.routeRevision === null || !target.peerId || !parent.peerId || !old.connectionId) return failed("probe-unavailable");
     const oldFrames = old.receiveTotals?.framesTotal ?? 0;
     const revision = target.routeRevision;
-    await evaluate(cdp, parentHandle, "globalThis.__SCREENER_BENCHMARK__.configureCanary({dropParentProof:true})");
     const send = (page: PageHandle, method: string, message: unknown) =>
       evaluate<boolean>(cdp, page, `globalThis.__SCREENER_BENCHMARK__.${method}(${JSON.stringify(message)})`);
     let windows = 0;
-    let proofs = 0;
     for (let sequence = 0; sequence < 3; sequence += 1) {
       const windowSent = await send(targetHandle, "sendViewerQualityEvidence", {
         type: "viewer-quality-evidence", guard: { connectionId: old.connectionId, routeRevision: revision },
@@ -2303,13 +2286,6 @@ async function runViewerMbbCanary(
           codec: null, codecProfile: null, codecParameters: null },
       });
       if (windowSent) windows += 1;
-      await delay(100, signal);
-      const proofSent = await send(parentHandle, "sendParentEdgeQualityEvidence", {
-        type: "parent-edge-quality-evidence", viewerPeerId: target.peerId,
-        guard: { connectionId: old.connectionId, routeRevision: revision }, viewerSequence: sequence,
-        proof: { kind: "sender-limited", packetsSentDelta: 100, reason: "bandwidth" },
-      });
-      if (proofSent) proofs += 1;
       if (sequence < 2) await delay(2_100, signal);
     }
     let retained = false, provisional = false, promoted = false, sameIdentity = false, framesAdvanced = false;
@@ -2339,10 +2315,8 @@ async function runViewerMbbCanary(
       if (promoted && sameIdentity && retained && framesAdvanced) break;
       await delay(100, signal);
     }
-    await evaluate(cdp, parentHandle, "globalThis.__SCREENER_BENCHMARK__.configureCanary({dropParentProof:false})");
     const assertions = {
-      syntheticCorrelatedEvidence: windows === 3 && proofs === 3,
-      parentProofSuppressed: parentTelemetry.droppedProofs > 0,
+      syntheticViewerEvidence: windows === 3,
       oldEdgeRetained: retained,
       provisionalPcObserved: provisional,
       promotedToViewerCandidate: promoted,
@@ -2352,20 +2326,19 @@ async function runViewerMbbCanary(
       noRouteFailed: targetTelemetry.routeFailed === 0 && parentTelemetry.routeFailed === 0 && candidateTelemetry.routeFailed === 0,
     };
     return { kind: "viewer-mbb", status: Object.values(assertions).every(Boolean) ? "passed" : "failed", assertions,
-      counters: { pages: pages.length, evidenceWindows: windows, parentProofs: proofs,
-        droppedParentProofs: parentTelemetry.droppedProofs, routePrepareUpdates: targetTelemetry.prepareUpdates + parentTelemetry.prepareUpdates + candidateTelemetry.prepareUpdates,
+      counters: { pages: pages.length, evidenceWindows: windows,
+        routePrepareUpdates: targetTelemetry.prepareUpdates + parentTelemetry.prepareUpdates + candidateTelemetry.prepareUpdates,
         routeActiveUpdates: targetTelemetry.activeUpdates + parentTelemetry.activeUpdates + candidateTelemetry.activeUpdates,
         maxActiveOutboundEdges: Math.max(targetTelemetry.maxActiveOutboundMediaEdges, parentTelemetry.maxActiveOutboundMediaEdges, candidateTelemetry.maxActiveOutboundMediaEdges),
         routeFailedMessages: targetTelemetry.routeFailed + parentTelemetry.routeFailed + candidateTelemetry.routeFailed },
       ...(Object.values(assertions).every(Boolean) ? {} : { failureCode: "probe-unavailable" as const }) };
   } catch {
-    if (parentHandle) await evaluate(cdp, parentHandle, "globalThis.__SCREENER_BENCHMARK__.configureCanary({dropParentProof:false})").catch(() => undefined);
     return failed("probe-unavailable");
   }
 }
 
 async function canary(cdp: CdpConnection, page: PageHandle): Promise<{
-  droppedProofs: number; prepareUpdates: number; activeUpdates: number; routeFailed: number;
+  prepareUpdates: number; activeUpdates: number; routeFailed: number;
   maxActiveOutboundMediaEdges: number;
 }> {
   return evaluate(cdp, page, "globalThis.__SCREENER_BENCHMARK__.canarySnapshot()");

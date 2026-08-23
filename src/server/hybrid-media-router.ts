@@ -91,7 +91,10 @@ interface PreparedCandidate {
 }
 
 type PrepareResult =
-  | { kind: "denied"; serverAdmission: "sfu" | false }
+  | {
+      kind: "denied";
+      rejectionBucket: "stale" | "sfu-admission" | "candidate-failed";
+    }
   | { kind: "ready"; prepared: PreparedCandidate };
 
 export interface SfuFallbackOptions {
@@ -190,7 +193,7 @@ export class HybridMediaRouter {
             input.role === "host"
               ? this.options.endpointMediaCopyCapacity
               : (room.advertisedCapacityByViewer.get(input.peerId) ?? 0),
-        }),
+        }, this.now()),
       );
     }
     const snapshot = room.controller?.snapshot();
@@ -227,9 +230,20 @@ export class HybridMediaRouter {
     const room = this.rooms.get(roomId);
     if (!room?.controller) return;
     const before = room.controller.snapshot().revision;
-    this.releaseResources(room.controller.setPaused(paused));
+    this.releaseResources(room.controller.setPaused(paused, this.now()));
     if (room.controller.snapshot().revision !== before) this.broadcastActive(roomId, room);
     if (!paused) this.requestPump(roomId);
+  }
+
+  routeDiagnosticSnapshot(
+    roomId: string,
+  ): Extract<ServerMessage, { type: "route-diagnostic-snapshot" }>["snapshot"] {
+    return (
+      this.rooms.get(roomId)?.controller?.routeDiagnosticSnapshot(this.now()) ?? {
+        children: [],
+        operation: null,
+      }
+    );
   }
 
   isActivePeerParentOf(
@@ -366,6 +380,7 @@ export class HybridMediaRouter {
         participant.peerId,
         participant.sessionId,
         downstreamEdges,
+        this.now(),
       )
     ) {
       this.requestPump(participant.roomId);
@@ -413,6 +428,14 @@ export class HybridMediaRouter {
       );
     }
     if (controller.snapshot().revision !== before) this.broadcastActive(participant.roomId, room);
+    if (settled.exhausted) {
+      this.sendViewerRouteStatus(participant.roomId, participant.peerId, {
+        type: "route-status",
+        revision: controller.snapshot().revision,
+        state: "failed",
+        reason: "route-exhausted",
+      });
+    }
     this.requestPump(participant.roomId);
   }
 
@@ -441,7 +464,7 @@ export class HybridMediaRouter {
       childSessionId: participant.sessionId,
       routeRevision: snapshot.revision,
       connectionId: edge.connectionId,
-    });
+    }, this.now());
     this.requestPump(participant.roomId);
   }
 
@@ -484,6 +507,18 @@ export class HybridMediaRouter {
       );
       this.releaseResources(settled.released);
       if (controller.snapshot().revision !== before) this.broadcastActive(participant.roomId, room);
+      if (settled.exhausted) {
+        this.sendViewerRouteStatus(
+          participant.roomId,
+          operation.childPeerId,
+          {
+            type: "route-status",
+            revision: controller.snapshot().revision,
+            state: "failed",
+            reason: "route-exhausted",
+          },
+        );
+      }
       this.requestPump(participant.roomId);
       return;
     }
@@ -503,7 +538,7 @@ export class HybridMediaRouter {
         routeRevision: snapshot.revision,
         generation: publication.generation,
         connectionId: publication.connectionId,
-      });
+      }, this.now());
       const invalid = controller.snapshot();
       this.releaseResources(
         controller.retireHostPublication({
@@ -532,7 +567,7 @@ export class HybridMediaRouter {
       routeRevision: snapshot.revision,
       connectionId: edge.connectionId,
       ...(edge.kind === "peer" ? { parentSessionId: edge.parentSessionId } : {}),
-    });
+    }, this.now());
     this.requestPump(participant.roomId);
   }
 
@@ -557,7 +592,9 @@ export class HybridMediaRouter {
     const room = this.rooms.get(roomId);
     room?.advertisedCapacityByViewer.delete(peerId);
     this.options.deleteConnectionId(roomId, peerId);
-    if (room?.controller?.confirmDeparture(peerId)) this.requestPump(roomId);
+    if (room?.controller?.confirmDeparture(peerId, this.now())) {
+      this.requestPump(roomId);
+    }
   }
 
   stopRoom(roomId: string): void {
@@ -598,7 +635,7 @@ export class HybridMediaRouter {
       role: "host",
       sessionId: host.sessionId,
       effectiveDownstreamCapacity: this.options.endpointMediaCopyCapacity,
-    });
+    }, this.now());
     for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
       room.controller.upsertParticipant({
         peerId: viewer.peerId,
@@ -606,7 +643,7 @@ export class HybridMediaRouter {
         sessionId: viewer.sessionId,
         effectiveDownstreamCapacity:
           room.advertisedCapacityByViewer.get(viewer.peerId) ?? 0,
-      });
+      }, this.now());
     }
   }
 
@@ -639,6 +676,14 @@ export class HybridMediaRouter {
       const reconciled = controller.reconcile(this.now());
       this.releaseResources(reconciled.released);
       if (controller.snapshot().revision !== beforeRevision) this.broadcastActive(roomId, room);
+      for (const peerId of reconciled.failedPeerIds) {
+        this.sendViewerRouteStatus(roomId, peerId, {
+          type: "route-status",
+          revision: controller.snapshot().revision,
+          state: "failed",
+          reason: "route-exhausted",
+        });
+      }
       const operation = reconciled.operation ?? controller.snapshot().operation;
       if (!operation) {
         this.clearDeadline(room);
@@ -660,20 +705,38 @@ export class HybridMediaRouter {
           (plan.endpointTransition.kind === "bounded-gap" ? 2 : 1),
       );
       if (preparation.kind === "denied") {
-        if (preparation.serverAdmission === "sfu") {
+        if (preparation.rejectionBucket === "sfu-admission") {
+          if (
+            !controller.noteCurrentCandidateRejection(
+              guard,
+              "sfu-admission",
+            )
+          ) {
+            continue;
+          }
           this.resourceWaiterRoomIds.add(roomId);
+          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+            type: "route-status",
+            revision: operation.baseRevision,
+            state: "waiting",
+            reason: "sfu-admission",
+          });
           this.scheduleDeadline(roomId, room, operation);
           return;
         }
-        const skipped = controller.skipCurrentCandidate(guard, this.now());
+        const skipped = controller.skipCurrentCandidate(
+          guard,
+          this.now(),
+          preparation.rejectionBucket,
+        );
         this.releaseResources(skipped.released);
         if (skipped.exhausted) {
-          this.sendViewerError(
-            roomId,
-            operation.childPeerId,
-            "PEER_NOT_FOUND",
-            "No usable media route is available",
-          );
+          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+            type: "route-status",
+            revision: controller.snapshot().revision,
+            state: "failed",
+            reason: "route-exhausted",
+          });
         }
         continue;
       }
@@ -682,6 +745,14 @@ export class HybridMediaRouter {
         const beforeGap = controller.snapshot().revision;
         const gap = controller.retireCurrentCandidateProducer(guard, this.now());
         this.releaseResources(gap.released);
+        if (gap.exhausted) {
+          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+            type: "route-status",
+            revision: controller.snapshot().revision,
+            state: "failed",
+            reason: "route-exhausted",
+          });
+        }
         if (!gap.accepted) {
           this.releaseReservation(preparation.prepared.reservation);
           continue;
@@ -705,12 +776,12 @@ export class HybridMediaRouter {
       this.releaseResources(begun.released);
       if (!begun.accepted || !begun.operation?.current) {
         if (begun.exhausted) {
-          this.sendViewerError(
-            roomId,
-            operation.childPeerId,
-            "PEER_NOT_FOUND",
-            "No usable media route is available",
-          );
+          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+            type: "route-status",
+            revision: controller.snapshot().revision,
+            state: "failed",
+            reason: "route-exhausted",
+          });
         }
         continue;
       }
@@ -736,7 +807,7 @@ export class HybridMediaRouter {
     const child = this.options.roomStore.getConnectedViewer(roomId, operation.childPeerId);
     const shareGeneration = this.options.getShareGeneration(roomId);
     if (!child || child.sessionId !== operation.childSessionId || !shareGeneration) {
-      return { kind: "denied", serverAdmission: false };
+      return { kind: "denied", rejectionBucket: "stale" };
     }
     const connectionId = opaqueId();
     const overlap =
@@ -756,7 +827,7 @@ export class HybridMediaRouter {
     const fallback = this.options.sfuFallback;
     const host = this.options.roomStore.getConnectedHost(roomId);
     if (!fallback || !host || host.peerId !== room.hostPeerId) {
-      return { kind: "denied", serverAdmission: false };
+      return { kind: "denied", rejectionBucket: "stale" };
     }
     if (plan.tuple.publication === "reuse") {
       const publication = snapshot.hostPublication;
@@ -764,14 +835,14 @@ export class HybridMediaRouter {
         !publication ||
         publication.resource.kind !== "sfu-publication"
       ) {
-        return { kind: "denied", serverAdmission: false };
+        return { kind: "denied", rejectionBucket: "stale" };
       }
       const fence: SfuSubscriptionFence = {
         ...publication.resource.fence,
         viewerPeerId: operation.childPeerId,
       };
       if (!fallback.admission.reserveSubscription(fence)) {
-        return { kind: "denied", serverAdmission: "sfu" };
+        return { kind: "denied", rejectionBucket: "sfu-admission" };
       }
       const currentEdge = snapshot.upstreamByViewer.get(operation.childPeerId);
       const edge =
@@ -810,7 +881,7 @@ export class HybridMediaRouter {
         };
       } catch {
         fallback.admission.releaseSubscription(fence);
-        return { kind: "denied", serverAdmission: false };
+        return { kind: "denied", rejectionBucket: "candidate-failed" };
       }
     }
 
@@ -846,12 +917,12 @@ export class HybridMediaRouter {
       viewerPeerId: operation.childPeerId,
     };
     if (!fallback.admission.reservePublication(publicationFence)) {
-      return { kind: "denied", serverAdmission: "sfu" };
+      return { kind: "denied", rejectionBucket: "sfu-admission" };
     }
     if (!fallback.admission.reserveSubscription(subscriptionFence)) {
       fallback.admission.beginDrain(publicationFence);
       this.scheduleSfuDrain(publicationFence);
-      return { kind: "denied", serverAdmission: "sfu" };
+      return { kind: "denied", rejectionBucket: "sfu-admission" };
     }
     const subscription = subscriptionResource(subscriptionFence);
     const publicationConnectionId = publicationGeneration;
@@ -905,7 +976,7 @@ export class HybridMediaRouter {
     } catch {
       this.releaseResource(subscription);
       this.releaseResource(publication);
-      return { kind: "denied", serverAdmission: false };
+      return { kind: "denied", rejectionBucket: "candidate-failed" };
     }
   }
 
@@ -1210,12 +1281,12 @@ export class HybridMediaRouter {
       this.releaseResources(expired.released);
       if (room.controller.snapshot().revision !== before) this.broadcastActive(roomId, room);
       if (expired.exhausted) {
-        this.sendViewerError(
-          roomId,
-          operation.childPeerId,
-          "PEER_NOT_FOUND",
-          "No usable media route is available",
-        );
+        this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+          type: "route-status",
+          revision: room.controller.snapshot().revision,
+          state: "failed",
+          reason: "route-exhausted",
+        });
       }
       this.requestPump(roomId);
     }, Math.max(0, operation.wakeAtMs - this.now()));
@@ -1322,7 +1393,7 @@ export class HybridMediaRouter {
       routeRevision: snapshot.revision,
       generation: publication.generation,
       connectionId: publication.connectionId,
-    });
+    }, this.now());
     const invalid = controller.snapshot();
     this.releaseResources(
       controller.retireHostPublication({
@@ -1407,14 +1478,13 @@ export class HybridMediaRouter {
     if (host) this.options.sendToSession(host.sessionId, { type: "error", code, message });
   }
 
-  private sendViewerError(
+  private sendViewerRouteStatus(
     roomId: string,
     viewerPeerId: string,
-    code: ErrorCode,
-    message: string,
+    message: Extract<ServerMessage, { type: "route-status" }>,
   ): void {
     const viewer = this.options.roomStore.getConnectedViewer(roomId, viewerPeerId);
-    if (viewer) this.options.sendToSession(viewer.sessionId, { type: "error", code, message });
+    if (viewer) this.options.sendToSession(viewer.sessionId, message);
   }
 }
 

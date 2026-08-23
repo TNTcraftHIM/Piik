@@ -40,13 +40,14 @@ function addViewer(
   routes: RoomRouteController<string>,
   peerId: string,
   capacity: 0 | 1 | 2 | 3,
+  nowMs?: number,
 ) {
   routes.upsertParticipant({
     peerId,
     role: "viewer",
     sessionId: `${peerId}_session`,
     effectiveDownstreamCapacity: capacity,
-  });
+  }, nowMs);
 }
 
 function cursorGuard(operation: OperationSnapshot): CandidateCursorGuard {
@@ -120,6 +121,264 @@ function peerEdge(
 }
 
 describe("RoomRouteController", () => {
+  it("retains one latest timing sample for a 20-Viewer burst", () => {
+    const routes = controller(2);
+    const viewerPeerIds = Array.from(
+      { length: 20 },
+      (_, index) => `burst_${String(index).padStart(2, "0")}_12345678`,
+    );
+    for (const peerId of viewerPeerIds) addViewer(routes, peerId, 2, 0);
+
+    for (const [index, peerId] of viewerPeerIds.entries()) {
+      const operationStartedAtMs = (index + 1) * 10;
+      expect(routes.reconcile(operationStartedAtMs).operation?.childPeerId).toBe(
+        peerId,
+      );
+      commitCurrent(
+        routes,
+        operationStartedAtMs + 1,
+        `${peerId}_connection`,
+      );
+    }
+
+    const snapshot = routes.routeDiagnosticSnapshot(250);
+    expect(snapshot.children).toHaveLength(20);
+    expect(snapshot.children.map((child) => child.queueWaitMs)).toEqual(
+      Array.from({ length: 20 }, (_, index) => (index + 1) * 10),
+    );
+    expect(snapshot.children.every((child) => child.finalRoute === "direct"))
+      .toBe(true);
+  });
+
+  it("projects latest route timing through snapshot-local ordinals", () => {
+    const routes = controller(2);
+    addViewer(routes, A, 1, 100);
+
+    expect(routes.routeDiagnosticSnapshot(150)).toEqual({
+      children: [
+        {
+          ordinal: 1,
+          parent: { kind: "none" },
+          effectiveCapacity: 1,
+          childCount: 0,
+          demandAgeMs: 50,
+          queueWaitMs: null,
+          candidateStartMs: null,
+          firstDecodedFrameMs: null,
+          finalMs: null,
+          finalRoute: "waiting",
+          rejectionBucket: "none",
+        },
+      ],
+      operation: null,
+    });
+
+    const operation = routes.reconcile(160).operation!;
+    expect(routes.routeDiagnosticSnapshot(165).operation).toEqual({
+      childOrdinal: 1,
+      reason: "join",
+      stage: "admission",
+      cursor: 0,
+      candidateCount: operation.candidates.length,
+    });
+    const prepared = beginCandidate(routes, {
+      nowMs: 170,
+      connectionId: "a_connection",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(routes.routeDiagnosticSnapshot(180)).toMatchObject({
+      children: [
+        {
+          queueWaitMs: 60,
+          candidateStartMs: 70,
+          firstDecodedFrameMs: null,
+          finalMs: null,
+        },
+      ],
+      operation: { childOrdinal: 1, stage: "first-frame" },
+    });
+    expect(
+      routes.candidateReady(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: prepared.current!.revision,
+          connectionId: "a_connection",
+        },
+        230,
+      ).accepted,
+    ).toBe(true);
+    const settled = routes.routeDiagnosticSnapshot(240);
+    expect(settled).toMatchObject({
+      children: [
+        {
+          parent: { kind: "host" },
+          queueWaitMs: 60,
+          candidateStartMs: 70,
+          firstDecodedFrameMs: 130,
+          finalMs: 130,
+          finalRoute: "direct",
+          rejectionBucket: "none",
+        },
+      ],
+      operation: null,
+    });
+    expect(JSON.stringify(settled)).not.toContain(A);
+    expect(JSON.stringify(settled)).not.toContain("a_connection");
+
+    expect(
+      routes.invalidateEdge(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          parentSessionId: "host_session",
+          routeRevision: routes.snapshot().revision,
+          connectionId: "a_connection",
+        },
+        300,
+      ),
+    ).toBe(true);
+    expect(routes.routeDiagnosticSnapshot(320).children[0]).toMatchObject({
+      demandAgeMs: 20,
+      queueWaitMs: null,
+      candidateStartMs: null,
+      firstDecodedFrameMs: null,
+      finalMs: null,
+      finalRoute: "waiting",
+      rejectionBucket: "none",
+    });
+
+    expect(routes.confirmDeparture(A, 330)).toBe(true);
+    expect(routes.routeDiagnosticSnapshot(330)).toEqual({
+      children: [],
+      operation: null,
+    });
+  });
+
+  it("records a bounded candidate failure without retaining route identity", () => {
+    const routes = controller(1);
+    addViewer(routes, A, 0, 0);
+    routes.reconcile(10);
+    const prepared = beginCandidate(routes, {
+      nowMs: 20,
+      connectionId: "failed_candidate",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(
+      routes.candidateFailed(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: prepared.current!.revision,
+          connectionId: "failed_candidate",
+        },
+        30,
+      ),
+    ).toMatchObject({ accepted: true, exhausted: true });
+    expect(routes.routeDiagnosticSnapshot(30).children[0]).toMatchObject({
+      finalMs: 30,
+      finalRoute: "failed",
+      rejectionBucket: "candidate-failed",
+    });
+
+    routes.dispose();
+    expect(routes.routeDiagnosticSnapshot(40)).toEqual({
+      children: [],
+      operation: null,
+    });
+  });
+
+  it("reports a current child that has no usable candidate", () => {
+    const routes = controller(1);
+    addViewer(routes, A, 0);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_connection"));
+    addViewer(routes, B, 0, 0);
+
+    const result = routes.reconcile(10);
+    expect(result.operation).toBeUndefined();
+    expect(result.failedPeerIds).toEqual([B]);
+    expect(routes.routeDiagnosticSnapshot(10).children[1]).toMatchObject({
+      finalMs: 10,
+      finalRoute: "failed",
+      rejectionBucket: "candidate-failed",
+    });
+  });
+
+  it("records SFU admission waiting without advancing the route cursor", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 0, 0);
+    const direct = routes.reconcile(10).operation!;
+    expect(direct.candidates.map((candidate) => candidate.tuple.kind)).toEqual([
+      "peer",
+      "sfu",
+    ]);
+    expect(
+      routes.skipCurrentCandidate(
+        cursorGuard(direct),
+        20,
+        "candidate-failed",
+      ).accepted,
+    ).toBe(true);
+    const sfu = routes.snapshot().operation!;
+    expect(
+      routes.noteCurrentCandidateRejection(
+        cursorGuard(sfu),
+        "sfu-admission",
+      ),
+    ).toBe(true);
+    expect(routes.routeDiagnosticSnapshot(30)).toMatchObject({
+      children: [
+        {
+          finalRoute: "waiting",
+          rejectionBucket: "sfu-admission",
+        },
+      ],
+      operation: {
+        childOrdinal: 1,
+        stage: "admission",
+        cursor: 1,
+        candidateCount: 2,
+      },
+    });
+  });
+
+  it("distinguishes first-frame timeout from the total operation deadline", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 0, 0);
+    const direct = routes.reconcile(10).operation!;
+    beginCandidate(routes, {
+      nowMs: 20,
+      connectionId: "silent_direct",
+      reservation: { kind: "direct" },
+    });
+
+    expect(routes.operationExpired(direct.wakeAtMs)).toMatchObject({
+      accepted: true,
+    });
+    expect(routes.routeDiagnosticSnapshot(direct.wakeAtMs)).toMatchObject({
+      children: [
+        {
+          candidateStartMs: null,
+          finalMs: null,
+          finalRoute: "waiting",
+          rejectionBucket: "first-frame-timeout",
+        },
+      ],
+      operation: { cursor: 1, stage: "admission" },
+    });
+
+    const deadline = routes.snapshot().operation!.deadlineAtMs;
+    expect(routes.operationExpired(deadline)).toMatchObject({
+      accepted: true,
+      exhausted: true,
+    });
+    expect(routes.routeDiagnosticSnapshot(deadline).children[0]).toMatchObject({
+      finalMs: deadline,
+      finalRoute: "failed",
+      rejectionBucket: "operation-deadline",
+    });
+  });
+
   it.each([1, 2, 3] as const)(
     "admits 20 Viewers through one bounded event-driven graph at C=%i",
     (capacity) => {
@@ -875,15 +1134,15 @@ describe("RoomRouteController", () => {
       routeRevision: 0,
       generation: "publication_1",
       connectionId: "publication:publication_1",
-    })).toBe(true);
+    }, 10)).toBe(true);
     routes.touchExternalFacts();
-    const operation = routes.reconcile(0).operation!;
+    const operation = routes.reconcile(20).operation!;
     expect(operation.candidates[0]).toMatchObject({
       tuple: { kind: "sfu", publication: "replace" },
       endpointTransition: { kind: "overlap", producerPeerId: HOST },
     });
     const prepared = beginCandidate(routes, {
-      nowMs: 1,
+      nowMs: 21,
       connectionId: "a_sfu_2",
       publicationGeneration: "publication_2",
       publicationConnectionId: "publication_connection_2",
@@ -899,7 +1158,7 @@ describe("RoomRouteController", () => {
       childSessionId: `${A}_session`,
       revision: prepared.current!.revision,
       connectionId: "a_sfu_2",
-    }, 2);
+    }, 22);
     expect(settled.accepted).toBe(true);
     expect(settled.released).toHaveLength(4);
     expect(settled.released).toEqual(expect.arrayContaining([
@@ -912,7 +1171,14 @@ describe("RoomRouteController", () => {
       publicationGeneration: "publication_2",
     });
     expect(routes.snapshot().upstreamByViewer.has(B)).toBe(false);
-    expect(routes.reconcile(3).operation?.childPeerId).toBe(B);
+    expect(routes.routeDiagnosticSnapshot(22).children[1]).toMatchObject({
+      demandAgeMs: 12,
+      finalRoute: "waiting",
+    });
+    expect(routes.reconcile(23).operation).toMatchObject({
+      childPeerId: B,
+      reason: "edge-unavailable",
+    });
   });
 
   it("rebinds direct and SFU media to replacement sessions", () => {

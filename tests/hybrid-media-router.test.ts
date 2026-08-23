@@ -358,4 +358,94 @@ describe("HybridMediaRouter v7 runtime", () => {
     await router.close();
   });
 
+  it("emits typed exhaustion and clears diagnostics on departure and room deletion", async () => {
+    const { store, sent, router } = harness(1);
+    const room = await store.createRoom();
+    const host = connectHost(store, room);
+    complete(router, host);
+    const viewer = connectViewer(store, room, "diagnostic");
+    complete(router, viewer);
+    await vi.waitFor(() =>
+      expect(preparedFor(sent, viewer.sessionId)).toBeDefined(),
+    );
+    const prepared = preparedFor(sent, viewer.sessionId)!;
+    expect(router.routeDiagnosticSnapshot(room.roomId).children).toHaveLength(1);
+
+    router.handleRouteFailed(viewer, {
+      type: "route-failed",
+      revision: prepared.revision,
+      phase: "prepare",
+      connectionId: prepared.candidate.connectionId,
+    });
+    await vi.waitFor(() =>
+      expect(
+        sent
+          .get(viewer.sessionId)
+          ?.findLast((message) => message.type === "route-status"),
+      ).toMatchObject({
+        state: "failed",
+        reason: "route-exhausted",
+      }),
+    );
+
+    router.removeViewer(room.roomId, viewer.peerId);
+    expect(router.routeDiagnosticSnapshot(room.roomId)).toEqual({
+      children: [],
+      operation: null,
+    });
+
+    const replacement = connectViewer(store, room, "diagnostic-replacement");
+    complete(router, replacement);
+    expect(router.routeDiagnosticSnapshot(room.roomId).children).toHaveLength(1);
+    router.stopRoom(room.roomId);
+    expect(router.routeDiagnosticSnapshot(room.roomId)).toEqual({
+      children: [],
+      operation: null,
+    });
+
+    complete(router, host);
+    expect(
+      router.routeDiagnosticSnapshot(room.roomId).children.length,
+    ).toBeGreaterThan(0);
+    router.deleteRoom(room.roomId);
+    expect(router.routeDiagnosticSnapshot(room.roomId)).toEqual({
+      children: [],
+      operation: null,
+    });
+    await router.close();
+  });
+
+  it("emits typed exhaustion when reconciliation has no candidate", async () => {
+    const { store, sent, router } = harness(1);
+    const room = await store.createRoom();
+    const host = connectHost(store, room);
+    complete(router, host);
+
+    const first = connectViewer(store, room, "only-slot");
+    complete(router, first);
+    await vi.waitFor(() =>
+      expect(preparedFor(sent, first.sessionId)).toBeDefined(),
+    );
+    const firstPrepare = preparedFor(sent, first.sessionId)!;
+    router.handleRouteReady(first, {
+      type: "route-ready",
+      revision: firstPrepare.revision,
+      phase: "prepare",
+    });
+
+    const blocked = connectViewer(store, room, "no-candidate");
+    complete(router, blocked);
+    await vi.waitFor(() =>
+      expect(
+        sent
+          .get(blocked.sessionId)
+          ?.findLast((message) => message.type === "route-status"),
+      ).toMatchObject({
+        state: "failed",
+        reason: "route-exhausted",
+      }),
+    );
+    await router.close();
+  });
+
 });

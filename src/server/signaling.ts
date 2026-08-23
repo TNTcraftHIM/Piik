@@ -8,12 +8,10 @@ import {
   DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_VIEWER_DISPLAY_NAME,
   DEFAULT_QUALITY_SETTINGS,
-  MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SIGNAL_BYTES,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   SIGNALING_PROTOCOL,
   VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
-  VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   decodeClientMessage,
   type ClientMessage,
   type CodeEntryPolicy,
@@ -72,7 +70,6 @@ interface ViewerQualityEvidenceGate {
   routeRevision: number;
   sequence: number;
   acceptedAtMs: number;
-  parentEvidenceAccepted: boolean;
 }
 
 interface ViewerMediaReadyState {
@@ -337,12 +334,9 @@ export class SignalingServer {
       return;
     }
     if (
-      ((message.type === "viewer-quality-evidence" &&
-        Buffer.byteLength(encoded, "utf8") >
-          MAX_VIEWER_QUALITY_EVIDENCE_BYTES) ||
-        (message.type === "parent-edge-quality-evidence" &&
-          Buffer.byteLength(encoded, "utf8") >
-            MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES))
+      message.type === "viewer-quality-evidence" &&
+      Buffer.byteLength(encoded, "utf8") >
+        MAX_VIEWER_QUALITY_EVIDENCE_BYTES
     ) {
       this.rejectInvalidMessage(socket);
       return;
@@ -845,11 +839,24 @@ export class SignalingServer {
           message.revision,
         );
         return;
+      case "request-route-diagnostic":
+        if (authenticated.role !== "host") {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "Only the host may request route diagnostics",
+          );
+          return;
+        }
+        this.send(socket, {
+          type: "route-diagnostic-snapshot",
+          snapshot: this.hybridMediaRouter?.routeDiagnosticSnapshot(
+            authenticated.roomId,
+          ) ?? { children: [], operation: null },
+        });
+        return;
       case "viewer-quality-evidence":
         this.handleViewerQualityEvidence(socket, authenticated, message);
-        return;
-      case "parent-edge-quality-evidence":
-        this.handleParentEdgeQualityEvidence(socket, authenticated, message);
         return;
       case "set-display-name":
         if (
@@ -1245,7 +1252,6 @@ export class SignalingServer {
       routeRevision,
       sequence: message.sequence,
       acceptedAtMs: now,
-      parentEvidenceAccepted: false,
     });
     const host = this.options.roomStore.getConnectedHost(source.roomId);
     if (!host || host.sessionId === parent.sessionId) {
@@ -1263,58 +1269,6 @@ export class SignalingServer {
     ) {
       this.sendEncodedToSession(host.sessionId, encoded);
     }
-  }
-
-  private handleParentEdgeQualityEvidence(
-    socket: WebSocket,
-    source: AuthenticatedSession,
-    message: Extract<
-      ClientMessage,
-      { type: "parent-edge-quality-evidence" }
-    >,
-  ): void {
-    if (!this.isHybridMediaEnabled()) {
-      return;
-    }
-    const sourceState = this.socketStates.get(socket);
-    if (!sourceState || sourceState.authenticated !== source) {
-      return;
-    }
-    const viewer = this.options.roomStore.getConnectedViewer(
-      source.roomId,
-      message.viewerPeerId,
-    );
-    const gate = this.viewerQualityEvidenceGates.get(
-      viewerConnectionKey(source.roomId, message.viewerPeerId),
-    );
-    const edge = this.hybridMediaRouter?.resolveActivePeerEdge(
-      source.roomId,
-      message.viewerPeerId,
-    );
-    const connectionId = this.connectionIdsByViewer.get(
-      viewerConnectionKey(source.roomId, message.viewerPeerId),
-    );
-    const now = this.now();
-    if (
-      !viewer ||
-      !gate ||
-      gate.parentEvidenceAccepted ||
-      source.peerId !== gate.parentPeerId ||
-      sourceState.sessionId !== gate.parentSessionId ||
-      viewer.sessionId !== gate.viewerSessionId ||
-      connectionId !== gate.connectionId ||
-      edge?.parentPeerId !== source.peerId ||
-      edge.revision !== gate.routeRevision ||
-      message.guard.connectionId !== gate.connectionId ||
-      message.guard.routeRevision !== gate.routeRevision ||
-      message.viewerSequence !== gate.sequence ||
-      now < gate.acceptedAtMs ||
-      now - gate.acceptedAtMs > VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
-    ) {
-      return;
-    }
-
-    gate.parentEvidenceAccepted = true;
   }
 
   private routeSignal(

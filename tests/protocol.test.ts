@@ -7,7 +7,6 @@ import {
   DEFAULT_VIEWER_DISPLAY_NAME,
   MAX_DISPLAY_NAME_CODE_POINTS,
   MAX_MEDIA_ROUTE_REVISION,
-  MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   MAX_VIEWER_PASSWORD_LENGTH,
@@ -66,14 +65,6 @@ const qualityEvidence = {
   },
 } as const;
 
-const parentEdgeQualityEvidence = {
-  type: "parent-edge-quality-evidence",
-  viewerPeerId: "viewer_12345678",
-  guard: qualityEvidence.guard,
-  viewerSequence: qualityEvidence.sequence,
-  proof: { kind: "sending", packetsSentDelta: 1_500 },
-} as const;
-
 describe("client signaling protocol", () => {
   it("keeps executable senders outside the Browser v7 release", () => {
     const nativeWire = readFileSync(
@@ -119,6 +110,19 @@ describe("client signaling protocol", () => {
         ).safeParse(invalid).success,
       ).toBe(false);
     }
+  });
+
+  it("accepts only an empty route diagnostic request", () => {
+    expect(
+      clientMessageSchema.safeParse({ type: "request-route-diagnostic" })
+        .success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "request-route-diagnostic",
+        roomId,
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts an atomic room creation profile", () => {
@@ -660,63 +664,6 @@ describe("client signaling protocol", () => {
     }
   });
 
-  it("accepts only strict, bounded parent edge quality proof", () => {
-    expect(
-      clientMessageSchema.safeParse(parentEdgeQualityEvidence).success,
-    ).toBe(true);
-    expect(
-      Buffer.byteLength(JSON.stringify(parentEdgeQualityEvidence), "utf8"),
-    ).toBeLessThanOrEqual(MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES);
-    for (const reason of ["cpu", "bandwidth"] as const) {
-      expect(
-        clientMessageSchema.safeParse({
-          ...parentEdgeQualityEvidence,
-          proof: {
-            kind: "sender-limited",
-            packetsSentDelta: 1_500,
-            reason,
-          },
-        }).success,
-      ).toBe(true);
-    }
-
-    for (const invalid of [
-      { ...parentEdgeQualityEvidence, roomId },
-      { ...parentEdgeQualityEvidence, viewerSequence: -1 },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: { kind: "sending", packetsSentDelta: 0 },
-      },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: {
-          kind: "remote-loss",
-          packetsSentDelta: 1_500,
-          remotePacketsLostDelta: null,
-        },
-      },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: {
-          kind: "sender-limited",
-          packetsSentDelta: 1_500,
-          reason: "other",
-        },
-      },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: {
-          kind: "sender-limited",
-          packetsSentDelta: 1_500,
-          reason: "cpu",
-          score: 1,
-        },
-      },
-    ]) {
-      expect(clientMessageSchema.safeParse(invalid).success).toBe(false);
-    }
-  });
-
   it.each([
     ["video/VP8", null, "max-fr=60; max-fs=8160"],
     ["video/VP9", "profile-id=2", "max-fs=8160"],
@@ -798,6 +745,134 @@ describe("client signaling protocol", () => {
 });
 
 describe("server signaling protocol", () => {
+  it("keeps route status pairings revision-fenced and strict", () => {
+    for (const message of [
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+      },
+      {
+        type: "route-status",
+        revision: 4,
+        state: "failed",
+        reason: "route-exhausted",
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(message).success).toBe(true);
+    }
+    for (const message of [
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "route-exhausted",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "failed",
+        reason: "sfu-admission",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "failed",
+        reason: "route-exhausted",
+        retry: true,
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(message).success).toBe(false);
+    }
+  });
+
+  it("accepts only the privacy-safe two-field route snapshot payload", () => {
+    const message = {
+      type: "route-diagnostic-snapshot",
+      snapshot: {
+        children: [
+          {
+            ordinal: 1,
+            parent: { kind: "host" },
+            effectiveCapacity: 2,
+            childCount: 1,
+            demandAgeMs: 100,
+            queueWaitMs: 10,
+            candidateStartMs: 20,
+            firstDecodedFrameMs: 80,
+            finalMs: 80,
+            finalRoute: "direct",
+            rejectionBucket: "none",
+          },
+          {
+            ordinal: 2,
+            parent: { kind: "viewer", ordinal: 1 },
+            effectiveCapacity: 0,
+            childCount: 0,
+            demandAgeMs: 90,
+            queueWaitMs: null,
+            candidateStartMs: null,
+            firstDecodedFrameMs: null,
+            finalMs: null,
+            finalRoute: "waiting",
+            rejectionBucket: "sfu-admission",
+          },
+        ],
+        operation: {
+          childOrdinal: 2,
+          reason: "join",
+          stage: "admission",
+          cursor: 1,
+          candidateCount: 2,
+        },
+      },
+    } as const;
+    expect(serverMessageSchema.safeParse(message).success).toBe(true);
+    for (const invalid of [
+      {
+        ...message,
+        snapshot: { ...message.snapshot, peerId: "viewer_private_12345678" },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          children: [
+            {
+              ...message.snapshot.children[0],
+              connectionId: "connection_private_12345678",
+            },
+          ],
+        },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          children: [
+            message.snapshot.children[0],
+            {
+              ...message.snapshot.children[1],
+              parent: { kind: "viewer", ordinal: 2 },
+            },
+          ],
+        },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          operation: {
+            ...message.snapshot.operation,
+            rejectionBucket: "raw-error",
+          },
+        },
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
   it("accepts only STUN URLs in the authenticated peer ICE config", () => {
     expect(
       serverMessageSchema.safeParse({

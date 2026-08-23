@@ -19,10 +19,6 @@ import {
   ViewerQualityEvidenceReporter,
 } from "../src/client/media/viewer-quality-evidence.ts";
 import {
-  ParentEdgeQualityEvidenceReporter,
-  parentEdgeQualityEvidenceFromSnapshot,
-} from "../src/client/media/parent-edge-quality-evidence.ts";
-import {
   EMPTY_METRICS,
   type ConnectionMetrics,
   type PeerSnapshot,
@@ -524,96 +520,4 @@ describe("viewer quality evidence", () => {
     ).toBeNull();
   });
 
-  it("builds parent proof only from a current connected send interval", () => {
-    const evidence = {
-      type: "viewer-quality-evidence",
-      viewerPeerId: "viewer_12345678",
-      parentPeerId: "host_12345678",
-      guard: {
-        connectionId: "connection_12345678",
-        routeRevision: 4,
-      },
-      sequence: 7,
-      ...qualityEvidenceWindowFromMetrics(receiveMetrics())!,
-    } as Extract<ServerMessage, { type: "viewer-quality-evidence" }>;
-    const current = {
-      ...snapshot(
-        evidence.guard.connectionId,
-        receiveMetrics({
-          sampleWindowMs: 2_000.25,
-          intervalPacketsSent: 1_200,
-          intervalPacketsLost: 12,
-        }),
-      ),
-      peerId: evidence.viewerPeerId,
-    };
-    const reporter = new ParentEdgeQualityEvidenceReporter();
-
-    expect(reporter.offer(evidence, current)).toEqual({
-      type: "parent-edge-quality-evidence",
-      viewerPeerId: evidence.viewerPeerId,
-      guard: evidence.guard,
-      viewerSequence: evidence.sequence,
-      proof: {
-        kind: "sending",
-        packetsSentDelta: 1_200,
-      },
-    });
-    expect(
-      reporter.offer({ ...evidence, sequence: evidence.sequence + 1 }, current),
-    ).toBeNull();
-    expect(
-      reporter.offer(
-        { ...evidence, sequence: evidence.sequence + 1 },
-        {
-          ...current,
-          metrics: {
-            ...current.metrics,
-            sampleTimestampMs: current.metrics.sampleTimestampMs! + 0.25,
-          },
-        },
-      ),
-    ).toMatchObject({ viewerSequence: evidence.sequence + 1 });
-    expect(
-      parentEdgeQualityEvidenceFromSnapshot(evidence, {
-        ...current,
-        metrics: {
-          ...current.metrics,
-          intervalPacketsSent: 100,
-          intervalPacketsLost: 30,
-        },
-      }),
-    ).toMatchObject({
-      proof: {
-        kind: "remote-loss",
-        packetsSentDelta: 100,
-        remotePacketsLostDelta: 30,
-      },
-    });
-    for (const reason of ["cpu", "bandwidth"] as const) {
-      expect(
-        parentEdgeQualityEvidenceFromSnapshot(evidence, {
-          ...current,
-          metrics: {
-            ...current.metrics,
-            qualityLimitationReason: reason,
-          },
-        }),
-      ).toMatchObject({
-        proof: { kind: "sender-limited", packetsSentDelta: 1_200, reason },
-      });
-    }
-    expect(
-      parentEdgeQualityEvidenceFromSnapshot(evidence, {
-        ...current,
-        connectionId: "connection_replaced_12345678",
-      }),
-    ).toBeNull();
-    expect(
-      parentEdgeQualityEvidenceFromSnapshot(evidence, {
-        ...current,
-        metrics: { ...current.metrics, intervalPacketsSent: null },
-      }),
-    ).toBeNull();
-  });
 });

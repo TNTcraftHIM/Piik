@@ -407,6 +407,31 @@ describe("WebSocket signaling", () => {
     });
   });
 
+  it("serves one current route snapshot only to the authenticated Host", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "route-diagnostic-host");
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "route-diagnostic-viewer",
+    );
+
+    host.socket.send(JSON.stringify({ type: "request-route-diagnostic" }));
+    expect(await host.inbox.next("route-diagnostic-snapshot")).toMatchObject({
+      snapshot: {
+        children: [{ ordinal: 1, finalRoute: "waiting" }],
+      },
+    });
+
+    viewer.socket.send(JSON.stringify({ type: "request-route-diagnostic" }));
+    expect(await viewer.inbox.next("error")).toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+
   it("keeps the exact Native Host wire unchanged without a presence opt-in", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);

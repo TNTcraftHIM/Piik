@@ -97,9 +97,6 @@ import {
 import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
-import {
-  ParentEdgeQualityEvidenceReporter,
-} from "../media/parent-edge-quality-evidence";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
   classifyHostViewerQualityEvidence,
@@ -270,6 +267,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
+  const pendingDiagnosticExportRef = useRef<
+    DiagnosticConnectionInput[] | null
+  >(null);
   const displayNameRef = useRef(displayName);
   const hostClientIdRef = useRef<string | null>(null);
   const viewerPasswordActionRef = useRef<string | null | undefined>(undefined);
@@ -285,9 +285,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   );
   const viewerQualityEvidenceTimersRef = useRef(
     new Map<string, number>(),
-  );
-  const parentEdgeQualityEvidenceReporterRef = useRef(
-    new ParentEdgeQualityEvidenceReporter(),
   );
   const peerAssistedRef = useRef(false);
   const activeRouteRevisionRef = useRef(0);
@@ -420,12 +417,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       activeHostChildPeerIdsRef.current = [];
       endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
       hostPeerIdRef.current = null;
+      pendingDiagnosticExportRef.current = null;
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
         window.clearTimeout(timer),
       );
       viewerQualityEvidenceTimersRef.current.clear();
       viewerQualityEvidenceRef.current.clear();
-      parentEdgeQualityEvidenceReporterRef.current.reset();
       activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
@@ -527,6 +524,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signal.stop();
     }
     signalRef.current = null;
+    pendingDiagnosticExportRef.current = null;
     shareGenerationRef.current = null;
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
@@ -556,7 +554,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     );
     viewerQualityEvidenceTimersRef.current.clear();
     viewerQualityEvidenceRef.current = new Map();
-    parentEdgeQualityEvidenceReporterRef.current.reset();
     setViewerQualityEvidence(new Map());
     activeRouteRevisionRef.current = 0;
     setSignalStatus("offline");
@@ -677,15 +674,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       (evidenceSource === "peer-relayed" && !peerAssistedRef.current)
     ) {
       return;
-    }
-    if (evidenceSource === "direct") {
-      const parentEvidence = parentEdgeQualityEvidenceReporterRef.current.offer(
-        evidence,
-        directSnapshot,
-      );
-      if (peerAssistedRef.current && parentEvidence) {
-        signalRef.current?.send(parentEvidence);
-      }
     }
     commitViewerQualityEvidence(
       evidence.viewerPeerId,
@@ -915,7 +903,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   function removePeer(peerId: string): void {
     clearViewerQualityEvidence(peerId);
-    parentEdgeQualityEvidenceReporterRef.current.forget(peerId);
     const peer = peersRef.current.get(peerId);
     if (peer) {
       retiredConnectionsRef.current.set(peerId, peer.connectionId);
@@ -1274,6 +1261,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setParticipantPresence(message.viewers);
       return;
     }
+    if (message.type === "route-diagnostic-snapshot") {
+      const connections = pendingDiagnosticExportRef.current;
+      if (!connections) return;
+      pendingDiagnosticExportRef.current = null;
+      downloadDiagnosticReport("host", connections, message.snapshot);
+      return;
+    }
     if (message.type === "route-update") {
       if (peerAssistedRef.current) {
         const route = ensureHostSfuRoute(generation);
@@ -1503,6 +1497,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 isCurrentGeneration(generation) &&
                 signalRef.current === signal
               ) {
+                if (status !== "connected") {
+                  pendingDiagnosticExportRef.current = null;
+                }
                 setSignalStatus(status);
               }
             },
@@ -2149,8 +2146,29 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <ConnectionDetailsToggle
             checked={showConnectionDetails}
             onChange={setShowConnectionDetails}
-            onExport={diagnosticConnections.length > 0
-              ? () => downloadDiagnosticReport("host", diagnosticConnections)
+            onExport={phase === "live"
+              ? () => {
+                  if (pendingDiagnosticExportRef.current) return;
+                  const connections = diagnosticConnections.map(
+                    (connection) => ({
+                      ...connection,
+                      metrics: { ...connection.metrics },
+                    }),
+                  );
+                  pendingDiagnosticExportRef.current = connections;
+                  if (
+                    !signalRef.current?.send({
+                      type: "request-route-diagnostic",
+                    })
+                  ) {
+                    pendingDiagnosticExportRef.current = null;
+                    downloadDiagnosticReport(
+                      "host",
+                      connections,
+                      null,
+                    );
+                  }
+                }
               : undefined}
           />
 

@@ -12,7 +12,6 @@ export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
-export const MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
 export const MAX_DISPLAY_NAME_CODE_POINTS = 24;
@@ -338,6 +337,141 @@ export const mediaRouteRevisionSchema = z
 export const mediaRoutePhaseSchema = z.enum(["prepare", "active"]);
 export type MediaRoutePhase = z.infer<typeof mediaRoutePhaseSchema>;
 
+export const routeDemandReasonSchema = z.enum([
+  "join",
+  "edge-unavailable",
+  "parent-departed",
+  "capacity-reduction",
+  "sfu-bootstrap",
+]);
+export type RouteDemandReason = z.infer<typeof routeDemandReasonSchema>;
+
+export const routeDiagnosticFinalRouteSchema = z.enum([
+  "direct",
+  "sfu",
+  "waiting",
+  "failed",
+]);
+export type RouteDiagnosticFinalRoute = z.infer<
+  typeof routeDiagnosticFinalRouteSchema
+>;
+
+export const routeDiagnosticRejectionBucketSchema = z.enum([
+  "none",
+  "stale",
+  "endpoint-capacity",
+  "sfu-admission",
+  "candidate-failed",
+  "first-frame-timeout",
+  "operation-deadline",
+  "aborted",
+]);
+export type RouteDiagnosticRejectionBucket = z.infer<
+  typeof routeDiagnosticRejectionBucketSchema
+>;
+
+const routeDiagnosticDurationSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(Number.MAX_SAFE_INTEGER)
+  .nullable();
+const routeDiagnosticOrdinalSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_VIEWERS_PER_ROOM_LIMIT);
+const routeDiagnosticParentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }).strict(),
+  z.object({ kind: z.literal("host") }).strict(),
+  z.object({ kind: z.literal("sfu") }).strict(),
+  z
+    .object({
+      kind: z.literal("viewer"),
+      ordinal: routeDiagnosticOrdinalSchema,
+    })
+    .strict(),
+]);
+const routeDiagnosticChildSchema = z
+  .object({
+    ordinal: routeDiagnosticOrdinalSchema,
+    parent: routeDiagnosticParentSchema,
+    effectiveCapacity: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_ENDPOINT_MEDIA_COPY_CAPACITY),
+    childCount: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_ENDPOINT_MEDIA_COPY_CAPACITY),
+    demandAgeMs: routeDiagnosticDurationSchema,
+    queueWaitMs: routeDiagnosticDurationSchema,
+    candidateStartMs: routeDiagnosticDurationSchema,
+    firstDecodedFrameMs: routeDiagnosticDurationSchema,
+    finalMs: routeDiagnosticDurationSchema,
+    finalRoute: routeDiagnosticFinalRouteSchema,
+    rejectionBucket: routeDiagnosticRejectionBucketSchema,
+  })
+  .strict();
+const routeDiagnosticOperationSchema = z
+  .object({
+    childOrdinal: routeDiagnosticOrdinalSchema,
+    reason: routeDemandReasonSchema,
+    stage: z.enum(["admission", "first-frame"]),
+    cursor: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+    candidateCount: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT + 1),
+  })
+  .strict();
+
+export const routeDiagnosticSnapshotSchema = z
+  .object({
+    children: z
+      .array(routeDiagnosticChildSchema)
+      .max(MAX_VIEWERS_PER_ROOM_LIMIT),
+    operation: routeDiagnosticOperationSchema.nullable(),
+  })
+  .strict()
+  .superRefine((snapshot, context) => {
+    const ordinals = new Set(snapshot.children.map((child) => child.ordinal));
+    if (ordinals.size !== snapshot.children.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Route diagnostic ordinals must be unique",
+        path: ["children"],
+      });
+      return;
+    }
+    for (const [index, child] of snapshot.children.entries()) {
+      if (
+        child.parent.kind === "viewer" &&
+        (!ordinals.has(child.parent.ordinal) ||
+          child.parent.ordinal === child.ordinal)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Route diagnostic parent ordinal is invalid",
+          path: ["children", index, "parent"],
+        });
+      }
+    }
+    if (
+      snapshot.operation &&
+      (!ordinals.has(snapshot.operation.childOrdinal) ||
+        snapshot.operation.cursor >= snapshot.operation.candidateCount)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Route diagnostic operation is invalid",
+        path: ["operation"],
+      });
+    }
+  });
+export type RouteDiagnosticSnapshot = z.infer<
+  typeof routeDiagnosticSnapshotSchema
+>;
+
 export const sfuPublicationGenerationSchema = opaqueIdSchema;
 
 export const participantRouteAssignmentSchema = z
@@ -439,42 +573,6 @@ export const viewerQualityEvidenceMessageSchema = z
     message: "Viewer freeze duration exceeds its evidence window",
   });
 
-const parentEdgeQualityProofSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("sending"),
-      packetsSentDelta: z.number().int().min(1).max(1_000_000),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("sender-limited"),
-      packetsSentDelta: z.number().int().min(1).max(1_000_000),
-      reason: z.enum(["cpu", "bandwidth"]),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("remote-loss"),
-      packetsSentDelta: z.number().int().min(1).max(1_000_000),
-      remotePacketsLostDelta: z.number().int().min(1).max(1_000_000),
-    })
-    .strict(),
-]);
-export type ParentEdgeQualityProof = z.infer<
-  typeof parentEdgeQualityProofSchema
->;
-
-export const parentEdgeQualityEvidenceMessageSchema = z
-  .object({
-    type: z.literal("parent-edge-quality-evidence"),
-    viewerPeerId: opaqueIdSchema,
-    guard: viewerQualityEvidenceGuardSchema,
-    viewerSequence: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    proof: parentEdgeQualityProofSchema,
-  })
-  .strict();
-
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
@@ -574,8 +672,8 @@ export const clientMessageSchema = z.union([
       revision: mediaRouteRevisionSchema,
     })
     .strict(),
+  z.object({ type: z.literal("request-route-diagnostic") }).strict(),
   viewerQualityEvidenceMessageSchema,
-  parentEdgeQualityEvidenceMessageSchema,
   z
     .object({
       type: z.literal("set-display-name"),
@@ -735,6 +833,30 @@ export const serverMessageSchema = z.union([
       })
       .strict(),
   ]),
+  z.discriminatedUnion("state", [
+    z
+      .object({
+        type: z.literal("route-status"),
+        revision: mediaRouteRevisionSchema,
+        state: z.literal("waiting"),
+        reason: z.literal("sfu-admission"),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("route-status"),
+        revision: mediaRouteRevisionSchema,
+        state: z.literal("failed"),
+        reason: z.literal("route-exhausted"),
+      })
+      .strict(),
+  ]),
+  z
+    .object({
+      type: z.literal("route-diagnostic-snapshot"),
+      snapshot: routeDiagnosticSnapshotSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("sfu-config"),

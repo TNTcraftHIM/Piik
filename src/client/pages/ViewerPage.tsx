@@ -43,9 +43,6 @@ import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import { downloadDiagnosticReport, type DiagnosticConnectionInput } from "../lib/diagnostic-export";
 import { DecodedFrameStallDetector } from "../media/decoded-frame-stall";
 import type { QualitySettings } from "../media/quality";
-import {
-  ParentEdgeQualityEvidenceReporter,
-} from "../media/parent-edge-quality-evidence";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
@@ -341,8 +338,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
       (message) => active && signal.send(message),
     );
-    const parentEdgeQualityEvidenceReporter =
-      new ParentEdgeQualityEvidenceReporter();
 
     function commitRelayChildEvidence(
       presentation: ViewerQualityEvidencePresentation | null,
@@ -393,13 +388,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         !qualityEvidenceMatchesSnapshot(evidence, relaySnapshot)
       ) {
         return;
-      }
-      const parentEvidence = parentEdgeQualityEvidenceReporter.offer(
-        evidence,
-        relaySnapshot,
-      );
-      if (parentEvidence) {
-        signal.send(parentEvidence);
       }
       commitRelayChildEvidence(
         presentViewerQualityEvidence(
@@ -462,11 +450,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         previousChildPeerIds.some(
           (peerId, index) => peerId !== nextChildPeerIds[index],
         );
-      for (const peerId of previousChildPeerIds) {
-        if (!nextChildPeerIds.includes(peerId)) {
-          parentEdgeQualityEvidenceReporter.forget(peerId);
-        }
-      }
       if (changed) {
         clearRelayChildEvidence();
       }
@@ -638,7 +621,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return;
           }
           currentAssignment = { parentPeerId: null, childPeerIds: [] };
-          parentEdgeQualityEvidenceReporter.reset();
           setSfuUpstream(null);
           clearPeerState();
           viewerRelay?.setChildren([]);
@@ -1260,7 +1242,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       active = false;
       currentPeerId = null;
       qualityEvidenceReporter.reset();
-      parentEdgeQualityEvidenceReporter.reset();
       clearRelayChildEvidence();
       sfuStandbyPrewarmer?.dispose();
       signal.stop();

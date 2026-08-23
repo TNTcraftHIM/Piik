@@ -1,4 +1,10 @@
-import { MAX_MEDIA_ROUTE_REVISION } from "../shared/protocol.js";
+import {
+  MAX_MEDIA_ROUTE_REVISION,
+  type RouteDemandReason,
+  type RouteDiagnosticFinalRoute,
+  type RouteDiagnosticRejectionBucket,
+  type RouteDiagnosticSnapshot,
+} from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 
 export type CandidateTuple =
@@ -108,6 +114,7 @@ interface Attempt<Resource> {
 interface ChildOperation<Resource> {
   childPeerId: string;
   childSessionId: string;
+  reason: RouteDemandReason;
   baseRevision: number;
   candidates: CandidatePlan[];
   cursor: number;
@@ -119,6 +126,7 @@ interface ChildOperation<Resource> {
 export interface OperationSnapshot {
   childPeerId: string;
   childSessionId: string;
+  reason: RouteDemandReason;
   baseRevision: number;
   factVersion: number;
   candidates: readonly CandidatePlan[];
@@ -140,6 +148,7 @@ export interface RouteSnapshot<Resource> {
 export interface ReconcileResult<Resource> {
   operation?: OperationSnapshot;
   removedPeerIds: readonly string[];
+  failedPeerIds: readonly string[];
   released: readonly Resource[];
 }
 
@@ -166,6 +175,17 @@ interface HostPublication<Resource> {
   resource: Resource;
 }
 
+interface RouteTimingRecord {
+  demandAtMs: number;
+  reason: RouteDemandReason;
+  operationStartedAtMs?: number;
+  candidateStartedAtMs?: number;
+  firstDecodedFrameAtMs?: number;
+  finalAtMs?: number;
+  finalRoute: RouteDiagnosticFinalRoute;
+  rejectionBucket: RouteDiagnosticRejectionBucket;
+}
+
 export class RoomRouteController<Resource = unknown> {
   private readonly participants = new Map<string, Participant>();
   private readonly upstreamByViewer = new Map<string, CommittedEdge<Resource>>();
@@ -176,6 +196,7 @@ export class RoomRouteController<Resource = unknown> {
   private factVersion = 0;
   private nextJoinOrder = 0;
   private paused = false;
+  private readonly routeTimings = new Map<string, RouteTimingRecord>();
 
   constructor(private readonly options: ControllerOptions) {
     assertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity);
@@ -195,7 +216,84 @@ export class RoomRouteController<Resource = unknown> {
     };
   }
 
-  upsertParticipant(input: ParticipantInput): readonly Resource[] {
+  routeDiagnosticSnapshot(nowMs: number): RouteDiagnosticSnapshot {
+    const viewers = [...this.participants.values()]
+      .filter(
+        (participant) =>
+          participant.role === "viewer" &&
+          participant.sessionId !== null &&
+          !participant.departureConfirmed,
+      )
+      .sort(compareParticipant);
+    const ordinals = new Map(
+      viewers.map((viewer, index) => [viewer.peerId, index + 1] as const),
+    );
+    const children: RouteDiagnosticSnapshot["children"] = viewers.map(
+      (viewer) => {
+        const ordinal = ordinals.get(viewer.peerId)!;
+        const edge = this.upstreamByViewer.get(viewer.peerId);
+        const record = this.routeTimings.get(viewer.peerId);
+        const finalRoute = this.currentFinalRoute(viewer.peerId);
+        return {
+          ordinal,
+          parent: this.diagnosticParent(edge, ordinals),
+          effectiveCapacity: viewer.effectiveDownstreamCapacity,
+          childCount: this.childrenOf(viewer.peerId).filter((childPeerId) => {
+            const childEdge = this.upstreamByViewer.get(childPeerId);
+            return childEdge?.kind === "peer" && childEdge.physicalActive;
+          }).length,
+          demandAgeMs: record
+            ? elapsedMs(record.demandAtMs, nowMs)
+            : null,
+          queueWaitMs:
+            record?.operationStartedAtMs === undefined
+              ? null
+              : elapsedMs(record.demandAtMs, record.operationStartedAtMs),
+          candidateStartMs:
+            record?.candidateStartedAtMs === undefined
+              ? null
+              : elapsedMs(record.demandAtMs, record.candidateStartedAtMs),
+          firstDecodedFrameMs:
+            record?.firstDecodedFrameAtMs === undefined
+              ? null
+              : elapsedMs(record.demandAtMs, record.firstDecodedFrameAtMs),
+          finalMs:
+            record?.finalAtMs === undefined
+              ? null
+              : elapsedMs(record.demandAtMs, record.finalAtMs),
+          finalRoute:
+            finalRoute === "waiting"
+              ? record?.finalRoute === "failed"
+                ? "failed"
+                : "waiting"
+              : finalRoute,
+          rejectionBucket: record?.rejectionBucket ?? "none",
+        };
+      },
+    );
+    const operation = this.operation;
+    const childOrdinal = operation
+      ? ordinals.get(operation.childPeerId)
+      : undefined;
+    return {
+      children,
+      operation:
+        operation && childOrdinal !== undefined
+          ? {
+              childOrdinal,
+              reason: operation.reason,
+              stage: operation.current ? "first-frame" : "admission",
+              cursor: operation.cursor,
+              candidateCount: operation.candidates.length,
+            }
+          : null,
+    };
+  }
+
+  upsertParticipant(
+    input: ParticipantInput,
+    nowMs?: number,
+  ): readonly Resource[] {
     if ((input.peerId === this.options.hostPeerId) !== (input.role === "host")) {
       throw new Error("Route Host identity is inconsistent");
     }
@@ -208,7 +306,7 @@ export class RoomRouteController<Resource = unknown> {
       const previousSessionId = current.sessionId;
       if (previousSessionId !== input.sessionId) {
         const revisionBefore = this.revision;
-        released.push(...this.abortOperation());
+        released.push(...this.abortOperation(nowMs, "stale"));
         current.sessionId = input.sessionId;
         const rebound = this.rebindCommittedSession(input.peerId, input.sessionId);
         released.push(...rebound.released);
@@ -229,6 +327,13 @@ export class RoomRouteController<Resource = unknown> {
         current.blockedAtFactVersion = undefined;
       }
       if (changed) this.touchFacts();
+      if (
+        input.role === "viewer" &&
+        nowMs !== undefined &&
+        !this.usableRoute(input.peerId)
+      ) {
+        this.recordDemand(input.peerId, nowMs, "join");
+      }
       return released;
     } else {
       this.participants.set(input.peerId, {
@@ -237,6 +342,9 @@ export class RoomRouteController<Resource = unknown> {
         departureConfirmed: false,
         joinOrder: this.nextJoinOrder++,
       });
+    }
+    if (input.role === "viewer" && nowMs !== undefined) {
+      this.recordDemand(input.peerId, nowMs, "join");
     }
     this.touchFacts();
     return [];
@@ -250,19 +358,30 @@ export class RoomRouteController<Resource = unknown> {
     return true;
   }
 
-  confirmDeparture(peerId: string): boolean {
+  confirmDeparture(peerId: string, nowMs?: number): boolean {
     const participant = this.participants.get(peerId);
     if (!participant || participant.role === "host") return false;
+    this.routeTimings.delete(peerId);
     if (participant.departureConfirmed && participant.sessionId === null &&
         participant.effectiveDownstreamCapacity === 0) return true;
     participant.sessionId = null;
     participant.departureConfirmed = true;
     participant.effectiveDownstreamCapacity = 0;
+    if (nowMs !== undefined) {
+      for (const childPeerId of this.childrenOf(peerId)) {
+        this.recordDemand(childPeerId, nowMs, "parent-departed");
+      }
+    }
     this.touchFacts();
     return true;
   }
 
-  setEffectiveCapacity(peerId: string, sessionId: string, value: number): boolean {
+  setEffectiveCapacity(
+    peerId: string,
+    sessionId: string,
+    value: number,
+    nowMs?: number,
+  ): boolean {
     const participant = this.participants.get(peerId);
     if (!participant || participant.sessionId !== sessionId) return false;
     const capacity = this.effectiveCapacity(value);
@@ -270,6 +389,11 @@ export class RoomRouteController<Resource = unknown> {
     if (!changed) return true;
     participant.effectiveDownstreamCapacity = capacity;
     participant.blockedAtFactVersion = undefined;
+    if (nowMs !== undefined) {
+      for (const childPeerId of this.overflowPeerChildren(peerId)) {
+        this.recordDemand(childPeerId, nowMs, "capacity-reduction");
+      }
+    }
     this.touchFacts();
     return true;
   }
@@ -314,7 +438,7 @@ export class RoomRouteController<Resource = unknown> {
     this.assertGraph();
   }
 
-  invalidateEdge(guard: EdgeGuard): boolean {
+  invalidateEdge(guard: EdgeGuard, nowMs?: number): boolean {
     const child = this.participants.get(guard.childPeerId);
     const edge = this.upstreamByViewer.get(guard.childPeerId);
     if (!child || child.sessionId !== guard.childSessionId || this.revision !== guard.routeRevision ||
@@ -331,6 +455,9 @@ export class RoomRouteController<Resource = unknown> {
         key: edgeTupleKey(edge),
         factVersion: this.factVersion,
       };
+      if (nowMs !== undefined) {
+        this.recordDemand(guard.childPeerId, nowMs, "edge-unavailable");
+      }
     }
     return true;
   }
@@ -340,7 +467,7 @@ export class RoomRouteController<Resource = unknown> {
     routeRevision: number;
     generation: string;
     connectionId: string;
-  }): boolean {
+  }, nowMs?: number): boolean {
     const publication = this.hostPublication;
     if (!publication || this.revision !== guard.routeRevision ||
         publication.hostSessionId !== guard.hostSessionId ||
@@ -348,6 +475,13 @@ export class RoomRouteController<Resource = unknown> {
         publication.connectionId !== guard.connectionId) return false;
     if (publication.usable) {
       publication.usable = false;
+      if (nowMs !== undefined) {
+        for (const [childPeerId, edge] of this.upstreamByViewer) {
+          if (edge.kind === "sfu") {
+            this.recordDemand(childPeerId, nowMs, "edge-unavailable");
+          }
+        }
+      }
       this.touchFacts();
     }
     return true;
@@ -419,27 +553,40 @@ export class RoomRouteController<Resource = unknown> {
     return [publication.resource];
   }
 
-  setPaused(paused: boolean): readonly Resource[] {
+  setPaused(paused: boolean, nowMs?: number): readonly Resource[] {
     if (this.paused === paused) return [];
     this.paused = paused;
     this.touchFacts();
-    return paused ? this.abortOperation() : [];
+    return paused ? this.abortOperation(nowMs, "aborted") : [];
   }
 
   reconcile(nowMs: number): ReconcileResult<Resource> {
     const released: Resource[] = [];
     const validation = this.validateOrAdvance(nowMs);
     released.push(...validation.released);
+    const failedPeerIds = validation.exhaustedChildPeerId
+      ? [validation.exhaustedChildPeerId]
+      : [];
     if (this.paused || this.operation) {
-      return { operation: this.operationSnapshot(), removedPeerIds: [], released };
+      return {
+        operation: this.operationSnapshot(),
+        removedPeerIds: [],
+        failedPeerIds,
+        released,
+      };
     }
     const removedPeerIds = this.pruneDepartedLeaves(released);
 
     for (let remaining = this.participants.size; remaining > 0; remaining -= 1) {
       const bootstrap = this.bootstrapForBlockedDemand();
       const childPeerId = bootstrap ?? this.selectNextChild();
-      if (!childPeerId) return { removedPeerIds, released };
+      if (!childPeerId) return { removedPeerIds, failedPeerIds, released };
       const child = this.participants.get(childPeerId)!;
+      const reason = bootstrap
+        ? "sfu-bootstrap"
+        : (this.routeTimings.get(childPeerId)?.reason ??
+          this.routeDemandReason(childPeerId));
+      this.ensureDemand(childPeerId, nowMs, reason);
       const candidates = this.buildCandidates(childPeerId, bootstrap !== undefined);
       if (candidates.length === 0) {
         if (this.retireInvalidOperationEdge(childPeerId, released)) {
@@ -447,20 +594,36 @@ export class RoomRouteController<Resource = unknown> {
           this.touchFacts();
         }
         child.blockedAtFactVersion = this.factVersion;
+        this.finishTiming(
+          childPeerId,
+          nowMs,
+          "failed",
+          reason === "capacity-reduction"
+            ? "endpoint-capacity"
+            : "candidate-failed",
+        );
+        if (bootstrap === undefined) failedPeerIds.push(childPeerId);
         continue;
       }
+      this.startOperationTiming(childPeerId, nowMs);
       this.operation = {
         childPeerId,
         childSessionId: child.sessionId!,
+        reason,
         baseRevision: this.revision,
         candidates,
         cursor: 0,
         deadlineAtMs: nowMs + this.options.operationTimeoutMs,
         builtAtFactVersion: this.factVersion,
       };
-      return { operation: this.operationSnapshot(), removedPeerIds, released };
+      return {
+        operation: this.operationSnapshot(),
+        removedPeerIds,
+        failedPeerIds,
+        released,
+      };
     }
-    return { removedPeerIds, released };
+    return { removedPeerIds, failedPeerIds, released };
   }
 
   beginCurrentCandidate(input: {
@@ -515,16 +678,39 @@ export class RoomRouteController<Resource = unknown> {
       publicationConnectionId: input.publicationConnectionId,
       reservation: input.reservation,
     };
+    this.startCandidateTiming(operation.childPeerId, input.nowMs);
     return { accepted: true, operation: this.operationSnapshot(), released: validation.released };
   }
 
-  skipCurrentCandidate(guard: CandidateCursorGuard, nowMs: number): BeginResult<Resource> {
+  noteCurrentCandidateRejection(
+    guard: CandidateCursorGuard,
+    bucket: RouteDiagnosticRejectionBucket,
+  ): boolean {
+    const operation = this.operation;
+    if (
+      !operation ||
+      operation.current ||
+      !this.cursorGuardMatches(guard, operation)
+    ) {
+      return false;
+    }
+    this.noteRejection(operation.childPeerId, bucket);
+    return true;
+  }
+
+  skipCurrentCandidate(
+    guard: CandidateCursorGuard,
+    nowMs: number,
+    bucket: RouteDiagnosticRejectionBucket = "stale",
+  ): BeginResult<Resource> {
     const validation = this.validateOrAdvance(nowMs);
     const operation = this.operation;
     if (!operation || operation.current || !this.cursorGuardMatches(guard, operation)) {
       return { accepted: false, released: validation.released, exhausted: validation.exhausted };
     }
+    this.noteRejection(operation.childPeerId, bucket);
     operation.cursor += 1;
+    this.clearCandidateTiming(operation.childPeerId);
     const advanced = this.validateOrAdvance(nowMs);
     return {
       operation: this.operationSnapshot(),
@@ -609,6 +795,7 @@ export class RoomRouteController<Resource = unknown> {
       return { accepted: false, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
     }
     if (!commitReservation(attempt.reservation)) {
+      this.noteRejection(operation.childPeerId, "candidate-failed");
       const failed = this.validateOrAdvance(nowMs, guard);
       return {
         accepted: false,
@@ -617,11 +804,37 @@ export class RoomRouteController<Resource = unknown> {
         released: [...validation.released, ...failed.released],
       };
     }
+    this.finishTiming(
+      operation.childPeerId,
+      nowMs,
+      attempt.tuple.kind === "peer" ? "direct" : "sfu",
+      "none",
+      true,
+    );
+    const displacedSfuChildren =
+      attempt.tuple.kind === "sfu" && attempt.tuple.publication === "replace"
+        ? [...this.upstreamByViewer]
+            .filter(
+              ([childPeerId, edge]) =>
+                childPeerId !== operation.childPeerId && edge.kind === "sfu",
+            )
+            .map(([childPeerId]) => childPeerId)
+        : [];
     const released = [...validation.released, ...this.commitAttempt(operation, attempt)];
+    for (const childPeerId of displacedSfuChildren) {
+      this.ensureDemand(childPeerId, nowMs, "edge-unavailable");
+    }
     return { accepted: true, activeRevision: this.revision, released };
   }
 
   candidateFailed(guard: CandidateGuard, nowMs: number): SettleResult<Resource> {
+    const operation = this.operation;
+    if (
+      operation?.current &&
+      this.guardMatches(guard, operation, operation.current)
+    ) {
+      this.noteRejection(operation.childPeerId, "candidate-failed");
+    }
     const validation = this.validateOrAdvance(nowMs, guard);
     if (validation.consumedGuard) {
       return { accepted: true, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
@@ -646,23 +859,47 @@ export class RoomRouteController<Resource = unknown> {
     this.upstreamByViewer.clear();
     this.hostPublication = null;
     this.participants.clear();
+    this.routeTimings.clear();
     this.paused = true;
     return [...resources];
   }
 
   private validateOrAdvance(nowMs: number, failedGuard?: CandidateGuard): {
-    released: Resource[]; exhausted?: boolean; expired: boolean; consumedGuard: boolean;
+    released: Resource[];
+    exhausted?: boolean;
+    exhaustedChildPeerId?: string;
+    expired: boolean;
+    consumedGuard: boolean;
   } {
     const released: Resource[] = [];
-    const result = { released, exhausted: undefined as boolean | undefined, expired: false, consumedGuard: false };
+    const result: {
+      released: Resource[];
+      exhausted?: boolean;
+      exhaustedChildPeerId?: string;
+      expired: boolean;
+      consumedGuard: boolean;
+    } = { released, expired: false, consumedGuard: false };
     let operation = this.operation;
     if (!operation) return result;
     if (nowMs >= operation.deadlineAtMs) {
       if (operation.current) released.push(...reservationResources(operation.current.reservation));
       if (operation.current) this.advanceActiveRevision(operation);
       const factsChanged = operation.builtAtFactVersion !== this.factVersion;
+      this.finishTiming(
+        operation.childPeerId,
+        nowMs,
+        factsChanged ? "waiting" : "failed",
+        factsChanged ? "stale" : "operation-deadline",
+      );
       this.blockAndClear(operation, !factsChanged, released);
-      return { ...result, exhausted: !factsChanged, expired: true };
+      return {
+        ...result,
+        exhausted: !factsChanged,
+        exhaustedChildPeerId: factsChanged
+          ? undefined
+          : operation.childPeerId,
+        expired: true,
+      };
     }
     if (this.advanceExpiredCandidateStage(operation, nowMs, released)) {
       result.expired = true;
@@ -670,6 +907,12 @@ export class RoomRouteController<Resource = unknown> {
     if (this.participants.get(operation.childPeerId)?.sessionId !== operation.childSessionId) {
       if (operation.current) released.push(...reservationResources(operation.current.reservation));
       if (operation.current) this.advanceActiveRevision(operation);
+      this.finishTiming(
+        operation.childPeerId,
+        nowMs,
+        this.currentFinalRoute(operation.childPeerId),
+        "aborted",
+      );
       this.operation = undefined;
       return result;
     }
@@ -683,22 +926,41 @@ export class RoomRouteController<Resource = unknown> {
         const guardFailed = failedGuard && this.guardMatches(failedGuard, operation, attempt);
         const plan = operation.candidates[operation.cursor];
         if (!guardFailed && plan && this.candidateValid(operation.childPeerId, plan, attempt)) return result;
+        if (!guardFailed) {
+          this.noteRejection(operation.childPeerId, "stale");
+        }
         released.push(...reservationResources(attempt.reservation));
         this.advanceActiveRevision(operation);
         operation.current = undefined;
         operation.cursor += 1;
+        this.clearCandidateTiming(operation.childPeerId);
         result.consumedGuard = Boolean(guardFailed);
         this.replanRemaining(operation);
       }
       while (operation.cursor < operation.candidates.length &&
              !this.candidateValid(operation.childPeerId, operation.candidates[operation.cursor]!)) {
+        this.noteRejection(operation.childPeerId, "stale");
         operation.cursor += 1;
+        this.clearCandidateTiming(operation.childPeerId);
       }
       if (operation.cursor < operation.candidates.length) return result;
       const factsChanged = operation.builtAtFactVersion !== this.factVersion;
+      this.finishTiming(
+        operation.childPeerId,
+        nowMs,
+        factsChanged ? "waiting" : "failed",
+        factsChanged
+          ? "stale"
+          : this.routeTimings.get(operation.childPeerId)?.rejectionBucket ===
+              "none"
+            ? "candidate-failed"
+            : this.routeTimings.get(operation.childPeerId)!.rejectionBucket,
+      );
       this.blockAndClear(operation, !factsChanged, released);
-      result.exhausted =
-        !factsChanged && !this.bootstrapForBlockedDemand();
+      result.exhausted = !factsChanged && !this.bootstrapForBlockedDemand();
+      if (result.exhausted) {
+        result.exhaustedChildPeerId = operation.childPeerId;
+      }
     }
     return result;
   }
@@ -959,6 +1221,7 @@ export class RoomRouteController<Resource = unknown> {
         if (edge && edge.transport !== "direct" && edge.physicalActive) released.push(edge.resource);
         this.upstreamByViewer.delete(participant.peerId);
         this.participants.delete(participant.peerId);
+        this.routeTimings.delete(participant.peerId);
         removed.push(participant.peerId);
         changed = true;
       }
@@ -974,8 +1237,19 @@ export class RoomRouteController<Resource = unknown> {
     return removed;
   }
 
-  private abortOperation(): Resource[] {
+  private abortOperation(
+    nowMs?: number,
+    bucket: RouteDiagnosticRejectionBucket = "aborted",
+  ): Resource[] {
     if (!this.operation) return [];
+    if (nowMs !== undefined) {
+      this.finishTiming(
+        this.operation.childPeerId,
+        nowMs,
+        this.currentFinalRoute(this.operation.childPeerId),
+        bucket,
+      );
+    }
     const released = this.operation.current ? reservationResources(this.operation.current.reservation) : [];
     if (this.operation.current) this.advanceActiveRevision(this.operation);
     this.operation = undefined;
@@ -1054,6 +1328,7 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     if (!operation) return undefined;
     return { childPeerId: operation.childPeerId, childSessionId: operation.childSessionId,
+      reason: operation.reason,
       baseRevision: operation.baseRevision, factVersion: operation.builtAtFactVersion,
       candidates: operation.candidates.map(cloneCandidatePlan),
       cursor: operation.cursor, deadlineAtMs: operation.deadlineAtMs,
@@ -1082,10 +1357,12 @@ export class RoomRouteController<Resource = unknown> {
       return false;
     }
     if (operation.current) {
+      this.noteRejection(operation.childPeerId, "first-frame-timeout");
       released.push(...reservationResources(operation.current.reservation));
       this.advanceActiveRevision(operation);
       operation.current = undefined;
       operation.cursor += 1;
+      this.clearCandidateTiming(operation.childPeerId);
     }
     while (
       operation.cursor < operation.candidates.length &&
@@ -1266,6 +1543,147 @@ export class RoomRouteController<Resource = unknown> {
     return resources;
   }
 
+  private diagnosticParent(
+    edge: CommittedEdge<Resource> | undefined,
+    ordinals: ReadonlyMap<string, number>,
+  ): RouteDiagnosticSnapshot["children"][number]["parent"] {
+    if (!edge || !edge.usable || !edge.physicalActive) {
+      return { kind: "none" };
+    }
+    if (edge.kind === "sfu") {
+      return this.hostPublication?.usable &&
+        this.hostPublication.physicalActive &&
+        this.hostPublication.generation === edge.publicationGeneration
+        ? { kind: "sfu" }
+        : { kind: "none" };
+    }
+    if (edge.parentPeerId === this.options.hostPeerId) {
+      return { kind: "host" };
+    }
+    const ordinal = ordinals.get(edge.parentPeerId);
+    return ordinal === undefined
+      ? { kind: "none" }
+      : { kind: "viewer", ordinal };
+  }
+
+  private recordDemand(
+    childPeerId: string,
+    nowMs: number,
+    reason: RouteDemandReason,
+  ): void {
+    const record: RouteTimingRecord = {
+      demandAtMs: nowMs,
+      reason,
+      finalRoute: "waiting",
+      rejectionBucket: "none",
+    };
+    if (this.operation?.childPeerId === childPeerId) {
+      this.operation.reason = reason;
+      record.operationStartedAtMs = nowMs;
+    }
+    this.routeTimings.set(childPeerId, record);
+  }
+
+  private ensureDemand(
+    childPeerId: string,
+    nowMs: number,
+    reason: RouteDemandReason,
+  ): void {
+    if (!this.routeTimings.has(childPeerId)) {
+      this.recordDemand(childPeerId, nowMs, reason);
+    }
+  }
+
+  private startOperationTiming(childPeerId: string, nowMs: number): void {
+    const record = this.routeTimings.get(childPeerId);
+    if (!record) return;
+    record.operationStartedAtMs = nowMs;
+    record.candidateStartedAtMs = undefined;
+    record.firstDecodedFrameAtMs = undefined;
+    record.finalAtMs = undefined;
+    record.finalRoute = "waiting";
+    record.rejectionBucket = "none";
+  }
+
+  private startCandidateTiming(childPeerId: string, nowMs: number): void {
+    const record = this.routeTimings.get(childPeerId);
+    if (!record) return;
+    record.candidateStartedAtMs = nowMs;
+    record.firstDecodedFrameAtMs = undefined;
+    record.finalAtMs = undefined;
+    record.finalRoute = "waiting";
+    record.rejectionBucket = "none";
+  }
+
+  private noteRejection(
+    childPeerId: string,
+    bucket: RouteDiagnosticRejectionBucket,
+  ): void {
+    const record = this.routeTimings.get(childPeerId);
+    if (record) record.rejectionBucket = bucket;
+  }
+
+  private clearCandidateTiming(childPeerId: string): void {
+    const record = this.routeTimings.get(childPeerId);
+    if (!record) return;
+    record.candidateStartedAtMs = undefined;
+    record.firstDecodedFrameAtMs = undefined;
+    record.finalAtMs = undefined;
+    record.finalRoute = "waiting";
+  }
+
+  private finishTiming(
+    childPeerId: string,
+    nowMs: number,
+    finalRoute: RouteDiagnosticFinalRoute,
+    rejectionBucket: RouteDiagnosticRejectionBucket,
+    firstDecodedFrame = false,
+  ): void {
+    const record = this.routeTimings.get(childPeerId);
+    if (!record) return;
+    if (firstDecodedFrame) record.firstDecodedFrameAtMs = nowMs;
+    record.finalAtMs = nowMs;
+    record.finalRoute = finalRoute;
+    record.rejectionBucket = rejectionBucket;
+  }
+
+  private usableRoute(childPeerId: string): boolean {
+    return this.currentFinalRoute(childPeerId) !== "waiting";
+  }
+
+  private currentFinalRoute(
+    childPeerId: string,
+  ): RouteDiagnosticFinalRoute {
+    const edge = this.upstreamByViewer.get(childPeerId);
+    if (!edge?.usable || !edge.physicalActive) return "waiting";
+    if (edge.kind === "peer") {
+      return this.sourceUsable(edge.parentPeerId) ? "direct" : "waiting";
+    }
+    return this.hostPublication?.usable &&
+      this.hostPublication.physicalActive &&
+      this.hostPublication.generation === edge.publicationGeneration
+      ? "sfu"
+      : "waiting";
+  }
+
+  private routeDemandReason(childPeerId: string): RouteDemandReason {
+    const edge = this.upstreamByViewer.get(childPeerId);
+    if (!edge) return "join";
+    if (
+      edge.kind === "peer" &&
+      this.participants.get(edge.parentPeerId)?.departureConfirmed
+    ) {
+      return "parent-departed";
+    }
+    if (
+      edge.kind === "peer" &&
+      this.overflowPeerChildren(edge.parentPeerId).includes(childPeerId)
+    ) {
+      return "capacity-reduction";
+    }
+    return "edge-unavailable";
+  }
+
   private rebindCommittedSession(
     peerId: string,
     sessionId: string,
@@ -1342,6 +1760,11 @@ export class RoomRouteController<Resource = unknown> {
 
 function compareParticipant(left: Participant, right: Participant): number {
   return left.joinOrder - right.joinOrder || left.peerId.localeCompare(right.peerId);
+}
+
+function elapsedMs(startedAtMs: number, endedAtMs: number): number | null {
+  const elapsed = Math.floor(endedAtMs - startedAtMs);
+  return Number.isSafeInteger(elapsed) && elapsed >= 0 ? elapsed : null;
 }
 
 function tupleKey(tuple: CandidateTuple): string {

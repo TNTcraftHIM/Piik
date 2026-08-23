@@ -175,13 +175,11 @@ function createObserverHarness(expectedEndpointCap = 2) {
   const api = context.__SCREENER_BENCHMARK__ as {
     snapshot: () => ObserverSnapshot;
     canarySnapshot: () => Record<string, unknown>;
-    configureCanary: (value: Record<string, unknown>) => boolean;
   };
   return {
     socket: () => new WebSocketConstructor(),
     snapshot: () => structuredClone(api.snapshot()),
     canarySnapshot: () => structuredClone(api.canarySnapshot()),
-    configureCanary: (value: Record<string, unknown>) => api.configureCanary(value),
   };
 }
 
@@ -293,16 +291,6 @@ describe("peer topology loopback configuration", () => {
 });
 
 describe("peer topology loopback observations", () => {
-  it("suppresses parent proof only through the opt-in injected control", () => {
-    const observer = createObserverHarness();
-    const socket = observer.socket();
-    authenticate(socket);
-    expect(observer.configureCanary({ dropParentProof: true })).toBe(true);
-    socket.send(JSON.stringify({ type: "parent-edge-quality-evidence" }));
-    expect(observer.canarySnapshot()).toMatchObject({ droppedProofs: 1 });
-    expect(Object.keys(observer.canarySnapshot())).not.toContain("connectionId");
-  });
-
   it("counts only active media connections in the requested direction", () => {
     const host = page("host", "host", 2, 0);
     host.connections[0]!.connectionState = "closed";
