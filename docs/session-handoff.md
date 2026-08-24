@@ -36,8 +36,8 @@ Current high-signal boundary:
   subscriber PCs explicitly use no external ICE server and check the dedicated
   public SFU candidate directly; ordinary peers and LiveKit server-side public
   IP discovery retain deployment STUN. Production exact deployed
-  application/runtime revision `b68c47167da592dd673a78ec3d072936ef49e3ea`,
-  release `b68c471`, uses strict `screener-v12` and includes exact Browser SFU
+  application/runtime revision `2d5818ccf57f8ccf0999160ea74a16c9b4d97d12`,
+  release `2d5818c`, uses strict `screener-v12` and includes exact Browser SFU
   ICE-server-isolation implementation
   `ae09c760adec76fd26da611d4928486d105c6d3b`. Owner physical SFU fallback proof
   remains bounded to predecessor release `c4962f5`. The route uses one short-lived
