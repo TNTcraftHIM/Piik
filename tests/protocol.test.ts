@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_QUALITY_SETTINGS,
   DEFAULT_VIEWER_DISPLAY_NAME,
   MAX_DISPLAY_NAME_CODE_POINTS,
   MAX_MEDIA_ROUTE_REVISION,
@@ -66,7 +67,7 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
-  it("keeps executable senders outside the Browser-only v9 checkpoint", () => {
+  it("keeps executable senders outside the Browser-only v10 checkpoint", () => {
     const nativeWire = readFileSync(
       join(
         import.meta.dirname,
@@ -75,7 +76,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v9");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v10");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -237,6 +238,24 @@ describe("client signaling protocol", () => {
       ),
     ).toMatchObject({ viewerGrant });
     expect(
+      decodeClientMessage(
+        JSON.stringify({
+          type: "authenticate",
+          protocol: SIGNALING_PROTOCOL,
+          roomId,
+          role: "host",
+          token,
+          clientId: "host_client_12345678",
+          shareGeneration: "share_generation_12345678",
+          qualitySettings: qualitySettingsWithCodec,
+        }),
+      ),
+    ).toMatchObject({
+      role: "host",
+      shareGeneration: "share_generation_12345678",
+      qualitySettings: qualitySettingsWithCodec,
+    });
+    expect(
       clientMessageSchema.safeParse({
         type: "authenticate",
         protocol: SIGNALING_PROTOCOL,
@@ -254,17 +273,15 @@ describe("client signaling protocol", () => {
         clientId: "client_12345678",
       }).success,
     ).toBe(false);
-    for (const protocol of ["screener-v8", "screener-v3"]) {
-      expect(
-        clientMessageSchema.safeParse({
-          type: "authenticate",
-          protocol,
-          roomId,
-          role: "viewer",
-          clientId: "client_12345678",
-        }).success,
-      ).toBe(false);
-    }
+    expect(
+      clientMessageSchema.safeParse({
+        type: "authenticate",
+        protocol: "invalid-protocol",
+        roomId,
+        role: "viewer",
+        clientId: "client_12345678",
+      }).success,
+    ).toBe(false);
   });
 
   it("normalizes display names and rejects misleading Unicode boundaries", () => {
@@ -411,18 +428,6 @@ describe("client signaling protocol", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects the previous signaling wire", () => {
-    expect(
-      clientMessageSchema.safeParse({
-        type: "authenticate",
-        protocol: "screener-v5",
-        roomId,
-        role: "viewer",
-        clientId: "client_12345678",
-      }).success,
-    ).toBe(false);
-  });
-
   it("requires a host token and rejects viewer tokens or malformed room codes", () => {
     expect(
       clientMessageSchema.safeParse({
@@ -539,18 +544,24 @@ describe("client signaling protocol", () => {
   });
 
   it("keeps intentional pause updates strict and generation-bound", () => {
-    const update = {
+    const pause = {
       type: "set-sharing-paused",
       shareGeneration: "share_generation_12345678",
       paused: true,
     };
-    expect(clientMessageSchema.safeParse(update).success).toBe(true);
+    expect(clientMessageSchema.safeParse(pause).success).toBe(true);
     expect(
-      clientMessageSchema.safeParse({ ...update, shareGeneration: undefined })
+      clientMessageSchema.safeParse({ ...pause, paused: false }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ ...pause, shareGeneration: undefined })
         .success,
     ).toBe(false);
     expect(
-      clientMessageSchema.safeParse({ ...update, paused: "true" }).success,
+      clientMessageSchema.safeParse({ ...pause, paused: "true" }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({ ...pause, unexpected: 1 }).success,
     ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
@@ -563,79 +574,21 @@ describe("client signaling protocol", () => {
       serverMessageSchema.safeParse({ type: "host-status", online: true })
         .success,
     ).toBe(false);
-  });
-
-  it("requires one exact Resume attempt across authorization, ack, and proof", () => {
-    const sourceAck = {
-      type: "sharing-source-enabled",
+    const authoritativePause = {
+      type: "pause-sharing-source",
       shareGeneration: "share_generation_12345678",
-      codecGeneration: 4,
-      resumeAttempt: 9,
     };
-    expect(clientMessageSchema.safeParse(sourceAck).success).toBe(true);
-    expect(
-      clientMessageSchema.safeParse({ ...sourceAck, resumeAttempt: undefined })
-        .success,
-    ).toBe(false);
-
-    const proof = {
-      type: "video-codec-proof",
-      shareGeneration: "share_generation_12345678",
-      generation: 4,
-      resumeAttempt: 9,
-      routeRevision: 7,
-      binding: { kind: "peer", connectionId: "connection_12345678" },
-      evidence: {
-        baselineSampleTimestampMs: 100,
-        sampleTimestampMs: 200,
-        rtpStatsId: "inbound_video_12345678",
-        rtpSsrc: 42,
-        rtpMid: "0",
-        rtpRid: null,
-        trackIdentifier: "track_12345678",
-        framesDecodedDelta: 1,
-        actualCodec: "h264",
-      },
-    };
-    expect(clientMessageSchema.safeParse(proof).success).toBe(true);
-    expect(
-      clientMessageSchema.safeParse({ ...proof, resumeAttempt: undefined })
-        .success,
-    ).toBe(false);
-
-    const authorization = {
-      type: "sharing-resume-authorized",
-      shareGeneration: "share_generation_12345678",
-      codecGeneration: 4,
-      resumeAttempt: 9,
-    };
-    expect(serverMessageSchema.safeParse(authorization).success).toBe(true);
+    expect(serverMessageSchema.safeParse(authoritativePause).success).toBe(true);
     expect(
       serverMessageSchema.safeParse({
-        ...authorization,
-        resumeAttempt: undefined,
-      }).success,
-    ).toBe(false);
-
-    const proofRequest = {
-      type: "video-codec-proof-request",
-      shareGeneration: "share_generation_12345678",
-      generation: 4,
-      resumeAttempt: 9,
-      routeRevision: 7,
-      expectedCodec: "h264",
-      binding: { kind: "peer", connectionId: "connection_12345678" },
-    };
-    expect(serverMessageSchema.safeParse(proofRequest).success).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({
-        ...proofRequest,
-        resumeAttempt: undefined,
+        ...authoritativePause,
+        unexpected: null,
       }).success,
     ).toBe(false);
   });
 
   it("accepts only strict, bounded quality settings", () => {
+    expect(DEFAULT_QUALITY_SETTINGS.videoCodec).toBe("vp8");
     expect(
       clientMessageSchema.safeParse({
         type: "set-quality-settings",
@@ -1314,7 +1267,6 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "direct",
-          codecTransition: null,
         },
       }).success,
     ).toBe(true);
@@ -1328,7 +1280,6 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "sfu",
-          codecTransition: { generation: 4, videoCodec: "h264" },
         },
       }).success,
     ).toBe(true);
@@ -1342,6 +1293,7 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "direct",
+          unexpected: null,
         },
       }).success,
     ).toBe(false);

@@ -133,14 +133,10 @@ const timeoutCallbacks = new Map<number, () => void>();
 const timeoutDelays = new Map<number, number>();
 let nextTimeoutId = 1;
 
-function offer(
-  connectionId: string,
-  negotiationGeneration: number | null = null,
-): SignalPayload {
+function offer(connectionId: string): SignalPayload {
   return {
     kind: "description",
     connectionId,
-    negotiationGeneration,
     description: { type: "offer", sdp: `offer-${connectionId}` },
   };
 }
@@ -666,7 +662,7 @@ describe("ViewerPeer connection generations", () => {
     });
   });
 
-  it("serializes same-connection codec offers and fences stale generations", async () => {
+  it("serializes ordinary offers for the same connection", async () => {
     const firstLocalDescription = createDeferred<void>();
     FakePeerConnection.plans.push({
       localDescriptionGate: firstLocalDescription.promise,
@@ -674,40 +670,23 @@ describe("ViewerPeer connection generations", () => {
     const signals: SignalPayload[] = [];
     const peer = createPeer(signals, []);
 
-    const first = peer.acceptSignal("host", offer("codec-connection", 5));
+    const first = peer.acceptSignal("host", offer("same-connection"));
     await vi.waitFor(() =>
       expect(
         FakePeerConnection.instances[0]?.setLocalDescription,
       ).toHaveBeenCalledOnce(),
     );
     const connection = FakePeerConnection.instances[0]!;
-    const replacement = peer.acceptSignal(
-      "host",
-      offer("codec-connection", 6),
-    );
-    await peer.acceptSignal("host", offer("codec-connection", 6));
+    const second = peer.acceptSignal("host", offer("same-connection"));
     await Promise.resolve();
     expect(connection.setRemoteDescription).toHaveBeenCalledOnce();
 
     firstLocalDescription.resolve();
-    await Promise.all([first, replacement]);
-    expect(
-      signals
-        .filter((signal) => signal.kind === "description")
-        .map((signal) => signal.negotiationGeneration),
-    ).toEqual([6]);
+    await Promise.all([first, second]);
     expect(connection.setRemoteDescription).toHaveBeenCalledTimes(2);
-
-    await peer.acceptSignal("host", offer("codec-connection"));
     expect(
-      signals
-        .filter((signal) => signal.kind === "description")
-        .map((signal) => signal.negotiationGeneration),
-    ).toEqual([6, null]);
-    expect(connection.setRemoteDescription).toHaveBeenCalledTimes(3);
-
-    await peer.acceptSignal("host", offer("codec-connection", 5));
-    expect(connection.setRemoteDescription).toHaveBeenCalledTimes(3);
+      signals.filter((signal) => signal.kind === "description"),
+    ).toHaveLength(2);
   });
 
   it("stops flushing old candidates when the connection is replaced", async () => {

@@ -15,19 +15,19 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Source
 
-- Canonical root `main` is the source and integration truth. It contains the deployed Browser runtime checkpoint `39fcf93bae057fcbb1002702c3be6b90bac9027f` plus the current docs-only truth checkpoints; auxiliary branches and older worktrees do not supersede it.
-- The single Browser `screener-v9` boundary rejects stale clients before room authority. Current source implements one Host plus up to `20` Viewers, one steady outbound media-copy cap for every non-server endpoint (default `2`, static `1/2/3`), and the process-memory room model with random four-digit codes, a default 24-hour dormant lease, exact-Host resume, restart loss, local Host preference replay, independent token invitations, `open | password | disabled` code entry, and no SQLite runtime.
+- Canonical root `main` is the source and integration truth. Current source uses the single Browser `screener-v10` boundary and rejects stale v9 clients before room authority; auxiliary branches and older worktrees do not supersede it. Production remains on v9 until the atomic cutover recorded below.
+- Current source implements one Host plus up to `20` Viewers, one steady outbound media-copy cap for every non-server endpoint (default `2`, static `1/2/3`), and the process-memory room model with random four-digit codes, a default 24-hour dormant lease, exact-Host resume, restart loss, local Host preference replay, independent token invitations, `open | password | disabled` code entry, and no SQLite runtime.
 - One event-driven controller owns the committed graph and at most one room-serial child operation. It uses one deterministic candidate list/cursor and one total direct-then-SFU deadline; exact admission and physical resources remain charged through drain, and the pending candidate commits only after an exact-generation decoded-frame proof. A short-lived 100 ms stats observer proves only that candidate inside the existing deadline, while the 2-second sampler remains responsible for active-path diagnostics and decoded-frame stalls. Healthy edges remain sticky and current-path quality does not authorize reparenting.
 - Ordinary peer ICE is STUN-only and the only application fallback is the dedicated LiveKit SFU over UDP. SFU generations use explicit no-default ingress/egress capacities, exact `reserved | committed | draining` accounting, delete-plus-absence release, one Host publication, and exact Viewer subscription handles. No Screener TURN, ICE/TCP, media TCP, or TLS-relayed media route exists.
-- Current source implements live 64/128/256 kbps audio-ceiling mutation for current and future Host/relay/SFU senders. It also implements paused `automatic | H.264 | VP8` switching as one generation-fenced prepare/Resume/source-ack/proof transaction with a server-monotonic `resumeAttempt`, authoritative re-pause, bounded rollback preparation, and no automatic Resume.
-- Current source implements typed first-frame Viewer presentation and recovery, Chinese user-facing route/access failures, privacy-safe failed-page export, authenticated Host-only on-demand route snapshots, neutral `ROOM_ACCESS_DENIED` room-code admission, and responsive entry controls. The unused parent-edge quality-proof protocol is absent.
+- Current source implements live 64/128/256 kbps audio-ceiling mutation for current and future Host/relay/SFU senders. Browser sharing defaults to VP8; `automatic | H.264 | VP8` is a temporary pre-share-only diagnostic input and remains fixed for the share lifetime. Ordinary Pause/Resume changes the existing tracks and Host SFU publication under the exact current Host session and `shareGeneration`.
+- Current source implements typed first-frame Viewer presentation and recovery, Chinese user-facing route/access failures, privacy-safe failed-page export, authenticated Host-only on-demand route snapshots, neutral `ROOM_ACCESS_DENIED` room-code admission, and responsive entry controls.
 - Recommended quality remains exactly `1080p60`, `1080p30`, and `720p30`; current source defaults to `1080p30`. Advanced resolution adds `480p` as `854x480` without adding a fourth preset, and advanced FPS and bitrate remain independent.
-- Exact runtime source `d543f38aacad3df5ef65fde1055cc8e733972afe`, integrated without runtime changes by main `39fcf93bae057fcbb1002702c3be6b90bac9027f`, passed 670 Web tests in 48 files, TypeScript typecheck, client/server production builds, the access/privacy gate, production-dependency audit, and repository hygiene. Its exact one-Host/20-Viewer Chrome loopback passed every gate with all Viewers decoding and Host/relay fanout bounded by cap `2`; all observed media routes were local direct peers and no SFU publication appeared. This is source, state-machine, build, privacy, and direct-loopback evidence, not public-network, SFU, mobile, physical audio/codec, H.264 performance, or Host-background evidence.
+- Exact v10 runtime source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` passed 610 Web tests in 45 files, TypeScript typecheck, client/server production builds, the access/privacy gate, the 257-test SFU admission gate, production-dependency audit, and repository hygiene. Its one-Host/20-Viewer Chrome 151 loopback decoded every Viewer, propagated the fixed VP8 settings, kept Host and relay fanout within cap `2`, captured all four current-child timing distributions, and observed no SFU publication. This is source, state-machine, build, privacy, and direct-loopback evidence, not public-network, SFU, mobile, physical audio/codec, H.264 performance, or Host-background evidence.
 
 ## Current Milestone
 
-1. Replace the current codec transaction with the accepted pre-share-only selector, VP8 default, fixed per-share codec preference, and ordinary `shareGeneration`-fenced Pause/Resume. Integrate and deploy it atomically on one new Browser wire version with no v9 compatibility path.
-2. Diagnose and repair the H.264 path under controlled conditions, validate the result on physical direct, peer-relay, and SFU paths, choose one final fixed Browser codec, and delete the temporary selector for either outcome.
+1. Integrate and deploy the v10 Browser contract atomically while controlled H.264 diagnosis runs in parallel.
+2. Use physical direct, peer-relay, and SFU evidence to choose the fixed Browser codec exposed by the product.
 3. Validate live audio ceilings on physical direct, peer-relay, and SFU paths, then reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
 4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
 
@@ -42,9 +42,8 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Hold
 
-There is no active P0/P1 source or deployment hold. Browser v9 is integrated, locally gated, atomically
-deployed, and postflight-clean, but its codec transaction is no longer the accepted product contract.
-The accepted simplification is truth-only until the next atomic Browser release; source and production
-must not be reported as simplified before that cutover. Physical audio, heterogeneous-network, SFU,
+There is no active P0/P1 source or deployment hold. The Browser v10 contract is implemented and
+locally gated, while production remains the postflight-clean v9 release until the atomic cutover. Source
+and production must remain reported separately. Physical H.264 quality, audio, heterogeneous-network, SFU,
 background, and mobile evidence remains open. Native/executable work and broad repository cleanup
 remain outside the current evidence boundary.

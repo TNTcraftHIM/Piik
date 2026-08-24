@@ -119,11 +119,7 @@ export class ViewerSfuRoute {
     if (pausedActiveReconciliation) {
       this.activateChildren(update.assignment.childPeerIds, update.revision);
     }
-    if (
-      this.paused &&
-      update.phase === "prepare" &&
-      !isPausedCodecSfuCandidate(update)
-    ) {
+    if (this.paused && update.phase === "prepare") {
       this.discardPending();
       return result;
     }
@@ -203,21 +199,9 @@ export class ViewerSfuRoute {
   }
 
   setPaused(paused: boolean): void {
-    const wasPaused = this.paused;
     this.paused = paused;
-    if (paused && !this.hasPausedCodecSfuCandidate()) {
+    if (paused) {
       this.discardPending();
-    } else if (paused && this.pending) {
-      this.pending.decodedFrame = false;
-      this.pending.readySent = false;
-      this.pending.subscriber.stopDecodedFrameProof();
-    } else if (
-      wasPaused &&
-      !paused &&
-      this.pending &&
-      this.hasPausedCodecSfuCandidate()
-    ) {
-      this.pending.subscriber.armDecodedFrameProof(true);
     }
   }
 
@@ -294,7 +278,7 @@ export class ViewerSfuRoute {
     if (
       this.closed ||
       !this.route.acceptsConfig(message.revision) ||
-      (this.paused && !this.hasPausedCodecSfuCandidate())
+      this.paused
     ) {
       return;
     }
@@ -458,16 +442,6 @@ export class ViewerSfuRoute {
   private preparePeer(assignment: ParticipantRouteAssignment): void {
     this.events.preparePeer?.(
       assignment.upstream.kind === "peer" ? assignment : null,
-    );
-  }
-
-  private hasPausedCodecSfuCandidate(): boolean {
-    const candidate = this.route.getPreparedCandidate();
-    return (
-      this.route.getPhase() === "prepare" &&
-      candidate?.childPeerId === this.viewerPeerId &&
-      candidate.transport === "sfu" &&
-      candidate.codecTransition !== null
     );
   }
 
@@ -802,14 +776,6 @@ export class ViewerSfuRoute {
     });
   }
 
-}
-
-function isPausedCodecSfuCandidate(update: RouteUpdateInput): boolean {
-  return (
-    update.phase === "prepare" &&
-    update.candidate.transport === "sfu" &&
-    update.candidate.codecTransition !== null
-  );
 }
 
 async function disconnectSubscriber(

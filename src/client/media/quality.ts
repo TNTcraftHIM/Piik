@@ -26,7 +26,7 @@ export const QUALITY_PROFILES = {
     maxFramerate: 60,
     maxBitrate: 8_000_000,
     degradationPreference: "balanced",
-    videoCodec: "automatic",
+    videoCodec: "vp8",
     screenAudioQuality: "music",
   },
   "1080p30": DEFAULT_QUALITY_SETTINGS,
@@ -35,7 +35,7 @@ export const QUALITY_PROFILES = {
     maxFramerate: 30,
     maxBitrate: 3_000_000,
     degradationPreference: "balanced",
-    videoCodec: "automatic",
+    videoCodec: "vp8",
     screenAudioQuality: "music",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
@@ -145,7 +145,7 @@ export function videoQualitySettingsEqual(
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
     left.degradationPreference === right.degradationPreference &&
-    (left.videoCodec ?? "automatic") === (right.videoCodec ?? "automatic")
+    (left.videoCodec ?? "vp8") === (right.videoCodec ?? "vp8")
   );
 }
 

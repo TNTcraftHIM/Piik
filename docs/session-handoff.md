@@ -43,19 +43,17 @@ Current high-signal boundary:
 - ADR-0002 owns the implemented room model: one process-memory RoomStore,
   random free four-digit codes, configurable 24-hour dormant leases, restart
   loss, local Host preference replay, an independent expiring Viewer grant, and
-  open/password/disabled code entry. Current source and production use the
-  single `screener-v9` wire and neither runtime uses SQLite; exact rollback
+  open/password/disabled code entry. Current source uses `screener-v10`,
+  production uses `screener-v9`, and neither runtime uses SQLite; exact rollback
   artifacts are owned by deployment.
-- Exact runtime source `d543f38aacad3df5ef65fde1055cc8e733972afe`, integrated
-  without runtime changes by main `39fcf93bae057fcbb1002702c3be6b90bac9027f`, implements the Browser
-  v9 batch: live audio-ceiling mutation, paused codec switching with exact Resume
-  source authority and proof, typed Viewer presentation, Host-on-demand route
-  diagnostics, neutral room-code denial, responsive entry controls, default
-  `1080p30`, and advanced-only `854x480`. It passed 670 Web tests in 48 files,
-  typecheck, client/server builds, access/privacy, dependency audit, and
-  repository hygiene. Its exact 20-Viewer Chrome run passed on
-  direct loopback with no SFU publication, so it is not SFU or public-network
-  evidence.
+- Exact v10 runtime source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f`
+  defaults Browser sharing to VP8, keeps the temporary codec selector pre-share
+  only, fixes codec preference for the share lifetime, uses ordinary
+  `shareGeneration`-fenced Pause/Resume, and uses the single v10 wire. It passed
+  610 Web tests in 45 files, typecheck, client/server
+  builds, access/privacy, SFU admission, dependency audit, repository hygiene,
+  and a 20-Viewer Chrome direct-loopback gate. That evidence does not establish
+  H.264 performance, public-network behavior, or SFU packet flow.
 - Production runs exact `39fcf93bae057fcbb1002702c3be6b90bac9027f`, release
   `39fcf93`, wire `screener-v9`. The immutable runtime ZIP SHA-256 is
   `28190c3a69ec937d39ab5d49fdbc8db6a07e6013c2ddd5f5590bf8249bf6bce6`;
@@ -80,22 +78,6 @@ Current high-signal boundary:
 - Existing auxiliary worktrees and branches are retained candidates or audit
   material. Do not merge or delete them until their unique changes, references,
   and reparse/junction safety are checked against current main.
-
-The accepted codec contract now defaults new shares to VP8, keeps the codec
-selector pre-share only, fixes the preference for the lifetime of a share, and
-uses ordinary `shareGeneration`-fenced Pause/Resume. Current source and production
-still run the v9 codec transaction described above. The next Browser cutover must
-delete that transaction and its messages, use one new wire version, and reject v9
-without compatibility aliases before this simplification is reported as implemented
-or deployed.
-
-Current TODO priority is that codec simplification and atomic deployment, followed
-immediately by controlled H.264 root-cause repair, physical route validation, a
-single final Browser codec decision, and deletion of the temporary selector for
-either VP8 or H.264. Physical audio validation, controlled Host-background diagnosis,
-representative direct/peer-relay/SFU network acceptance, mobile lifecycle,
-distribution/native packages, retained product decisions, and the read-only
-simplification audit follow their ledger order.
 
 Follow the current ledger in order and report each verified physical-evidence
 boundary without reviving stale agent or branch facts.

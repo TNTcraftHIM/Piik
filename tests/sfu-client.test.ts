@@ -603,6 +603,7 @@ describe("SfuPublisher", () => {
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(1, video, {
       source: Track.Source.ScreenShare,
       backupCodec: false,
+      videoCodec: "vp8",
       simulcast: true,
       screenShareEncoding: {
         maxBitrate: 8_000_000,
@@ -622,7 +623,7 @@ describe("SfuPublisher", () => {
     });
     expect(
       room.localParticipant.publishTrack.mock.calls[0]?.[1],
-    ).not.toHaveProperty("videoCodec");
+    ).toHaveProperty("videoCodec", "vp8");
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
       audioPreset: { maxBitrate: 128_000 },
@@ -715,6 +716,22 @@ describe("SfuPublisher", () => {
       ).toMatchObject({ videoCodec, backupCodec: false });
     },
   );
+
+  it("leaves the SFU codec unset only for an explicit automatic preference", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+
+    await expect(
+      publisher.activate(stream(track("video", "video-1")), {
+        ...qualityProfile,
+        videoCodec: "automatic",
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      livekit.state.rooms[0].localParticipant.publishTrack.mock.calls[0]?.[1],
+    ).not.toHaveProperty("videoCodec");
+  });
 
   it("fails closed when initial sender configuration is rejected", async () => {
     const disconnected = vi.fn();

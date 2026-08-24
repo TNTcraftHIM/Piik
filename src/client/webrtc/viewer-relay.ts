@@ -1,5 +1,4 @@
 import type {
-  CodecTransitionGeneration,
   IceConfig,
   PreparedRouteCandidate,
   SignalPayload,
@@ -191,24 +190,6 @@ export class ViewerRelay {
       () => undefined,
     );
     return result.catch(() => false);
-  }
-
-  prepareVideoCodec(
-    childPeerId: string,
-    connectionId: string,
-    generation: CodecTransitionGeneration,
-    videoCodec: QualityProfile["videoCodec"],
-  ): Promise<boolean> {
-    const peer = this.peers.get(childPeerId);
-    if (
-      this.disposed ||
-      !peer ||
-      peer.connectionId !== connectionId ||
-      !this.childPeerIds.includes(childPeerId)
-    ) {
-      return Promise.resolve(false);
-    }
-    return peer.prepareVideoCodec(generation, videoCodec);
   }
 
   getSignalRouteRevision(

@@ -51,7 +51,13 @@ describe("realtime quality controls", () => {
       resolution: "1080p",
       maxFramerate: 30,
       maxBitrate: 5_000_000,
+      videoCodec: "vp8",
     });
+    expect(
+      Object.values(QUALITY_PROFILES).every(
+        (profile) => profile.videoCodec === "vp8",
+      ),
+    ).toBe(true);
   });
 
   it("offers 854x480 only through advanced resolution settings", () => {

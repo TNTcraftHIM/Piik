@@ -154,11 +154,11 @@ export class SignalingClient {
     return this.setDisplayName(displayName);
   }
 
-  pauseSharing(): boolean {
+  setSharingPaused(paused: boolean): boolean {
     if (this.identity.role !== "host") {
       return false;
     }
-    this.identity.sharingPaused = true;
+    this.identity.sharingPaused = paused;
     if (!this.identity.shareGeneration) {
       return false;
     }
@@ -166,7 +166,7 @@ export class SignalingClient {
       return this.send({
         type: "set-sharing-paused",
         shareGeneration: this.identity.shareGeneration,
-        paused: true,
+        paused,
       });
     } catch {
       return false;
@@ -177,47 +177,6 @@ export class SignalingClient {
     if (this.identity.role === "host") {
       this.identity.sharingPaused = true;
     }
-  }
-
-  requestSharingResume(): boolean {
-    if (this.identity.role !== "host" || !this.identity.shareGeneration) {
-      return false;
-    }
-    try {
-      return this.send({
-        type: "request-sharing-resume",
-        shareGeneration: this.identity.shareGeneration,
-      });
-    } catch {
-      return false;
-    }
-  }
-
-  confirmSharingResumed(
-    authorization: Extract<
-      ServerMessage,
-      { type: "sharing-resume-authorized" }
-    >,
-  ): boolean {
-    if (
-      this.identity.role !== "host" ||
-      !this.identity.shareGeneration ||
-      authorization.shareGeneration !== this.identity.shareGeneration
-    ) {
-      return false;
-    }
-    let sent = false;
-    try {
-      sent = this.send({
-        type: "sharing-source-enabled",
-        shareGeneration: authorization.shareGeneration,
-        codecGeneration: authorization.codecGeneration,
-        resumeAttempt: authorization.resumeAttempt,
-      });
-    } catch {
-      sent = false;
-    }
-    return sent;
   }
 
   sendThenStop(message: ClientMessage): void {

@@ -1101,11 +1101,10 @@ function videoPublishOptions(
   profile: QualityProfile,
 ): TrackPublishOptions {
   const highResolution = QUALITY_RESOLUTIONS[profile.resolution];
+  const videoCodec = profile.videoCodec ?? "vp8";
   return {
     backupCodec: false,
-    ...(!profile.videoCodec || profile.videoCodec === "automatic"
-      ? {}
-      : { videoCodec: profile.videoCodec }),
+    ...(videoCodec === "automatic" ? {} : { videoCodec }),
     simulcast: true,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,

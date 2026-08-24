@@ -262,10 +262,26 @@ intrinsic bitrate or efficiency win for every implementation or scene; actual
 outbound codec/profile, encoder implementation and decoded stats remain the
 result truth. A codec choice also does not prove shared encode: separate browser
 PeerConnections may construct separate encoders, and the SFU still publishes
-only the configured `q,h` representations. After the H.264 root cause is fixed,
-fresh-share physical direct, browser-relay, and SFU runs choose either VP8 or
-H.264 as the single fixed Browser codec. Either result removes the temporary
-selector instead of retaining a permanent codec control.
+only the configured `q,h` representations. A fresh-share physical direct
+comparison chooses the fixed Browser codec; relay and SFU validate H.264 only
+when that comparison selects it.
+
+Current Chromium source makes the negotiated H.264 format a material Windows
+runtime input. `kPlatformH264CbpEncoding` is disabled by default on Windows;
+the Media Foundation path skips the NVIDIA MFT for constrained-baseline H.264,
+and the WebRTC hardware encoder returns software fallback for unsupported
+formats such as odd dimensions. Ordinary H.264 simulcast streams are initialized
+as separate encoder streams. The target run must therefore join each outbound
+SSRC/RID to its exact `RTCCodecStats.sdpFmtpLine` and record the exposed encoder
+implementation, power-efficiency flag, interval encode cost, and process GPU
+video-encode activity. These fields distinguish format and encoder paths; their
+presence alone does not establish the Screener root cause.
+
+Pinned LiveKit server `1.13.5` gives VP8 a temporal layer selector and gives
+H.264/H.265 the generic simulcast spatial selector. H.264 SFU evidence therefore
+starts with every Host publication RID and the Viewer-selected dimensions/FPS:
+layer changes are spatial, while same-dimension FPS changes remain attributable
+to publisher, transport, or Viewer decode evidence.
 
 The repository diagnostic is a mechanical single-machine preflight, not a
 quality runner. Lifecycle runs fix the accepted v10 VP8 default; each fresh run performs exactly
@@ -276,18 +292,18 @@ Codec preflight uses fresh Host/share/PeerConnection sessions for Automatic,
 H.264, and VP8 and rejects an actual-codec mismatch. Reports retain only
 allowlisted failure stages and sanitized identifiers.
 
-Quality diagnosis remains a separately orchestrated headed matrix with the same
-real game, browser/driver, capture surface, and one external wired direct Viewer;
-the local loopback preflight cannot satisfy it. Capture A, sender B, and Viewer C
-samples must share the current generation and overlapping windows; identity
-polling must not advance their accumulators. Record actual codec/profile,
+Quality diagnosis uses a headed matrix with the same real game, Browser build,
+driver/GPU, capture surface, `1080p30 / 5 Mbps / balanced`, foreground state,
+and one external wired direct Viewer. Fresh H.264, VP8, and H.264 confirmation
+shares each run for 60 to 90 seconds. Capture A, sender B, and Viewer C samples
+share the current generation and overlapping windows; identity polling does not
+advance their accumulators. Each window records actual codec/profile,
 configured/source/send/receive FPS, interval encoded frames/encode time,
-limitation reason, game FPS, and process-scoped GPU evidence. Missing
-implementation or power-efficiency fields remain unknown. Add a remote runner
-adapter only when that matrix has a current automated consumer. No H.264 root
-cause or policy change is accepted until the controlled sample distinguishes
-capture starvation, software fallback, hardware queue/driver pressure, and
-congestion.
+limitation reason, game FPS, and process-scoped CPU/GPU evidence. Capture input,
+sender output, transport limits, and Viewer decode evidence classify the first
+bottleneck. A direct H.264 result selected by that matrix is then checked once
+through browser relay and once through SFU. Missing implementation or
+power-efficiency fields remain unknown.
 
 Open-source distribution is not itself a patent-license exemption. This Web
 change only requests a codec already implemented by the browser/LiveKit path and
@@ -850,6 +866,9 @@ is a separate optimization.
 - [IANA AV1 media type and format parameters](https://www.iana.org/assignments/media-types/video/AV1)
 - [Chromium/libwebrtc video stats origins](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/stats.md)
 - [Chromium WebRTC hardware encoder factory](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder_factory.cc)
+- [Chromium Windows H.264 constrained-baseline acceleration gate](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/peerconnection/webrtc_util.cc)
+- [Chromium Windows Media Foundation encoder selection](https://chromium.googlesource.com/chromium/src/+/master/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc)
+- [Chromium WebRTC hardware fallback and simulcast initialization](https://chromium.googlesource.com/chromium/src/+/HEAD/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder.cc)
 - [Chromium WebRTC AV1 hardware feature gate](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/webrtc/webrtc_features.cc)
 - [MDN `RTCRtpSender.setParameters()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/setParameters)
 - [Chromium `motion` to libwebrtc `kFluid` bridge](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc)
