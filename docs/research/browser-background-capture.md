@@ -36,18 +36,17 @@ does not say that minimizing the separate capturing page must reduce capture.
 Capture constraints are post-selection preferences and allow frame decimation,
 so requested `maxFramerate` is not proof of actual source or encoded frame rate.
 
-The accepted default video preference is VP8. The deployed v9 runtime still
-defaults to `automatic` until the next atomic Browser cutover. Every run must
-record the actual negotiated codec and encoder rather than infer either from
+The accepted and deployed default video preference is VP8. Every run records
+the actual negotiated codec and encoder rather than inferring either from
 the preference. H.264, VP8, and encoder implementation are diagnostic variables
 only after a stable baseline exists; none is a page-keepalive mechanism.
 
 ## Current Source Boundary
 
-The source review covers exact Browser v9 source
-`d543f38aacad3df5ef65fde1055cc8e733972afe`, integrated and deployed by exact
-main `39fcf93bae057fcbb1002702c3be6b90bac9027f`. None of the v9 changes claims or
-implements a page-keepalive mechanism, and the production cutover added no
+The source review covers exact Browser v10 source
+`fdd5a4a529ff297f41c05ea3388bf484d76afe8f`, integrated and deployed by exact
+main `2726edde9b87f31fd76e749de47972ef817a9bd5`. The current path does not claim or
+implement a page-keepalive mechanism, and deployment health supplies no
 physical background-capture evidence.
 
 - `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream, applies

@@ -5,10 +5,10 @@
   interactive media, endpoint downstream cap `1..3`, and minimal central-server
   media egress; retained advanced-media measurements may cover smaller cohorts
 - Status: deterministic peer distribution and provisional make-before-break are
-  retained evidence. Exact Browser v9 source
-  `d543f38aacad3df5ef65fde1055cc8e733972afe` implements ADR-0005's single
+  retained evidence. Exact Browser v10 source
+  `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` implements ADR-0005's single
   child-reparent reconciliation and exact first-frame transaction; production
-  now runs that v9 contract, and advanced encoded-media routes remain
+  runs that v10 contract, and advanced encoded-media routes remain
   unimplemented candidates
 
 This document is research evidence, not current architecture or a backlog. See
@@ -262,7 +262,7 @@ restarted. This proves LiveKit participant entry. The timing is consistent with
 the then-current one-shot grant refresh and recovery state machine, but logs do
 not prove those transitions and cannot distinguish
 connect, source, video publish, sender configuration, optional audio publish, or
-transport failure. The deployed v9 diagnostic exposes only a closed local
+transport failure. The deployed v10 diagnostic exposes only a closed local
 stage/outcome enum to an on-demand Host snapshot and deliberately keeps raw
 errors, URLs, tokens, candidates, and addresses out of wire and logs.
 

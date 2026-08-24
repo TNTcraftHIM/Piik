@@ -6,10 +6,10 @@ Status: peer and SFU routes already use stereo and a 128 kbps default, but users
 still report speech-gated movie/game audio, including on a phone connected
 directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
 local speech processing unless the request disables it. The source request is
-explicit. Exact Browser v9 source
-`d543f38aacad3df5ef65fde1055cc8e733972afe` exposes bounded 64/128/256 kbps
+explicit. Current Browser v10 source
+`fdd5a4a529ff297f41c05ea3388bf484d76afe8f` exposes bounded 64/128/256 kbps
 choices, applies them to new P2P, browser-relay, and SFU senders, and implements
-serialized live mutation with applied readback. Production now deploys that v9
+serialized live mutation with applied readback. Production deploys that v10
 path. Target-device audible proof remains open.
 
 ## Scope And Decision
@@ -48,7 +48,7 @@ stereo music in a 64--128 kbps sweet spot, and LiveKit 2.22.0 names 128 kbps
 `musicHighQualityStereo`. Requested, applied, negotiated, and observed states
 remain separate.
 
-The advanced panel is named Share advanced settings. Exact v9 source stores the
+The advanced panel is named Share advanced settings. Current v10 source stores the
 64/128/256 choice and applies that sender `maxBitrate` ceiling on the existing
 Opus path when it creates a sender. A change during an active share serializes
 `getParameters()`/`setParameters()` updates and readback, keeps media and the old
@@ -463,7 +463,7 @@ A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 ## UI And Voice Boundary
 
 Share advanced settings offers exactly 64/128/256 kbps and defaults to 128.
-Exact v9 source applies the selected choice before sharing, to every newly
+Current v10 source applies the selected choice before sharing, to every newly
 created P2P, browser-relay, or SFU sender, and through a serialized live
 mutation; production deploys the same path. It reads
 the latest desired profile into each sender and keeps endpoint-local applied
