@@ -27,15 +27,15 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Finish the Host background/minimized diagnosis on exact production with a real game/replay and separate direct Viewer. A bounded current-Chrome Browser `getDisplayMedia()` WPF-window same-machine loopback did not observe an immediate page-lifecycle drop, so no workaround is established; the reported workload still needs synchronized capture, send, receive, decode, CPU, and GPU evidence.
-2. Diagnose the reported screen-audio `1 kbps` readout and physically validate live audio ceilings.
-3. Physically verify the deployed `screener-v11` fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
-4. Refine the Host invitation controls without changing grant semantics implicitly.
-5. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
+1. Diagnose the reported screen-audio `1 kbps` readout and physically validate live audio ceilings.
+2. Physically verify the deployed `screener-v11` fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
+3. Refine the Host invitation controls without changing grant semantics implicitly.
+4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
 
 ## Active Boundaries
 
 - `fix/configurable-relay-cap` is an old, incomplete draft and must not be merged as-is.
+- The desktop Host background/minimized report is deferred until a current-production real-game reproduction supplies synchronized media and CPU/GPU evidence. Mobile Viewer background playback and relay survival remain a separate Accepted Later lifecycle gate.
 - Open PR #192 and the Native stack are evidence/research, not pending product releases. Native senders, capture helpers, shared-encode executables, and their test binaries are outside the current Browser milestone and are not built or run.
 - Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
 - Room lifetime, authorization/storage semantics, restart loss, entry/presentation, and the Browser v11 contract are aligned between source and production. This application-only cutover reused unchanged infrastructure and configuration and does not maintain a full rollback/configuration backup; any future infrastructure or irreversible-state change requires recovery scoped to the surfaces it actually changes.
