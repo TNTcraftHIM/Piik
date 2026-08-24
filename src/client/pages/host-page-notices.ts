@@ -24,6 +24,7 @@ const HOST_SERVER_ERROR_NOTICE: Record<ServerErrorCode, string> = {
   AUTH_REQUIRED: "站点访问已失效，请重新验证",
   INVALID_MESSAGE: "页面版本已更新，请刷新后重试",
   INVALID_TOKEN: "分享凭证已失效，请重新创建房间",
+  ROOM_NOT_FOUND: "房间不存在或已过期",
   ROOM_ACCESS_DENIED: "当前操作没有权限",
   ROOM_EXPIRED: "房间已过期，请重新创建",
   ROOM_FULL: "房间已满",

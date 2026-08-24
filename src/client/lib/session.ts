@@ -46,6 +46,14 @@ export function roomRouteFromInput(value: string): string | null {
   return isValidRoomId(value) ? `/r/${value}` : null;
 }
 
+export function roomRouteForExplicitEntry(value: string): string | null {
+  const route = roomRouteFromInput(value);
+  if (route) {
+    clearViewerGrant(value);
+  }
+  return route;
+}
+
 export function parseAppRoute(pathname: string): AppRoute {
   if (pathname === "/") {
     return { kind: "host" };
@@ -157,10 +165,9 @@ export function readViewerRoute(): ViewerRoute | null {
   if (fragment) {
     const fragmentMatch = fragment.match(/^#v=(.+)$/);
     const viewerGrant = fragmentMatch?.[1];
-    const validGrant =
-      viewerGrant && isViewerGrantForRoom(viewerGrant, roomId)
-        ? viewerGrant
-        : null;
+    const validGrant = viewerGrant && isValidViewerGrant(viewerGrant)
+      ? viewerGrant
+      : null;
     if (validGrant) {
       writeSessionValue(viewerGrantStorageKey(roomId), validGrant);
     } else {
@@ -171,7 +178,7 @@ export function readViewerRoute(): ViewerRoute | null {
   }
 
   const storedGrant = readSessionValue(viewerGrantStorageKey(roomId));
-  if (storedGrant && isViewerGrantForRoom(storedGrant, roomId)) {
+  if (storedGrant && isValidViewerGrant(storedGrant)) {
     return { roomId, viewerGrant: storedGrant };
   }
   if (storedGrant) {
@@ -195,9 +202,15 @@ export function replaceViewerInvite(
     clearViewerGrant(roomId);
     return;
   }
+  const inviteRoute = parseAppRoute(parsed.pathname);
   const match = parsed.hash.match(/^#v=(.+)$/);
   const viewerGrant = match?.[1];
-  if (viewerGrant && isViewerGrantForRoom(viewerGrant, roomId)) {
+  if (
+    inviteRoute.kind === "viewer" &&
+    inviteRoute.roomId === roomId &&
+    viewerGrant &&
+    isValidViewerGrant(viewerGrant)
+  ) {
     writeSessionValue(viewerGrantStorageKey(roomId), viewerGrant);
     return;
   }
@@ -206,7 +219,7 @@ export function replaceViewerInvite(
 
 export function readViewerGrant(roomId: string): string | null {
   const value = readSessionValue(viewerGrantStorageKey(roomId));
-  if (value && isViewerGrantForRoom(value, roomId)) {
+  if (value && isValidViewerGrant(value)) {
     return value;
   }
   if (value) {
@@ -255,17 +268,8 @@ function viewerGrantStorageKey(roomId: string): string {
   return `screener:viewer-grant:${roomId}`;
 }
 
-function isViewerGrantForRoom(value: string, roomId: string): boolean {
-  if (!viewerGrantSchema.safeParse(value).success) {
-    return false;
-  }
-  const [, grantRoomId, expiresAtText] = value.split(".", 4);
-  const expiresAtSeconds = Number(expiresAtText);
-  return (
-    grantRoomId === roomId &&
-    Number.isSafeInteger(expiresAtSeconds) &&
-    expiresAtSeconds > Math.floor(Date.now() / 1_000)
-  );
+function isValidViewerGrant(value: string): boolean {
+  return viewerGrantSchema.safeParse(value).success;
 }
 
 export function getStableClientId(role: "host" | "viewer", roomId: string): string {

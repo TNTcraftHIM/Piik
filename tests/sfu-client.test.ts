@@ -442,6 +442,45 @@ function senderReport(
   ]);
 }
 
+function audioSenderReport(
+  trackId: string,
+  timestamp: number,
+  bytesSent: number,
+): RTCStatsReport {
+  return statsReport([
+    {
+      id: "audio-out",
+      type: "outbound-rtp",
+      timestamp,
+      kind: "audio",
+      ssrc: 202,
+      transportId: "audio-transport",
+      mediaSourceId: "audio-source",
+      codecId: "audio-codec",
+      bytesSent,
+    },
+    {
+      id: "audio-source",
+      type: "media-source",
+      timestamp,
+      kind: "audio",
+      trackIdentifier: trackId,
+    },
+    {
+      id: "audio-transport",
+      type: "transport",
+      timestamp,
+    },
+    {
+      id: "audio-codec",
+      type: "codec",
+      timestamp,
+      transportId: "audio-transport",
+      mimeType: "audio/opus",
+    },
+  ]);
+}
+
 function stream(...tracks: MediaStreamTrack[]): MediaStream {
   return new FakeMediaStream(tracks) as unknown as MediaStream;
 }
@@ -558,6 +597,55 @@ describe("SfuPublisher", () => {
 
     await publisher.deactivate();
     expect(updates.at(-1)).toBeNull();
+  });
+
+  it("merges the current audio sender report and resets after its sender changes", async () => {
+    vi.useFakeTimers();
+    const updates: Array<ConnectionMetrics | null> = [];
+    const publisher = new SfuPublisher({
+      onStats: (metrics) => updates.push(metrics),
+    });
+    const video = track("video", "video-1");
+    const audio = track("audio", "audio-1");
+    await publisher.connect(connection);
+    await publisher.activate(stream(video, audio), qualityProfile);
+    const room = livekit.state.rooms[0];
+    const videoSender = room.localParticipant.publications[0].track.sender;
+    const audioTrack = room.localParticipant.publications[1].track;
+    const audioSender = audioTrack.sender;
+    videoSender.getStats
+      .mockResolvedValueOnce(senderReport(video.id, 1_000, 100_000, 60))
+      .mockResolvedValueOnce(senderReport(video.id, 3_000, 300_000, 180));
+    audioSender.getStats
+      .mockResolvedValueOnce(audioSenderReport(audio.id, 1_000, 10_000))
+      .mockResolvedValueOnce(audioSenderReport(audio.id, 3_000, 50_000));
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)).toMatchObject({
+      audioBitrateKbps: null,
+      audioCodec: "audio/opus",
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)).toMatchObject({
+      audioBitrateKbps: 160,
+      audioCodec: "audio/opus",
+    });
+
+    const replacementSender = audioTrack.replaceSenderForTest();
+    videoSender.getStats
+      .mockResolvedValueOnce(senderReport(video.id, 5_000, 500_000, 300))
+      .mockResolvedValueOnce(senderReport(video.id, 7_000, 700_000, 420));
+    replacementSender.getStats
+      .mockResolvedValueOnce(audioSenderReport(audio.id, 5_000, 90_000))
+      .mockResolvedValueOnce(audioSenderReport(audio.id, 7_000, 130_000));
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-2)).toBeNull();
+    expect(updates.at(-1)?.audioBitrateKbps).toBeNull();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)?.audioBitrateKbps).toBe(160);
+    expect(audioSender.getStats).toHaveBeenCalledTimes(2);
+    expect(replacementSender.getStats).toHaveBeenCalledTimes(2);
   });
 
   it("explicitly keeps Dynacast off while preparing SFU fallback", async () => {

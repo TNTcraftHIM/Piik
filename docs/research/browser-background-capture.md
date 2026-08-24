@@ -99,8 +99,8 @@ deployment health supplies no physical background-capture evidence.
   work, limitation reason, codec, encoder, and receiver metrics. Its interval
   calculations use RTCStats timestamps, so delayed UI timer delivery must not
   be inferred as an equal media-rate drop.
-- `src/client/lib/diagnostic-export.ts` exports only the latest bounded sample.
-  It is a useful cross-check, not a historical trace.
+- The local connection-details UI shows only the latest bounded sample; it is a
+  cross-check rather than a historical trace and no longer exports a file.
 - The short-lived pending-candidate decoded-frame observer reads cumulative RTP
   progress only for the exact pending route. It neither drives capture nor proves
   document activity, and it stops when that operation settles.

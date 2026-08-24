@@ -1,5 +1,4 @@
 import {
-  Download,
   KeyRound,
   LoaderCircle,
   Maximize2,
@@ -41,17 +40,11 @@ import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
-import {
-  downloadDiagnosticReport,
-  type DiagnosticConnectionInput,
-  type ViewerDiagnosticInput,
-} from "../lib/diagnostic-export";
 import { DecodedFrameStallDetector } from "../media/decoded-frame-stall";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
-  freshViewerQualityEvidence,
   metricsFromQualityEvidence,
   nextViewerQualityEvidencePresentationExpiryAt,
   presentViewerQualityEvidence,
@@ -223,57 +216,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     routePresentation.evidence?.connectionState ??
     (hostOnline ? "routing" : "waiting");
   const routeMetrics = routePresentation.evidence?.metrics ?? null;
-  const diagnosticConnections: DiagnosticConnectionInput[] = [];
-  if (routePresentation.route && routeMetrics) {
-    diagnosticConnections.push({
-      scope: "upstream",
-      route: routePresentation.route,
-      direction: "receive",
-      connectionState: routePresentation.evidence?.connectionState,
-      iceConnectionState: peerSnapshot && routePresentation.evidence === peerSnapshot
-        ? peerSnapshot.iceConnectionState
-        : null,
-      metrics: routeMetrics,
-    });
-  }
-  if (relaySnapshot) {
-    diagnosticConnections.push({
-      scope: "relay-edge",
-      route: "p2p",
-      direction: "send",
-      connectionState: relaySnapshot.connectionState,
-      iceConnectionState: relaySnapshot.iceConnectionState,
-      metrics: relaySnapshot.metrics,
-    });
-  }
-  const freshRelayChildEvidence = freshViewerQualityEvidence(
-    relayChildEvidence,
-  );
-  if (freshRelayChildEvidence) {
-    diagnosticConnections.push({
-      scope: "relay-edge",
-      route: "p2p",
-      direction: "receive",
-      metrics: metricsFromQualityEvidence(freshRelayChildEvidence),
-    });
-  }
-  const viewerDiagnosticState: ViewerDiagnosticInput = {
-    authenticated: presentationState.revision !== null,
-    stage: presentation.stage,
-    revision: presentationState.revision,
-    failureCode: presentation.failureCode,
-    signalState: presentationState.signal,
-    hostState: presentationState.host,
-    routeKind:
-      assignedRoute === null
-        ? "none"
-        : routeKindFromAssignment(assignedRoute.upstream),
-    frameProof: presentation.hasCurrentFrame
-      ? "current"
-      : presentation.hasRetainedFrame
-        ? "previous"
-        : "none",
-  };
 
   function bindRemoteStream(stream: MediaStream, revision: number): void {
     const videoTrackKey = stream
@@ -1420,6 +1362,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           [
             "AUTH_REQUIRED",
             "INVALID_TOKEN",
+            "ROOM_NOT_FOUND",
             "ROOM_ACCESS_DENIED",
             "ROOM_EXPIRED",
             "ROOM_FULL",
@@ -1433,6 +1376,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           const failure =
             hadAuthenticated &&
             (message.code === "INVALID_TOKEN" ||
+              message.code === "ROOM_NOT_FOUND" ||
               message.code === "ROOM_ACCESS_DENIED")
               ? "ROOM_LOST"
               : viewerFailureFromServerCode(message.code);
@@ -1699,6 +1643,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 <p className="section-meta">
                   {codeOnlyDenied
                     ? "请使用分享者提供的邀请链接，或尝试房间密码。"
+                    : presentationState.failure === "ROOM_NOT_FOUND"
+                      ? "请确认房间号，或向分享者获取新的邀请链接。"
                     : viewerGrant
                       ? "请向分享者获取新的邀请链接。"
                       : "请检查入口后重试。"}
@@ -1759,21 +1705,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   刷新页面
                 </button>
               )}
-              <button
-                className="icon-button access-diagnostic-action"
-                type="button"
-                title="下载脱敏连接诊断"
-                aria-label="下载脱敏连接诊断"
-                onClick={() =>
-                  downloadDiagnosticReport(
-                    "viewer",
-                    diagnosticConnections,
-                    viewerDiagnosticState,
-                  )
-                }
-              >
-                <Download size={17} aria-hidden="true" />
-              </button>
             </section>
           )}
         </main>
@@ -2027,13 +1958,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         <ConnectionDetailsToggle
           checked={showConnectionDetails}
           onChange={setShowConnectionDetails}
-          onExport={() =>
-            downloadDiagnosticReport(
-              "viewer",
-              diagnosticConnections,
-              viewerDiagnosticState,
-            )
-          }
         />
 
         {routePresentation.evidence === peerSnapshot && peerSnapshot?.error && (
@@ -2122,6 +2046,8 @@ function viewerFailureFromServerCode(
   code: Extract<ServerMessage, { type: "error" }>["code"],
 ): ViewerFailureCode | null {
   switch (code) {
+    case "ROOM_NOT_FOUND":
+      return "ROOM_NOT_FOUND";
     case "ROOM_ACCESS_DENIED":
       return "ROOM_ACCESS_DENIED";
     case "INVALID_TOKEN":

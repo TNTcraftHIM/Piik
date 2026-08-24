@@ -308,6 +308,39 @@ function sendStatsReport({
   ]) as unknown as RTCStatsReport;
 }
 
+function withOutboundAudio(
+  report: RTCStatsReport,
+  tracks: readonly {
+    id: string;
+    trackIdentifier: string;
+    bytesSent: number;
+  }[],
+): RTCStatsReport {
+  const merged = new Map(
+    report as unknown as Map<string, Record<string, unknown>>,
+  );
+  for (const [index, track] of tracks.entries()) {
+    const sourceId = `${track.id}-source`;
+    merged.set(track.id, {
+      id: track.id,
+      type: "outbound-rtp",
+      timestamp: Number(merged.get("outbound-video")?.timestamp),
+      kind: "audio",
+      ssrc: index + 1,
+      mediaSourceId: sourceId,
+      bytesSent: track.bytesSent,
+    });
+    merged.set(sourceId, {
+      id: sourceId,
+      type: "media-source",
+      timestamp: Number(merged.get("outbound-video")?.timestamp),
+      kind: "audio",
+      trackIdentifier: track.trackIdentifier,
+    });
+  }
+  return merged as unknown as RTCStatsReport;
+}
+
 function createTrack(kind: "video" | "audio", id: string): MediaStreamTrack {
   return { id, kind } as MediaStreamTrack;
 }
@@ -933,6 +966,85 @@ describe("HostPeer source replacement", () => {
       captureWidth: 1920,
       captureHeight: 1080,
       captureFramesPerSecond: 59.94,
+    });
+  });
+
+  it("samples only the current audio sender and excludes old audio after removal", async () => {
+    const video = createConfiguredVideoTrack("capture-video", 1920, 1080, 60);
+    const audio = createTrack("audio", "current-audio");
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(video, audio),
+      (snapshot) => updates.push(snapshot),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    const report = (timestamp: number, currentBytes: number, oldBytes: number) =>
+      withOutboundAudio(
+        sendStatsReport({
+          bytesSent: timestamp * 1_000,
+          framesEncoded: timestamp / 20,
+          timestamp,
+          qualityLimitationReason: "none",
+          trackIdentifier: video.id,
+        }),
+        [
+          {
+            id: "current-audio-out",
+            trackIdentifier: audio.id,
+            bytesSent: currentBytes,
+          },
+          {
+            id: "old-audio-out",
+            trackIdentifier: "old-audio",
+            bytesSent: oldBytes,
+          },
+        ],
+      );
+    connection.statsReports.push(
+      report(1_000, 10_000, 100_000),
+      report(3_000, 50_000, 300_000),
+    );
+
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.sampleTimestampMs).toBe(1_000),
+    );
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.audioBitrateKbps).toBe(160),
+    );
+
+    const nextVideo = createConfiguredVideoTrack("next-video", 1280, 720, 30);
+    await expect(
+      peer.replaceStream(createStream(nextVideo, null)),
+    ).resolves.toBe(true);
+    connection.statsReports.push(
+      withOutboundAudio(
+        sendStatsReport({
+          bytesSent: 4_000_000,
+          framesEncoded: 200,
+          timestamp: 4_000,
+          qualityLimitationReason: "none",
+          trackIdentifier: nextVideo.id,
+        }),
+        [
+          {
+            id: "old-audio-out",
+            trackIdentifier: audio.id,
+            bytesSent: 400_000,
+          },
+        ],
+      ),
+    );
+    statsCallbacks[0]!();
+    await vi.waitFor(() =>
+      expect(updates.at(-1)?.metrics.sampleTimestampMs).toBe(4_000),
+    );
+    expect(updates.at(-1)?.metrics).toMatchObject({
+      trackIdentifier: nextVideo.id,
+      audioBitrateKbps: null,
+      audioCodec: null,
     });
   });
 

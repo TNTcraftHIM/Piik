@@ -2,7 +2,7 @@ import {
   Check,
   Copy,
   KeyRound,
-  LockKeyhole,
+  Link2Off,
   Maximize2,
   MonitorUp,
   Network,
@@ -51,7 +51,6 @@ import {
   type HostCreationProfile,
 } from "../lib/creation-profile";
 import { createOpaqueId } from "../lib/opaque-id";
-import { downloadDiagnosticReport, type DiagnosticConnectionInput } from "../lib/diagnostic-export";
 import {
   defaultHostDisplayName,
   readDisplayName,
@@ -100,7 +99,6 @@ import {
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
   classifyHostViewerQualityEvidence,
-  freshViewerQualityEvidence,
   metricsFromQualityEvidence,
   nextViewerQualityEvidencePresentationExpiryAt,
   presentViewerQualityEvidence,
@@ -249,6 +247,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     creationProfileRef.current = creationProfile;
   }, [creationProfile]);
   const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
+  const [viewerPasswordEditorOpen, setViewerPasswordEditorOpen] =
+    useState(false);
   const [viewerPasswordUpdating, setViewerPasswordUpdating] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
@@ -279,9 +279,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
-  const pendingDiagnosticExportRef = useRef<
-    DiagnosticConnectionInput[] | null
-  >(null);
   const displayNameRef = useRef(displayName);
   const hostClientIdRef = useRef<string | null>(null);
   const viewerPasswordActionRef = useRef<string | null | undefined>(undefined);
@@ -328,46 +325,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       ) ?? null,
     [participantPresence],
   );
-  const diagnosticConnections: DiagnosticConnectionInput[] = [];
-  if (sfuPublisherSnapshot) {
-    diagnosticConnections.push({
-      scope: "host-sfu",
-      route: "sfu",
-      direction: "send",
-      metrics: sfuPublisherSnapshot.metrics,
-    });
-  }
-  for (const viewer of viewers) {
-    const snapshot =
-      viewer.upstream.kind === "peer" &&
-      viewer.upstream.peerId ===
-        (hostPresence?.peerId ?? hostPeerIdRef.current)
-        ? peerSnapshots.get(viewer.peerId)
-        : undefined;
-    if (snapshot && hasPeerRouteEvidence(snapshot)) {
-      diagnosticConnections.push({
-        scope: "viewer-edge",
-        route: "p2p",
-        direction: "send",
-        connectionState: snapshot.connectionState,
-        iceConnectionState: snapshot.iceConnectionState,
-        metrics: snapshot.metrics,
-      });
-    }
-    const presentation = viewerQualityEvidence.get(viewer.peerId);
-    const evidence = freshViewerQualityEvidence(presentation);
-    if (
-      viewer.upstream.kind === "peer" &&
-      evidence?.parentPeerId === viewer.upstream.peerId
-    ) {
-      diagnosticConnections.push({
-        scope: "viewer-edge",
-        route: "p2p",
-        direction: "receive",
-        metrics: metricsFromQualityEvidence(evidence),
-      });
-    }
-  }
   const selectedQualityProfileId = useMemo(
     () => matchingQualityProfileId(qualitySettings),
     [qualitySettings],
@@ -429,7 +386,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       activeHostChildPeerIdsRef.current = [];
       endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
       hostPeerIdRef.current = null;
-      pendingDiagnosticExportRef.current = null;
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
         window.clearTimeout(timer),
       );
@@ -536,7 +492,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signal.stop();
     }
     signalRef.current = null;
-    pendingDiagnosticExportRef.current = null;
     shareGenerationRef.current = null;
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
@@ -579,6 +534,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     clearHostRoom();
     setRoom(null);
     setCopied(false);
+    setViewerPasswordEditorOpen(false);
+    setViewerPasswordDraft("");
   }
 
   function endSharing(message: string, notifyServer = true): void {
@@ -1281,6 +1238,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordUpdating(false);
       setViewerPasswordDraft("");
       if (action !== undefined) {
+        setViewerPasswordEditorOpen(false);
         setNotice(
           action === null ? "房间密码已移除" : "房间密码已更新",
         );
@@ -1289,13 +1247,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "viewer-presence") {
       setParticipantPresence(message.viewers);
-      return;
-    }
-    if (message.type === "route-diagnostic-snapshot") {
-      const connections = pendingDiagnosticExportRef.current;
-      if (!connections) return;
-      pendingDiagnosticExportRef.current = null;
-      downloadDiagnosticReport("host", connections, message.snapshot);
       return;
     }
     if (message.type === "pause-sharing-source") {
@@ -1541,9 +1492,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 isCurrentGeneration(generation) &&
                 signalRef.current === signal
               ) {
-                if (status !== "connected") {
-                  pendingDiagnosticExportRef.current = null;
-                }
                 setSignalStatus(status);
               }
             },
@@ -1838,7 +1786,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         setCopied(false);
       }, 1_500);
     } catch {
-      setNotice("无法写入剪贴板，请手动复制邀请链接");
+      setNotice("无法复制邀请链接，请稍后重试");
     }
   }
 
@@ -2178,30 +2126,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <ConnectionDetailsToggle
             checked={showConnectionDetails}
             onChange={setShowConnectionDetails}
-            onExport={phase === "live"
-              ? () => {
-                  if (pendingDiagnosticExportRef.current) return;
-                  const connections = diagnosticConnections.map(
-                    (connection) => ({
-                      ...connection,
-                      metrics: { ...connection.metrics },
-                    }),
-                  );
-                  pendingDiagnosticExportRef.current = connections;
-                  if (
-                    !signalRef.current?.send({
-                      type: "request-route-diagnostic",
-                    })
-                  ) {
-                    pendingDiagnosticExportRef.current = null;
-                    downloadDiagnosticReport(
-                      "host",
-                      connections,
-                      null,
-                    );
-                  }
-                }
-              : undefined}
           />
 
           <div className="setup-controls">
@@ -2396,39 +2320,57 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           {room && (
             <div className="invite-bar">
               <div className="invite-primary">
-                <span className="field-label">邀请链接</span>
-                <span className="invite-url" title={room.inviteUrl ?? undefined}>
-                  {room.inviteUrl ?? "当前没有有效邀请，请更新生成新链接"}
-                </span>
-                <div className="invite-actions">
+                <div className="invite-heading">
+                  <div className="invite-heading-copy">
+                    <span className="field-label">邀请链接</span>
+                    <span className="invite-status">
+                      {room.inviteUrl ? "可用" : "已撤销"}
+                    </span>
+                  </div>
+                  <div className="invite-icon-actions">
+                    <button
+                      className="icon-button invite-icon-action"
+                      type="button"
+                      title="更新邀请链接"
+                      aria-label="更新邀请链接"
+                      disabled={viewerGrantUpdating || phase !== "live"}
+                      onClick={() => changeViewerGrant("rotate")}
+                    >
+                      <RefreshCw size={17} aria-hidden="true" />
+                    </button>
+                    <button
+                      className="icon-button invite-icon-action is-danger"
+                      type="button"
+                      title="撤销邀请链接"
+                      aria-label="撤销邀请链接"
+                      disabled={
+                        !room.inviteUrl || viewerGrantUpdating || phase !== "live"
+                      }
+                      onClick={() => changeViewerGrant("revoke")}
+                    >
+                      <Link2Off size={17} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                <div className="invite-copy-row">
+                  <span
+                    className="invite-url"
+                    title={room.inviteUrl ?? undefined}
+                  >
+                    {room.inviteUrl ?? "当前没有有效邀请链接"}
+                  </span>
                   <button
-                    className="button button-secondary invite-action"
+                    className="button button-primary invite-copy-action"
                     type="button"
-                    disabled={!room.inviteUrl}
+                    disabled={!room.inviteUrl || viewerGrantUpdating}
                     onClick={() => void copyInvite()}
                   >
-                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                    {copied ? (
+                      <Check size={16} aria-hidden="true" />
+                    ) : (
+                      <Copy size={16} aria-hidden="true" />
+                    )}
                     {copied ? "已复制" : "复制邀请链接"}
-                  </button>
-                  <button
-                    className="button button-secondary invite-action"
-                    type="button"
-                    disabled={viewerGrantUpdating || phase !== "live"}
-                    onClick={() => changeViewerGrant("rotate")}
-                  >
-                    <RefreshCw size={16} />
-                    更新邀请
-                  </button>
-                  <button
-                    className="button button-danger invite-action"
-                    type="button"
-                    disabled={
-                      !room.inviteUrl || viewerGrantUpdating || phase !== "live"
-                    }
-                    onClick={() => changeViewerGrant("revoke")}
-                  >
-                    <LockKeyhole size={16} />
-                    撤销邀请
                   </button>
                 </div>
               </div>
@@ -2468,67 +2410,102 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     </button>
                   ))}
                 </div>
-                <form
-                  className="viewer-password-control"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    changeViewerPassword(viewerPasswordDraft);
-                  }}
-                >
-                  <label htmlFor="viewer-password">房间密码</label>
-                  <span className="input-with-icon">
-                    <KeyRound size={16} aria-hidden="true" />
-                    <input
-                      id="viewer-password"
-                      type="password"
-                      value={viewerPasswordDraft}
-                      maxLength={MAX_VIEWER_PASSWORD_LENGTH}
-                      autoComplete="new-password"
-                      placeholder={
-                        viewerPasswordEnabled ? "输入新密码" : "设置密码"
-                      }
-                      disabled={viewerPasswordUpdating || phase !== "live"}
-                      onChange={(event) =>
-                        setViewerPasswordDraft(event.target.value)
-                      }
-                    />
-                  </span>
-                  <button
-                    className="icon-button"
-                    type="submit"
-                    title={viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
-                    aria-label={
-                      viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"
-                    }
-                    disabled={
-                      viewerPasswordUpdating ||
-                      phase !== "live" ||
-                      viewerPasswordDraft.length === 0
-                    }
+                {viewerPasswordEditorOpen ? (
+                  <form
+                    className="viewer-password-control"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      changeViewerPassword(viewerPasswordDraft);
+                    }}
                   >
-                    <Check size={18} />
-                  </button>
-                  {viewerPasswordEnabled && (
+                    <label htmlFor="viewer-password">
+                      {viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
+                    </label>
+                    <span className="input-with-icon">
+                      <KeyRound size={16} aria-hidden="true" />
+                      <input
+                        id="viewer-password"
+                        type="password"
+                        value={viewerPasswordDraft}
+                        maxLength={MAX_VIEWER_PASSWORD_LENGTH}
+                        autoComplete="new-password"
+                        placeholder="输入新密码"
+                        autoFocus
+                        disabled={viewerPasswordUpdating || phase !== "live"}
+                        onChange={(event) =>
+                          setViewerPasswordDraft(event.target.value)
+                        }
+                      />
+                    </span>
                     <button
                       className="icon-button"
-                      type="button"
-                      title={
-                        activeCodeEntryPolicy === "password"
-                          ? "请先将房间号加入改为开放或关闭"
-                          : "移除房间密码"
+                      type="submit"
+                      title={viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
+                      aria-label={
+                        viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"
                       }
-                      aria-label="移除房间密码"
                       disabled={
                         viewerPasswordUpdating ||
                         phase !== "live" ||
-                        activeCodeEntryPolicy === "password"
+                        viewerPasswordDraft.length === 0
                       }
-                      onClick={() => changeViewerPassword(null)}
                     >
-                      <Trash2 size={18} />
+                      <Check size={18} aria-hidden="true" />
                     </button>
-                  )}
-                </form>
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title="取消"
+                      aria-label="取消编辑房间密码"
+                      disabled={viewerPasswordUpdating}
+                      onClick={() => {
+                        setViewerPasswordDraft("");
+                        setViewerPasswordEditorOpen(false);
+                      }}
+                    >
+                      <X size={18} aria-hidden="true" />
+                    </button>
+                  </form>
+                ) : (
+                  <div className="room-password-summary">
+                    <span className="room-password-state">
+                      <KeyRound size={15} aria-hidden="true" />
+                      {viewerPasswordEnabled
+                        ? activeCodeEntryPolicy === "password"
+                          ? "密码加入已启用"
+                          : "房间密码已设置"
+                        : "未设置房间密码"}
+                    </span>
+                    <div className="room-password-actions">
+                      <button
+                        className="button button-secondary room-password-edit-action"
+                        type="button"
+                        disabled={viewerPasswordUpdating || phase !== "live"}
+                        onClick={() => setViewerPasswordEditorOpen(true)}
+                      >
+                        {viewerPasswordEnabled ? (
+                          <Pencil size={15} aria-hidden="true" />
+                        ) : (
+                          <KeyRound size={15} aria-hidden="true" />
+                        )}
+                        {viewerPasswordEnabled ? "更改" : "设置密码"}
+                      </button>
+                      {viewerPasswordEnabled &&
+                        activeCodeEntryPolicy !== "password" && (
+                          <button
+                            className="icon-button"
+                            type="button"
+                            title="移除房间密码"
+                            aria-label="移除房间密码"
+                            disabled={viewerPasswordUpdating || phase !== "live"}
+                            onClick={() => changeViewerPassword(null)}
+                          >
+                            <Trash2 size={17} aria-hidden="true" />
+                          </button>
+                        )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -459,7 +459,12 @@ export class HostPeer {
       return;
     }
     const captureTrack = this.videoSender?.track ?? null;
-    if (!captureTrack || this.stream.getVideoTracks()[0] !== captureTrack) {
+    const captureAudioTrack = this.audioSender?.track ?? null;
+    if (
+      !captureTrack ||
+      this.stream.getVideoTracks()[0] !== captureTrack ||
+      (this.stream.getAudioTracks()[0] ?? null) !== captureAudioTrack
+    ) {
       return;
     }
     this.statsInFlight = true;
@@ -469,7 +474,10 @@ export class HostPeer {
         this.connection,
         "send",
         statsAccumulator,
-        { trackIdentifier: captureTrack.id },
+        {
+          trackIdentifier: captureTrack.id,
+          audioTrackIdentifier: captureAudioTrack?.id ?? null,
+        },
       );
       const capture = captureMetrics(captureTrack);
       const metrics = { ...(await metricsPromise), ...capture };
@@ -479,6 +487,8 @@ export class HostPeer {
         this.statsAccumulator !== statsAccumulator ||
         this.videoSender?.track !== captureTrack ||
         this.stream.getVideoTracks()[0] !== captureTrack ||
+        (this.audioSender?.track ?? null) !== captureAudioTrack ||
+        (this.stream.getAudioTracks()[0] ?? null) !== captureAudioTrack ||
         (metrics.trackIdentifier !== null &&
           metrics.trackIdentifier !== captureTrack.id)
       ) {

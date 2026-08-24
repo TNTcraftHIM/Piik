@@ -20,6 +20,7 @@ import {
   readViewerGrant,
   readViewerRoute,
   replaceViewerInvite,
+  roomRouteForExplicitEntry,
   roomRouteFromInput,
   writeHostRoom,
 } from "../src/client/lib/session.ts";
@@ -269,9 +270,8 @@ describe("client session identity", () => {
     const room = {
       roomId: "1234",
       hostToken: "a".repeat(32),
-      inviteUrl: `https://share.test/r/1234#v=g1.1234.1893456000.${"b".repeat(43)}`,
+      inviteUrl: `https://share.test/r/1234#v=${"b".repeat(21)}A`,
       codeEntryPolicy: "open" as const,
-      viewerGrantExpiresAt: "2026-08-25T00:00:00.000Z",
       expiresAt: null,
     };
 
@@ -291,7 +291,7 @@ describe("client session identity", () => {
         inviteUrl: "https://share.test/r/1234",
       }),
     );
-    expect([...values.values()].join(" ")).not.toContain("g1.1234.");
+    expect([...values.values()].join(" ")).not.toContain(`${"b".repeat(21)}A`);
     clearHostRoom();
     expect(readHostRoom()).toBeNull();
   });
@@ -353,7 +353,7 @@ describe("client session identity", () => {
   it("consumes a Viewer grant fragment once into room-scoped session storage", () => {
     const values = new Map<string, string>();
     const replaceState = vi.fn();
-    const grant = `g1.1234.1893456000.${"c".repeat(43)}`;
+    const grant = `${"c".repeat(21)}g`;
     vi.stubGlobal("window", {
       location: new URL(`https://share.test/r/1234#v=${grant}`),
       history: { state: { navigation: 1 }, replaceState },
@@ -376,7 +376,7 @@ describe("client session identity", () => {
 
   it("fails malformed Viewer fragments closed without leaking across rooms", () => {
     const values = new Map<string, string>();
-    const oldGrant = `g1.1234.1893456000.${"d".repeat(43)}`;
+    const oldGrant = `${"d".repeat(21)}w`;
     values.set("screener:viewer-grant:1234", oldGrant);
     vi.stubGlobal("window", {
       location: new URL("https://share.test/r/1234#v=malformed"),
@@ -390,12 +390,11 @@ describe("client session identity", () => {
 
     expect(readViewerRoute()).toEqual({ roomId: "1234" });
     expect(readViewerGrant("1234")).toBeNull();
-    replaceViewerInvite(
-      "8",
-      `https://share.test/r/8#v=g1.1234.1893456000.${"e".repeat(43)}`,
-    );
+    replaceViewerInvite("1234", `https://share.test/r/1234#v=${"e".repeat(21)}Q`);
+    expect(readViewerGrant("1234")).toBe(`${"e".repeat(21)}Q`);
+    replaceViewerInvite("1234", `https://share.test/r/5678#v=${"f".repeat(21)}A`);
     expect(readViewerGrant("1234")).toBeNull();
-    expect(readViewerGrant("8")).toBeNull();
+    expect(readViewerGrant("5678")).toBeNull();
   });
 
   it("persists a rotated Viewer invitation across reload and clears it on revoke", () => {
@@ -407,8 +406,8 @@ describe("client session identity", () => {
         removeItem: (key: string) => values.delete(key),
       },
     });
-    const firstGrant = `g1.1234.1893456000.${"g".repeat(43)}`;
-    const rotatedGrant = `g1.1234.1893456000.${"h".repeat(43)}`;
+    const firstGrant = `${"g".repeat(21)}g`;
+    const rotatedGrant = `${"h".repeat(21)}w`;
 
     replaceViewerInvite("1234", `https://share.test/r/1234#v=${firstGrant}`);
     replaceViewerInvite("1234", `https://share.test/r/1234#v=${rotatedGrant}`);
@@ -429,8 +428,8 @@ describe("client session identity", () => {
         removeItem: (key: string) => values.delete(key),
       },
     });
-    const oldInvite = `https://share.test/r/1234#v=g1.1234.1893456000.${"i".repeat(43)}`;
-    const rotatedInvite = `https://share.test/r/1234#v=g1.1234.1893456000.${"j".repeat(43)}`;
+    const oldInvite = `https://share.test/r/1234#v=${"i".repeat(21)}Q`;
+    const rotatedInvite = `https://share.test/r/1234#v=${"j".repeat(21)}A`;
     replaceViewerInvite("1234", oldInvite);
     const activeRoom = {
       roomId: "1234",
@@ -468,7 +467,7 @@ describe("client session identity", () => {
     ).toBeNull();
   });
 
-  it("removes an expired Viewer grant from room-scoped session storage", () => {
+  it("removes a legacy Viewer grant from room-scoped session storage", () => {
     const values = new Map<string, string>([
       ["screener:viewer-grant:1234", `g1.1234.1.${"f".repeat(43)}`],
     ]);
@@ -581,9 +580,8 @@ describe("site access API", () => {
     const room = {
       roomId: "1234",
       hostToken: "c".repeat(32),
-      inviteUrl: `https://share.test/r/1234#v=g1.1234.1893456000.${"f".repeat(43)}`,
+      inviteUrl: `https://share.test/r/1234#v=${"f".repeat(21)}A`,
       codeEntryPolicy: "open",
-      viewerGrantExpiresAt: "2026-08-25T00:00:00.000Z",
       expiresAt: "2026-08-24T00:00:00.000Z",
     };
     vi.stubGlobal(
@@ -613,6 +611,25 @@ describe("room codes", () => {
     expect(roomRouteFromInput(" 1234 ")).toBeNull();
     expect(roomRouteFromInput("１２３４")).toBeNull();
     expect(roomRouteFromInput("0123")).toBeNull();
+  });
+
+  it("drops only the stored grant for an explicit valid room-code entry", () => {
+    const values = new Map<string, string>([
+      ["screener:viewer-grant:1234", "AAAAAAAAAAAAAAAAAAAAAA"],
+      ["screener:viewer-grant:5678", "AAAAAAAAAAAAAAAAAAAAAA"],
+    ]);
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(roomRouteForExplicitEntry("1234")).toBe("/r/1234");
+    expect(values.has("screener:viewer-grant:1234")).toBe(false);
+    expect(values.has("screener:viewer-grant:5678")).toBe(true);
+
+    expect(roomRouteForExplicitEntry(" 5678 ")).toBeNull();
+    expect(values.has("screener:viewer-grant:5678")).toBe(true);
   });
 
   it("classifies routes without normalizing malformed room input", () => {
@@ -746,7 +763,7 @@ describe("client signaling recovery policy", () => {
     Object.defineProperty(authenticated, "data", {
       value: JSON.stringify({
         type: "authenticated",
-        protocol: "screener-v11",
+        protocol: "screener-v12",
         role: "viewer",
         peerId: "viewer_12345678",
         roomExpiresAt: null,
@@ -815,7 +832,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v11",
+        protocol: "screener-v12",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -851,7 +868,7 @@ describe("client signaling recovery policy", () => {
     });
     receive(sockets[1]!, {
       type: "authenticated",
-      protocol: "screener-v11",
+      protocol: "screener-v12",
       role: "host",
       peerId: "host_12345678",
       roomExpiresAt: null,
@@ -936,7 +953,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v11",
+        protocol: "screener-v12",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -1061,7 +1078,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v11",
+      protocol: "screener-v12",
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -1188,7 +1205,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v11",
+        protocol: "screener-v12",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });

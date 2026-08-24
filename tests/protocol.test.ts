@@ -24,7 +24,7 @@ import {
 
 const token = "a".repeat(43);
 const roomId = "1234";
-const viewerGrant = `g1.${roomId}.1787076000.${"b".repeat(43)}`;
+const viewerGrant = `${"b".repeat(21)}g`;
 const qualitySettings = {
   resolution: "1080p",
   maxFramerate: 60,
@@ -71,7 +71,7 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
-  it("keeps executable senders outside the Browser-only v11 checkpoint", () => {
+  it("keeps executable senders outside the Browser-only v12 checkpoint", () => {
     const nativeWire = readFileSync(
       join(
         import.meta.dirname,
@@ -80,7 +80,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v11");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v12");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -333,10 +333,11 @@ describe("client signaling protocol", () => {
 
   it("accepts only canonical bounded Viewer grants and access actions", () => {
     for (const malformedGrant of [
-      `g0.${roomId}.1787076000.${"b".repeat(43)}`,
-      `g1.${roomId}.0.${"b".repeat(43)}`,
-      `g1.${roomId}.1787076000.${"b".repeat(42)}`,
-      `${viewerGrant}.extra`,
+      "b".repeat(21),
+      "b".repeat(23),
+      `${"b".repeat(21)}=`,
+      `${"b".repeat(21)}b`,
+      `g1.${roomId}.1787076000.${"b".repeat(43)}`,
     ]) {
       expect(
         clientMessageSchema.safeParse({

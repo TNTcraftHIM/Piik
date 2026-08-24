@@ -1130,7 +1130,7 @@ describe("WebSocket signaling", () => {
         roomId: publicRoom.roomId,
         role: "viewer",
         clientId: "public-viewer-with-forged-grant",
-        viewerGrant: `g1.${publicRoom.roomId}.1893456000.${"x".repeat(43)}`,
+        viewerGrant: `${"x".repeat(21)}g`,
       }),
     );
     await expect(
@@ -1189,7 +1189,7 @@ describe("WebSocket signaling", () => {
     ).resolves.toMatchObject({ role: "host" });
   });
 
-  it("collapses every site-authorized code-only refusal without room enumeration", async () => {
+  it("distinguishes missing rooms from existing-room code-only denials", async () => {
     let now = Date.UTC(2026, 7, 24, 12);
     const siteAccessPassword = "protected-instance-password";
     const harness = await startHarness({
@@ -1236,9 +1236,10 @@ describe("WebSocket signaling", () => {
       { codeOnly: true },
     );
 
-    async function expectNeutralDenial(
+    async function expectDenial(
       roomId: string,
       clientId: string,
+      code: "ROOM_NOT_FOUND" | "ROOM_ACCESS_DENIED",
       viewerPassword?: string,
     ): Promise<void> {
       const client = await openClient(harness.webSocketUrl, cookie);
@@ -1259,8 +1260,11 @@ describe("WebSocket signaling", () => {
       );
       expect(await client.inbox.next("error")).toEqual({
         type: "error",
-        code: "ROOM_ACCESS_DENIED",
-        message: "Room access denied",
+        code,
+        message:
+          code === "ROOM_NOT_FOUND"
+            ? "Room not found or expired"
+            : "Room access denied",
       });
       expect(await closed).toEqual({
         code: 4003,
@@ -1268,15 +1272,28 @@ describe("WebSocket signaling", () => {
       });
     }
 
-    await expectNeutralDenial(unusedRoomId, "unknown-room-viewer");
-    await expectNeutralDenial(disabled.roomId, "disabled-room-viewer");
-    await expectNeutralDenial(protectedRoom.roomId, "missing-password-viewer");
-    await expectNeutralDenial(
+    await expectDenial(unusedRoomId, "unknown-room-viewer", "ROOM_NOT_FOUND");
+    await expectDenial(
+      disabled.roomId,
+      "disabled-room-viewer",
+      "ROOM_ACCESS_DENIED",
+    );
+    await expectDenial(
+      protectedRoom.roomId,
+      "missing-password-viewer",
+      "ROOM_ACCESS_DENIED",
+    );
+    await expectDenial(
       protectedRoom.roomId,
       "wrong-password-viewer",
+      "ROOM_ACCESS_DENIED",
       "wrong-password",
     );
-    await expectNeutralDenial(harness.room.roomId, "full-room-viewer");
+    await expectDenial(
+      harness.room.roomId,
+      "full-room-viewer",
+      "ROOM_ACCESS_DENIED",
+    );
 
     now += 86_400_001;
     const renewedLogin = await fetch(`${harness.baseUrl}/api/site-access`, {
@@ -1288,7 +1305,11 @@ describe("WebSocket signaling", () => {
     });
     cookie = renewedLogin.headers.get("set-cookie")?.split(";", 1)[0];
     expect(cookie).toBeTruthy();
-    await expectNeutralDenial(expiring.roomId, "expired-room-viewer");
+    await expectDenial(
+      expiring.roomId,
+      "expired-room-viewer",
+      "ROOM_NOT_FOUND",
+    );
 
     const expiredGrant = await openClient(harness.webSocketUrl, cookie);
     expiredGrant.socket.send(
