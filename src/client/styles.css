@@ -820,6 +820,7 @@ h3 {
 }
 
 .invite-heading-copy {
+  align-items: baseline;
   gap: 6px;
 }
 
@@ -875,12 +876,6 @@ h3 {
   color: #f3c86f;
   background: var(--amber-soft);
   box-shadow: inset 0 -2px var(--amber);
-}
-
-.room-lease-note {
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .viewer-password-control {

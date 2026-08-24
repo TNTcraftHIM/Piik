@@ -1905,14 +1905,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
   }
 
-  const expirationText = room
-    ? room.expiresAt
-      ? `${new Intl.DateTimeFormat("zh-CN", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }).format(new Date(room.expiresAt))} 过期`
-      : "分享中不会过期"
-    : null;
   const activeCodeEntryPolicy =
     room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
   const presentedCodeEntryPolicy =
@@ -2414,8 +2406,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </div>
               <div className="room-entry-policy">
                 <div className="room-entry-heading">
-                  <span className="field-label">房间号加入</span>
-                  <span className="room-lease-note">{expirationText}</span>
+                  <span className="field-label">准入方式</span>
                 </div>
                 <div className="segmented-control room-policy-control">
                   {(
