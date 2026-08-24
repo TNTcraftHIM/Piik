@@ -350,7 +350,7 @@ describe("client signaling protocol", () => {
         }).success,
       ).toBe(false);
     }
-    for (const policy of ["open", "password", "disabled"]) {
+    for (const policy of ["open", "password"]) {
       expect(
         clientMessageSchema.safeParse({
           type: "set-code-entry-policy",
@@ -367,7 +367,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "set-code-entry-policy",
-        policy: "private-link",
+        policy: "disabled",
       }).success,
     ).toBe(false);
   });

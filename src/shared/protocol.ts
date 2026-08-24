@@ -125,11 +125,7 @@ export const viewerPasswordSchema = z
   .max(MAX_VIEWER_PASSWORD_LENGTH)
   .regex(/^[\x21-\x7e]+$/);
 
-export const codeEntryPolicySchema = z.enum([
-  "open",
-  "password",
-  "disabled",
-]);
+export const codeEntryPolicySchema = z.enum(["open", "password"]);
 export type CodeEntryPolicy = z.infer<typeof codeEntryPolicySchema>;
 
 const liveKitWebSocketUrlSchema = z

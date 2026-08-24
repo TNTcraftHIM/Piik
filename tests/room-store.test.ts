@@ -124,7 +124,7 @@ describe("RoomStore", () => {
 
   it("keeps Viewer grants independent from code-entry policy", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
-    const room = await roomStore.createRoom("disabled");
+    const room = await roomStore.createRoom("password", "room-password");
 
     expectRoomError(
       () => roomStore.connectParticipant(viewerInput(room.roomId, "code-only")),
@@ -139,7 +139,7 @@ describe("RoomStore", () => {
 
   it("keeps the exact Viewer grant valid for the room incarnation", async () => {
     const { clock, store: roomStore } = store({ leaseMs: 1_000 });
-    const room = await roomStore.createRoom("disabled");
+    const room = await roomStore.createRoom("open");
     roomStore.connectParticipant(hostInput(room.roomId, room.hostToken));
 
     expect(room.viewerGrant).toMatch(/^[A-Za-z0-9_-]{21}[AQgw]$/);
@@ -151,7 +151,7 @@ describe("RoomStore", () => {
     ).toBe("viewer");
   });
 
-  it("supports open, password, and disabled code entry", async () => {
+  it("supports open and password code entry", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
     const open = await roomStore.createRoom("open");
     expect(
@@ -171,12 +171,6 @@ describe("RoomStore", () => {
         sessionId: "password-session",
       }),
     ).toMatchObject({ role: "viewer" });
-
-    const disabled = await roomStore.createRoom("disabled");
-    expectRoomError(
-      () => roomStore.connectParticipant(viewerInput(disabled.roomId, "closed")),
-      "INVALID_TOKEN",
-    );
   });
 
   it("bounds password derivations and uses the same path for unknown rooms", async () => {
@@ -274,7 +268,7 @@ describe("RoomStore", () => {
         );
       },
     });
-    const room = await roomStore.createRoom("disabled");
+    const room = await roomStore.createRoom("open");
     roomStore.connectParticipant(hostInput(room.roomId, room.hostToken));
     const viewer = roomStore.connectParticipant(
       viewerInput(room.roomId, "existing", room.viewerGrant!),
@@ -331,13 +325,13 @@ describe("RoomStore", () => {
     const firstStore = store({
       random: (size) => Buffer.alloc(size, size === 8 ? 0 : 1),
     }).store;
-    const firstRoom = await firstStore.createRoom("disabled");
+    const firstRoom = await firstStore.createRoom("open");
     firstStore.abandonRoom(firstRoom.roomId);
 
     const secondStore = store({
       random: (size) => Buffer.alloc(size, size === 8 ? 0 : 2),
     }).store;
-    const secondRoom = await secondStore.createRoom("disabled");
+    const secondRoom = await secondStore.createRoom("open");
 
     expect(secondRoom.roomId).toBe(firstRoom.roomId);
     expect(secondRoom.viewerGrant).not.toBe(firstRoom.viewerGrant);

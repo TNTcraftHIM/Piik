@@ -46,15 +46,9 @@ Current high-signal boundary:
   diagnostics and stalls. Broader external-network and SFU lifecycle evidence
   remains open. Do not run executable/native suites unless their later acceptance
   boundary specifically requires them.
-- ADR-0002 owns the room model: one process-memory RoomStore, random free
-  four-digit codes, configurable 24-hour dormant leases, restart loss, local
-  Host preference replay, and open/password/disabled code entry. Canonical
-  `main` contains exact v12 source implementation
-  `064db16c1b6d25fd24b7057b7e2fca172002e3c4`: a 22-character room-lived
-  opaque grant, `ROOM_NOT_FOUND`, exact-current audio stats, no product
-  diagnostic download, and complete shorter invitation URLs. The Host-only
-  bounded snapshot remains for acceptance tooling. Production stays exact
-  `c4962f5` on v11 until an explicitly authorized atomic application release.
+- ADR-0002 owns the room model. Use `docs/status.md` for the exact current-source
+  and production boundary; production stays exact `c4962f5` on v11 until an
+  explicitly authorized atomic application release.
   Neither source nor production uses SQLite; exact release operations and
   change-scoped infrastructure recovery are owned by deployment.
 - Browser display video must leave `contentHint` unset; audio keeps `music`.

@@ -79,7 +79,7 @@ async function login(baseUrl: string): Promise<Response> {
 async function createRoom(
   baseUrl: string,
   cookie?: string,
-  codeEntryPolicy: "open" | "password" | "disabled" = "open",
+  codeEntryPolicy: "open" | "password" = "open",
   roomPassword?: string,
 ): Promise<Response> {
   return fetch(`${baseUrl}/api/rooms`, {

@@ -367,11 +367,6 @@ Room allocation and lifetime use one deliberately small model:
   and routes; and
 - process restart has the same fail-closed effect.
 
-Code-only entry is independent of the invitation: after site access, `open`
-accepts the four-digit code without a room password; `password` also requires
-the room password; and `disabled` rejects code-only entry while a valid grant
-still enters.
-
 The server keeps only process-memory digests/verifiers for Host tokens, Viewer
 grants, and optional room passwords. There is no room database, schema,
 migration, writable room directory, or backup/restore step. The same browser may
@@ -434,8 +429,7 @@ Keep the proxy's access-log retention bounded and access controlled. Requests to
 `/r/{code}` put the room code in the path, so access logs can contain room codes
 as well as network metadata. They must not be treated as public artifacts. For
 a private room, the grant remains in the fragment and is not part of that
-request target. Every code-only attempt requires prior site access; a disabled
-policy then rejects that path, while a valid grant remains the direct Viewer path.
+request target.
 
 For a process-level liveness probe, send `GET /healthz`. A running process
 returns HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`; other

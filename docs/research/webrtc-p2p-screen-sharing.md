@@ -282,7 +282,7 @@ Electron 可以固定 Chromium 版本，枚举屏幕/窗口，改善选源、热
 
 ### 最小访问模型
 
-接受的 access boundary 使用 production 必配的 `SITE_ACCESS_PASSWORD` 无状态 cookie 保护建房、Host role 和所有 code-only Viewer 入口；合法未过期的 exact-room fragment grant 可直接观看。没有 grant 时，服务端先要求 site access，再检查 `open | password` code-only policy；房间码只定位，cookie 也不替代房间密码。WebSocket upgrade 仍只做 Origin/容量检查并记录 cookie 状态，首条 `authenticate` 完成上述 role/room 授权。该边界不引入账号、JWT、服务端 session Map 或逐人 ACL。
+接受的 access boundary 使用 production 必配的 `SITE_ACCESS_PASSWORD` 无状态 cookie 保护建房、Host role 和所有 code-only Viewer 入口；合法未过期的 exact-room fragment grant 可直接观看。没有 grant 时，服务端先要求 site access，再检查 ADR-0002 持有的 code-only policy；房间码只定位，cookie 也不替代房间密码。WebSocket upgrade 仍只做 Origin/容量检查并记录 cookie 状态，首条 `authenticate` 完成上述 role/room 授权。该边界不引入账号、JWT、服务端 session Map 或逐人 ACL。
 
 RFC 3986 的规范事实是 fragment 在 URI dereference 前由 user agent 分离；WHATWG WebSockets 进一步规定含 fragment 的 constructor URL 必须抛 `SyntaxError`。因此把 128-bit room grant 放在 `/r/{code}#v=...`，再由页面在首个 WSS application message 发送，可以使它不进入 HTTP 或 WebSocket request-target。RFC 6750 对 OAuth bearer query 的警告并不直接规定本产品，但它提供了适用的安全类比：URI query 高概率被日志记录，不应承载此 grant。W3C Referrer Policy 的算法会从 referrer URL 移除 fragment，production 的 `no-referrer` header 再禁止整个 header；这是传输边界，不是“不会泄漏”的保证。
 

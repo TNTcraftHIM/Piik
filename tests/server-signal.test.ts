@@ -1207,7 +1207,6 @@ describe("WebSocket signaling", () => {
     let cookie = login.headers.get("set-cookie")?.split(";", 1)[0];
     expect(cookie).toBeTruthy();
 
-    const disabled = await harness.roomStore.createRoom("disabled");
     const protectedRoom = await harness.roomStore.createRoom(
       "password",
       "correct-password",
@@ -1219,7 +1218,6 @@ describe("WebSocket signaling", () => {
       (roomId) =>
         ![
           harness.room.roomId,
-          disabled.roomId,
           protectedRoom.roomId,
           expiring.roomId,
         ].includes(roomId),
@@ -1273,11 +1271,6 @@ describe("WebSocket signaling", () => {
     }
 
     await expectDenial(unusedRoomId, "unknown-room-viewer", "ROOM_NOT_FOUND");
-    await expectDenial(
-      disabled.roomId,
-      "disabled-room-viewer",
-      "ROOM_ACCESS_DENIED",
-    );
     await expectDenial(
       protectedRoom.roomId,
       "missing-password-viewer",

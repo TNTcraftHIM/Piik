@@ -1,8 +1,10 @@
 import {
   Check,
   Copy,
+  Globe2,
   KeyRound,
   Link2Off,
+  LockKeyhole,
   Maximize2,
   MonitorUp,
   Network,
@@ -12,7 +14,6 @@ import {
   RefreshCw,
   Save,
   Square,
-  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -282,6 +283,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const displayNameRef = useRef(displayName);
   const hostClientIdRef = useRef<string | null>(null);
   const viewerPasswordActionRef = useRef<string | null | undefined>(undefined);
+  const enablePasswordEntryAfterUpdateRef = useRef(false);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
   const retiredConnectionsRef = useRef(new Map<string, string>());
@@ -535,6 +537,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setRoom(null);
     setCopied(false);
     setViewerPasswordEditorOpen(false);
+    enablePasswordEntryAfterUpdateRef.current = false;
     setViewerPasswordDraft("");
   }
 
@@ -1185,6 +1188,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "code-entry-policy-updated") {
+      enablePasswordEntryAfterUpdateRef.current = false;
+      setViewerPasswordEditorOpen(false);
       const profile = {
         codeEntryPolicy: message.codeEntryPolicy,
         roomPassword: creationProfileRef.current.roomPassword,
@@ -1199,9 +1204,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setNotice(
         message.codeEntryPolicy === "open"
           ? "已允许仅凭房间号加入"
-          : message.codeEntryPolicy === "password"
-            ? "房间号加入已要求密码"
-            : "已关闭仅凭房间号加入",
+          : "房间号加入已要求密码",
       );
       return;
     }
@@ -1225,7 +1228,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (message.type === "viewer-password-updated") {
       const action = viewerPasswordActionRef.current;
+      const enablePasswordEntry =
+        enablePasswordEntryAfterUpdateRef.current &&
+        message.enabled &&
+        action !== null;
       viewerPasswordActionRef.current = null;
+      enablePasswordEntryAfterUpdateRef.current = false;
       if (action !== undefined) {
         const profile = {
           codeEntryPolicy: creationProfileRef.current.codeEntryPolicy,
@@ -1237,6 +1245,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordEnabled(message.enabled);
       setViewerPasswordUpdating(false);
       setViewerPasswordDraft("");
+      if (enablePasswordEntry) {
+        if (
+          signalRef.current?.send({
+            type: "set-code-entry-policy",
+            policy: "password",
+          })
+        ) {
+          setNotice("房间密码已设置，正在启用密码加入");
+          return;
+        }
+        setNotice("房间密码已设置，但密码加入未启用");
+        return;
+      }
       if (action !== undefined) {
         setViewerPasswordEditorOpen(false);
         setNotice(
@@ -1381,6 +1402,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerGrantUpdating(false);
       setViewerPasswordUpdating(false);
       viewerPasswordActionRef.current = null;
+      enablePasswordEntryAfterUpdateRef.current = false;
       if (["INVALID_TOKEN", "ROOM_EXPIRED"].includes(message.code)) {
         forgetRoom();
         endSharing("房间已失效，再次点击将创建新房", false);
@@ -1791,22 +1813,34 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function changeCodeEntryPolicy(policy: CodeEntryPolicy): void {
+    if (policy === activeCodeEntryPolicy) {
+      enablePasswordEntryAfterUpdateRef.current = false;
+      setViewerPasswordEditorOpen(false);
+      setNotice(null);
+      return;
+    }
+    if (policy === "password" && !viewerPasswordEnabled) {
+      if (phase !== "live" || viewerPasswordUpdating) {
+        setNotice("开始分享并连接后才能修改房间号加入方式");
+        return;
+      }
+      enablePasswordEntryAfterUpdateRef.current = true;
+      setViewerPasswordEditorOpen(true);
+      setNotice(null);
+      return;
+    }
     if (
       (viewerGrantUpdating || viewerPasswordUpdating) ||
       phase !== "live" ||
-      (policy === "password" && !viewerPasswordEnabled) ||
       !signalRef.current?.send({
         type: "set-code-entry-policy",
         policy,
       })
     ) {
-      setNotice(
-        policy === "password" && !viewerPasswordEnabled
-          ? "请先设置房间密码，再开启密码加入"
-          : "开始分享并连接后才能修改房间号加入方式",
-      );
+      setNotice("开始分享并连接后才能修改房间号加入方式");
       return;
     }
+    enablePasswordEntryAfterUpdateRef.current = false;
     setNotice(null);
   }
 
@@ -1881,6 +1915,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     : null;
   const activeCodeEntryPolicy =
     room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
+  const presentedCodeEntryPolicy =
+    viewerPasswordEditorOpen && !viewerPasswordEnabled
+      ? "password"
+      : activeCodeEntryPolicy;
   return (
     <div className="app-shell">
       <AppHeader
@@ -2382,35 +2420,33 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <div className="segmented-control room-policy-control">
                   {(
                     [
-                      ["open", "直接加入"],
-                      ["password", "密码加入"],
-                      ["disabled", "禁止加入"],
+                      ["open", "公开加入", Globe2],
+                      ["password", "密码加入", LockKeyhole],
                     ] as const
-                  ).map(([policy, label]) => (
+                  ).map(([policy, label, Icon]) => (
                     <button
                       key={policy}
                       type="button"
-                      className={
-                        activeCodeEntryPolicy === policy
-                          ? "is-selected"
-                          : undefined
-                      }
-                      aria-pressed={
-                        activeCodeEntryPolicy === policy
-                      }
+                      className={`room-policy-option policy-${policy}${
+                        presentedCodeEntryPolicy === policy
+                          ? " is-selected"
+                          : ""
+                      }`}
+                      aria-pressed={presentedCodeEntryPolicy === policy}
                       disabled={
                         viewerGrantUpdating ||
                         viewerPasswordUpdating ||
-                        phase !== "live" ||
-                        (policy === "password" && !viewerPasswordEnabled)
+                        phase !== "live"
                       }
                       onClick={() => changeCodeEntryPolicy(policy)}
                     >
-                      {label}
+                      <Icon size={16} aria-hidden="true" />
+                      <span>{label}</span>
                     </button>
                   ))}
                 </div>
-                {viewerPasswordEditorOpen ? (
+                {(activeCodeEntryPolicy === "password" ||
+                  viewerPasswordEditorOpen) && (
                   <form
                     className="viewer-password-control"
                     onSubmit={(event) => {
@@ -2452,59 +2488,23 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     >
                       <Check size={18} aria-hidden="true" />
                     </button>
-                    <button
-                      className="icon-button"
-                      type="button"
-                      title="取消"
-                      aria-label="取消编辑房间密码"
-                      disabled={viewerPasswordUpdating}
-                      onClick={() => {
-                        setViewerPasswordDraft("");
-                        setViewerPasswordEditorOpen(false);
-                      }}
-                    >
-                      <X size={18} aria-hidden="true" />
-                    </button>
-                  </form>
-                ) : (
-                  <div className="room-password-summary">
-                    <span className="room-password-state">
-                      <KeyRound size={15} aria-hidden="true" />
-                      {viewerPasswordEnabled
-                        ? activeCodeEntryPolicy === "password"
-                          ? "密码加入已启用"
-                          : "房间密码已设置"
-                        : "未设置房间密码"}
-                    </span>
-                    <div className="room-password-actions">
+                    {activeCodeEntryPolicy !== "password" && (
                       <button
-                        className="button button-secondary room-password-edit-action"
+                        className="icon-button"
                         type="button"
-                        disabled={viewerPasswordUpdating || phase !== "live"}
-                        onClick={() => setViewerPasswordEditorOpen(true)}
+                        title="取消"
+                        aria-label="取消设置房间密码"
+                        disabled={viewerPasswordUpdating}
+                        onClick={() => {
+                          enablePasswordEntryAfterUpdateRef.current = false;
+                          setViewerPasswordDraft("");
+                          setViewerPasswordEditorOpen(false);
+                        }}
                       >
-                        {viewerPasswordEnabled ? (
-                          <Pencil size={15} aria-hidden="true" />
-                        ) : (
-                          <KeyRound size={15} aria-hidden="true" />
-                        )}
-                        {viewerPasswordEnabled ? "更改" : "设置密码"}
+                        <X size={18} aria-hidden="true" />
                       </button>
-                      {viewerPasswordEnabled &&
-                        activeCodeEntryPolicy !== "password" && (
-                          <button
-                            className="icon-button"
-                            type="button"
-                            title="移除房间密码"
-                            aria-label="移除房间密码"
-                            disabled={viewerPasswordUpdating || phase !== "live"}
-                            onClick={() => changeViewerPassword(null)}
-                          >
-                            <Trash2 size={17} aria-hidden="true" />
-                          </button>
-                        )}
-                    </div>
-                  </div>
+                    )}
+                  </form>
                 )}
               </div>
             </div>

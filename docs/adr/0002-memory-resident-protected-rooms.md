@@ -97,10 +97,8 @@ Code entry is a separate two-state policy:
   without a room password;
 - `password`: after site access, the code also requires the room password.
 
-The Host UI presents these as a globe for public code entry and a lock for
-password code entry. The password input appears only for the password state.
-There is no code-entry-disabled state because it is easily mistaken for
-disabling the whole room and is not required by either accepted entry path.
+There is no third code-entry-disabled state; invitation access remains owned by
+the independent Viewer grant.
 
 The Host may rotate or revoke the grant without changing code-entry policy, and
 may change code-entry policy without changing a healthy media route. Strong
