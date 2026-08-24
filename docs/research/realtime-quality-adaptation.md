@@ -1,6 +1,6 @@
 # Realtime Screen-Share Quality Adaptation
 
-- Research date: 2026-08-22
+- Research date: 2026-08-24
 - Scope: realtime game screen sharing in the browser
 - Status: implementation input; real-device quality remains unverified
 
@@ -187,8 +187,8 @@ A 2026-08-21 report says that selecting fluid preference on an SFU path could
 retain low received FPS without reducing the visible resolution. This is not
 proof that the preference was ignored: `maintain-framerate` is a degradation
 tradeoff rather than an FPS target. It is also not evidence of SFU temporal
-downlayering: the accepted v10 Browser default prefers VP8 unless the Host explicitly
-selects another value before starting the share. Pinned LiveKit server 1.13.5 installs a temporal selector
+downlayering: the current deployed v10 Browser defaults to VP8 but still lets the
+Host select another value before starting the share. Pinned LiveKit server 1.13.5 installs a temporal selector
 for VP8, but its H.264/H.265 path installs only the simulcast spatial selector.
 With H.264 selected, a `HIGH` ceiling may therefore let BWE choose the
 lower-resolution `q` representation, not a lower temporal layer at the same
@@ -224,102 +224,60 @@ wire, server telemetry, global score, selector or new UI framework. Production
 deploys this v10 publisher view; its target-browser fields and values still need
 physical evidence.
 
-## Codec Preference And Evidence Boundary
+## Fixed Browser Codec Decision
 
-RFC 7742 requires WebRTC browsers to implement both VP8 and H.264 Constrained
-Baseline, while W3C `setCodecPreferences()` lets the application reorder the
-browser's negotiated codec set. The accepted v10 Browser default places VP8 first.
-Advanced settings expose Automatic/H.264/VP8 only before sharing starts so a
-fresh share can provide a controlled H.264 comparison. Explicit H.264 or VP8
-places every advertised entry for that codec first while retaining the complete
-repair and fallback list. A missing capability or rejected preference leaves the
-browser default unchanged. `automatic` passes an empty preference list and does
-not override the LiveKit default; an explicit selection sets the initial LiveKit
-publication codec and retains `backupCodec=false`, so there is no parallel
-backup-codec publication.
+The Browser product uses one fixed VP8 path and exposes no codec or profile
+control. Direct and browser-relay offers put VP8 first while retaining its
+browser-advertised repair codecs; the SFU publication explicitly requests VP8
+with `backupCodec=false`. Actual codec/profile and encoder fields remain
+diagnostic results. They do not authorize codec switching, route changes, or a
+second encoder policy.
 
-Changing `RTCRtpTransceiver.setCodecPreferences()` affects later negotiation; it
-does not itself switch an established sender, and `replaceTrack()` only replaces
-a same-kind source. Pinned LiveKit likewise fixes the publication codec through
-its publish lifecycle. Screener therefore applies the selected preference only
-to the first offer/publication of a new share and to later senders created for
-that same share. Once sharing starts, the codec control is disabled in both live
-and paused states. Changing codec requires stopping and starting a fresh share;
-ordinary Pause and Resume only toggle the same capture tracks and one
-share-generation-fenced paused state.
+The decision combines dated production behavior with an exact target-machine
+probe. Production first forced H.264 through standard codec ordering and a
+single LiveKit H.264 publication; removing that preference restored the reported
+frame rate. On 2026-08-24, fresh Chrome/Edge 151 sessions then used real
+`getDisplayMedia()` tab capture, `1920x1080@30`, a 5 Mbps ceiling, `balanced`,
+`motion`, ten seconds of warm-up, and a fifteen-second wall-clock sample:
 
-This boundary needs no codec generation, per-Viewer preparation/proof, Resume
-attempt, rollback, or SFU publication replacement. Its wire surface ships
-atomically as the single `screener-v10` contract and rejects v9 before room
-authority; there is no v9 alias, parser, writer, or translator.
+| Browser / requested format | Actual encoder | Encoded FPS | Encode time/frame | End resolution | Limitation |
+| --- | --- | ---: | ---: | --- | --- |
+| Chrome VP8 | libvpx, software | 15.00 | 2.69 ms | 402x214 | `bandwidth` |
+| Chrome H.264 Baseline `42001f` | AMD Media Foundation, hardware | 11.87 | 12.10 ms | 1920x1024 | `none` |
+| Chrome H.264 CBP `42e01f` | OpenH264, software | 15.00 | 1.33 ms | 402x214 | `bandwidth` |
+| Chrome H.264 Main `4d001f` | AMD Media Foundation, hardware | 11.86 | 12.61 ms | 1920x1024 | `none` |
+| Chrome H.264 High, negotiated `64001f` | AMD Media Foundation, hardware | 12.60 | 12.53 ms | 1920x1024 | `none` |
+| Edge H.264 Baseline `42001f` | NVIDIA Media Foundation, hardware | 28.98 | 5.67 ms | 1396x732 | `bandwidth` |
 
-H.264 remains a temporary explicit comparison option because mature cross-device
-hardware encode/decode paths may avoid an observed VP8 software-path cost. A
-controlled Web comparison also found that preferring H.264 could lower downstream
-FPS with the current browser configuration. Neither observation proves an
-intrinsic bitrate or efficiency win for every implementation or scene; actual
-outbound codec/profile, encoder implementation and decoded stats remain the
-result truth. A codec choice also does not prove shared encode: separate browser
-PeerConnections may construct separate encoders, and the SFU still publishes
-only the configured `q,h` representations. A fresh-share physical direct
-comparison chooses the fixed Browser codec; relay and SFU validate H.264 only
-when that comparison selects it.
+The synthetic content, headless capture, loopback path, and BWE-driven resolution
+changes prevent a physical-game image-quality or intrinsic codec-efficiency
+ranking. They do establish the first bottleneck: Windows had an explicit
+minimum-power preference for Chrome (`GpuPreference=1`), Chrome selected the AMD
+H.264 MFT, and Baseline/Main/High all stayed near 12 fps. Edge had no explicit
+preference, selected the NVIDIA MFT, and approached 29 fps. Chrome's
+`--force-high-performance-gpu` flag still selected the AMD MFT and produced
+12.66 fps, so that ANGLE/EGL switch does not override Media Foundation selection.
 
-Current Chromium source makes the negotiated H.264 format a material Windows
-runtime input. `kPlatformH264CbpEncoding` is disabled by default on Windows;
-the Media Foundation path skips the NVIDIA MFT for constrained-baseline H.264,
-and the WebRTC hardware encoder returns software fallback for unsupported
-formats such as odd dimensions. Ordinary H.264 simulcast streams are initialized
-as separate encoder streams. The target run must therefore join each outbound
-SSRC/RID to its exact `RTCCodecStats.sdpFmtpLine` and record the exposed encoder
-implementation, power-efficiency flag, interval encode cost, and process GPU
-video-encode activity. These fields distinguish format and encoder paths; their
-presence alone does not establish the Screener root cause.
+Chromium 151 enumerates Windows Media Foundation encoders in adapter/MFT order
+and activates the first compatible result. Its preferred adapter LUID is used to
+handle cross-GPU resources, not to let a website select a vendor. The WebRTC API
+can reorder codec/profile formats but has no API to select NVIDIA, AMD, or a GPU
+adapter. Windows Graphics preference, disabling an iGPU, or launching a whole
+browser differently are host diagnostics, not a Screener product mechanism.
+See Chromium's [MFT enumeration](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/mf_video_encoder_util.cc#347),
+[encoder activation](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1422),
+and [GPU switch scope](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/gpu/ipc/service/gpu_init.cc#291), plus the
+[WebRTC Stats](https://www.w3.org/TR/webrtc-stats/) and
+[Media Capabilities](https://www.w3.org/TR/media-capabilities/) specifications.
 
-Pinned LiveKit server `1.13.5` gives VP8 a temporal layer selector and gives
-H.264/H.265 the generic simulcast spatial selector. H.264 SFU evidence therefore
-starts with every Host publication RID and the Viewer-selected dimensions/FPS:
-layer changes are spatial, while same-dimension FPS changes remain attributable
-to publisher, transport, or Viewer decode evidence.
-
-The repository diagnostic is a mechanical single-machine preflight, not a
-quality runner. Lifecycle runs fix the accepted v10 VP8 default; each fresh run performs exactly
-one of observe, preview cycle, Host-peer rebuild, capture replacement, or Host
-reload, keeps the actual codec/profile/parameters stable across that action, and
-rechecks the action budget after its two current-generation evidence windows.
-Codec preflight uses fresh Host/share/PeerConnection sessions for Automatic,
-H.264, and VP8 and rejects an actual-codec mismatch. Reports retain only
-allowlisted failure stages and sanitized identifiers.
-
-Quality diagnosis uses a headed matrix with the same real game, Browser build,
-driver/GPU, capture surface, `1080p30 / 5 Mbps / balanced`, foreground state,
-and one external wired direct Viewer. Fresh H.264, VP8, and H.264 confirmation
-shares each run for 60 to 90 seconds. Capture A, sender B, and Viewer C samples
-share the current generation and overlapping windows; identity polling does not
-advance their accumulators. Each window records actual codec/profile,
-configured/source/send/receive FPS, interval encoded frames/encode time,
-limitation reason, game FPS, and process-scoped CPU/GPU evidence. Capture input,
-sender output, transport limits, and Viewer decode evidence classify the first
-bottleneck. A direct H.264 result selected by that matrix is then checked once
-through browser relay and once through SFU. Missing implementation or
-power-efficiency fields remain unknown.
-
-Open-source distribution is not itself a patent-license exemption. This Web
-change only requests a codec already implemented by the browser/LiveKit path and
-ships no H.264 codec binary or new codec dependency, so licensing uncertainty is
-not a runtime blocker for the preference. Bundling a codec implementation or
-changing the distribution/service model still requires a separate license review.
-
-These pre-share standard preferences are gated by focused initial-ordering,
-fallback, and interoperability tests, not by an exhaustive CPU/GPU/game matrix
-on one ordinary PC. Primary specifications, maintained implementation behavior,
-representative target-device observations and sanitized production stats drive
-product choices. Synthetic local runs may verify negotiation, decode, cleanup
-and edge bounds; they must not calibrate capacity or claim performance. Hardware
-attribution and controlled physical evidence remain required before changing the
-default or removing the comparison selector. AV1 remains outside the default
-because compression efficiency alone does not establish a power-efficient
-WebRTC encoder on the target cohort.
+SDP level rewriting is not a repair: Chromium matches H.264 hardware formats by
+profile and packetization mode and lets the encoder choose the output level from
+the real dimensions and rate. Reordering High only changes the requested profile
+and still selected the same AMD MFT. CBP deliberately fell back to OpenH264 and
+lost resolution under the same budget. Pinned LiveKit 1.13.5/Pion 4.2.17 also
+preserves Chrome's H.264 offer order, whose first compatible entry is Baseline
+`42001f/mode1`, not CBP. No profile special case, SDP munging, GPU selector,
+codec controller, or H.264 relay/SFU follow-up enters the Browser product.
 
 Discord's published Go Live material is a useful architecture comparison, not
 a preset to copy. It describes native OS/driver-integrated capture and encoding,
@@ -748,7 +706,7 @@ guarantees the emitted resolution, frame rate, or bitrate.
   and `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
-- The accepted `screener-v10` Share advanced settings panel accepts
+- The current deployed `screener-v10` Share advanced settings panel accepts
   480p/720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, the three preferences, and
   Automatic/H.264/VP8 before sharing starts and defaults to VP8. The `480p` choice is only advanced `854x480`, not a
   fourth recommended profile. Its 64/128/256 kbps audio ceiling, default 128,
@@ -796,9 +754,8 @@ CPU/GPU cost, public networks, or sustained behavior.
 - No canvas pixel-difference detector, machine-learned rate controller, or
   periodic profile switching.
 - No copied x264 CRF/preset recipe in the browser path.
-- No runtime or automatic codec switching. VP8 remains the static default while
-  fresh-share Automatic/H.264/VP8 comparisons identify the actual encoder and
-  physical result.
+- No runtime or automatic codec switching. VP8 is the one Browser product codec;
+  there is no codec selector or H.264 product fallback.
 - No channel-count, sample-rate, codec, arbitrary bitrate, stereo, DTX, RED or
   FEC control, and no inference of actual stereo or sample rate from
   `opus/48000/2`. Screen media uses one route-consistent stereo contract;

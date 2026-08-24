@@ -2,9 +2,9 @@
 
 ## 2026-08-21 Native Window Source
 
-The Native sender has two explicit local video sources. The Web source now
-prefers H.264 through standard negotiation and keeps the browser codec fallback
-list; the separate `native-window-h264` source is Windows 11-only and requires
+The Native sender has two explicit local video sources. The Web source uses the
+fixed Browser VP8 contract; the separate `native-window-h264` source is Windows
+11-only and requires
 the user to select one local opaque window target. It never silently replaces a
 browser source or falls back to software encode, another codec, monitor capture,
 or system audio.
@@ -34,8 +34,8 @@ local WebCodecs Opus bridge.
 PLI/FIR and fanout recovery requests enter the generation-bound helper stdin as
 one coalesced `K` command. The helper forces an in-band SPS/PPS/IDR recovery
 unit, while the existing Pion `H264Payloader`, exact `42c01f` MediaEngine, one
-shared track, and two-edge cap remain unchanged. Browser VP8/H.264 use their
-existing `getDisplayMedia` and `VideoEncoder` path.
+shared track, and two-edge cap remain unchanged. Browser VP8 uses the existing
+`getDisplayMedia` and `VideoEncoder` path.
 
 Both the product helper and offline fixture compile the same MF encoder source.
 The product build and the fixture build pass MSVC `/W4 /WX`; focused Go tests
@@ -101,17 +101,17 @@ codec benchmark.
 ## Hardware Boundary
 
 The Media Foundation/NVIDIA fixture established the physical hardware gate and
-the exact `42c01f` in-band recovery contract. Browser H.264 still has only a
-hardware preference. The native-window source instead enumerates only an
-adapter-LUID-bound hardware MFT, requires D3D11 awareness and exact codec
-readback, and has no software retry. The Native acceptance run above adds the
+the exact `42c01f` in-band recovery contract. Browser H.264 cannot select a
+specific adapter or Media Foundation encoder. The native-window source instead
+enumerates only an adapter-LUID-bound hardware MFT, requires D3D11 awareness and
+exact codec readback, and has no software retry. The Native acceptance run above adds the
 required product-process `VideoEncode` attribution; fixture evidence remains a
 separate encoder-contract measurement.
 
 ## Scope
 
-- The Web source prefers H.264 through standard negotiation; production rollout
-  remains tracked separately from this Native research path.
+- The Web source uses fixed VP8; production rollout remains tracked separately
+  from this Native research path.
 - No codec matrix, benchmark, second viewer, or endurance run is required for
   this landing slice.
 - `npm run probe:native-one-viewer` remains optional Native research and does

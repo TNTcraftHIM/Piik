@@ -33,7 +33,7 @@ Windows 11 desktop (build 22000 or newer) and is not a Windows 10 fallback.
    this does not force a codec, bitrate, channel count, or processing mode. No
    Web Audio mixer, SDP rewrite, or app-owned audio bitrate knob is introduced.
 3. The native sender has an explicit Windows 11 local window target. Browser
-   VP8/H.264 may use that target only for `window-process-audio`; the separate
+   VP8 may use that target only for `window-process-audio`; the separate
    `native-window-h264` source uses the same bound HWND/PID/creation time for
    WGC/DXGI video and WASAPI process-tree audio. Process IDs, HWNDs, creation
    tokens, titles, paths, device identity, PCM, and local hardware status stay
@@ -130,9 +130,9 @@ The helper multiplexes process-tree PCM, H.264 access units, and bounded local
 status. Go writes H.264 directly to the existing shared fanout; the browser UI
 receives only a one-way local copy for `VideoDecoder` preview. PCM retains the
 existing WebCodecs Opus bridge. PLI/FIR recovery is generation-bound and
-coalesced into a helper key-frame command. Normal browser VP8/H.264 sources
-remain explicit alternatives, with VP8 as the default; neither is an implicit
-runtime downgrade.
+coalesced into a helper key-frame command. The normal browser source uses the
+fixed VP8 contract; the native H.264 source remains an explicit mode and is not
+an implicit runtime downgrade.
 
 ## Consequences
 

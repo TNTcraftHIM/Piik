@@ -68,7 +68,7 @@ physical background-capture evidence.
   be inferred as an equal media-rate drop.
 - `src/client/lib/diagnostic-export.ts` exports only the latest bounded sample.
   It is a useful cross-check, not a historical trace.
-- V9's short-lived pending-candidate decoded-frame observer reads cumulative RTP
+- The short-lived pending-candidate decoded-frame observer reads cumulative RTP
   progress only for the exact pending route. It neither drives capture nor proves
   document activity, and it stops when that operation settles.
 - `scripts/peer-assisted-benchmark.ts` is not evidence for this issue: its
@@ -167,8 +167,8 @@ Use equal 60-second measurement windows, restore the focused baseline between
 states, randomize state order, and repeat three fresh controlled runs. These
 window and repeat counts define a small comparable sample; they are not product
 timeouts, quality thresholds, or proof of statistical significance. Record the
-actual initial negotiated codec and encoder for the chosen pre-share preference;
-do not switch codec inside a run.
+actual initial negotiated VP8 codec and encoder; do not switch codec inside a
+run.
 
 For each exact overlapping window, correlate:
 
@@ -193,10 +193,7 @@ Change one variable per fresh run:
    page state stays fixed.
 2. Compare local preview playing and paused while capture and sender identities
    stay fixed.
-3. Run separate new Host/share/peer-connection sessions for `automatic`, H.264,
-   and VP8 through the pre-share diagnostic selector, and verify the actual codec
-   and encoder in each session.
-4. When investigating the 2026-08-19 production report, compare exact release
+3. When investigating the 2026-08-19 production report, compare exact release
    `769de201f7cc` with the then-current exact `main` commit on the same machine,
    browser, driver, game scene, and direct wired Viewer.
 

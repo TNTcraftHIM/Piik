@@ -44,11 +44,10 @@ Current high-signal boundary:
   loss, local Host preference replay, an independent expiring Viewer grant, and
   open/password/disabled code entry. Neither source nor production uses SQLite;
   exact rollback artifacts are owned by deployment.
-- Browser sharing defaults to VP8, keeps the diagnostic codec selector pre-share
-  only, fixes codec preference for the share lifetime, and uses
-  `shareGeneration`-fenced Pause/Resume. Exact source gates and production
-  artifacts are owned by verification status and deployment; physical H.264,
-  heterogeneous-network, and SFU media evidence remains open.
+- The accepted Browser v11 contract fixes VP8 and removes the diagnostic codec
+  selector and quality-wire field. Current source and production remain v10
+  until that client/server change is integrated and deployed atomically;
+  heterogeneous-network and SFU media evidence remains open.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy
