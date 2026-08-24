@@ -368,9 +368,11 @@ Browser SFU ICE-server-isolation implementation
 `ae09c760adec76fd26da611d4928486d105c6d3b`. Both run strict `screener-v12` and
 the direct/STUN peer plus LiveKit SFU/UDP route model. Browser SFU PCs use empty
 external ICE-server lists. Chrome 151 on that exact production verified one
-publisher and one subscriber advancing frames over LiveKit UDP; the operation
-owner remains only `route`. Exact operational evidence is owned by the deployment
-document; broader heterogeneous-network and SFU lifecycle validation remains open.
+publisher and one subscriber advancing frames over LiveKit UDP; the controlled
+exact-candidate rollback/SFU commit gate is also closed. The operation owner
+remains only `route`. Exact evidence is owned by the
+[verification ledger](../verification-status.md); broader heterogeneous-network
+and SFU lifecycle validation remains open.
 
 ## Acceptance Boundary
 
@@ -405,8 +407,9 @@ and deployment gates:
 The following external acceptance remains open without changing the deployed
 core's status:
 
-- real-browser tests cover direct peer media, peer relay, SFU media, bounded
-  failure, and recovery;
+- representative-network real-browser tests cover direct peer media, peer
+  relay, SFU media, bounded failure, and recovery beyond the completed
+  controlled direct-to-SFU transaction;
 - measured endpoint upload and server ingress/egress prove the accepted
   accounting under normal and migration overlap; and
 - every exhausted path reaches a clear bounded wait or failure without leaking
