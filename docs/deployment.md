@@ -3,7 +3,7 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`2d5818ccf57f8ccf0999160ea74a16c9b4d97d12`, release `2d5818c`, and the single
+`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,16 +25,16 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `2d5818ccf57f8ccf0999160ea74a16c9b4d97d12`, release
-`2d5818c`, from `/opt/screener/releases/2d5818c`. The immutable runtime ZIP
+Production runs exact `bf328590b3de5dfa509fcc70f6316286af3eae7e`, release
+`bf32859`, from `/opt/screener/releases/bf32859`. The immutable runtime ZIP
 SHA-256 is
-`a2e4c6b3bdf062103cd09b75c7de072eedcb8f311264070f57fbb0dfcf2bf315`.
+`e8b8fccf0ab15591af5e6675ca9236bae28b648dccfa8b1ea208a79b927168be`.
 Its 38-file path/size/hash manifest SHA-256 is
-`eb118c51759e087bb81b530c7d765fd862220227d5f70bcf807628b61155b5f4`.
+`d1c6b7c025e37711c0d06f5ec222a6fba26391d2e34a06b374deb1a05ddd63c6`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-CgT-8Ltd.js` with SHA-256
-`f04c6ed8e963694a584b0e7de4bbf44820a7be1da10360a3ae99fb36149fb6be`.
+`assets/index-BmWh33Cv.js` with SHA-256
+`e0400b1d5a5017bf5851158f5a884425aaca0269c5e3efa4cc521f3580c19bce`.
 
 The release deploys the single Browser `screener-v12` wire, fixed VP8 for Browser
 direct, browser-relay, and SFU video, no video `contentHint`, no codec UI/state/wire,
@@ -271,7 +271,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `2d5818c` accepts 1 through 20 and explicitly selects 20. This is an
+Production `bf32859` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -284,7 +284,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `2d5818c` runs the deployed server and Browser assets
+Production release `bf32859` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 
