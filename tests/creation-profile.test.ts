@@ -32,20 +32,26 @@ describe("Host creation profile", () => {
     });
 
     saveCreationProfile({
-      codeEntryPolicy: "password",
+      codeEntryPolicy: "private",
       roomPassword: "room-password",
     });
 
     expect(readCreationProfile()).toEqual({
-      codeEntryPolicy: "password",
+      codeEntryPolicy: "private",
       roomPassword: "room-password",
     });
     expect(values.get("screener:host-creation-profile:v1")).not.toContain(
       "SITE_ACCESS_PASSWORD",
     );
+
+    saveCreationProfile({ codeEntryPolicy: "private", roomPassword: null });
+    expect(readCreationProfile()).toEqual({
+      codeEntryPolicy: "private",
+      roomPassword: null,
+    });
   });
 
-  it("discards malformed or incomplete password-policy records", () => {
+  it("discards removed policy records", () => {
     const removeItem = vi.fn();
     vi.stubGlobal("window", {
       localStorage: {

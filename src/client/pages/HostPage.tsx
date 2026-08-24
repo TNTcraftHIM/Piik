@@ -264,8 +264,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     creationProfile.roomPassword ?? "",
   );
   const [viewerPasswordVisible, setViewerPasswordVisible] = useState(false);
-  const [viewerPasswordEditorOpen, setViewerPasswordEditorOpen] =
-    useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
@@ -553,7 +551,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     clearHostRoom();
     setRoom(null);
     setCopied(false);
-    setViewerPasswordEditorOpen(false);
     setViewerPasswordDraft(creationProfileRef.current.roomPassword ?? "");
     setViewerPasswordVisible(false);
   }
@@ -1168,13 +1165,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       hostPeerIdRef.current = message.peerId;
       endpointMediaCopyCapacityRef.current = message.endpointMediaCopyCapacity;
       setRoomAccessUpdating(false);
-      const localRoomPassword = creationProfileRef.current.roomPassword;
-      setViewerPasswordEnabled(
-        message.codeEntryPolicy === "password" || localRoomPassword !== null,
-      );
-      setViewerPasswordDraft(
-        localRoomPassword ?? "",
-      );
+      const authenticatedProfile = {
+        codeEntryPolicy: message.codeEntryPolicy,
+        roomPassword: message.viewerPasswordEnabled
+          ? creationProfileRef.current.roomPassword
+          : null,
+      };
+      saveCreationProfile(authenticatedProfile);
+      creationProfileRef.current = authenticatedProfile;
+      setCreationProfile(authenticatedProfile);
+      setViewerPasswordEnabled(message.viewerPasswordEnabled);
+      setViewerPasswordDraft(authenticatedProfile.roomPassword ?? "");
       setViewerPasswordVisible(false);
       clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
@@ -1799,12 +1800,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   async function changeCodeEntryPolicy(policy: CodeEntryPolicy): Promise<void> {
     if (policy === activeCodeEntryPolicy) {
-      setViewerPasswordEditorOpen(false);
-      setNotice(null);
-      return;
-    }
-    if (policy === "password" && !viewerPasswordEnabled) {
-      setViewerPasswordEditorOpen(true);
       setNotice(null);
       return;
     }
@@ -1829,7 +1824,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       saveCreationProfile(profile);
       setCreationProfile(profile);
       setViewerPasswordEnabled(response.viewerPasswordEnabled);
-      setViewerPasswordEditorOpen(false);
       setViewerPasswordVisible(false);
       setRoom((current) =>
         current
@@ -1838,8 +1832,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       );
       setNotice(
         response.codeEntryPolicy === "open"
-          ? "已允许公开加入"
-          : "已启用密码加入",
+          ? "房间已设为公开"
+          : response.viewerPasswordEnabled
+            ? "房间已设为私密，可凭邀请或密码加入"
+            : "房间已设为私密，仅限邀请加入",
       );
     } catch (error) {
       handleRoomAccessFailure(error);
@@ -1898,10 +1894,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     if (!activeRoom || roomAccessUpdating) {
       return;
     }
-    const enablePasswordEntry =
-      password !== null &&
-      !viewerPasswordEnabled &&
-      viewerPasswordEditorOpen;
+    const hadPassword = viewerPasswordEnabled;
     setRoomAccessUpdating(true);
     try {
       const response = await updateRoomAccess(
@@ -1913,7 +1906,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         throw new Error("Unexpected room access response");
       }
       const passwordProfile = {
-        codeEntryPolicy: creationProfileRef.current.codeEntryPolicy,
+        codeEntryPolicy: activeCodeEntryPolicy,
         roomPassword: password,
       };
       saveCreationProfile(passwordProfile);
@@ -1921,30 +1914,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordEnabled(response.enabled);
       setViewerPasswordDraft(password ?? "");
       setViewerPasswordVisible(false);
-      setViewerPasswordEditorOpen(false);
-
-      if (enablePasswordEntry) {
-        const policyResponse = await updateRoomAccess(
-          activeRoom.roomId,
-          activeRoom.hostToken,
-          { action: "set-code-entry-policy", policy: "password" },
-        );
-        if (policyResponse.type !== "code-entry-policy-updated") {
-          throw new Error("Unexpected room access response");
-        }
-        const profile = {
-          codeEntryPolicy: "password" as const,
-          roomPassword: password,
-        };
-        saveCreationProfile(profile);
-        setCreationProfile(profile);
-        setRoom((current) =>
-          current ? { ...current, codeEntryPolicy: "password" } : current,
-        );
-        setNotice("房间密码已设置");
-      } else {
-        setNotice(password === null ? "房间密码已移除" : "房间密码已更新");
-      }
+      setNotice(
+        password === null
+          ? "房间密码已移除，仅限邀请加入"
+          : hadPassword
+            ? "房间密码已更新"
+            : "房间密码已设置",
+      );
     } catch (error) {
       handleRoomAccessFailure(error);
     } finally {
@@ -1973,10 +1949,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   const activeCodeEntryPolicy =
     room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
-  const presentedCodeEntryPolicy =
-    viewerPasswordEditorOpen && !viewerPasswordEnabled
-      ? "password"
-      : activeCodeEntryPolicy;
   return (
     <div className="app-shell">
       <AppHeader
@@ -2442,9 +2414,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     title={room.inviteUrl ?? undefined}
                   >
                     {room.inviteUrl ??
-                      (activeCodeEntryPolicy === "password"
-                        ? "暂无邀请链接，仍可凭房间号和密码加入"
-                        : "暂无邀请链接，仍可凭房间号加入")}
+                      (activeCodeEntryPolicy === "open"
+                        ? "暂无邀请链接，仍可凭房间号加入"
+                        : viewerPasswordEnabled
+                          ? "暂无邀请链接，仍可凭房间号和密码加入"
+                          : "暂无邀请链接，请先更新链接再邀请他人")}
                   </span>
                   <button
                     className="button button-primary invite-copy-action"
@@ -2468,19 +2442,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <div className="segmented-control room-policy-control">
                   {(
                     [
-                      ["open", "公开加入", Globe2],
-                      ["password", "密码加入", LockKeyhole],
+                      ["open", "公开", Globe2],
+                      ["private", "私密", LockKeyhole],
                     ] as const
                   ).map(([policy, label, Icon]) => (
                     <button
                       key={policy}
                       type="button"
                       className={`room-policy-option policy-${policy}${
-                        presentedCodeEntryPolicy === policy
+                        activeCodeEntryPolicy === policy
                           ? " is-selected"
                           : ""
                       }`}
-                      aria-pressed={presentedCodeEntryPolicy === policy}
+                      aria-pressed={activeCodeEntryPolicy === policy}
                       disabled={roomAccessUpdating}
                       onClick={() => void changeCodeEntryPolicy(policy)}
                     >
@@ -2489,10 +2463,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     </button>
                   ))}
                 </div>
-                {(activeCodeEntryPolicy === "password" ||
-                  viewerPasswordEditorOpen) && (
+                {activeCodeEntryPolicy === "private" && (
                   <form
-                    className="viewer-password-control"
+                    className={`viewer-password-control${
+                      viewerPasswordEnabled ? " has-password" : ""
+                    }`}
                     onSubmit={(event) => {
                       event.preventDefault();
                       void changeViewerPassword(viewerPasswordDraft);
@@ -2501,7 +2476,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     <label htmlFor="viewer-password">
                       {viewerPasswordEnabled
                         ? "房间密码已设置"
-                        : "设置房间密码"}
+                        : "房间密码未设置"}
                     </label>
                     <span className="input-with-icon">
                       <KeyRound size={16} aria-hidden="true" />
@@ -2511,7 +2486,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         value={viewerPasswordDraft}
                         maxLength={MAX_VIEWER_PASSWORD_LENGTH}
                         autoComplete="new-password"
-                        placeholder="输入密码"
+                        placeholder={
+                          viewerPasswordEnabled
+                            ? "输入密码"
+                            : "设置后可凭房间号加入"
+                        }
                         autoFocus={!viewerPasswordEnabled}
                         disabled={roomAccessUpdating}
                         onChange={(event) =>
@@ -2557,20 +2536,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     >
                       <Check size={18} aria-hidden="true" />
                     </button>
-                    {activeCodeEntryPolicy !== "password" && (
+                    {viewerPasswordEnabled && (
                       <button
                         className="icon-button"
                         type="button"
-                        title="取消"
-                        aria-label="取消设置房间密码"
+                        title="移除房间密码"
+                        aria-label="移除房间密码"
                         disabled={roomAccessUpdating}
-                        onClick={() => {
-                          setViewerPasswordDraft(
-                            creationProfileRef.current.roomPassword ?? "",
-                          );
-                          setViewerPasswordVisible(false);
-                          setViewerPasswordEditorOpen(false);
-                        }}
+                        onClick={() => void changeViewerPassword(null)}
                       >
                         <X size={18} aria-hidden="true" />
                       </button>

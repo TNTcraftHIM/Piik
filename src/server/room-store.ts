@@ -196,10 +196,6 @@ export class RoomStore {
     if (this.rooms.size >= this.options.maxRooms) {
       throw new RoomStoreError("ROOM_LIMIT");
     }
-    if (codeEntryPolicy === "password" && !roomPassword) {
-      throw new RoomStoreError("INVALID_TOKEN");
-    }
-
     const createdAtMs = this.now();
     const viewerPasswordMaterial = roomPassword
       ? await this.createViewerPasswordMaterial(roomPassword)
@@ -304,7 +300,7 @@ export class RoomStore {
       }
     }
     const expectedMaterial =
-      room?.codeEntryPolicy === "password" && room.viewerPasswordMaterial
+      room?.codeEntryPolicy === "private" && room.viewerPasswordMaterial
         ? Buffer.from(room.viewerPasswordMaterial)
         : DUMMY_VIEWER_PASSWORD_MATERIAL;
     const expectedSalt = expectedMaterial.subarray(0, VIEWER_PASSWORD_SALT_BYTES);
@@ -331,7 +327,7 @@ export class RoomStore {
     if (
       !room ||
       currentRoom !== room ||
-      currentRoom.codeEntryPolicy !== "password" ||
+      currentRoom.codeEntryPolicy !== "private" ||
       currentRoom.viewerPasswordMaterial === null ||
       !matches ||
       !sameBytes(currentRoom.viewerPasswordMaterial, expectedMaterial) ||
@@ -369,8 +365,7 @@ export class RoomStore {
     const currentRoom = this.getHostManagedRoom(roomId, hostToken);
     if (
       currentRoom !== room ||
-      (password !== null && nextPasswordMaterial === null) ||
-      (password === null && currentRoom.codeEntryPolicy === "password")
+      (password !== null && nextPasswordMaterial === null)
     ) {
       throw new RoomStoreError("ROOM_ACCESS_DENIED");
     }
@@ -384,9 +379,6 @@ export class RoomStore {
     hostToken: string,
   ): CodeEntryUpdate {
     const room = this.getHostManagedRoom(roomId, hostToken);
-    if (policy === "password" && room.viewerPasswordMaterial === null) {
-      throw new RoomStoreError("ROOM_ACCESS_DENIED");
-    }
     room.codeEntryPolicy = policy;
     return {
       codeEntryPolicy: policy,

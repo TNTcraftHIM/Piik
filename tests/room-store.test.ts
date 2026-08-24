@@ -135,12 +135,18 @@ describe("RoomStore", () => {
       () =>
         roomStore.setCodeEntryPolicy(
           room.roomId,
-          "password",
+          "private",
           otherRoom.hostToken,
         ),
       "INVALID_TOKEN",
     );
 
+    expect(
+      roomStore.setCodeEntryPolicy(room.roomId, "private", room.hostToken),
+    ).toMatchObject({
+      codeEntryPolicy: "private",
+      viewerPasswordEnabled: false,
+    });
     expect(
       await roomStore.setViewerPassword(
         room.roomId,
@@ -149,12 +155,8 @@ describe("RoomStore", () => {
       ),
     ).toBe(true);
     expect(
-      roomStore.setCodeEntryPolicy(
-        room.roomId,
-        "password",
-        room.hostToken,
-      ).codeEntryPolicy,
-    ).toBe("password");
+      await roomStore.setViewerPassword(room.roomId, null, room.hostToken),
+    ).toBe(false);
     expect(
       roomStore.setViewerGrant(room.roomId, "rotate", room.hostToken)
         .viewerGrant,
@@ -169,12 +171,20 @@ describe("RoomStore", () => {
 
   it("keeps Viewer grants independent from code-entry policy", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
-    const room = await roomStore.createRoom("password", "room-password");
+    const room = await roomStore.createRoom("private");
 
     expectRoomError(
       () => roomStore.connectParticipant(viewerInput(room.roomId, "code-only")),
       "INVALID_TOKEN",
     );
+    await expect(
+      roomStore.connectViewerWithPassword({
+        roomId: room.roomId,
+        password: "any-password",
+        clientId: "private-code-viewer",
+        sessionId: "private-code-session",
+      }),
+    ).rejects.toEqual(new RoomStoreError("INVALID_TOKEN"));
     expect(
       roomStore.connectParticipant(
         viewerInput(room.roomId, "granted", room.viewerGrant!),
@@ -196,14 +206,14 @@ describe("RoomStore", () => {
     ).toBe("viewer");
   });
 
-  it("supports open and password code entry", async () => {
+  it("supports open and password-enabled private code entry", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
     const open = await roomStore.createRoom("open");
     expect(
       roomStore.connectParticipant(viewerInput(open.roomId, "open")).role,
     ).toBe("viewer");
 
-    const password = await roomStore.createRoom("password", "room-password");
+    const password = await roomStore.createRoom("private", "room-password");
     expectRoomError(
       () => roomStore.connectParticipant(viewerInput(password.roomId, "wrong")),
       "INVALID_TOKEN",
@@ -337,7 +347,7 @@ describe("RoomStore", () => {
 
   it("clears every credential on process restart", async () => {
     const { store: firstStore } = store();
-    const room = await firstStore.createRoom("password", "room-password");
+    const room = await firstStore.createRoom("private", "room-password");
     const { store: secondStore } = store();
 
     const replacement = await secondStore.createRoom("open");

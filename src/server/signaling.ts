@@ -632,10 +632,9 @@ export class SignalingServer {
       this.fillOrdinaryHostChildren(participant.roomId);
     }
 
-    const authenticatedMessage = {
+    const authenticatedMessageBase = {
       type: "authenticated" as const,
-      protocol: SIGNALING_PROTOCOL,
-      role: participant.role,
+      protocol: SIGNALING_PROTOCOL as typeof SIGNALING_PROTOCOL,
       peerId: participant.peerId,
       roomExpiresAt: participant.expiresAt,
       maxViewers: this.options.roomStore.maxViewersPerRoom,
@@ -658,7 +657,21 @@ export class SignalingServer {
       codeEntryPolicy: participant.codeEntryPolicy,
       viewerAuthorizationGeneration:
         participant.viewerAuthorizationGeneration,
-    } satisfies Extract<ServerMessage, { type: "authenticated" }>;
+    };
+    const authenticatedMessage: Extract<
+      ServerMessage,
+      { type: "authenticated" }
+    > =
+      participant.role === "host"
+        ? {
+            ...authenticatedMessageBase,
+            role: "host" as const,
+            viewerPasswordEnabled: participant.viewerPasswordEnabled,
+          }
+        : {
+            ...authenticatedMessageBase,
+            role: "viewer" as const,
+          };
     if (hybridState) {
       this.send(socket, {
         ...authenticatedMessage,

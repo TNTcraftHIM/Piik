@@ -482,29 +482,20 @@ describe("WebSocket signaling", () => {
     await host.inbox.expectNone(40);
   });
 
-  it("lets the exact Host token set and remove room password access", async () => {
+  it("keeps a password optional for private room entry", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);
     await authenticate(host, harness.room, "host", "password-settings-host");
 
     expect(
       await updateRoomAccess(harness, {
-        action: "set-viewer-password",
-        password: "easy-password",
-      }),
-    ).toEqual({
-      type: "viewer-password-updated",
-      enabled: true,
-    });
-    expect(
-      await updateRoomAccess(harness, {
         action: "set-code-entry-policy",
-        policy: "password",
+        policy: "private",
       }),
     ).toEqual({
       type: "code-entry-policy-updated",
-      codeEntryPolicy: "password",
-      viewerPasswordEnabled: true,
+      codeEntryPolicy: "private",
+      viewerPasswordEnabled: false,
     });
 
     const wrongViewer = await openClient(harness.webSocketUrl);
@@ -522,6 +513,16 @@ describe("WebSocket signaling", () => {
       code: "ROOM_ACCESS_DENIED",
     });
 
+    expect(
+      await updateRoomAccess(harness, {
+        action: "set-viewer-password",
+        password: "easy-password",
+      }),
+    ).toEqual({
+      type: "viewer-password-updated",
+      enabled: true,
+    });
+
     const passwordViewer = await openClient(harness.webSocketUrl);
     await expect(
       authenticate(
@@ -536,16 +537,6 @@ describe("WebSocket signaling", () => {
     ).resolves.toMatchObject({ role: "viewer" });
     await host.inbox.next("peer-joined");
 
-    expect(
-      await updateRoomAccess(harness, {
-        action: "set-code-entry-policy",
-        policy: "open",
-      }),
-    ).toEqual({
-      type: "code-entry-policy-updated",
-      codeEntryPolicy: "open",
-      viewerPasswordEnabled: true,
-    });
     expect(
       await updateRoomAccess(harness, {
         action: "set-viewer-password",
@@ -580,6 +571,55 @@ describe("WebSocket signaling", () => {
     );
     expect(await removedPasswordViewer.inbox.next("error")).toMatchObject({
       code: "ROOM_ACCESS_DENIED",
+    });
+  });
+
+  it("reports password configuration only to the authenticated Host", async () => {
+    const harness = await startHarness();
+    harness.roomStore.setCodeEntryPolicy(
+      harness.room.roomId,
+      "private",
+      harness.room.hostToken,
+    );
+
+    const host = await openClient(harness.webSocketUrl);
+    const withoutPassword = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "password-state-host",
+    );
+    expect(withoutPassword).toMatchObject({
+      role: "host",
+      codeEntryPolicy: "private",
+      viewerPasswordEnabled: false,
+    });
+
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuthenticated = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "password-state-viewer",
+    );
+    expect(viewerAuthenticated).not.toHaveProperty("viewerPasswordEnabled");
+
+    await harness.roomStore.setViewerPassword(
+      harness.room.roomId,
+      "room-password",
+      harness.room.hostToken,
+    );
+    const replacementHost = await openClient(harness.webSocketUrl);
+    const withPassword = await authenticate(
+      replacementHost,
+      harness.room,
+      "host",
+      "password-state-host",
+    );
+    expect(withPassword).toMatchObject({
+      role: "host",
+      codeEntryPolicy: "private",
+      viewerPasswordEnabled: true,
     });
   });
 
@@ -1153,7 +1193,7 @@ describe("WebSocket signaling", () => {
     ).resolves.toMatchObject({ role: "viewer" });
 
     const passwordRoom = await harness.roomStore.createRoom(
-      "password",
+      "private",
       "room-password",
     );
 
@@ -1210,7 +1250,7 @@ describe("WebSocket signaling", () => {
     expect(cookie).toBeTruthy();
 
     const protectedRoom = await harness.roomStore.createRoom(
-      "password",
+      "private",
       "correct-password",
     );
     const expiring = await harness.roomStore.createRoom("open");

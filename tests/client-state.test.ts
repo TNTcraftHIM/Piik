@@ -844,6 +844,7 @@ describe("client signaling recovery policy", () => {
         viewerPeerIds: [],
         iceConfig: { iceServers: [] },
         codeEntryPolicy: "open",
+        viewerPasswordEnabled: false,
         viewerAuthorizationGeneration: "viewer_generation_12345678",
       });
     };
@@ -880,6 +881,7 @@ describe("client signaling recovery policy", () => {
       viewerPeerIds: [],
       iceConfig: { iceServers: [] },
       codeEntryPolicy: "open",
+      viewerPasswordEnabled: false,
       viewerAuthorizationGeneration: "viewer_generation_12345678",
     });
     expect(signal.setSharingPaused(false)).toBe(true);
@@ -964,6 +966,7 @@ describe("client signaling recovery policy", () => {
         viewerPeerIds: [],
         iceConfig: { iceServers: [] },
         codeEntryPolicy: "open",
+        viewerPasswordEnabled: false,
         viewerAuthorizationGeneration: "viewer_generation_12345678",
       });
     };

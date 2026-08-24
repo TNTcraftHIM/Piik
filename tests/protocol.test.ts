@@ -197,14 +197,22 @@ describe("client signaling protocol", () => {
     ).toEqual({ codeEntryPolicy: "open" });
     expect(
       createRoomRequestSchema.parse({
-        codeEntryPolicy: "password",
+        codeEntryPolicy: "private",
         roomPassword: "room-password",
       }),
     ).toEqual({
-      codeEntryPolicy: "password",
+      codeEntryPolicy: "private",
       roomPassword: "room-password",
     });
-    for (const codeEntryPolicy of ["private-link", "public-watch", 1]) {
+    expect(
+      createRoomRequestSchema.parse({ codeEntryPolicy: "private" }),
+    ).toEqual({ codeEntryPolicy: "private" });
+    for (const codeEntryPolicy of [
+      "password",
+      "private-link",
+      "public-watch",
+      1,
+    ]) {
       expect(
         createRoomRequestSchema.safeParse({
           codeEntryPolicy,
@@ -352,7 +360,7 @@ describe("client signaling protocol", () => {
         }).success,
       ).toBe(false);
     }
-    for (const policy of ["open", "password"] as const) {
+    for (const policy of ["open", "private"] as const) {
       expect(
         roomAccessUpdateRequestSchema.safeParse({
           action: "set-code-entry-policy",
@@ -374,6 +382,12 @@ describe("client signaling protocol", () => {
       roomAccessUpdateRequestSchema.safeParse({
         action: "set-code-entry-policy",
         policy: "disabled",
+      }).success,
+    ).toBe(false);
+    expect(
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "set-code-entry-policy",
+        policy: "password",
       }).success,
     ).toBe(false);
     for (const removedMessage of [
@@ -1017,12 +1031,31 @@ describe("server signaling protocol", () => {
       connectionId: null,
       viewerPeerIds,
       codeEntryPolicy: "open",
+      viewerPasswordEnabled: false,
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       iceConfig: {
         iceServers: [],
       },
     };
   }
+
+  it("scopes password configuration state to authenticated Hosts", () => {
+    const host = authenticatedMessage(8) as Record<string, unknown>;
+    expect(serverMessageSchema.safeParse(host).success).toBe(true);
+    delete host.viewerPasswordEnabled;
+    expect(serverMessageSchema.safeParse(host).success).toBe(false);
+
+    const viewer = {
+      ...authenticatedMessage(8),
+      role: "viewer",
+      peerId: "viewer_12345678",
+      viewerPeerIds: [],
+    } as Record<string, unknown>;
+    delete viewer.viewerPasswordEnabled;
+    expect(serverMessageSchema.safeParse(viewer).success).toBe(true);
+    viewer.viewerPasswordEnabled = true;
+    expect(serverMessageSchema.safeParse(viewer).success).toBe(false);
+  });
 
   it("accepts dynamic viewer limits within the protocol boundary", () => {
     expect(MAX_VIEWERS_PER_ROOM_LIMIT).toBe(20);

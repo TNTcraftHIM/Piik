@@ -125,7 +125,7 @@ export const viewerPasswordSchema = z
   .max(MAX_VIEWER_PASSWORD_LENGTH)
   .regex(/^[\x21-\x7e]+$/);
 
-export const codeEntryPolicySchema = z.enum(["open", "password"]);
+export const codeEntryPolicySchema = z.enum(["open", "private"]);
 export type CodeEntryPolicy = z.infer<typeof codeEntryPolicySchema>;
 
 const liveKitWebSocketUrlSchema = z
@@ -726,7 +726,6 @@ const errorCodeSchema = z.enum([
 const authenticatedMessageShape = {
   type: z.literal("authenticated"),
   protocol: z.literal(SIGNALING_PROTOCOL),
-  role: roleSchema,
   peerId: opaqueIdSchema,
   roomExpiresAt: z.string().datetime().nullable(),
   maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
@@ -744,17 +743,39 @@ const authenticatedMessageShape = {
   viewerAuthorizationGeneration: opaqueIdSchema,
 };
 
+const authenticatedHostMessageShape = {
+  ...authenticatedMessageShape,
+  role: z.literal("host"),
+  viewerPasswordEnabled: z.boolean(),
+};
+
+const authenticatedViewerMessageShape = {
+  ...authenticatedMessageShape,
+  role: z.literal("viewer"),
+};
+
+const peerAssistedAuthenticatedShape = {
+  mediaMode: z.literal("peer-assisted"),
+  mediaAssignment: mediaAssignmentSchema,
+  routeRevision: mediaRouteRevisionSchema,
+  routeAssignment: participantRouteAssignmentSchema,
+  qualitySettings: qualitySettingsSchema,
+  sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
+};
+
 const authenticatedMessageSchema = z.union([
-  z.object(authenticatedMessageShape).strict(),
+  z.object(authenticatedHostMessageShape).strict(),
+  z.object(authenticatedViewerMessageShape).strict(),
   z
     .object({
-      ...authenticatedMessageShape,
-      mediaMode: z.literal("peer-assisted"),
-      mediaAssignment: mediaAssignmentSchema,
-      routeRevision: mediaRouteRevisionSchema,
-      routeAssignment: participantRouteAssignmentSchema,
-      qualitySettings: qualitySettingsSchema,
-      sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
+      ...authenticatedHostMessageShape,
+      ...peerAssistedAuthenticatedShape,
+    })
+    .strict(),
+  z
+    .object({
+      ...authenticatedViewerMessageShape,
+      ...peerAssistedAuthenticatedShape,
     })
     .strict(),
 ]);

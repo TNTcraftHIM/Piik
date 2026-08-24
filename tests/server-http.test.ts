@@ -80,7 +80,7 @@ async function login(baseUrl: string): Promise<Response> {
 async function createRoom(
   baseUrl: string,
   cookie?: string,
-  codeEntryPolicy: "open" | "password" = "open",
+  codeEntryPolicy: "open" | "private" = "open",
   roomPassword?: string,
 ): Promise<Response> {
   return fetch(`${baseUrl}/api/rooms`, {
@@ -311,23 +311,26 @@ describe("room HTTP API", () => {
     );
   });
 
-  it("applies a password creation profile atomically", async () => {
+  it("creates private rooms with optional passwords atomically", async () => {
     const baseUrl = await start();
     const authenticated = await login(baseUrl);
     const cookie = cookiePair(authenticated);
     const response = await createRoom(
       baseUrl,
       cookie,
-      "password",
+      "private",
       "room-password",
     );
     expect(response.status).toBe(201);
     expect(createRoomResponseSchema.parse(await response.json())).toMatchObject({
-      codeEntryPolicy: "password",
+      codeEntryPolicy: "private",
     });
 
-    const missingPassword = await createRoom(baseUrl, cookie, "password");
-    expect(missingPassword.status).toBe(400);
+    const withoutPassword = await createRoom(baseUrl, cookie, "private");
+    expect(withoutPassword.status).toBe(201);
+    expect(
+      createRoomResponseSchema.parse(await withoutPassword.json()),
+    ).toMatchObject({ codeEntryPolicy: "private" });
   });
 
   it("allows explicit open creation without site access in local mode", async () => {
@@ -371,6 +374,21 @@ describe("room HTTP API", () => {
     const room = createRoomResponseSchema.parse(await createdResponse.json());
     nowMs = 900;
 
+    const policy = await updateRoomAccess(
+      baseUrl,
+      room.roomId,
+      room.hostToken,
+      { action: "set-code-entry-policy", policy: "private" },
+      { cookie },
+    );
+    expect(policy.status).toBe(200);
+    expect(policy.headers.get("cache-control")).toBe("no-store");
+    expect(roomAccessUpdateResponseSchema.parse(await policy.json())).toEqual({
+      type: "code-entry-policy-updated",
+      codeEntryPolicy: "private",
+      viewerPasswordEnabled: false,
+    });
+
     const password = await updateRoomAccess(
       baseUrl,
       room.roomId,
@@ -378,24 +396,22 @@ describe("room HTTP API", () => {
       { action: "set-viewer-password", password: "room-password" },
       { cookie },
     );
-    expect(password.status).toBe(200);
-    expect(password.headers.get("cache-control")).toBe("no-store");
     expect(roomAccessUpdateResponseSchema.parse(await password.json())).toEqual({
       type: "viewer-password-updated",
       enabled: true,
     });
-
-    const policy = await updateRoomAccess(
+    const removedPassword = await updateRoomAccess(
       baseUrl,
       room.roomId,
       room.hostToken,
-      { action: "set-code-entry-policy", policy: "password" },
+      { action: "set-viewer-password", password: null },
       { cookie },
     );
-    expect(roomAccessUpdateResponseSchema.parse(await policy.json())).toEqual({
-      type: "code-entry-policy-updated",
-      codeEntryPolicy: "password",
-      viewerPasswordEnabled: true,
+    expect(
+      roomAccessUpdateResponseSchema.parse(await removedPassword.json()),
+    ).toEqual({
+      type: "viewer-password-updated",
+      enabled: false,
     });
 
     const rotated = await updateRoomAccess(
