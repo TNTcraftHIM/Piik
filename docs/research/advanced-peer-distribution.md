@@ -8,7 +8,8 @@
   retained evidence. Exact Browser v9 source
   `d543f38aacad3df5ef65fde1055cc8e733972afe` implements ADR-0005's single
   child-reparent reconciliation and exact first-frame transaction; production
-  remains v8, and advanced encoded-media routes remain unimplemented candidates
+  now runs that v9 contract, and advanced encoded-media routes remain
+  unimplemented candidates
 
 This document is research evidence, not current architecture or a backlog. See
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) for accepted routing
@@ -254,18 +255,16 @@ Every completion is guarded by the current authenticated sessions, share
 generation, pending route revision, and candidate connection. Sustained bitrate,
 FPS, resolution, and blur remain diagnostic.
 
-The first room-1 production trace on 2026-08-20 observed two short Host
+The historical v8 room-1 production trace on 2026-08-20 observed two short Host
 participants while two roots remained for roughly 4.6 seconds; all ended with
 client-requested leave, no track publication survived, and neither service
 restarted. This proves LiveKit participant entry. The timing is consistent with
 the then-current one-shot grant refresh and recovery state machine, but logs do
 not prove those transitions and cannot distinguish
 connect, source, video publish, sender configuration, optional audio publish, or
-transport failure. Exact v9 source implements the accepted diagnostic, which is
-not part of deployed v8: it exposes only a closed local stage/outcome enum to an
-on-demand Host snapshot
-and deliberately keeps raw errors, URLs, tokens, candidates, and addresses out
-of wire and logs.
+transport failure. The deployed v9 diagnostic exposes only a closed local
+stage/outcome enum to an on-demand Host snapshot and deliberately keeps raw
+errors, URLs, tokens, candidates, and addresses out of wire and logs.
 
 ## Automatic Route Controller Boundary
 

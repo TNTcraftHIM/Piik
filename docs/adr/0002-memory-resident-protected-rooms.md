@@ -1,6 +1,6 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; v9 source implemented at `d543f38aacad3df5ef65fde1055cc8e733972afe`; production remains v8
+- Status: Accepted; implemented and deployed in exact release `39fcf93`
 - Date: 2026-08-23
 
 ## Context
@@ -160,14 +160,13 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 
 ## Implementation Status
 
-Exact source `d543f38aacad3df5ef65fde1055cc8e733972afe` runs the single
-`screener-v9` wire and implements this complete room boundary, including
-allocation, leases, orthogonal grant/code admission, rotate/revoke, password
-policy, local profile replay, restart loss, browser storage privacy, and the
-neutral `ROOM_ACCESS_DENIED` result. All expected code-only denials use that
-same public result followed by the shared authentication-failed close code.
+Production exact `39fcf93bae057fcbb1002702c3be6b90bac9027f`, release `39fcf93`,
+runs the single `screener-v9` wire and implements this complete room boundary,
+including allocation, leases, orthogonal grant/code admission, rotate/revoke,
+password policy, local profile replay, restart loss, browser storage privacy,
+and the neutral `ROOM_ACCESS_DENIED` result. All expected code-only denials use
+that same public result followed by the shared authentication-failed close code.
 
-Production exact `8f5b3f192ddd010ca01c969008e512191312736a`, release `8f5b3f1`,
-still runs `screener-v8`. It implements the memory-resident room core, but not
-the v9 neutral code-only denial. No v9 room-entry behavior is deployed yet;
-exact operational evidence remains owned by deployment and verification status.
+The atomic deployment postflight passed. Its rollback boundary is
+`/opt/screener/backups/39fcf93-pre-v9-20260824T004257Z`; exact operational
+evidence remains owned by deployment and verification status.

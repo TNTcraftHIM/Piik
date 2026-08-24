@@ -2,11 +2,10 @@
 
 Last verified against upstream documentation: 2026-08-24.
 
-This page records exact release `8f5b3f1` production facts and the deployment
-contract for exact Browser v9 source
-`d543f38aacad3df5ef65fde1055cc8e733972afe`. V9 is implemented in source but is
-not yet deployed. Product direction and pending
-work are owned by [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
+This page records the production deployment of exact integrated main
+`39fcf93bae057fcbb1002702c3be6b90bac9027f`, release `39fcf93`, and the single
+Browser `screener-v9` contract. Product direction and pending work are owned by
+[project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
@@ -23,21 +22,29 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `8f5b3f192ddd010ca01c969008e512191312736a`, release
-`8f5b3f1`, from `/opt/screener/releases/8f5b3f1`. The immutable runtime archive
+Production runs exact `39fcf93bae057fcbb1002702c3be6b90bac9027f`, release
+`39fcf93`, from `/opt/screener/releases/39fcf93`. The immutable runtime ZIP
 SHA-256 is
-`09c18d3604b64b627b01164b5a8d954fcbaeb567ca12dedf0b89deaac72bd767`.
-Its verified rollback boundary is
-`/opt/screener/backups/8f5b3f1-precutover-20260823T182438Z`. Local and public
-health return 200; Screener, LiveKit, coturn, and nginx are active with
-`NRestarts=0`.
+`28190c3a69ec937d39ab5d49fdbc8db6a07e6013c2ddd5f5590bf8249bf6bce6`.
+Its 40-file path/size/hash manifest SHA-256 is
+`0a8bb7bb4c880e80358492a8bdef5d8897bd453b7957861708655e75f717c2bf`.
+The verified pre-v9 rollback boundary is
+`/opt/screener/backups/39fcf93-pre-v9-20260824T004257Z`; its internal
+`SHA256SUMS` hash is
+`1f741f29022f5eb1eb311a24f87f5f48598dca7b1879b88f9033c331fa06bd37`.
+Local and trusted-IP public `/` and `/healthz` return 200; Screener, LiveKit,
+coturn, and nginx are active with `NRestarts=0`. The public main Browser asset is
+`assets/index-DLLdorRt.js` with SHA-256
+`891b1fc861b12655d53a38c1dbf56d8981fa4ed24643760ed8d7838efcbf46f3`.
 
-The release deploys the single Browser `screener-v8` wire, random four-digit
+The release deploys the single Browser `screener-v9` wire, random four-digit
 memory rooms with a 24-hour dormant lease, orthogonal grant/code admission,
-20-Viewer room admission, the uniform endpoint media-copy cap `2`, the
-one-controller exact-candidate route runtime, and stale-v7 rejection before
-room authority. The service unit has no writable room StateDirectory; all room
-authority is process-memory-only. LiveKit is dedicated, has `room.auto_create: false` and
+20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
+one-controller exact-candidate route runtime. A credential-free postflight sent
+a well-formed authentication shape with stale `screener-v8`; it received
+`INVALID_MESSAGE` and WebSocket close 1008 before room authority without creating
+a room. The service unit has no writable room StateDirectory; all room authority
+is process-memory-only. LiveKit is dedicated, has `room.auto_create: false` and
 `max_participants: 21`, and is admitted to one global publication ingress plus
 twenty subscription egress handles. Coturn listens only on UDP 3478 for STUN;
 LiveKit media listens on UDP 7882.
@@ -237,7 +244,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `8f5b3f1` accepts 1 through 20 and explicitly selects 20. This is an
+Production `39fcf93` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -250,8 +257,8 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `8f5b3f1` runs the deployed server and Browser assets
-atomically on `screener-v8`; stale v7 Browser and executable-sender wires fail
+Production release `39fcf93` runs the deployed server and Browser assets
+atomically on `screener-v9`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 Restore only an exact recorded release with its matching environment, unit,
 LiveKit, coturn, and firewall snapshot when rolling back.
@@ -496,7 +503,7 @@ Open only these public listeners:
 
 ## Verification
 
-Run these checks from real external networks before calling the deployment usable:
+Run these checks from real external networks before closing route acceptance:
 
 1. Open the official [Trickle ICE sample](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
    and test the configured STUN URL. It must produce an `srflx` candidate over
