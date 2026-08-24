@@ -22,11 +22,11 @@ This is the current execution index. Git history owns completed timelines; [veri
 - Current source implements live 64/128/256 kbps audio-ceiling mutation for current and future Host/relay/SFU senders. Browser sharing defaults to VP8; `automatic | H.264 | VP8` is a temporary pre-share-only diagnostic input and remains fixed for the share lifetime. Ordinary Pause/Resume changes the existing tracks and Host SFU publication under the exact current Host session and `shareGeneration`.
 - Current source implements typed first-frame Viewer presentation and recovery, Chinese user-facing route/access failures, privacy-safe failed-page export, authenticated Host-only on-demand route snapshots, neutral `ROOM_ACCESS_DENIED` room-code admission, and responsive entry controls.
 - Recommended quality remains exactly `1080p60`, `1080p30`, and `720p30`; current source defaults to `1080p30`. Advanced resolution adds `480p` as `854x480` without adding a fourth preset, and advanced FPS and bitrate remain independent.
-- Exact v10 runtime source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` passed 610 Web tests in 45 files, TypeScript typecheck, client/server production builds, the access/privacy gate, the 257-test SFU admission gate, production-dependency audit, and repository hygiene. Its one-Host/20-Viewer Chrome 151 loopback decoded every Viewer, propagated the fixed VP8 settings, kept Host and relay fanout within cap `2`, captured all four current-child timing distributions, and observed no SFU publication. This is source, state-machine, build, privacy, and direct-loopback evidence, not public-network, SFU, mobile, physical audio/codec, H.264 performance, or Host-background evidence.
+- Exact v10 runtime source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` passed 610 Web tests in 45 files, TypeScript typecheck, client/server production builds, the access/privacy gate, the 257-test SFU admission gate, production-dependency audit, and repository hygiene. Its one-Host/20-Viewer Chrome 151 loopback decoded every Viewer, propagated the selected VP8 settings, kept Host and relay fanout within cap `2`, captured all four current-child timing distributions, and observed no SFU publication. This is source, state-machine, build, privacy, and direct-loopback evidence, not public-network, SFU, mobile, physical audio/codec, H.264 performance, or Host-background evidence.
 
 ## Current Milestone
 
-1. Implement and atomically deploy the accepted fixed-VP8 Browser v11 contract, removing the temporary codec selector and quality-wire field. Current source and production remain v10 until that cutover; no H.264 relay or SFU validation is scheduled.
+1. Remove the Browser video `contentHint` and verify the resulting capture/encode behavior. The final Browser codec remains undecided; current source and production remain v10, default VP8, with the pre-share diagnostic selector fixed for each share.
 2. Diagnose the reported screen-audio `1 kbps` readout and validate live audio ceilings, then refine the Host invitation controls without changing grant semantics implicitly.
 3. Reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
 4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
@@ -42,6 +42,6 @@ This is the current execution index. Git history owns completed timelines; [veri
 ## Current Hold
 
 There is no active P0/P1 source or deployment hold. Current source and production run the postflight-clean
-Browser v10 contract while the accepted fixed-VP8 v11 change is pending. Audio, heterogeneous-network, SFU,
+Browser v10 contract while the no-video-hint source change and final codec evidence remain pending. Audio, heterogeneous-network, SFU,
 background, and mobile evidence remains open. Native/executable work and broad repository cleanup
 remain outside the current evidence boundary.

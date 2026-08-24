@@ -36,7 +36,7 @@ does not say that minimizing the separate capturing page must reduce capture.
 Capture constraints are post-selection preferences and allow frame decimation,
 so requested `maxFramerate` is not proof of actual source or encoded frame rate.
 
-The accepted and deployed default video preference is VP8. Every run records
+The current deployed default video preference is VP8. Every run records
 the actual negotiated codec and encoder rather than inferring either from
 the preference. H.264, VP8, and encoder implementation are diagnostic variables
 only after a stable baseline exists; none is a page-keepalive mechanism.
@@ -50,10 +50,12 @@ implement a page-keepalive mechanism, and deployment health supplies no
 physical background-capture evidence.
 
 - `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream, applies
-  ideal/max capture constraints, marks video as `motion`, and applies sender
+  ideal/max capture constraints, currently marks video as `motion`, and applies sender
   bitrate, frame-rate, and degradation ceilings. Explicit sharing pause and
   authoritative reconnect re-pause change capture tracks' `enabled` state;
   neither manufactures foreground activity.
+- The accepted source change removes that video hint; production retains it
+  until a later deployment. Audio `contentHint = "music"` remains unchanged.
 - `src/client/pages/HostPage.tsx` pauses the existing local preview video when
   the Host document is hidden or unfocused and resumes that preview when it is
   visible and focused. This does not stop, mute, disable, or replace the capture
@@ -167,7 +169,7 @@ Use equal 60-second measurement windows, restore the focused baseline between
 states, randomize state order, and repeat three fresh controlled runs. These
 window and repeat counts define a small comparable sample; they are not product
 timeouts, quality thresholds, or proof of statistical significance. Record the
-actual initial negotiated VP8 codec and encoder; do not switch codec inside a
+actual initial negotiated codec and encoder; do not switch codec inside a
 run.
 
 For each exact overlapping window, correlate:

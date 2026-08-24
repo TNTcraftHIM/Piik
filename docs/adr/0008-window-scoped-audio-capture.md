@@ -130,9 +130,9 @@ The helper multiplexes process-tree PCM, H.264 access units, and bounded local
 status. Go writes H.264 directly to the existing shared fanout; the browser UI
 receives only a one-way local copy for `VideoDecoder` preview. PCM retains the
 existing WebCodecs Opus bridge. PLI/FIR recovery is generation-bound and
-coalesced into a helper key-frame command. The normal browser source uses the
-fixed VP8 contract; the native H.264 source remains an explicit mode and is not
-an implicit runtime downgrade.
+coalesced into a helper key-frame command. The normal browser source uses its
+independent Browser codec path; the native H.264 source remains an explicit mode
+and is not an implicit runtime downgrade.
 
 ## Consequences
 

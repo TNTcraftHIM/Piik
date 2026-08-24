@@ -3,7 +3,7 @@
 ## 2026-08-21 Native Window Source
 
 The Native sender has two explicit local video sources. The Web source uses the
-fixed Browser VP8 contract; the separate `native-window-h264` source is Windows
+independent Browser codec path; the separate `native-window-h264` source is Windows
 11-only and requires
 the user to select one local opaque window target. It never silently replaces a
 browser source or falls back to software encode, another codec, monitor capture,
@@ -34,7 +34,7 @@ local WebCodecs Opus bridge.
 PLI/FIR and fanout recovery requests enter the generation-bound helper stdin as
 one coalesced `K` command. The helper forces an in-band SPS/PPS/IDR recovery
 unit, while the existing Pion `H264Payloader`, exact `42c01f` MediaEngine, one
-shared track, and two-edge cap remain unchanged. Browser VP8 uses the existing
+shared track, and two-edge cap remain unchanged. The Browser source uses the existing
 `getDisplayMedia` and `VideoEncoder` path.
 
 Both the product helper and offline fixture compile the same MF encoder source.
@@ -110,7 +110,7 @@ separate encoder-contract measurement.
 
 ## Scope
 
-- The Web source uses fixed VP8; production rollout remains tracked separately
+- The Web source keeps the Browser codec decision independent; production rollout remains tracked separately
   from this Native research path.
 - No codec matrix, benchmark, second viewer, or endurance run is required for
   this landing slice.

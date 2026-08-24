@@ -149,11 +149,9 @@ Web 版本能直接使用 `getDisplayMedia()` + WebRTC，最适合验证产品�
 
 直播中换源不需要先关房间。`RTCRtpSender.replaceTrack()` 可在同类媒体且协商 envelope 允许时替换 sender 的来源而不重新协商；分辨率、帧率块率、音频声道或编码约束不兼容时会拒绝，因此应用必须把失败限制在该 viewer 并重建其连接。为支持浏览器有时返回音频、有时不返回，初始 offer 可以预留 send-only audio transceiver，再将 audio sender 在 `null` 与真实 track 间替换。新的 `getDisplayMedia()` 仍必须由用户手势触发并重新选源，取消选择时旧流应继续工作。
 
-游戏轨建议设置：
+游戏轨不覆盖 display-capture 的内容分类：
 
 ```js
-track.contentHint = "motion";
-
 const parameters = sender.getParameters();
 parameters.encodings ??= [{}];
 parameters.encodings[0].maxFramerate = 60;
@@ -162,7 +160,7 @@ parameters.degradationPreference = "balanced";
 await sender.setParameters(parameters);
 ```
 
-这些参数是偏好或上限，不能绕过浏览器拥塞控制，也不能保证目标码率。`balanced` 允许浏览器在分辨率和帧率之间权衡，但不规定具体算法；本项目的 `contentHint = "motion"` 还会影响 Chromium/libwebrtc 对来源的内部分类，因此不能套用其仅限 screen encoder 的 `maintain-resolution` 重解释。当前源码链与测量要求见 [Realtime quality adaptation](./realtime-quality-adaptation.md)。静态画面通常能降低编码数据量，但规范不保证所有浏览器主动降低捕获频率或 GPU 开销。
+这些参数是偏好或上限，不能绕过浏览器拥塞控制，也不能保证目标码率。`balanced` 允许浏览器在分辨率和帧率之间权衡，但不规定具体算法；视频 track 不设置 `contentHint`，让 Chromium/libwebrtc 保留 display capture 的 screen 分类。当前源码链与测量要求见 [Realtime quality adaptation](./realtime-quality-adaptation.md)。静态画面通常能降低编码数据量，但规范不保证所有浏览器主动降低捕获频率或 GPU 开销。
 
 因此首版不实现画面差分检测、周期性 `applyConstraints()` 或自定义动态 FPS 状态机。先对静态桌面和高动态游戏分别记录 `framesEncoded`、发送码率、`totalEncodeTime / framesEncoded`、`qualityLimitationReason` 及主机 CPU/GPU 占用；只有测量显示浏览器行为留下显著问题时，再设计最小的控制策略。这避免用额外竞态、计时器和画质跳变解决一个可能已由捕获器、编码器和 WebRTC 拥塞控制处理的问题。
 
