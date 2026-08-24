@@ -1046,7 +1046,8 @@ describe("SfuPublisher", () => {
       maxFramerate: 60,
       degradationPreference: "maintain-resolution",
     });
-    expect(publisher.getQualityWarning()).toContain("preference save failed");
+    expect(publisher.getQualityWarning()).toContain("应用 SFU 发送参数失败");
+    expect(publisher.getQualityWarning()).not.toContain("preference save failed");
   });
 
   it("does not retain an update from a disconnected publisher generation", async () => {
@@ -1196,9 +1197,8 @@ describe("SfuPublisher", () => {
         }),
       ],
     });
-    expect(publisher.getQualityWarning()).toBe(
-      "应用 SFU 发送参数失败：unsupported",
-    );
+    expect(publisher.getQualityWarning()).toBe("应用 SFU 发送参数失败");
+    expect(publisher.getQualityWarning()).not.toContain("unsupported");
   });
 
   it("retains a LOW rewrite warning after rolling back sender parameters", async () => {
@@ -1234,9 +1234,8 @@ describe("SfuPublisher", () => {
       applied: { maxBitrate: 8_000_000 },
       mismatches: [],
     });
-    expect(publisher.getQualityWarning()).toContain(
-      "应用 SFU 发送参数失败：unsupported",
-    );
+    expect(publisher.getQualityWarning()).toContain("应用 SFU 发送参数失败");
+    expect(publisher.getQualityWarning()).not.toContain("unsupported");
     expect(publisher.getQualityWarning()).toContain("低档表示");
     expect(publisher.getQualityWarning()).toContain("码率上限");
   });
@@ -1318,8 +1317,9 @@ describe("SfuPublisher", () => {
     expect(localTrack.currentTrack).toBe(previousVideo);
     expect(localTrack.sender.setParameters).toHaveBeenCalledTimes(3);
     expect(publisher.getSenderParameters()?.applied.maxBitrate).toBe(8_000_000);
-    expect(publisher.getQualityWarning()).toBe(
-      "切换 SFU 分享来源失败：replacement parameters rejected",
+    expect(publisher.getQualityWarning()).toBe("切换 SFU 分享来源失败");
+    expect(publisher.getQualityWarning()).not.toContain(
+      "replacement parameters rejected",
     );
   });
 
@@ -1360,6 +1360,63 @@ describe("SfuPublisher", () => {
 });
 
 describe("SfuSubscriber", () => {
+  it("uses cumulative frames for a fresh exact subscriber and growth after rearm", async () => {
+    vi.useFakeTimers();
+    let framesDecoded = 1;
+    const proofs: number[] = [];
+    const subscriber = new SfuSubscriber({
+      onStream: vi.fn(),
+      onFirstDecodedFrame: () => {
+        proofs.push(framesDecoded);
+        return true;
+      },
+    });
+    await subscriber.connect(connection);
+    const room = livekit.state.rooms[0];
+    const host = new livekit.FakeRemoteParticipant("host");
+    const publication = new livekit.FakeRemotePublication(
+      "host-video",
+      Track.Source.ScreenShare,
+    );
+    host.add(publication);
+    room.remoteParticipants.set("host", host);
+    expect(subscriber.activate()).toBe(true);
+    subscriber.armDecodedFrameProof();
+    const video = track("video", "video-1");
+    room.emit(
+      RoomEvent.TrackSubscribed,
+      remoteTrack(video, () =>
+        statsReport([
+          {
+            id: "video-in",
+            type: "inbound-rtp",
+            timestamp: 1_000,
+            kind: "video",
+            framesDecoded,
+          },
+        ]),
+      ),
+      publication,
+      host,
+    );
+    await vi.waitFor(() => expect(proofs).toEqual([1]));
+
+    proofs.length = 0;
+    framesDecoded = 7;
+    subscriber.armDecodedFrameProof(true);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(proofs).toEqual([]);
+    framesDecoded = 8;
+    await vi.advanceTimersByTimeAsync(300);
+    expect(proofs).toEqual([8]);
+
+    subscriber.deactivate();
+    framesDecoded = 9;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(proofs).toEqual([8]);
+  });
+
   it("reconciles a Host publication announced while connect is pending", async () => {
     const gate = deferred();
     livekit.state.connectGate = gate.promise;

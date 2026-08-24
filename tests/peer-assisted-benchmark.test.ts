@@ -1,19 +1,25 @@
 import { runInNewContext } from "node:vm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   activeVideoEdgeCount,
+  buildBenchmarkFailureEvidence,
   buildBenchmarkInitScript,
   buildRecoveryCheck,
+  buildRouteTimingCheck,
   buildRunChecks,
   captureRecoveryViewerBaselines,
+  createPage,
   everyViewerAdvanced,
   everyViewerRecoveredMedia,
+  joinViewerBurst,
   mergeRecoveryHostPeaks,
   parseBenchmarkCanaryMode,
   parseBenchmarkConfig,
   parseExpectedEndpointCap,
   parseViewerCounts,
+  sanitizeFailurePageEvidence,
+  summarizeBenchmarkRouteTiming,
   summarizeSamples,
 } from "../scripts/peer-assisted-benchmark";
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol";
@@ -28,6 +34,19 @@ const lowQualitySettings = {
   maxBitrate: 3_000_000,
   degradationPreference: "maintain-resolution",
 } as const;
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 function page(
   role: "host" | "viewer",
@@ -59,11 +78,6 @@ function page(
       ),
       sfuPublicationGeneration: null as string | null,
     },
-    activeRouteReady: [] as Array<{
-      revision: number;
-      upstreamKind: ParticipantRouteAssignment["upstream"]["kind"];
-      sfuPublicationGeneration: string | null;
-    }>,
     firstDecodedAtEpochMs: role === "viewer" ? 1_500 : null,
     firstRenderedAtEpochMs: role === "viewer" ? 1_550 : null,
     renderedFrames: role === "viewer" ? 10 : 0,
@@ -71,8 +85,8 @@ function page(
       ...Array.from({ length: sendEdges }, (_, index) => ({
         index,
         createdAtEpochMs: 1_000,
-        connectionId: `send-${index}`,
-        remotePeerId: `child-${index}`,
+        connectionId: `send-${index}` as string | null,
+        remotePeerId: `child-${index}` as string | null,
         connectionState: "connected",
         iceConnectionState: "connected",
         hasOutboundVideo: true,
@@ -103,12 +117,15 @@ function page(
 }
 
 class FakeWebSocket {
+  readonly sent: string[] = [];
   private readonly listeners = new Map<
     string,
     Array<(event: { data?: string }) => void>
   >();
 
-  send(_data: string): void {}
+  send(data: string): void {
+    this.sent.push(data);
+  }
 
   addEventListener(
     type: string,
@@ -137,15 +154,13 @@ interface ObserverSnapshot {
   signalingConnected: boolean;
   routeRevision: number | null;
   routeAssignment: ParticipantRouteAssignment | null;
-  activeRouteReady: Array<{
-    revision: number;
-    upstreamKind: ParticipantRouteAssignment["upstream"]["kind"];
-    sfuPublicationGeneration: string | null;
-  }>;
   maxAssignedChildren: number;
 }
 
-function createObserverHarness(expectedEndpointCap = 2) {
+function createObserverHarness(
+  expectedEndpointCap = 2,
+  role: "host" | "viewer" = "host",
+) {
   const context: Record<string, unknown> = {
     WebSocket: FakeWebSocket,
     RTCPeerConnection: class FakePeerConnection {},
@@ -158,9 +173,9 @@ function createObserverHarness(expectedEndpointCap = 2) {
     queueMicrotask,
   };
   const source = buildBenchmarkInitScript({
-    label: "host-1",
-    role: "host",
-    viewerIndex: null,
+    label: role === "host" ? "host-1" : "viewer-1",
+    role,
+    viewerIndex: role === "viewer" ? 1 : null,
     clearHostRoom: false,
     width: 1280,
     height: 720,
@@ -175,20 +190,32 @@ function createObserverHarness(expectedEndpointCap = 2) {
   const api = context.__SCREENER_BENCHMARK__ as {
     snapshot: () => ObserverSnapshot;
     canarySnapshot: () => Record<string, unknown>;
+    requestRouteDiagnosticSnapshot: () => boolean;
+    routeDiagnosticTimingSamples: () => Record<
+      string,
+      Array<number | null>
+    > | null;
   };
   return {
     socket: () => new WebSocketConstructor(),
     snapshot: () => structuredClone(api.snapshot()),
     canarySnapshot: () => structuredClone(api.canarySnapshot()),
+    requestRouteDiagnosticSnapshot: () =>
+      api.requestRouteDiagnosticSnapshot(),
+    routeDiagnosticTimingSamples: () =>
+      structuredClone(api.routeDiagnosticTimingSamples()),
   };
 }
 
-function authenticate(socket: FakeWebSocket): void {
+function authenticate(
+  socket: FakeWebSocket,
+  role: "host" | "viewer" = "host",
+): void {
   socket.send(
     JSON.stringify({
       type: "authenticate",
       roomId: "1",
-      role: "host",
+      role,
     }),
   );
 }
@@ -204,28 +231,39 @@ function routeAssignment(
   };
 }
 
-function markActiveRouteReady(observation: ReturnType<typeof page>): void {
-  if (observation.routeRevision === null) {
-    throw new Error("An active route revision is required");
+function markSfuMedia(observation: ReturnType<typeof page>): void {
+  const connection = observation.connections.find((candidate) =>
+    observation.role === "host"
+      ? candidate.hasOutboundVideo
+      : candidate.hasInboundVideo,
+  );
+  if (!connection) {
+    throw new Error("An SFU media connection is required");
   }
-  observation.activeRouteReady.push({
-    revision: observation.routeRevision,
-    upstreamKind: observation.routeAssignment.upstream.kind,
-    sfuPublicationGeneration:
-      observation.routeAssignment.sfuPublicationGeneration,
-  });
+  connection.connectionId = null;
+  connection.remotePeerId = null;
 }
 
 describe("peer topology loopback configuration", () => {
   it("keeps the real-relay canary opt-in", () => {
     expect(parseBenchmarkCanaryMode(undefined)).toBe("none");
     expect(parseBenchmarkCanaryMode("viewer-mbb")).toBe("viewer-mbb");
-    expect(parseBenchmarkConfig({ CHROME_PATH: "chrome", BENCHMARK_CANARY: "viewer-mbb" }).canaryMode).toBe("viewer-mbb");
+    expect(parseBenchmarkConfig({
+      CHROME_PATH: "chrome",
+      BENCHMARK_CANARY: "viewer-mbb",
+      BENCHMARK_VIEWERS: "3",
+    }).canaryMode).toBe("viewer-mbb");
+    expect(() => parseBenchmarkConfig({
+      CHROME_PATH: "chrome",
+      BENCHMARK_CANARY: "viewer-mbb",
+    })).toThrow(/selected viewer count of 3/);
     expect(() => parseBenchmarkCanaryMode("signaling")).toThrow(/BENCHMARK_CANARY/);
   });
 
-  it("uses the bounded 1/3/5/8 matrix by default", () => {
-    expect(parseViewerCounts(undefined)).toEqual([1, 3, 5, 8]);
+  it("runs the exact 20-Viewer acceptance case by default", () => {
+    expect(parseViewerCounts(undefined)).toEqual([
+      MAX_VIEWERS_PER_ROOM_LIMIT,
+    ]);
   });
 
   it("deduplicates configured viewer counts without changing their order", () => {
@@ -241,6 +279,124 @@ describe("peer topology loopback configuration", () => {
     ).toThrow(
       new RegExp(`1 to ${MAX_VIEWERS_PER_ROOM_LIMIT}`),
     );
+  });
+
+  it("starts every Viewer join before waiting for burst media", async () => {
+    const creations = Array.from({ length: 3 }, () =>
+      createDeferred<string>(),
+    );
+    const media = Array.from({ length: 3 }, () => createDeferred<void>());
+    const creationStarts: number[] = [];
+    const mediaStarts: number[] = [];
+
+    const burst = joinViewerBurst(
+      3,
+      (viewerIndex) => {
+        creationStarts.push(viewerIndex);
+        return creations[viewerIndex - 1]!.promise;
+      },
+      (_viewer, viewerIndex) => {
+        mediaStarts.push(viewerIndex);
+        return media[viewerIndex - 1]!.promise;
+      },
+    );
+    expect(creationStarts).toEqual([1, 2, 3]);
+    expect(mediaStarts).toEqual([]);
+
+    creations[0]!.resolve("viewer-1");
+    creations[1]!.resolve("viewer-2");
+    await Promise.resolve();
+    expect(mediaStarts).toEqual([]);
+    creations[2]!.resolve("viewer-3");
+    await vi.waitFor(() => expect(mediaStarts).toEqual([1, 2, 3]));
+
+    media[2]!.resolve();
+    media[0]!.resolve();
+    media[1]!.resolve();
+    await expect(burst).resolves.toEqual([
+      "viewer-1",
+      "viewer-2",
+      "viewer-3",
+    ]);
+  });
+
+  it("summarizes all four route timing keys without a pass threshold", () => {
+    const values = Array.from({ length: 20 }, (_, index) =>
+      index % 5 === 0 ? null : (20 - index) * 10,
+    );
+    const summary = summarizeBenchmarkRouteTiming({
+      queueWaitMs: values,
+      candidateStartMs: values,
+      firstDecodedFrameMs: values,
+      finalMs: values,
+    });
+
+    for (const timing of Object.values(summary)) {
+      expect(timing).toEqual({
+        sampleCount: 16,
+        pendingCount: 4,
+        rawMs: [
+          10, 20, 30, 40, 60, 70, 80, 90, 110, 120, 130, 140, 160,
+          170, 180, 190,
+        ],
+        p50Ms: 90,
+        p95Ms: 190,
+        maxMs: 190,
+      });
+      expect(Object.keys(timing)).not.toContain("passed");
+    }
+    expect(buildRouteTimingCheck("captured", summary)).toMatchObject({
+      passed: true,
+      actual: 4,
+    });
+    expect(buildRouteTimingCheck("unavailable", summary).passed).toBe(false);
+
+    const incomplete = {
+      ...summary,
+      finalMs: { ...summary.finalMs, pendingCount: 3 },
+    };
+    expect(buildRouteTimingCheck("captured", incomplete)).toMatchObject({
+      passed: false,
+      actual: 3,
+    });
+  });
+
+  it("closes the exact CDP target when page initialization fails", async () => {
+    const call = vi.fn(
+      async (method: string): Promise<Record<string, unknown>> => {
+        if (method === "Target.createTarget") {
+          return { targetId: "target-viewer-17" };
+        }
+        if (method === "Target.attachToTarget") {
+          return { sessionId: "session-viewer-17" };
+        }
+        if (method === "Page.navigate") {
+          return { errorText: "navigation rejected" };
+        }
+        return {};
+      },
+    );
+
+    await expect(
+      createPage(
+        { call } as unknown as Parameters<typeof createPage>[0],
+        "http://127.0.0.1:3000/r/1234",
+        {
+          label: "viewer-17",
+          role: "viewer",
+          viewerIndex: 17,
+          clearHostRoom: false,
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          expectedEndpointCap: 2,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("Navigation failed: navigation rejected");
+    expect(call).toHaveBeenCalledWith("Target.closeTarget", {
+      targetId: "target-viewer-17",
+    });
   });
 
   it("requires recovery to target one selected case", () => {
@@ -291,6 +447,204 @@ describe("peer topology loopback configuration", () => {
 });
 
 describe("peer topology loopback observations", () => {
+  it("bounds failure evidence and removes media-path identifiers and raw errors", () => {
+    const unsafe = page("viewer", "viewer-11", 0, 1);
+    unsafe.roomId = "room-secret";
+    unsafe.peerId = "peer-secret";
+    unsafe.routeAssignment.upstream = {
+      kind: "peer",
+      peerId: "parent-secret",
+    };
+    unsafe.connections = Array.from({ length: 9 }, (_, index) => ({
+      ...structuredClone(unsafe.connections[0]!),
+      index,
+      connectionId: `connection-secret-${index}`,
+      remotePeerId: `remote-secret-${index}`,
+      error: `private-error-${index}`,
+    }));
+
+    const failure = buildBenchmarkFailureEvidence([unsafe], 21);
+    expect(failure).toMatchObject({
+      expectedPageCount: 21,
+      observedPageCount: 1,
+      pages: [
+        {
+          label: "viewer-11",
+          authenticated: true,
+          upstreamKind: "peer",
+          connectionCount: 9,
+        },
+      ],
+    });
+    expect(failure.pages[0]?.connections).toHaveLength(6);
+    expect(sanitizeFailurePageEvidence(unsafe)).toEqual(failure.pages[0]);
+    const serialized = JSON.stringify(failure);
+    for (const secret of [
+      "room-secret",
+      "peer-secret",
+      "parent-secret",
+      "connection-secret",
+      "remote-secret",
+      "private-error",
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+  });
+
+  it("requests one Host-only route snapshot and retains only timing samples", () => {
+    const observer = createObserverHarness();
+    const socket = observer.socket();
+    authenticate(socket);
+    socket.emitMessage({
+      type: "authenticated",
+      role: "host",
+      peerId: "host_peer_0001",
+      mediaMode: "peer-assisted",
+      routeRevision: 1,
+      routeAssignment: routeAssignment([]),
+      qualitySettings: lowQualitySettings,
+    });
+
+    expect(observer.requestRouteDiagnosticSnapshot()).toBe(true);
+    expect(observer.requestRouteDiagnosticSnapshot()).toBe(false);
+    expect(
+      socket.sent
+        .map((value) => JSON.parse(value) as { type?: string })
+        .filter((message) => message.type === "request-route-diagnostic"),
+    ).toHaveLength(1);
+
+    const children = Array.from(
+      { length: MAX_VIEWERS_PER_ROOM_LIMIT },
+      (_, index) => ({
+        ordinal: index + 1,
+        ...(index === 0
+          ? {
+              peerId: "must_not_escape",
+              connectionId: "must_not_escape",
+            }
+          : {}),
+        queueWaitMs: index === 0 ? 30 : null,
+        candidateStartMs: index === 0 ? 50 : index === 1 ? 20 : null,
+        firstDecodedFrameMs: index === 0 ? 80 : null,
+        finalMs: index === 0 ? 90 : null,
+      }),
+    );
+    socket.emitMessage({
+      type: "route-diagnostic-snapshot",
+      snapshot: { children },
+    });
+
+    const timing = observer.routeDiagnosticTimingSamples();
+    expect(timing?.queueWaitMs).toHaveLength(MAX_VIEWERS_PER_ROOM_LIMIT);
+    expect(timing?.queueWaitMs.slice(0, 2)).toEqual([30, null]);
+    expect(timing?.candidateStartMs.slice(0, 2)).toEqual([50, 20]);
+    expect(timing?.firstDecodedFrameMs.slice(0, 2)).toEqual([80, null]);
+    expect(timing?.finalMs.slice(0, 2)).toEqual([90, null]);
+    expect(
+      JSON.stringify(observer.routeDiagnosticTimingSamples()),
+    ).not.toContain("must_not_escape");
+  });
+
+  it("captures a partial failure snapshot without satisfying exact 20", () => {
+    const observer = createObserverHarness();
+    const socket = observer.socket();
+    authenticate(socket);
+    socket.emitMessage({
+      type: "authenticated",
+      role: "host",
+      peerId: "host_peer_0001",
+      mediaMode: "peer-assisted",
+      routeRevision: 1,
+      routeAssignment: routeAssignment([]),
+      qualitySettings: lowQualitySettings,
+    });
+    expect(observer.requestRouteDiagnosticSnapshot()).toBe(true);
+    socket.emitMessage({
+      type: "route-diagnostic-snapshot",
+      snapshot: {
+        children: Array.from(
+          { length: MAX_VIEWERS_PER_ROOM_LIMIT - 1 },
+          (_, index) => ({
+            ordinal: index + 1,
+            queueWaitMs: null,
+            candidateStartMs: null,
+            firstDecodedFrameMs: null,
+            finalMs: null,
+          }),
+        ),
+      },
+    });
+    const timing = observer.routeDiagnosticTimingSamples();
+    expect(timing?.queueWaitMs).toHaveLength(
+      MAX_VIEWERS_PER_ROOM_LIMIT - 1,
+    );
+    expect(
+      buildRouteTimingCheck(
+        "captured",
+        summarizeBenchmarkRouteTiming(
+          timing as Parameters<typeof summarizeBenchmarkRouteTiming>[0],
+        ),
+      ).passed,
+    ).toBe(false);
+  });
+
+  it("does not expose the route diagnostic request on a Viewer page", () => {
+    const observer = createObserverHarness(2, "viewer");
+    const socket = observer.socket();
+    authenticate(socket, "viewer");
+    socket.emitMessage({
+      type: "authenticated",
+      role: "viewer",
+      peerId: "viewer_peer_0001",
+      mediaMode: "peer-assisted",
+      routeRevision: 1,
+      routeAssignment: {
+        upstream: { kind: "peer", peerId: "host_peer_0001" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      },
+      qualitySettings: lowQualitySettings,
+    });
+
+    expect(observer.requestRouteDiagnosticSnapshot()).toBe(false);
+    expect(
+      socket.sent
+        .map((value) => JSON.parse(value) as { type?: string })
+        .some((message) => message.type === "request-route-diagnostic"),
+    ).toBe(false);
+  });
+
+  it.each([
+    ["an SFU upstream without a generation", { kind: "sfu" }, null],
+    [
+      "a peer upstream with a generation",
+      { kind: "peer", peerId: "host_peer_0001" },
+      "publication_generation_12345678",
+    ],
+  ])("rejects %s in the v9 route observer", (_label, upstream, generation) => {
+    const observer = createObserverHarness(2, "viewer");
+    const socket = observer.socket();
+    authenticate(socket, "viewer");
+    socket.emitMessage({
+      type: "authenticated",
+      role: "viewer",
+      peerId: "viewer_peer_0001",
+      mediaMode: "peer-assisted",
+      routeRevision: 1,
+      routeAssignment: {
+        upstream,
+        childPeerIds: [],
+        sfuPublicationGeneration: generation,
+      },
+      qualitySettings: lowQualitySettings,
+    });
+
+    expect(observer.snapshot()).toMatchObject({
+      routeRevision: null,
+      routeAssignment: null,
+    });
+  });
+
   it("counts only active media connections in the requested direction", () => {
     const host = page("host", "host", 2, 0);
     host.connections[0]!.connectionState = "closed";
@@ -457,8 +811,10 @@ describe("peer topology loopback observations", () => {
       "publication_generation_12345678";
     initial[1]!.routeRevision = 7;
     initial[1]!.routeAssignment.upstream = { kind: "sfu" };
-    markActiveRouteReady(initial[0]!);
-    markActiveRouteReady(initial[1]!);
+    initial[1]!.routeAssignment.sfuPublicationGeneration =
+      "publication_generation_12345678";
+    markSfuMedia(initial[0]!);
+    markSfuMedia(initial[1]!);
 
     const final = structuredClone(initial);
     final[1]!.connections[0]!.receiveTotals!.framesTotal = 20;
@@ -512,9 +868,10 @@ describe("peer topology loopback observations", () => {
     for (const root of [firstRoot, secondRoot]) {
       root.routeRevision = 7;
       root.routeAssignment.upstream = { kind: "sfu" };
+      root.routeAssignment.sfuPublicationGeneration = generation;
     }
     for (const participant of [host, firstRoot, secondRoot]) {
-      markActiveRouteReady(participant);
+      markSfuMedia(participant);
     }
 
     const initial = [host, direct, firstRoot, secondRoot];
@@ -548,7 +905,8 @@ describe("peer topology loopback observations", () => {
     const thirdRoot = page("viewer", "viewer-4", 0, 1);
     thirdRoot.routeRevision = 7;
     thirdRoot.routeAssignment.upstream = { kind: "sfu" };
-    markActiveRouteReady(thirdRoot);
+    thirdRoot.routeAssignment.sfuPublicationGeneration = generation;
+    markSfuMedia(thirdRoot);
     const threeRootInitial = [...structuredClone(initial), thirdRoot];
     const threeRootFinal = structuredClone(threeRootInitial);
     for (const viewer of threeRootFinal.slice(1)) {
@@ -602,8 +960,8 @@ describe("peer topology loopback observations", () => {
       initial[1]!.routeRevision = viewerRevision;
       initial[1]!.routeAssignment.upstream = { kind: "sfu" };
       initial[1]!.routeAssignment.sfuPublicationGeneration = viewerGeneration;
-      markActiveRouteReady(initial[0]!);
-      markActiveRouteReady(initial[1]!);
+      markSfuMedia(initial[0]!);
+      markSfuMedia(initial[1]!);
       const final = structuredClone(initial);
       final[1]!.connections[0]!.receiveTotals!.framesTotal = 20;
       return summarizeSamples(
@@ -648,13 +1006,15 @@ describe("peer topology loopback observations", () => {
       "publication_generation_12345678";
     initial[1]!.routeRevision = 7;
     initial[1]!.routeAssignment.upstream = { kind: "sfu" };
+    initial[1]!.routeAssignment.sfuPublicationGeneration =
+      "publication_generation_12345678";
     initial[2]!.routeRevision = 6;
     initial[2]!.routeAssignment.upstream = {
       kind: "peer",
       peerId: initial[1]!.peerId,
     };
-    markActiveRouteReady(initial[0]!);
-    markActiveRouteReady(initial[1]!);
+    markSfuMedia(initial[0]!);
+    markSfuMedia(initial[1]!);
 
     const final = structuredClone(initial);
     final[1]!.connections.at(-1)!.receiveTotals!.framesTotal = 20;
@@ -682,7 +1042,9 @@ describe("peer topology loopback observations", () => {
       "publication_generation_12345678";
     initial[1]!.routeRevision = 7;
     initial[1]!.routeAssignment.upstream = { kind: "sfu" };
-    markActiveRouteReady(initial[0]!);
+    initial[1]!.routeAssignment.sfuPublicationGeneration =
+      "publication_generation_12345678";
+    markSfuMedia(initial[0]!);
 
     const final = structuredClone(initial);
     final[1]!.connections[0]!.receiveTotals!.framesTotal = 20;
@@ -1001,20 +1363,6 @@ describe("peer topology loopback observations", () => {
       maxAssignedChildren: 2,
     });
 
-    owner.send(
-      JSON.stringify({ type: "route-ready", revision: 5, phase: "active" }),
-    );
-    outsider.send(
-      JSON.stringify({ type: "route-ready", revision: 5, phase: "active" }),
-    );
-    expect(observer.snapshot().activeRouteReady).toEqual([
-      {
-        revision: 5,
-        upstreamKind: "none",
-        sfuPublicationGeneration: "publication_generation_12345678",
-      },
-    ]);
-
     owner.emitMessage({
       type: "route-update",
       revision: 5,
@@ -1081,7 +1429,6 @@ describe("peer topology loopback observations", () => {
       signalingConnected: false,
       routeRevision: 4,
       routeAssignment: assignment,
-      activeRouteReady: [],
     });
     current.emitMessage({
       type: "authenticated",

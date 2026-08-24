@@ -32,6 +32,7 @@ describe("Host stage entry layout", () => {
     const row = open.match(/<div class="entry-actions">([\s\S]*?)<\/div>/)?.[1];
     expect(row).toContain("开始分享");
     expect(row).toContain("加入房间");
+    expect(open).toContain('title="输入房间号加入观看"');
     expect(row).not.toContain('class="room-code-entry');
     expect(row).not.toContain("<form");
     expect(open).toContain('aria-expanded="true"');
@@ -47,7 +48,10 @@ describe("Host stage entry layout", () => {
       /\.entry-actions\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 24px minmax\(0, 1fr\);[\s\S]*?width:\s*min\(520px, calc\(100% - 20px\)\);/,
     );
     expect(css).toMatch(
-      /\.entry-action\s*\{[\s\S]*?min-height:\s*44px;/,
+      /\.stage-entry\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*minmax\(0, 1fr\) 44px minmax\(0, 1fr\);/,
+    );
+    expect(css).toMatch(
+      /\.entry-action\s*\{[\s\S]*?height:\s*44px;[\s\S]*?min-height:\s*44px;/,
     );
     expect(css).toMatch(
       /\.room-code-entry\.is-inline\s*\{[\s\S]*?width:\s*min\(520px, calc\(100% - 20px\)\);[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 44px;/,

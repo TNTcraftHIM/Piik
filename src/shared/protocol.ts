@@ -7,6 +7,12 @@ export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
 export const SIGNALING_PROTOCOL = "screener-v9";
+export const SIGNAL_CLOSE_CODES = {
+  sessionReplaced: 4001,
+  clientReconnect: 4002,
+  authenticationFailed: 4003,
+  viewerAccessRevoked: 4004,
+} as const;
 export const ROOM_CODE_LENGTH = 4;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
@@ -182,6 +188,85 @@ export type VideoCodecPreference = z.infer<
   typeof videoCodecPreferenceSchema
 >;
 
+export const codecTransitionGenerationSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(Number.MAX_SAFE_INTEGER);
+export type CodecTransitionGeneration = z.infer<
+  typeof codecTransitionGenerationSchema
+>;
+export const resumeAttemptSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(Number.MAX_SAFE_INTEGER);
+export type ResumeAttempt = z.infer<typeof resumeAttemptSchema>;
+export const codecPreparationBindingSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("peer"),
+      childPeerId: opaqueIdSchema,
+      connectionId: opaqueIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sfu"),
+      publicationGeneration: opaqueIdSchema,
+    })
+    .strict(),
+]);
+export type CodecPreparationBinding = z.infer<
+  typeof codecPreparationBindingSchema
+>;
+
+export const codecProofBindingSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("peer"),
+      connectionId: opaqueIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sfu"),
+      connectionId: opaqueIdSchema,
+      publicationGeneration: opaqueIdSchema,
+    })
+    .strict(),
+]);
+export type CodecProofBinding = z.infer<typeof codecProofBindingSchema>;
+
+const codecProofTimestampSchema = z
+  .number()
+  .finite()
+  .min(0)
+  .max(Number.MAX_SAFE_INTEGER);
+const codecProofIdentityStringSchema = z.string().min(1).max(512);
+export const codecProofEvidenceSchema = z
+  .object({
+    baselineSampleTimestampMs: codecProofTimestampSchema,
+    sampleTimestampMs: codecProofTimestampSchema,
+    rtpStatsId: codecProofIdentityStringSchema,
+    rtpSsrc: z.number().int().min(0).max(0xffff_ffff).nullable(),
+    rtpMid: codecProofIdentityStringSchema.nullable(),
+    rtpRid: codecProofIdentityStringSchema.nullable(),
+    trackIdentifier: codecProofIdentityStringSchema.nullable(),
+    framesDecodedDelta: z.number().int().min(1).max(10_000),
+    actualCodec: z.enum(["h264", "vp8", "other"]),
+  })
+  .strict()
+  .refine(
+    (evidence) =>
+      evidence.sampleTimestampMs > evidence.baselineSampleTimestampMs,
+    {
+      message: "Codec proof sample must follow its decoded-frame baseline",
+      path: ["sampleTimestampMs"],
+    },
+  );
+export type CodecProofEvidence = z.infer<typeof codecProofEvidenceSchema>;
+
 export const screenAudioQualitySchema = z.enum([
   "saver",
   "music",
@@ -294,6 +379,7 @@ export const signalPayloadSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("description"),
       connectionId: opaqueIdSchema,
+      negotiationGeneration: codecTransitionGenerationSchema.nullable(),
       description: sessionDescriptionSchema,
     })
     .strict(),
@@ -312,6 +398,13 @@ export const preparedRouteCandidateSchema = z
     childPeerId: opaqueIdSchema,
     connectionId: opaqueIdSchema,
     transport: z.enum(["direct", "sfu"]),
+    codecTransition: z
+      .object({
+        generation: codecTransitionGenerationSchema,
+        videoCodec: videoCodecPreferenceSchema,
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 export type PreparedRouteCandidate = z.infer<
@@ -483,7 +576,29 @@ export const participantRouteAssignmentSchema = z
       .refine((peerIds) => new Set(peerIds).size === peerIds.length),
     sfuPublicationGeneration: sfuPublicationGenerationSchema.nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((assignment, context) => {
+    if (
+      assignment.upstream.kind === "sfu" &&
+      assignment.sfuPublicationGeneration === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "An SFU upstream requires its publication generation",
+        path: ["sfuPublicationGeneration"],
+      });
+    }
+    if (
+      assignment.upstream.kind === "peer" &&
+      assignment.sfuPublicationGeneration !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A peer upstream cannot own an SFU publication generation",
+        path: ["sfuPublicationGeneration"],
+      });
+    }
+  });
 export type ParticipantRouteAssignment = z.infer<
   typeof participantRouteAssignmentSchema
 >;
@@ -706,7 +821,48 @@ export const clientMessageSchema = z.union([
     .object({
       type: z.literal("set-sharing-paused"),
       shareGeneration: opaqueIdSchema,
-      paused: z.boolean(),
+      paused: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("request-sharing-resume"),
+      shareGeneration: opaqueIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("sharing-source-enabled"),
+      shareGeneration: opaqueIdSchema,
+      codecGeneration: codecTransitionGenerationSchema.nullable(),
+      resumeAttempt: resumeAttemptSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("request-video-codec-transition"),
+      shareGeneration: opaqueIdSchema,
+      videoCodec: videoCodecPreferenceSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("video-codec-prepared"),
+      shareGeneration: opaqueIdSchema,
+      generation: codecTransitionGenerationSchema,
+      binding: codecPreparationBindingSchema,
+      accepted: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("video-codec-proof"),
+      shareGeneration: opaqueIdSchema,
+      generation: codecTransitionGenerationSchema,
+      resumeAttempt: resumeAttemptSchema,
+      routeRevision: mediaRouteRevisionSchema,
+      binding: codecProofBindingSchema,
+      evidence: codecProofEvidenceSchema,
     })
     .strict(),
   z
@@ -870,6 +1026,63 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("quality-settings"),
       qualitySettings: qualitySettingsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("video-codec-prepare"),
+      shareGeneration: opaqueIdSchema,
+      generation: codecTransitionGenerationSchema,
+      videoCodec: videoCodecPreferenceSchema,
+      binding: codecPreparationBindingSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("video-codec-proof-request"),
+      shareGeneration: opaqueIdSchema,
+      generation: codecTransitionGenerationSchema,
+      resumeAttempt: resumeAttemptSchema,
+      routeRevision: mediaRouteRevisionSchema,
+      expectedCodec: z.enum(["h264", "vp8"]).nullable(),
+      binding: codecProofBindingSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("video-codec-result"),
+      generation: codecTransitionGenerationSchema,
+      videoCodec: videoCodecPreferenceSchema,
+      status: z.enum([
+        "prepared",
+        "committed",
+        "rollback-prepared",
+        "failed",
+      ]),
+      failure: z
+        .enum([
+          "preparation-failed",
+          "proof-failed",
+          "rollback-failed",
+          "stale-binding",
+        ])
+        .nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("sharing-resume-authorized"),
+      shareGeneration: opaqueIdSchema,
+      codecGeneration: codecTransitionGenerationSchema.nullable(),
+      resumeAttempt: resumeAttemptSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("pause-sharing-source"),
+      shareGeneration: opaqueIdSchema,
+      codecGeneration: codecTransitionGenerationSchema.nullable(),
+      resumeAttempt: resumeAttemptSchema.nullable(),
     })
     .strict(),
   z

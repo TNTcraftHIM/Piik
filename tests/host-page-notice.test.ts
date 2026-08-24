@@ -1,10 +1,60 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  hostActionErrorNotice,
+  hostServerErrorNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
+  VIDEO_CODEC_TRANSITION_FAILED_NOTICE,
   videoCodecLockNotice,
 } from "../src/client/pages/host-page-notices.ts";
+
+describe("host error notices", () => {
+  it("maps every server error code without exposing server text", () => {
+    const notices = {
+      AUTH_REQUIRED: "站点访问已失效，请重新验证",
+      INVALID_MESSAGE: "页面版本已更新，请刷新后重试",
+      INVALID_TOKEN: "分享凭证已失效，请重新创建房间",
+      ROOM_ACCESS_DENIED: "当前操作没有权限",
+      ROOM_EXPIRED: "房间已过期，请重新创建",
+      ROOM_FULL: "房间已满",
+      HOST_ALREADY_CONNECTED: "此房间已在另一个页面中分享",
+      PEER_NOT_FOUND: "对应的观看连接已经离开",
+      FORBIDDEN: "当前操作不可用",
+      SERVER_ERROR: "服务暂时不可用，请稍后重试",
+    } as const;
+
+    for (const [code, notice] of Object.entries(notices)) {
+      expect(
+        hostServerErrorNotice(code as keyof typeof notices),
+      ).toBe(notice);
+      expect(notice).not.toContain("server-internal-sentinel");
+    }
+  });
+
+  it("uses stable action messages instead of arbitrary exception text", () => {
+    const sentinel = new Error("browser-internal-sentinel");
+    expect(hostActionErrorNotice(sentinel, "quality")).toBe(
+      "应用画质设置失败",
+    );
+    expect(hostActionErrorNotice(sentinel, "connection")).toBe(
+      "观看连接处理失败",
+    );
+    expect(hostActionErrorNotice(sentinel, "room")).toBe("房间操作失败");
+    expect(hostActionErrorNotice(sentinel, "source")).toBe("切换分享来源失败");
+  });
+
+  it.each([
+    ["NotAllowedError", "屏幕选择已取消或没有共享权限"],
+    ["NotFoundError", "没有可用的屏幕分享来源"],
+    ["NotReadableError", "浏览器暂时无法读取所选分享来源"],
+    ["SecurityError", "当前页面无法启动屏幕分享"],
+  ])("maps capture DOMException %s", (name, notice) => {
+    expect(
+      hostActionErrorNotice(new DOMException("raw-browser-text", name), "capture"),
+    ).toBe(notice);
+  });
+});
 
 describe("shouldPauseLocalPreview", () => {
   it("distinguishes local preview suspension from active focus", () => {
@@ -47,15 +97,22 @@ describe("sourceSwitchNotice", () => {
 });
 
 describe("videoCodecLockNotice", () => {
-  it("explains why codec controls are locked during a share", () => {
-    expect(videoCodecLockNotice("starting")).toBe(
-      "本次分享的编码已锁定，停止分享后可修改",
+  it("exposes codec switching only after the active share is paused", () => {
+    expect(videoCodecLockNotice("starting", false)).toBe(
+      "分享开始后，暂停分享即可切换视频编码",
     );
-    expect(videoCodecLockNotice("live")).toBe(
-      "本次分享的编码已锁定，停止分享后可修改",
+    expect(videoCodecLockNotice("live", false)).toBe(
+      "暂停分享后可切换视频编码",
     );
+    expect(videoCodecLockNotice("live", true)).toBeNull();
     for (const phase of ["idle", "ended", "error"]) {
-      expect(videoCodecLockNotice(phase)).toBeNull();
+      expect(videoCodecLockNotice(phase, false)).toBeNull();
     }
+  });
+
+  it("keeps a failed codec transaction visible until sharing stops", () => {
+    expect(videoCodecLockNotice("live", true, "failed")).toBe(
+      VIDEO_CODEC_TRANSITION_FAILED_NOTICE,
+    );
   });
 });

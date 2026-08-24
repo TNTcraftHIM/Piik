@@ -565,6 +565,76 @@ describe("client signaling protocol", () => {
     ).toBe(false);
   });
 
+  it("requires one exact Resume attempt across authorization, ack, and proof", () => {
+    const sourceAck = {
+      type: "sharing-source-enabled",
+      shareGeneration: "share_generation_12345678",
+      codecGeneration: 4,
+      resumeAttempt: 9,
+    };
+    expect(clientMessageSchema.safeParse(sourceAck).success).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ ...sourceAck, resumeAttempt: undefined })
+        .success,
+    ).toBe(false);
+
+    const proof = {
+      type: "video-codec-proof",
+      shareGeneration: "share_generation_12345678",
+      generation: 4,
+      resumeAttempt: 9,
+      routeRevision: 7,
+      binding: { kind: "peer", connectionId: "connection_12345678" },
+      evidence: {
+        baselineSampleTimestampMs: 100,
+        sampleTimestampMs: 200,
+        rtpStatsId: "inbound_video_12345678",
+        rtpSsrc: 42,
+        rtpMid: "0",
+        rtpRid: null,
+        trackIdentifier: "track_12345678",
+        framesDecodedDelta: 1,
+        actualCodec: "h264",
+      },
+    };
+    expect(clientMessageSchema.safeParse(proof).success).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ ...proof, resumeAttempt: undefined })
+        .success,
+    ).toBe(false);
+
+    const authorization = {
+      type: "sharing-resume-authorized",
+      shareGeneration: "share_generation_12345678",
+      codecGeneration: 4,
+      resumeAttempt: 9,
+    };
+    expect(serverMessageSchema.safeParse(authorization).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authorization,
+        resumeAttempt: undefined,
+      }).success,
+    ).toBe(false);
+
+    const proofRequest = {
+      type: "video-codec-proof-request",
+      shareGeneration: "share_generation_12345678",
+      generation: 4,
+      resumeAttempt: 9,
+      routeRevision: 7,
+      expectedCodec: "h264",
+      binding: { kind: "peer", connectionId: "connection_12345678" },
+    };
+    expect(serverMessageSchema.safeParse(proofRequest).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...proofRequest,
+        resumeAttempt: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts only strict, bounded quality settings", () => {
     expect(
       clientMessageSchema.safeParse({
@@ -1244,9 +1314,37 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "direct",
+          codecTransition: null,
         },
       }).success,
     ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "route-update",
+        revision: 10,
+        phase: "prepare",
+        assignment,
+        candidate: {
+          childPeerId: "child_12345678",
+          connectionId: "connection_12345678",
+          transport: "sfu",
+          codecTransition: { generation: 4, videoCodec: "h264" },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "route-update",
+        revision: 10,
+        phase: "prepare",
+        assignment,
+        candidate: {
+          childPeerId: "child_12345678",
+          connectionId: "connection_12345678",
+          transport: "direct",
+        },
+      }).success,
+    ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         type: "sfu-config",
@@ -1309,10 +1407,17 @@ describe("server signaling protocol", () => {
           upstream,
           childPeerIds: [],
           sfuPublicationGeneration:
-            upstream.kind === "none" ? "generation_12345678" : null,
+            upstream.kind === "peer" ? null : "generation_12345678",
         }).success,
       ).toBe(true);
     }
+    expect(
+      participantRouteAssignmentSchema.safeParse({
+        upstream: { kind: "sfu" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts only canonical server-derived viewer evidence envelopes", () => {

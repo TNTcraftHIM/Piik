@@ -9,6 +9,7 @@ import WebSocket from "ws";
 import {
   MAX_VIEWERS_PER_ROOM_LIMIT,
   type ParticipantRouteAssignment,
+  type RouteDiagnosticSnapshot,
 } from "../src/shared/protocol";
 import {
   DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
@@ -29,11 +30,32 @@ import {
   type QualityProfileId,
   type QualitySettings,
 } from "../src/client/media/quality";
+import {
+  summarizeRouteTiming,
+  type RouteTimingDistribution,
+} from "../src/client/lib/diagnostic-export";
 
 const PROFILE_SETTINGS = QUALITY_PROFILES;
 type ProfileId = QualityProfileId;
 type PageRole = "host" | "viewer";
 export type BenchmarkCanaryMode = "none" | "viewer-mbb";
+
+const ROUTE_TIMING_KEYS = [
+  "queueWaitMs",
+  "candidateStartMs",
+  "firstDecodedFrameMs",
+  "finalMs",
+] as const satisfies readonly (keyof RouteDiagnosticSnapshot["children"][number])[];
+type RouteTimingKey = (typeof ROUTE_TIMING_KEYS)[number];
+export type BenchmarkRouteTimingSamples = {
+  [Key in RouteTimingKey]: Array<
+    RouteDiagnosticSnapshot["children"][number][Key]
+  >;
+};
+export type BenchmarkRouteTimingSummary = Record<
+  RouteTimingKey,
+  RouteTimingDistribution
+>;
 
 interface ViewerMbbCanaryResult {
   kind: "viewer-mbb";
@@ -83,12 +105,6 @@ interface ConnectionObservation {
   error?: string;
 }
 
-interface ActiveRouteReadyObservation {
-  revision: number;
-  upstreamKind: ParticipantRouteAssignment["upstream"]["kind"];
-  sfuPublicationGeneration: string | null;
-}
-
 interface PageObservation {
   label: string;
   role: PageRole;
@@ -101,13 +117,39 @@ interface PageObservation {
   qualitySettings: QualitySettings | null;
   routeRevision: number | null;
   routeAssignment: ParticipantRouteAssignment | null;
-  activeRouteReady: ActiveRouteReadyObservation[];
   maxActiveOutboundMediaEdges: number;
   maxAssignedChildren: number;
   firstDecodedAtEpochMs: number | null;
   firstRenderedAtEpochMs: number | null;
   renderedFrames: number;
   connections: ConnectionObservation[];
+}
+
+interface FailurePageEvidence {
+  label: string;
+  role: PageRole;
+  authenticated: boolean;
+  signalingConnected: boolean;
+  routeRevision: number | null;
+  upstreamKind: ParticipantRouteAssignment["upstream"]["kind"] | null;
+  assignedChildCount: number;
+  firstDecoded: boolean;
+  firstRendered: boolean;
+  connectionCount: number;
+  connections: Array<{
+    connectionState: string;
+    iceConnectionState: string;
+    identity: "peer" | "unidentified";
+    hasOutboundVideo: boolean;
+    hasInboundVideo: boolean;
+    decoded: boolean;
+  }>;
+}
+
+interface BenchmarkFailureEvidence {
+  expectedPageCount: number;
+  observedPageCount: number;
+  pages: FailurePageEvidence[];
 }
 
 interface TimedSample {
@@ -162,13 +204,16 @@ interface BenchmarkRun {
   status: "passed" | "failed";
   checks: RunCheck[];
   summary: ReturnType<typeof summarizeSamples> | null;
+  routeTimingSummary: BenchmarkRouteTimingSummary | null;
+  routeTimingStatus: "not-requested" | "captured" | "unavailable";
   samples: TimedSample[];
   recovery: RecoveryResult;
+  failureEvidence?: BenchmarkFailureEvidence;
   error?: string;
 }
 
 interface BenchmarkReport {
-  schemaVersion: 2;
+  schemaVersion: 3;
   startedAt: string;
   completedAt: string | null;
   gitCommit: string | null;
@@ -217,8 +262,10 @@ interface ManagedProcess {
   log: BoundedLog;
 }
 
-const DEFAULT_VIEWER_COUNTS = [1, 3, 5, 8];
 const MAX_VIEWERS = MAX_VIEWERS_PER_ROOM_LIMIT;
+const MAX_FAILURE_CONNECTIONS_PER_PAGE =
+  MAX_ENDPOINT_MEDIA_COPY_CAPACITY * 2;
+const DEFAULT_VIEWER_COUNTS = [MAX_VIEWERS];
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 class BoundedLog {
@@ -327,6 +374,73 @@ class CdpConnection {
   }
 }
 
+export function summarizeBenchmarkRouteTiming(
+  samples: BenchmarkRouteTimingSamples,
+): BenchmarkRouteTimingSummary {
+  return Object.fromEntries(
+    ROUTE_TIMING_KEYS.map((key) => [
+      key,
+      summarizeRouteTiming(samples[key]),
+    ]),
+  ) as BenchmarkRouteTimingSummary;
+}
+
+export function buildRouteTimingCheck(
+  status: BenchmarkRun["routeTimingStatus"],
+  summary: BenchmarkRouteTimingSummary | null,
+  expectedChildCount = MAX_VIEWERS,
+): RunCheck {
+  const completeDistributionCount =
+    status === "captured" && summary
+      ? ROUTE_TIMING_KEYS.filter((key) => {
+          const distribution = summary[key];
+          return (
+            distribution.sampleCount + distribution.pendingCount ===
+            expectedChildCount
+          );
+        }).length
+      : 0;
+  return {
+    name: "route-timing-current-children",
+    passed: completeDistributionCount === ROUTE_TIMING_KEYS.length,
+    actual: completeDistributionCount,
+    expected:
+      `${ROUTE_TIMING_KEYS.length} captured timing distributions with ` +
+      `${expectedChildCount} current-child sample or pending values each`,
+  };
+}
+
+export async function joinViewerBurst<T>(
+  viewerCount: number,
+  createViewer: (viewerIndex: number) => Promise<T>,
+  waitForMedia: (viewer: T, viewerIndex: number) => Promise<unknown>,
+): Promise<T[]> {
+  const creations = await Promise.allSettled(
+    Array.from({ length: viewerCount }, (_, index) =>
+      createViewer(index + 1),
+    ),
+  );
+  const creationFailure = creations.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (creationFailure) {
+    throw creationFailure.reason;
+  }
+  const viewers = creations.map(
+    (result) => (result as PromiseFulfilledResult<T>).value,
+  );
+  const media = await Promise.allSettled(
+    viewers.map((viewer, index) => waitForMedia(viewer, index + 1)),
+  );
+  const mediaFailure = media.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (mediaFailure) {
+    throw mediaFailure.reason;
+  }
+  return viewers;
+}
+
 export function parseViewerCounts(value: string | undefined): number[] {
   if (!value?.trim()) {
     return [...DEFAULT_VIEWER_COUNTS];
@@ -424,6 +538,11 @@ export function parseBenchmarkConfig(
     );
   }
   const canaryMode = parseBenchmarkCanaryMode(environment.BENCHMARK_CANARY);
+  if (canaryMode === "viewer-mbb" && !viewerCounts.includes(3)) {
+    throw new Error(
+      "BENCHMARK_CANARY=viewer-mbb requires a selected viewer count of 3",
+    );
+  }
   const recoveryText = environment.BENCHMARK_RECOVERY_VIEWERS?.trim();
   const recoveryViewerCount = recoveryText ? Number(recoveryText) : null;
   if (
@@ -516,6 +635,59 @@ export function activeVideoEdgeCount(
   }).length;
 }
 
+export function sanitizeFailurePageEvidence(
+  page: PageObservation,
+): FailurePageEvidence {
+  const connectionStates = new Set([
+    "new",
+    "connecting",
+    "connected",
+    "disconnected",
+    "failed",
+    "closed",
+  ]);
+  const iceConnectionStates = new Set([
+    "new",
+    "checking",
+    "connected",
+    "completed",
+    "disconnected",
+    "failed",
+    "closed",
+  ]);
+  return {
+    label: page.label,
+    role: page.role,
+    authenticated: page.peerId !== null,
+    signalingConnected: page.signalingConnected,
+    routeRevision: page.routeRevision,
+    upstreamKind: page.routeAssignment?.upstream.kind ?? null,
+    assignedChildCount: page.routeAssignment?.childPeerIds.length ?? 0,
+    firstDecoded: page.firstDecodedAtEpochMs !== null,
+    firstRendered: page.firstRenderedAtEpochMs !== null,
+    connectionCount: page.connections.length,
+    connections: page.connections
+      .slice(-MAX_FAILURE_CONNECTIONS_PER_PAGE)
+      .map((connection) => ({
+        connectionState: connectionStates.has(connection.connectionState)
+          ? connection.connectionState
+          : "unknown",
+        iceConnectionState: iceConnectionStates.has(
+          connection.iceConnectionState,
+        )
+          ? connection.iceConnectionState
+          : "unknown",
+        identity:
+          connection.connectionId !== null || connection.remotePeerId !== null
+            ? "peer"
+            : "unidentified",
+        hasOutboundVideo: connection.hasOutboundVideo,
+        hasInboundVideo: connection.hasInboundVideo,
+        decoded: (connection.receiveTotals?.framesTotal ?? 0) > 0,
+      })),
+  };
+}
+
 function hasAuthoritativeMediaUpstream(page: PageObservation): boolean {
   return (
     page.routeRevision !== null &&
@@ -541,6 +713,7 @@ function inspectSfuPublication(pages: readonly PageObservation[]) {
   );
   const publicationOwners = pages.filter(
     (page) =>
+      page.role === "host" &&
       typeof page.routeAssignment?.sfuPublicationGeneration === "string",
   );
   if (sfuViewers.length === 0) {
@@ -557,24 +730,36 @@ function inspectSfuPublication(pages: readonly PageObservation[]) {
   const host = publicationOwners[0]!;
   const hostRevision = host.routeRevision;
   const hostGeneration = host.routeAssignment?.sfuPublicationGeneration ?? null;
-  const hasMatchingActiveReady = (page: PageObservation): boolean =>
-    page.activeRouteReady.some(
-      (ready) =>
-        ready.revision === page.routeRevision &&
-        ready.upstreamKind === page.routeAssignment?.upstream.kind &&
-        ready.sfuPublicationGeneration ===
-          page.routeAssignment?.sfuPublicationGeneration,
-    );
+  const hasExactSfuMedia = (
+    page: PageObservation,
+    direction: "send" | "receive",
+  ): boolean =>
+    page.connections.some((connection) => {
+      const totals =
+        direction === "send"
+          ? connection.sendTotals
+          : connection.receiveTotals;
+      return (
+        connection.connectionId === null &&
+        connection.remotePeerId === null &&
+        connection.connectionState === "connected" &&
+        (direction === "send"
+          ? connection.hasOutboundVideo
+          : connection.hasInboundVideo) &&
+        totals !== null &&
+        typeof totals.framesTotal === "number" &&
+        totals.framesTotal > 0
+      );
+    });
   const coherent =
-    host.role === "host" &&
     hostRevision !== null &&
     hostGeneration !== null &&
     pages.every((page) => page.routeRevision === hostRevision) &&
-    hasMatchingActiveReady(host) &&
+    hasExactSfuMedia(host, "send") &&
     sfuViewers.every(
       (viewer) =>
-        viewer.routeAssignment?.sfuPublicationGeneration === null &&
-        hasMatchingActiveReady(viewer),
+        viewer.routeAssignment?.sfuPublicationGeneration === hostGeneration &&
+        hasExactSfuMedia(viewer, "receive"),
     );
   return { observed: true, rootCount: sfuViewers.length, coherent };
 }
@@ -973,7 +1158,6 @@ export function buildBenchmarkInitScript(options: {
       qualitySettings: null,
       routeRevision: null,
       routeAssignment: null,
-      activeRouteReady: [],
       maxActiveOutboundMediaEdges: 0,
       maxAssignedChildren: 0,
       firstDecodedAtEpochMs: null,
@@ -991,6 +1175,9 @@ export function buildBenchmarkInitScript(options: {
     let plannedRouteAssignment = null;
     const canary = { prepareUpdates: 0, activeUpdates: 0, routeFailed: 0 };
     const nativeSends = new WeakMap();
+    const routeTimingKeys = ${JSON.stringify(ROUTE_TIMING_KEYS)};
+    let routeDiagnosticRequested = false;
+    let routeTimingSamples = null;
 
     function isOpaqueId(value) {
       return typeof value === "string" &&
@@ -1017,7 +1204,11 @@ export function buildBenchmarkInitScript(options: {
         !value.childPeerIds.every(isOpaqueId) ||
         new Set(value.childPeerIds).size !== value.childPeerIds.length ||
         (value.sfuPublicationGeneration !== null &&
-          !isOpaqueId(value.sfuPublicationGeneration))
+          !isOpaqueId(value.sfuPublicationGeneration)) ||
+        (clonedUpstream.kind === "sfu" &&
+          value.sfuPublicationGeneration === null) ||
+        (clonedUpstream.kind === "peer" &&
+          value.sfuPublicationGeneration !== null)
       ) {
         return null;
       }
@@ -1103,6 +1294,33 @@ export function buildBenchmarkInitScript(options: {
       if (descriptions.length > 128) descriptions.shift();
     }
 
+    function sanitizeRouteTimingSamples(value) {
+      const children = value && typeof value === "object" &&
+        !Array.isArray(value) && Array.isArray(value.children)
+        ? value.children
+        : null;
+      if (!children || children.length > ${MAX_VIEWERS}) return null;
+      const samples = Object.fromEntries(
+        routeTimingKeys.map((key) => [key, []]),
+      );
+      for (const child of children) {
+        if (!child || typeof child !== "object" || Array.isArray(child)) {
+          return null;
+        }
+        for (const key of routeTimingKeys) {
+          const duration = child[key];
+          if (
+            duration !== null &&
+            (!Number.isSafeInteger(duration) || duration < 0)
+          ) {
+            return null;
+          }
+          samples[key].push(duration);
+        }
+      }
+      return samples;
+    }
+
     function handleSignalMessage(value, direction, socket) {
       if (typeof value !== "string") return;
       let message;
@@ -1111,7 +1329,6 @@ export function buildBenchmarkInitScript(options: {
       if (direction === "out" && message.type === "authenticate") {
         signalingSocket = socket;
         peerAssisted = false;
-        state.activeRouteReady = [];
         state.role = message.role;
         state.roomId = message.roomId;
         state.authenticateSentAtEpochMs = Date.now();
@@ -1120,22 +1337,6 @@ export function buildBenchmarkInitScript(options: {
         return;
       } else if (direction === "out" && message.type === "set-quality-settings") {
         state.qualitySettings = message.qualitySettings;
-      } else if (
-        direction === "out" &&
-        message.type === "route-ready" &&
-        message.phase === "active" &&
-        peerAssisted &&
-        Number.isSafeInteger(message.revision) &&
-        message.revision === state.routeRevision &&
-        state.routeAssignment
-      ) {
-        state.activeRouteReady.push({
-          revision: message.revision,
-          upstreamKind: state.routeAssignment.upstream.kind,
-          sfuPublicationGeneration:
-            state.routeAssignment.sfuPublicationGeneration,
-        });
-        if (state.activeRouteReady.length > 32) state.activeRouteReady.shift();
       } else if (direction === "out" && message.type === "route-failed") {
         canary.routeFailed += 1;
       }
@@ -1161,6 +1362,14 @@ export function buildBenchmarkInitScript(options: {
         acceptRouteUpdate(message.revision, message.phase, message.assignment);
       } else if (direction === "in" && message.type === "quality-settings") {
         state.qualitySettings = message.qualitySettings;
+      } else if (
+        direction === "in" &&
+        message.type === "route-diagnostic-snapshot" &&
+        state.role === "host" &&
+        routeDiagnosticRequested &&
+        routeTimingSamples === null
+      ) {
+        routeTimingSamples = sanitizeRouteTimingSamples(message.snapshot);
       }
       if (message.type === "signal") recordDescription(message, direction);
     }
@@ -1196,6 +1405,30 @@ export function buildBenchmarkInitScript(options: {
         nativeSend.call(socket, JSON.stringify(message));
         return true;
       } catch { return false; }
+    }
+
+    function requestRouteDiagnosticSnapshot() {
+      if (
+        state.role !== "host" ||
+        !state.signalingConnected ||
+        routeDiagnosticRequested
+      ) {
+        return false;
+      }
+      routeDiagnosticRequested = true;
+      if (sendCanaryMessage({ type: "request-route-diagnostic" })) {
+        return true;
+      }
+      routeDiagnosticRequested = false;
+      return false;
+    }
+
+    function routeDiagnosticTimingSamples() {
+      return routeTimingSamples
+        ? Object.fromEntries(
+            routeTimingKeys.map((key) => [key, [...routeTimingSamples[key]]]),
+          )
+        : null;
     }
 
     const NativePeerConnection = globalThis.RTCPeerConnection;
@@ -1384,7 +1617,6 @@ export function buildBenchmarkInitScript(options: {
       return {
         ...state,
         routeAssignment: cloneRouteAssignment(state.routeAssignment),
-        activeRouteReady: state.activeRouteReady.map((ready) => ({ ...ready })),
       };
     }
 
@@ -1441,7 +1673,7 @@ export function buildBenchmarkInitScript(options: {
     }
     Object.defineProperty(globalThis, "__SCREENER_BENCHMARK__", {
       configurable: false,
-      value: { sample, progress, snapshot, canarySnapshot, sendViewerQualityEvidence, stop: () => clearInterval(videoObserver) },
+      value: { sample, progress, snapshot, canarySnapshot, sendViewerQualityEvidence, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
     });
   })();`;
 }
@@ -1564,7 +1796,7 @@ async function evaluate<T>(
   return evaluation.result.value as T;
 }
 
-async function createPage(
+export async function createPage(
   cdp: CdpConnection,
   url: string,
   options: Parameters<typeof buildBenchmarkInitScript>[0],
@@ -1574,49 +1806,58 @@ async function createPage(
     url: "about:blank",
     background: false,
   });
-  const attached = await cdp.call<{ sessionId: string }>("Target.attachToTarget", {
-    targetId: created.targetId,
-    flatten: true,
-  });
-  const page: PageHandle = {
-    targetId: created.targetId,
-    sessionId: attached.sessionId,
-    label: options.label,
-  };
-  await Promise.all([
-    cdp.call("Page.enable", {}, page.sessionId),
-    cdp.call("Runtime.enable", {}, page.sessionId),
-  ]);
-  await cdp.call(
-    "Page.addScriptToEvaluateOnNewDocument",
-    { source: buildBenchmarkInitScript(options) },
-    page.sessionId,
-  );
-  const navigation = await cdp.call<{ errorText?: string }>(
-    "Page.navigate",
-    { url },
-    page.sessionId,
-  );
-  if (navigation.errorText) {
-    throw new Error(`Navigation failed: ${navigation.errorText}`);
+  try {
+    const attached = await cdp.call<{ sessionId: string }>(
+      "Target.attachToTarget",
+      { targetId: created.targetId, flatten: true },
+    );
+    const page: PageHandle = {
+      targetId: created.targetId,
+      sessionId: attached.sessionId,
+      label: options.label,
+    };
+    await Promise.all([
+      cdp.call("Page.enable", {}, page.sessionId),
+      cdp.call("Runtime.enable", {}, page.sessionId),
+    ]);
+    await cdp.call(
+      "Page.addScriptToEvaluateOnNewDocument",
+      { source: buildBenchmarkInitScript(options) },
+      page.sessionId,
+    );
+    const navigation = await cdp.call<{ errorText?: string }>(
+      "Page.navigate",
+      { url },
+      page.sessionId,
+    );
+    if (navigation.errorText) {
+      throw new Error(`Navigation failed: ${navigation.errorText}`);
+    }
+    await waitForPage(
+      cdp,
+      page,
+      "document.readyState === 'complete' && Boolean(globalThis.__SCREENER_BENCHMARK__)",
+      15_000,
+      "page initialization",
+      signal,
+    );
+    return page;
+  } catch (error) {
+    await closeTarget(cdp, created.targetId);
+    throw error;
   }
-  await waitForPage(
-    cdp,
-    page,
-    "document.readyState === 'complete' && Boolean(globalThis.__SCREENER_BENCHMARK__)",
-    15_000,
-    "page initialization",
-    signal,
-  );
-  return page;
 }
 
-async function closePage(cdp: CdpConnection, page: PageHandle): Promise<void> {
+async function closeTarget(cdp: CdpConnection, targetId: string): Promise<void> {
   try {
-    await cdp.call("Target.closeTarget", { targetId: page.targetId });
+    await cdp.call("Target.closeTarget", { targetId });
   } catch {
     // Browser shutdown and a prior recovery close make target cleanup idempotent.
   }
+}
+
+async function closePage(cdp: CdpConnection, page: PageHandle): Promise<void> {
+  await closeTarget(cdp, page.targetId);
 }
 
 async function waitForPage(
@@ -1671,6 +1912,35 @@ async function progressSample(
     cdp,
     page,
     "globalThis.__SCREENER_BENCHMARK__.progress()",
+  );
+}
+
+export function buildBenchmarkFailureEvidence(
+  pages: readonly PageObservation[],
+  expectedPageCount: number,
+): BenchmarkFailureEvidence {
+  return {
+    expectedPageCount,
+    observedPageCount: pages.length,
+    pages: pages.map(sanitizeFailurePageEvidence),
+  };
+}
+
+async function captureFailureEvidence(
+  cdp: CdpConnection,
+  pages: readonly PageHandle[],
+  expectedPageCount: number,
+): Promise<BenchmarkFailureEvidence> {
+  const observations = await Promise.allSettled(
+    pages
+      .slice(0, MAX_VIEWERS + 1)
+      .map((page) => progressSample(cdp, page)),
+  );
+  return buildBenchmarkFailureEvidence(
+    observations.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    ),
+    expectedPageCount,
   );
 }
 
@@ -1743,6 +2013,36 @@ async function waitForViewerMedia(
     await delay(100, signal);
   }
   throw new Error(`Timed out waiting for decoded media in ${page.label}`);
+}
+
+async function requestRouteTimingSummary(
+  cdp: CdpConnection,
+  hostPage: PageHandle,
+  timeoutMs: number,
+  signal: AbortSignal,
+): Promise<BenchmarkRouteTimingSummary> {
+  const requested = await evaluate<boolean>(
+    cdp,
+    hostPage,
+    "globalThis.__SCREENER_BENCHMARK__.requestRouteDiagnosticSnapshot()",
+  );
+  if (!requested) {
+    throw new Error("Host route diagnostic request was unavailable");
+  }
+  await waitForPage(
+    cdp,
+    hostPage,
+    "globalThis.__SCREENER_BENCHMARK__.routeDiagnosticTimingSamples() !== null",
+    timeoutMs,
+    "Host route diagnostic snapshot",
+    signal,
+  );
+  const samples = await evaluate<BenchmarkRouteTimingSamples>(
+    cdp,
+    hostPage,
+    "globalThis.__SCREENER_BENCHMARK__.routeDiagnosticTimingSamples()",
+  );
+  return summarizeBenchmarkRouteTiming(samples);
 }
 
 async function samplePages(
@@ -2366,6 +2666,8 @@ async function runCase(
   const pages: PageHandle[] = [];
   const samples: TimedSample[] = [];
   let recovery: RecoveryResult = { triggered: false };
+  let routeTimingSummary: BenchmarkRouteTimingSummary | null = null;
+  let routeTimingStatus: BenchmarkRun["routeTimingStatus"] = "not-requested";
   try {
     const capture = PROFILE_SETTINGS[config.profileId];
     const captureResolution = QUALITY_RESOLUTIONS[capture.resolution];
@@ -2399,21 +2701,41 @@ async function runCase(
     if (!viewerUrl.startsWith(`${baseUrl}/r/${roomId}#v=`)) {
       throw new Error("Host private Viewer invite was unavailable");
     }
-    for (let viewerIndex = 1; viewerIndex <= viewerCount; viewerIndex += 1) {
-      const viewerPage = await createPage(cdp, viewerUrl, {
-        ...commonInit,
-        label: `viewer-${viewerIndex}`,
-        role: "viewer",
-        viewerIndex,
-        clearHostRoom: false,
-      }, signal);
-      pages.push(viewerPage);
-      await waitForViewerMedia(
-        cdp,
-        viewerPage,
-        config.connectionTimeoutMs,
-        signal,
-      );
+    const viewerPages = await joinViewerBurst(
+      viewerCount,
+      async (viewerIndex) => {
+        const viewerPage = await createPage(cdp, viewerUrl, {
+          ...commonInit,
+          label: `viewer-${viewerIndex}`,
+          role: "viewer",
+          viewerIndex,
+          clearHostRoom: false,
+        }, signal);
+        pages.push(viewerPage);
+        return viewerPage;
+      },
+      (viewerPage) =>
+        waitForViewerMedia(
+          cdp,
+          viewerPage,
+          config.connectionTimeoutMs,
+          signal,
+        ),
+    );
+    pages.splice(1, pages.length - 1, ...viewerPages);
+    if (viewerCount === MAX_VIEWERS) {
+      routeTimingStatus = "unavailable";
+      try {
+        routeTimingSummary = await requestRouteTimingSummary(
+          cdp,
+          hostPage,
+          config.connectionTimeoutMs,
+          signal,
+        );
+        routeTimingStatus = "captured";
+      } catch {
+        routeTimingSummary = null;
+      }
     }
     if (config.settleMs > 0) {
       await delay(config.settleMs, signal);
@@ -2427,6 +2749,8 @@ async function runCase(
         status: canaryResult.status,
         checks: canaryChecks(canaryResult),
         summary: null,
+        routeTimingSummary,
+        routeTimingStatus,
         samples: [],
         recovery: { triggered: false },
       };
@@ -2451,6 +2775,11 @@ async function runCase(
       config.profileId,
       config.expectedEndpointCap,
     );
+    if (viewerCount === MAX_VIEWERS) {
+      checks.push(
+        buildRouteTimingCheck(routeTimingStatus, routeTimingSummary, viewerCount),
+      );
+    }
     if (config.qualityControlSmoke && viewerCount >= 3) {
       const qualityControl = await runQualityControlSmoke(
         cdp,
@@ -2500,19 +2829,60 @@ async function runCase(
       status: checks.every((check) => check.passed) ? "passed" : "failed",
       checks,
       summary,
+      routeTimingSummary,
+      routeTimingStatus,
       samples,
       recovery,
     };
   } catch (error) {
+    if (
+      viewerCount === MAX_VIEWERS &&
+      routeTimingStatus !== "captured" &&
+      pages[0]
+    ) {
+      routeTimingStatus = "unavailable";
+      try {
+        routeTimingSummary = await requestRouteTimingSummary(
+          cdp,
+          pages[0],
+          config.sampleIntervalMs,
+          signal,
+        );
+        routeTimingStatus = "captured";
+      } catch {
+        routeTimingSummary = null;
+      }
+    }
+    const failureEvidence = await captureFailureEvidence(
+      cdp,
+      pages,
+      viewerCount + 1,
+    ).catch(() => ({
+      expectedPageCount: viewerCount + 1,
+      observedPageCount: 0,
+      pages: [],
+    }));
     return {
       viewerCount,
       startedAt: new Date(startedAtMs).toISOString(),
       completedAt: new Date().toISOString(),
       status: "failed",
-      checks: [],
+      checks:
+        viewerCount === MAX_VIEWERS
+          ? [
+              buildRouteTimingCheck(
+                routeTimingStatus,
+                routeTimingSummary,
+                viewerCount,
+              ),
+            ]
+          : [],
       summary: samples.length > 0 ? summarizeSamples(samples, viewerCount) : null,
+      routeTimingSummary,
+      routeTimingStatus,
       samples,
       recovery,
+      failureEvidence,
       error: errorMessage(error),
     };
   } finally {
@@ -2560,7 +2930,7 @@ export async function main(): Promise<number> {
   const profile = PROFILE_SETTINGS[config.profileId];
   const profileResolution = QUALITY_RESOLUTIONS[profile.resolution];
   const report: BenchmarkReport = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     startedAt: new Date().toISOString(),
     completedAt: null,
     gitCommit: await gitCommit(),
@@ -2598,7 +2968,7 @@ export async function main(): Promise<number> {
     limitations: [
       "Synthetic canvas motion exercises real Chromium WebRTC but is not a game-capture quality claim.",
       "Headless runs are topology and transport evidence, not representative GPU or power evidence.",
-      "First-frame and recovery timing fields are diagnostics and never determine this loopback gate's status.",
+      "Timing values never determine this loopback gate's status; the exact 20-Viewer route snapshot and four complete current-child distributions are required without a duration threshold.",
       "CDP process CPU covers the isolated Chromium instance, not a specific Host or relay page; identity changes or counter resets make that interval unknown, and multicore utilization may exceed 100%.",
       "CDP SystemInfo exposes no resident-set field, so peakResidentSetBytes is null; GPU, NIC, glass-to-glass latency, generational visual quality, mobile browsers, and SFU require other measurement.",
       "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",

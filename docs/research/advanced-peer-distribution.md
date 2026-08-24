@@ -1,6 +1,6 @@
 # Advanced Peer Distribution
 
-- Research date: 2026-08-23
+- Research date: 2026-08-24
 - Scope: current route admission up to twenty trusted viewers, sub-second
   interactive media, endpoint downstream cap `1..3`, and minimal central-server
   media egress; retained advanced-media measurements may cover smaller cohorts
@@ -290,8 +290,14 @@ it exposes no topology choices. One reconcile loop handles join, waiting,
 disconnect, effective-capacity overflow, and failed edges. W3C
 `framesDecoded` counts successfully decoded video frames, so the first new
 candidate frame is the only application readiness event. LiveKit owns SFU
-reconnection and stream state; the application adds no network-type poll or
-SFU-specific timer.
+reconnection and stream state. The one pending candidate's receive-transport
+owner therefore uses a short-lived exact-generation stats observer until a
+fresh peer/SFU activation has a positive cumulative count; a prepared SFU route
+that remained alive while paused instead takes a Resume-time baseline and waits
+for later progress. It stops on proof, promotion, pause, replacement, or
+teardown, creates no additional deadline, and is distinct from the existing
+two-second active-path diagnostic/stall sampler. The application adds no
+network-type poll or SFU-specific route timer.
 
 The overlap edge is physical: an active Host SFU publication consumes one steady
 sender slot, and a media-producing provisional peer candidate consumes another.

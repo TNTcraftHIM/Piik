@@ -98,6 +98,64 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(staleFailure).stage).toBe("receiving");
   });
 
+  it("ignores late playback results from a retained older route revision", () => {
+    const oldMedia = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 5, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 5, revision: 5 },
+      { type: "frame-presented", generation: 5, revision: 5 },
+    );
+    const preparing = reduceViewerPresentation(oldMedia, {
+      type: "route",
+      revision: 6,
+      phase: "prepare",
+      kind: "sfu",
+    });
+
+    const staleAutoplay = reduceViewerPresentation(preparing, {
+      type: "autoplay-blocked",
+      generation: 5,
+      revision: 5,
+    });
+    const staleFailure = reduceViewerPresentation(preparing, {
+      type: "playback-failed",
+      generation: 5,
+      revision: 5,
+    });
+
+    expect(staleAutoplay).toBe(preparing);
+    expect(staleFailure).toBe(preparing);
+    expect(deriveViewerPresentation(preparing)).toMatchObject({
+      stage: "preparing-sfu",
+      overlay: "status",
+      showPlay: false,
+    });
+  });
+
+  it("clears autoplay authority when the route revision advances", () => {
+    const blocked = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 5, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 5, revision: 5 },
+      { type: "autoplay-blocked", generation: 5, revision: 5 },
+    );
+    const preparing = reduceViewerPresentation(blocked, {
+      type: "route",
+      revision: 6,
+      phase: "prepare",
+      kind: "sfu",
+    });
+
+    expect(preparing.autoplayBlockedGeneration).toBeNull();
+    expect(preparing.failure).toBeNull();
+    expect(deriveViewerPresentation(preparing)).toMatchObject({
+      stage: "preparing-sfu",
+      showPlay: false,
+    });
+  });
+
   it("keeps a proven old frame through recovery without accepting stale proof", () => {
     const oldFrame = apply(
       { type: "access", access: "ready" },
@@ -157,6 +215,67 @@ describe("Viewer presentation reducer", () => {
       stage: "recovering",
       overlay: "none",
       notice: "信令正在恢复，画面仍在播放",
+    });
+  });
+
+  it("keeps a healthy Host-offline frame but invalidates it on upstream failure", () => {
+    const offlineWithMedia = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 3, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 2, revision: 3 },
+      { type: "frame-presented", generation: 2, revision: 3 },
+      { type: "host", host: "offline" },
+    );
+    expect(deriveViewerPresentation(offlineWithMedia)).toMatchObject({
+      stage: "playing",
+      overlay: "none",
+      hasCurrentFrame: true,
+      notice: "分享者连接已中断，画面仍然可用",
+    });
+    expect(
+      reduceViewerPresentation(offlineWithMedia, {
+        type: "media-invalidated",
+        revision: 2,
+      }),
+    ).toBe(offlineWithMedia);
+
+    const failed = reduceViewerPresentation(offlineWithMedia, {
+      type: "media-invalidated",
+      revision: 3,
+    });
+    expect(deriveViewerPresentation(failed)).toMatchObject({
+      stage: "host-offline",
+      overlay: "status",
+      hasCurrentFrame: false,
+      hasRetainedFrame: true,
+      failureCode: "HOST_OFFLINE",
+    });
+  });
+
+  it("demotes the current frame when an exact route terminally fails", () => {
+    const playing = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 4, phase: "active", kind: "sfu" },
+      { type: "media-bound", generation: 3, revision: 4 },
+      { type: "frame-presented", generation: 3, revision: 4 },
+    );
+    const failed = reduceViewerPresentation(playing, {
+      type: "route-status",
+      revision: 4,
+      state: "failed",
+    });
+
+    expect(deriveViewerPresentation(failed)).toMatchObject({
+      stage: "route-failed",
+      message: "没有可用的媒体线路",
+      overlay: "status",
+      hasCurrentFrame: false,
+      hasRetainedFrame: true,
+      failureCode: "ROUTE_EXHAUSTED",
     });
   });
 

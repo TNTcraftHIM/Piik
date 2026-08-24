@@ -278,6 +278,13 @@ function mediaRecord(
   return narrowed.length === 1 ? narrowed[0]! : null;
 }
 
+export function decodedVideoFrames(
+  report: RTCStatsReport,
+  selector: StatsMediaSelector | null = null,
+): number | null {
+  return numberValue(mediaRecord(report, "receive", selector), "framesDecoded");
+}
+
 function transportRecord(
   report: RTCStatsReport,
   media: StatsRecord | null,

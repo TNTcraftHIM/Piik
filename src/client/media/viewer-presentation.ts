@@ -118,6 +118,7 @@ export type ViewerPresentationAction =
   | { type: "autoplay-blocked"; generation: number; revision: number }
   | { type: "autoplay-cleared"; generation: number }
   | { type: "playback-failed"; generation: number; revision: number }
+  | { type: "media-invalidated"; revision: number }
   | { type: "media-cleared" }
   | {
       type: "failure";
@@ -211,11 +212,15 @@ export function reduceViewerPresentation(
           state.routeStatus.state === "waiting"
             ? state.routeStatus
             : null,
+        autoplayBlockedGeneration: revisionChanged
+          ? null
+          : state.autoplayBlockedGeneration,
         retainedFrame:
           state.retainedFrame || (revisionChanged && currentFrame),
         failure:
           revisionChanged &&
           (state.failure === "ROUTE_EXHAUSTED" ||
+            state.failure === "AUTOPLAY_BLOCKED" ||
             state.failure === "PLAYBACK_FAILED")
             ? null
             : state.failure,
@@ -226,6 +231,8 @@ export function reduceViewerPresentation(
         return state;
       }
       const revisionChanged = state.revision !== action.revision;
+      const terminal = action.state === "failed";
+      const currentFrame = hasCurrentFrame(state);
       return {
         ...state,
         revision: action.revision,
@@ -233,12 +240,20 @@ export function reduceViewerPresentation(
           revision: action.revision,
           state: action.state,
         },
+        media: terminal ? null : state.media,
+        autoplayBlockedGeneration: revisionChanged || terminal
+          ? null
+          : state.autoplayBlockedGeneration,
         retainedFrame:
-          state.retainedFrame || (revisionChanged && hasCurrentFrame(state)),
+          state.retainedFrame ||
+          ((revisionChanged || terminal) && currentFrame),
         failure:
           action.state === "failed"
             ? "ROUTE_EXHAUSTED"
-            : state.failure === "ROUTE_EXHAUSTED"
+            : revisionChanged &&
+                (state.failure === "ROUTE_EXHAUSTED" ||
+                  state.failure === "AUTOPLAY_BLOCKED" ||
+                  state.failure === "PLAYBACK_FAILED")
               ? null
               : state.failure,
       };
@@ -297,7 +312,8 @@ export function reduceViewerPresentation(
       if (
         !state.media ||
         state.media.generation !== action.generation ||
-        state.media.revision !== action.revision
+        state.media.revision !== action.revision ||
+        state.revision !== action.revision
       ) {
         return state;
       }
@@ -320,11 +336,22 @@ export function reduceViewerPresentation(
       if (
         !state.media ||
         state.media.generation !== action.generation ||
-        state.media.revision !== action.revision
+        state.media.revision !== action.revision ||
+        state.revision !== action.revision
       ) {
         return state;
       }
       return { ...state, failure: "PLAYBACK_FAILED" };
+    case "media-invalidated":
+      if (state.revision !== action.revision) {
+        return state;
+      }
+      return {
+        ...state,
+        media: null,
+        retainedFrame: state.retainedFrame || hasCurrentFrame(state),
+        autoplayBlockedGeneration: null,
+      };
     case "media-cleared":
       return {
         ...state,
@@ -340,12 +367,19 @@ export function reduceViewerPresentation(
       ) {
         return state;
       }
+      const terminalRoute = action.failure === "ROUTE_EXHAUSTED";
       return {
         ...state,
         revision:
           action.revision === undefined
             ? state.revision
             : Math.max(state.revision ?? 0, action.revision),
+        media: terminalRoute ? null : state.media,
+        retainedFrame:
+          state.retainedFrame || (terminalRoute && hasCurrentFrame(state)),
+        autoplayBlockedGeneration: terminalRoute
+          ? null
+          : state.autoplayBlockedGeneration,
         failure: action.failure,
       };
     case "retry-available":
@@ -434,6 +468,7 @@ export function deriveViewerPresentation(
 
   if (
     state.media &&
+    state.media.revision === state.revision &&
     state.autoplayBlockedGeneration === state.media.generation
   ) {
     return {

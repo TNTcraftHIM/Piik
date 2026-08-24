@@ -1,8 +1,12 @@
 import type {
   ClientMessage,
+  CodecPreparationBinding,
+  CodecTransitionGeneration,
   MediaRoutePhase,
   ParticipantRouteAssignment,
+  PreparedRouteCandidate,
   ServerMessage,
+  VideoCodecPreference,
 } from "../../shared/protocol";
 import {
   SfuPublisher,
@@ -15,6 +19,7 @@ import type {
   QualityProfile,
   VideoSenderParameterReadback,
 } from "./quality";
+import { qualitySettingsEqual } from "./quality";
 import {
   MediaRouteTransition,
   type RouteOperationToken,
@@ -42,6 +47,8 @@ interface HostPublisherSlot {
   connected: boolean;
   active: boolean;
   failed: boolean;
+  codecTransition: PreparedRouteCandidate["codecTransition"];
+  codecPreparationReported: boolean;
 }
 
 export interface HostSfuPublisherSnapshot {
@@ -50,12 +57,22 @@ export interface HostSfuPublisherSnapshot {
   audioSenderParameters: AudioSenderParameterReadback | null;
 }
 
+export interface HostSfuCodecPreparationResult {
+  generation: CodecTransitionGeneration;
+  videoCodec: VideoCodecPreference;
+  binding: Extract<CodecPreparationBinding, { kind: "sfu" }>;
+  accepted: boolean;
+}
+
 interface HostSfuRouteEvents {
   getStream: () => MediaStream | null;
   getProfile: () => QualityProfile;
   reconcileChildren: (childPeerIds: string[]) => void;
   send: (message: ClientMessage) => boolean;
   onPublisherUpdate?: (snapshot: HostSfuPublisherSnapshot | null) => void;
+  onCodecPublisherPrepared?: (
+    result: HostSfuCodecPreparationResult,
+  ) => void;
   createPublisher?: (
     onDisconnected: () => void,
     onStats: (metrics: ConnectionMetrics | null) => void,
@@ -85,7 +102,21 @@ export class HostSfuRoute {
     if (result === "stale") {
       return result;
     }
-    if (this.paused) {
+    const pausedActiveReconciliation =
+      this.paused && update.phase === "active" && result !== "duplicate";
+    const retiredActive = pausedActiveReconciliation
+      ? this.detachUnreferencedActive(
+          update.assignment.sfuPublicationGeneration,
+        )
+      : null;
+    if (pausedActiveReconciliation) {
+      this.events.reconcileChildren(update.assignment.childPeerIds);
+    }
+    if (
+      this.paused &&
+      update.phase === "prepare" &&
+      !isPausedCodecSfuCandidate(update)
+    ) {
       this.clearPending();
       return result;
     }
@@ -112,8 +143,13 @@ export class HostSfuRoute {
     }
 
     const token = this.route.token();
+    if (retiredActive) {
+      void this.queueTransition(() =>
+        this.disconnectRetiredPublisher(retiredActive),
+      );
+    }
     if (token && !this.resyncing) {
-      void this.queueActivation(token);
+      void this.queueActivation(token, this.paused);
     }
     return result;
   }
@@ -180,7 +216,11 @@ export class HostSfuRoute {
   async acceptConfig(
     message: Extract<ServerMessage, { type: "sfu-config" }>,
   ): Promise<void> {
-    if (this.closed || this.paused || !this.route.acceptsConfig(message.revision)) {
+    if (
+      this.closed ||
+      !this.route.acceptsConfig(message.revision) ||
+      (this.paused && !this.hasPausedCodecSfuCandidate())
+    ) {
       return;
     }
     const token = this.route.token();
@@ -188,6 +228,8 @@ export class HostSfuRoute {
     const phase = this.route.getPhase();
     const candidate = this.route.getPreparedCandidate();
     const publicationGeneration = assignment?.sfuPublicationGeneration;
+    const codecTransition =
+      phase === "prepare" ? candidate?.codecTransition ?? null : null;
     if (
       !token ||
       !phase ||
@@ -195,6 +237,18 @@ export class HostSfuRoute {
       !publicationGeneration ||
       (phase === "prepare" && candidate?.transport !== "sfu")
     ) {
+      return;
+    }
+    if (
+      codecTransition !== null &&
+      this.active?.publicationGeneration === publicationGeneration
+    ) {
+      this.events.onCodecPublisherPrepared?.({
+        ...codecTransition,
+        binding: { kind: "sfu", publicationGeneration },
+        accepted: false,
+      });
+      this.routeFailed(message.revision, "prepare", null);
       return;
     }
     if (this.active?.publicationGeneration === publicationGeneration) {
@@ -230,6 +284,8 @@ export class HostSfuRoute {
       connected: false,
       active: false,
       failed: false,
+      codecTransition: codecTransition ? { ...codecTransition } : null,
+      codecPreparationReported: false,
     };
     this.pending = slot;
     try {
@@ -249,7 +305,18 @@ export class HostSfuRoute {
         return;
       }
       slot.connected = true;
-      if (!(await this.preparePublisher(slot))) {
+      let prepared = false;
+      await this.queueTransition(async () => {
+        if (this.pending !== slot || !this.route.owns(token)) {
+          if (this.pending === slot) {
+            this.pending = null;
+          }
+          await disconnectPublisher(publisher);
+          return;
+        }
+        prepared = await this.preparePublisher(slot);
+      });
+      if (!prepared) {
         return;
       }
       if (phase === "active" && !this.resyncing) {
@@ -263,7 +330,7 @@ export class HostSfuRoute {
 
   setPaused(paused: boolean): void {
     this.paused = paused;
-    if (paused) {
+    if (paused && !this.hasPausedCodecSfuCandidate()) {
       this.clearPending();
     }
   }
@@ -274,7 +341,9 @@ export class HostSfuRoute {
       ? Promise.resolve(true)
       : Promise.all(
           slots.map((slot) =>
-            slot.publisher.updateProfile(profile).catch(() => false),
+            slot.publisher
+              .updateProfile(this.profileForSlot(slot, profile))
+              .catch(() => false),
           ),
         ).then((results) => results.every(Boolean));
   }
@@ -352,13 +421,26 @@ export class HostSfuRoute {
     });
   }
 
-  private queueActivation(token: RouteOperationToken): Promise<void> {
+  private queueActivation(
+    token: RouteOperationToken,
+    retireUnreferenced = false,
+  ): Promise<void> {
     return this.queueTransition(async () => {
       if (this.closed || this.resyncing || !this.route.owns(token, "active")) {
         return;
       }
       const assignment = this.route.getActiveAssignment();
       if (assignment) {
+        if (
+          retireUnreferenced &&
+          this.active?.publicationGeneration !==
+            assignment.sfuPublicationGeneration
+        ) {
+          await this.retireActive();
+          if (!this.route.owns(token, "active")) {
+            return;
+          }
+        }
         await this.activate(assignment, token);
       }
     });
@@ -434,7 +516,7 @@ export class HostSfuRoute {
 
   private async preparePublisher(slot: HostPublisherSlot): Promise<boolean> {
     const stream = this.events.getStream();
-    const profile = this.events.getProfile();
+    const profile = this.profileForSlot(slot, this.events.getProfile());
     if (!stream) {
       this.handleFailure(slot);
       return false;
@@ -460,16 +542,20 @@ export class HostSfuRoute {
         await disconnectPublisher(slot.publisher);
         return false;
       }
-      const latestProfile = this.events.getProfile();
+      const latestProfile = this.profileForSlot(slot, this.events.getProfile());
       if (
-        latestProfile !== profile &&
+        !qualitySettingsEqual(latestProfile, profile) &&
         !(await slot.publisher.updateProfile(latestProfile))
       ) {
         this.handleFailure(slot);
         await disconnectPublisher(slot.publisher);
         return false;
       }
-      return this.pending === slot && this.ownsPublisherSlot(slot);
+      const prepared = this.pending === slot && this.ownsPublisherSlot(slot);
+      if (prepared) {
+        this.reportCodecPreparation(slot, true);
+      }
+      return prepared;
     } catch {
       this.handleFailure(slot);
       await disconnectPublisher(slot.publisher);
@@ -483,6 +569,42 @@ export class HostSfuRoute {
       this.route.getPlannedAssignment()?.sfuPublicationGeneration ===
         slot.publicationGeneration
     );
+  }
+
+  private hasPausedCodecSfuCandidate(): boolean {
+    const candidate = this.route.getPreparedCandidate();
+    return (
+      this.route.getPhase() === "prepare" &&
+      candidate?.transport === "sfu" &&
+      candidate.codecTransition !== null
+    );
+  }
+
+  private profileForSlot(
+    slot: HostPublisherSlot,
+    profile: QualityProfile,
+  ): QualityProfile {
+    return slot.codecTransition
+      ? { ...profile, videoCodec: slot.codecTransition.videoCodec }
+      : profile;
+  }
+
+  private reportCodecPreparation(
+    slot: HostPublisherSlot,
+    accepted: boolean,
+  ): void {
+    if (!slot.codecTransition || slot.codecPreparationReported) {
+      return;
+    }
+    slot.codecPreparationReported = true;
+    this.events.onCodecPublisherPrepared?.({
+      ...slot.codecTransition,
+      binding: {
+        kind: "sfu",
+        publicationGeneration: slot.publicationGeneration,
+      },
+      accepted,
+    });
   }
 
   private currentActiveToken(
@@ -525,6 +647,27 @@ export class HostSfuRoute {
     const active = this.active;
     this.events.onPublisherUpdate?.(null);
     this.active = null;
+    await this.disconnectRetiredPublisher(active);
+  }
+
+  private detachUnreferencedActive(
+    publicationGeneration: string | null,
+  ): HostPublisherSlot | null {
+    if (
+      !this.active ||
+      this.active.publicationGeneration === publicationGeneration
+    ) {
+      return null;
+    }
+    const active = this.active;
+    this.active = null;
+    this.events.onPublisherUpdate?.(null);
+    return active;
+  }
+
+  private async disconnectRetiredPublisher(
+    active: HostPublisherSlot,
+  ): Promise<void> {
     if (active.active) {
       await active.publisher.deactivate().catch(() => false);
     }
@@ -536,9 +679,19 @@ export class HostSfuRoute {
       return;
     }
     const wasActive = this.active === slot;
+    const wasPending = this.pending === slot;
+    const assignment = this.route.getPlannedAssignment();
+    const revision = this.route.getRevision();
+    const phase = this.route.getPhase();
+    const matchesPlannedRoute =
+      revision === slot.revision &&
+      assignment?.sfuPublicationGeneration === slot.publicationGeneration;
+    if (!wasActive && !wasPending && !matchesPlannedRoute) {
+      return;
+    }
     this.lastFailureStage = slot.publisher.getFailureStage?.() ?? "transport";
     slot.failed = true;
-    if (this.pending === slot) {
+    if (wasPending) {
       this.pending = null;
     }
     if (wasActive) {
@@ -546,12 +699,9 @@ export class HostSfuRoute {
       this.active = null;
     }
 
-    const assignment = this.route.getPlannedAssignment();
-    const revision = this.route.getRevision();
-    const phase = this.route.getPhase();
-    const matchesPlannedRoute =
-      revision === slot.revision &&
-      assignment?.sfuPublicationGeneration === slot.publicationGeneration;
+    if (matchesPlannedRoute) {
+      this.reportCodecPreparation(slot, false);
+    }
     if (revision === null || phase === null) {
       return;
     }
@@ -617,6 +767,14 @@ export class HostSfuRoute {
         slot.publisher.getAudioSenderParameters?.() ?? null,
     });
   }
+}
+
+function isPausedCodecSfuCandidate(update: RouteUpdateInput): boolean {
+  return (
+    update.phase === "prepare" &&
+    update.candidate.transport === "sfu" &&
+    update.candidate.codecTransition !== null
+  );
 }
 
 async function disconnectPublisher(

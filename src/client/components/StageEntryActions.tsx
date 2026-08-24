@@ -31,7 +31,7 @@ export function StageEntryActions({
         <button
           className="entry-action"
           type="button"
-          title="输入房间码加入观看"
+          title="输入房间号加入观看"
           aria-expanded={joiningRoom}
           aria-controls="host-room-code-entry"
           onClick={onJoinToggle}

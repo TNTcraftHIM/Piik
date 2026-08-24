@@ -34,6 +34,7 @@ interface ConnectionPlan {
   answerError?: Error;
   candidateGates?: Promise<void>[];
   localDescriptionGate?: Promise<void>;
+  statsGate?: Promise<RTCStatsReport>;
 }
 
 class FakeMediaStream {
@@ -45,6 +46,10 @@ class FakeMediaStream {
 
   addTrack(track: MediaStreamTrack): void {
     this.tracks.push(track);
+  }
+
+  getVideoTracks(): MediaStreamTrack[] {
+    return this.tracks.filter((track) => track.kind === "video");
   }
 }
 
@@ -93,14 +98,15 @@ class FakePeerConnection extends EventTarget {
     this.candidateGates = [...(plan.candidateGates ?? [])];
     this.localDescriptionGate = plan.localDescriptionGate ?? null;
     this.answerError = plan.answerError ?? null;
+    this.statsGate = plan.statsGate ?? null;
     FakePeerConnection.instances.push(this);
   }
 
-  async setRemoteDescription(
-    description: RTCSessionDescriptionInit,
-  ): Promise<void> {
-    this.remoteDescription = description as RTCSessionDescription;
-  }
+  readonly setRemoteDescription = vi.fn(
+    async (description: RTCSessionDescriptionInit): Promise<void> => {
+      this.remoteDescription = description as RTCSessionDescription;
+    },
+  );
 
   async createAnswer(): Promise<RTCSessionDescriptionInit> {
     if (this.answerError) {
@@ -127,10 +133,14 @@ const timeoutCallbacks = new Map<number, () => void>();
 const timeoutDelays = new Map<number, number>();
 let nextTimeoutId = 1;
 
-function offer(connectionId: string): SignalPayload {
+function offer(
+  connectionId: string,
+  negotiationGeneration: number | null = null,
+): SignalPayload {
   return {
     kind: "description",
     connectionId,
+    negotiationGeneration,
     description: { type: "offer", sdp: `offer-${connectionId}` },
   };
 }
@@ -145,6 +155,21 @@ function candidate(connectionId: string, value: string): SignalPayload {
       sdpMLineIndex: 0,
     },
   };
+}
+
+function decodedReport(framesDecoded: number): RTCStatsReport {
+  return new Map([
+    [
+      "video-in",
+      {
+        id: "video-in",
+        type: "inbound-rtp",
+        timestamp: 1_000,
+        kind: "video",
+        framesDecoded,
+      },
+    ],
+  ]) as unknown as RTCStatsReport;
 }
 
 function createPeer(
@@ -207,6 +232,57 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it("proves a fresh exact connection from its first cumulative decoded frame", async () => {
+    FakePeerConnection.plans.push({
+      statsGate: Promise.resolve(decodedReport(1)),
+    });
+    const decoded = vi.fn(() => true);
+    const peer = new ViewerPeer(
+      { iceServers: [] },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: () => true,
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+        onFirstDecodedFrame: decoded,
+      },
+    );
+
+    await peer.acceptSignal("host", offer("fresh-exact"));
+    await flushAsyncWork();
+
+    expect(decoded).toHaveBeenCalledOnce();
+    expect(decoded).toHaveBeenCalledWith("fresh-exact");
+    peer.dispose();
+  });
+
+  it("does not publish an in-flight decoded proof from a replaced connection", async () => {
+    const oldStats = createDeferred<RTCStatsReport>();
+    FakePeerConnection.plans.push(
+      { statsGate: oldStats.promise },
+      { statsGate: Promise.resolve(new Map() as unknown as RTCStatsReport) },
+    );
+    const decoded = vi.fn(() => true);
+    const peer = new ViewerPeer(
+      { iceServers: [] },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: () => true,
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+        onFirstDecodedFrame: decoded,
+      },
+    );
+
+    await peer.acceptSignal("host-a", offer("old-exact"));
+    await peer.acceptSignal("host-b", offer("new-exact"));
+    oldStats.resolve(decodedReport(3));
+    await flushAsyncWork();
+
+    expect(decoded).not.toHaveBeenCalled();
+    peer.dispose();
+  });
+
   it("sets and signals stereo audio bitrate for every answer", async () => {
     const signals: SignalPayload[] = [];
     const peer = createPeer(signals, []);
@@ -588,6 +664,50 @@ describe("ViewerPeer connection generations", () => {
       connectionId: "connection-new",
       error: null,
     });
+  });
+
+  it("serializes same-connection codec offers and fences stale generations", async () => {
+    const firstLocalDescription = createDeferred<void>();
+    FakePeerConnection.plans.push({
+      localDescriptionGate: firstLocalDescription.promise,
+    });
+    const signals: SignalPayload[] = [];
+    const peer = createPeer(signals, []);
+
+    const first = peer.acceptSignal("host", offer("codec-connection", 5));
+    await vi.waitFor(() =>
+      expect(
+        FakePeerConnection.instances[0]?.setLocalDescription,
+      ).toHaveBeenCalledOnce(),
+    );
+    const connection = FakePeerConnection.instances[0]!;
+    const replacement = peer.acceptSignal(
+      "host",
+      offer("codec-connection", 6),
+    );
+    await peer.acceptSignal("host", offer("codec-connection", 6));
+    await Promise.resolve();
+    expect(connection.setRemoteDescription).toHaveBeenCalledOnce();
+
+    firstLocalDescription.resolve();
+    await Promise.all([first, replacement]);
+    expect(
+      signals
+        .filter((signal) => signal.kind === "description")
+        .map((signal) => signal.negotiationGeneration),
+    ).toEqual([6]);
+    expect(connection.setRemoteDescription).toHaveBeenCalledTimes(2);
+
+    await peer.acceptSignal("host", offer("codec-connection"));
+    expect(
+      signals
+        .filter((signal) => signal.kind === "description")
+        .map((signal) => signal.negotiationGeneration),
+    ).toEqual([6, null]);
+    expect(connection.setRemoteDescription).toHaveBeenCalledTimes(3);
+
+    await peer.acceptSignal("host", offer("codec-connection", 5));
+    expect(connection.setRemoteDescription).toHaveBeenCalledTimes(3);
   });
 
   it("stops flushing old candidates when the connection is replaced", async () => {

@@ -233,7 +233,13 @@ second mutable graph.
 - Candidate-list creation, reserve, prepare, the child's first decoded frame,
   atomic commit, abort, and idempotent release are one bounded child operation.
   Its one total deadline cleans abandoned reservations and never revokes a
-  healthy committed edge.
+  healthy committed edge. While that one exact candidate is pending, its
+  receive-transport owner runs one short-lived, generation-fenced
+  `framesDecoded` observer and stops it on proof, promotion, pause, replacement,
+  or teardown. A fresh peer connection or fresh SFU activation proves a
+  positive cumulative count; a paused prepared SFU route first records a
+  Resume-time baseline and requires later progress. This observer adds no
+  success/failure deadline and cannot select, reject, or reorder candidates.
 - A child invalidates only its own exact edge after PeerConnection hard failure
   or a named non-paused interval without a newly decoded frame. Bitrate, FPS,
   resolution, blur, and sender statistics remain diagnostics or stock
@@ -248,7 +254,8 @@ second mutable graph.
 - Web clients derive active decoded progress from their existing periodic
   WebRTC/LiveKit stats sampling. One route-keyed last-progress deadline reports
   the exact edge once; it resets on route/connection change or decoded progress
-  and is suppressed while authoritatively paused. It adds no polling loop and
+  and is suppressed while authoritatively paused. This steady-state sampler is
+  separate from the pending candidate's short-lived first-frame observer and
   does not treat bitrate, FPS, track availability, or SFU layer choice as route
   authority.
 - Authoritative pause aborts the pending child operation, including its current

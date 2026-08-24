@@ -17,7 +17,7 @@ export function RoomCodeEntry({ id, autoFocus = false, inline = false }: RoomCod
     event.preventDefault();
     const route = roomRouteFromInput(roomId);
     if (!route) {
-      setError("房间号必须是 1000..9999 的四位数字");
+      setError("请输入 1000 至 9999 的四位房间号");
       return;
     }
     window.location.assign(route);
@@ -32,12 +32,12 @@ export function RoomCodeEntry({ id, autoFocus = false, inline = false }: RoomCod
       {!inline && (
         <div>
           <h1>加入房间</h1>
-          <p className="section-meta">输入分享者提供的房间码</p>
+          <p className="section-meta">输入分享者提供的房间号</p>
         </div>
       )}
       <div className="token-field">
         <label className={inline ? "visually-hidden" : "field-label"} htmlFor={inputId}>
-          房间码
+          房间号
         </label>
         <span className="input-with-icon">
           <Hash size={16} aria-hidden="true" />
@@ -47,7 +47,7 @@ export function RoomCodeEntry({ id, autoFocus = false, inline = false }: RoomCod
             inputMode="numeric"
             autoComplete="off"
             autoFocus={autoFocus}
-            placeholder={inline ? "房间码" : undefined}
+            placeholder={inline ? "房间号" : undefined}
             aria-invalid={error ? "true" : undefined}
             onChange={(event) => {
               setRoomId(event.target.value);

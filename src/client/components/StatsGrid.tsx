@@ -19,7 +19,7 @@ function qualityReason(value: string | null): string {
     cpu: "编码受限",
     other: "其他限制",
   };
-  return value ? (labels[value] ?? value) : "未知";
+  return value ? (labels[value] ?? "未分类限制") : "未知";
 }
 
 function requestedApplied(

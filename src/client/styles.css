@@ -340,8 +340,15 @@ h3 {
 }
 
 .stage-entry {
-  gap: 13px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 44px minmax(0, 1fr);
+  gap: 0;
   width: 100%;
+}
+
+.stage-entry .stage-status {
+  align-self: end;
+  margin-bottom: 13px;
 }
 
 .stage-status {
@@ -350,6 +357,7 @@ h3 {
 
 .entry-actions {
   display: grid;
+  grid-row: 2;
   grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
   width: min(520px, calc(100% - 20px));
   gap: 8px;
@@ -359,6 +367,7 @@ h3 {
 .entry-action {
   display: inline-flex;
   min-width: 0;
+  height: 44px;
   min-height: 44px;
   gap: 7px;
   align-items: center;
@@ -446,10 +455,13 @@ h3 {
 
 .room-code-entry.is-inline {
   display: grid;
+  grid-row: 3;
   min-width: 0;
   width: min(520px, calc(100% - 20px));
   grid-template-columns: minmax(0, 1fr) 44px;
   gap: 8px;
+  align-self: start;
+  margin-top: 13px;
 }
 
 .room-code-entry.is-inline .access-error {
@@ -781,6 +793,9 @@ h3 {
 .invite-primary,
 .room-entry-policy {
   min-width: 0;
+}
+
+.room-entry-policy {
   padding-left: 12px;
   border-left: 1px solid var(--border);
 }

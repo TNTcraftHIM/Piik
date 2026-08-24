@@ -1355,6 +1355,7 @@ describe("WebSocket signaling", () => {
         payload: {
           kind: "description",
           connectionId: "persistence-failure-edge",
+          negotiationGeneration: null,
           description: { type: "offer", sdp: "v=0\r\n" },
         },
       }),
@@ -1494,11 +1495,31 @@ describe("WebSocket signaling", () => {
 
     activeHost.socket.send(
       JSON.stringify({
-        type: "set-sharing-paused",
+        type: "request-sharing-resume",
         shareGeneration,
-        paused: false,
       }),
     );
+    const resumeAuthorization = await activeHost.inbox.next(
+      "sharing-resume-authorized",
+    );
+    expect(resumeAuthorization).toMatchObject({
+      shareGeneration,
+      codecGeneration: null,
+      resumeAttempt: expect.any(Number),
+    });
+    await replacement.inbox.expectNone(20);
+    activeHost.socket.send(
+      JSON.stringify({
+        type: "sharing-source-enabled",
+        shareGeneration,
+        codecGeneration: null,
+        resumeAttempt: resumeAuthorization.resumeAttempt,
+      }),
+    );
+    expect(await activeHost.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
+    });
     expect(await replacement.inbox.next("host-status")).toMatchObject({
       online: true,
       paused: false,
@@ -1543,6 +1564,192 @@ describe("WebSocket signaling", () => {
     });
   });
 
+  it("keeps ordinary P2P Resume paused until the exact source ack", async () => {
+    const harness = await startHarness({ peerAssistedMedia: false });
+    const shareGeneration = "ordinary_resume_share_generation_12345678";
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(
+      host,
+      harness.room,
+      "host",
+      "ordinary-resume-host-client",
+      1,
+      shareGeneration,
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "ordinary-resume-viewer-client",
+    );
+    await host.inbox.next("peer-joined");
+
+    const pause = {
+      type: "set-sharing-paused",
+      shareGeneration,
+      paused: true,
+    };
+    host.socket.send(JSON.stringify(pause));
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      paused: true,
+    });
+    host.socket.send(
+      JSON.stringify({ type: "request-sharing-resume", shareGeneration }),
+    );
+    const first = await host.inbox.next("sharing-resume-authorized");
+    await viewer.inbox.expectNone(20);
+
+    host.socket.send(JSON.stringify(pause));
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      paused: true,
+    });
+    host.socket.send(
+      JSON.stringify({ type: "request-sharing-resume", shareGeneration }),
+    );
+    const second = await host.inbox.next("sharing-resume-authorized");
+    expect(second.resumeAttempt).toBeGreaterThan(first.resumeAttempt);
+
+    host.socket.send(
+      JSON.stringify({
+        type: "sharing-source-enabled",
+        shareGeneration,
+        codecGeneration: null,
+        resumeAttempt: first.resumeAttempt,
+      }),
+    );
+    expect(await host.inbox.next("pause-sharing-source")).toMatchObject({
+      shareGeneration,
+      codecGeneration: null,
+      resumeAttempt: first.resumeAttempt,
+    });
+    await viewer.inbox.expectNone(20);
+
+    host.socket.send(
+      JSON.stringify({
+        type: "sharing-source-enabled",
+        shareGeneration,
+        codecGeneration: null,
+        resumeAttempt: second.resumeAttempt,
+      }),
+    );
+    expect(await host.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
+    });
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
+    });
+    host.socket.send(
+      JSON.stringify({
+        type: "sharing-source-enabled",
+        shareGeneration,
+        codecGeneration: null,
+        resumeAttempt: first.resumeAttempt,
+      }),
+    );
+    await Promise.all([
+      host.inbox.expectNone(20),
+      viewer.inbox.expectNone(20),
+    ]);
+  });
+
+  it("retains authoritative pause when a Resume ack is lost across Host reconnect", async () => {
+    const harness = await startHarness({ peerAssistedMedia: false });
+    const shareGeneration = "reconnect_resume_share_generation_12345678";
+    const hostClientId = "reconnect-resume-host-client";
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(
+      host,
+      harness.room,
+      "host",
+      hostClientId,
+      1,
+      shareGeneration,
+    );
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "reconnect-resume-viewer-client",
+    );
+    await host.inbox.next("peer-joined");
+
+    host.socket.send(
+      JSON.stringify({
+        type: "set-sharing-paused",
+        shareGeneration,
+        paused: true,
+      }),
+    );
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: true,
+    });
+    host.socket.send(
+      JSON.stringify({ type: "request-sharing-resume", shareGeneration }),
+    );
+    const lostAuthorization = await host.inbox.next(
+      "sharing-resume-authorized",
+    );
+
+    await closeClient(host);
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: false,
+      paused: false,
+    });
+
+    const reconnectedHost = await openClient(harness.webSocketUrl);
+    await authenticate(
+      reconnectedHost,
+      harness.room,
+      "host",
+      hostClientId,
+      1,
+      shareGeneration,
+      { sharingPaused: false },
+    );
+    expect(
+      await reconnectedHost.inbox.next("pause-sharing-source"),
+    ).toMatchObject({
+      shareGeneration,
+      codecGeneration: null,
+      resumeAttempt: null,
+    });
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: true,
+    });
+
+    reconnectedHost.socket.send(
+      JSON.stringify({ type: "request-sharing-resume", shareGeneration }),
+    );
+    const retryAuthorization = await reconnectedHost.inbox.next(
+      "sharing-resume-authorized",
+    );
+    expect(retryAuthorization.resumeAttempt).toBeGreaterThan(
+      lostAuthorization.resumeAttempt,
+    );
+    reconnectedHost.socket.send(
+      JSON.stringify({
+        type: "sharing-source-enabled",
+        shareGeneration,
+        codecGeneration: null,
+        resumeAttempt: retryAuthorization.resumeAttempt,
+      }),
+    );
+    expect(await reconnectedHost.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
+    });
+    expect(await viewer.inbox.next("host-status")).toMatchObject({
+      online: true,
+      paused: false,
+    });
+  });
+
   it("keeps a viewer peer stable when it reconnects inside the grace period", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 80 });
     const host = await openClient(harness.webSocketUrl);
@@ -1562,6 +1769,7 @@ describe("WebSocket signaling", () => {
         payload: {
           kind: "description",
           connectionId: "stable-connection",
+          negotiationGeneration: null,
           description: { type: "offer", sdp: "v=0\r\n" },
         },
       }),
@@ -1675,6 +1883,7 @@ describe("WebSocket signaling", () => {
           payload: {
             kind: "description",
             connectionId: "waiting-host-offer",
+            negotiationGeneration: null,
             description: { type: "offer", sdp: "v=0\r\n" },
           },
         }),
@@ -1701,6 +1910,7 @@ describe("WebSocket signaling", () => {
           payload: {
             kind: "description",
             connectionId: "waiting-viewer-answer",
+            negotiationGeneration: null,
             description: { type: "answer", sdp: "v=0\r\n" },
           },
         }),
@@ -1735,6 +1945,7 @@ describe("WebSocket signaling", () => {
           payload: {
             kind: "description",
             connectionId: "active-host-offer",
+            negotiationGeneration: null,
             description: { type: "offer", sdp: "v=0\r\n" },
           },
         }),
@@ -1838,6 +2049,7 @@ describe("WebSocket signaling", () => {
         payload: {
           kind: "description",
           connectionId: "promoted-host-offer",
+          negotiationGeneration: null,
           description: { type: "offer", sdp: "v=0\r\n" },
         },
       }),
@@ -1869,6 +2081,7 @@ describe("WebSocket signaling", () => {
         payload: {
           kind: "description",
           connectionId: "connection-before-stop",
+          negotiationGeneration: null,
           description: { type: "offer", sdp: "v=0\r\n" },
         },
       }),
@@ -2012,6 +2225,7 @@ describe("WebSocket signaling", () => {
         payload: {
           kind: "description",
           connectionId: "connection-before-control-outage",
+          negotiationGeneration: null,
           description: { type: "offer", sdp: "v=0\r\n" },
         },
       }),
@@ -2121,6 +2335,7 @@ describe("WebSocket signaling", () => {
         payload: {
           kind: "description",
           connectionId: "connection-during-grace",
+          negotiationGeneration: null,
           description: { type: "offer", sdp: "v=0\r\n" },
         },
       }),
@@ -2283,9 +2498,13 @@ describe("WebSocket signaling", () => {
     expect(status).toBe(403);
 
     const unauthenticated = await openClient(harness.webSocketUrl);
+    const unauthenticatedClosed = new Promise<number>((resolve) =>
+      unauthenticated.socket.once("close", (code) => resolve(code)),
+    );
     expect((await unauthenticated.inbox.next("error", 300)).code).toBe(
       "AUTH_REQUIRED",
     );
+    expect(await unauthenticatedClosed).toBe(4003);
 
     const oversized = await openClient(harness.webSocketUrl);
     const closeCode = new Promise<number>((resolve) =>

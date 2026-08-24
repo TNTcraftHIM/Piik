@@ -10,15 +10,19 @@ import {
   DEFAULT_QUALITY_SETTINGS,
   MAX_SIGNAL_BYTES,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
+  SIGNAL_CLOSE_CODES,
   SIGNALING_PROTOCOL,
   VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
   decodeClientMessage,
   type ClientMessage,
+  type CodecTransitionGeneration,
   type CodeEntryPolicy,
   type QualitySettings,
+  type ResumeAttempt,
   type Role,
   type ServerMessage,
   type ParticipantPresenceEntry,
+  type VideoCodecPreference,
 } from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 import {
@@ -30,6 +34,7 @@ import {
   HybridMediaRouter,
   type SfuFallbackOptions,
 } from "./hybrid-media-router.js";
+import { CodecTransitionCoordinator } from "./codec-transition.js";
 import { createIceConfig, type IceConfigOptions } from "./ice.js";
 
 type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
@@ -125,6 +130,7 @@ export class SignalingServer {
     Set<string>
   >();
   private readonly hybridMediaRouter?: HybridMediaRouter;
+  private readonly codecTransitions?: CodecTransitionCoordinator;
   private readonly now: () => number;
   private readonly authenticationTimeoutMs: number;
   private readonly viewerDisconnectGraceMs: number;
@@ -175,6 +181,7 @@ export class SignalingServer {
         getShareGeneration: (roomId) => this.shareGenerationsByRoom.get(roomId),
         onActiveRouteChanged: (roomId) => {
           this.viewerMediaReadyByRoom.delete(roomId);
+          this.codecTransitions?.participantChanged(roomId);
           this.sendViewerPresence(roomId);
         },
         onViewerMediaState: (
@@ -196,6 +203,81 @@ export class SignalingServer {
         now: this.now,
       });
     }
+    this.codecTransitions = new CodecTransitionCoordinator({
+      snapshot: (roomId) =>
+        this.hybridMediaRouter?.codecRouteSnapshot(roomId) ?? {
+          revision: 0,
+          targets: [],
+        },
+      sendToSession: (sessionId, message) =>
+        this.sendToSession(sessionId, message),
+      commitCodec: (roomId, videoCodec) =>
+        this.commitRoomVideoCodec(roomId, videoCodec),
+      authorizeResume: (
+        roomId,
+        hostSessionId,
+        shareGeneration,
+        codecGeneration,
+        resumeAttempt,
+      ) =>
+        this.authorizeSharingResume(
+          roomId,
+          hostSessionId,
+          shareGeneration,
+          codecGeneration,
+          resumeAttempt,
+        ),
+      confirmSourceEnabled: (
+        roomId,
+        hostSessionId,
+        shareGeneration,
+        codecGeneration,
+        resumeAttempt,
+      ) =>
+        this.confirmSharingSourceEnabled(
+          roomId,
+          hostSessionId,
+          shareGeneration,
+          codecGeneration,
+          resumeAttempt,
+        ),
+      restoreAuthoritativePause: (
+        roomId,
+        hostSessionId,
+        shareGeneration,
+        codecGeneration,
+        resumeAttempt,
+      ) =>
+        this.restoreAuthoritativePause(
+          roomId,
+          hostSessionId,
+          shareGeneration,
+          codecGeneration,
+          resumeAttempt,
+        ),
+      returnTargetsToRouteWait: (roomId, viewerPeerIds) =>
+        this.hybridMediaRouter?.routeWaitInvalidCodecTargets(
+          roomId,
+          viewerPeerIds,
+        ),
+      beginSfuReplacement: (input) =>
+        this.hybridMediaRouter?.beginCodecSfuReplacement(input) ??
+        Promise.resolve(null),
+      parkSfuReplacement: (roomId, generation) =>
+        this.hybridMediaRouter?.parkCodecSfuReplacement(roomId, generation) ??
+        false,
+      beginSfuProof: (roomId, generation, timeoutMs) =>
+        this.hybridMediaRouter?.beginCodecSfuProof(
+          roomId,
+          generation,
+          timeoutMs,
+        ) ?? false,
+      abortSfuReplacement: (roomId, generation) =>
+        this.hybridMediaRouter?.abortCodecSfuReplacement(roomId, generation),
+      releaseRoutePause: (roomId) =>
+        this.hybridMediaRouter?.setPaused(roomId, false),
+      now: this.now,
+    });
 
     this.upgradeHandler = (request, socket, head) => {
       let requestUrl: URL;
@@ -256,6 +338,7 @@ export class SignalingServer {
       clearTimeout(timer);
     }
     this.viewerGraceTimers.clear();
+    this.codecTransitions?.close();
     let routeCloseError: unknown;
     try {
       await this.hybridMediaRouter?.close();
@@ -287,7 +370,7 @@ export class SignalingServer {
     const sessionId = randomBytes(16).toString("base64url");
     const authenticationTimer = setTimeout(() => {
       this.sendError(socket, "AUTH_REQUIRED", "Authentication timed out");
-      socket.close(4001, "Authentication required");
+      socket.close(SIGNAL_CLOSE_CODES.authenticationFailed, "Authentication required");
     }, this.authenticationTimeoutMs);
     authenticationTimer.unref();
 
@@ -345,7 +428,7 @@ export class SignalingServer {
     if (!state.authenticated) {
       if (message.type !== "authenticate") {
         this.sendError(socket, "AUTH_REQUIRED", "Authenticate before sending messages");
-        socket.close(4001, "Authentication required");
+        socket.close(SIGNAL_CLOSE_CODES.authenticationFailed, "Authentication required");
         return;
       }
       if (state.authenticating) {
@@ -373,7 +456,7 @@ export class SignalingServer {
       return;
     }
     if (!this.isCurrentSession(state)) {
-      socket.close(4001, "Session replaced");
+      socket.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Session replaced");
       return;
     }
 
@@ -387,7 +470,7 @@ export class SignalingServer {
   ): Promise<void> {
     if (message.role === "host" && !state.siteAccessAuthenticated) {
       this.sendError(socket, "AUTH_REQUIRED", "Site access is required");
-      socket.close(4003, "Authentication failed");
+      socket.close(SIGNAL_CLOSE_CODES.authenticationFailed, "Authentication failed");
       return;
     }
     if (
@@ -404,7 +487,7 @@ export class SignalingServer {
         "INVALID_TOKEN",
         authenticationErrorMessage("INVALID_TOKEN"),
       );
-      socket.close(4003, "Authentication failed");
+      socket.close(SIGNAL_CLOSE_CODES.authenticationFailed, "Authentication failed");
       return;
     }
 
@@ -459,7 +542,7 @@ export class SignalingServer {
       }
       const code = authenticationErrorCode(message, error);
       this.sendError(socket, code, authenticationErrorMessage(code));
-      socket.close(4003, "Authentication failed");
+      socket.close(SIGNAL_CLOSE_CODES.authenticationFailed, "Authentication failed");
       return;
     }
 
@@ -486,6 +569,10 @@ export class SignalingServer {
       );
       shareGeneration =
         message.shareGeneration ?? currentGeneration ?? state.sessionId;
+      const sameShareWasAuthoritativelyPaused =
+        currentGeneration === shareGeneration &&
+        this.pausedShareGenerationsByRoom.get(participant.roomId) ===
+          shareGeneration;
       if (
         currentGeneration !== undefined &&
         currentGeneration !== shareGeneration
@@ -493,7 +580,11 @@ export class SignalingServer {
         this.stopSharing(participant.roomId);
       }
       this.shareGenerationsByRoom.set(participant.roomId, shareGeneration);
-      if (message.sharingPaused === true) {
+      if (
+        message.sharingPaused === true ||
+        this.codecTransitions?.blocksResume(participant.roomId) ||
+        sameShareWasAuthoritativelyPaused
+      ) {
         this.pausedShareGenerationsByRoom.set(
           participant.roomId,
           shareGeneration,
@@ -613,7 +704,7 @@ export class SignalingServer {
     if (participant.replacedSessionId) {
       const replaced = this.socketsBySessionId.get(participant.replacedSessionId);
       if (replaced && replaced !== socket) {
-        replaced.close(4001, "Session replaced");
+        replaced.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Session replaced");
       }
     }
 
@@ -629,6 +720,26 @@ export class SignalingServer {
         routeParticipant,
         hybridState,
       );
+    }
+
+    if (participant.role === "host") {
+      if (this.codecTransitions?.blocksResume(participant.roomId)) {
+        this.codecTransitions.invalidateHostSession(
+          participant.roomId,
+          state.sessionId,
+        );
+      } else if (
+        shareGeneration !== null &&
+        this.pausedShareGenerationsByRoom.get(participant.roomId) ===
+          shareGeneration
+      ) {
+        this.sendToSession(state.sessionId, {
+          type: "pause-sharing-source",
+          shareGeneration,
+          codecGeneration: null,
+          resumeAttempt: null,
+        });
+      }
     }
 
     this.sendViewerPresence(participant.roomId);
@@ -748,10 +859,23 @@ export class SignalingServer {
           );
           return;
         }
-        this.qualitySettingsByRoom.set(
+        const currentQuality = this.qualitySettingsByRoom.get(
           authenticated.roomId,
-          { ...message.qualitySettings },
         );
+        if (
+          currentQuality &&
+          videoCodec(currentQuality) !== videoCodec(message.qualitySettings)
+        ) {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "视频编码只能在分享暂停后切换",
+          );
+          return;
+        }
+        this.qualitySettingsByRoom.set(authenticated.roomId, {
+          ...message.qualitySettings,
+        });
         for (const viewer of this.options.roomStore.getConnectedViewers(
           authenticated.roomId,
         )) {
@@ -930,7 +1054,7 @@ export class SignalingServer {
       }
       case "set-sharing-paused":
         if (authenticated.role !== "host") {
-          this.sendError(socket, "FORBIDDEN", "Only the host may pause sharing");
+          this.sendError(socket, "FORBIDDEN", "只有当前分享者可以暂停分享");
           return;
         }
         const pauseSocketState = this.socketStates.get(socket);
@@ -945,33 +1069,181 @@ export class SignalingServer {
             authenticated.shareGeneration ||
           message.shareGeneration !== authenticated.shareGeneration
         ) {
-          socket.close(4001, "Sharing generation replaced");
+          socket.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Sharing generation replaced");
           return;
         }
-        if (message.paused) {
-          this.pausedShareGenerationsByRoom.set(
-            authenticated.roomId,
-            authenticated.shareGeneration,
-          );
-        } else {
-          this.pausedShareGenerationsByRoom.delete(authenticated.roomId);
-        }
-        if (this.isHybridMediaEnabled()) {
-          this.hybridMediaRouter!.setPaused(authenticated.roomId, message.paused);
-        }
-        for (const viewer of this.options.roomStore.getConnectedViewers(
+        this.pausedShareGenerationsByRoom.set(
           authenticated.roomId,
-        )) {
-          this.sendToSession(viewer.sessionId, {
-            type: "host-status",
-            online: true,
-            paused: message.paused,
-          });
+          authenticated.shareGeneration,
+        );
+        this.codecTransitions?.pause({
+          roomId: authenticated.roomId,
+          hostSessionId: pauseSocketState.sessionId,
+          shareGeneration: authenticated.shareGeneration,
+        });
+        if (this.isHybridMediaEnabled()) {
+          this.hybridMediaRouter!.setPaused(authenticated.roomId, true);
+        }
+        this.broadcastHostStatus(authenticated.roomId, true, true);
+        return;
+      case "request-sharing-resume": {
+        if (authenticated.role !== "host") {
+          this.sendError(socket, "FORBIDDEN", "只有当前分享者可以恢复分享");
+          return;
+        }
+        const resumeState = this.socketStates.get(socket);
+        const currentHost = this.options.roomStore.getConnectedHost(
+          authenticated.roomId,
+        );
+        if (
+          !resumeState ||
+          currentHost?.sessionId !== resumeState.sessionId ||
+          authenticated.shareGeneration === null ||
+          this.shareGenerationsByRoom.get(authenticated.roomId) !==
+            authenticated.shareGeneration ||
+          this.pausedShareGenerationsByRoom.get(authenticated.roomId) !==
+            authenticated.shareGeneration ||
+          message.shareGeneration !== authenticated.shareGeneration
+        ) {
+          socket.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Sharing generation replaced");
+          return;
+        }
+        const result = this.codecTransitions!.requestResume({
+          roomId: authenticated.roomId,
+          hostSessionId: resumeState.sessionId,
+          shareGeneration: authenticated.shareGeneration,
+        });
+        if (result === "busy") {
+          this.sendError(
+            socket,
+            "FORBIDDEN",
+            "视频编码尚未准备完成",
+          );
         }
         return;
+      }
+      case "sharing-source-enabled": {
+        if (authenticated.role !== "host") {
+          this.sendError(socket, "FORBIDDEN", "只有当前分享者可以确认恢复分享");
+          return;
+        }
+        const sourceState = this.socketStates.get(socket);
+        const currentHost = this.options.roomStore.getConnectedHost(
+          authenticated.roomId,
+        );
+        if (
+          !sourceState ||
+          currentHost?.sessionId !== sourceState.sessionId ||
+          authenticated.shareGeneration === null ||
+          this.shareGenerationsByRoom.get(authenticated.roomId) !==
+            authenticated.shareGeneration ||
+          message.shareGeneration !== authenticated.shareGeneration
+        ) {
+          socket.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Sharing generation replaced");
+          return;
+        }
+        if (
+          !this.codecTransitions!.sourceEnabled({
+            roomId: authenticated.roomId,
+            hostSessionId: sourceState.sessionId,
+            shareGeneration: authenticated.shareGeneration,
+            codecGeneration: message.codecGeneration,
+            resumeAttempt: message.resumeAttempt,
+          })
+        ) {
+          this.rejectSharingSourceAcknowledgement(
+            authenticated.roomId,
+            sourceState.sessionId,
+            authenticated.shareGeneration,
+            message.codecGeneration,
+            message.resumeAttempt,
+          );
+        }
+        return;
+      }
+      case "request-video-codec-transition": {
+        if (
+          authenticated.role !== "host" ||
+          !this.isHybridMediaEnabled()
+        ) {
+          this.sendError(socket, "FORBIDDEN", "只有当前分享者可以切换视频编码");
+          return;
+        }
+        const transitionState = this.socketStates.get(socket);
+        const currentHost = this.options.roomStore.getConnectedHost(
+          authenticated.roomId,
+        );
+        if (
+          !transitionState ||
+          currentHost?.sessionId !== transitionState.sessionId ||
+          authenticated.shareGeneration === null ||
+          this.shareGenerationsByRoom.get(authenticated.roomId) !==
+            authenticated.shareGeneration ||
+          this.pausedShareGenerationsByRoom.get(authenticated.roomId) !==
+            authenticated.shareGeneration ||
+          message.shareGeneration !== authenticated.shareGeneration
+        ) {
+          socket.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Sharing generation replaced");
+          return;
+        }
+        const previous = videoCodec(
+          this.qualitySettingsByRoom.get(authenticated.roomId) ??
+            DEFAULT_QUALITY_SETTINGS,
+        );
+        if (previous === message.videoCodec) {
+          return;
+        }
+        const result = this.codecTransitions!.start({
+          roomId: authenticated.roomId,
+          hostSessionId: transitionState.sessionId,
+          shareGeneration: authenticated.shareGeneration,
+          requested: message.videoCodec,
+          previous,
+        });
+        if (result === "busy" || result === "unavailable") {
+          this.sendError(
+            socket,
+            result === "busy" ? "FORBIDDEN" : "SERVER_ERROR",
+            result === "busy"
+              ? "已有视频编码切换正在进行"
+              : "当前媒体线路不可用",
+          );
+        }
+        return;
+      }
+      case "video-codec-prepared": {
+        if (!this.isHybridMediaEnabled()) {
+          this.sendError(socket, "FORBIDDEN", "当前未启用媒体线路");
+          return;
+        }
+        const state = this.socketStates.get(socket);
+        if (state?.authenticated === authenticated) {
+          this.codecTransitions!.prepared(
+            authenticated.roomId,
+            state.sessionId,
+            message,
+          );
+        }
+        return;
+      }
+      case "video-codec-proof": {
+        if (!this.isHybridMediaEnabled() || authenticated.role !== "viewer") {
+          this.sendError(socket, "FORBIDDEN", "只有当前观看者可以确认已解码画面");
+          return;
+        }
+        const state = this.socketStates.get(socket);
+        if (state?.authenticated === authenticated) {
+          this.codecTransitions!.proof(
+            authenticated.roomId,
+            state.sessionId,
+            message,
+          );
+        }
+        return;
+      }
       case "stop-sharing":
         if (authenticated.role !== "host") {
-          this.sendError(socket, "FORBIDDEN", "Only the host may stop sharing");
+          this.sendError(socket, "FORBIDDEN", "只有当前分享者可以停止分享");
           return;
         }
         if (
@@ -981,7 +1253,7 @@ export class SignalingServer {
           (message.shareGeneration !== undefined &&
             message.shareGeneration !== authenticated.shareGeneration)
         ) {
-          socket.close(4001, "Sharing generation replaced");
+          socket.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Sharing generation replaced");
           return;
         }
         const state = this.socketStates.get(socket);
@@ -1492,18 +1764,13 @@ export class SignalingServer {
       );
     }
     if (disconnected.role === "host") {
-      for (const viewer of this.options.roomStore.getConnectedViewers(
-        disconnected.roomId,
-      )) {
-        this.sendToSession(viewer.sessionId, {
-          type: "host-status",
-          online: false,
-          paused: false,
-        });
-      }
+      this.codecTransitions?.invalidateHostSession(disconnected.roomId);
+      this.broadcastHostStatus(disconnected.roomId, false, false);
       this.sendViewerPresence(disconnected.roomId);
       return;
     }
+
+    this.codecTransitions?.participantChanged(disconnected.roomId);
 
     this.sendViewerPresence(disconnected.roomId);
 
@@ -1554,6 +1821,7 @@ export class SignalingServer {
   }
 
   private stopSharing(roomId: string): void {
+    this.codecTransitions?.clearRoom(roomId);
     this.pausedShareGenerationsByRoom.delete(roomId);
     this.clearRoomConnectionIds(roomId);
     if (this.isHybridMediaEnabled()) {
@@ -1577,6 +1845,7 @@ export class SignalingServer {
     this.clearRoomGraceTimers(roomId);
     this.clearRoomConnectionIds(roomId);
     this.ordinaryActiveHostChildrenByRoom.delete(roomId);
+    this.codecTransitions?.clearRoom(roomId);
     if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.deleteRoom(roomId);
     }
@@ -1598,6 +1867,7 @@ export class SignalingServer {
       this.clearRoomGraceTimers(expired.roomId);
       this.clearRoomConnectionIds(expired.roomId);
       this.ordinaryActiveHostChildrenByRoom.delete(expired.roomId);
+      this.codecTransitions?.clearRoom(expired.roomId);
       if (this.isHybridMediaEnabled()) {
         this.hybridMediaRouter!.deleteRoom(expired.roomId);
       }
@@ -1894,6 +2164,132 @@ export class SignalingServer {
     }
   }
 
+  private commitRoomVideoCodec(
+    roomId: string,
+    nextVideoCodec: VideoCodecPreference,
+  ): void {
+    const qualitySettings = {
+      ...(this.qualitySettingsByRoom.get(roomId) ?? DEFAULT_QUALITY_SETTINGS),
+      videoCodec: nextVideoCodec,
+    };
+    this.qualitySettingsByRoom.set(roomId, qualitySettings);
+    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+      this.sendToSession(viewer.sessionId, {
+        type: "quality-settings",
+        qualitySettings,
+      });
+    }
+  }
+
+  private authorizeSharingResume(
+    roomId: string,
+    hostSessionId: string,
+    shareGeneration: string,
+    codecGeneration: CodecTransitionGeneration | null,
+    resumeAttempt: ResumeAttempt,
+  ): void {
+    const host = this.options.roomStore.getConnectedHost(roomId);
+    if (
+      host?.sessionId !== hostSessionId ||
+      this.shareGenerationsByRoom.get(roomId) !== shareGeneration ||
+      this.pausedShareGenerationsByRoom.get(roomId) !== shareGeneration
+    ) {
+      return;
+    }
+    this.sendToSession(hostSessionId, {
+      type: "sharing-resume-authorized",
+      shareGeneration,
+      codecGeneration,
+      resumeAttempt,
+    });
+  }
+
+  private confirmSharingSourceEnabled(
+    roomId: string,
+    hostSessionId: string,
+    shareGeneration: string,
+    _codecGeneration: CodecTransitionGeneration | null,
+    _resumeAttempt: ResumeAttempt,
+  ): boolean {
+    const host = this.options.roomStore.getConnectedHost(roomId);
+    if (
+      host?.sessionId !== hostSessionId ||
+      this.shareGenerationsByRoom.get(roomId) !== shareGeneration ||
+      this.pausedShareGenerationsByRoom.get(roomId) !== shareGeneration
+    ) {
+      return false;
+    }
+    this.pausedShareGenerationsByRoom.delete(roomId);
+    this.sendToSession(hostSessionId, {
+      type: "host-status",
+      online: true,
+      paused: false,
+    });
+    this.broadcastHostStatus(roomId, true, false);
+    return true;
+  }
+
+  private restoreAuthoritativePause(
+    roomId: string,
+    hostSessionId: string,
+    shareGeneration: string,
+    codecGeneration: CodecTransitionGeneration | null,
+    resumeAttempt: ResumeAttempt | null,
+  ): void {
+    if (this.shareGenerationsByRoom.get(roomId) !== shareGeneration) {
+      return;
+    }
+    this.pausedShareGenerationsByRoom.set(roomId, shareGeneration);
+    this.hybridMediaRouter?.setPaused(roomId, true);
+    const host = this.options.roomStore.getConnectedHost(roomId);
+    if (host?.sessionId === hostSessionId) {
+      this.sendToSession(hostSessionId, {
+        type: "pause-sharing-source",
+        shareGeneration,
+        codecGeneration,
+        resumeAttempt,
+      });
+      this.broadcastHostStatus(roomId, true, true);
+    }
+  }
+
+  private rejectSharingSourceAcknowledgement(
+    roomId: string,
+    hostSessionId: string,
+    shareGeneration: string,
+    codecGeneration: CodecTransitionGeneration | null,
+    resumeAttempt: ResumeAttempt,
+  ): void {
+    if (
+      this.shareGenerationsByRoom.get(roomId) !== shareGeneration ||
+      this.pausedShareGenerationsByRoom.get(roomId) !== shareGeneration ||
+      this.options.roomStore.getConnectedHost(roomId)?.sessionId !==
+        hostSessionId
+    ) {
+      return;
+    }
+    this.sendToSession(hostSessionId, {
+      type: "pause-sharing-source",
+      shareGeneration,
+      codecGeneration,
+      resumeAttempt,
+    });
+  }
+
+  private broadcastHostStatus(
+    roomId: string,
+    online: boolean,
+    paused: boolean,
+  ): void {
+    for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
+      this.sendToSession(viewer.sessionId, {
+        type: "host-status",
+        online,
+        paused,
+      });
+    }
+  }
+
   private closeRevokedViewerSession(sessionId: string): void {
     const socket = this.socketsBySessionId.get(sessionId);
     if (!socket) {
@@ -1909,7 +2305,7 @@ export class SignalingServer {
     }
     // Deauthorize before close so queued callbacks from the old generation
     // cannot route signaling after the persistent authorization commit.
-    socket.close(4004, "Viewer access revoked");
+    socket.close(SIGNAL_CLOSE_CODES.viewerAccessRevoked, "Viewer access revoked");
   }
 
   private sendEncodedToSession(sessionId: string, encoded: string): boolean {
@@ -2024,6 +2420,10 @@ function viewerGraceKey(roomId: string, peerId: string): string {
 
 function viewerConnectionKey(roomId: string, peerId: string): string {
   return `${roomId}:${peerId}`;
+}
+
+function videoCodec(settings: QualitySettings): VideoCodecPreference {
+  return settings.videoCodec ?? "automatic";
 }
 
 function authenticationErrorMessage(code: ErrorCode): string {

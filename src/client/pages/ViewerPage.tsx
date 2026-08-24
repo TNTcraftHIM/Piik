@@ -73,6 +73,10 @@ import {
   isAutoplayPolicyRejection,
   observeCompositedVideoFrame,
 } from "../media/video-frame-proof";
+import {
+  CodecProofReporter,
+  type CodecProofRouteSample,
+} from "../media/codec-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
 import {
@@ -111,6 +115,7 @@ interface PendingPeerRoute {
   revision: number;
   parentPeerId: string;
   peer: ViewerPeer | null;
+  decodedFrame: boolean;
   readySent: boolean;
   candidateConnectionId: string;
   stream: MediaStream | null;
@@ -336,6 +341,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let peerAssisted = false;
     let currentPeerId: string | null = null;
     let currentRouteRevision = 0;
+    let currentRouteAssignment: ParticipantRouteAssignment | null = null;
+    let currentRouteConnectionId: string | null = null;
+    let pendingRouteConnection: {
+      revision: number;
+      connectionId: string;
+    } | null = null;
+    let activePeerProofSnapshot: PeerSnapshot | null = null;
+    let activeSfuProofMetrics: ConnectionMetrics | null = null;
     let endpointMediaCopyCapacity = MAX_ENDPOINT_MEDIA_CHILDREN;
     let viewerAuthorizationGeneration: string | null = null;
     let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
@@ -384,7 +397,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             dispatchPresentation({ type: "signal", signal: status });
           }
         },
-        onTerminated: (message) => {
+        onTerminated: (reason) => {
           if (!active) {
             return;
           }
@@ -397,7 +410,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           dispatchPresentation({
             type: "access",
             access: "denied",
-            failure: viewerTerminationFailure(message),
+            failure: reason,
           });
         },
         onAccessRequired: () => {
@@ -427,6 +440,69 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
       (message) => active && signal.send(message),
     );
+    const codecProofReporter = new CodecProofReporter(
+      (message) => active && signal.send(message),
+    );
+
+    function currentCodecProofSample(): CodecProofRouteSample | null {
+      const assignment = currentRouteAssignment;
+      const connectionId = currentRouteConnectionId;
+      if (!assignment || !connectionId) {
+        return null;
+      }
+      if (assignment.upstream.kind === "peer") {
+        const snapshot = activePeerProofSnapshot;
+        if (
+          !snapshot ||
+          snapshot.peerId !== assignment.upstream.peerId ||
+          snapshot.connectionId !== connectionId
+        ) {
+          return null;
+        }
+        return {
+          routeRevision: currentRouteRevision,
+          binding: { kind: "peer", connectionId },
+          metrics: snapshot.metrics,
+        };
+      }
+      if (
+        assignment.upstream.kind !== "sfu" ||
+        assignment.sfuPublicationGeneration === null
+      ) {
+        return null;
+      }
+      return {
+        routeRevision: currentRouteRevision,
+        binding: {
+          kind: "sfu",
+          connectionId,
+          publicationGeneration: assignment.sfuPublicationGeneration,
+        },
+        metrics: activeSfuProofMetrics,
+      };
+    }
+
+    function offerCodecProof(): void {
+      const sample = currentCodecProofSample();
+      if (sample) {
+        codecProofReporter.offer(sample);
+      }
+    }
+
+    function activateProofRoute(
+      revision: number,
+      assignment: ParticipantRouteAssignment,
+      connectionId: string | null,
+    ): void {
+      codecProofReporter.clear();
+      currentRouteRevision = revision;
+      currentRouteAssignment = assignment;
+      currentRouteConnectionId =
+        assignment.upstream.kind === "none" ? null : connectionId;
+      activePeerProofSnapshot = null;
+      activeSfuProofMetrics = null;
+      pendingRouteConnection = null;
+    }
 
     function commitRelayChildEvidence(
       presentation: ViewerQualityEvidencePresentation | null,
@@ -596,20 +672,24 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         snapshot !== null &&
         snapshot.peerId === probe.parentPeerId &&
         probe.peer?.hasConnectionId(snapshot.connectionId) === true &&
-        (snapshot.metrics.intervalFramesDecoded ?? 0) > 0
+        probe.decodedFrame
       );
     }
 
-    function provePendingPeer(): void {
+    function provePendingPeer(): boolean {
       const probe = pendingPeer;
-      if (!probe || probe.readySent || !pendingPeerHasDecodedFrame(probe)) {
-        return;
+      if (!probe || probe.readySent) {
+        return true;
+      }
+      if (!pendingPeerHasDecodedFrame(probe)) {
+        return false;
       }
       probe.readySent = signal.send({
         type: "route-ready",
         revision: probe.revision,
         phase: "prepare",
       });
+      return probe.readySent;
     }
 
     function ensureViewerSfuRoute(): ViewerSfuRoute {
@@ -638,6 +718,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               return false;
             }
             const previousPeer = peerRef.current;
+            probe.peer.stopDecodedFrameProof();
             pendingPeer = null;
             prepareParent(null);
             peerRef.current = probe.peer;
@@ -651,6 +732,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
             ensureViewerRelay()?.setStream(probe.stream);
             bindRemoteStream(probe.stream, revision);
+            activePeerProofSnapshot = probe.snapshot;
+            offerCodecProof();
             setPeerSnapshot(probe.snapshot);
             setSfuUpstream(null);
             return true;
@@ -682,6 +765,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               revision,
               parentPeerId: assignment.upstream.peerId,
               peer: null,
+              decodedFrame: false,
               readySent: false,
               candidateConnectionId: candidate.connectionId,
               stream: null,
@@ -729,6 +813,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         },
         onSfuUpdate: (metrics, revision) => {
           if (active && viewerSfuRoute === route) {
+            if (revision === currentRouteRevision) {
+              activeSfuProofMetrics = metrics;
+              offerCodecProof();
+            }
             if (metrics) {
               observeActiveDecodedFrames(
                 "sfu",
@@ -807,6 +895,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       const route = viewerSfuRoute;
       discardPendingPeer();
       viewerSfuRoute = null;
+      activeSfuProofMetrics = null;
+      codecProofReporter.clear();
       setSfuUpstream(null);
       void route?.disconnect();
     }
@@ -842,6 +932,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
     function clearUpstreamState(clearMedia = false): void {
       qualityEvidenceReporter.reset();
+      codecProofReporter.clear();
+      activePeerProofSnapshot = null;
       const peer = peerRef.current;
       peer?.dispose();
       peerRef.current = null;
@@ -903,6 +995,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               probe.snapshot = snapshot;
               provePendingPeer();
             } else if (active && peerRef.current === peer) {
+              activePeerProofSnapshot = snapshot;
+              offerCodecProof();
               observeActiveDecodedFrames(
                 "peer",
                 `${probe.parentPeerId}:${snapshot.connectionId}`,
@@ -918,6 +1012,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               });
             }
           },
+          onFirstDecodedFrame: (connectionId): boolean => {
+            if (
+              pendingPeer !== probe ||
+              !peer.hasConnectionId(connectionId) ||
+              connectionId !== probe.candidateConnectionId
+            ) {
+              return true;
+            }
+            probe.decodedFrame = true;
+            return provePendingPeer();
+          },
           onRecoveryExhausted: (parentPeerId, connectionId): boolean => {
             if (pendingPeer === probe && peer.hasConnectionId(connectionId)) {
               signal.send({
@@ -929,6 +1034,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               probe.peer = null;
               probe.stream = null;
               probe.snapshot = null;
+              probe.decodedFrame = false;
               probe.readySent = false;
               peer.dispose();
               return true;
@@ -976,6 +1082,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           },
           onUpdate: (snapshot) => {
             if (active) {
+              activePeerProofSnapshot = snapshot;
+              offerCodecProof();
               observeActiveDecodedFrames(
                 "peer",
                 `${snapshot.peerId}:${snapshot.connectionId}`,
@@ -985,9 +1093,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               qualityEvidenceReporter.offer(snapshot, currentRouteRevision);
               if (
                 !currentHostOnline &&
-                snapshot.connectionState === "failed"
+                (snapshot.connectionState === "failed" ||
+                  snapshot.connectionState === "closed")
               ) {
                 clearPeerState();
+                dispatchPresentation({
+                  type: "media-invalidated",
+                  revision: currentRouteRevision,
+                });
                 return;
               }
               setPeerSnapshot(snapshot);
@@ -1051,11 +1164,22 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         currentRouteRevision = nextRouteRevision;
         if (nextPeerAssisted && "routeAssignment" in message) {
+          activateProofRoute(
+            message.routeRevision,
+            message.routeAssignment,
+            message.connectionId,
+          );
           acceptAssignedRoute(
             message.routeRevision,
             message.routeAssignment.upstream,
           );
         } else {
+          codecProofReporter.clear();
+          currentRouteAssignment = null;
+          currentRouteConnectionId = null;
+          pendingRouteConnection = null;
+          activePeerProofSnapshot = null;
+          activeSfuProofMetrics = null;
           setAssignedRoute(null);
           dispatchPresentation({
             type: "route",
@@ -1134,17 +1258,44 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "route-update") {
         if (peerAssisted) {
-          if (
-            message.phase === "active" &&
-            message.revision >= currentRouteRevision
-          ) {
-            if (message.revision !== currentRouteRevision) {
-              clearRelayChildEvidence();
-            }
-            currentRouteRevision = message.revision;
-          }
           const result = ensureViewerSfuRoute().accept(message);
           if (result !== "stale") {
+            if (
+              result === "accepted" &&
+              message.phase === "prepare" &&
+              message.candidate.childPeerId === currentPeerId
+            ) {
+              pendingRouteConnection = {
+                revision: message.revision,
+                connectionId: message.candidate.connectionId,
+              };
+            }
+            if (result === "accepted" && message.phase === "active") {
+              if (message.revision !== currentRouteRevision) {
+                clearRelayChildEvidence();
+              }
+              const samePeerUpstream =
+                currentRouteAssignment?.upstream.kind === "peer" &&
+                message.assignment.upstream.kind === "peer" &&
+                currentRouteAssignment.upstream.peerId ===
+                  message.assignment.upstream.peerId;
+              const sameSfuUpstream =
+                currentRouteAssignment?.upstream.kind === "sfu" &&
+                message.assignment.upstream.kind === "sfu" &&
+                currentRouteAssignment.sfuPublicationGeneration ===
+                  message.assignment.sfuPublicationGeneration;
+              const connectionId =
+                pendingRouteConnection?.revision === message.revision
+                  ? pendingRouteConnection.connectionId
+                  : samePeerUpstream || sameSfuUpstream
+                    ? currentRouteConnectionId
+                    : null;
+              activateProofRoute(
+                message.revision,
+                message.assignment,
+                connectionId,
+              );
+            }
             acceptAssignedRoute(
               message.revision,
               message.assignment.upstream,
@@ -1152,6 +1303,32 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
           }
         }
+        return;
+      }
+      if (message.type === "video-codec-prepare") {
+        const accepted =
+          peerAssisted &&
+          currentHostPaused &&
+          message.binding.kind === "peer" &&
+          (await ensureViewerRelay()?.prepareVideoCodec(
+            message.binding.childPeerId,
+            message.binding.connectionId,
+            message.generation,
+            message.videoCodec,
+          )) === true;
+        if (active && messageAuthority.owns(authorityToken)) {
+          signal.send({
+            type: "video-codec-prepared",
+            shareGeneration: message.shareGeneration,
+            generation: message.generation,
+            binding: message.binding,
+            accepted,
+          });
+        }
+        return;
+      }
+      if (message.type === "video-codec-proof-request") {
+        codecProofReporter.request(message);
         return;
       }
       if (message.type === "route-status") {
@@ -1281,6 +1458,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "sharing-stopped") {
+        codecProofReporter.clear();
+        currentRouteAssignment = null;
+        currentRouteConnectionId = null;
+        pendingRouteConnection = null;
         setSfuStandbyUrl(null);
         setAssignedRoute(null);
         currentHostOnline = false;
@@ -1391,6 +1572,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       active = false;
       currentPeerId = null;
       qualityEvidenceReporter.reset();
+      codecProofReporter.clear();
       clearRelayChildEvidence();
       sfuStandbyPrewarmer?.dispose();
       signal.stop();
@@ -2057,14 +2239,4 @@ function viewerFailureFromServerCode(
     default:
       return null;
   }
-}
-
-function viewerTerminationFailure(message: string): ViewerFailureCode {
-  if (message === "页面版本已更新，请刷新后重试") {
-    return "STALE_CLIENT";
-  }
-  if (message === "此页面的会话已被另一个标签页接管") {
-    return "SESSION_REPLACED";
-  }
-  return "SIGNAL_TERMINATED";
 }

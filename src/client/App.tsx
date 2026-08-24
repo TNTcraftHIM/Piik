@@ -27,7 +27,7 @@ function stateFromStatus(status: SiteAccessStatus): AccessState {
 }
 
 function readableError(error: unknown): string {
-  return error instanceof Error && error.message
+  return error instanceof ApiError
     ? error.message
     : "无法连接站点访问服务，请重试";
 }
@@ -206,7 +206,7 @@ function MalformedRoomRoute() {
       <main className="access-workspace access-workspace-full">
         <section className="access-panel">
           <h1>房间号格式不正确</h1>
-          <p className="section-meta">房间号必须是 1000..9999 的四位数字</p>
+          <p className="section-meta">请输入 1000 至 9999 的四位房间号</p>
         </section>
       </main>
     </div>

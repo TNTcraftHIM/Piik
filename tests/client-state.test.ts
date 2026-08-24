@@ -542,6 +542,23 @@ describe("site access API", () => {
     });
   });
 
+  it("does not expose an English server error body to the access page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ error: "Internal Server Error" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(getSiteAccess()).rejects.toMatchObject({
+      status: 503,
+      message: "站点验证服务暂时不可用 (503)",
+    });
+  });
+
   it("does not send a raw bearer token when creating a room by default", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ error: "test response" }), {
@@ -629,10 +646,60 @@ describe("room codes", () => {
 describe("client signaling recovery policy", () => {
   it("does not reconnect a session that another tab replaced", () => {
     expect(shouldReconnectSignaling(4001)).toBe(false);
+    expect(shouldReconnectSignaling(4003)).toBe(false);
     expect(shouldReconnectSignaling(4004)).toBe(false);
     expect(shouldReconnectSignaling(1008)).toBe(false);
     expect(shouldReconnectSignaling(4002)).toBe(true);
     expect(shouldReconnectSignaling(1006)).toBe(true);
+  });
+
+  it("classifies a close-only authentication failure without claiming replacement", () => {
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/1234"),
+      setTimeout,
+      clearTimeout,
+    });
+    const onTerminated = vi.fn();
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "viewer",
+        clientId: "viewer-client",
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated,
+        onAccessRequired: () => undefined,
+      },
+    );
+
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    const closed = new Event("close");
+    Object.defineProperties(closed, {
+      code: { value: 4003 },
+      reason: { value: "Authentication required" },
+    });
+    sockets[0]!.dispatchEvent(closed);
+
+    expect(onTerminated).toHaveBeenCalledOnce();
+    expect(onTerminated).toHaveBeenCalledWith("SIGNAL_TERMINATED");
+    expect(sockets).toHaveLength(1);
   });
 
   it("restarts only an authenticated active signaling session on request", () => {
@@ -698,6 +765,134 @@ describe("client signaling recovery policy", () => {
     expect(signal.reconnect()).toBe(true);
     expect(sockets[0]!.close).toHaveBeenCalledWith(4002, "client reconnect");
     expect(signal.reconnect()).toBe(false);
+  });
+
+  it("keeps a Host paused across reconnect until the server confirms Resume", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn(() => {
+        this.readyState = FakeWebSocket.CLOSING;
+      });
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/1234"),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "host",
+        token: "h".repeat(43),
+        clientId: "host-client",
+        shareGeneration: "share_generation_12345678",
+        sharingPaused: true,
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+    const receive = (socket: FakeWebSocket, value: object) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: JSON.stringify(value) });
+      socket.dispatchEvent(event);
+    };
+    const authenticate = (socket: FakeWebSocket) => {
+      socket.dispatchEvent(new Event("open"));
+      receive(socket, {
+        type: "authenticated",
+        protocol: "screener-v9",
+        role: "host",
+        peerId: "host_12345678",
+        roomExpiresAt: null,
+        maxViewers: 8,
+        endpointMediaCopyCapacity: 2,
+        hostOnline: true,
+        hostPaused: true,
+        connectionId: null,
+        viewerPeerIds: [],
+        iceConfig: { iceServers: [] },
+        codeEntryPolicy: "open",
+        viewerAuthorizationGeneration: "viewer_generation_12345678",
+      });
+    };
+    const reconnect = (socket: FakeWebSocket) => {
+      expect(signal.reconnect()).toBe(true);
+      const close = new Event("close");
+      Object.defineProperties(close, {
+        code: { value: 4002 },
+        reason: { value: "client reconnect" },
+      });
+      socket.dispatchEvent(close);
+      vi.advanceTimersByTime(750);
+    };
+
+    signal.start();
+    authenticate(sockets[0]!);
+    expect(
+      signal.confirmSharingResumed({
+        type: "sharing-resume-authorized",
+        shareGeneration: "share_generation_12345678",
+        codecGeneration: null,
+        resumeAttempt: 1,
+      }),
+    ).toBe(true);
+    expect(
+      JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0])),
+    ).toMatchObject({
+      type: "sharing-source-enabled",
+      resumeAttempt: 1,
+    });
+
+    reconnect(sockets[0]!);
+    sockets[1]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(String(sockets[1]!.send.mock.calls[0]![0]))).toMatchObject({
+      type: "authenticate",
+      sharingPaused: true,
+    });
+    receive(sockets[1]!, {
+      type: "authenticated",
+      protocol: "screener-v9",
+      role: "host",
+      peerId: "host_12345678",
+      roomExpiresAt: null,
+      maxViewers: 8,
+      endpointMediaCopyCapacity: 2,
+      hostOnline: true,
+      hostPaused: true,
+      connectionId: null,
+      viewerPeerIds: [],
+      iceConfig: { iceServers: [] },
+      codeEntryPolicy: "open",
+      viewerAuthorizationGeneration: "viewer_generation_12345678",
+    });
+    receive(sockets[1]!, {
+      type: "host-status",
+      online: true,
+      paused: false,
+    });
+
+    reconnect(sockets[1]!);
+    sockets[2]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(String(sockets[2]!.send.mock.calls[0]![0]))).toMatchObject({
+      type: "authenticate",
+      sharingPaused: false,
+    });
+    signal.stop();
   });
 
   it("confirms an exact silent partition before replacing the socket immediately", () => {
@@ -1019,9 +1214,7 @@ describe("client signaling recovery policy", () => {
       sockets[0]!.dispatchEvent(close);
 
       expect(onTerminated).toHaveBeenCalledOnce();
-      expect(onTerminated).toHaveBeenCalledWith(
-        "页面版本已更新，请刷新后重试",
-      );
+      expect(onTerminated).toHaveBeenCalledWith("STALE_CLIENT");
       expect(sockets[0]!.close).toHaveBeenCalledOnce();
       expect(sockets).toHaveLength(1);
     },

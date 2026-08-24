@@ -19,25 +19,6 @@ export class ApiError extends Error {
   }
 }
 
-function errorMessage(value: unknown): string | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (typeof record.message === "string") {
-    return record.message;
-  }
-  if (typeof record.error === "string") {
-    return record.error;
-  }
-  if (record.error && typeof record.error === "object") {
-    const nested = record.error as Record<string, unknown>;
-    return typeof nested.message === "string" ? nested.message : null;
-  }
-  return null;
-}
-
 async function responseBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
@@ -72,7 +53,7 @@ export async function getSiteAccess(): Promise<SiteAccessStatus> {
     throw new ApiError(
       response.status === 401
         ? "站点访问已失效，请重新验证"
-        : (errorMessage(body) ?? `验证失败 (${response.status})`),
+        : `站点验证服务暂时不可用 (${response.status})`,
       response.status,
     );
   }
@@ -94,7 +75,7 @@ export async function authenticateSiteAccess(
     throw new ApiError(
       response.status === 401
         ? "站点口令不正确，请重试"
-        : (errorMessage(body) ?? `验证失败 (${response.status})`),
+        : `站点验证服务暂时不可用 (${response.status})`,
       response.status,
     );
   }
@@ -123,7 +104,7 @@ export async function createRoom(
     throw new ApiError(
       response.status === 401
         ? "站点访问已失效，请重新验证"
-        : (errorMessage(body) ?? `建房失败 (${response.status})`),
+        : `当前无法创建房间 (${response.status})`,
       response.status,
     );
   }

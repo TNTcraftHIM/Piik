@@ -420,10 +420,7 @@ export class SfuPublisher {
         if (!this.owns(room, generation)) {
           return false;
         }
-        const failureWarning =
-          error instanceof Error && error.message
-            ? `切换 SFU 分享来源失败：${error.message}`
-            : "切换 SFU 分享来源失败";
+        const failureWarning = "切换 SFU 分享来源失败";
 
         // A rejected publish/unpublish may have changed server state without
         // returning enough ownership information to undo it safely.
@@ -552,7 +549,7 @@ export class SfuPublisher {
           senderParameters = configured.readback;
           videoWarning = configured.warning;
           appliedVideoProfile = profile;
-        } catch (error) {
+        } catch {
           if (
             !this.owns(room, generation) ||
             requestedRevision !== this.profileRevision ||
@@ -564,10 +561,7 @@ export class SfuPublisher {
             return false;
           }
           videoSucceeded = false;
-          const failureWarning =
-            error instanceof Error && error.message
-              ? `应用 SFU 发送参数失败：${error.message}`
-              : "应用 SFU 发送参数失败";
+          const failureWarning = "应用 SFU 发送参数失败";
           try {
             const rolledBack = await configurePublishedVideo(
               video,
@@ -1091,10 +1085,8 @@ function retainPublishedAudioOptions(
   };
 }
 
-function audioSenderFailureWarning(error: unknown): string {
-  return error instanceof Error && error.message
-    ? `应用 SFU 音频发送参数失败：${error.message}`
-    : "应用 SFU 音频发送参数失败";
+function audioSenderFailureWarning(_error: unknown): string {
+  return "应用 SFU 音频发送参数失败";
 }
 
 function mergeQualityWarnings(...warnings: Array<string | null>): string | null {

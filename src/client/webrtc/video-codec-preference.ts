@@ -12,11 +12,16 @@ export function applyVideoCodecPreference(
   preference: VideoCodecPreference | undefined,
 ): boolean {
   const resolvedPreference = preference ?? "automatic";
-  if (
-    resolvedPreference === "automatic" ||
-    typeof transceiver.setCodecPreferences !== "function"
-  ) {
-    return resolvedPreference === "automatic";
+  if (typeof transceiver.setCodecPreferences !== "function") {
+    return false;
+  }
+  if (resolvedPreference === "automatic") {
+    try {
+      transceiver.setCodecPreferences([]);
+      return true;
+    } catch {
+      return false;
+    }
   }
   const codecs = videoCodecs();
   const mimeType = `video/${resolvedPreference}`;
