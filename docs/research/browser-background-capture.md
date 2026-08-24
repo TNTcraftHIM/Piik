@@ -49,13 +49,13 @@ main `2726edde9b87f31fd76e749de47972ef817a9bd5`. The current path does not claim
 implement a page-keepalive mechanism, and deployment health supplies no
 physical background-capture evidence.
 
-- `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream, applies
-  ideal/max capture constraints, currently marks video as `motion`, and applies sender
-  bitrate, frame-rate, and degradation ceilings. Explicit sharing pause and
-  authoritative reconnect re-pause change capture tracks' `enabled` state;
-  neither manufactures foreground activity.
-- The accepted source change removes that video hint; production retains it
-  until a later deployment. Audio `contentHint = "music"` remains unchanged.
+- Current `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream,
+  applies ideal/max capture constraints, leaves the video hint unset, and
+  applies sender bitrate, frame-rate, and degradation ceilings. Production
+  still marks video as `motion` until the source change is deployed. Explicit
+  sharing pause and authoritative reconnect re-pause change capture tracks'
+  `enabled` state; neither manufactures foreground activity. Audio
+  `contentHint = "music"` remains unchanged.
 - `src/client/pages/HostPage.tsx` pauses the existing local preview video when
   the Host document is hidden or unfocused and resumes that preview when it is
   visible and focused. This does not stop, mute, disable, or replace the capture

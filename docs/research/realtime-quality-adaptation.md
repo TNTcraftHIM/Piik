@@ -706,10 +706,10 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - A live profile change uses `track.applyConstraints()` and updates every
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
-- Current v10 source and production set video `contentHint = "motion"`; the
-  accepted source change removes that assignment so display capture retains
-  browser screen semantics. Recommended profiles and the advanced initial value
-  use `balanced`, with explicit `maintain-resolution` and
+- Current v10 source leaves the video hint unset so display capture retains
+  browser screen semantics; production still sets `contentHint = "motion"`
+  until deployment. Recommended profiles and the advanced initial value use
+  `balanced`, with explicit `maintain-resolution` and
   `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
