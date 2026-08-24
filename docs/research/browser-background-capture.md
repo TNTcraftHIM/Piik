@@ -74,8 +74,8 @@ gate and do not inherit this desktop Host result.
 
 The no-video-hint review baseline is
 `a26eb39dc677003110787b0ed1581c208f894fd7`. Production runs exact deployed
-application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`, release
-`679fe3e`; canonical `main` contains the same runtime code. Current source and
+application/runtime revision `c4962f54443ad5f98bc65861195a3d9c74a48996`, release
+`c4962f5`; canonical `main` contains the same runtime code. Current source and
 production use strict `screener-v11`, fixed VP8, no video hint, and no codec UI,
 quality state, or wire field.
 The current path does not claim or implement a page-keepalive mechanism, and

@@ -36,23 +36,26 @@ Current high-signal boundary:
   subscriber PCs explicitly use no external ICE server and check the dedicated
   public SFU candidate directly; ordinary peers and LiveKit server-side public
   IP discovery retain deployment STUN. Production exact deployed
-  application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`,
-  release `679fe3e`, uses strict `screener-v11`; current source adds exact
-  Browser SFU ICE-server-isolation implementation
-  `ae09c760adec76fd26da611d4928486d105c6d3b`, while production has not deployed
-  it. The route uses one short-lived
+  application/runtime revision `c4962f54443ad5f98bc65861195a3d9c74a48996`,
+  release `c4962f5`, uses strict `screener-v11` and includes exact Browser SFU
+  ICE-server-isolation implementation
+  `ae09c760adec76fd26da611d4928486d105c6d3b`. The owner physically verified
+  deployed SFU fallback media. The route uses one short-lived
   exact-generation decoded-frame observer only for the pending candidate inside
   the existing total deadline; the periodic stats sampler still owns active-path
-  diagnostics and stalls. Real external-network and SFU media evidence remains
-  open. Do not run executable/native suites unless their later acceptance
+  diagnostics and stalls. Broader external-network and SFU lifecycle evidence
+  remains open. Do not run executable/native suites unless their later acceptance
   boundary specifically requires them.
-- ADR-0002 owns the implemented room model: one process-memory RoomStore,
-  random free four-digit codes, configurable 24-hour dormant leases, restart
-  loss, local Host preference replay, an independent expiring Viewer grant, and
-  open/password/disabled code entry. Neither source nor production uses SQLite;
-  exact release operations and change-scoped infrastructure recovery are owned
-  by deployment. Routine application-only releases do not maintain a full
-  rollback/configuration backup.
+- ADR-0002 owns the room model: one process-memory RoomStore, random free
+  four-digit codes, configurable 24-hour dormant leases, restart loss, local
+  Host preference replay, and open/password/disabled code entry. Accepted next
+  wire `screener-v12` replaces the current time-bearing grant with one 22-character
+  room-lived opaque grant, adds `ROOM_NOT_FOUND`, removes product diagnostic
+  download buttons, and compacts Host invitation controls; the Host-only
+  bounded snapshot remains for acceptance tooling. Current source and production remain
+  v11 until that batch is implemented and deployed atomically. Neither source
+  nor production uses SQLite; exact release operations and change-scoped
+  infrastructure recovery are owned by deployment.
 - Browser display video must leave `contentHint` unset; audio keeps `music`.
   Browser video is fixed VP8 across direct, browser-relay, and SFU paths; the
   current strict v11 source and production have no codec UI/state/wire or
