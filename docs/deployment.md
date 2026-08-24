@@ -3,8 +3,8 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`, and the single
-Browser `screener-v11` contract. Product direction and pending work are owned by
+`b68c47167da592dd673a78ec3d072936ef49e3ea`, release `b68c471`, and the single
+Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 This section documents the accepted UDP-only deployment contract: one Node.js
@@ -25,30 +25,38 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `c4962f54443ad5f98bc65861195a3d9c74a48996`, release
-`c4962f5`, from `/opt/screener/releases/c4962f5`. The immutable runtime ZIP
+Production runs exact `b68c47167da592dd673a78ec3d072936ef49e3ea`, release
+`b68c471`, from `/opt/screener/releases/b68c471`. The immutable runtime ZIP
 SHA-256 is
-`734815479a03728bb81b44ce5dc04fe010323acdbb91cdbea0e806548278164c`.
+`e5932880677ebb745ef9325f8def2185d88cdd7bb557fada7c3e1a9e1a7c2ffd`.
 Its 38-file path/size/hash manifest SHA-256 is
-`aefc414238655e9cb33d33975813bcc44afd22c5ad4e056ab719fae6c20aed47`.
+`12e092822abad0d8448d9c6ec87386e8ff82eaafecfeab766e050fa0f3b46710`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-DQgIVwby.js` with SHA-256
-`f819df6c94652d0c5847daa602431384f7b6bf58aa38615fa327526755ede4ef`.
+`assets/index-BSZhUco2.js` with SHA-256
+`30cf3bea2a7f80c5b0140f0e40fb0f3f3c082a6195e2ad0990509c663a605f96`.
 
-The release deploys the single Browser `screener-v11` wire, fixed VP8 for Browser
+The release deploys the single Browser `screener-v12` wire, fixed VP8 for Browser
 direct, browser-relay, and SFU video, no video `contentHint`, no codec UI/state/wire,
 random four-digit
-memory rooms with a 24-hour dormant lease, orthogonal grant/code admission,
+memory rooms with a 24-hour dormant lease, a room-lived 22-character grant,
+orthogonal `open | private` grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
-one-controller exact-candidate route runtime. A credential-free postflight sent
-a well-formed authentication shape with stale `screener-v10`; it received
-`INVALID_MESSAGE` and WebSocket close 1008 before room authority without creating
-a room. The service unit has no writable room StateDirectory; all room authority
-is process-memory-only. LiveKit is dedicated, has `room.auto_create: false` and
+one-controller exact-candidate route runtime. Production postflight verified open
+code entry, private invitation-only and password entry, grant rotation/revocation,
+typed missing-room failure, and stale `screener-v11` rejection with
+`INVALID_MESSAGE` and WebSocket close 1008 before room authority. The service unit
+has no writable room StateDirectory; all room authority is process-memory-only.
+LiveKit is dedicated, has `room.auto_create: false` and
 `max_participants: 21`, and is admitted to one global publication ingress plus
 twenty subscription egress handles. Coturn listens only on UDP 3478 for STUN;
-LiveKit media listens on UDP 7882.
+LiveKit media listens on UDP 7882. The stable application firewall table
+`inet bonfire_filter` has SHA-256
+`afaf9d066e9f292d8bd19032b38c0978ccf60dd01c2fe7f210968ff751f90534`,
+and `/etc/nftables.conf` has SHA-256
+`d57cab70b455e6ddd5cd4688c354b9af5e1d4fb9e9b67c6b85ade0da347cb1d0`;
+the whole live ruleset is not a stable identity because fail2ban owns a dynamic
+address set.
 These bounds are fail-safe admissions, not throughput or quality claims.
 The retained local 20-Viewer Browser smoke and open real-network boundaries are
 owned by [verification status](./verification-status.md).
@@ -262,7 +270,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `c4962f5` accepts 1 through 20 and explicitly selects 20. This is an
+Production `b68c471` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -275,8 +283,8 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `c4962f5` runs the deployed server and Browser assets
-atomically on `screener-v11`; every stale Browser or executable-sender wire fails
+Production release `b68c471` runs the deployed server and Browser assets
+atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
