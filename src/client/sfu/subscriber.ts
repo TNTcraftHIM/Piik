@@ -16,6 +16,7 @@ import {
   type StatsAccumulator,
 } from "../webrtc/stats";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
+import { sfuRoomConnectOptions } from "./connection-options";
 
 interface SubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
@@ -92,7 +93,7 @@ export class SfuSubscriber {
       this.sdk = sdk;
       this.bindRoomEvents(room, sdk, generation);
 
-      await room.connect(config.url, config.token, { autoSubscribe: false });
+      await room.connect(config.url, config.token, sfuRoomConnectOptions());
       if (!this.owns(room, generation)) {
         await safeDisconnect(room);
         return false;

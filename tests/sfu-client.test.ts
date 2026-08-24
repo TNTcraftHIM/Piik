@@ -569,6 +569,7 @@ describe("SfuPublisher", () => {
     expect(room.options).toEqual({ dynacast: false });
     expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
       autoSubscribe: false,
+      rtcConfig: { iceServers: [] },
     });
     expect(room.localParticipant.publishTrack).not.toHaveBeenCalled();
 
@@ -1478,6 +1479,7 @@ describe("SfuSubscriber", () => {
     await expect(connecting).resolves.toBe(true);
     expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
       autoSubscribe: false,
+      rtcConfig: { iceServers: [] },
     });
     expect(hostVideo.setSubscribed).not.toHaveBeenCalled();
     expect(streams).toEqual([]);

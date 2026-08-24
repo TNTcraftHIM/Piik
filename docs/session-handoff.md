@@ -37,9 +37,10 @@ Current high-signal boundary:
   public SFU candidate directly; ordinary peers and LiveKit server-side public
   IP discovery retain deployment STUN. Production exact deployed
   application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`,
-  release `679fe3e`, uses strict `screener-v11`; canonical `main` contains the
-  same v11 runtime code but has not implemented or deployed that accepted
-  Browser SFU ICE-server isolation. The route uses one short-lived
+  release `679fe3e`, uses strict `screener-v11`; current source adds exact
+  Browser SFU ICE-server-isolation implementation
+  `ae09c760adec76fd26da611d4928486d105c6d3b`, while production has not deployed
+  it. The route uses one short-lived
   exact-generation decoded-frame observer only for the pending candidate inside
   the existing total deadline; the periodic stats sampler still owns active-path
   diagnostics and stalls. Real external-network and SFU media evidence remains
