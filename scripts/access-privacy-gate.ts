@@ -125,7 +125,7 @@ async function main(): Promise<void> {
       roomId: room.roomId, role: "host", token: room.hostToken,
       clientId: "privacy-gate-host", sessionId: "privacy-gate-host-session",
     });
-    await server.roomStore.setViewerPassword(room.roomId, roomPassword, "privacy-gate-host-session");
+    await server.roomStore.setViewerPassword(room.roomId, roomPassword, room.hostToken);
     report.roomPrepared = true;
     chrome = spawn(chromePath, [
       `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
