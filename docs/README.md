@@ -4,10 +4,10 @@
 - [方案设计](./方案设计.md): accepted implementation design; unfinished release and validation work is tracked in the current TODO ledger.
 - [Project memory](./project-memory.md): durable current product and source snapshot to read at the start of future work.
 - [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
-- [Verification status](./verification-status.md): exact integrated/deployed v11 gates, current production evidence, open physical proof boundaries, and expensive-test applicability.
+- [Verification status](./verification-status.md): exact integrated/deployed gates, current production evidence, open physical proof boundaries, and expensive-test applicability.
 - [Session handoff](./session-handoff.md): temporary bootstrap prompt that points a new session back to the canonical truth owners.
 - [Current TODO](./todo.md): unresolved work, active truth holds, and decisions that still require user confirmation.
-- [Deployment](./deployment.md): exact current v11 production, immutable release operations, scoped recovery rules, and transport evidence boundaries.
+- [Deployment](./deployment.md): exact current production, immutable release operations, scoped recovery rules, and transport evidence boundaries.
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, exact-route implementation evidence, and remaining physical gates.
