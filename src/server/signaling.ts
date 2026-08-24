@@ -20,7 +20,6 @@ import {
   type Role,
   type ServerMessage,
   type ParticipantPresenceEntry,
-  type VideoCodecPreference,
 } from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 import {
@@ -786,20 +785,6 @@ export class SignalingServer {
             socket,
             "FORBIDDEN",
             "Only a peer-assisted host may set quality settings",
-          );
-          return;
-        }
-        const currentQuality = this.qualitySettingsByRoom.get(
-          authenticated.roomId,
-        );
-        if (
-          currentQuality &&
-          videoCodec(currentQuality) !== videoCodec(message.qualitySettings)
-        ) {
-          this.sendError(
-            socket,
-            "FORBIDDEN",
-            "视频编码只能在开始分享前选择；请停止分享后重新开始",
           );
           return;
         }
@@ -2084,10 +2069,6 @@ function viewerGraceKey(roomId: string, peerId: string): string {
 
 function viewerConnectionKey(roomId: string, peerId: string): string {
   return `${roomId}:${peerId}`;
-}
-
-function videoCodec(settings: QualitySettings): VideoCodecPreference {
-  return settings.videoCodec ?? DEFAULT_QUALITY_SETTINGS.videoCodec;
 }
 
 function authenticationErrorMessage(code: ErrorCode): string {

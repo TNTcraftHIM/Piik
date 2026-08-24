@@ -5,7 +5,6 @@ import {
   hostServerErrorNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
-  videoCodecLockNotice,
 } from "../src/client/pages/host-page-notices.ts";
 
 describe("host error notices", () => {
@@ -92,18 +91,5 @@ describe("sourceSwitchNotice", () => {
         sfuWarning: null,
       }),
     ).toBe("分享来源已切换");
-  });
-});
-
-describe("videoCodecLockNotice", () => {
-  it("keeps codec selection pre-share only", () => {
-    for (const phase of ["starting", "live"]) {
-      expect(videoCodecLockNotice(phase)).toBe(
-        "本次分享的视频编码已固定，停止分享后可更改",
-      );
-    }
-    for (const phase of ["idle", "ended", "error"]) {
-      expect(videoCodecLockNotice(phase)).toBeNull();
-    }
   });
 });

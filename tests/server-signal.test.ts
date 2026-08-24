@@ -1677,27 +1677,23 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("binds the new share codec before routing and permits a new choice after stop", async () => {
+  it("binds new-share quality and preserves active-share quality across reconnect", async () => {
     const harness = await startHarness({ peerAssistedMedia: true });
-    const h264Settings: QualitySettings = {
-      resolution: "1080p",
-      maxFramerate: 30,
-      maxBitrate: 5_000_000,
-      degradationPreference: "balanced",
-      videoCodec: "h264",
-      screenAudioQuality: "music",
+    const initialSettings: QualitySettings = {
+      resolution: "1440p",
+      maxFramerate: 60,
+      maxBitrate: 8_000_000,
+      degradationPreference: "maintain-resolution",
+      screenAudioQuality: "very-high",
     };
-    const firstGeneration = "h264_share_generation_12345678";
+    const firstGeneration = "first_share_generation_12345678";
     const viewer = await openClient(harness.webSocketUrl);
-    const viewerAuth = peerAssisted(
-      await authenticate(
-        viewer,
-        harness.room,
-        "viewer",
-        "codec-viewer-client",
-      ),
+    await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "quality-viewer-client",
     );
-    expect(viewerAuth.qualitySettings.videoCodec).toBe("vp8");
 
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = peerAssisted(
@@ -1705,18 +1701,25 @@ describe("WebSocket signaling", () => {
         host,
         harness.room,
         "host",
-        "codec-host-client",
+        "quality-host-client",
         1,
         firstGeneration,
-        { qualitySettings: h264Settings },
+        { qualitySettings: initialSettings },
       ),
     );
-    expect(hostAuth.qualitySettings).toEqual(h264Settings);
+    expect(hostAuth.qualitySettings).toEqual(initialSettings);
     expect(await viewer.inbox.next("quality-settings")).toEqual({
       type: "quality-settings",
-      qualitySettings: h264Settings,
+      qualitySettings: initialSettings,
     });
 
+    const reconnectSettings: QualitySettings = {
+      resolution: "480p",
+      maxFramerate: 15,
+      maxBitrate: 2_000_000,
+      degradationPreference: "maintain-framerate",
+      screenAudioQuality: "saver",
+    };
     const replaced = new Promise<number>((resolve) =>
       host.socket.once("close", (code) => resolve(code)),
     );
@@ -1726,52 +1729,35 @@ describe("WebSocket signaling", () => {
         reconnectedHost,
         harness.room,
         "host",
-        "codec-host-client",
+        "quality-host-client",
         1,
         firstGeneration,
-        {
-          qualitySettings: {
-            ...h264Settings,
-            videoCodec: "vp8",
-          },
-        },
+        { qualitySettings: reconnectSettings },
       ),
     );
     expect(await replaced).toBe(4001);
-    expect(reconnectedAuth.qualitySettings).toEqual(h264Settings);
+    expect(reconnectedAuth.qualitySettings).toEqual(initialSettings);
     await expect(
       viewer.inbox.next("quality-settings", 30),
     ).rejects.toThrow("Timed out");
 
-    const updatedH264Settings: QualitySettings = {
-      ...h264Settings,
+    const updatedSettings: QualitySettings = {
+      ...initialSettings,
       resolution: "720p",
+      maxFramerate: 30,
       maxBitrate: 3_000_000,
+      degradationPreference: "balanced",
+      screenAudioQuality: "music",
     };
     reconnectedHost.socket.send(
       JSON.stringify({
         type: "set-quality-settings",
-        qualitySettings: updatedH264Settings,
+        qualitySettings: updatedSettings,
       }),
     );
     expect(await viewer.inbox.next("quality-settings")).toEqual({
       type: "quality-settings",
-      qualitySettings: updatedH264Settings,
-    });
-
-    reconnectedHost.socket.send(
-      JSON.stringify({
-        type: "set-quality-settings",
-        qualitySettings: {
-          ...updatedH264Settings,
-          videoCodec: "vp8",
-        },
-      }),
-    );
-    expect(await reconnectedHost.inbox.next("error")).toEqual({
-      type: "error",
-      code: "FORBIDDEN",
-      message: "视频编码只能在开始分享前选择；请停止分享后重新开始",
+      qualitySettings: updatedSettings,
     });
 
     const stopped = new Promise<number>((resolve) =>
@@ -1786,28 +1772,24 @@ describe("WebSocket signaling", () => {
     expect(await stopped).toBe(1000);
     await viewer.inbox.next("sharing-stopped");
 
-    const vp8Settings: QualitySettings = {
-      ...updatedH264Settings,
-      videoCodec: "vp8",
-    };
     const nextHost = await openClient(harness.webSocketUrl);
     const nextAuth = peerAssisted(
       await authenticate(
         nextHost,
         harness.room,
         "host",
-        "codec-host-client",
+        "quality-host-client",
         1,
-        "vp8_share_generation_12345678",
+        "next_share_generation_12345678",
         {
-          qualitySettings: vp8Settings,
+          qualitySettings: reconnectSettings,
         },
       ),
     );
-    expect(nextAuth.qualitySettings).toEqual(vp8Settings);
+    expect(nextAuth.qualitySettings).toEqual(reconnectSettings);
     expect(await viewer.inbox.next("quality-settings")).toEqual({
       type: "quality-settings",
-      qualitySettings: vp8Settings,
+      qualitySettings: reconnectSettings,
     });
   });
 
@@ -2567,7 +2549,7 @@ describe("WebSocket signaling", () => {
     expect(await closeCode).toBe(1009);
   });
 
-  it("terminates an invalid protocol before authentication", async () => {
+  it("terminates stale v10 before authentication", async () => {
     const harness = await startHarness();
     const invalidClient = await openClient(harness.webSocketUrl);
     const closed = new Promise<{ code: number; reason: string }>((resolve) =>
@@ -2579,8 +2561,8 @@ describe("WebSocket signaling", () => {
     invalidClient.socket.send(
       JSON.stringify({
         type: "authenticate",
-        protocol: "invalid-protocol",
-        roomId: "999999999999",
+        protocol: "screener-v10",
+        roomId: harness.room.roomId,
         role: "viewer",
         clientId: "invalid-client",
       }),

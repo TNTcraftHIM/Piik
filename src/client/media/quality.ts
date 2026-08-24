@@ -5,7 +5,6 @@ import {
   type QualityResolution,
   type QualitySettings,
   type ScreenAudioQuality,
-  type VideoCodecPreference,
 } from "../../shared/protocol";
 import { displayMediaOptions } from "./audio-capture";
 
@@ -15,7 +14,6 @@ export type {
   QualityResolution,
   QualitySettings,
   ScreenAudioQuality,
-  VideoCodecPreference,
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
@@ -26,7 +24,6 @@ export const QUALITY_PROFILES = {
     maxFramerate: 60,
     maxBitrate: 8_000_000,
     degradationPreference: "balanced",
-    videoCodec: "vp8",
     screenAudioQuality: "music",
   },
   "1080p30": DEFAULT_QUALITY_SETTINGS,
@@ -35,7 +32,6 @@ export const QUALITY_PROFILES = {
     maxFramerate: 30,
     maxBitrate: 3_000_000,
     degradationPreference: "balanced",
-    videoCodec: "vp8",
     screenAudioQuality: "music",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
@@ -61,12 +57,6 @@ export const DEGRADATION_PREFERENCE_LABELS = {
   balanced: "平衡",
   "maintain-framerate": "流畅优先",
 } as const satisfies Record<DegradationPreference, string>;
-
-export const VIDEO_CODEC_PREFERENCE_LABELS = {
-  automatic: "自动",
-  h264: "H.264",
-  vp8: "VP8",
-} as const satisfies Record<VideoCodecPreference, string>;
 
 export const SCREEN_AUDIO_QUALITY_LABELS = {
   saver: "64 kbps 省流",
@@ -144,8 +134,7 @@ export function videoQualitySettingsEqual(
     left.resolution === right.resolution &&
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
-    left.degradationPreference === right.degradationPreference &&
-    (left.videoCodec ?? "vp8") === (right.videoCodec ?? "vp8")
+    left.degradationPreference === right.degradationPreference
   );
 }
 
