@@ -27,8 +27,9 @@ This is the current execution index. Git history owns completed timelines; [veri
 ## Current Milestone
 
 1. Replace the current codec transaction with the accepted pre-share-only selector, VP8 default, fixed per-share codec preference, and ordinary `shareGeneration`-fenced Pause/Resume. Integrate and deploy it atomically on one new Browser wire version with no v9 compatibility path.
-2. Validate live audio ceilings on physical direct, peer-relay, and SFU paths, then reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
-3. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
+2. Diagnose and repair the H.264 path under controlled conditions, validate the result on physical direct, peer-relay, and SFU paths, choose one final fixed Browser codec, and delete the temporary selector for either outcome.
+3. Validate live audio ceilings on physical direct, peer-relay, and SFU paths, then reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
+4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
 
 ## Active Boundaries
 
