@@ -92,6 +92,10 @@ const livekit = vi.hoisted(() => {
       this.sender = new FakeSender(track);
     }
 
+    get mediaStreamTrack(): MediaStreamTrack {
+      return this.currentTrack;
+    }
+
     readonly replaceTrack = vi.fn(
       async (nextTrack: MediaStreamTrack): Promise<void> => {
         this.currentTrack = nextTrack;
@@ -168,6 +172,24 @@ const livekit = vi.hoisted(() => {
         return publication;
       },
     );
+
+    getTrackPublication(source: string) {
+      return this.publications.find(
+        (publication) => publication.options.source === source,
+      );
+    }
+
+    async republishForReconnect(): Promise<void> {
+      const previous = [...this.publications];
+      this.publications.length = 0;
+      for (const publication of previous) {
+        delete publication.videoTrack;
+        delete publication.audioTrack;
+        await this.publishTrack(publication.rawTrack, {
+          ...publication.options,
+        });
+      }
+    }
 
     republishedOptions: Array<Record<string, unknown>> = [];
     readonly republishAllTracks = vi.fn(async (): Promise<void> => {
@@ -1015,6 +1037,123 @@ describe("SfuPublisher", () => {
     );
     expect(room.localParticipant.republishAllTracks).not.toHaveBeenCalled();
   });
+
+  it("rebinds republished tracks after a full reconnect", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(
+      stream(track("video", "video-1"), track("audio", "audio-1")),
+      { ...qualityProfile, screenAudioQuality: "music" },
+    );
+    await expect(
+      publisher.updateProfile({
+        ...qualityProfile,
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(true);
+    const room = livekit.state.rooms[0];
+    const oldVideoPublication = room.localParticipant.publications[0];
+    const oldAudioPublication = room.localParticipant.publications[1];
+
+    await room.localParticipant.republishForReconnect();
+    const videoPublication = room.localParticipant.getTrackPublication(
+      Track.Source.ScreenShare,
+    )!;
+    const audioPublication = room.localParticipant.getTrackPublication(
+      Track.Source.ScreenShareAudio,
+    )!;
+    expect(videoPublication).not.toBe(oldVideoPublication);
+    expect(audioPublication).not.toBe(oldAudioPublication);
+
+    room.emit(RoomEvent.Reconnected);
+
+    await vi.waitFor(() =>
+      expect(audioPublication.track.sender.setParameters).toHaveBeenCalledOnce(),
+    );
+    expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
+      256_000,
+    );
+    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
+      256_000,
+    );
+    expect(publisher.getSenderParameters()).toBeNull();
+    expect(publisher.getQualityWarning()).toBeNull();
+  });
+
+  it("retains video sender readback across a signal-only reconnect", async () => {
+    const publisher = new SfuPublisher();
+    await publisher.connect(connection);
+    await publisher.activate(
+      stream(track("video", "video-1"), track("audio", "audio-1")),
+      { ...qualityProfile, screenAudioQuality: "music" },
+    );
+    const room = livekit.state.rooms[0];
+    const videoSender = room.localParticipant.publications[0].track.sender;
+    const audioSender = room.localParticipant.publications[1].track.sender;
+    videoSender.setParameters.mockImplementationOnce(async (parameters) => {
+      videoSender.parameters = {
+        ...parameters,
+        encodings: parameters.encodings.map((encoding) => ({
+          ...encoding,
+          maxBitrate: 2_000_000,
+        })),
+      };
+    });
+    await expect(
+      publisher.updateProfile({
+        ...qualityProfile,
+        maxBitrate: 5_000_000,
+        degradationPreference: "balanced",
+        screenAudioQuality: "music",
+      }),
+    ).resolves.toBe(true);
+    const senderParameters = publisher.getSenderParameters();
+    const qualityWarning = publisher.getQualityWarning();
+    expect(senderParameters).not.toBeNull();
+    expect(qualityWarning).not.toBeNull();
+    const audioUpdates = audioSender.setParameters.mock.calls.length;
+
+    room.emit(RoomEvent.Reconnected);
+
+    await vi.waitFor(() =>
+      expect(audioSender.setParameters).toHaveBeenCalledTimes(audioUpdates + 1),
+    );
+    expect(publisher.getSenderParameters()).toBe(senderParameters);
+    expect(publisher.getQualityWarning()).toBe(qualityWarning);
+    expect(room.disconnect).not.toHaveBeenCalled();
+  });
+
+  it.each(["publication", "sender"] as const)(
+    "fails the SFU route when republished audio loses its %s",
+    async (missing) => {
+      const disconnected = vi.fn();
+      const publisher = new SfuPublisher({ onDisconnected: disconnected });
+      await publisher.connect(connection);
+      await publisher.activate(
+        stream(track("video", "video-1"), track("audio", "audio-1")),
+        { ...qualityProfile, screenAudioQuality: "music" },
+      );
+      const room = livekit.state.rooms[0];
+      await room.localParticipant.republishForReconnect();
+      const audioPublication = room.localParticipant.getTrackPublication(
+        Track.Source.ScreenShareAudio,
+      )!;
+      if (missing === "publication") {
+        room.localParticipant.publications.splice(
+          room.localParticipant.publications.indexOf(audioPublication),
+          1,
+        );
+      } else {
+        delete audioPublication.audioTrack;
+      }
+
+      room.emit(RoomEvent.Reconnected);
+
+      await vi.waitFor(() => expect(room.disconnect).toHaveBeenCalledWith(false));
+      expect(publisher.getFailureStage()).toBe("transport");
+      expect(disconnected).toHaveBeenCalledOnce();
+    },
+  );
 
   it("retains the active profile for LiveKit track restart and republish", async () => {
     const publisher = new SfuPublisher();
