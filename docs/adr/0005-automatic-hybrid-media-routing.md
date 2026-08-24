@@ -362,15 +362,17 @@ deployment-wide.
 ## Current Source And Deployment Boundary
 
 Production runs exact deployed application/runtime revision
-`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
-`main` contains the same runtime code. Current source and production run the
+`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`. Current source
+adds exact Browser SFU ICE-server-isolation implementation
+`ae09c760adec76fd26da611d4928486d105c6d3b`; both source and production run the
 strict `screener-v11` Browser wire and use the direct/STUN peer and
 LiveKit SFU/UDP route model, including the route, first-frame, typed-status, and
 Host-only diagnostic contract described above. The operation owner is only
-`route`. They still inherit LiveKit-provided STUN on Browser SFU PCs and do not
-yet implement the accepted Browser SFU ICE-server isolation. Exact operational
-evidence is owned by the deployment document; real heterogeneous-network and
-SFU media validation remains open.
+`route`. Current source uses empty external ICE-server lists on Browser SFU PCs;
+production still inherits LiveKit-provided STUN and remains held until the
+application cutover and physical Host/Viewer proof. Exact operational evidence
+is owned by the deployment document; real heterogeneous-network and SFU media
+validation remains open.
 
 ## Acceptance Boundary
 

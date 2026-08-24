@@ -17,19 +17,20 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Source
 
-- Canonical root `main` is the integration truth; auxiliary branches and older worktrees do not supersede it. Current canonical `main` contains the same strict Browser `screener-v11` runtime code as deployed application revision `679fe3e7af634309322bea83b316641f51ad3d09`, rejecting every other wire before room authority.
+- Canonical root `main` is the integration truth; auxiliary branches and older worktrees do not supersede it. Current source keeps strict Browser `screener-v11`, rejects every other wire before room authority, and adds Browser SFU ICE-server isolation implementation `ae09c760adec76fd26da611d4928486d105c6d3b` beyond deployed application revision `679fe3e7af634309322bea83b316641f51ad3d09`.
 - Current source implements one Host plus up to `20` Viewers, one steady outbound media-copy cap for every non-server endpoint (default `2`, static `1/2/3`), and the process-memory room model with random four-digit codes, a default 24-hour dormant lease, exact-Host resume, restart loss, local Host preference replay, independent token invitations, `open | password | disabled` code entry, and no SQLite runtime.
 - One event-driven controller owns the committed graph and at most one room-serial child operation. It uses one deterministic candidate list/cursor and one total direct-then-SFU deadline; exact admission and physical resources remain charged through drain, and the pending candidate commits only after an exact-generation decoded-frame proof. A short-lived 100 ms stats observer proves only that candidate inside the existing deadline, while the 2-second sampler remains responsible for active-path diagnostics and decoded-frame stalls. Healthy edges remain sticky and current-path quality does not authorize reparenting.
 - Ordinary peer ICE is STUN-only and the only application fallback is the dedicated LiveKit SFU over UDP. SFU generations use explicit no-default ingress/egress capacities, exact `reserved | committed | draining` accounting, delete-plus-absence release, one Host publication, and exact Viewer subscription handles. No Screener TURN, ICE/TCP, media TCP, or TLS-relayed media route exists.
-- Current Browser SFU publisher and subscriber connects do not yet supply the accepted empty ICE-server override. Isolated Host A/B evidence passed `8/8` when external client ICE servers were absent and standard ICE used LiveKit-signaled SFU candidates, without TURN, another port, or a longer deadline.
+- Current Browser SFU publisher and subscriber connects supply fresh `autoSubscribe: false` plus `rtcConfig: { iceServers: [] }` options. Ordinary peers retain deployment STUN; LiveKit signaling candidates, server-side public-IP discovery, route deadlines, ports, and retry behavior are unchanged.
 - Current source leaves video `contentHint` unset and keeps audio `contentHint = "music"`. Browser direct and browser-relay offers contain VP8 as their only media codec, and SFU publication explicitly uses VP8 with no backup codec. Codec UI, quality state, wire fields, fallback media codecs, and share-lifetime codec branches are absent. Live 64/128/256 kbps audio-ceiling mutation and ordinary `shareGeneration`-fenced Pause/Resume remain unchanged.
 - Current source implements typed first-frame Viewer presentation and recovery, Chinese user-facing route/access failures, privacy-safe failed-page export, authenticated Host-only on-demand route snapshots, neutral `ROOM_ACCESS_DENIED` room-code admission, and responsive entry controls.
 - Recommended quality remains exactly `1080p60`, `1080p30`, and `720p30`; current source defaults to `1080p30`. Advanced resolution adds `480p` as `854x480` without adding a fourth preset, and advanced FPS and bitrate remain independent.
 - Exact v11 implementation `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`, integrated into deployed application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09` and canonical `main`, passed the current automated source gates. Deployment postflight passed, but no physical direct, browser-relay, or SFU codec path was exercised; retained v10 loopback evidence applies only to that older source. Exact results are owned by [verification status](./verification-status.md).
+- Exact SFU isolation implementation `ae09c760adec76fd26da611d4928486d105c6d3b` passed repository hygiene, TypeScript, all 605 Web tests in 45 files, client/server production builds, and three independent code reviews with no finding. It is not deployed and has no exact product Viewer first-frame evidence.
 
 ## Current Milestone
 
-1. Implement and deploy the accepted Browser SFU ICE-server isolation, then prove exact Host publication and Viewer first-frame media under the reproducing TUN path and a mobile network.
+1. Deploy the source-complete Browser SFU ICE-server isolation, then prove exact Host publication and Viewer first-frame media under the reproducing TUN path and a mobile network.
 2. Diagnose the reported screen-audio `1 kbps` readout and physically validate live audio ceilings.
 3. Physically verify the deployed `screener-v11` fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
 4. Refine the Host invitation controls without changing grant semantics implicitly.
@@ -41,14 +42,14 @@ This is the current execution index. Git history owns completed timelines; [veri
 - The desktop Host background/minimized report is deferred until a current-production real-game reproduction supplies synchronized media and CPU/GPU evidence. Mobile Viewer background playback and relay survival remain a separate Accepted Later lifecycle gate.
 - Open PR #192 and the Native stack are evidence/research, not pending product releases. Native senders, capture helpers, shared-encode executables, and their test binaries are outside the current Browser milestone and are not built or run.
 - Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
-- Room lifetime, authorization/storage semantics, restart loss, entry/presentation, and the Browser v11 contract are aligned between source and production. This application-only cutover reused unchanged infrastructure and configuration and does not maintain a full rollback/configuration backup; any future infrastructure or irreversible-state change requires recovery scoped to the surfaces it actually changes.
+- Room lifetime, authorization/storage semantics, restart loss, entry/presentation, and the Browser v11 wire remain aligned between source and production; Browser SFU ICE-server isolation is source-only until the next application release. The prior application-only cutover reused unchanged infrastructure and configuration and does not maintain a full rollback/configuration backup; any future infrastructure or irreversible-state change requires recovery scoped to the surfaces it actually changes.
 - Real SFU recovery, heterogeneous networks, mobile lifecycle, audio/A-V device behavior, and endurance/resource measurements remain external acceptance evidence, not blockers for unrelated reversible work.
 
 ## Current Hold
 
 Production has an active P1 core-route hold: Browser SFU initial ICE is
 intermittent under the reproduced Mihomo TUN path; the best-supported cause is
-the PC's external-STUN/SFU association conflict. The accepted Browser SFU
-ICE-server isolation must be source-validated, deployed, and physically proven before
+the PC's external-STUN/SFU association conflict. Browser SFU ICE-server
+isolation is source-validated but must be deployed and physically proven before
 the route hold closes. Native/executable work and broad repository cleanup
 remain outside the current evidence boundary.

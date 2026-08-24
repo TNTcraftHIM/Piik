@@ -7,9 +7,10 @@
   transport roles are in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md).
   Production runs exact deployed application/runtime revision
   `679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
-  `main` contains the same runtime code. Current Browser source and production
-  implement the route transaction and diagnostics on strict `screener-v11`.
-  Real-network validation remains in
+  `main` adds Browser SFU ICE-server-isolation implementation
+  `ae09c760adec76fd26da611d4928486d105c6d3b`; production does not yet include
+  it. Source and production retain the route transaction and diagnostics on
+  strict `screener-v11`. Real-network validation remains in
   [verification status](../verification-status.md).
 
 ## Current Transport Conclusion

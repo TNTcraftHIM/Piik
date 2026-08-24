@@ -12,9 +12,10 @@ process provides the built Web client, room API, and WebSocket signaling behind
 Caddy or nginx; ordinary peer ICE advertises only STUN, while Browser LiveKit
 PCs configure no external ICE server and retain LiveKit-signaled UDP candidates.
 LiveKit supplies bounded SFU fallback capacity. Normal media remains distributed
-through direct or peer edges whenever those paths work. Exact production release
-`679fe3e` still inherits the LiveKit join response's STUN endpoint and has not
-implemented this Browser SFU ICE-server isolation.
+through direct or peer edges whenever those paths work. Current source
+implementation `ae09c760adec76fd26da611d4928486d105c6d3b` supplies that Browser
+override; exact production release `679fe3e` still inherits the LiveKit join
+response's STUN endpoint.
 
 A deployment may additionally provide one dedicated single-node LiveKit process
 as the current controller's automatic final media fallback. This capacity is
@@ -462,9 +463,9 @@ webhook, external-TURN, and embedded-TURN service. It explicitly sets
 `tcp_port: 0` and `allow_tcp_fallback: false`, and points `stun_servers` at the
 deployment's self-hosted STUN listener for server-side public-IP discovery and
 to prevent pinned LiveKit from substituting a public default in its join
-response. The accepted Screener Browser publisher/subscriber connect override is
-an explicit empty list, so those SFU PCs do not use either response after that
-pending application change is deployed. Do not add Redis for this one-node workload.
+response. Current Screener source gives Browser publisher/subscriber connects an
+explicit empty list, so those SFU PCs do not use either response after the
+pending application cutover. Do not add Redis for this one-node workload.
 The service journal is the diagnostic log; keep its retention finite and access
 restricted. Pinned LiveKit 1.13.5 includes raw PublisherOffer SDP in info-level
 join records, so the tracked production baseline uses `logging.level: warn` and

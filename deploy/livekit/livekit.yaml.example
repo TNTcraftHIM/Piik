@@ -14,8 +14,8 @@ rtc:
   allow_tcp_fallback: false
   # Use the deployment-owned STUN listener for server public-IP discovery and
   # avoid LiveKit substituting a public default in its join response. The
-  # accepted Screener Browser SFU connect contract uses an empty ICE-server list;
-  # ordinary peer edges receive this listener through application signaling.
+  # Screener Browser SFU connects use an empty ICE-server list; ordinary peer
+  # edges receive this listener through application signaling.
   stun_servers:
     - stun.example.com:3478
   use_external_ip: true
