@@ -39,7 +39,7 @@ Last updated: 2026-08-24
 
 ## Current Priority
 
-1. Diagnose desktop Host background/minimized behavior under controlled capture, codec, send, receive, decode, CPU, and GPU measurement, then diagnose the screen-audio `1 kbps` readout and physically validate live audio ceilings.
+1. Finish the desktop Host background/minimized diagnosis on exact production with a real game/replay and separate direct Viewer, then diagnose the screen-audio `1 kbps` readout and physically validate live audio ceilings. A bounded current-Chrome Browser `getDisplayMedia()` WPF-window same-machine loopback did not observe an immediate Host-page lifecycle drop and therefore authorizes no keepalive or other Browser workaround.
 2. Then physically validate exact direct, browser-relay, and SFU codec behavior on deployed Browser v11, refine the invitation UI, and finish real-network route acceptance. Browser VP8 hardware acceleration and mobile Viewer lifecycle remain Accepted Later; Native/executable, distribution, and repository-wide simplification remain later phases.
 
 ## Working Rules

@@ -3,21 +3,32 @@
 - Research date: 2026-08-24
 - Scope: desktop Chrome/Edge Web Host capture while the Host page is
   unfocused, occluded, backgrounded, or minimized
-- Status: diagnostic plan; the reported degradation has not been reproduced or
-  attributed under controlled measurement, and no fix is accepted, implemented,
-  or deployed
+- Status: one bounded current-browser screening did not observe an immediate
+  Host-page background drop; the reported real-game case remains unreproduced
+  and unattributed, and no new fix is accepted, implemented, or deployed
 
 ## Current Conclusion
 
-There is no evidence that Screener is missing a page-liveness signal. A live
-display-capture track and a live WebRTC connection already put the page in the
-media cases that current Chrome excludes from intensive timer throttling and
-Energy Saver freezing. Those exclusions do not guarantee a requested capture
-rate, encoder throughput, or remote rendering rate, and no Web API lets an
-application assert foreground scheduling priority.
+There is no evidence that Screener is missing a page-liveness signal. Chromium
+already marks live `MediaStreamTrack` use as a scheduler opt-out from aggressive
+throttling and wake-up alignment, feeds active capture into both renderer
+priority policy paths, and holds an internal application-suspension wake lock
+for active peer connections. Those mechanisms are intended to protect active
+media from ordinary invisible-page background treatment; they do not guarantee
+a requested capture rate, encoder throughput, or remote rendering rate, and no
+Web API lets an application assert additional foreground scheduling priority.
 
-The current report therefore remains diagnostic-only. It must distinguish five
-different effects before any product change is considered:
+A bounded Chrome 151 screening on the current Windows test machine also kept
+real window capture, VP8 encoding, loopback receipt, and decode at about 29.4 to
+29.6 fps while the Host document was focused, in a hidden tab, and in a
+minimized browser window. No immediate Host-document background drop was
+observed in those 15-second windows. The sample does not reproduce the reported
+game workload, separate physical Viewer, production route, CPU/GPU contention,
+or browser policies whose documented hidden-state threshold exceeds five
+minutes.
+
+The current report therefore remains open but diagnostic-only. It must
+distinguish five different effects before any product change is considered:
 
 1. Host preview or stats presentation is throttled while transmitted media is
    unchanged.
@@ -41,6 +52,15 @@ actual negotiated codec and encoder rather than inferring either from
 configuration. Encoder implementation is a diagnostic variable only after a
 stable baseline exists; neither codec nor encoder choice is a page-keepalive
 mechanism.
+
+The 2026-08-19 report came from exact release `769de201f7cc`, which still set
+video `contentHint = "motion"`. Current source and production leave the video
+hint unset; a separate controlled VP8 probe changed from 14.93 fps at 428x208
+with `motion` to 29.73 fps at 1904x928 without it. That known old-source defect
+is fixed in the current contract, but it does not prove that the state-dependent
+background report had the same cause. The physical baseline must therefore
+start from current production rather than carrying the old report forward as a
+current regression.
 
 ## Current Source Boundary
 
@@ -103,9 +123,23 @@ All sources were checked on 2026-08-24.
   stats timestamps are the comparison basis. Optional absent fields remain
   unknown. This is an Editor's Draft and does not require every browser to emit
   every optional member.
-- [W3C Page Visibility](https://www.w3.org/TR/page-visibility-2/) defines
-  observable document visibility; it does not define capture or encoder
+- [WHATWG HTML Page Visibility](https://html.spec.whatwg.org/multipage/interaction.html#page-visibility)
+  defines observable document visibility; it does not define capture or encoder
   priority.
+- [Chromium capture accounting](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/content/browser/renderer_host/render_frame_host_impl.cc)
+  forwards the first `kCapturingMediaStream` to the renderer process, and the
+  [process-priority calculation](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/content/browser/child_process_launcher.cc)
+  treats a media stream as non-background when no priority override exists.
+  Chromium's
+  [Performance Manager voter registration](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/performance_manager/performance_manager_lifetime.cc)
+  separately installs `FrameCapturingMediaStreamVoter` to cast a
+  `USER_BLOCKING` vote for a capturing frame when that priority path is active.
+  These are implementation policies, not a priority measurement from the local
+  screening.
+- [Chromium `MediaStreamTrack` scheduling](https://chromium.googlesource.com/chromium/src/+/0b9090f669ed390bbc61eadcd59a05ca98c6a0bc/third_party/blink/renderer/modules/mediastream/media_stream_track_impl.cc)
+  disables aggressive throttling and wake-up alignment while a live or muted
+  track exists. Ordinary hidden-page JavaScript timer batching remains
+  independent.
 - [Chrome chained-timer throttling](https://developer.chrome.com/blog/timer-throttling-in-chrome-88)
   says hidden-page timers may be batched and `requestAnimationFrame()` is not a
   background clock. A live WebRTC media track avoids the intensive once-per-
@@ -118,9 +152,15 @@ All sources were checked on 2026-08-24.
 - [Chromium `DesktopCaptureDevice`](https://chromium.googlesource.com/chromium/src/+/master/content/browser/media/capture/desktop_capture_device.cc)
   schedules capture in the browser capture subsystem, requests an internal
   display-sleep wake lock, and by default limits desktop capture to 50% of one
-  CPU core by lengthening the next capture period when capture work is slow.
-  This is direct evidence for measuring capture cost rather than manufacturing
-  renderer activity.
+  CPU core by lengthening the next capture period when capture work is slow. On
+  supported current Windows builds it also permits damage-driven WGC 0 Hz
+  behavior for unchanged content. This is direct evidence for measuring capture
+  work and actual content changes rather than manufacturing renderer activity
+  or treating intentionally absent duplicate frames as degradation.
+- [WebRTC Windows WGC minimized-window tests](https://webrtc.googlesource.com/src/+/master/modules/desktop_capture/win/wgc_capturer_win_unittest.cc)
+  require temporary capture errors when the captured window itself is minimized
+  and recovery after it is restored. This is distinct from minimizing the
+  separate Host browser window and does not specify JavaScript event timing.
 - [Chromium WebRTC internals owner](https://chromium.googlesource.com/chromium/src/+/master/content/browser/webrtc/webrtc_internals.cc)
   requests an internal application-suspension wake lock for active peer
   connections. This internal browser behavior is not equivalent to the Web
@@ -132,6 +172,49 @@ All sources were checked on 2026-08-24.
   to prevent a visible document's screen from turning off; hidden documents
   lose the lock. It does not promise capture, encoder, timer, or renderer
   priority.
+- [Chrome performance settings](https://support.google.com/chrome/answer/12929150)
+  and [Edge performance features](https://support.microsoft.com/en-us/edge/learn-about-performance-features-in-microsoft-edge)
+  provide user-side energy and sleeping controls. Edge explicitly excludes
+  active window/screen and user-media capture from Sleeping Tabs, while Energy
+  Saver can still affect video or gaming smoothness. Browser exclusions are
+  useful A/B controls, not Web application keepalive APIs.
+
+## Bounded Current-Browser Screening
+
+On 2026-08-24, Chrome `151.0.7922.174` on Windows 25H2 build `26200.9168`
+captured a continuously changing native WPF window through real
+`getDisplayMedia()`. The source remained visible and changing; capture returned
+1186x712 at a 30 fps setting. One VP8/libvpx sender used no video hint, a 5 Mbps
+ceiling, 30 fps ceiling, `scaleResolutionDownBy = 1`, and `balanced`, with one
+same-machine loopback receiver. Each state had one 15-second RTCStats window.
+The automation flag selected the named window in the picker only; no
+background-timer, occlusion, renderer-priority, Energy Saver, or capture policy
+was disabled.
+
+| Host state | Capture fps | Encoded fps | Sent bitrate | Encode ms/frame | Decoded fps | Limitation |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Focused | 29.58 | 29.58 | 1276 kbps | 1.50 | 29.51 | `none` |
+| Hidden tab | 29.53 | 29.53 | 1206 kbps | 1.35 | 29.53 | `none` |
+| Focused after hidden | 29.58 | 29.51 | 1231 kbps | 1.52 | 29.51 | `none` |
+| Browser window minimized | 29.39 | 29.39 | 1316 kbps | 1.45 | 29.39 | `none` |
+| Focused after minimize | 29.39 | 29.39 | 1341 kbps | 1.46 | 29.39 | `none` |
+
+At every boundary sample, the capture track was enabled, unmuted, and live at
+1186x712; the local preview played at focused boundaries and was paused at
+hidden and minimized boundaries. Outbound and inbound boundary samples were
+also 1186x712, and every end sample reported `qualityLimitationReason=none`.
+The probe kept one unchanged PC, sender, and track. Capture, encoded, and decoded
+rates divided their monotonic counter deltas by the same outbound-RTP RTCStats
+timestamp interval; bitrates used the corresponding byte deltas. Source and
+inbound timestamps and raw stats identity were not independently retained, so
+this is not an A/B/C interval-identity proof.
+
+This is a screening result, not the product acceptance run. It has one short
+same-machine loopback, no production Screener route, no separate physical
+Viewer, no real game/render load, no audio, no CPU/GPU counter correlation, and
+no repetition, randomized order, or hidden/minimized hold beyond five minutes.
+It narrows the next test to the reported workload and environment; it does not
+close the TODO or justify a Browser workaround.
 
 ## Minimal Reproduction
 
@@ -162,7 +245,10 @@ Open `chrome://webrtc-internals` on Host and Viewer before sharing and keep its
 overhead constant across every run. Leave audio-debug recording, event-log
 recording, packet capture, and media recording disabled. The current Screener
 diagnostic download may be taken at state boundaries as a latest-sample
-cross-check; it is not used as a time series.
+cross-check; it is not used as a time series. If a stable reproduction suggests
+freezing or discard, inspect the Host tab from a pre-opened separate control
+window in `chrome://discards` or `edge://discards` outside the timed measurement
+window. That page may expose URLs and therefore remains local evidence.
 
 ### Host-State Matrix
 
@@ -209,6 +295,11 @@ Change one variable per fresh run:
 3. When investigating the 2026-08-19 production report, compare exact release
    `769de201f7cc` with the then-current exact `main` commit on the same machine,
    browser, driver, game scene, and direct wired Viewer.
+4. If the short state matrix does not reproduce a report that concerns sustained
+   background operation, run one fresh hold longer than Chrome's documented
+   five-minute hidden-policy window in only the reported hidden or minimized
+   state. Keep the source changing and compare the first and last minute with
+   focused baselines; do not multiply that hold across every state.
 
 Do not run a full factorial matrix before the baseline reproduces. A follow-up
 must have one stated hypothesis and one changed variable.

@@ -27,7 +27,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Reproduce the Host background/minimized report under controlled conditions while recording actual capture, codec, send, receive, decode, CPU, and GPU evidence.
+1. Finish the Host background/minimized diagnosis on exact production with a real game/replay and separate direct Viewer. A bounded current-Chrome Browser `getDisplayMedia()` WPF-window same-machine loopback did not observe an immediate page-lifecycle drop, so no workaround is established; the reported workload still needs synchronized capture, send, receive, decode, CPU, and GPU evidence.
 2. Diagnose the reported screen-audio `1 kbps` readout and physically validate live audio ceilings.
 3. Physically verify the deployed `screener-v11` fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
 4. Refine the Host invitation controls without changing grant semantics implicitly.
