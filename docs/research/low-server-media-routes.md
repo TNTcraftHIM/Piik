@@ -404,25 +404,6 @@ The [W3C File API](https://www.w3.org/TR/FileAPI/) (accessed 2026-08-22) defines
 Blob URLs for locally generated downloads and requires explicit revocation to
 release their backing store.
 
-### Pre-Share Self-Check Boundary
-
-A temporary, unpaired `RTCPeerConnection` can create a data channel, set its
-local offer, and inspect only `RTCIceCandidate.type`. Gathering a `srflx`
-candidate proves that the browser received a STUN response for this generation;
-it proves neither a usable peer candidate pair nor bandwidth, latency, NAT type,
-or media quality. A same-origin WebSocket open followed by immediate close proves
-only the signaling handshake. Neither probe creates a Screener room or media
-edge, and both discard their temporary resources.
-
-Pinned LiveKit `Room.prepareConnection(url)` without a token performs an HTTP
-`HEAD`; it does not establish ICE/UDP. A real LiveKit transport requires a token
-and participant connection, which would create the room/SFU state this pre-share
-check deliberately avoids. The UI therefore reports configured SFU as unknown
-until an actual controller-selected route proves current-generation media. The
-public, `no-store` self-check config returns only the existing STUN-only
-`iceConfig` and an SFU-configured boolean. It returns no SFU URL, token,
-credential, address, or candidate.
-
 ## Historical SFU/UDP And Selected-Edge TURN Slice
 
 Every ordinary bounded peer `RTCPeerConnection` used STUN-only ICE. The tested
