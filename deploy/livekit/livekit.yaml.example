@@ -12,8 +12,10 @@ rtc:
   udp_port: 7882
   tcp_port: 0
   allow_tcp_fallback: false
-  # Do not inherit LiveKit's public Google STUN defaults. This is the same
-  # deployment-owned STUN-only listener advertised to ordinary peer edges.
+  # Use the deployment-owned STUN listener for server public-IP discovery and
+  # avoid LiveKit substituting a public default in its join response. The
+  # accepted Screener Browser SFU connect contract uses an empty ICE-server list;
+  # ordinary peer edges receive this listener through application signaling.
   stun_servers:
     - stun.example.com:3478
   use_external_ip: true

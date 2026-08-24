@@ -1,6 +1,8 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted; deployed in exact release `679fe3e`
+- Status: Accepted. The core route model is deployed in exact release `679fe3e`;
+  the Browser SFU ICE-server-isolation amendment is accepted but not
+  yet implemented or deployed.
 - Date: 2026-08-20
 - Last updated: 2026-08-24
 
@@ -220,6 +222,13 @@ second mutable graph.
   transport. An all-UDP-blocked network reaches a clear bounded failure; any
   future strict-firewall transport requires its own evidence and belongs inside
   LiveKit rather than becoming another application candidate.
+- Browser SFU publisher and subscriber PCs explicitly use an empty ICE-server
+  list, retain LiveKit-signaled UDP candidates, and let standard ICE nominate a
+  non-relay pair. Candidate type, address family, count, and Browser socket
+  allocation are not application invariants. Ordinary peers still use
+  deployment STUN, and LiveKit server-side public-IP discovery may use that same
+  STUN service. This isolates SFU PCs from unnecessary external STUN/TURN
+  destinations without adding a route, transport, port, retry stage, or timeout.
 - Browser ICE connectivity checks are the authority for direct UDP reachability.
   Screener does not synthesize remote candidates, predict ports, classify NAT
   behavior, or use TCP reachability as a media-path probe. Direct exhaustion
@@ -358,8 +367,10 @@ Production runs exact deployed application/runtime revision
 strict `screener-v11` Browser wire and use the direct/STUN peer and
 LiveKit SFU/UDP route model, including the route, first-frame, typed-status, and
 Host-only diagnostic contract described above. The operation owner is only
-`route`. Exact operational evidence is owned by the deployment document; real
-heterogeneous-network and SFU media validation remains open.
+`route`. They still inherit LiveKit-provided STUN on Browser SFU PCs and do not
+yet implement the accepted Browser SFU ICE-server isolation. Exact operational
+evidence is owned by the deployment document; real heterogeneous-network and
+SFU media validation remains open.
 
 ## Acceptance Boundary
 

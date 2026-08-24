@@ -7,11 +7,14 @@ This page records production running exact deployed application/runtime revision
 Browser `screener-v11` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
-This section documents the repository's UDP-only deployment candidate: one
-Node.js process provides the built Web client, room API, and WebSocket signaling
-behind Caddy or nginx; application ICE advertises only STUN by default; LiveKit
-supplies bounded SFU fallback capacity. Normal media remains distributed through
-direct or peer edges whenever those paths work.
+This section documents the accepted UDP-only deployment contract: one Node.js
+process provides the built Web client, room API, and WebSocket signaling behind
+Caddy or nginx; ordinary peer ICE advertises only STUN, while Browser LiveKit
+PCs configure no external ICE server and retain LiveKit-signaled UDP candidates.
+LiveKit supplies bounded SFU fallback capacity. Normal media remains distributed
+through direct or peer edges whenever those paths work. Exact production release
+`679fe3e` still inherits the LiveKit join response's STUN endpoint and has not
+implemented this Browser SFU ICE-server isolation.
 
 A deployment may additionally provide one dedicated single-node LiveKit process
 as the current controller's automatic final media fallback. This capacity is
@@ -61,7 +64,7 @@ self-hosted STUN listener owns UDP 3478.
 ```text
 browser -- HTTPS/WSS --> Caddy or nginx :443 --> Node.js :8787
 browser <------------ DTLS-SRTP P2P ------------> browser
-browser -- STUN binding/UDP --> coturn :3478 (application advertises STUN only)
+browser -- ordinary-peer STUN/UDP --> coturn :3478
 browser <---------- DTLS-SRTP/UDP ----------> LiveKit :7882
 ```
 
@@ -161,7 +164,13 @@ The repository requires STUN and ordinary peer connections receive STUN-only
 ICE. An existing logical edge prefers direct/peer UDP; the only application
 suffix is the Host publication/SFU path. LiveKit participants receive only
 revision-bound `sfu-config` URL/token messages and negotiate within LiveKit's
-separate UDP-only ICE domain.
+separate UDP-only ICE domain. The accepted Browser publisher and subscriber
+connect contract provides an explicit empty ICE-server list, retains the UDP
+candidates delivered through LiveKit signaling, and lets standard ICE select a
+nominated non-relay pair. Candidate type, count, address family, and Browser
+socket allocation remain implementation observations. This does not remove
+ordinary-peer STUN or the deployment STUN used by LiveKit to discover its own
+public address.
 
 `PEER_ASSISTED_MEDIA=true` is the process-wide topology/SFU switch. Every normal
 room gets its own bounded controller state and ordinary peer connections remain
@@ -451,8 +460,11 @@ with mode `0600`; put the same values in Screener's untracked process secrets.
 The example deliberately omits Redis and every recording, ingress, egress,
 webhook, external-TURN, and embedded-TURN service. It explicitly sets
 `tcp_port: 0` and `allow_tcp_fallback: false`, and points `stun_servers` at the
-deployment's self-hosted STUN listener so pinned LiveKit cannot inherit its
-default public Google STUN servers. Do not add Redis for this one-node workload.
+deployment's self-hosted STUN listener for server-side public-IP discovery and
+to prevent pinned LiveKit from substituting a public default in its join
+response. The accepted Screener Browser publisher/subscriber connect override is
+an explicit empty list, so those SFU PCs do not use either response after that
+pending application change is deployed. Do not add Redis for this one-node workload.
 The service journal is the diagnostic log; keep its retention finite and access
 restricted. Pinned LiveKit 1.13.5 includes raw PublisherOffer SDP in info-level
 join records, so the tracked production baseline uses `logging.level: warn` and
@@ -523,7 +535,10 @@ Run these checks from real external networks before closing route acceptance:
 3. On a normal room, exhaust a peer route and verify exactly one Host
    publication serves only the admitted SFU subscriptions over LiveKit UDP 7882.
    Peer descendants stay on ordinary direct UDP and every non-server endpoint
-   obeys the configured `ENDPOINT_MEDIA_COPY_CAPACITY`.
+   obeys the configured `ENDPOINT_MEDIA_COPY_CAPACITY`. On each Browser SFU PC,
+   verify no local external STUN/TURN server is configured, a nominated
+   non-relay UDP pair reaches an authorized LiveKit-signaled SFU candidate, and
+   the exact Viewer presents a decoded frame. Do not gate on candidate type or count.
 4. Block all UDP and verify bounded recovery ends clearly without ICE/TCP,
    TURN, or a long pseudo-connected path.
 5. Exercise root departure, reconnect, SFU unavailable, route prepare rollback,
