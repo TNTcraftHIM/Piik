@@ -6,10 +6,10 @@
 - Status: research and dated route evidence. Current invariants and assisted
   transport roles are in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md).
   Production runs exact deployed application/runtime revision
-  `679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
-  `main` adds Browser SFU ICE-server-isolation implementation
-  `ae09c760adec76fd26da611d4928486d105c6d3b`; production does not yet include
-  it. Source and production retain the route transaction and diagnostics on
+  `c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
+  `main` and production include Browser SFU ICE-server-isolation implementation
+  `ae09c760adec76fd26da611d4928486d105c6d3b` and owner physical fallback proof.
+  Source and production retain the route transaction and diagnostics on
   strict `screener-v11`. Real-network validation remains in
   [verification status](../verification-status.md).
 

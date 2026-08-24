@@ -3,7 +3,7 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`, and the single
+`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`, and the single
 Browser `screener-v11` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -12,10 +12,9 @@ process provides the built Web client, room API, and WebSocket signaling behind
 Caddy or nginx; ordinary peer ICE advertises only STUN, while Browser LiveKit
 PCs configure no external ICE server and retain LiveKit-signaled UDP candidates.
 LiveKit supplies bounded SFU fallback capacity. Normal media remains distributed
-through direct or peer edges whenever those paths work. Current source
-implementation `ae09c760adec76fd26da611d4928486d105c6d3b` supplies that Browser
-override; exact production release `679fe3e` still inherits the LiveKit join
-response's STUN endpoint.
+through direct or peer edges whenever those paths work. Production includes
+implementation `ae09c760adec76fd26da611d4928486d105c6d3b`; the owner physically
+verified SFU fallback media after the cutover.
 
 A deployment may additionally provide one dedicated single-node LiveKit process
 as the current controller's automatic final media fallback. This capacity is
@@ -26,18 +25,16 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `679fe3e7af634309322bea83b316641f51ad3d09`, release
-`679fe3e`, from `/opt/screener/releases/679fe3e`. The immutable runtime ZIP
+Production runs exact `c4962f54443ad5f98bc65861195a3d9c74a48996`, release
+`c4962f5`, from `/opt/screener/releases/c4962f5`. The immutable runtime ZIP
 SHA-256 is
-`fc96137f0fdc4dc4d8e083513d8fe99b9c55f7067a8b1de9202551edc3776c50`.
+`734815479a03728bb81b44ce5dc04fe010323acdbb91cdbea0e806548278164c`.
 Its 38-file path/size/hash manifest SHA-256 is
-`73f67c530acd5d4c77b546c19b5752c066f82682a584a72cd7ca596d6c5bec7e`.
-Local and trusted-IP public `/` and `/healthz` return 200; Screener, LiveKit,
-coturn, and nginx are active with `NRestarts=0`, and all six served client files
-match the immutable release. The public main Browser asset is
-`assets/index-CGzoJSvs.js` with SHA-256
-`31cf628d96be88f373cd0c3ac09e4966929fe320414aa1f0f9841264708d5a7e`;
-the retired v10 asset `assets/index-BtFMxoNI.js` returns 404.
+`aefc414238655e9cb33d33975813bcc44afd22c5ad4e056ab719fae6c20aed47`.
+Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
+active with `NRestarts=0`. The public main Browser asset is
+`assets/index-DQgIVwby.js` with SHA-256
+`f819df6c94652d0c5847daa602431384f7b6bf58aa38615fa327526755ede4ef`.
 
 The release deploys the single Browser `screener-v11` wire, fixed VP8 for Browser
 direct, browser-relay, and SFU video, no video `contentHint`, no codec UI/state/wire,
@@ -265,7 +262,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `679fe3e` accepts 1 through 20 and explicitly selects 20. This is an
+Production `c4962f5` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -278,7 +275,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `679fe3e` runs the deployed server and Browser assets
+Production release `c4962f5` runs the deployed server and Browser assets
 atomically on `screener-v11`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 

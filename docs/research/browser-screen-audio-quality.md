@@ -7,13 +7,33 @@ still report speech-gated movie/game audio, including on a phone connected
 directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
 local speech processing unless the request disables it. The source request is
 explicit. Production runs exact deployed application/runtime revision
-`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
 `main` contains the same runtime code. Current Browser source and production use
 strict `screener-v11`, fixed VP8, no video hint, and no codec UI, quality state,
 or wire field. They expose bounded 64/128/256 kbps choices,
 apply them to new P2P, browser-relay, and SFU senders, and implement serialized
 live mutation with applied readback.
 Target-device audible proof remains open.
+
+## Observed-Bitrate Identity Boundary
+
+The reported Host audio diagnostic remaining at `1 kbps` after a source switch
+is not explained by a unit conversion or a configured ceiling. The existing
+delta calculation `(bytes * 8) / milliseconds` already returns kbps, and the UI
+only rounds that observed value. A muted or idle Opus stream can produce a value
+around 1 kbps, but the cause of the reported live-source value remains unproven
+until physical reproduction.
+
+The current source nevertheless has two exact-observation defects. Ordinary
+peer stats select video by the current track identity but do not explicitly bind
+the selected audio RTP record to the current audio track. The SFU publisher
+requests stats only from the video sender even though
+`RTCRtpSender.getStats()` is scoped to that sender. The accepted fix reuses the
+existing exact media selector and report merge: ordinary Host and SFU publisher
+audio metrics bind to the current audio sender track, explicit no-audio returns
+unknown, video and audio sender reports are merged for SFU, and an audio-track
+identity change resets the interval baseline. It does not multiply the observed
+value, substitute the 64/128/256 kbps ceiling, or add an inferred audio state.
 
 ## Scope And Decision
 
@@ -450,7 +470,7 @@ deltas in earlier video loopbacks. This is functional evidence, not packaging,
 real-game sync, second-Viewer, SFU/UDP, or endurance evidence.
 
 Run one bounded matrix rather than a full route Cartesian product against
-production release `679fe3e` and its matching current runtime source on Windows
+production release `c4962f5` and its matching current runtime source on Windows
 Chrome/Edge for tab/window/monitor,
 audio selected/unselected, and a simultaneous voice call; then the native
 candidate on current Windows 11 with game parent and child audio, an independent

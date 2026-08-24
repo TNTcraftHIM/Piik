@@ -1,6 +1,8 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; implemented and deployed in exact release `679fe3e`
+- Status: Accepted; the existing room model is deployed in exact release
+  `c4962f5`, while the room-lived short grant and explicit missing-room result
+  are pending implementation
 - Date: 2026-08-23
 
 ## Context
@@ -75,7 +77,14 @@ update path, derives the verifier, and never stores or logs the plaintext.
 
 ### Orthogonal Viewer Access
 
-Every room has an expiring, room-scoped Viewer grant independent of code entry.
+Every room has one room-scoped Viewer grant independent of code entry. The grant
+is 16 cryptographically random bytes encoded as 22 base64url characters; its
+SHA-256 digest is stored directly on that exact in-memory room incarnation. It
+has no separate expiry clock or embedded room metadata. It remains usable only
+while that room exists, and therefore ends on room reclamation or process
+restart as well as explicit rotation or revocation. Reusing the same four-digit
+code creates a new digest and never revives an old invitation.
+
 The primary share action copies `/r/{code}#v={grant}`. A valid grant directly
 authorizes only the Viewer role in that room. The browser consumes it into
 room-scoped `sessionStorage`, immediately clears the fragment with
@@ -101,15 +110,13 @@ all code-only Viewer attempts. A valid room grant may bypass that site gate only
 for the exact Viewer role and room. Neither a code, room password, nor Viewer
 grant can create a room or become Host authority.
 
-The current Browser room-entry boundary uses exactly one
-`ROOM_ACCESS_DENIED` result. It applies only after site access to a well-formed
-code-only Viewer attempt whose expected admission rejects an unknown or expired
-room, disabled code entry, an absent or incorrect room password, a full room, or
-another bounded admission refusal. Every such case uses the same code, public
-message, and connection-close behavior, so neither the wire nor the UI reveals
-room existence or code-entry policy. The UI may offer an optional room-password
-retry and tell the Viewer to use an invitation link supplied by the Host; it
-does not request, discover, or mint an invitation through the server.
+After site access, a well-formed code-only attempt for an unallocated, reclaimed,
+or expired room returns `ROOM_NOT_FOUND`; the Viewer shows "房间不存在或已过期"
+and does not offer a room-password input. Other expected code-only admission
+failures retain `ROOM_ACCESS_DENIED` and the existing optional password retry.
+This intentionally reveals only that no current room owns the submitted code;
+it does not expose the policy or password state of an existing room. The UI does
+not request, discover, or mint an invitation through the server.
 
 Exact-room grant failures remain `INVALID_TOKEN`, Host authentication retains
 its independent role-specific outcomes, and unexpected internal faults remain
@@ -145,30 +152,37 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   password, and code-bound room state. Reusing a released code never accepts the
   old grant.
 - Default creation atomically produces `open` code entry with no room password
-  and an independent token-bearing invitation. `open`, `password`, and
-  `disabled` code entry are covered independently from grant rotate/revoke.
+  and an independent 22-character token-bearing invitation. The grant remains
+  valid for exactly the current room incarnation and has no independent expiry.
+  `open`, `password`, and `disabled` code entry are covered independently from
+  grant rotate/revoke.
 - Same-browser recreation reapplies the Host profile; another browser or cleared
   storage does not. No fingerprint or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
   of application/proxy logs and server durable storage.
-- On the current Browser wire, every expected denial of a well-formed, site-authorized
-  code-only attempt yields only `ROOM_ACCESS_DENIED` with the same public
-  message and connection-close behavior. Tests cover unknown/expired rooms,
-  disabled entry, absent/wrong passwords, full and bounded admission, while
-  exact-room grant, Host-authentication, and unexpected-server-fault paths keep
-  their independent typed outcomes.
+- On the accepted `screener-v12` Browser wire, a well-formed, site-authorized
+  code-only attempt for an unallocated, reclaimed, or expired room yields
+  `ROOM_NOT_FOUND` and no
+  password prompt. Existing-room policy, password, full, and bounded admission
+  failures retain `ROOM_ACCESS_DENIED`; exact-room grant, Host-authentication,
+  and unexpected-server-fault paths keep their independent typed outcomes.
 
 ## Implementation Status
 
 Production runs exact deployed application/runtime revision
-`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
 `main` contains the same runtime code. Current source and production run the
-strict `screener-v11` wire and implement this complete room
-boundary, including allocation, leases, orthogonal grant/code admission,
-rotate/revoke, password policy, local profile replay, restart loss, browser
-storage privacy, and the neutral `ROOM_ACCESS_DENIED` result. All expected
-code-only denials use that same public result followed by the shared
-authentication-failed close code.
+strict `screener-v11` wire and implement allocation, leases, orthogonal
+grant/code admission, rotate/revoke, password policy, local profile replay,
+restart loss, and browser-storage privacy. They still use the previous
+time-bearing 256-bit grant and neutral `ROOM_ACCESS_DENIED` result. The accepted
+22-character room-lived grant and `ROOM_NOT_FOUND` split belong to one strict
+`screener-v12` replacement and are not yet implemented or deployed.
 
 Exact release and operational evidence remain owned by deployment and
 verification status.
+
+## Decision Sources
+
+- [Node.js `crypto.randomBytes()`](https://nodejs.org/docs/latest-v24.x/api/crypto.html#cryptorandombytessize-callback)
+- [NIST SP 800-57 Part 1 Rev. 5](https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final)

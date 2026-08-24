@@ -32,8 +32,8 @@ contradict the private-room cost model or duplicate mature WebRTC capabilities.
 
 [ADR-0005](./0005-automatic-hybrid-media-routing.md) owns current routing
 invariants and assisted-route roles. Production runs exact deployed
-application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`, release
-`679fe3e`; canonical `main` contains the same runtime code. Current source and
+application/runtime revision `c4962f54443ad5f98bc65861195a3d9c74a48996`, release
+`c4962f5`; canonical `main` contains the same runtime code. Current source and
 production use the strict `screener-v11` Browser wire and the same accepted route
 model. Real-network validation remains open.
 [ADR-0004](./0004-peer-assisted-media-experiment.md)

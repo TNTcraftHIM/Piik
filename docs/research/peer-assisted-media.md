@@ -7,8 +7,8 @@
 - Status: historical evidence plus the bounded controller. Exact Browser v10
   source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` remains the dated local
   direct-loopback implementation evidence. Production runs exact deployed
-  application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`, release
-  `679fe3e`; canonical `main` contains the same runtime code. Current source and
+  application/runtime revision `c4962f54443ad5f98bc65861195a3d9c74a48996`, release
+  `c4962f5`; canonical `main` contains the same runtime code. Current source and
   production run the strict `screener-v11` ADR-0005 route transaction. A
   historical v8 canary decoded SFU media. Heterogeneous-network, mobile,
   resource, and endurance evidence remains open.

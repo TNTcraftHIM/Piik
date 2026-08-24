@@ -12,7 +12,7 @@ game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
 Production runs exact deployed application/runtime revision
-`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
 `main` contains the same runtime code. Current Browser source and production use
 strict `screener-v11`, fixed VP8, no video `contentHint`, and no codec UI,
 quality state, or wire field. They use `balanced` as the recommended profile
@@ -236,7 +236,7 @@ SFU publication explicitly uses VP8 with no backup codec. The UI and quality
 wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
 Production runs exact deployed application/runtime revision
-`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
 `main` contains the same runtime code. Current source and production implement
 this strict `screener-v11` contract.
 

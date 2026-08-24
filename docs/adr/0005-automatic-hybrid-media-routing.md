@@ -1,8 +1,8 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted. The core route model is deployed in exact release `679fe3e`;
-  the Browser SFU ICE-server-isolation amendment is accepted but not
-  yet implemented or deployed.
+- Status: The route model is accepted and deployed in exact release `c4962f5`,
+  including Browser SFU ICE-server isolation and owner physical fallback proof;
+  removal of the product diagnostic-download UI is accepted for v12 and pending.
 - Date: 2026-08-20
 - Last updated: 2026-08-24
 
@@ -291,32 +291,32 @@ candidate, retry hint, or other topology data. Access, Host presence, signaling,
 media, and autoplay remain independent presentation inputs.
 
 The room-serial operation does not divide its per-child deadline by Viewer
-count, but simultaneous joins may form a linear queue. The current Browser diagnostic
-surface observes existing route events without changing the controller: for
-each current child it keeps only the latest route-demand, operation-start,
+count, but simultaneous joins may form a linear queue. The current Browser
+diagnostic owner observes existing route events without changing the controller:
+for each current child it keeps only the latest route-demand, operation-start,
 current-candidate-start, first-decoded-frame, and final-outcome timing. A new
 demand overwrites that child's record; authoritative share stop/replacement,
 confirmed departure, and room deletion remove it.
 
-An authenticated Host may request one snapshot only while creating the existing
-user-initiated local diagnostic export. The response reads the current graph,
-current operation, and latest records; the server does not push a periodic
-snapshot stream, start a timer, retain an event ring, log or persist the result,
-or create a second graph. Snapshot-local ordinals express parent/SFU relations
-but are not participant identities and must not be treated as stable across
-snapshots. Queue wait is the interval from the same route demand to operation
-start and remains `null` when either event is absent.
+An authenticated Host acceptance harness may request one snapshot. The accepted
+v12 product UI exposes no diagnostic download button. The response
+reads the current graph, current operation, and latest records; the server does
+not push a periodic snapshot stream, start a timer, retain an event ring, log or
+persist the result, or create a second graph. Snapshot-local ordinals express
+parent/SFU relations but are not participant identities and must not be treated
+as stable across snapshots. Queue wait is the interval from the same route
+demand to operation start and remains `null` when either event is absent.
 
 The response uses only `direct | sfu | waiting | failed` final-route values and
 the closed rejection buckets `none`, `stale`, `endpoint-capacity`,
 `sfu-admission`, `candidate-failed`, `first-frame-timeout`,
-`operation-deadline`, and `aborted`. It never
-carries real peer, parent, session, connection or generation identity, SDP,
-candidates, addresses, credentials, or raw error text, and it has no route
-authority. A 20-Viewer burst reports the sample count and nearest-rank
-p50/p95/max without a pass threshold before any different concurrency model or
-deadline is accepted. Protocol tests must reject extra/private fields, deny the
-request to Viewers, and prove departure and room-deletion cleanup.
+`operation-deadline`, and `aborted`. It never carries real peer, parent, session,
+connection or generation identity, SDP, candidates, addresses, credentials, or
+raw error text, and it has no route authority. A 20-Viewer burst reports the
+sample count and nearest-rank p50/p95/max without a pass threshold before any
+different concurrency model or deadline is accepted. Protocol tests reject
+extra/private fields, deny the request to Viewers, and prove departure and
+room-deletion cleanup.
 
 For the single-process deployment, SFU admission is one injected authority with
 deployment-wide ingress and egress counters. Enabling LiveKit requires explicit
@@ -361,18 +361,15 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Production runs exact deployed application/runtime revision
-`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`. Current source
-adds exact Browser SFU ICE-server-isolation implementation
-`ae09c760adec76fd26da611d4928486d105c6d3b`; both source and production run the
-strict `screener-v11` Browser wire and use the direct/STUN peer and
-LiveKit SFU/UDP route model, including the route, first-frame, typed-status, and
-Host-only diagnostic contract described above. The operation owner is only
-`route`. Current source uses empty external ICE-server lists on Browser SFU PCs;
-production still inherits LiveKit-provided STUN and remains held until the
-application cutover and physical Host/Viewer proof. Exact operational evidence
-is owned by the deployment document; real heterogeneous-network and SFU media
-validation remains open.
+Production and canonical `main` run exact deployed application/runtime revision
+`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`, including exact
+Browser SFU ICE-server-isolation implementation
+`ae09c760adec76fd26da611d4928486d105c6d3b`. Both run strict `screener-v11` and
+the direct/STUN peer plus LiveKit SFU/UDP route model. Browser SFU PCs use empty
+external ICE-server lists, and the owner physically verified fallback media
+after deployment. The operation owner remains only `route`. Exact operational
+evidence is owned by the deployment document; broader heterogeneous-network,
+codec, and SFU lifecycle validation remains open.
 
 ## Acceptance Boundary
 
