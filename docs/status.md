@@ -15,7 +15,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Source
 
-- Canonical root `main` is the source and integration truth. It contains the deployed Browser runtime checkpoint `39fcf93bae057fcbb1002702c3be6b90bac9027f` plus this docs-only postflight truth; auxiliary branches and older worktrees do not supersede it.
+- Canonical root `main` is the source and integration truth. It contains the deployed Browser runtime checkpoint `39fcf93bae057fcbb1002702c3be6b90bac9027f` plus the current docs-only truth checkpoints; auxiliary branches and older worktrees do not supersede it.
 - The single Browser `screener-v9` boundary rejects stale clients before room authority. Current source implements one Host plus up to `20` Viewers, one steady outbound media-copy cap for every non-server endpoint (default `2`, static `1/2/3`), and the process-memory room model with random four-digit codes, a default 24-hour dormant lease, exact-Host resume, restart loss, local Host preference replay, independent token invitations, `open | password | disabled` code entry, and no SQLite runtime.
 - One event-driven controller owns the committed graph and at most one room-serial child operation. It uses one deterministic candidate list/cursor and one total direct-then-SFU deadline; exact admission and physical resources remain charged through drain, and the pending candidate commits only after an exact-generation decoded-frame proof. A short-lived 100 ms stats observer proves only that candidate inside the existing deadline, while the 2-second sampler remains responsible for active-path diagnostics and decoded-frame stalls. Healthy edges remain sticky and current-path quality does not authorize reparenting.
 - Ordinary peer ICE is STUN-only and the only application fallback is the dedicated LiveKit SFU over UDP. SFU generations use explicit no-default ingress/egress capacities, exact `reserved | committed | draining` accounting, delete-plus-absence release, one Host publication, and exact Viewer subscription handles. No Screener TURN, ICE/TCP, media TCP, or TLS-relayed media route exists.
@@ -26,8 +26,8 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Validate codec switching and live audio ceilings on physical direct, peer-relay, and SFU media paths, including actual codec/bitrate, first-frame, source authority, rollback, audible quality, and A/V synchronization.
-2. Reproduce the dated H.264/blur and Host background/minimized reports under controlled conditions.
+1. Replace the current codec transaction with the accepted pre-share-only selector, VP8 default, fixed per-share codec preference, and ordinary `shareGeneration`-fenced Pause/Resume. Integrate and deploy it atomically on one new Browser wire version with no v9 compatibility path.
+2. Validate live audio ceilings on physical direct, peer-relay, and SFU paths, then reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
 3. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
 
 ## Active Boundaries
@@ -42,6 +42,8 @@ This is the current execution index. Git history owns completed timelines; [veri
 ## Current Hold
 
 There is no active P0/P1 source or deployment hold. Browser v9 is integrated, locally gated, atomically
-deployed, and postflight-clean. Physical codec/audio, heterogeneous-network, SFU, H.264/background,
-and mobile evidence remains open. Native/executable work and broad repository cleanup remain outside
-the current evidence boundary.
+deployed, and postflight-clean, but its codec transaction is no longer the accepted product contract.
+The accepted simplification is truth-only until the next atomic Browser release; source and production
+must not be reported as simplified before that cutover. Physical audio, heterogeneous-network, SFU,
+background, and mobile evidence remains open. Native/executable work and broad repository cleanup
+remain outside the current evidence boundary.

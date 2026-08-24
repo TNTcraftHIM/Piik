@@ -36,10 +36,11 @@ does not say that minimizing the separate capturing page must reduce capture.
 Capture constraints are post-selection preferences and allow frame decimation,
 so requested `maxFramerate` is not proof of actual source or encoded frame rate.
 
-The current default video preference is `automatic`, not a contractual VP8
-selection. Every run must record the actual negotiated codec and encoder.
-H.264, VP8, and encoder implementation are diagnostic variables only after a
-stable baseline exists; none is a page-keepalive mechanism.
+The accepted default video preference is VP8. The deployed v9 runtime still
+defaults to `automatic` until the next atomic Browser cutover. Every run must
+record the actual negotiated codec and encoder rather than infer either from
+the preference. H.264, VP8, and encoder implementation are diagnostic variables
+only after a stable baseline exists; none is a page-keepalive mechanism.
 
 ## Current Source Boundary
 
@@ -167,8 +168,8 @@ Use equal 60-second measurement windows, restore the focused baseline between
 states, randomize state order, and repeat three fresh controlled runs. These
 window and repeat counts define a small comparable sample; they are not product
 timeouts, quality thresholds, or proof of statistical significance. Record the
-actual initial negotiated codec and encoder with `automatic`; do not switch
-codec inside a run.
+actual initial negotiated codec and encoder for the chosen pre-share preference;
+do not switch codec inside a run.
 
 For each exact overlapping window, correlate:
 
@@ -194,7 +195,8 @@ Change one variable per fresh run:
 2. Compare local preview playing and paused while capture and sender identities
    stay fixed.
 3. Run separate new Host/share/peer-connection sessions for `automatic`, H.264,
-   and VP8, and verify the actual codec and encoder in each session.
+   and VP8 through the pre-share diagnostic selector, and verify the actual codec
+   and encoder in each session.
 4. When investigating the 2026-08-19 production report, compare exact release
    `769de201f7cc` with the then-current exact `main` commit on the same machine,
    browser, driver, game scene, and direct wired Viewer.

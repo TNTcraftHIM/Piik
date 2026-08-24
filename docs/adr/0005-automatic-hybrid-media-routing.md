@@ -152,13 +152,13 @@ A `prepare` route update names that operation's exact child, route kind, and
 server-issued candidate connection identity. Parent and child therefore
 prepare the same connection; neither endpoint infers candidate authority from
 an assignment-list difference.
-The current Browser runtime uses one internal wire. On each WebSocket, the
+The accepted next Browser runtime contract uses the single `screener-v10` wire. On each WebSocket, the
 server sends the exact prepare before its SFU configuration; the candidate child
 is queued before a peer parent is allowed to start its offer. WebSocket ordering
 is the companion-delivery contract, so clients keep no reordering inbox.
-Duplicate current companions are idempotent and stale ones are ignored. Native
-and executable senders are outside this release and fail the protocol boundary
-rather than receiving a compatibility path.
+Duplicate current companions are idempotent and stale ones are ignored. Native,
+v9, and executable senders are outside this release and fail the protocol
+boundary before room authority rather than receiving a compatibility path.
 A stale or mismatched asynchronous result fails closed and cannot revive an old
 edge.
 Successful candidate `P` is broadcast as active revision `P`. Failure, timeout,
@@ -260,10 +260,9 @@ second mutable graph.
   authority.
 - Authoritative pause aborts the pending child operation, including its current
   candidate and reservations, keeps the active graph, suppresses decoded-frame-
-  stall decisions, and leaves new participants waiting. Resume normally wakes a
-  fresh reconciliation; when the accepted codec transaction owns a prepared
-  generation, that same room-serial owner handles Resume and settles first.
-  Healthy unaffected edges remain sticky.
+  stall decisions, and leaves new participants waiting. Resume always wakes a
+  fresh reconciliation from the committed graph. Healthy unaffected edges remain
+  sticky.
 
 SFU remains a bounded fallback resource with independent deployment-wide
 admission. Resource exhaustion produces an explicit wait or failure; it never
@@ -273,7 +272,7 @@ one waiter set. An actual SFU usage decrease drains that set once, advances
 each waiting controller's external fact, and schedules normal reconciliation;
 there is no periodic capacity poll or resource-specific route controller.
 
-The current v9 Viewer wire includes one strict, revision-fenced `route-status`
+The accepted v10 Viewer wire includes one strict, revision-fenced `route-status`
 union only for states that the existing prepare/active `route-update` cannot
 express: `{ state: "waiting", reason: "sfu-admission" }` while this Viewer is
 waiting on central admission, or `{ state: "failed", reason:
@@ -359,7 +358,10 @@ SFU/UDP routes, including the route, first-frame, typed-status, and Host-only
 diagnostic contract described above. The atomic deployment postflight passed;
 its rollback boundary is `/opt/screener/backups/39fcf93-pre-v9-20260824T004257Z`.
 Exact configuration and operational evidence are owned by the deployment
-document; real heterogeneous-network and SFU media validation remains open.
+document; real heterogeneous-network and SFU media validation remains open. In
+the accepted next contract this route model is unchanged, the operation owner is
+only `route`, and the boundary ships only with the next atomic `screener-v10`
+release; production has not crossed it.
 
 ## Acceptance Boundary
 
