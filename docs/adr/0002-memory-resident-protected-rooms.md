@@ -91,13 +91,16 @@ room-scoped `sessionStorage`, immediately clears the fragment with
 `history.replaceState`, and never places it in a cookie, query, log, error, or
 `localStorage`.
 
-Code entry is a separate three-state policy:
+Code entry is a separate two-state policy:
 
 - `open` is the default: after site access, the four-digit code admits a Viewer
   without a room password;
-- `password`: after site access, the code also requires the room password;
-- `disabled`: code-only admission is rejected and the grant remains the entry
-  path.
+- `password`: after site access, the code also requires the room password.
+
+The Host UI presents these as a globe for public code entry and a lock for
+password code entry. The password input appears only for the password state.
+There is no code-entry-disabled state because it is easily mistaken for
+disabling the whole room and is not required by either accepted entry path.
 
 The Host may rotate or revoke the grant without changing code-entry policy, and
 may change code-entry policy without changing a healthy media route. Strong
@@ -154,8 +157,8 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 - Default creation atomically produces `open` code entry with no room password
   and an independent 22-character token-bearing invitation. The grant remains
   valid for exactly the current room incarnation and has no independent expiry.
-  `open`, `password`, and `disabled` code entry are covered independently from
-  grant rotate/revoke.
+  `open` and `password` code entry are covered independently from grant
+  rotate/revoke.
 - Same-browser recreation reapplies the Host profile; another browser or cleared
   storage does not. No fingerprint or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
