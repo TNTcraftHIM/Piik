@@ -96,7 +96,7 @@ describe("realtime quality controls", () => {
       systemAudio: "include",
       windowAudio: "window",
     });
-    expect(videoTrack.contentHint).toBe("motion");
+    expect(videoTrack.contentHint).toBe("");
     expect(audioTrack.contentHint).toBe("music");
   });
 

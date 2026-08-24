@@ -212,7 +212,6 @@ export async function captureDisplay(
     stream.getTracks().forEach((track) => track.stop());
     throw new Error("浏览器没有返回可分享的视频轨道");
   }
-  videoTrack.contentHint = "motion";
   for (const audioTrack of stream.getAudioTracks()) {
     audioTrack.contentHint = "music";
   }
