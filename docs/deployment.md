@@ -3,8 +3,8 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records the production deployment of exact integrated main
-`39fcf93bae057fcbb1002702c3be6b90bac9027f`, release `39fcf93`, and the single
-Browser `screener-v9` contract. Product direction and pending work are owned by
+`2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, and the single
+Browser `screener-v10` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 This section documents the repository's UDP-only deployment candidate: one
@@ -22,26 +22,26 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `39fcf93bae057fcbb1002702c3be6b90bac9027f`, release
-`39fcf93`, from `/opt/screener/releases/39fcf93`. The immutable runtime ZIP
+Production runs exact `2726edde9b87f31fd76e749de47972ef817a9bd5`, release
+`2726edd`, from `/opt/screener/releases/2726edd`. The immutable runtime ZIP
 SHA-256 is
-`28190c3a69ec937d39ab5d49fdbc8db6a07e6013c2ddd5f5590bf8249bf6bce6`.
-Its 40-file path/size/hash manifest SHA-256 is
-`0a8bb7bb4c880e80358492a8bdef5d8897bd453b7957861708655e75f717c2bf`.
-The verified pre-v9 rollback boundary is
-`/opt/screener/backups/39fcf93-pre-v9-20260824T004257Z`; its internal
+`07fa6500300bfedc9cedccb0db761b70a9ada8dd77608153728e34835f4e1b78`.
+Its 38-file path/size/hash manifest SHA-256 is
+`c4ed6321fa3ac8b4c766a7e575d26f8fd4ec2ea929a9addefb7944abafa5b663`.
+The verified pre-v10 rollback boundary is
+`/opt/screener/backups/2726edd-pre-v10-20260824T025357Z`; its internal
 `SHA256SUMS` hash is
-`1f741f29022f5eb1eb311a24f87f5f48598dca7b1879b88f9033c331fa06bd37`.
+`62d19aa0a3ec400477a4c76121eb0e9e4d553d024404f3da054fa1e95f251939`.
 Local and trusted-IP public `/` and `/healthz` return 200; Screener, LiveKit,
 coturn, and nginx are active with `NRestarts=0`. The public main Browser asset is
-`assets/index-DLLdorRt.js` with SHA-256
-`891b1fc861b12655d53a38c1dbf56d8981fa4ed24643760ed8d7838efcbf46f3`.
+`assets/index-BtFMxoNI.js` with SHA-256
+`885b9e50c57c64ac92cc8ffe5488d597bbb6fde6423e7a0b328efb9d1e943ad2`.
 
-The release deploys the single Browser `screener-v9` wire, random four-digit
+The release deploys the single Browser `screener-v10` wire, random four-digit
 memory rooms with a 24-hour dormant lease, orthogonal grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
 one-controller exact-candidate route runtime. A credential-free postflight sent
-a well-formed authentication shape with stale `screener-v8`; it received
+a well-formed authentication shape with stale `screener-v9`; it received
 `INVALID_MESSAGE` and WebSocket close 1008 before room authority without creating
 a room. The service unit has no writable room StateDirectory; all room authority
 is process-memory-only. LiveKit is dedicated, has `room.auto_create: false` and
@@ -244,7 +244,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `39fcf93` accepts 1 through 20 and explicitly selects 20. This is an
+Production `2726edd` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -257,8 +257,8 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `39fcf93` runs the deployed server and Browser assets
-atomically on `screener-v9`; every stale Browser or executable-sender wire fails
+Production release `2726edd` runs the deployed server and Browser assets
+atomically on `screener-v10`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 Restore only an exact recorded release with its matching environment, unit,
 LiveKit, coturn, and firewall snapshot when rolling back.

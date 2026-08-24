@@ -11,7 +11,7 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-Exact Browser v9 source `d543f38aacad3df5ef65fde1055cc8e733972afe`
+Current Browser v10 source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f`
 uses `balanced` as the recommended profile and advanced default;
 `maintain-resolution` and `maintain-framerate` remain explicit choices. These
 preferences leave actual degradation to the browser, so Screener observes
@@ -48,9 +48,8 @@ Screener therefore does not compute a weighted route score, probe alternative
 parents, or reparent a currently decoding edge for bitrate, resolution, FPS,
 freeze ratio, RTT, jitter, loss, or limitation evidence. Only a hard
 `failed/closed` connection or the existing non-paused decoded-frame stall makes
-the exact edge invalid. Exact v9 source deletes the unused
-`parent-edge-quality-evidence` message rather than giving it a threshold-based
-meaning. Primary sources checked 2026-08-24: [RFC
+the exact edge invalid. The current wire carries no parent-wide quality evidence
+or threshold-based route authority. Primary sources checked 2026-08-24: [RFC
 8836](https://www.rfc-editor.org/rfc/rfc8836.html),
 [Overcast](https://www.usenix.org/legacy/publications/library/proceedings/osdi2000/full_papers/jannotti/jannotti_html/index.html),
 [Narada](https://www.cs.cmu.edu/~srini/papers/papers/2002-Chu-jsac/2002-Chu-jsac.pdf),
@@ -212,7 +211,7 @@ retain the result as current publisher state. This changes no capture
 constraint, codec, representation, subscriber layer or route policy and does
 not explain an immediate same-publication report.
 
-Host SFU publisher A+B remains a separate observability slice. Exact v9 source
+Host SFU publisher A+B remains a separate observability slice. Current v10 source
 implements one two-second, publication-generation-bound local sampler owned by
 `SfuPublisher`: merge its video/audio `LocalTrack` reports, reuse the existing
 strict stats parser and accumulator, correlate capture settings from the owned
@@ -222,7 +221,7 @@ baseline. `HostSfuRoute` may expose that local snapshot to one Host-only
 publisher row; it must not duplicate the shared Host-to-SFU ingress inside each
 SFU Viewer card. Viewer inbound remains the per-Viewer C signal. This needs no
 wire, server telemetry, global score, selector or new UI framework. Production
-deploys this v9 publisher view; its target-browser fields and values still need
+deploys this v10 publisher view; its target-browser fields and values still need
 physical evidence.
 
 ## Codec Preference And Evidence Boundary
@@ -720,7 +719,7 @@ latency, CPU, and memory conflict and must be balanced. Its native encoder
 tuning and hardware integration are not available to a browser-only sender and
 must not be presented as settings this project already has.
 
-## Current Source V9 Policy
+## Current Source V10 Policy
 
 The three user-visible profiles remain ceilings rather than promised rates:
 
@@ -730,10 +729,10 @@ The three user-visible profiles remain ceilings rather than promised rates:
 | 1080p30 | 1920x1080 at 30 fps | 5 Mbps |
 | 720p30 | 1280x720 at 30 fps | 3 Mbps |
 
-V9 source and production default to the middle `1080p30` ceiling. Choosing that
+V10 source and production default to the middle `1080p30` ceiling. Choosing that
 default trades a 60 fps ceiling for a 1080p capture bound. The recommended set
 remains exactly the three profiles
-above. V9 adds
+above. V10 adds
 `480p` only as an advanced `854x480` resolution whose frame rate and bitrate are
 selected independently, not as a fourth profile or preset ID. LiveKit currently
 uses the same 1080p30 at 5 Mbps screen-share preset, but neither preset
@@ -776,7 +775,7 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - Pausing sharing disables every track in the current capture stream, producing
   black video and silence without closing the room or media connection.
 
-The deployed v9 implementation deliberately stops at manual bounded controls.
+The deployed v10 implementation stops at manual bounded controls.
 It adds no composite score, periodic
 adjustment, automatic codec forcing, SDP bitrate
 manipulation, or scene detector. Three consecutive samples of one non-`none` native

@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted; v9 route and diagnostic contract deployed in exact release `39fcf93`
+- Status: Accepted; deployed in exact release `2726edd`
 - Date: 2026-08-20
 - Last updated: 2026-08-24
 
@@ -152,7 +152,7 @@ A `prepare` route update names that operation's exact child, route kind, and
 server-issued candidate connection identity. Parent and child therefore
 prepare the same connection; neither endpoint infers candidate authority from
 an assignment-list difference.
-The accepted next Browser runtime contract uses the single `screener-v10` wire. On each WebSocket, the
+The current Browser runtime contract uses the single `screener-v10` wire. On each WebSocket, the
 server sends the exact prepare before its SFU configuration; the candidate child
 is queued before a peer parent is allowed to start its offer. WebSocket ordering
 is the companion-delivery contract, so clients keep no reordering inbox.
@@ -282,7 +282,7 @@ candidate, retry hint, or other topology data. Access, Host presence, signaling,
 media, and autoplay remain independent presentation inputs.
 
 The room-serial operation does not divide its per-child deadline by Viewer
-count, but simultaneous joins may form a linear queue. The current v9 diagnostic
+count, but simultaneous joins may form a linear queue. The current v10 diagnostic
 surface observes existing route events without changing the controller: for
 each current child it keeps only the latest route-demand, operation-start,
 current-candidate-start, first-decoded-frame, and final-outcome timing. A new
@@ -352,16 +352,12 @@ deployment-wide.
 
 ## Current Deployment Boundary
 
-Production exact `39fcf93bae057fcbb1002702c3be6b90bac9027f`, release `39fcf93`,
-runs the single `screener-v9` Browser runtime with direct/STUN peer and LiveKit
-SFU/UDP routes, including the route, first-frame, typed-status, and Host-only
-diagnostic contract described above. The atomic deployment postflight passed;
-its rollback boundary is `/opt/screener/backups/39fcf93-pre-v9-20260824T004257Z`.
-Exact configuration and operational evidence are owned by the deployment
-document; real heterogeneous-network and SFU media validation remains open. In
-the accepted next contract this route model is unchanged, the operation owner is
-only `route`, and the boundary ships only with the next atomic `screener-v10`
-release; production has not crossed it.
+Current source and production run the single `screener-v10` Browser runtime with
+direct/STUN peer and LiveKit SFU/UDP routes, including the route, first-frame,
+typed-status, and Host-only diagnostic contract described above. The operation
+owner is only `route`. Exact release and operational evidence are owned by the
+deployment document; real heterogeneous-network and SFU media validation
+remains open.
 
 ## Acceptance Boundary
 

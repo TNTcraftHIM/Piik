@@ -2,11 +2,11 @@
 
 - Research date: 2026-08-22
 - Scope: one game-screen broadcaster and an accepted admission target of twenty
-  trusted viewers; exact v9 direct-loopback evidence reaches twenty and the
+  trusted viewers; exact v10 direct-loopback evidence reaches twenty and the
   earlier resource/quality gate remains eight
-- Status: historical evidence plus the bounded controller. Exact Browser v9
-  source `d543f38aacad3df5ef65fde1055cc8e733972afe` implements the current
-  ADR-0005 route transaction, and production now runs that v9 contract. A
+- Status: historical evidence plus the bounded controller. Exact Browser v10
+  source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` implements the current
+  ADR-0005 route transaction, and production runs that v10 contract. A
   historical v8 canary decoded SFU media. Heterogeneous-network, mobile,
   resource, and endurance evidence remains open.
 
@@ -232,15 +232,15 @@ networks.
 ## Implemented Bounded Quality Coordination
 
 The implementation coordinates one strict `QualitySettings` object across the
-peer-assisted tree without adaptation logic. Exact v9 source accepts advanced
+peer-assisted tree without adaptation logic. Exact v10 source accepts advanced
 480p/720p/1080p/1440p resolution values, integer 15-60 fps, integer 2-12 Mbps,
 and the three standard degradation preferences; missing, extra, or out-of-range
 fields fail schema validation. The three visible presets are recommendations
 rather than wire IDs, and `480p` is only the advanced 854x480 resolution. The
 server stores the latest complete object in a room-count-bounded in-memory map,
-defaults to 1080p30 at 5 Mbps with balanced priority in v9 source, includes it in
+defaults to 1080p30 at 5 Mbps with balanced priority in v10 source, includes it in
 peer-assisted authenticated snapshots, and broadcasts Host changes to online
-Viewers. Production v9 uses the same 1080p30 default and advanced 480p boundary.
+Viewers. Production v10 uses the same 1080p30 default and advanced 480p boundary.
 The value survives a stopped share, is removed with
 the room, and is not persisted.
 Ordinary P2P authentication remains unchanged and
@@ -529,7 +529,7 @@ event arrives later. The application therefore needs a small text-message
 challenge rather than waiting for either protocol Ping/Pong or the old socket's
 close event.
 
-Deployed v9 sends
+Deployed v10 sends
 `signaling-challenge { sequence }`, and the server sends the exact
 `signaling-challenge-response { sequence }` only to that requesting socket.
 Server and Browser assets deploy atomically; stale Browser and executable-sender
@@ -547,7 +547,7 @@ socket generation are ignored, and the server revalidates the current
 authenticated session before replying. A hidden document, a visibility
 restore, or an obviously late timer callback clears pending evidence and starts
 a fresh five-second baseline instead of declaring failure.
-This response-only watchdog is deployed in v9;
+This response-only watchdog is deployed in v10;
 real silent-partition timing remains a production/browser evidence boundary.
 
 The response is socket-local, contains no room state, secret, candidate, or raw

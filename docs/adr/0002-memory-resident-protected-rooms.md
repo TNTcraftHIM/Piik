@@ -1,6 +1,6 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; implemented and deployed in exact release `39fcf93`
+- Status: Accepted; implemented and deployed in exact release `2726edd`
 - Date: 2026-08-23
 
 ## Context
@@ -101,7 +101,7 @@ all code-only Viewer attempts. A valid room grant may bypass that site gate only
 for the exact Viewer role and room. Neither a code, room password, nor Viewer
 grant can create a room or become Host authority.
 
-The current `screener-v9` room-entry boundary uses exactly one
+The current `screener-v10` room-entry boundary uses exactly one
 `ROOM_ACCESS_DENIED` result. It applies only after site access to a well-formed
 code-only Viewer attempt whose expected admission rejects an unknown or expired
 room, disabled code entry, an absent or incorrect room password, a full room, or
@@ -151,7 +151,7 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   storage does not. No fingerprint or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
   of application/proxy logs and server durable storage.
-- On `screener-v9`, every expected denial of a well-formed, site-authorized
+- On `screener-v10`, every expected denial of a well-formed, site-authorized
   code-only attempt yields only `ROOM_ACCESS_DENIED` with the same public
   message and connection-close behavior. Tests cover unknown/expired rooms,
   disabled entry, absent/wrong passwords, full and bounded admission, while
@@ -160,13 +160,12 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 
 ## Implementation Status
 
-Production exact `39fcf93bae057fcbb1002702c3be6b90bac9027f`, release `39fcf93`,
-runs the single `screener-v9` wire and implements this complete room boundary,
+Current source and production run the single `screener-v10` wire and implement
+this complete room boundary,
 including allocation, leases, orthogonal grant/code admission, rotate/revoke,
 password policy, local profile replay, restart loss, browser storage privacy,
 and the neutral `ROOM_ACCESS_DENIED` result. All expected code-only denials use
 that same public result followed by the shared authentication-failed close code.
 
-The atomic deployment postflight passed. Its rollback boundary is
-`/opt/screener/backups/39fcf93-pre-v9-20260824T004257Z`; exact operational
-evidence remains owned by deployment and verification status.
+Exact release and operational evidence remain owned by deployment and
+verification status.
