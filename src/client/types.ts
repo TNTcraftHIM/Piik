@@ -15,9 +15,6 @@ export interface ConnectionMetrics {
   rtpRid: string | null;
   trackIdentifier: string | null;
   selectedCandidatePairId: string | null;
-  candidatePairResponsesReceived: number | null;
-  intervalCandidatePairResponsesReceived: number | null;
-  candidatePairSampleWindowMs: number | null;
   captureWidth: number | null;
   captureHeight: number | null;
   captureFramesPerSecond: number | null;
@@ -98,9 +95,6 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   rtpRid: null,
   trackIdentifier: null,
   selectedCandidatePairId: null,
-  candidatePairResponsesReceived: null,
-  intervalCandidatePairResponsesReceived: null,
-  candidatePairSampleWindowMs: null,
   captureWidth: null,
   captureHeight: null,
   captureFramesPerSecond: null,
