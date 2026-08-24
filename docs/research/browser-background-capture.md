@@ -153,7 +153,7 @@ first matrix.
 After Screener reproduces a stable baseline, the locally available NetEase UU
 Remote client may be run against the same scene and network as a black-box
 comparison for process CPU/GPU use, network traffic, latency, and visible
-quality. User-observed low-latency P2P behavior is a reason to measure it, not
+quality. User-observed low-latency behavior is a reason to measure it, not
 evidence of its transport, codec, encoder, background policy, or applicability
 to a browser Host; those properties remain unknown unless the comparison exposes
 them directly.
