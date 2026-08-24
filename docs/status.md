@@ -29,7 +29,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. After explicit owner instruction, release the exact v12 source atomically and verify stale-wire rejection, health, invitation/access behavior, and unchanged direct/SFU operation; no deployment has occurred at this checkpoint.
+1. Integrate the accepted `open | private` code-entry contract into strict v12: private rooms without a password remain invitation-only, and a configured password additionally permits matching code-only entry. Then, after explicit owner instruction, release v12 atomically and verify stale-wire rejection, health, invitation/access behavior, and unchanged direct/SFU operation; no deployment has occurred at this checkpoint.
 2. Physically validate the corrected live screen-audio statistics and 64/128/256 kbps ceilings with known audible content across direct, browser-relay, and SFU paths.
 3. Physically verify fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
 4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
