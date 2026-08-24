@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted; route core implemented and deployed; v9 diagnostic delta not implemented or deployed
+- Status: Accepted; route core deployed in v8; v9 route/diagnostic source implemented at `d543f38aacad3df5ef65fde1055cc8e733972afe`, not deployed
 - Date: 2026-08-20
 - Last updated: 2026-08-24
 
@@ -273,7 +273,7 @@ one waiter set. An actual SFU usage decrease drains that set once, advances
 each waiting controller's external fact, and schedules normal reconciliation;
 there is no periodic capacity poll or resource-specific route controller.
 
-The accepted v9 Viewer wire adds one strict, revision-fenced `route-status`
+The current v9 Viewer wire includes one strict, revision-fenced `route-status`
 union only for states that the existing prepare/active `route-update` cannot
 express: `{ state: "waiting", reason: "sfu-admission" }` while this Viewer is
 waiting on central admission, or `{ state: "failed", reason:
@@ -283,9 +283,8 @@ candidate, retry hint, or other topology data. Access, Host presence, signaling,
 media, and autoplay remain independent presentation inputs.
 
 The room-serial operation does not divide its per-child deadline by Viewer
-count, but simultaneous joins may form a linear queue. The deployed v8
-controller does not include a route-timing snapshot. The accepted v9 diagnostic
-extension observes existing route events without changing the controller: for
+count, but simultaneous joins may form a linear queue. The current v9 diagnostic
+surface observes existing route events without changing the controller: for
 each current child it keeps only the latest route-demand, operation-start,
 current-candidate-start, first-decoded-frame, and final-outcome timing. A new
 demand overwrites that child's record; authoritative share stop/replacement,
@@ -354,10 +353,15 @@ deployment-wide.
 
 ## Current Deployment Boundary
 
-Production release `8f5b3f1` runs the `screener-v8` Browser runtime with only
-direct/STUN peer and LiveKit SFU/UDP routes. Its exact configuration, rollback
-artifacts, and postflight evidence are owned by the deployment document; real
-heterogeneous-network and SFU media validation remains open.
+Production exact `8f5b3f192ddd010ca01c969008e512191312736a`, release `8f5b3f1`,
+runs the `screener-v8` Browser runtime with only direct/STUN peer and LiveKit
+SFU/UDP routes. Its exact configuration, rollback artifacts, and postflight
+evidence are owned by the deployment document; real heterogeneous-network and
+SFU media validation remains open.
+
+Exact source `d543f38aacad3df5ef65fde1055cc8e733972afe` implements the single
+`screener-v9` route, first-frame, typed-status, and Host-only diagnostic
+contract described above. Production has not deployed that source contract.
 
 ## Acceptance Boundary
 
@@ -433,9 +437,9 @@ Negative:
   burst;
 - make-before-break consumes explicit endpoint and server reservations and may
   require a bounded-gap cutover when no overlap slot exists; and
-- real SFU and target-network evidence is still required. The accepted v9
-  diagnostic extension is not part of deployed v8 and must ship atomically with
-  its single current protocol.
+- real SFU and target-network evidence is still required. The v9 diagnostic
+  source is not part of deployed v8 and must ship atomically with its single
+  current protocol.
 
 ## Relationship to other ADRs
 

@@ -6,11 +6,11 @@ Status: peer and SFU routes already use stereo and a 128 kbps default, but users
 still report speech-gated movie/game audio, including on a phone connected
 directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
 local speech processing unless the request disables it. The source request is
-explicit. Current v8 exposes bounded 64/128/256 kbps choices before sharing and
-applies the selected ceiling when each P2P, browser-relay, or SFU sender is
-created; it does not mutate an already-active sender. Accepted v9 live mutation
-and applied readback are not implemented or deployed. Target-device audible
-proof remains open.
+explicit. Exact Browser v9 source
+`d543f38aacad3df5ef65fde1055cc8e733972afe` exposes bounded 64/128/256 kbps
+choices, applies them to new P2P, browser-relay, and SFU senders, and implements
+serialized live mutation with applied readback. Production remains v8 and does
+not yet deploy live mutation. Target-device audible proof remains open.
 
 ## Scope And Decision
 
@@ -48,12 +48,11 @@ stereo music in a 64--128 kbps sweet spot, and LiveKit 2.22.0 names 128 kbps
 `musicHighQualityStereo`. Requested, applied, negotiated, and observed states
 remain separate.
 
-The advanced panel is named Share advanced settings. Current v8 stores the
+The advanced panel is named Share advanced settings. Exact v9 source stores the
 64/128/256 choice and applies that sender `maxBitrate` ceiling on the existing
-Opus path when it creates a sender; changing the choice during an active share
-does not update an existing sender. Accepted v9, which is not implemented or
-deployed, serializes `getParameters()`/`setParameters()` updates and readback,
-keeps media and the old applied ceiling on failure, and does not claim room-wide
+Opus path when it creates a sender. A change during an active share serializes
+`getParameters()`/`setParameters()` updates and readback, keeps media and the old
+applied ceiling on failure, and does not claim room-wide
 convergence without a remote applied acknowledgement. This does not require
 audio codec renegotiation. On the declared Chrome/Edge screen-audio Host
 baseline, pinned LiveKit 2.22.0 can update an existing audio sender without
@@ -464,9 +463,9 @@ A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 ## UI And Voice Boundary
 
 Share advanced settings offers exactly 64/128/256 kbps and defaults to 128.
-Current v8 applies the selected choice before sharing and to any newly created
-P2P, browser-relay, or SFU sender; it does not live-update an active sender.
-Accepted v9 live mutation is not implemented or deployed. That extension reads
+Exact v9 source applies the selected choice before sharing, to every newly
+created P2P, browser-relay, or SFU sender, and through a serialized live
+mutation. Production v8 does not live-update an active sender. The v9 path reads
 the latest desired profile into each sender and keeps endpoint-local applied
 readback rather than claiming one room-wide applied commit. The setting remains
 a sender ceiling, not a guaranteed or constant bitrate. Do not expose sample

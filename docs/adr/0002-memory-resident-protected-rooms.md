@@ -1,6 +1,6 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; v8 room model implemented and deployed; v9 neutral code-only denial pending
+- Status: Accepted; v9 source implemented at `d543f38aacad3df5ef65fde1055cc8e733972afe`; production remains v8
 - Date: 2026-08-23
 
 ## Context
@@ -101,7 +101,7 @@ all code-only Viewer attempts. A valid room grant may bypass that site gate only
 for the exact Viewer role and room. Neither a code, room password, nor Viewer
 grant can create a room or become Host authority.
 
-The accepted `screener-v9` room-entry boundary adds exactly one
+The current `screener-v9` room-entry boundary uses exactly one
 `ROOM_ACCESS_DENIED` result. It applies only after site access to a well-formed
 code-only Viewer attempt whose expected admission rejects an unknown or expired
 room, disabled code entry, an absent or incorrect room password, a full room, or
@@ -160,16 +160,14 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 
 ## Implementation Status
 
-Current source implements the v8 room, storage, and authorization core of this
-decision and has removed the old room modes, 12-digit codes, SQLite persistence,
-`ROOM_DATABASE_PATH`, `ROOM_TTL_SECONDS`, and migration surface atomically on
-the single `screener-v8` wire. Focused source coverage spans allocation, leases,
-orthogonal grant/code admission, rotate/revoke, password policy, local profile
-replay, restart loss, HTTP, signaling, and browser storage privacy.
-Production release `8f5b3f1` runs this `screener-v8` model. The atomic cutover,
-restart-loss smoke, orthogonal grant/code admission, stale-v7 rejection,
-no-SQLite runtime, and read-only rollback restoration checks passed; exact
-operational evidence is owned by deployment and verification status.
-The `ROOM_ACCESS_DENIED` boundary above is accepted for the atomic
-`screener-v9` checkpoint but is not implemented in current source or deployed
-in production.
+Exact source `d543f38aacad3df5ef65fde1055cc8e733972afe` runs the single
+`screener-v9` wire and implements this complete room boundary, including
+allocation, leases, orthogonal grant/code admission, rotate/revoke, password
+policy, local profile replay, restart loss, browser storage privacy, and the
+neutral `ROOM_ACCESS_DENIED` result. All expected code-only denials use that
+same public result followed by the shared authentication-failed close code.
+
+Production exact `8f5b3f192ddd010ca01c969008e512191312736a`, release `8f5b3f1`,
+still runs `screener-v8`. It implements the memory-resident room core, but not
+the v9 neutral code-only denial. No v9 room-entry behavior is deployed yet;
+exact operational evidence remains owned by deployment and verification status.

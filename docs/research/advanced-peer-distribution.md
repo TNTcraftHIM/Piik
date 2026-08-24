@@ -5,9 +5,10 @@
   interactive media, endpoint downstream cap `1..3`, and minimal central-server
   media egress; retained advanced-media measurements may cover smaller cohorts
 - Status: deterministic peer distribution and provisional make-before-break are
-  retained evidence; current routing converges through ADR-0005's single
-  child-reparent reconciliation, while advanced encoded-media routes remain
-  unimplemented candidates
+  retained evidence. Exact Browser v9 source
+  `d543f38aacad3df5ef65fde1055cc8e733972afe` implements ADR-0005's single
+  child-reparent reconciliation and exact first-frame transaction; production
+  remains v8, and advanced encoded-media routes remain unimplemented candidates
 
 This document is research evidence, not current architecture or a backlog. See
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) for accepted routing
@@ -260,8 +261,9 @@ restarted. This proves LiveKit participant entry. The timing is consistent with
 the then-current one-shot grant refresh and recovery state machine, but logs do
 not prove those transitions and cannot distinguish
 connect, source, video publish, sender configuration, optional audio publish, or
-transport failure. The accepted v9 diagnostic, which is not part of deployed
-v8, exposes only a closed local stage/outcome enum to an on-demand Host snapshot
+transport failure. Exact v9 source implements the accepted diagnostic, which is
+not part of deployed v8: it exposes only a closed local stage/outcome enum to an
+on-demand Host snapshot
 and deliberately keeps raw errors, URLs, tokens, candidates, and addresses out
 of wire and logs.
 
@@ -311,7 +313,7 @@ continues.
 
 ## Sources And License Boundary
 
-Sources checked on 2026-08-20 through 2026-08-23:
+Sources checked on 2026-08-20 through 2026-08-24:
 
 - [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/),
   [Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/),

@@ -43,20 +43,21 @@ stable baseline exists; none is a page-keepalive mechanism.
 
 ## Current Source Boundary
 
-The source review used `main` commit
-`64755924c893b4f09b24f81c9a81891cc050ed44`. The relevant capture, preview,
-sender, and stats source is unchanged from production release
-`8f5b3f192ddd010ca01c969008e512191312736a`.
+The source review covers exact Browser v9 source
+`d543f38aacad3df5ef65fde1055cc8e733972afe`. Production remains exact v8
+`8f5b3f192ddd010ca01c969008e512191312736a`; none of the v9 changes claims or
+implements a page-keepalive mechanism.
 
 - `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream, applies
   ideal/max capture constraints, marks video as `motion`, and applies sender
-  bitrate, frame-rate, and degradation ceilings. Only an explicit sharing
-  pause changes capture tracks' `enabled` state.
+  bitrate, frame-rate, and degradation ceilings. Explicit sharing pause and
+  authoritative reconnect re-pause change capture tracks' `enabled` state;
+  neither manufactures foreground activity.
 - `src/client/pages/HostPage.tsx` pauses the existing local preview video when
   the Host document is hidden or unfocused and resumes that preview when it is
   visible and focused. This does not stop, mute, disable, or replace the capture
   track or any sender.
-- No `requestAnimationFrame()` loop drives production capture or sending.
+- No `requestAnimationFrame()` loop drives source or production capture or sending.
   WebRTC capture, encoding, congestion control, and transport remain
   browser-owned.
 - `src/client/webrtc/stats.ts` already distinguishes capture settings,
@@ -66,6 +67,9 @@ sender, and stats source is unchanged from production release
   be inferred as an equal media-rate drop.
 - `src/client/lib/diagnostic-export.ts` exports only the latest bounded sample.
   It is a useful cross-check, not a historical trace.
+- V9's short-lived pending-candidate decoded-frame observer reads cumulative RTP
+  progress only for the exact pending route. It neither drives capture nor proves
+  document activity, and it stops when that operation settles.
 - `scripts/peer-assisted-benchmark.ts` is not evidence for this issue: its
   synthetic canvas source is timer-driven and its browser launch explicitly
   disables background timer, occluded-window, and renderer backgrounding.

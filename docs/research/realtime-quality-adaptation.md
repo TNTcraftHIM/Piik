@@ -11,7 +11,8 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-Current source uses `balanced` as the recommended profile and advanced default;
+Exact Browser v9 source `d543f38aacad3df5ef65fde1055cc8e733972afe`
+uses `balanced` as the recommended profile and advanced default;
 `maintain-resolution` and `maintain-framerate` remain explicit choices. These
 preferences leave actual degradation to the browser, so Screener observes
 readback and stats rather than claiming a fixed quality outcome.
@@ -47,8 +48,8 @@ Screener therefore does not compute a weighted route score, probe alternative
 parents, or reparent a currently decoding edge for bitrate, resolution, FPS,
 freeze ratio, RTT, jitter, loss, or limitation evidence. Only a hard
 `failed/closed` connection or the existing non-paused decoded-frame stall makes
-the exact edge invalid. The existing `parent-edge-quality-evidence` message has
-no route consumer and should be deleted rather than given a threshold-based
+the exact edge invalid. Exact v9 source deletes the unused
+`parent-edge-quality-evidence` message rather than giving it a threshold-based
 meaning. Primary sources checked 2026-08-24: [RFC
 8836](https://www.rfc-editor.org/rfc/rfc8836.html),
 [Overcast](https://www.usenix.org/legacy/publications/library/proceedings/osdi2000/full_papers/jannotti/jannotti_html/index.html),
@@ -211,8 +212,8 @@ retain the result as current publisher state. This changes no capture
 constraint, codec, representation, subscriber layer or route policy and does
 not explain an immediate same-publication report.
 
-Host SFU publisher A+B remains a separate observability slice. The smallest
-design is one two-second, publication-generation-bound local sampler owned by
+Host SFU publisher A+B remains a separate observability slice. Exact v9 source
+implements one two-second, publication-generation-bound local sampler owned by
 `SfuPublisher`: merge its video/audio `LocalTrack` reports, reuse the existing
 strict stats parser and accumulator, correlate capture settings from the owned
 video track, and emit only while the same publication is active. Activation,
@@ -220,9 +221,8 @@ replacement, deactivation and disconnect reset its identity and interval
 baseline. `HostSfuRoute` may expose that local snapshot to one Host-only
 publisher row; it must not duplicate the shared Host-to-SFU ingress inside each
 SFU Viewer card. Viewer inbound remains the per-Viewer C signal. This needs no
-wire, server telemetry, global score, selector or new UI framework, but crosses
-publisher sampling, route ownership and Host rendering and therefore is not
-bundled into the lifecycle repair.
+wire, server telemetry, global score, selector or new UI framework. Production
+v8 does not yet deploy this v9 publisher view.
 
 ## Codec Preference And Evidence Boundary
 
@@ -707,7 +707,7 @@ latency, CPU, and memory conflict and must be balanced. Its native encoder
 tuning and hardware integration are not available to a browser-only sender and
 must not be presented as settings this project already has.
 
-## Current V8 And Accepted V9 Policy
+## Current Source V9 Policy
 
 The three user-visible profiles remain ceilings rather than promised rates:
 
@@ -717,9 +717,10 @@ The three user-visible profiles remain ceilings rather than promised rates:
 | 1080p30 | 1920x1080 at 30 fps | 5 Mbps |
 | 720p30 | 1280x720 at 30 fps | 3 Mbps |
 
-Current v8 defaults to `1080p60`; accepted v9 changes the default to the middle
-`1080p30` ceiling. Choosing it trades a 60 fps ceiling for a 1080p capture bound.
-The recommended set remains exactly the three profiles above. Accepted v9 adds
+Exact v9 source defaults to the middle `1080p30` ceiling; production v8 still
+defaults to `1080p60`. Choosing the v9 default trades a 60 fps ceiling for a
+1080p capture bound. The recommended set remains exactly the three profiles
+above. V9 adds
 `480p` only as an advanced `854x480` resolution whose frame rate and bitrate are
 selected independently, not as a fourth profile or preset ID. LiveKit currently
 uses the same 1080p30 at 5 Mbps screen-share preset, but neither preset
@@ -735,12 +736,12 @@ guarantees the emitted resolution, frame rate, or bitrate.
   and `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
-- The current v8 Share advanced settings panel accepts only
-  720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, the three preferences, and
-  Automatic/H.264/VP8. Its 64/128/256 kbps audio ceiling, default 128, is
-  selected before sharing and applied when senders are created; v8 locks audio
-  mutation during an active share. Accepted v9 adds advanced `854x480` and
-  live-switchable audio ceilings on the existing Opus path. The first
+- Exact v9 source's Share advanced settings panel accepts
+  480p/720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, the three preferences, and
+  Automatic/H.264/VP8. The `480p` choice is only advanced `854x480`, not a
+  fourth recommended profile. Its 64/128/256 kbps audio ceiling, default 128,
+  is live-switchable on the existing Opus path. Production v8 has neither the
+  480p advanced resolution nor live audio mutation. The first
   codec-switch product boundary is a generation-fenced renegotiation and SFU
   republish while sharing is explicitly paused; pause or `replaceTrack()` alone
   does not switch codec. Display capture does not standardize channel-count or
@@ -763,8 +764,9 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - Pausing sharing disables every track in the current capture stream, producing
   black video and silence without closing the room or media connection.
 
-The deployed implementation deliberately stops at manual bounded controls. It
-adds no composite score, periodic adjustment, automatic codec forcing, SDP bitrate
+The exact v9 source implementation deliberately stops at manual bounded
+controls and is not yet deployed. It adds no composite score, periodic
+adjustment, automatic codec forcing, SDP bitrate
 manipulation, or scene detector. Three consecutive samples of one non-`none` native
 `qualityLimitationReason` produce one explanatory warning; a reason change or
 recovery resets it and never triggers a media action.
