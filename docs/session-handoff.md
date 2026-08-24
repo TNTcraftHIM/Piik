@@ -48,18 +48,19 @@ Current high-signal boundary:
   boundary specifically requires them.
 - ADR-0002 owns the room model: one process-memory RoomStore, random free
   four-digit codes, configurable 24-hour dormant leases, restart loss, local
-  Host preference replay, and open/password/disabled code entry. Accepted next
-  wire `screener-v12` replaces the current time-bearing grant with one 22-character
-  room-lived opaque grant, adds `ROOM_NOT_FOUND`, removes product diagnostic
-  download buttons, and compacts Host invitation controls; the Host-only
-  bounded snapshot remains for acceptance tooling. Current source and production remain
-  v11 until that batch is implemented and deployed atomically. Neither source
-  nor production uses SQLite; exact release operations and change-scoped
-  infrastructure recovery are owned by deployment.
+  Host preference replay, and open/password/disabled code entry. Canonical
+  `main` contains exact v12 source implementation
+  `064db16c1b6d25fd24b7057b7e2fca172002e3c4`: a 22-character room-lived
+  opaque grant, `ROOM_NOT_FOUND`, exact-current audio stats, no product
+  diagnostic download, and complete shorter invitation URLs. The Host-only
+  bounded snapshot remains for acceptance tooling. Production stays exact
+  `c4962f5` on v11 until an explicitly authorized atomic application release.
+  Neither source nor production uses SQLite; exact release operations and
+  change-scoped infrastructure recovery are owned by deployment.
 - Browser display video must leave `contentHint` unset; audio keeps `music`.
-  Browser video is fixed VP8 across direct, browser-relay, and SFU paths; the
-  current strict v11 source and production have no codec UI/state/wire or
-  fallback media codec. Automated source gates and deployment postflight passed,
+  Browser video is fixed VP8 across direct, browser-relay, and SFU paths; strict
+  v12 source and v11 production have no codec UI/state/wire or fallback media
+  codec. Automated source gates and the existing deployment postflight passed,
   but no physical direct, browser-relay, or SFU codec path has been verified.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or

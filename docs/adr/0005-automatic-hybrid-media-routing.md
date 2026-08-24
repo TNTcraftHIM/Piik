@@ -2,7 +2,9 @@
 
 - Status: The route model is accepted and deployed in exact release `c4962f5`,
   including Browser SFU ICE-server isolation and owner physical fallback proof;
-  removal of the product diagnostic-download UI is accepted for v12 and pending.
+  exact source `064db16c1b6d25fd24b7057b7e2fca172002e3c4` removes the product
+  diagnostic-download UI for v12 while retaining the Host-only acceptance
+  snapshot, but that source is not deployed.
 - Date: 2026-08-20
 - Last updated: 2026-08-24
 

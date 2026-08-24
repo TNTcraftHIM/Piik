@@ -169,15 +169,13 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 
 ## Implementation Status
 
-Production runs exact deployed application/runtime revision
-`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
-`main` contains the same runtime code. Current source and production run the
-strict `screener-v11` wire and implement allocation, leases, orthogonal
-grant/code admission, rotate/revoke, password policy, local profile replay,
-restart loss, and browser-storage privacy. They still use the previous
-time-bearing 256-bit grant and neutral `ROOM_ACCESS_DENIED` result. The accepted
-22-character room-lived grant and `ROOM_NOT_FOUND` split belong to one strict
-`screener-v12` replacement and are not yet implemented or deployed.
+Canonical `main` contains exact source implementation
+`064db16c1b6d25fd24b7057b7e2fca172002e3c4` on the strict `screener-v12`
+wire. It implements the 22-character room-incarnation grant, exact digest
+validation, rotate/revoke, browser-storage privacy, and the `ROOM_NOT_FOUND`
+split without a v11 parser. Production remains exact deployed revision
+`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`, on strict
+`screener-v11`; the v12 source has not been deployed.
 
 Exact release and operational evidence remain owned by deployment and
 verification status.
