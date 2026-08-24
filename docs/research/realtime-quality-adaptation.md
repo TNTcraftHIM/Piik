@@ -224,81 +224,86 @@ wire, server telemetry, global score, selector or new UI framework. Production
 deploys this v10 publisher view; its target-browser fields and values still need
 physical evidence.
 
-## Fixed Browser Codec Decision
+## Browser Codec And Content-Hint Evidence
 
-The Browser product uses one fixed VP8 path and exposes no codec or profile
-control. Direct and browser-relay offers put VP8 first while retaining its
-browser-advertised repair codecs; the SFU publication explicitly requests VP8
-with `backupCodec=false`. Actual codec/profile and encoder fields remain
-diagnostic results. They do not authorize codec switching, route changes, or a
-second encoder policy.
+The accepted change is narrow: Browser display video does not set
+`contentHint`; returned audio keeps `contentHint = "music"`. The final Browser
+video codec is not decided. V10 continues to default to VP8 and retains the
+pre-share diagnostic selector, fixed for one share, until a controlled real-game
+comparison supports one codec. Codec/profile/encoder stats remain diagnostic
+and do not authorize automatic switching, route changes, or another controller.
 
-The decision combines dated production behavior with an exact target-machine
-probe. Production first forced H.264 through standard codec ordering and a
-single LiveKit H.264 publication; removing that preference restored the reported
-frame rate. On 2026-08-24, fresh Chrome/Edge 151 sessions then used real
-`getDisplayMedia()` tab capture, `1920x1080@30`, a 5 Mbps ceiling, `balanced`,
-`motion`, ten seconds of warm-up, and a fifteen-second wall-clock sample:
+Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
+libwebrtc clears `is_screencast` for that mode. Screener was therefore replacing
+the display-capture screen classification with realtime-camera semantics. Fresh
+Chrome 151 loopback probes on 2026-08-24 used real dynamic tab
+`getDisplayMedia()`, `balanced`, ten seconds of warm-up, and a fifteen-second
+sample:
 
-| Browser / requested format | Actual encoder | Encoded FPS | Encode time/frame | End resolution | Limitation |
-| --- | --- | ---: | ---: | --- | --- |
-| Chrome VP8 | libvpx, software | 15.00 | 2.69 ms | 402x214 | `bandwidth` |
-| Chrome H.264 Baseline `42001f` | AMD Media Foundation, hardware | 11.87 | 12.10 ms | 1920x1024 | `none` |
-| Chrome H.264 CBP `42e01f` | OpenH264, software | 15.00 | 1.33 ms | 402x214 | `bandwidth` |
-| Chrome H.264 Main `4d001f` | AMD Media Foundation, hardware | 11.86 | 12.61 ms | 1920x1024 | `none` |
-| Chrome H.264 High, negotiated `64001f` | AMD Media Foundation, hardware | 12.60 | 12.53 ms | 1920x1024 | `none` |
-| Edge H.264 Baseline `42001f` | NVIDIA Media Foundation, hardware | 28.98 | 5.67 ms | 1396x732 | `bandwidth` |
+| Requested path | Ceiling | Actual encoder | Encoded FPS | Encode time/frame | Bitrate | End resolution | Limitation |
+| --- | ---: | --- | ---: | ---: | ---: | --- | --- |
+| VP8 + `motion` | 5 Mbps | libvpx software | 14.93 | 2.85 ms | 3.663 Mbps | 428x208 | `bandwidth` |
+| VP8 + no hint | 5 Mbps | libvpx software | 29.73 | 6.62 ms | 4.944 Mbps | 1904x928 | `none` |
+| H.264 + no hint | 8 Mbps | AMD Media Foundation | 14.18 | 14.24 ms | 8.214 Mbps | 1904x928 | `none` |
+| H.264 + no hint + diagnostic Desktop SW BRC | 5 Mbps | AMD Media Foundation | 29.93 | 8.17 ms | 3.650 Mbps | 1904x928 | `none` |
+| H.264 + no hint + hardware encode disabled | 5 Mbps | OpenH264 software | 10.47 | 13.08 ms | 4.832 Mbps | 1904x928 | `none` |
 
-The synthetic content, headless capture, loopback path, and BWE-driven resolution
-changes prevent a physical-game image-quality or intrinsic codec-efficiency
-ranking. They do establish the first bottleneck: Windows had an explicit
-minimum-power preference for Chrome (`GpuPreference=1`), Chrome selected the AMD
-H.264 MFT, and Baseline/Main/High all stayed near 12 fps. Edge had no explicit
-preference, selected the NVIDIA MFT, and approached 29 fps. Chrome's
-`--force-high-performance-gpu` flag still selected the AMD MFT and produced
-12.66 fps, so that ANGLE/EGL switch does not override Media Foundation selection.
+The VP8 result establishes that `motion` was harmful independently of the H.264
+issue. VP8 reported trusted rate control, so libwebrtc's outer frame dropper was
+off and libvpx owned its CBR behavior. In the ordinary AMD H.264 path,
+libwebrtc's outer rate limiter dropped hundreds of frames; raising the ceiling
+through 8/10/12 Mbps or selecting `maintain-framerate` did not restore 30 fps.
+The diagnostic SW-BRC run made the same AMD MFT report trusted rate control and
+reach 29.93 fps, so the MFT itself is not a fixed 12--15 fps throughput limit.
+That browser-process experiment bypasses a Chromium AMD workaround and is not a
+Web product API; a page cannot enable the field trial or select a GPU/MFT.
 
-Chromium 151 enumerates Windows Media Foundation encoders in adapter/MFT order
-and activates the first compatible result. Its preferred adapter LUID is used to
-handle cross-GPU resources, not to let a website select a vendor. The WebRTC API
-can reorder codec/profile formats but has no API to select NVIDIA, AMD, or a GPU
-adapter. Windows Graphics preference, disabling an iGPU, or launching a whole
-browser differently are host diagnostics, not a Screener product mechanism.
-See Chromium's [MFT enumeration](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/mf_video_encoder_util.cc#347),
-[encoder activation](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1422),
-and [GPU switch scope](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/gpu/ipc/service/gpu_init.cc#291), plus the
-[WebRTC Stats](https://www.w3.org/TR/webrtc-stats/) and
-[Media Capabilities](https://www.w3.org/TR/media-capabilities/) specifications.
+A separate no-hint VP8 CPU sample used a Ryzen 7 9700X, Chrome 151, one dynamic
+1904x928@30 capture, 5 Mbps per sender, and loopback receivers. One sender held
+29.86 fps and the isolated Chrome process tree consumed 21.14 CPU-seconds over
+26.65 seconds, or 0.793 logical core / 4.96% of the 16-thread machine. Two
+independent senders both held 29.93 fps and used 35.88 CPU-seconds over 26.70
+seconds, or 1.344 logical cores / 8.40%. These totals include source rendering,
+capture, WebRTC, and local decode, so they are not pure encoder cost. They show
+that software VP8 is workable on this machine, not that it is cheap on a weaker
+CPU, mobile device, or beside a real game.
 
-SDP level rewriting is not a repair: Chromium matches H.264 hardware formats by
-profile and packetization mode and lets the encoder choose the output level from
-the real dimensions and rate. Reordering High only changes the requested profile
-and still selected the same AMD MFT. CBP deliberately fell back to OpenH264 and
-lost resolution under the same budget. Pinned LiveKit 1.13.5/Pion 4.2.17 also
-preserves Chrome's H.264 offer order, whose first compatible entry is Baseline
-`42001f/mode1`, not CBP. No profile special case, SDP munging, GPU selector,
-codec controller, or H.264 relay/SFU follow-up enters the Browser product.
+Chromium's generic WebRTC factory can wrap hardware VP8 when a platform backend
+advertises it, but this Windows Chrome run selected libvpx and Chromium 151's
+Windows Media Foundation backend advertises VP9, H.264, AV1, and conditional
+HEVC rather than VP8. A website can prefer a codec/profile but cannot require a
+particular hardware implementation. Hardware VP9 or AV1 may provide usable rate
+control on supported machines, while H.264/HEVC remain important hardware paths,
+but none currently combines VP8's WebRTC baseline coverage with deterministic
+hardware selection across Screener's browser targets. Capability advertisement
+alone is not acceptance; an actual sender must prove codec, implementation,
+power efficiency, rate control, and game-load behavior.
 
-Discord's published Go Live material is a useful architecture comparison, not
-a preset to copy. It describes native OS/driver-integrated capture and encoding,
-GPU hardware encoding, WebRTC transport, and one codec that the sender and all
-current viewers can decode. Discord lists VP8 and H.264 as its broad baseline,
-with HEVC and AV1 on selected platforms; its RTC worker routes the sender's
-stream rather than requiring one browser PeerConnection per viewer. This is
-evidence for a common publication, not proof of one physical encoder object.
-Discord also documents a feedback loop that could lock 60 fps output down to
-30 fps, accidental keyframes as often as once per second, and the resulting
-quality gains from a stable encoder lifetime, explicit keyframe cadence, and
-rate-control headroom. These findings support measuring the complete
-capture/encoder/congestion loop; they do not make AV1 universally cheaper.
+Comparable native products do not resolve this browser boundary. Discord
+negotiates VP8/H.264 and selected-platform HEVC/AV1 through its own capture and
+hardware pipeline, and documents an AMD rate-control/frame-dropper repair.
+Parsec, Steam Remote Play, and Moonlight/Sunshine primarily use controlled
+hardware H.264/HEVC/AV1 paths. Oopz only publicly identifies Agora as its screen
+sharing SDK; Agora may use VP8/H.264/H.265 or automatic selection, so Oopz's
+actual session codec is unknown without runtime stats. These native designs do
+not prove that an ordinary web page can force the same encoder path.
 
-A read-only inspection of the locally installed Oopz 0.87.425 package is
-consistent with a native, hardware-first common publication: its Viewer bundle
-selects H.264, the package exposes a hardware-acceleration status, and the
-inspection found one screen-track publication. It does not prove the runtime
-codec/GPU choice or one physical encoder. Components, retained hashes, and the
-privacy boundary are owned by
-[Native shared-encode sender](./native-shared-encode-sender.md).
+Primary implementation evidence: Chromium's
+[content-hint bridge](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc#36),
+libwebrtc's [sender classification](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/pc/rtp_sender.cc#1419),
+[VP8 rate control](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc#1360),
+Chromium's [hardware codec mapping](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder_factory.cc#75),
+its [Windows encoder backend](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#606),
+the [Desktop SW BRC switches](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/mf_video_encoder_switches.cc#26),
+and Chromium's [AMD workaround](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/gpu/config/gpu_driver_bug_list.json#3303).
+Product comparisons: [Discord Go Live](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology),
+[Discord AMD rate control](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus),
+[Oopz privacy policy](https://help.oopz.cn/agreement/privacy), and
+[Agora codec selection](https://doc.shengwang.cn/api-ref/rtc/windows/API/enum_videocodectype),
+[Parsec compatibility](https://support.parsec.app/hc/en-us/articles/32381568346644-Hardware-and-Software-Compatibility),
+[Steam Remote Play update](https://store.steampowered.com/news/posts/?enddate=1734653759&feed=steam_clientAny),
+[Moonlight](https://github.com/moonlight-stream/moonlight-qt), and
+[Sunshine](https://github.com/LizardByte/Sunshine/blob/master/docs/configuration.md).
 
 ## Evidence Before Adaptation
 
@@ -701,9 +706,11 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - A live profile change uses `track.applyConstraints()` and updates every
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
-- The video track keeps `contentHint = "motion"`; recommended profiles and the
-  advanced initial value use `balanced`, with explicit `maintain-resolution`
-  and `maintain-framerate` choices. None promises an emitted resolution or rate.
+- Current v10 source and production set video `contentHint = "motion"`; the
+  accepted source change removes that assignment so display capture retains
+  browser screen semantics. Recommended profiles and the advanced initial value
+  use `balanced`, with explicit `maintain-resolution` and
+  `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
 - The current deployed `screener-v10` Share advanced settings panel accepts
@@ -754,8 +761,8 @@ CPU/GPU cost, public networks, or sustained behavior.
 - No canvas pixel-difference detector, machine-learned rate controller, or
   periodic profile switching.
 - No copied x264 CRF/preset recipe in the browser path.
-- No runtime or automatic codec switching. VP8 is the one Browser product codec;
-  there is no codec selector or H.264 product fallback.
+- No runtime or automatic codec switching. The current v10 pre-share selector
+  remains diagnostic and fixed for one share until the final codec decision.
 - No channel-count, sample-rate, codec, arbitrary bitrate, stereo, DTX, RED or
   FEC control, and no inference of actual stereo or sample rate from
   `opus/48000/2`. Screen media uses one route-consistent stereo contract;
