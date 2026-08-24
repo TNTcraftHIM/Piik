@@ -139,8 +139,8 @@ results do not create an application media-layer selector or route authority:
    spatial-quality ceiling. Server 1.13.5 derives requested spatial/temporal
    maxima from quality, dimensions and FPS, but actual selection is
    codec-specific: VP8 has temporal selection, while H.264/H.265 simulcast is
-   spatial-only. The current H.264 candidate can adapt each SFU downtrack
-   between `q,h` spatial representations and recover it independently. Server
+   spatial-only. The fixed VP8 publication can adapt each SFU downtrack between
+   `q,h` spatial representations and recover it independently. Server
    Dynacast takes the maximum requested quality and enables every quality at or
    below it, so any `HIGH` root keeps `LOW` active. That cumulative behavior
    prevents dynamic `LOW` stop while `HIGH` is subscribed, but dynamic stop is

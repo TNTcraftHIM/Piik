@@ -272,7 +272,7 @@ one waiter set. An actual SFU usage decrease drains that set once, advances
 each waiting controller's external fact, and schedules normal reconciliation;
 there is no periodic capacity poll or resource-specific route controller.
 
-The accepted v10 Viewer wire includes one strict, revision-fenced `route-status`
+The accepted Viewer wire includes one strict, revision-fenced `route-status`
 union only for states that the existing prepare/active `route-update` cannot
 express: `{ state: "waiting", reason: "sfu-admission" }` while this Viewer is
 waiting on central admission, or `{ state: "failed", reason:

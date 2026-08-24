@@ -26,7 +26,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Use a physical direct comparison to choose the fixed Browser codec; validate relay and SFU only if H.264 is selected.
+1. Implement and atomically deploy the accepted fixed-VP8 Browser v11 contract, removing the temporary codec selector and quality-wire field. Current source and production remain v10 until that cutover; no H.264 relay or SFU validation is scheduled.
 2. Diagnose the reported screen-audio `1 kbps` readout and validate live audio ceilings, then refine the Host invitation controls without changing grant semantics implicitly.
 3. Reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
 4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
@@ -42,6 +42,6 @@ This is the current execution index. Git history owns completed timelines; [veri
 ## Current Hold
 
 There is no active P0/P1 source or deployment hold. Current source and production run the postflight-clean
-Browser v10 contract. Physical H.264 quality, audio, heterogeneous-network, SFU,
+Browser v10 contract while the accepted fixed-VP8 v11 change is pending. Audio, heterogeneous-network, SFU,
 background, and mobile evidence remains open. Native/executable work and broad repository cleanup
 remain outside the current evidence boundary.
