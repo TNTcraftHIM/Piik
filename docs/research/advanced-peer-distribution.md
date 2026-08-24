@@ -8,11 +8,9 @@
   retained evidence. Exact Browser v10 source
   `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` implements ADR-0005's single
   child-reparent reconciliation and exact first-frame transaction and remains
-  dated implementation evidence. Production runs exact deployed
-  application/runtime revision `c4962f54443ad5f98bc65861195a3d9c74a48996`, release
-  `c4962f5`; canonical `main` contains the same runtime code. Current source and
-  production run the strict `screener-v11` form of that route contract.
-  Advanced encoded-media routes remain unimplemented candidates.
+  dated implementation evidence. Current source and production are indexed by
+  [status](../status.md) and follow ADR-0005. Advanced encoded-media routes remain
+  unimplemented candidates.
 
 This document is research evidence, not current architecture or a backlog. See
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) for accepted routing

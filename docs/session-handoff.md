@@ -36,11 +36,12 @@ Current high-signal boundary:
   subscriber PCs explicitly use no external ICE server and check the dedicated
   public SFU candidate directly; ordinary peers and LiveKit server-side public
   IP discovery retain deployment STUN. Production exact deployed
-  application/runtime revision `bf328590b3de5dfa509fcc70f6316286af3eae7e`,
-  release `bf32859`, uses strict `screener-v12` and includes exact Browser SFU
+  application/runtime revision `1d8761528d0dba43fb6d818df3934483ba2f5340`,
+  release `1d87615`, uses strict `screener-v12` and includes exact Browser SFU
   ICE-server-isolation implementation
-  `ae09c760adec76fd26da611d4928486d105c6d3b`. Owner physical SFU fallback proof
-  remains bounded to predecessor release `c4962f5`. The route uses one short-lived
+  `ae09c760adec76fd26da611d4928486d105c6d3b`. Chrome 151 on that exact production
+  verified one no-RID publisher encoding and progressing publisher/subscriber
+  frames over LiveKit UDP. The route uses one short-lived
   exact-generation decoded-frame observer only for the pending candidate inside
   the existing total deadline; the periodic stats sampler still owns active-path
   diagnostics and stalls. Broader external-network and SFU lifecycle evidence
@@ -56,10 +57,10 @@ Current high-signal boundary:
   Automated source gates and the exact deployment postflight passed. Chrome 151
   physically verified direct/browser-relay/SFU screen-audio continuity and all
   three sender ceilings. An exact-production VP8 gate sustained about 59.5 fps
-  on direct and Browser-relay paths and rejected the current SFU `q,h`
-  publication because active `LOW` reduced `HIGH`. ADR-0007 accepts one Browser
-  SFU `HIGH`; current source implements that single representation, while
-  production remains `q,h` until the next application cutover and physical gate.
+  on direct and Browser-relay paths and rejected the then-deployed `bf32859`
+  SFU `q,h` publication because active `LOW` reduced `HIGH`. ADR-0007 accepts one Browser
+  SFU `HIGH`; current source and production implement it. Chrome 151 verified
+  one no-RID encoding and progressing publisher/subscriber frames over LiveKit UDP.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy

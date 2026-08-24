@@ -4,12 +4,11 @@ Accessed: 2026-08-25
 
 Status: current Browser source and production use strict `screener-v12`, fixed
 VP8, no video hint, and one Opus screen-audio path with bounded 64/128/256 kbps
-sender ceilings. Production runs exact application/runtime revision
-`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`; canonical
-`main` contains the same runtime code. The capture request disables local speech
-processing, live mutation has applied readback, relay track changes preserve the
-persistent stream, and SFU reconnect reacquires exact publications/senders.
-Current-production physical evidence closes the active-source `1 kbps` report;
+sender ceilings. Exact source and production identities are owned by
+[status](../status.md). The capture request disables local speech processing,
+live mutation has applied readback, relay track changes preserve the persistent
+stream, and SFU reconnect reacquires exact publications/senders.
+Exact-production `bf32859` physical evidence closes the active-source `1 kbps` report;
 audible game quality and real-game SFU A/V synchronization remain open.
 
 ## Observed-Bitrate Identity Boundary
@@ -468,8 +467,8 @@ deltas in earlier video loopbacks. This is functional evidence, not packaging,
 real-game sync, second-Viewer, SFU/UDP, or endurance evidence.
 
 Run one bounded matrix rather than a full route Cartesian product against
-production release `c4962f5` and its matching current runtime source on Windows
-Chrome/Edge for tab/window/monitor,
+the exact production release and matching runtime source at execution time on
+Windows Chrome/Edge for tab/window/monitor,
 audio selected/unselected, and a simultaneous voice call; then the native
 candidate on current Windows 11 with game parent and child audio, an independent
 voice process, notifications, no render stream, and process restart. Windows 10

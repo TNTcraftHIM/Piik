@@ -148,8 +148,10 @@ results do not create an application media-layer selector or route authority:
 
    The current Browser decision is one `HIGH` representation without simulcast,
    Dynacast, or a manual layer controller. The measured public `q`-inactive A/B
-   remained bandwidth-constrained, so this verdict does not claim SFU 60 fps or
-   replace the pending exact single-representation production gate.
+   remained bandwidth-constrained, so this verdict does not claim SFU 60 fps.
+   Chrome 151 later closed the exact-production single-representation gate on
+   release `1d87615` with one no-RID encoding and progressing publisher and
+   subscriber frames over LiveKit UDP.
    Reopening a dual/native representation is a new decision with new physical
    game, encoder, and upload evidence.
 3. **Current Web/LiveKit SVC: rejected

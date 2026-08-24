@@ -12,7 +12,7 @@ game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
 Production runs exact deployed application/runtime revision
-`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`; canonical
+`1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
 `main` contains the same runtime code. Current Browser source and production use
 strict `screener-v12`, fixed VP8, no video `contentHint`, and no codec UI,
 quality state, or wire field. They use `balanced` as the recommended profile
@@ -49,7 +49,7 @@ available bandwidth without losing frame cadence. Both paths needed about
 intrinsic VP8/no-hint localhost 60 fps shortfall; sender ceilings are not startup
 or delivery guarantees, and no application start-bitrate hack follows.
 
-The exact SFU path isolated a different issue. With the current ordered `q,h`
+The exact SFU path isolated a different issue. With the then-deployed ordered `q,h`
 publication, the 1904x928 `h` stream stabilized near 9.2 fps and 1.37 Mbps. With
 `q` inactive from the first sender-parameter application, the otherwise
 unchanged `h` stream reached about 23.3 fps and 3.32 Mbps. Source/capture stayed
@@ -60,6 +60,18 @@ consumed the same Host-to-SFU congestion budget and materially reduced `HIGH`.
 ADR-0007 rejects that candidate and accepts one Browser SFU `HIGH`
 representation. The public SFU ingress remained constrained, so this gate does
 not claim SFU 60 fps or real-game performance.
+
+## 2026-08-25 Exact-Production Single-Representation Gate
+
+Chrome 151 exercised exact production `1d87615` with a real dynamic tab capture.
+The bounded gate made only the ordinary STUN peer attempt unusable so the existing
+route operation reached its SFU suffix; Browser LiveKit publisher and subscriber
+PCs retained empty external ICE-server lists and selected UDP. The publisher
+reported one video sender encoding and one outbound video stats object, both
+without RID. Over six seconds it encoded 180 frames and the subscriber decoded
+and rendered 182 frames at 1822x1080, with byte counters advancing on both ends.
+This closes ADR-0007's implementation/deployment gate. It does not establish
+public SFU 60 fps, real-game quality, heterogeneous networks, or endurance.
 
 ## Route Quality Authority
 
@@ -179,7 +191,7 @@ video blur, but Screener does not add application SDP bitrate hacks.
 
 The same release was also reported to reduce game-stream frame rate and
 consume noticeable Host resources. That report applies only to
-`769de201f7cc`, not to current production or automatically to the current v11
+`769de201f7cc`, not to current production or automatically to the current
 diagnostics.
 The Web
 sender creates one independent `RTCRtpSender` per viewer and has no cross-PC
@@ -255,7 +267,7 @@ SFU publication explicitly uses VP8 with no backup codec. The UI and quality
 wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
 Production runs exact deployed application/runtime revision
-`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`; canonical
+`1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
 `main` contains the same runtime code. Current source and production implement
 this strict `screener-v12` contract.
 
@@ -443,10 +455,10 @@ one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
-The exact-production gate above rejected its ordered `q,h` publication because
-the active lower representation reduced `HIGH`. Current source now implements
-ADR-0007's one Browser SFU `HIGH`; production remains `q,h` until the exact
-single-representation deployment gate passes.
+The earlier exact-production gate rejected its ordered `q,h` publication because
+the active lower representation reduced `HIGH`. Current source and production
+now implement ADR-0007's one Browser SFU `HIGH`; the exact deployment gate above
+proved one no-RID encoding with progressing publisher/subscriber frames.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -671,9 +683,9 @@ pipeline.
 Compare image readability and motion continuity instead of declaring success
 from FPS alone. If reproducible evidence later shows a supported preference
 oscillates or makes the wrong tradeoff on supported machines, revise that
-explicit option only from a new controlled gate. Browser SFU verification must
-show exactly one VP8 outbound video encoding, no `q,h` simulcast, continuing
-publisher/subscriber frame progress, and unchanged ADR-0005 resource accounting.
+explicit option only from a new controlled gate. The exact Browser SFU gate
+showed one VP8 outbound video encoding, no `q,h` simulcast, and continuing
+publisher/subscriber frame progress without changing ADR-0005 resource accounting.
 The application's evidence windows remain diagnostic only; they do not command
 another representation, change topology, or override stock congestion control.
 

@@ -1,6 +1,6 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted and deployed in exact release `bf32859` on strict v12
+- Status: Accepted and deployed on strict v12
 - Date: 2026-08-23
 
 ## Context
@@ -173,10 +173,9 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 Current source and production use the strict `screener-v12` wire and implement the
 22-character room-incarnation grant, exact digest validation, rotate/revoke,
 browser-storage privacy, `open | private` code entry, and the `ROOM_NOT_FOUND`
-split without a v11 parser. Production is exact deployed revision
-`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`.
+split without a v11 parser.
 
-Exact release and operational evidence remain owned by deployment and
+Exact release and operational evidence are owned by deployment, status, and
 verification status.
 
 ## Decision Sources

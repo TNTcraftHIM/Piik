@@ -5,13 +5,8 @@
   low latency, and bounded host media fanout
 - Status: research and dated route evidence. Current invariants and assisted
   transport roles are in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md).
-  Production runs exact deployed application/runtime revision
-  `c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
-  `main` and production include Browser SFU ICE-server-isolation implementation
-  `ae09c760adec76fd26da611d4928486d105c6d3b` and owner physical fallback proof.
-  Source and production retain the route transaction and diagnostics on
-  strict `screener-v11`. Real-network validation remains in
-  [verification status](../verification-status.md).
+  Current source and production are indexed by [status](../status.md);
+  real-network validation remains in [verification status](../verification-status.md).
 
 ## Current Transport Conclusion
 
@@ -603,7 +598,7 @@ counters would not be deployment-wide admission.
 | Route | Where copies are emitted | Endpoint cost | Evidence status |
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per Viewer | Host upload and sender pipelines grow with Viewers | Baseline evidence; current capacity is owned by the product contract |
-| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current v11 source and production both admit up to 20; the exact v10 local direct loopback gate passed, while heterogeneous networks remain open |
+| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current source and production admit up to 20; the exact v10 local direct loopback gate passed, while heterogeneous networks remain open |
 | Native shared-encode host | Host targets one encode for standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Research evidence; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Research only; no current product authorization |
 | SFU service | SFU emits authorized subscription copies | Service pays bounded egress; an authoritative Host publisher supplies media | Production deploys the current topology/admission; local LiveKit functional evidence exists, while heterogeneous-network/resource validation remains open |

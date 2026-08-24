@@ -3,7 +3,7 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`, and the single
+`1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -13,8 +13,8 @@ Caddy or nginx; ordinary peer ICE advertises only STUN, while Browser LiveKit
 PCs configure no external ICE server and retain LiveKit-signaled UDP candidates.
 LiveKit supplies bounded SFU fallback capacity. Normal media remains distributed
 through direct or peer edges whenever those paths work. Production includes
-implementation `ae09c760adec76fd26da611d4928486d105c6d3b`; the owner's physical SFU
-fallback media proof remains bounded to predecessor release `c4962f5`.
+implementation `ae09c760adec76fd26da611d4928486d105c6d3b`. Chrome 151 physically
+verified its exact single-representation SFU publisher and subscriber.
 
 A deployment may additionally provide one dedicated single-node LiveKit process
 as the current controller's automatic final media fallback. This capacity is
@@ -25,21 +25,22 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `bf328590b3de5dfa509fcc70f6316286af3eae7e`, release
-`bf32859`, from `/opt/screener/releases/bf32859`. The immutable runtime ZIP
+Production runs exact `1d8761528d0dba43fb6d818df3934483ba2f5340`, release
+`1d87615`, from `/opt/screener/releases/1d87615`. The immutable runtime ZIP
 SHA-256 is
-`e8b8fccf0ab15591af5e6675ca9236bae28b648dccfa8b1ea208a79b927168be`.
+`715480487059bf83516a34e0d1083b52437619838c46bdc26ca5967529a1cf05`.
 Its 38-file path/size/hash manifest SHA-256 is
-`d1c6b7c025e37711c0d06f5ec222a6fba26391d2e34a06b374deb1a05ddd63c6`.
+`96845789560394ca20b16c37a8e7ddadc7b488876e32241709d0f7a577fdca26`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-BmWh33Cv.js` with SHA-256
-`e0400b1d5a5017bf5851158f5a884425aaca0269c5e3efa4cc521f3580c19bce`.
+`assets/index-DfMqhOXY.js` with SHA-256
+`cf6dd1c46cc9414a87331a9312eec315ddce8fce565741284998aa0141b18d47`.
 
 The release deploys the single Browser `screener-v12` wire, fixed VP8 for Browser
-direct, browser-relay, and SFU video, no video `contentHint`, no codec UI/state/wire,
-random four-digit
-memory rooms with a 24-hour dormant lease, a room-lived 22-character grant,
+direct, browser-relay, and SFU video, one SFU `HIGH` encoding without simulcast
+or a subscriber layer selector, disabled Dynacast, no video `contentHint`, no
+codec UI/state/wire, random four-digit memory rooms with a 24-hour dormant lease,
+a room-lived 22-character grant,
 orthogonal `open | private` grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
 one-controller exact-candidate route runtime. Exact predecessor release
@@ -271,7 +272,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `bf32859` accepts 1 through 20 and explicitly selects 20. This is an
+Production `1d87615` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -284,7 +285,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `bf32859` runs the deployed server and Browser assets
+Production release `1d87615` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 

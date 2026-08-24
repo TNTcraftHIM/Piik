@@ -6,8 +6,7 @@ Only items in **Now** are executable after their stated decision gate. A branch 
 
 ## Now
 
-1. **Deploy and prove the current single-`HIGH` Browser SFU publication.** Exact production Chrome 151 closed the intrinsic VP8/no-hint shortfall on direct and browser-relay paths, but proved that the always-active SFU `LOW` materially reduces `HIGH` on the measured public ingress. Current source now uses one VP8 `HIGH` encoding and removes only the unowned two-layer helpers and assertions. Deploy the exact artifact and physically verify exactly one outbound video encoding, no RID or second representation, and progressing publisher/subscriber frames over LiveKit UDP. Do not change direct/browser-relay media, `contentHint`, route ordering, deadlines, or add a bitrate controller.
-2. **Finish real-network route acceptance.** Measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, exact first-frame commit and rollback, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync, and bounded explicit failure across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish the current failure boundary. Do not add port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
+1. **Finish real-network route acceptance.** Measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, exact first-frame commit and rollback, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync, and bounded explicit failure across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish the current failure boundary. Do not add port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
 
 ## Accepted Later Roadmap
 
