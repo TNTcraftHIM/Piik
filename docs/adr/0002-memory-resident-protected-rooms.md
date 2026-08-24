@@ -1,8 +1,7 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; the existing room model is deployed in exact release
-  `c4962f5`, while the room-lived short grant and explicit missing-room result
-  are pending implementation
+- Status: Accepted; current source implements the strict v12 room model, while
+  production remains exact release `c4962f5` on the older strict v11 contract
 - Date: 2026-08-23
 
 ## Context
@@ -95,7 +94,9 @@ Code entry is a separate two-state policy:
 
 - `open` is the default: after site access, the four-digit code admits a Viewer
   without a room password;
-- `password`: after site access, the code also requires the room password.
+- `private` disables passwordless code entry. Without a room password the room
+  is invitation-only; with one configured, matching code-and-password entry is
+  also admitted.
 
 There is no third code-entry-disabled state; invitation access remains owned by
 the independent Viewer grant.
@@ -155,8 +156,8 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 - Default creation atomically produces `open` code entry with no room password
   and an independent 22-character token-bearing invitation. The grant remains
   valid for exactly the current room incarnation and has no independent expiry.
-  `open` and `password` code entry are covered independently from grant
-  rotate/revoke.
+  `open` and `private` code entry, including private rooms with and without a
+  password, are covered independently from grant rotate/revoke.
 - Same-browser recreation reapplies the Host profile; another browser or cleared
   storage does not. No fingerprint or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
@@ -170,10 +171,9 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 
 ## Implementation Status
 
-Canonical `main` contains exact source implementation
-`064db16c1b6d25fd24b7057b7e2fca172002e3c4` on the strict `screener-v12`
-wire. It implements the 22-character room-incarnation grant, exact digest
-validation, rotate/revoke, browser-storage privacy, and the `ROOM_NOT_FOUND`
+Current source uses the strict `screener-v12` wire and implements the
+22-character room-incarnation grant, exact digest validation, rotate/revoke,
+browser-storage privacy, `open | private` code entry, and the `ROOM_NOT_FOUND`
 split without a v11 parser. Production remains exact deployed revision
 `c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`, on strict
 `screener-v11`; the v12 source has not been deployed.
