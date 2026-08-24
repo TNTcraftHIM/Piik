@@ -6,14 +6,13 @@ Status: peer and SFU routes already use stereo and a 128 kbps default, but users
 still report speech-gated movie/game audio, including on a phone connected
 directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
 local speech processing unless the request disables it. The source request is
-explicit. Exact current Browser source
-`f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` uses strict `screener-v11`,
-fixed VP8, no video hint, and no codec UI, quality state, or wire field. It
-exposes bounded 64/128/256 kbps
-choices, applies them to new P2P, browser-relay, and SFU senders, and implements
-serialized live mutation with applied readback. Production remains exact
-`2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, on v10 with
-video `motion` and the pre-share codec selector; it deploys the same audio path.
+explicit. Production runs exact deployed application/runtime revision
+`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`main` contains the same runtime code. Current Browser source and production use
+strict `screener-v11`, fixed VP8, no video hint, and no codec UI, quality state,
+or wire field. They expose bounded 64/128/256 kbps choices,
+apply them to new P2P, browser-relay, and SFU senders, and implement serialized
+live mutation with applied readback.
 Target-device audible proof remains open.
 
 ## Scope And Decision
@@ -450,9 +449,9 @@ existing generic Pion two-second outbound snapshot, which also missed fresh
 deltas in earlier video loopbacks. This is functional evidence, not packaging,
 real-game sync, second-Viewer, SFU/UDP, or endurance evidence.
 
-Run one bounded matrix rather than a full route Cartesian product: exact
-production and exact v11 source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`
-on Windows Chrome/Edge for tab/window/monitor,
+Run one bounded matrix rather than a full route Cartesian product against
+production release `679fe3e` and its matching current runtime source on Windows
+Chrome/Edge for tab/window/monitor,
 audio selected/unselected, and a simultaneous voice call; then the native
 candidate on current Windows 11 with game parent and child audio, an independent
 voice process, notifications, no render stream, and process restart. Windows 10

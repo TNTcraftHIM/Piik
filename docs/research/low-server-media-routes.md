@@ -5,10 +5,11 @@
   low latency, and bounded host media fanout
 - Status: research and dated route evidence. Current invariants and assisted
   transport roles are in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md).
-  Exact current Browser source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`
-  implements the route transaction and diagnostics on strict v11; production
-  remains exact `2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`,
-  on v10, while real-network validation remains in
+  Production runs exact deployed application/runtime revision
+  `679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+  `main` contains the same runtime code. Current Browser source and production
+  implement the route transaction and diagnostics on strict `screener-v11`.
+  Real-network validation remains in
   [verification status](../verification-status.md).
 
 ## Current Transport Conclusion
@@ -302,7 +303,7 @@ ingress/egress caps.
 ## Privacy-Safe Route Diagnostic Boundary
 
 Start with locally retained, redacted `webrtc-internals` as manual ground truth.
-Production v10 deploys the user-initiated local stats export and route-timing
+Production deploys the user-initiated local stats export and route-timing
 snapshot. It may observe only existing
 join, route-demand, operation-start, candidate-start, first-decoded-frame,
 settle, share-stop, departure, and room-delete events. It keeps one latest
@@ -558,10 +559,10 @@ counters would not be deployment-wide admission.
 | Route | Where copies are emitted | Endpoint cost | Evidence status |
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per Viewer | Host upload and sender pipelines grow with Viewers | Baseline evidence; current capacity is owned by the product contract |
-| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current v11 source and v10 production both admit up to 20; the exact v10 local direct loopback gate passed, while heterogeneous networks remain open |
+| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | Current v11 source and production both admit up to 20; the exact v10 local direct loopback gate passed, while heterogeneous networks remain open |
 | Native shared-encode host | Host targets one encode for standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Research evidence; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Research only; no current product authorization |
-| SFU service | SFU emits authorized subscription copies | Service pays bounded egress; an authoritative Host publisher supplies media | Production deploys the v10 topology/admission; local LiveKit functional evidence exists, while heterogeneous-network/resource validation remains open |
+| SFU service | SFU emits authorized subscription copies | Service pays bounded egress; an authoritative Host publisher supplies media | Production deploys the current topology/admission; local LiveKit functional evidence exists, while heterogeneous-network/resource validation remains open |
 | SFU fallback | SFU emits authorized copies | Additional central ingress and egress cost | Deployed bounded path; real heterogeneous-network and resource acceptance remains open |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |

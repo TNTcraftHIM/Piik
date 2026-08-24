@@ -31,11 +31,12 @@ contradict the private-room cost model or duplicate mature WebRTC capabilities.
 ## Current Ownership
 
 [ADR-0005](./0005-automatic-hybrid-media-routing.md) owns current routing
-invariants and assisted-route roles. Exact current source `f5a295c` uses the
-strict `screener-v11` Browser wire; exact production
-`2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, remains on
-`screener-v10`. Both use the same accepted route model, while real-network
-validation remains open. [ADR-0004](./0004-peer-assisted-media-experiment.md)
+invariants and assisted-route roles. Production runs exact deployed
+application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`, release
+`679fe3e`; canonical `main` contains the same runtime code. Current source and
+production use the strict `screener-v11` Browser wire and the same accepted route
+model. Real-network validation remains open.
+[ADR-0004](./0004-peer-assisted-media-experiment.md)
 owns only historical peer-assisted evidence. Access and room lifetime are owned
 by [ADR-0002](./0002-memory-resident-protected-rooms.md).
 

@@ -45,18 +45,17 @@ mechanism.
 ## Current Source Boundary
 
 The no-video-hint review baseline is
-`a26eb39dc677003110787b0ed1581c208f894fd7`. Exact current source
-`f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` uses strict `screener-v11`,
-fixed VP8, no video hint, and no codec UI, quality state, or wire field.
-Production remains exact `2726edde9b87f31fd76e749de47972ef817a9bd5`,
-release `2726edd`, on v10 with video `motion` and the pre-share codec selector.
+`a26eb39dc677003110787b0ed1581c208f894fd7`. Production runs exact deployed
+application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`, release
+`679fe3e`; canonical `main` contains the same runtime code. Current source and
+production use strict `screener-v11`, fixed VP8, no video hint, and no codec UI,
+quality state, or wire field.
 The current path does not claim or implement a page-keepalive mechanism, and
 deployment health supplies no physical background-capture evidence.
 
 - Current `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream,
   applies ideal/max capture constraints, leaves the video hint unset, and
-  applies sender bitrate, frame-rate, and degradation ceilings. Production
-  still marks video as `motion` until v11 is deployed. Explicit
+  applies sender bitrate, frame-rate, and degradation ceilings. Explicit
   sharing pause and authoritative reconnect re-pause change capture tracks'
   `enabled` state; neither manufactures foreground activity. Audio
   `contentHint = "music"` remains unchanged.
@@ -150,6 +149,14 @@ real display surface. A JavaScript canvas animation is not suitable because
 its own timer or animation-frame lifecycle would confound the capture result.
 Keep the selected source foreground, visible, and changing throughout the
 first matrix.
+
+After Screener reproduces a stable baseline, the locally available NetEase UU
+Remote client may be run against the same scene and network as a black-box
+comparison for process CPU/GPU use, network traffic, latency, and visible
+quality. User-observed low-latency behavior is a reason to measure it, not
+evidence of its transport, codec, encoder, background policy, or applicability
+to a browser Host; those properties remain unknown unless the comparison exposes
+them directly.
 
 Open `chrome://webrtc-internals` on Host and Viewer before sharing and keep its
 overhead constant across every run. Leave audio-debug recording, event-log

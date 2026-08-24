@@ -1,6 +1,6 @@
 # ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
 
-- Status: Accepted; implemented and deployed in exact release `2726edd`
+- Status: Accepted; implemented and deployed in exact release `679fe3e`
 - Date: 2026-08-23
 
 ## Context
@@ -160,10 +160,11 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 
 ## Implementation Status
 
-Exact current source `f5a295c` runs the strict `screener-v11` wire. Exact
-production `2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, runs
-`screener-v10`; `screener-v11` is not deployed. Both implement this complete
-room boundary, including allocation, leases, orthogonal grant/code admission,
+Production runs exact deployed application/runtime revision
+`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`main` contains the same runtime code. Current source and production run the
+strict `screener-v11` wire and implement this complete room
+boundary, including allocation, leases, orthogonal grant/code admission,
 rotate/revoke, password policy, local profile replay, restart loss, browser
 storage privacy, and the neutral `ROOM_ACCESS_DENIED` result. All expected
 code-only denials use that same public result followed by the shared

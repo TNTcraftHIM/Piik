@@ -7,9 +7,12 @@
 - Status: deterministic peer distribution and provisional make-before-break are
   retained evidence. Exact Browser v10 source
   `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` implements ADR-0005's single
-  child-reparent reconciliation and exact first-frame transaction; production
-  runs that v10 contract, and advanced encoded-media routes remain
-  unimplemented candidates
+  child-reparent reconciliation and exact first-frame transaction and remains
+  dated implementation evidence. Production runs exact deployed
+  application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`, release
+  `679fe3e`; canonical `main` contains the same runtime code. Current source and
+  production run the strict `screener-v11` form of that route contract.
+  Advanced encoded-media routes remain unimplemented candidates.
 
 This document is research evidence, not current architecture or a backlog. See
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) for accepted routing
@@ -262,7 +265,7 @@ restarted. This proves LiveKit participant entry. The timing is consistent with
 the then-current one-shot grant refresh and recovery state machine, but logs do
 not prove those transitions and cannot distinguish
 connect, source, video publish, sender configuration, optional audio publish, or
-transport failure. The deployed v10 diagnostic exposes only a closed local
+transport failure. The production diagnostic exposes only a closed local
 stage/outcome enum to an on-demand Host snapshot and deliberately keeps raw
 errors, URLs, tokens, candidates, and addresses out of wire and logs.
 
