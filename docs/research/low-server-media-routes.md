@@ -21,6 +21,14 @@ always-SFU topology. When all outbound UDP is blocked, both accepted paths end
 in a clear bounded failure. Screener configures no TURN, ICE/TCP, media TCP, or
 TLS-relayed media path.
 
+Browser SFU publisher and subscriber PCs use no external ICE server, retain
+LiveKit-signaled UDP candidates, and let standard ICE nominate a non-relay pair.
+Candidate type, address family, count, and Browser socket allocation remain
+observations rather than product invariants. Ordinary peer PCs remain STUN-only,
+and the LiveKit server may still use deployment STUN to discover its own public
+address. This is one application SFU route, not a new route class or a TURN
+substitute.
+
 WebRTC and LiveKit expose broader framework transport capabilities, but those
 capabilities do not authorize another Screener route. Any future strict-firewall
 coverage requires real target-network evidence and a new accepted decision, and
@@ -38,6 +46,60 @@ reliability](https://docs.livekit.io/intro/basics/connect/), [LiveKit self-hoste
 deployment](https://docs.livekit.io/transport/self-hosting/deployment/), and the
 [pinned LiveKit 1.13.5 configuration
 sample](https://github.com/livekit/livekit/blob/v1.13.5/config-sample.yaml).
+
+## Browser SFU ICE-Server Isolation
+
+On 2026-08-24, exact repository dependency set `c7ec061`, Chrome 151 on Windows
+11, pinned LiveKit Server 1.13.5, and pinned JS client 2.22.0 reproduced
+intermittent initial LiveKit ICE failure while a Mihomo system-stack TUN owned
+the public default route. The default arm and empty-ICE-server arm each used a
+fresh Browser profile, then ran eight sequential attempts with a fresh page and
+exact room per attempt under the same 12-second connection timeout and the same
+640x360 at 30 fps canvas, VP8, single-layer publication. The default arm ran
+first and the override was injected only through `Room.connect` as
+`rtcConfig: { iceServers: [] }`. The temporary diagnostic harness was deleted;
+this transcribed summary is bounded root-cause evidence, not a reproducible
+regression artifact. No raw candidate, address, local port, token, or persistent
+probe report was retained.
+
+LiveKit supplied the deployment STUN endpoint and its public UDP candidate set
+to the client. In this bounded environment Chrome used one local UDP socket for
+the external STUN and SFU destinations, while Mihomo's documented
+endpoint-independent NAT option was not enabled. Browser socket allocation is
+an observation from this reproduction, not an application contract.
+
+Eight isolated Host connections using that default configuration produced two
+successful publications and six initial-ICE failures. A failed sampled attempt
+showed 182 Browser connectivity requests with zero received responses; a
+server-side pre-conntrack input counter observed 188 UDP packets and its output
+counter observed 384 packets sourced by the SFU listener. The counters prove
+server input and generated output-path traffic, not delivery beyond the host's
+output hook. Together with the TUN association correlation and the controlled
+A/B below, the best-supported cause for this reproduction is an
+external-STUN/SFU association conflict after server output and before Browser
+ICE receipt. The evidence does not generalize that cause to every TUN or VPN.
+
+Pinned LiveKit Server adds configured STUN to each join response and falls back
+to public default STUN when none is configured. Pinned JS client only adopts
+those servers when its caller did not provide `rtcConfig.iceServers`. An
+explicit empty array therefore keeps the remotely signaled SFU candidate while
+preventing additional local STUN gathering; it does not disable ICE.
+With `rtcConfig: { iceServers: [] }`, eight of eight isolated Host attempts
+formed a nominated non-relay UDP pair; this environment observed
+peer-reflexive-to-host candidate types. The first connected sample appeared
+within 0.5 to 1.7 seconds and publication completed 75 to 89 ms later. The same
+configuration belongs on Browser publisher and subscriber connects; ordinary
+peer STUN remains unchanged. Candidate type and count are diagnostic only.
+Product acceptance still requires an exact deployed Host-publication and
+Viewer-first-frame canary under the reproducing TUN path plus a separate mobile
+network.
+
+Primary sources checked 2026-08-24: [Mihomo TUN configuration and
+endpoint-independent NAT](https://wiki.metacubex.one/config/inbound/tun/),
+[LiveKit Server 1.13.5 ICE-server response construction](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roommanager.go),
+[LiveKit JS client 2.22.0 connect-option assignment](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts),
+[LiveKit JS client 2.22.0 RTC configuration merging](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/RTCEngine.ts),
+and [pinned LiveKit media-transport external-IP discovery](https://github.com/livekit/mediatransportutil/blob/a3417d38cda0/pkg/rtcconfig/ip.go).
 
 ## Historical Candidate Route Ladder
 

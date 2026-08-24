@@ -32,10 +32,14 @@ Current high-signal boundary:
 - docs/status.md owns the exact source/production/hold state.
 - docs/todo.md is the only executable work ledger and owns ordering.
 - ADR-0005 owns the accepted automatic route model: direct/STUN peer followed
-  only by the dedicated LiveKit SFU/UDP fallback. Production exact deployed
+  only by the dedicated LiveKit SFU/UDP fallback. Browser SFU publisher and
+  subscriber PCs explicitly use no external ICE server and check the dedicated
+  public SFU candidate directly; ordinary peers and LiveKit server-side public
+  IP discovery retain deployment STUN. Production exact deployed
   application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`,
   release `679fe3e`, uses strict `screener-v11`; canonical `main` contains the
-  same v11 runtime code. The route uses one short-lived
+  same v11 runtime code but has not implemented or deployed that accepted
+  Browser SFU ICE-server isolation. The route uses one short-lived
   exact-generation decoded-frame observer only for the pending candidate inside
   the existing total deadline; the periodic stats sampler still owns active-path
   diagnostics and stalls. Real external-network and SFU media evidence remains
