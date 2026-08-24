@@ -6,7 +6,7 @@ Only items in **Now** are executable after their stated decision gate. A branch 
 
 ## Now
 
-1. **Finish real-network route acceptance.** Measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish bounded explicit failure. Do not add port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
+1. **Finish real-network route acceptance.** First restore the existing active-SFU decoded-progress cadence when its track or stats report disappears, deploy it, and repeat the controlled recovery transaction. Then measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish bounded explicit failure. Do not add another watchdog, port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
 
 ## Accepted Later Roadmap
 

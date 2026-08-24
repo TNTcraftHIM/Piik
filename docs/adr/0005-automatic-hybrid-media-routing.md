@@ -263,10 +263,14 @@ second mutable graph.
 - Web clients derive active decoded progress from their existing periodic
   WebRTC/LiveKit stats sampling. One route-keyed last-progress deadline reports
   the exact edge once; it resets on route/connection change or decoded progress
-  and is suppressed while authoritatively paused. This steady-state sampler is
-  separate from the pending candidate's short-lived first-frame observer and
-  does not treat bitrate, FPS, track availability, or SFU layer choice as route
-  authority.
+  and is suppressed while authoritatively paused. An active SFU route keeps that
+  same cadence when its video track is absent, its merged report is empty, or a
+  stats read fails; each such sample means no decoded progress, not a fabricated
+  metric or an immediate failure. Only route deactivation or teardown stops the
+  cadence, and stale asynchronous samples are generation-fenced. This steady-
+  state sampler is separate from the pending candidate's short-lived first-frame
+  observer and does not treat bitrate, FPS, track availability, or SFU layer
+  choice as route authority.
 - Authoritative pause aborts the pending child operation, including its current
   candidate and reservations, keeps the active graph, suppresses decoded-frame-
   stall decisions, and leaves new participants waiting. Resume always wakes a
