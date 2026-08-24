@@ -11,6 +11,7 @@ import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
 import type {
   IceConfig,
   ParticipantRouteAssignment,
+  SignalPayload,
 } from "../src/shared/protocol.ts";
 
 const statsCallbacks: Array<() => void> = [];
@@ -87,6 +88,9 @@ class FakePeerConnection {
     init?: RTCRtpTransceiverInit;
   }> = [];
   readonly codecPreferenceCalls: RTCRtpCodec[][] = [];
+  remoteDescriptionCallCount = 0;
+  deferRemoteDescriptionCall: number | null = null;
+  private releaseRemoteDescription: (() => void) | null = null;
   connectionState: RTCPeerConnectionState = "new";
   iceConnectionState: RTCIceConnectionState = "new";
   signalingState: RTCSignalingState = "stable";
@@ -144,13 +148,30 @@ class FakePeerConnection {
   async setLocalDescription(
     description: RTCSessionDescriptionInit,
   ): Promise<void> {
+    if (description.type === "rollback") {
+      this.localDescription = null;
+      this.signalingState = "stable";
+      return;
+    }
     this.localDescription = description as RTCSessionDescription;
   }
 
   async setRemoteDescription(
     description: RTCSessionDescriptionInit,
   ): Promise<void> {
+    this.remoteDescriptionCallCount += 1;
+    if (this.deferRemoteDescriptionCall === this.remoteDescriptionCallCount) {
+      this.deferRemoteDescriptionCall = null;
+      await new Promise<void>((resolve) => {
+        this.releaseRemoteDescription = resolve;
+      });
+    }
     this.remoteDescription = description as RTCSessionDescription;
+  }
+
+  releaseDeferredRemoteDescription(): void {
+    this.releaseRemoteDescription?.();
+    this.releaseRemoteDescription = null;
   }
 
   async addIceCandidate(candidate: RTCIceCandidateInit | null): Promise<void> {
@@ -358,6 +379,20 @@ afterEach(() => {
 });
 
 describe("HostPeer source replacement", () => {
+  it("does not expose WebRTC exception text in connection errors", async () => {
+    const updates: PeerSnapshot[] = [];
+    FakePeerConnection.offersFailing = 1;
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      (snapshot) => updates.push(snapshot),
+    );
+
+    await expect(peer.start()).resolves.toBe(false);
+
+    expect(updates.at(-1)?.error).toBe("创建连接失败");
+    expect(updates.at(-1)?.error).not.toContain("createOffer failed");
+  });
+
   it("leaves browser codec ordering unchanged", async () => {
     const peer = createPeer(createStream(createTrack("video", "video"), null));
 
@@ -400,6 +435,309 @@ describe("HostPeer source replacement", () => {
       );
     },
   );
+
+  it("supersedes an unanswered codec offer with the next exact generation", async () => {
+    const signals: SignalPayload[] = [];
+    const peer = new HostPeer(
+      "viewer-peer",
+      { iceServers: [] },
+      createStream(createTrack("video", "video"), null),
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (_peerId, payload) => {
+          signals.push(payload);
+          return true;
+        },
+        onUpdate: () => undefined,
+      },
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: null,
+      description: { type: "answer", sdp: "initial-answer" },
+    });
+
+    const first = peer.prepareVideoCodec(1, "h264");
+    await vi.waitFor(() =>
+      expect(
+        signals.filter(
+          (signal) =>
+            signal.kind === "description" &&
+            signal.negotiationGeneration === 1,
+        ),
+      ).toHaveLength(1),
+    );
+    const connection = FakePeerConnection.latest!;
+    connection.signalingState = "have-local-offer";
+
+    const rollback = peer.prepareVideoCodec(2, "vp8");
+    await expect(first).resolves.toBe(false);
+    await vi.waitFor(() =>
+      expect(
+        signals.filter(
+          (signal) =>
+            signal.kind === "description" &&
+            signal.negotiationGeneration === 2,
+        ),
+      ).toHaveLength(1),
+    );
+    expect(connection.localDescription?.type).toBe("offer");
+
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: 1,
+      description: { type: "answer", sdp: "stale-answer" },
+    });
+    let rollbackSettled = false;
+    void rollback.then(() => {
+      rollbackSettled = true;
+    });
+    await Promise.resolve();
+    expect(rollbackSettled).toBe(false);
+
+    connection.signalingState = "stable";
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: 2,
+      description: { type: "answer", sdp: "rollback-answer" },
+    });
+    await expect(rollback).resolves.toBe(true);
+    expect(connection.remoteDescription?.sdp).toBe("rollback-answer");
+    expect(connection.codecPreferenceCalls).toHaveLength(2);
+  });
+
+  it("serializes an in-flight codec answer before offering a newer generation", async () => {
+    const signals: SignalPayload[] = [];
+    const peer = new HostPeer(
+      "viewer-peer",
+      { iceServers: [] },
+      createStream(createTrack("video", "video"), null),
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (_peerId, payload) => {
+          signals.push(payload);
+          return true;
+        },
+        onUpdate: () => undefined,
+      },
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: null,
+      description: { type: "answer", sdp: "initial-answer" },
+    });
+    signals.length = 0;
+
+    const first = peer.prepareVideoCodec(21, "h264");
+    await vi.waitFor(() =>
+      expect(
+        signals.filter(
+          (signal) =>
+            signal.kind === "description" &&
+            signal.negotiationGeneration === 21,
+        ),
+      ).toHaveLength(1),
+    );
+    const connection = FakePeerConnection.latest!;
+    connection.deferRemoteDescriptionCall = 2;
+    const staleAnswer = peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: 21,
+      description: { type: "answer", sdp: "generation-21-answer" },
+    });
+    await vi.waitFor(() =>
+      expect(connection.remoteDescriptionCallCount).toBe(2),
+    );
+
+    const second = peer.prepareVideoCodec(22, "vp8");
+    await expect(first).resolves.toBe(false);
+    await Promise.resolve();
+    expect(
+      signals.filter(
+        (signal) =>
+          signal.kind === "description" &&
+          signal.negotiationGeneration === 22,
+      ),
+    ).toEqual([]);
+
+    connection.releaseDeferredRemoteDescription();
+    await staleAnswer;
+    await vi.waitFor(() =>
+      expect(
+        signals.filter(
+          (signal) =>
+            signal.kind === "description" &&
+            signal.negotiationGeneration === 22,
+        ),
+      ).toHaveLength(1),
+    );
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: 22,
+      description: { type: "answer", sdp: "generation-22-answer" },
+    });
+    await expect(second).resolves.toBe(true);
+    expect(connection.remoteDescription?.sdp).toBe("generation-22-answer");
+  });
+
+  it("waits for the codec negotiation owner before sending an ICE restart offer", async () => {
+    const signals: SignalPayload[] = [];
+    const peer = new HostPeer(
+      "viewer-peer",
+      { iceServers: [] },
+      createStream(createTrack("video", "video"), null),
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (_peerId, payload) => {
+          signals.push(payload);
+          return true;
+        },
+        onUpdate: () => undefined,
+      },
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: null,
+      description: { type: "answer", sdp: "initial-answer" },
+    });
+    signals.length = 0;
+
+    const codec = peer.prepareVideoCodec(31, "h264");
+    await vi.waitFor(() =>
+      expect(
+        signals.filter(
+          (signal) =>
+            signal.kind === "description" &&
+            signal.negotiationGeneration === 31,
+        ),
+      ).toHaveLength(1),
+    );
+    const connection = FakePeerConnection.latest!;
+    const restart = peer.restartIce();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(connection.restartIce).not.toHaveBeenCalled();
+    expect(
+      signals.filter(
+        (signal) =>
+          signal.kind === "description" &&
+          signal.negotiationGeneration === null,
+      ),
+    ).toEqual([]);
+
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: 31,
+      description: { type: "answer", sdp: "codec-answer" },
+    });
+    await expect(codec).resolves.toBe(true);
+    await expect(restart).resolves.toBe(true);
+    expect(connection.restartIce).toHaveBeenCalledOnce();
+    expect(
+      signals
+        .filter((signal) => signal.kind === "description")
+        .map((signal) => signal.negotiationGeneration),
+    ).toEqual([31, null]);
+  });
+
+  it("rolls back a cancelled codec offer before an ordinary ICE restart", async () => {
+    const signals: SignalPayload[] = [];
+    const peer = new HostPeer(
+      "viewer-peer",
+      { iceServers: [] },
+      createStream(createTrack("video", "video"), null),
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (_peerId, payload) => {
+          signals.push(payload);
+          return true;
+        },
+        onUpdate: () => undefined,
+      },
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: null,
+      description: { type: "answer", sdp: "initial-answer" },
+    });
+    signals.length = 0;
+
+    const codec = peer.prepareVideoCodec(41, "h264");
+    await vi.waitFor(() =>
+      expect(
+        signals.filter(
+          (signal) =>
+            signal.kind === "description" &&
+            signal.negotiationGeneration === 41,
+        ),
+      ).toHaveLength(1),
+    );
+    const connection = FakePeerConnection.latest!;
+    connection.signalingState = "have-local-offer";
+    peer.cancelVideoCodecPreparation();
+    const restart = peer.restartIce();
+
+    await expect(codec).resolves.toBe(false);
+    await expect(restart).resolves.toBe(true);
+    expect(connection.signalingState).toBe("stable");
+    expect(connection.restartIce).toHaveBeenCalledOnce();
+    expect(
+      signals
+        .filter((signal) => signal.kind === "description")
+        .map((signal) => signal.negotiationGeneration),
+    ).toEqual([41, null]);
+  });
+
+  it("coalesces an exact duplicate codec preparation", async () => {
+    const signals: SignalPayload[] = [];
+    const peer = new HostPeer(
+      "viewer-peer",
+      { iceServers: [] },
+      createStream(createTrack("video", "video"), null),
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (_peerId, payload) => {
+          signals.push(payload);
+          return true;
+        },
+        onUpdate: () => undefined,
+      },
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const first = peer.prepareVideoCodec(4, "h264");
+    const duplicate = peer.prepareVideoCodec(4, "h264");
+
+    expect(duplicate).toBe(first);
+    await vi.waitFor(() =>
+      expect(
+        signals.filter(
+          (signal) =>
+            signal.kind === "description" &&
+            signal.negotiationGeneration === 4,
+        ),
+      ).toHaveLength(1),
+    );
+    await peer.acceptSignal({
+      kind: "description",
+      connectionId: peer.connectionId,
+      negotiationGeneration: 4,
+      description: { type: "answer", sdp: "codec-answer" },
+    });
+    await expect(first).resolves.toBe(true);
+    await expect(duplicate).resolves.toBe(true);
+  });
 
   it("applies STUN-only ICE configuration at creation and update", () => {
     const peer = createPeer(
@@ -537,9 +875,87 @@ describe("HostPeer source replacement", () => {
         ...QUALITY_PROFILES["1080p60"],
         screenAudioQuality: "very-high",
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
-    expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
+    expect(connection.senders[1]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
+      128_000,
+      256_000,
+    ]);
+    expect(peer.getSnapshot().audioSenderParameters).toEqual({
+      requestedMaxBitrate: 256_000,
+      appliedMaxBitrate: 256_000,
+      mismatch: false,
+    });
+  });
+
+  it("keeps media and prior audio readback when a live ceiling fails", async () => {
+    const video = createTrack("video", "video");
+    const audio = createTrack("audio", "audio");
+    const peer = createPeer(createStream(video, audio));
+
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    const audioSender = connection.senders[1]!;
+    audioSender.failNextSetParameters = true;
+
+    await expect(
+      peer.updateProfile({
+        ...QUALITY_PROFILES["720p30"],
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(false);
+
+    expect(audioSender.track).toBe(audio);
+    expect(audioSender.getParameters().encodings[0]?.maxBitrate).toBe(128_000);
+    expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(
+      128_000,
+    );
+    expect(peer.getSnapshot().qualityWarning).toContain(
+      "应用音频发送参数失败",
+    );
+
+    await expect(
+      peer.updateProfile({
+        ...QUALITY_PROFILES["720p30"],
+        screenAudioQuality: "very-high",
+      }),
+    ).resolves.toBe(true);
+    expect(audioSender.getParameters().encodings[0]?.maxBitrate).toBe(256_000);
+    expect(peer.getSnapshot().qualityWarning).toBeNull();
+  });
+
+  it("keeps rapid audio ceiling changes last-wins", async () => {
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), createTrack("audio", "audio")),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const audioSender = FakePeerConnection.latest!.senders[1]!;
+    audioSender.deferNextSetParameters = true;
+
+    const saver = peer.updateProfile({
+      ...QUALITY_PROFILES["720p30"],
+      screenAudioQuality: "saver",
+    });
+    await vi.waitFor(() =>
+      expect(audioSender.setParameters).toHaveBeenCalledTimes(2),
+    );
+    const veryHigh = peer.updateProfile({
+      ...QUALITY_PROFILES["720p30"],
+      screenAudioQuality: "very-high",
+    });
+    audioSender.releaseDeferredSetParameters();
+
+    await expect(saver).resolves.toBe(false);
+    await expect(veryHigh).resolves.toBe(true);
+    expect(audioSender.appliedMaxBitrates).toEqual([
+      128_000,
+      64_000,
+      256_000,
+    ]);
+    expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(
+      256_000,
+    );
   });
 
   it("accepts an answer without reapplying the selected profile", async () => {
@@ -558,6 +974,7 @@ describe("HostPeer source replacement", () => {
     await peer.acceptSignal({
       kind: "description",
       connectionId: peer.connectionId,
+      negotiationGeneration: null,
       description: { type: "answer", sdp: "test-answer" },
     });
 
@@ -609,11 +1026,11 @@ describe("HostPeer source replacement", () => {
     const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
 
     await expect(starting).resolves.toBe(true);
-    expect(
-      updates.some((snapshot) =>
-        snapshot.qualityWarning?.startsWith("应用发送参数失败"),
-      ),
-    ).toBe(true);
+    const failureWarning = updates.find((snapshot) =>
+      snapshot.qualityWarning?.startsWith("应用发送参数失败"),
+    )?.qualityWarning;
+    expect(failureWarning).toBe("应用发送参数失败");
+    expect(failureWarning).not.toContain("setParameters failed");
     await expect(updating).resolves.toBe(true);
     expect(videoSender.setParameters).toHaveBeenCalledTimes(2);
     expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
@@ -938,6 +1355,36 @@ describe("HostPeer source replacement", () => {
     expect(sender.setParameters).toHaveBeenCalledOnce();
   });
 
+  it("does not expose an unknown browser quality-limitation value", async () => {
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      (snapshot) => updates.push(snapshot),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    for (const timestamp of [1_000, 2_000, 3_000]) {
+      connection.statsReports.push(
+        sendStatsReport({
+          bytesSent: timestamp * 1_000,
+          framesEncoded: timestamp / 10,
+          timestamp,
+          qualityLimitationReason: "browser-internal-sentinel",
+        }),
+      );
+    }
+
+    for (let index = 0; index < 3; index += 1) {
+      const updateCount = updates.length;
+      statsCallbacks[0]!();
+      await vi.waitFor(() => expect(updates.length).toBeGreaterThan(updateCount));
+    }
+
+    expect(updates.at(-1)?.qualityWarning).toBe(
+      "浏览器持续报告未分类的画质限制",
+    );
+  });
+
   it("rolls the first sender back when the second replacement fails", async () => {
     const oldVideo = createTrack("video", "old-video");
     const oldAudio = createTrack("audio", "old-audio");
@@ -989,6 +1436,7 @@ function hostProvisionalInput(
       childPeerId: childPeerIds.at(-1) ?? "candidate-child",
       connectionId: `candidate-connection-${revision}`,
       transport: "direct" as const,
+      codecTransition: null,
     },
     assignment: hostAssignment(
       childPeerIds,
@@ -1025,11 +1473,13 @@ describe("Host provisional child runtime ownership", () => {
     expect(owner.acceptSignal("wrong-child", {
       kind: "description",
       connectionId: preparedConnectionId,
+      negotiationGeneration: null,
       description: { type: "answer", sdp: "wrong-peer" },
     })).toBe(false);
     expect(owner.acceptSignal("probe-child", {
       kind: "description",
       connectionId: "wrong-connection",
+      negotiationGeneration: null,
       description: { type: "answer", sdp: "wrong-connection" },
     })).toBe(false);
     expect(owner.acceptSignal("probe-child", {
@@ -1040,6 +1490,7 @@ describe("Host provisional child runtime ownership", () => {
     expect(owner.acceptSignal("probe-child", {
       kind: "description",
       connectionId: preparedConnectionId,
+      negotiationGeneration: null,
       description: { type: "answer", sdp: "right-answer" },
     })).toBe(true);
     await vi.waitFor(() =>
@@ -1129,6 +1580,7 @@ describe("ViewerRelay downstream ownership", () => {
     childPeerId,
     connectionId: `relay-candidate-${revision}`,
     transport: "direct" as const,
+    codecTransition: null,
   });
 
   it("promotes the exact prepared child connection within the current Viewer cap", async () => {
@@ -1155,6 +1607,7 @@ describe("ViewerRelay downstream ownership", () => {
       relay.acceptSignal("prepared-child", {
         kind: "description",
         connectionId: "wrong-connection",
+        negotiationGeneration: null,
         description: { type: "answer", sdp: "wrong-answer" },
       }, 7),
     ).resolves.toBe(false);
@@ -1162,6 +1615,7 @@ describe("ViewerRelay downstream ownership", () => {
       relay.acceptSignal("prepared-child", {
         kind: "description",
         connectionId: preparedConnectionId,
+        negotiationGeneration: null,
         description: { type: "answer", sdp: "right-answer" },
       }, 6),
     ).resolves.toBe(false);
@@ -1184,6 +1638,7 @@ describe("ViewerRelay downstream ownership", () => {
       relay.acceptSignal("prepared-child", {
         kind: "description",
         connectionId: preparedConnectionId,
+        negotiationGeneration: null,
         description: { type: "answer", sdp: "right-answer" },
       }, preparedRevision),
     ).resolves.toBe(true);
@@ -1603,14 +2058,14 @@ describe("ViewerRelay downstream ownership", () => {
     });
   });
 
-  it("retains the locked audio preset for current and future children", async () => {
-    const lockedProfile = {
+  it("applies the latest audio ceiling to current and future children", async () => {
+    const initialProfile = {
       ...QUALITY_PROFILES["1080p60"],
       screenAudioQuality: "saver",
     } as const;
     const relay = new ViewerRelay(
       { iceServers: [] },
-      lockedProfile,
+      initialProfile,
       { sendSignal: () => true },
     );
     relay.setChildren(["first-audio-child"]);
@@ -1629,11 +2084,14 @@ describe("ViewerRelay downstream ownership", () => {
 
     await expect(
       relay.updateProfile({
-        ...lockedProfile,
+        ...initialProfile,
         screenAudioQuality: "very-high",
       }),
-    ).resolves.toBe(false);
-    expect(firstConnection.senders[1]?.appliedMaxBitrates).toEqual([64_000]);
+    ).resolves.toBe(true);
+    expect(firstConnection.senders[1]?.appliedMaxBitrates).toEqual([
+      64_000,
+      256_000,
+    ]);
 
     relay.setChildren(["second-audio-child"]);
     await vi.waitFor(() =>
@@ -1641,7 +2099,7 @@ describe("ViewerRelay downstream ownership", () => {
     );
     await vi.waitFor(() =>
       expect(FakePeerConnection.latest?.senders[1]?.appliedMaxBitrates).toEqual([
-        64_000,
+        256_000,
       ]),
     );
   });

@@ -6,13 +6,18 @@ import type {
 } from "livekit-client";
 
 import {
+  audioSenderParameterWarning,
+  configureScreenAudioSender,
   configureTwoLayerVideoSender,
   QUALITY_RESOLUTIONS,
   resolveScreenAudioQuality,
+  screenAudioQualityEqual,
   SCREEN_SHARE_LOW_SCALE,
   screenAudioBitrate,
   screenShareLowBitrate,
   senderParameterWarning,
+  videoQualitySettingsEqual,
+  type AudioSenderParameterReadback,
   type QualityProfile,
   type ScreenAudioQuality,
   type VideoSenderParameterReadback,
@@ -53,6 +58,12 @@ interface PublishedVideoConfiguration {
   warning: string | null;
 }
 
+interface PublishedAudioConfiguration {
+  sender: RTCRtpSender;
+  readback: AudioSenderParameterReadback;
+  warning: string | null;
+}
+
 interface PublisherStatsIdentity {
   video: PublishedTrack;
   sender: RTCRtpSender;
@@ -76,9 +87,14 @@ export class SfuPublisher {
   private sdk: LiveKit | null = null;
   private video: PublishedTrack | null = null;
   private audio: PublishedTrack | null = null;
-  private profile: QualityProfile | null = null;
+  private desiredProfile: QualityProfile | null = null;
+  private appliedVideoProfile: QualityProfile | null = null;
+  private profileRevision = 0;
   private senderParameters: VideoSenderParameterReadback | null = null;
-  private qualityWarning: string | null = null;
+  private audioSenderParameters: AudioSenderParameterReadback | null = null;
+  private audioParametersSender: RTCRtpSender | null = null;
+  private videoQualityWarning: string | null = null;
+  private audioQualityWarning: string | null = null;
   private failureStage: SfuPublisherFailureStage | null = null;
   private state: PublisherState = "idle";
   private generation = 0;
@@ -119,6 +135,11 @@ export class SfuPublisher {
           }
         }
       });
+      room.on(sdk.RoomEvent.Reconnected, () => {
+        if (this.owns(room, generation) && this.state === "active") {
+          this.reapplyAudioAfterReconnect(room, generation);
+        }
+      });
 
       await room.connect(config.url, config.token, {
         autoSubscribe: false,
@@ -144,6 +165,8 @@ export class SfuPublisher {
   }
 
   activate(stream: MediaStream, profile: QualityProfile): Promise<boolean> {
+    this.desiredProfile = profile;
+    ++this.profileRevision;
     const generation = this.generation;
     return this.enqueue(async () => {
       const room = this.requireOwnedRoom(generation, "prepared");
@@ -182,6 +205,8 @@ export class SfuPublisher {
         }
 
         let audio: PublishedTrack | null = null;
+        let audioConfiguration: PublishedAudioConfiguration | null = null;
+        let audioWarning: string | null = null;
         if (audioTrack) {
           failureStage = "audio-publish";
           audio = await publishTrack(
@@ -193,12 +218,36 @@ export class SfuPublisher {
           if (!this.owns(room, generation)) {
             return false;
           }
+          retainPublishedAudioOptions(audio, profile, sdk);
+          try {
+            const audioSender = publishedAudioSender(audio);
+            audioConfiguration = await configurePublishedAudio(
+              audio,
+              audioSender,
+              profile,
+              () => this.owns(room, generation),
+            );
+            if (!audioConfiguration || !this.owns(room, generation)) {
+              return false;
+            }
+            audioWarning = audioConfiguration.warning;
+          } catch (error) {
+            if (!this.owns(room, generation)) {
+              return false;
+            }
+            audioWarning = audioSenderFailureWarning(error);
+          }
         }
 
         this.video = video;
         this.audio = audio;
-        this.profile = profile;
-        this.retainSenderParameters(videoConfiguration);
+        this.appliedVideoProfile = profile;
+        this.retainSenderParameters(
+          videoConfiguration,
+          audioConfiguration?.readback ?? null,
+          audioWarning,
+          audioConfiguration?.sender ?? null,
+        );
         this.failureStage = null;
         this.state = "active";
         this.startStats(video);
@@ -249,9 +298,14 @@ export class SfuPublisher {
 
       this.video = null;
       this.audio = null;
-      this.profile = null;
+      this.desiredProfile = null;
+      this.appliedVideoProfile = null;
+      ++this.profileRevision;
       this.senderParameters = null;
-      this.qualityWarning = null;
+      this.audioSenderParameters = null;
+      this.audioParametersSender = null;
+      this.videoQualityWarning = null;
+      this.audioQualityWarning = null;
       this.state = "prepared";
       return true;
     });
@@ -266,8 +320,9 @@ export class SfuPublisher {
       }
       const sdk = this.sdk;
       const previousVideo = this.video;
-      const profile = this.profile;
-      if (!sdk || !previousVideo || !profile) {
+      const profile = this.desiredProfile;
+      const previousVideoProfile = this.appliedVideoProfile;
+      if (!sdk || !previousVideo || !profile || !previousVideoProfile) {
         throw new Error("SFU publisher has no active video publication");
       }
 
@@ -276,6 +331,8 @@ export class SfuPublisher {
       const previousAudio = this.audio;
       let videoReplaceAttempted = false;
       let audioReplaceAttempted = false;
+      let audioConfiguration: PublishedAudioConfiguration | null = null;
+      let audioWarning: string | null = null;
       this.stopStats();
 
       try {
@@ -310,6 +367,29 @@ export class SfuPublisher {
           this.audio = nextAudio;
         }
 
+        const currentAudio = this.audio;
+        if (currentAudio && nextAudioTrack) {
+          retainPublishedAudioOptions(currentAudio, profile, sdk);
+          try {
+            const audioSender = publishedAudioSender(currentAudio);
+            audioConfiguration = await configurePublishedAudio(
+              currentAudio,
+              audioSender,
+              profile,
+              () => this.owns(room, generation),
+            );
+            if (!audioConfiguration || !this.owns(room, generation)) {
+              return false;
+            }
+            audioWarning = audioConfiguration.warning;
+          } catch (error) {
+            if (!this.owns(room, generation)) {
+              return false;
+            }
+            audioWarning = audioSenderFailureWarning(error);
+          }
+        }
+
         const videoConfiguration = await configurePublishedVideo(
           previousVideo,
           profile,
@@ -323,17 +403,24 @@ export class SfuPublisher {
         if (previousAudio && nextAudioTrack) {
           previousAudio.rawTrack = nextAudioTrack;
         }
-        this.retainSenderParameters(videoConfiguration);
+        this.appliedVideoProfile = profile;
+        this.retainSenderParameters(
+          videoConfiguration,
+          nextAudioTrack
+            ? (audioConfiguration?.readback ?? this.audioSenderParameters)
+            : null,
+          nextAudioTrack ? audioWarning : null,
+          nextAudioTrack
+            ? (audioConfiguration?.sender ?? this.audioParametersSender)
+            : null,
+        );
         this.startStats(previousVideo);
         return true;
       } catch (error) {
         if (!this.owns(room, generation)) {
           return false;
         }
-        const failureWarning =
-          error instanceof Error && error.message
-            ? `切换 SFU 分享来源失败：${error.message}`
-            : "切换 SFU 分享来源失败";
+        const failureWarning = "切换 SFU 分享来源失败";
 
         // A rejected publish/unpublish may have changed server state without
         // returning enough ownership information to undo it safely.
@@ -359,15 +446,16 @@ export class SfuPublisher {
             }
             const videoConfiguration = await configurePublishedVideo(
               previousVideo,
-              profile,
+              previousVideoProfile,
               sdk,
               () => this.owns(room, generation),
             );
             if (!videoConfiguration || !this.owns(room, generation)) {
               return false;
             }
+            this.appliedVideoProfile = previousVideoProfile;
             this.senderParameters = videoConfiguration.readback;
-            this.qualityWarning = mergeQualityWarnings(
+            this.videoQualityWarning = mergeQualityWarnings(
               failureWarning,
               videoConfiguration.warning,
             );
@@ -385,77 +473,223 @@ export class SfuPublisher {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
+    const previousDesiredProfile = this.desiredProfile;
+    const requestedVideo =
+      previousDesiredProfile === null ||
+      !videoQualitySettingsEqual(previousDesiredProfile, profile) ||
+      this.appliedVideoProfile === null ||
+      !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+    const requestedAudio =
+      previousDesiredProfile === null ||
+      !screenAudioQualityEqual(previousDesiredProfile, profile) ||
+      (this.audio !== null &&
+        (this.audio.publication.audioTrack?.sender !==
+          this.audioParametersSender ||
+          this.audioSenderParameters?.requestedMaxBitrate !==
+            screenAudioBitrate(profile.screenAudioQuality)));
+    this.desiredProfile = profile;
+    const requestedRevision = ++this.profileRevision;
+    if (this.state === "active" && this.audio && this.sdk) {
+      retainPublishedAudioOptions(this.audio, profile, this.sdk);
+    }
     const generation = this.generation;
     return this.enqueue(async () => {
       const room = this.requireOwnedRoom(generation, "active");
-      if (!room) {
+      if (!room || requestedRevision !== this.profileRevision) {
         return false;
       }
       const video = this.video;
-      const previousProfile = this.profile;
+      const audio = this.audio;
+      const previousVideoProfile = this.appliedVideoProfile;
       const sdk = this.sdk;
-      if (!video || !previousProfile || !sdk) {
+      if (!video || !previousVideoProfile || !sdk) {
         throw new Error("SFU publisher has no active video publication");
       }
-      if (
-        resolveScreenAudioQuality(profile.screenAudioQuality) !==
-        resolveScreenAudioQuality(previousProfile.screenAudioQuality)
-      ) {
-        return false;
-      }
-      this.stopStats();
-
-      try {
-        const videoConfiguration = await configurePublishedVideo(
-          video,
-          profile,
-          sdk,
-          () => this.owns(room, generation),
-        );
-        if (!videoConfiguration || !this.owns(room, generation)) {
-          return false;
-        }
-        this.profile = profile;
-        this.retainSenderParameters(videoConfiguration);
-        this.startStats(video);
+      const updateVideo =
+        requestedVideo ||
+        !videoQualitySettingsEqual(previousVideoProfile, profile);
+      const currentAudioSender = audio?.publication.audioTrack?.sender ?? null;
+      const updateAudio =
+        audio !== null &&
+        (requestedAudio ||
+          currentAudioSender !== this.audioParametersSender ||
+          this.audioSenderParameters?.requestedMaxBitrate !==
+            screenAudioBitrate(profile.screenAudioQuality));
+      if (!updateVideo && !updateAudio) {
         return true;
-      } catch (error) {
-        if (!this.owns(room, generation)) {
-          return false;
-        }
-        const failureWarning =
-          error instanceof Error && error.message
-            ? `应用 SFU 发送参数失败：${error.message}`
-            : "应用 SFU 发送参数失败";
+      }
+      if (audio) {
+        retainPublishedAudioOptions(audio, profile, sdk);
+      }
+      if (updateVideo) {
+        this.stopStats();
+      }
+
+      let senderParameters = this.senderParameters;
+      let videoWarning = this.videoQualityWarning;
+      let appliedVideoProfile = previousVideoProfile;
+      let videoSucceeded = true;
+      if (updateVideo) {
         try {
-          const videoConfiguration = await configurePublishedVideo(
+          const configured = await configurePublishedVideo(
             video,
-            previousProfile,
+            profile,
             sdk,
-            () => this.owns(room, generation),
+            () =>
+              this.owns(room, generation) &&
+              requestedRevision === this.profileRevision &&
+              this.video === video,
           );
-          if (!videoConfiguration || !this.owns(room, generation)) {
+          if (!configured) {
+            if (this.video === video) {
+              this.startStats(video);
+            }
             return false;
           }
-          this.senderParameters = videoConfiguration.readback;
-          this.qualityWarning = mergeQualityWarnings(
-            failureWarning,
-            videoConfiguration.warning,
-          );
-          this.startStats(video);
-          return false;
-        } catch (rollbackError) {
-          if (this.owns(room, generation)) {
-            await this.failClosed(room, generation);
+          senderParameters = configured.readback;
+          videoWarning = configured.warning;
+          appliedVideoProfile = profile;
+        } catch {
+          if (
+            !this.owns(room, generation) ||
+            requestedRevision !== this.profileRevision ||
+            this.video !== video
+          ) {
+            if (this.video === video) {
+              this.startStats(video);
+            }
+            return false;
           }
-          throw rollbackError;
+          videoSucceeded = false;
+          const failureWarning = "应用 SFU 发送参数失败";
+          try {
+            const rolledBack = await configurePublishedVideo(
+              video,
+              previousVideoProfile,
+              sdk,
+              () =>
+                this.owns(room, generation) &&
+                requestedRevision === this.profileRevision &&
+                this.video === video,
+            );
+            if (!rolledBack) {
+              if (this.video === video) {
+                this.startStats(video);
+              }
+              return false;
+            }
+            senderParameters = rolledBack.readback;
+            videoWarning = mergeQualityWarnings(
+              failureWarning,
+              rolledBack.warning,
+            );
+          } catch (rollbackError) {
+            if (
+              this.owns(room, generation) &&
+              requestedRevision === this.profileRevision &&
+              this.video === video
+            ) {
+              await this.failClosed(room, generation);
+              throw rollbackError;
+            }
+            if (this.video === video) {
+              this.startStats(video);
+            }
+            return false;
+          }
         }
       }
+
+      if (
+        !this.owns(room, generation) ||
+        requestedRevision !== this.profileRevision ||
+        this.video !== video ||
+        this.audio !== audio
+      ) {
+        if (updateVideo && this.video === video) {
+          this.startStats(video);
+        }
+        return false;
+      }
+
+      let audioSenderParameters = this.audioSenderParameters;
+      let audioParametersSender = this.audioParametersSender;
+      let audioWarning = this.audioQualityWarning;
+      let audioSucceeded = true;
+      if (updateAudio && audio) {
+        let audioSender: RTCRtpSender | null = null;
+        try {
+          audioSender = publishedAudioSender(audio);
+          const ownedAudioSender = audioSender;
+          const configured = await configurePublishedAudio(
+            audio,
+            ownedAudioSender,
+            profile,
+            () =>
+              this.ownsAudioMutation(
+                room,
+                generation,
+                requestedRevision,
+                audio,
+                ownedAudioSender,
+              ),
+          );
+          if (!configured) {
+            if (updateVideo && this.video === video) {
+              this.startStats(video);
+            }
+            return false;
+          }
+          audioSenderParameters = configured.readback;
+          audioParametersSender = configured.sender;
+          audioWarning = configured.warning;
+        } catch (error) {
+          if (
+            !this.owns(room, generation) ||
+            requestedRevision !== this.profileRevision ||
+            this.audio !== audio ||
+            (audioSender !== null &&
+              audio.publication.audioTrack?.sender !== audioSender)
+          ) {
+            if (updateVideo && this.video === video) {
+              this.startStats(video);
+            }
+            return false;
+          }
+          audioSucceeded = false;
+          audioWarning = audioSenderFailureWarning(error);
+        }
+      }
+
+      if (
+        !this.owns(room, generation) ||
+        requestedRevision !== this.profileRevision ||
+        this.video !== video ||
+        this.audio !== audio
+      ) {
+        if (updateVideo && this.video === video) {
+          this.startStats(video);
+        }
+        return false;
+      }
+      this.senderParameters = senderParameters;
+      this.audioSenderParameters = audioSenderParameters;
+      this.audioParametersSender = audioParametersSender;
+      this.appliedVideoProfile = appliedVideoProfile;
+      this.videoQualityWarning = videoWarning;
+      this.audioQualityWarning = audioWarning;
+      if (updateVideo) {
+        this.startStats(video);
+      }
+      return videoSucceeded && audioSucceeded;
     });
   }
 
   getQualityWarning(): string | null {
-    return this.qualityWarning;
+    return mergeQualityWarnings(
+      this.videoQualityWarning,
+      this.audioQualityWarning,
+    );
   }
 
   getFailureStage(): SfuPublisherFailureStage | null {
@@ -464,6 +698,64 @@ export class SfuPublisher {
 
   getSenderParameters(): VideoSenderParameterReadback | null {
     return this.senderParameters;
+  }
+
+  getAudioSenderParameters(): AudioSenderParameterReadback | null {
+    return this.audioSenderParameters;
+  }
+
+  private reapplyAudioAfterReconnect(room: Room, generation: number): void {
+    void this.enqueue(async () => {
+      if (!this.owns(room, generation) || this.state !== "active") {
+        return false;
+      }
+      const audio = this.audio;
+      const profile = this.desiredProfile;
+      const sdk = this.sdk;
+      const profileRevision = this.profileRevision;
+      if (!audio || !profile || !sdk) {
+        return true;
+      }
+      retainPublishedAudioOptions(audio, profile, sdk);
+
+      let audioSender: RTCRtpSender | null = null;
+      try {
+        audioSender = publishedAudioSender(audio);
+        const ownedAudioSender = audioSender;
+        const configured = await configurePublishedAudio(
+          audio,
+          ownedAudioSender,
+          profile,
+          () =>
+            this.ownsAudioMutation(
+              room,
+              generation,
+              profileRevision,
+              audio,
+              ownedAudioSender,
+            ),
+        );
+        if (!configured) {
+          return false;
+        }
+        this.audioSenderParameters = configured.readback;
+        this.audioParametersSender = configured.sender;
+        this.audioQualityWarning = configured.warning;
+        return true;
+      } catch (error) {
+        if (
+          !this.owns(room, generation) ||
+          profileRevision !== this.profileRevision ||
+          this.audio !== audio ||
+          (audioSender !== null &&
+            audio.publication.audioTrack?.sender !== audioSender)
+        ) {
+          return false;
+        }
+        this.audioQualityWarning = audioSenderFailureWarning(error);
+        return false;
+      }
+    });
   }
 
   async disconnect(): Promise<void> {
@@ -509,6 +801,22 @@ export class SfuPublisher {
     return this.room === room && this.ownsGeneration(generation);
   }
 
+  private ownsAudioMutation(
+    room: Room,
+    generation: number,
+    profileRevision: number,
+    audio: PublishedTrack,
+    sender: RTCRtpSender,
+  ): boolean {
+    return (
+      this.owns(room, generation) &&
+      this.state === "active" &&
+      this.profileRevision === profileRevision &&
+      this.audio === audio &&
+      audio.publication.audioTrack?.sender === sender
+    );
+  }
+
   private invalidate(): Room | null {
     if (this.state === "disconnected") {
       return null;
@@ -521,9 +829,14 @@ export class SfuPublisher {
     this.sdk = null;
     this.video = null;
     this.audio = null;
-    this.profile = null;
+    this.desiredProfile = null;
+    this.appliedVideoProfile = null;
+    ++this.profileRevision;
     this.senderParameters = null;
-    this.qualityWarning = null;
+    this.audioSenderParameters = null;
+    this.audioParametersSender = null;
+    this.videoQualityWarning = null;
+    this.audioQualityWarning = null;
     return room;
   }
 
@@ -546,9 +859,15 @@ export class SfuPublisher {
 
   private retainSenderParameters(
     configuration: PublishedVideoConfiguration,
+    audioSenderParameters: AudioSenderParameterReadback | null,
+    audioWarning: string | null,
+    audioParametersSender: RTCRtpSender | null,
   ): void {
     this.senderParameters = configuration.readback;
-    this.qualityWarning = configuration.warning;
+    this.audioSenderParameters = audioSenderParameters;
+    this.audioParametersSender = audioParametersSender;
+    this.videoQualityWarning = configuration.warning;
+    this.audioQualityWarning = audioWarning;
   }
 
   private startStats(video: PublishedTrack): void {
@@ -719,6 +1038,55 @@ async function configurePublishedVideo(
       lowWarning ? `低档表示：${lowWarning}` : null,
     ),
   };
+}
+
+async function configurePublishedAudio(
+  published: PublishedTrack,
+  sender: RTCRtpSender,
+  profile: QualityProfile,
+  ownsPublication: () => boolean,
+): Promise<PublishedAudioConfiguration | null> {
+  if (published.publication.audioTrack?.sender !== sender) {
+    return null;
+  }
+  const readback = await configureScreenAudioSender(
+    sender,
+    profile.screenAudioQuality,
+  );
+  if (
+    !ownsPublication() ||
+    published.publication.audioTrack?.sender !== sender
+  ) {
+    return null;
+  }
+  return {
+    sender,
+    readback,
+    warning: audioSenderParameterWarning(readback),
+  };
+}
+
+function publishedAudioSender(published: PublishedTrack): RTCRtpSender {
+  const sender = published.publication.audioTrack?.sender;
+  if (!sender) {
+    throw new Error("SFU audio publication has no RTP sender");
+  }
+  return sender;
+}
+
+function retainPublishedAudioOptions(
+  published: PublishedTrack,
+  profile: QualityProfile,
+  sdk: LiveKit,
+): void {
+  published.publication.options = {
+    ...published.publication.options,
+    ...audioPublishOptions(sdk, profile.screenAudioQuality),
+  };
+}
+
+function audioSenderFailureWarning(_error: unknown): string {
+  return "应用 SFU 音频发送参数失败";
 }
 
 function mergeQualityWarnings(...warnings: Array<string | null>): string | null {

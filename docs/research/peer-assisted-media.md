@@ -2,12 +2,13 @@
 
 - Research date: 2026-08-22
 - Scope: one game-screen broadcaster and an accepted admission target of twenty
-  trusted viewers; retained executable evidence currently reaches sixteen and
-  the earlier resource/quality gate remains eight
-- Status: historical evidence plus the deployed bounded controller;
-  accepted ADR-0005 owns automatic peer/SFU routing. Production later removed
-  the room-`1` rollout boundary and a controlled canary decoded SFU media;
-  heterogeneous-network, mobile, resource, and endurance evidence remains open.
+  trusted viewers; exact v9 direct-loopback evidence reaches twenty and the
+  earlier resource/quality gate remains eight
+- Status: historical evidence plus the bounded controller. Exact Browser v9
+  source `d543f38aacad3df5ef65fde1055cc8e733972afe` implements the current
+  ADR-0005 route transaction; production remains v8 and a controlled canary
+  decoded SFU media. Heterogeneous-network, mobile, resource, and endurance
+  evidence remains open.
 
 This document owns dated measurements and implementation evidence. Current
 capacity and routing authority live in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md)
@@ -230,17 +231,18 @@ networks.
 
 ## Implemented Bounded Quality Coordination
 
-The current implementation coordinates one strict `QualitySettings` object across the
-peer-assisted tree without adaptation logic. It accepts only 720p/1080p/1440p,
-integer 15-60 fps, integer 2-12 Mbps, and the three standard degradation
-preferences; missing, extra, or out-of-range fields fail schema validation.
-The three visible presets are recommendations rather than wire IDs. The server
-stores the latest complete object in a room-count-bounded in-memory map,
-currently defaults to 1080p60 at 8 Mbps with balanced priority, includes it in
-peer-assisted authenticated snapshots, and broadcasts host changes to online
-viewers. The value survives a stopped share, is removed with the room, and is
-not persisted. The accepted next default is the existing 1080p30 recommendation;
-advanced `480p` adds only an 854x480 resolution value, not a fourth preset.
+The implementation coordinates one strict `QualitySettings` object across the
+peer-assisted tree without adaptation logic. Exact v9 source accepts advanced
+480p/720p/1080p/1440p resolution values, integer 15-60 fps, integer 2-12 Mbps,
+and the three standard degradation preferences; missing, extra, or out-of-range
+fields fail schema validation. The three visible presets are recommendations
+rather than wire IDs, and `480p` is only the advanced 854x480 resolution. The
+server stores the latest complete object in a room-count-bounded in-memory map,
+defaults to 1080p30 at 5 Mbps with balanced priority in v9 source, includes it in
+peer-assisted authenticated snapshots, and broadcasts Host changes to online
+Viewers. Production v8 retains its 1080p60 default and lacks advanced 480p until
+the atomic v9 deployment. The value survives a stopped share, is removed with
+the room, and is not persisted.
 Ordinary P2P authentication remains unchanged and
 setting-control messages are forbidden in that mode.
 
@@ -527,7 +529,7 @@ event arrives later. The application therefore needs a small text-message
 challenge rather than waiting for either protocol Ping/Pong or the old socket's
 close event.
 
-Under the current `screener-v8` Browser wire, the Web client sends
+Exact v9 source and deployed v8 both send
 `signaling-challenge { sequence }`, and the server sends the exact
 `signaling-challenge-response { sequence }` only to that requesting socket.
 Server and Browser assets deploy atomically; stale Browser and executable-sender
@@ -545,8 +547,8 @@ socket generation are ignored, and the server revalidates the current
 authenticated session before replying. A hidden document, a visibility
 restore, or an obviously late timer callback clears pending evidence and starts
 a fresh five-second baseline instead of declaring failure.
-This response-only watchdog is deployed in release `21d5cd9f7139`; real silent
-partition timing remains a production/browser evidence boundary.
+This response-only watchdog remains deployed in v8 and retained in v9 source;
+real silent-partition timing remains a production/browser evidence boundary.
 
 The response is socket-local, contains no room state, secret, candidate, or raw
 statistics, is not logged, and is limited by the server to at most one response

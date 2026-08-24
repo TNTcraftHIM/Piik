@@ -20,11 +20,14 @@ interface ViewerSubscriberTransport {
   connect(config: SfuConnectionConfig): Promise<boolean>;
   activate(): boolean;
   deactivate(): boolean;
+  armDecodedFrameProof(requireProgress?: boolean): void;
+  stopDecodedFrameProof(): void;
   disconnect(): Promise<void>;
 }
 
 interface ViewerSubscriberSlot {
   revision: number;
+  publicationGeneration: string;
   subscriber: ViewerSubscriberTransport;
   connected: boolean;
   activated: boolean;
@@ -61,16 +64,21 @@ interface ViewerSfuRouteEvents {
     stream: MediaStream,
     assignment: ParticipantRouteAssignment,
     initialVideoStream: boolean,
+    revision: number,
   ) => void;
-  onSfuVideoAvailability?: (available: boolean) => void;
-  onSfuUpdate?: (metrics: ConnectionMetrics | null) => void;
-  onSfuState?: (state: "connected" | "reconnecting") => void;
+  onSfuVideoAvailability?: (available: boolean, revision: number) => void;
+  onSfuUpdate?: (metrics: ConnectionMetrics | null, revision: number) => void;
+  onSfuState?: (
+    state: "connected" | "reconnecting",
+    revision: number,
+  ) => void;
   send: (message: ClientMessage) => boolean;
   createSubscriber?: (
     events: {
       onStream: (stream: MediaStream | null) => void;
       onVideoAvailability: (available: boolean) => void;
       onStats: (metrics: ConnectionMetrics) => void;
+      onFirstDecodedFrame: () => boolean;
       onState: (state: "connected" | "reconnecting") => void;
       onDisconnected: () => void;
     },
@@ -103,12 +111,29 @@ export class ViewerSfuRoute {
     if (result === "stale") {
       return result;
     }
-    if (this.paused) {
+    const pausedActiveReconciliation =
+      this.paused && update.phase === "active" && result !== "duplicate";
+    const retiredActive = pausedActiveReconciliation
+      ? this.detachUnreferencedActive(update.assignment)
+      : null;
+    if (pausedActiveReconciliation) {
+      this.activateChildren(update.assignment.childPeerIds, update.revision);
+    }
+    if (
+      this.paused &&
+      update.phase === "prepare" &&
+      !isPausedCodecSfuCandidate(update)
+    ) {
       this.discardPending();
       return result;
     }
     if (result === "duplicate") {
       return result;
+    }
+    if (retiredActive) {
+      void this.queueTransition(() =>
+        this.disconnectRetiredSubscriber(retiredActive),
+      );
     }
     if (previousRevision !== update.revision) {
       this.recovery = null;
@@ -173,14 +198,26 @@ export class ViewerSfuRoute {
     if (this.resyncing) {
       return result;
     }
-    void this.queueActiveRoute(token, acknowledge);
+    void this.queueActiveRoute(token, acknowledge, this.paused);
     return result;
   }
 
   setPaused(paused: boolean): void {
+    const wasPaused = this.paused;
     this.paused = paused;
-    if (paused) {
+    if (paused && !this.hasPausedCodecSfuCandidate()) {
       this.discardPending();
+    } else if (paused && this.pending) {
+      this.pending.decodedFrame = false;
+      this.pending.readySent = false;
+      this.pending.subscriber.stopDecodedFrameProof();
+    } else if (
+      wasPaused &&
+      !paused &&
+      this.pending &&
+      this.hasPausedCodecSfuCandidate()
+    ) {
+      this.pending.subscriber.armDecodedFrameProof(true);
     }
   }
 
@@ -254,17 +291,23 @@ export class ViewerSfuRoute {
   async acceptConfig(
     message: Extract<ServerMessage, { type: "sfu-config" }>,
   ): Promise<void> {
-    if (this.closed || this.paused || !this.route.acceptsConfig(message.revision)) {
+    if (
+      this.closed ||
+      !this.route.acceptsConfig(message.revision) ||
+      (this.paused && !this.hasPausedCodecSfuCandidate())
+    ) {
       return;
     }
     const token = this.route.token();
     const assignment = this.route.getPlannedAssignment();
     const phase = this.route.getPhase();
     const candidate = this.route.getPreparedCandidate();
+    const publicationGeneration = assignment?.sfuPublicationGeneration;
     if (
       !token ||
       !phase ||
       assignment?.upstream.kind !== "sfu" ||
+      !publicationGeneration ||
       (phase === "prepare" &&
         (candidate?.childPeerId !== this.viewerPeerId ||
           candidate.transport !== "sfu"))
@@ -272,10 +315,21 @@ export class ViewerSfuRoute {
       return;
     }
 
-    if (this.active?.revision === message.revision && this.active.activated) {
+    if (
+      phase === "active" &&
+      this.active?.publicationGeneration === publicationGeneration &&
+      this.active.activated
+    ) {
+      if (phase === "active") {
+        await this.queueActiveRoute(token, true, this.paused);
+      }
       return;
     }
-    if (this.pending?.revision === message.revision && !this.pending.failed) {
+    if (
+      this.pending?.revision === message.revision &&
+      this.pending.publicationGeneration === publicationGeneration &&
+      !this.pending.failed
+    ) {
       return;
     }
 
@@ -291,30 +345,14 @@ export class ViewerSfuRoute {
         this.handleVideoAvailability(slot, available);
       },
       onStats: (metrics: ConnectionMetrics) => {
-        if (this.pending === slot && !slot.failed) {
-          if ((metrics.intervalFramesDecoded ?? 0) > 0) {
-            slot.decodedFrame = true;
-            if (
-              phase === "prepare" &&
-              this.route.getRevision() === slot.revision &&
-              this.route.getPhase() === "prepare" &&
-              !slot.readySent
-            ) {
-              slot.readySent = this.events.send({
-                type: "route-ready",
-                revision: slot.revision,
-                phase: "prepare",
-              });
-            }
-            void this.queueTransition(() => this.promotePendingSfu(slot));
-          }
-        } else if (this.active === slot && !slot.failed) {
-          this.events.onSfuUpdate?.(metrics);
+        if (this.active === slot && !slot.failed) {
+          this.events.onSfuUpdate?.(metrics, slot.revision);
         }
       },
+      onFirstDecodedFrame: () => this.handlePendingDecodedFrame(slot),
       onState: (state: "connected" | "reconnecting") => {
         if (this.active === slot && !slot.failed) {
-          this.events.onSfuState?.(state);
+          this.events.onSfuState?.(state, slot.revision);
         }
       },
       onDisconnected: () => this.handleFailure(slot),
@@ -324,6 +362,7 @@ export class ViewerSfuRoute {
       new SfuSubscriber(subscriberEvents);
     slot = {
       revision: message.revision,
+      publicationGeneration,
       subscriber,
       connected: false,
       activated: false,
@@ -358,6 +397,9 @@ export class ViewerSfuRoute {
         return;
       }
       slot.activated = true;
+      if (!this.paused) {
+        subscriber.armDecodedFrameProof();
+      }
       if (phase === "active" && !this.resyncing) {
         await this.queueActiveRoute(token, true);
       }
@@ -393,7 +435,10 @@ export class ViewerSfuRoute {
       const active = this.active;
       this.pending = null;
       this.active = null;
-      this.events.onSfuUpdate?.(null);
+      this.events.onSfuUpdate?.(
+        null,
+        active?.revision ?? pending?.revision ?? this.route.getRevision() ?? 0,
+      );
       if (active?.activated) {
         try {
           active.subscriber.deactivate();
@@ -416,9 +461,20 @@ export class ViewerSfuRoute {
     );
   }
 
+  private hasPausedCodecSfuCandidate(): boolean {
+    const candidate = this.route.getPreparedCandidate();
+    return (
+      this.route.getPhase() === "prepare" &&
+      candidate?.childPeerId === this.viewerPeerId &&
+      candidate.transport === "sfu" &&
+      candidate.codecTransition !== null
+    );
+  }
+
   private queueActiveRoute(
     token: RouteOperationToken,
     acknowledge: boolean,
+    retireUnreferenced = false,
   ): Promise<void> {
     return this.queueTransition(async () => {
       if (this.closed || this.resyncing || !this.route.owns(token, "active")) {
@@ -428,11 +484,26 @@ export class ViewerSfuRoute {
       if (!assignment) {
         return;
       }
+      const assignedPublicationGeneration =
+        assignment.upstream.kind === "sfu"
+          ? assignment.sfuPublicationGeneration
+          : null;
+      if (
+        retireUnreferenced &&
+        this.active?.publicationGeneration !== assignedPublicationGeneration
+      ) {
+        await this.retireActive();
+        if (!this.route.owns(token, "active")) {
+          return;
+        }
+      }
       if (assignment.upstream.kind === "sfu") {
         this.activateChildren(assignment.childPeerIds, token.revision);
         const mediaAssignment = this.route.getMediaAssignment();
         if (
           mediaAssignment?.upstream.kind === "sfu" &&
+          this.active?.publicationGeneration ===
+            assignment.sfuPublicationGeneration &&
           this.active?.activated &&
           this.pending?.revision !== token.revision
         ) {
@@ -490,11 +561,22 @@ export class ViewerSfuRoute {
     token: RouteOperationToken,
     acknowledge: boolean,
   ): Promise<void> {
-    if (this.active?.revision === token.revision && this.active.activated) {
+    const assignment = this.route.getActiveAssignment();
+    const publicationGeneration = assignment?.sfuPublicationGeneration;
+    if (
+      this.active?.revision === token.revision &&
+      this.active.publicationGeneration === publicationGeneration &&
+      this.active.activated
+    ) {
       return;
     }
     const pending = this.pending;
-    if (!pending || pending.revision !== token.revision || !pending.connected) {
+    if (
+      !pending ||
+      pending.revision !== token.revision ||
+      pending.publicationGeneration !== publicationGeneration ||
+      !pending.connected
+    ) {
       if (acknowledge && this.route.owns(token, "active")) {
         this.requestRecovery(token.revision);
       }
@@ -513,11 +595,40 @@ export class ViewerSfuRoute {
       const assignment = this.route.getMediaAssignment();
       if (assignment?.upstream.kind === "sfu") {
         slot.mediaAvailable = true;
-        this.events.onSfuStream(stream, assignment, false);
+        this.events.onSfuStream(stream, assignment, false, slot.revision);
       }
       return;
     }
     void this.queueTransition(() => this.promotePendingSfu(slot));
+  }
+
+  private handlePendingDecodedFrame(slot: ViewerSubscriberSlot): boolean {
+    if (this.closed || slot.failed || this.pending !== slot) {
+      return true;
+    }
+    if (this.paused || !slot.activated) {
+      return false;
+    }
+    const assignment = this.route.getPlannedAssignment();
+    const phase = this.route.getPhase();
+    if (
+      this.route.getRevision() !== slot.revision ||
+      assignment?.upstream.kind !== "sfu" ||
+      assignment.sfuPublicationGeneration !== slot.publicationGeneration ||
+      phase === null
+    ) {
+      return true;
+    }
+    slot.decodedFrame = true;
+    if (phase === "prepare" && !slot.readySent) {
+      slot.readySent = this.events.send({
+        type: "route-ready",
+        revision: slot.revision,
+        phase: "prepare",
+      });
+    }
+    void this.queueTransition(() => this.promotePendingSfu(slot));
+    return phase !== "prepare" || slot.readySent;
   }
 
   private async promotePendingSfu(slot: ViewerSubscriberSlot): Promise<void> {
@@ -533,6 +644,7 @@ export class ViewerSfuRoute {
     ) {
       return;
     }
+    slot.subscriber.stopDecodedFrameProof();
     this.pending = null;
     const previous = this.active;
     this.active = slot;
@@ -543,7 +655,7 @@ export class ViewerSfuRoute {
     }
     this.recovery = null;
     slot.mediaAvailable = true;
-    this.events.onSfuStream(slot.stream, assignment, true);
+    this.events.onSfuStream(slot.stream, assignment, true, slot.revision);
     if (previous && previous !== slot) {
       try {
         previous.subscriber.deactivate();
@@ -569,7 +681,7 @@ export class ViewerSfuRoute {
     }
     const changed = slot.mediaAvailable !== available;
     slot.mediaAvailable = available;
-    this.events.onSfuVideoAvailability?.(available);
+    this.events.onSfuVideoAvailability?.(available, slot.revision);
     if (!changed || this.paused) return;
   }
 
@@ -595,7 +707,32 @@ export class ViewerSfuRoute {
     }
     const active = this.active;
     this.active = null;
-    this.events.onSfuUpdate?.(null);
+    this.events.onSfuUpdate?.(null, active.revision);
+    await this.disconnectRetiredSubscriber(active);
+  }
+
+  private detachUnreferencedActive(
+    assignment: ParticipantRouteAssignment,
+  ): ViewerSubscriberSlot | null {
+    const publicationGeneration =
+      assignment.upstream.kind === "sfu"
+        ? assignment.sfuPublicationGeneration
+        : null;
+    if (
+      !this.active ||
+      this.active.publicationGeneration === publicationGeneration
+    ) {
+      return null;
+    }
+    const active = this.active;
+    this.active = null;
+    this.events.onSfuUpdate?.(null, active.revision);
+    return active;
+  }
+
+  private async disconnectRetiredSubscriber(
+    active: ViewerSubscriberSlot,
+  ): Promise<void> {
     if (active.activated) {
       try {
         active.subscriber.deactivate();
@@ -612,19 +749,22 @@ export class ViewerSfuRoute {
     }
     const wasActive = this.active === slot;
     slot.failed = true;
+    slot.subscriber.stopDecodedFrameProof();
     if (this.pending === slot) {
       this.pending = null;
     }
     if (wasActive) {
       this.active = null;
-      this.events.onSfuUpdate?.(null);
+      this.events.onSfuUpdate?.(null, slot.revision);
     }
 
     const assignment = this.route.getPlannedAssignment();
     const revision = this.route.getRevision();
     const phase = this.route.getPhase();
     const matchesPlannedRoute =
-      revision === slot.revision && assignment?.upstream.kind === "sfu";
+      revision === slot.revision &&
+      assignment?.upstream.kind === "sfu" &&
+      assignment.sfuPublicationGeneration === slot.publicationGeneration;
     if (revision === null || phase === null) {
       return;
     }
@@ -664,8 +804,17 @@ export class ViewerSfuRoute {
 
 }
 
+function isPausedCodecSfuCandidate(update: RouteUpdateInput): boolean {
+  return (
+    update.phase === "prepare" &&
+    update.candidate.transport === "sfu" &&
+    update.candidate.codecTransition !== null
+  );
+}
+
 async function disconnectSubscriber(
   subscriber: ViewerSubscriberTransport,
 ): Promise<void> {
+  subscriber.stopDecodedFrameProof();
   await subscriber.disconnect().catch(() => undefined);
 }

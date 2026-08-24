@@ -31,13 +31,36 @@ export interface ViewerRoute {
   viewerGrant?: string;
 }
 
+export type AppRoute =
+  | { kind: "host" }
+  | { kind: "join" }
+  | { kind: "viewer"; roomId: string }
+  | { kind: "malformed-room" }
+  | { kind: "unknown" };
+
 export function isValidRoomId(value: string): boolean {
   return roomCodeSchema.safeParse(value).success;
 }
 
 export function roomRouteFromInput(value: string): string | null {
-  const roomId = value.trim();
-  return isValidRoomId(roomId) ? `/r/${roomId}` : null;
+  return isValidRoomId(value) ? `/r/${value}` : null;
+}
+
+export function parseAppRoute(pathname: string): AppRoute {
+  if (pathname === "/") {
+    return { kind: "host" };
+  }
+  if (/^\/join\/?$/.test(pathname)) {
+    return { kind: "join" };
+  }
+  const viewerMatch = pathname.match(/^\/r\/([1-9]\d{3})\/?$/);
+  if (viewerMatch) {
+    return { kind: "viewer", roomId: viewerMatch[1]! };
+  }
+  if (pathname === "/r" || pathname.startsWith("/r/")) {
+    return { kind: "malformed-room" };
+  }
+  return { kind: "unknown" };
 }
 
 export function clearHostRoom(): void {
@@ -124,12 +147,12 @@ function writeSessionValue(key: string, value: string): void {
 }
 
 export function readViewerRoute(): ViewerRoute | null {
-  const match = window.location.pathname.match(/^\/r\/(\d+)\/?$/);
-  if (!match || !isValidRoomId(match[1])) {
+  const route = parseAppRoute(window.location.pathname);
+  if (route.kind !== "viewer") {
     return null;
   }
 
-  const roomId = match[1];
+  const roomId = route.roomId;
   const fragment = window.location.hash;
   if (fragment) {
     const fragmentMatch = fragment.match(/^#v=(.+)$/);

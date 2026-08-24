@@ -7,7 +7,6 @@ import {
   DEFAULT_VIEWER_DISPLAY_NAME,
   MAX_DISPLAY_NAME_CODE_POINTS,
   MAX_MEDIA_ROUTE_REVISION,
-  MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES,
   MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   MAX_VIEWER_PASSWORD_LENGTH,
@@ -66,16 +65,8 @@ const qualityEvidence = {
   },
 } as const;
 
-const parentEdgeQualityEvidence = {
-  type: "parent-edge-quality-evidence",
-  viewerPeerId: "viewer_12345678",
-  guard: qualityEvidence.guard,
-  viewerSequence: qualityEvidence.sequence,
-  proof: { kind: "sending", packetsSentDelta: 1_500 },
-} as const;
-
 describe("client signaling protocol", () => {
-  it("keeps executable senders outside the Browser v7 release", () => {
+  it("keeps executable senders outside the Browser-only v9 checkpoint", () => {
     const nativeWire = readFileSync(
       join(
         import.meta.dirname,
@@ -84,7 +75,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v8");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v9");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -118,6 +109,78 @@ describe("client signaling protocol", () => {
           : serverMessageSchema
         ).safeParse(invalid).success,
       ).toBe(false);
+    }
+  });
+
+  it("accepts only an empty route diagnostic request", () => {
+    expect(
+      clientMessageSchema.safeParse({ type: "request-route-diagnostic" })
+        .success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "request-route-diagnostic",
+        roomId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps Viewer route status as a strict crossed union", () => {
+    expect(
+      serverMessageSchema.parse({
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+      }),
+    ).toEqual({
+      type: "route-status",
+      revision: 3,
+      state: "waiting",
+      reason: "sfu-admission",
+    });
+    expect(
+      serverMessageSchema.parse({
+        type: "route-status",
+        revision: 4,
+        state: "failed",
+        reason: "route-exhausted",
+      }),
+    ).toEqual({
+      type: "route-status",
+      revision: 4,
+      state: "failed",
+      reason: "route-exhausted",
+    });
+    for (const invalid of [
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "route-exhausted",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "failed",
+        reason: "sfu-admission",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+        retryAfterMs: 1_000,
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+        peerId: "private-peer-id",
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(invalid).success).toBe(false);
     }
   });
 
@@ -191,15 +254,17 @@ describe("client signaling protocol", () => {
         clientId: "client_12345678",
       }).success,
     ).toBe(false);
-    expect(
-      clientMessageSchema.safeParse({
-        type: "authenticate",
-        protocol: "screener-v3",
-        roomId,
-        role: "viewer",
-        clientId: "client_12345678",
-      }).success,
-    ).toBe(false);
+    for (const protocol of ["screener-v8", "screener-v3"]) {
+      expect(
+        clientMessageSchema.safeParse({
+          type: "authenticate",
+          protocol,
+          roomId,
+          role: "viewer",
+          clientId: "client_12345678",
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("normalizes display names and rejects misleading Unicode boundaries", () => {
@@ -500,6 +565,76 @@ describe("client signaling protocol", () => {
     ).toBe(false);
   });
 
+  it("requires one exact Resume attempt across authorization, ack, and proof", () => {
+    const sourceAck = {
+      type: "sharing-source-enabled",
+      shareGeneration: "share_generation_12345678",
+      codecGeneration: 4,
+      resumeAttempt: 9,
+    };
+    expect(clientMessageSchema.safeParse(sourceAck).success).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ ...sourceAck, resumeAttempt: undefined })
+        .success,
+    ).toBe(false);
+
+    const proof = {
+      type: "video-codec-proof",
+      shareGeneration: "share_generation_12345678",
+      generation: 4,
+      resumeAttempt: 9,
+      routeRevision: 7,
+      binding: { kind: "peer", connectionId: "connection_12345678" },
+      evidence: {
+        baselineSampleTimestampMs: 100,
+        sampleTimestampMs: 200,
+        rtpStatsId: "inbound_video_12345678",
+        rtpSsrc: 42,
+        rtpMid: "0",
+        rtpRid: null,
+        trackIdentifier: "track_12345678",
+        framesDecodedDelta: 1,
+        actualCodec: "h264",
+      },
+    };
+    expect(clientMessageSchema.safeParse(proof).success).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ ...proof, resumeAttempt: undefined })
+        .success,
+    ).toBe(false);
+
+    const authorization = {
+      type: "sharing-resume-authorized",
+      shareGeneration: "share_generation_12345678",
+      codecGeneration: 4,
+      resumeAttempt: 9,
+    };
+    expect(serverMessageSchema.safeParse(authorization).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...authorization,
+        resumeAttempt: undefined,
+      }).success,
+    ).toBe(false);
+
+    const proofRequest = {
+      type: "video-codec-proof-request",
+      shareGeneration: "share_generation_12345678",
+      generation: 4,
+      resumeAttempt: 9,
+      routeRevision: 7,
+      expectedCodec: "h264",
+      binding: { kind: "peer", connectionId: "connection_12345678" },
+    };
+    expect(serverMessageSchema.safeParse(proofRequest).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...proofRequest,
+        resumeAttempt: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts only strict, bounded quality settings", () => {
     expect(
       clientMessageSchema.safeParse({
@@ -511,6 +646,12 @@ describe("client signaling protocol", () => {
       clientMessageSchema.safeParse({
         type: "set-quality-settings",
         qualitySettings: qualitySettingsWithCodec,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-settings",
+        qualitySettings: { ...qualitySettings, resolution: "480p" },
       }).success,
     ).toBe(true);
     for (const screenAudioQuality of [
@@ -654,63 +795,6 @@ describe("client signaling protocol", () => {
     }
   });
 
-  it("accepts only strict, bounded parent edge quality proof", () => {
-    expect(
-      clientMessageSchema.safeParse(parentEdgeQualityEvidence).success,
-    ).toBe(true);
-    expect(
-      Buffer.byteLength(JSON.stringify(parentEdgeQualityEvidence), "utf8"),
-    ).toBeLessThanOrEqual(MAX_PARENT_EDGE_QUALITY_EVIDENCE_BYTES);
-    for (const reason of ["cpu", "bandwidth"] as const) {
-      expect(
-        clientMessageSchema.safeParse({
-          ...parentEdgeQualityEvidence,
-          proof: {
-            kind: "sender-limited",
-            packetsSentDelta: 1_500,
-            reason,
-          },
-        }).success,
-      ).toBe(true);
-    }
-
-    for (const invalid of [
-      { ...parentEdgeQualityEvidence, roomId },
-      { ...parentEdgeQualityEvidence, viewerSequence: -1 },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: { kind: "sending", packetsSentDelta: 0 },
-      },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: {
-          kind: "remote-loss",
-          packetsSentDelta: 1_500,
-          remotePacketsLostDelta: null,
-        },
-      },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: {
-          kind: "sender-limited",
-          packetsSentDelta: 1_500,
-          reason: "other",
-        },
-      },
-      {
-        ...parentEdgeQualityEvidence,
-        proof: {
-          kind: "sender-limited",
-          packetsSentDelta: 1_500,
-          reason: "cpu",
-          score: 1,
-        },
-      },
-    ]) {
-      expect(clientMessageSchema.safeParse(invalid).success).toBe(false);
-    }
-  });
-
   it.each([
     ["video/VP8", null, "max-fr=60; max-fs=8160"],
     ["video/VP9", "profile-id=2", "max-fs=8160"],
@@ -792,6 +876,134 @@ describe("client signaling protocol", () => {
 });
 
 describe("server signaling protocol", () => {
+  it("keeps route status pairings revision-fenced and strict", () => {
+    for (const message of [
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "sfu-admission",
+      },
+      {
+        type: "route-status",
+        revision: 4,
+        state: "failed",
+        reason: "route-exhausted",
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(message).success).toBe(true);
+    }
+    for (const message of [
+      {
+        type: "route-status",
+        revision: 3,
+        state: "waiting",
+        reason: "route-exhausted",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "failed",
+        reason: "sfu-admission",
+      },
+      {
+        type: "route-status",
+        revision: 3,
+        state: "failed",
+        reason: "route-exhausted",
+        retry: true,
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(message).success).toBe(false);
+    }
+  });
+
+  it("accepts only the privacy-safe two-field route snapshot payload", () => {
+    const message = {
+      type: "route-diagnostic-snapshot",
+      snapshot: {
+        children: [
+          {
+            ordinal: 1,
+            parent: { kind: "host" },
+            effectiveCapacity: 2,
+            childCount: 1,
+            demandAgeMs: 100,
+            queueWaitMs: 10,
+            candidateStartMs: 20,
+            firstDecodedFrameMs: 80,
+            finalMs: 80,
+            finalRoute: "direct",
+            rejectionBucket: "none",
+          },
+          {
+            ordinal: 2,
+            parent: { kind: "viewer", ordinal: 1 },
+            effectiveCapacity: 0,
+            childCount: 0,
+            demandAgeMs: 90,
+            queueWaitMs: null,
+            candidateStartMs: null,
+            firstDecodedFrameMs: null,
+            finalMs: null,
+            finalRoute: "waiting",
+            rejectionBucket: "sfu-admission",
+          },
+        ],
+        operation: {
+          childOrdinal: 2,
+          reason: "join",
+          stage: "admission",
+          cursor: 1,
+          candidateCount: 2,
+        },
+      },
+    } as const;
+    expect(serverMessageSchema.safeParse(message).success).toBe(true);
+    for (const invalid of [
+      {
+        ...message,
+        snapshot: { ...message.snapshot, peerId: "viewer_private_12345678" },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          children: [
+            {
+              ...message.snapshot.children[0],
+              connectionId: "connection_private_12345678",
+            },
+          ],
+        },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          children: [
+            message.snapshot.children[0],
+            {
+              ...message.snapshot.children[1],
+              parent: { kind: "viewer", ordinal: 2 },
+            },
+          ],
+        },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          operation: {
+            ...message.snapshot.operation,
+            rejectionBucket: "raw-error",
+          },
+        },
+      },
+    ]) {
+      expect(serverMessageSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
   it("accepts only STUN URLs in the authenticated peer ICE config", () => {
     expect(
       serverMessageSchema.safeParse({
@@ -1102,9 +1314,37 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "direct",
+          codecTransition: null,
         },
       }).success,
     ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "route-update",
+        revision: 10,
+        phase: "prepare",
+        assignment,
+        candidate: {
+          childPeerId: "child_12345678",
+          connectionId: "connection_12345678",
+          transport: "sfu",
+          codecTransition: { generation: 4, videoCodec: "h264" },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        type: "route-update",
+        revision: 10,
+        phase: "prepare",
+        assignment,
+        candidate: {
+          childPeerId: "child_12345678",
+          connectionId: "connection_12345678",
+          transport: "direct",
+        },
+      }).success,
+    ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         type: "sfu-config",
@@ -1167,10 +1407,17 @@ describe("server signaling protocol", () => {
           upstream,
           childPeerIds: [],
           sfuPublicationGeneration:
-            upstream.kind === "none" ? "generation_12345678" : null,
+            upstream.kind === "peer" ? null : "generation_12345678",
         }).success,
       ).toBe(true);
     }
+    expect(
+      participantRouteAssignmentSchema.safeParse({
+        upstream: { kind: "sfu" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts only canonical server-derived viewer evidence envelopes", () => {

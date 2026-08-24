@@ -11,14 +11,17 @@ import type { ConnectionMetrics } from "../types";
 import {
   collectConnectionMetricsFromReport,
   createStatsAccumulator,
+  decodedVideoFrames,
   mergeStatsReports,
   type StatsAccumulator,
 } from "../webrtc/stats";
+import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 
 interface SubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
   onVideoAvailability?: (available: boolean) => void;
   onStats?: (metrics: ConnectionMetrics) => void;
+  onFirstDecodedFrame?: () => boolean;
   onState?: (state: "connected" | "reconnecting") => void;
   onDisconnected?: () => void;
 }
@@ -63,6 +66,8 @@ export class SfuSubscriber {
   private statsAccumulator: StatsAccumulator = createStatsAccumulator();
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private statsInFlight: StatsAccumulator | null = null;
+  private decodedFrameProofMode: "fresh" | "progress" | null = null;
+  private stopDecodedFrameObserver: (() => void) | null = null;
   private generation = 0;
   private terminalNotified = false;
 
@@ -156,6 +161,17 @@ export class SfuSubscriber {
     this.state = "prepared";
     this.clearMedia(true);
     return true;
+  }
+
+  armDecodedFrameProof(requireProgress = false): void {
+    this.cancelDecodedFrameObserver();
+    this.decodedFrameProofMode = requireProgress ? "progress" : "fresh";
+    this.startDecodedFrameProof();
+  }
+
+  stopDecodedFrameProof(): void {
+    this.decodedFrameProofMode = null;
+    this.cancelDecodedFrameObserver();
   }
 
   async disconnect(): Promise<void> {
@@ -370,8 +386,9 @@ export class SfuSubscriber {
     track: RemoteTrack,
     trackType: typeof Track,
   ): void {
+    const isVideo = source === trackType.Source.ScreenShare;
     let previous: SubscribedTrack | null;
-    if (source === trackType.Source.ScreenShare) {
+    if (isVideo) {
       previous = this.video;
     } else if (source === trackType.Source.ScreenShareAudio) {
       previous = this.audio;
@@ -383,6 +400,9 @@ export class SfuSubscriber {
       return;
     }
     const hadVideo = this.video !== null;
+    if (isVideo) {
+      this.cancelDecodedFrameObserver();
+    }
     if (previous) this.detachTrack(previous);
     const subscribed = {
       sid,
@@ -396,7 +416,7 @@ export class SfuSubscriber {
     };
     mediaStreamTrack.addEventListener("ended", subscribed.onEnded, { once: true });
     this.stream.addTrack(mediaStreamTrack);
-    if (source === trackType.Source.ScreenShare) {
+    if (isVideo) {
       this.video = subscribed;
     } else {
       this.audio = subscribed;
@@ -408,12 +428,16 @@ export class SfuSubscriber {
     if (this.video) {
       this.startStats();
     }
+    if (isVideo) {
+      this.startDecodedFrameProof();
+    }
   }
 
   private removeTrack(sid: string, track?: MediaStreamTrack): void {
     const previousVideo = this.video;
     const previousAudio = this.audio;
     if (this.video?.sid === sid && (!track || this.video.mediaStreamTrack === track)) {
+      this.cancelDecodedFrameObserver();
       this.detachTrack(this.video);
       this.video = null;
     }
@@ -453,6 +477,44 @@ export class SfuSubscriber {
       }, STATS_INTERVAL_MS);
     }
     void this.updateStats();
+  }
+
+  private startDecodedFrameProof(): void {
+    const room = this.room;
+    const video = this.video;
+    const generation = this.generation;
+    const mode = this.decodedFrameProofMode;
+    if (!room || !video || !mode || this.state !== "active") {
+      return;
+    }
+    this.cancelDecodedFrameObserver();
+    this.stopDecodedFrameObserver = observeDecodedFrameProof({
+      readFramesDecoded: async () => {
+        const report = mergeStatsReports([
+          await video.track.getRTCStatsReport(),
+        ]);
+        return report ? decodedVideoFrames(report) : null;
+      },
+      owns: () =>
+        this.owns(room, generation) &&
+        this.state === "active" &&
+        this.video === video &&
+        this.decodedFrameProofMode === mode,
+      requireProgress: mode === "progress",
+      onProof: () => {
+        const accepted = this.events.onFirstDecodedFrame?.() ?? true;
+        if (accepted) {
+          this.decodedFrameProofMode = null;
+          this.stopDecodedFrameObserver = null;
+        }
+        return accepted;
+      },
+    });
+  }
+
+  private cancelDecodedFrameObserver(): void {
+    this.stopDecodedFrameObserver?.();
+    this.stopDecodedFrameObserver = null;
   }
 
   private async updateStats(): Promise<void> {
@@ -514,6 +576,7 @@ export class SfuSubscriber {
   private clearMedia(notify: boolean): void {
     const hadStream = this.streamEmitted;
     const hadVideo = this.video !== null;
+    this.stopDecodedFrameProof();
     this.stopStats();
     if (this.video) {
       this.detachTrack(this.video);

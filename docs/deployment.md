@@ -2,9 +2,11 @@
 
 Last verified against upstream documentation: 2026-08-24.
 
-This page records exact release `8f5b3f1` production facts and the current source
-deployment contract. Product direction and pending migrations are owned by
-[project memory](./project-memory.md) and [the TODO ledger](./todo.md).
+This page records exact release `8f5b3f1` production facts and the deployment
+contract for exact Browser v9 source
+`d543f38aacad3df5ef65fde1055cc8e733972afe`. V9 is implemented in source but is
+not yet deployed. Product direction and pending
+work are owned by [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 This section documents the repository's UDP-only deployment candidate: one
 Node.js process provides the built Web client, room API, and WebSocket signaling
@@ -34,8 +36,8 @@ The release deploys the single Browser `screener-v8` wire, random four-digit
 memory rooms with a 24-hour dormant lease, orthogonal grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, the
 one-controller exact-candidate route runtime, and stale-v7 rejection before
-room authority. The service unit has no writable room StateDirectory and the
-old live SQLite path is absent. LiveKit is dedicated, has `room.auto_create: false` and
+room authority. The service unit has no writable room StateDirectory; all room
+authority is process-memory-only. LiveKit is dedicated, has `room.auto_create: false` and
 `max_participants: 21`, and is admitted to one global publication ingress plus
 twenty subscription egress handles. Coturn listens only on UDP 3478 for STUN;
 LiveKit media listens on UDP 7882.
@@ -75,9 +77,10 @@ Do not run the repository full check, typecheck, or build on the current 960 MiB
 no-swap production host. An inactive-release check before the `261e980c` cutover
 temporarily starved HTTP and SSH; exact `691863e` remained current and all four
 services stayed at `NRestarts=0`. The retained production path uses a locally
-verified dist artifact plus one `npm ci --omit=dev` in a transient unit bounded
-to 30% CPU, 160 MiB memory high, 256 MiB memory max, and 120 seconds. It then
-runs only runtime imports, `node:sqlite`, and artifact/inode/permission gates.
+verified dist artifact plus one `npm ci --omit=dev --ignore-scripts --no-audit --no-fund`
+in a transient unit bounded to 30% CPU, 160 MiB memory high, 256 MiB memory max,
+no swap, and 120 seconds. It then runs only runtime imports and the
+artifact/inode/permission gates.
 
 Each immutable release must own an independent dependency tree. Never hard-link
 `node_modules` or another file that deployment may `chown`, `chmod`, replace, or
@@ -86,11 +89,12 @@ copy-on-write reflink is acceptable only after an inode audit confirms that the
 old and new regular-file sets have zero shared inodes. Do not recursively change
 permissions until that check passes.
 
-Transport archives must preserve UTF-8 entry names. Prefer the POSIX release
-archive path and verify the extracted manifest before switching. A Windows ZIP
-used for the 2026-08-20 route-rescue release altered two non-runtime Chinese
-documentation names on Linux. Runtime artifacts were unaffected and the
-immutable upload remains evidence, but do not reuse that packaging method.
+Either a POSIX archive or ZIP is acceptable transport. Build an explicit runtime
+manifest before upload, normalize every relative entry path, and reject absolute
+paths, `..` traversal, unexpected top-level entries, and unapproved links. Verify
+the uploaded archive hash, extract only into a new release directory, then compare
+the exact path set, file types, sizes, and per-file hashes with the manifest before
+switching. Archive format alone is neither integrity nor rollback evidence.
 
 In a strict-shell deployment, expected service states are data, not command
 failures. Do not call `systemctl is-active` bare under `set -e`/`ERR`: an
@@ -98,9 +102,8 @@ intentionally stopped service returns a nonzero status and can trigger a false r
 `ActiveState` with `systemctl show`, compare the returned string explicitly, and
 keep stop, symlink switch, start, health check, and rollback as separate steps.
 Preflight every inspection dependency before taking a backup or changing a
-service. If a host lacks the `sqlite3` CLI, use the pinned Node runtime's
-`node:sqlite` API or stop before the first write. After a start, poll health for
-a short bounded window instead of treating one request during startup as a
+service. After a start, poll health for a short bounded window instead of treating
+one request during startup as a
 failed release; retain the last failure while still enforcing the deadline.
 After starting coturn, likewise wait boundedly for its UDP 3478 socket before
 asserting STUN readiness; `ActiveState=active` can precede socket readiness.
@@ -152,14 +155,13 @@ instance/hostname and keep
 the old release unchanged for rollback. If the candidate fails, roll back the
 release or instance; do not add a permanent dual-transport branch.
 
-A memory-room release changes the application environment atomically: remove
-`ROOM_DATABASE_PATH` and `ROOM_TTL_SECONDS`, add `ROOM_LEASE_SECONDS`, and do
-not migrate or import SQLite rooms. Starting the candidate invalidates every
-current production room, Host token, invitation, password verifier, and route;
-open pages must refresh or explicitly create a replacement room. Keep the
-recorded old release plus its SQLite environment/config backup unchanged for
-rollback. Rolling back restores that exact old environment and database with the
-old binary; it does not attempt to carry candidate rooms into SQLite.
+A memory-room release starts with empty process authority. Starting the candidate
+invalidates every current production room, Host token, invitation, password
+verifier, and route; open pages must refresh or explicitly create a replacement
+room. No room state crosses a release boundary in either direction. Preserve the
+immutable current release and the recorded environment, unit, LiveKit, coturn,
+firewall, and reverse-proxy rollback artifact unchanged, and restore that exact
+boundary if postflight fails.
 
 A shared-public-IP instance can test candidate behavior, but it cannot prove the
 clean-port boundary or approve broad migration. The room-1 smoke uses this
@@ -409,8 +411,8 @@ Keep the proxy's access-log retention bounded and access controlled. Requests to
 `/r/{code}` put the room code in the path, so access logs can contain room codes
 as well as network metadata. They must not be treated as public artifacts. For
 a private room, the grant remains in the fragment and is not part of that
-request target. A code-only entry still requires prior site access unless its
-policy is disabled; a valid grant remains the direct Viewer path.
+request target. Every code-only attempt requires prior site access; a disabled
+policy then rejects that path, while a valid grant remains the direct Viewer path.
 
 For a process-level liveness probe, send `GET /healthz`. A running process
 returns HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`; other
@@ -487,6 +489,7 @@ Open only these public listeners:
 
 | Destination | Protocol | Purpose |
 | --- | --- | --- |
+| `share.example.com:80` | TCP | HTTP redirect and ACME challenge |
 | `share.example.com:443` | TCP | HTTPS and WSS |
 | `stun.example.com:3478` | UDP | STUN binding only |
 | host public address `:7882` | UDP | LiveKit WebRTC ICE/UDP mux |

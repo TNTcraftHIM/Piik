@@ -1,11 +1,20 @@
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import type {
+  CodecTransitionGeneration,
+  IceConfig,
+  SignalPayload,
+} from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
-import type { QualityProfile } from "../media/quality";
 import {
+  audioSenderParameterWarning,
   configureScreenAudioSender,
   configureVideoSender,
   resolveScreenAudioQuality,
+  screenAudioQualityEqual,
   senderParameterWarning,
+  videoQualitySettingsEqual,
+  type AudioSenderParameterReadback,
+  type QualityProfile,
+  type ScreenAudioQuality,
 } from "../media/quality";
 import {
   EMPTY_METRICS,
@@ -30,23 +39,61 @@ interface HostPeerEvents {
   onUpdate: (snapshot: PeerSnapshot) => void;
 }
 
+interface CodecPreparationRequest {
+  generation: CodecTransitionGeneration;
+  videoCodec: QualityProfile["videoCodec"];
+  negotiationEpoch: number;
+  promise: Promise<boolean>;
+  resolve: (accepted: boolean) => void;
+  settled: boolean;
+}
+
+interface CodecAnswerWaiter {
+  request: CodecPreparationRequest;
+  epoch: number;
+  resolve: (accepted: boolean) => void;
+}
+
+type NegotiationAnswerOwner =
+  | {
+      kind: "ordinary";
+      epoch: number;
+    }
+  | {
+      kind: "codec";
+      epoch: number;
+      waiter: CodecAnswerWaiter;
+    };
+
 export class HostPeer {
   readonly connectionId: string;
 
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
   private statsAccumulator = createStatsAccumulator();
+  private videoTransceiver: RTCRtpTransceiver | null = null;
   private videoSender: RTCRtpSender | null = null;
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
   private statsInFlight = false;
   private statsSamplingBlocked = false;
-  private senderWarning: string | null = null;
+  private videoSenderWarning: string | null = null;
+  private audioSenderWarning: string | null = null;
+  private appliedVideoProfile: QualityProfile | null = null;
+  private appliedAudioQuality: ScreenAudioQuality | null = null;
+  private appliedAudioSenderParameters:
+    | AudioSenderParameterReadback
+    | null = null;
   private limitationReason: string | null = null;
   private limitationSamples = 0;
   private disposed = false;
-  private negotiating = false;
+  private profileRevision = 0;
+  private negotiationEpoch = 0;
+  private ordinaryAnswerEpoch: number | null = null;
+  private codecPreparation: CodecPreparationRequest | null = null;
+  private codecAnswerWaiter: CodecAnswerWaiter | null = null;
   private senderMutationTail: Promise<void> = Promise.resolve();
+  private negotiationTail: Promise<void> = Promise.resolve();
   private snapshot: PeerSnapshot;
 
   constructor(
@@ -69,6 +116,7 @@ export class HostPeer {
       metrics: { ...EMPTY_METRICS },
       error: null,
       senderParameters: null,
+      audioSenderParameters: null,
       qualityWarning: null,
     };
     this.bindConnectionEvents();
@@ -85,10 +133,13 @@ export class HostPeer {
       direction: "sendonly",
       streams: [this.stream],
     });
-    applyVideoCodecPreference(
-      videoTransceiver,
-      this.desiredProfile.videoCodec,
-    );
+    if (this.desiredProfile.videoCodec !== "automatic") {
+      applyVideoCodecPreference(
+        videoTransceiver,
+        this.desiredProfile.videoCodec,
+      );
+    }
+    this.videoTransceiver = videoTransceiver;
     this.videoSender = videoTransceiver.sender;
     this.audioSender = this.connection.addTransceiver(audioTrack ?? "audio", {
       direction: "sendonly",
@@ -161,31 +212,121 @@ export class HostPeer {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    if (
-      this.disposed ||
-      resolveScreenAudioQuality(profile.screenAudioQuality) !==
-        resolveScreenAudioQuality(this.desiredProfile.screenAudioQuality)
-    ) {
+    if (this.disposed) {
       return Promise.resolve(false);
     }
+    const requestedVideo =
+      !videoQualitySettingsEqual(this.desiredProfile, profile) ||
+      this.appliedVideoProfile === null ||
+      !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+    const requestedAudio =
+      !screenAudioQualityEqual(this.desiredProfile, profile) ||
+      this.appliedAudioQuality !==
+        resolveScreenAudioQuality(profile.screenAudioQuality);
     this.desiredProfile = profile;
+    const requestedRevision = ++this.profileRevision;
     return this.enqueueSenderMutation(async () => {
       const videoSender = this.videoSender;
-      if (this.disposed || !videoSender) {
+      const audioSender = this.audioSender;
+      if (
+        this.disposed ||
+        !videoSender ||
+        !audioSender ||
+        requestedRevision !== this.profileRevision
+      ) {
         return false;
       }
-      if (!(await this.configureSender(videoSender))) {
+      const updateVideo =
+        requestedVideo ||
+        this.appliedVideoProfile === null ||
+        !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+      const updateAudio =
+        requestedAudio ||
+        this.appliedAudioQuality !==
+          resolveScreenAudioQuality(profile.screenAudioQuality);
+      if (!updateVideo && !updateAudio) {
+        return true;
+      }
+      if (
+        !(await this.configureSender(videoSender, audioSender, {
+          profile,
+          profileRevision: requestedRevision,
+          video: updateVideo,
+          audio: updateAudio,
+        }))
+      ) {
         return false;
       }
-      if (this.disposed) {
+      if (this.disposed || requestedRevision !== this.profileRevision) {
         return false;
       }
-      this.statsAccumulator = createStatsAccumulator();
-      this.limitationReason = null;
-      this.limitationSamples = 0;
+      if (updateVideo) {
+        this.statsAccumulator = createStatsAccumulator();
+        this.limitationReason = null;
+        this.limitationSamples = 0;
+      }
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();
       return true;
+    });
+  }
+
+  prepareVideoCodec(
+    generation: CodecTransitionGeneration,
+    videoCodec: QualityProfile["videoCodec"],
+  ): Promise<boolean> {
+    const current = this.codecPreparation;
+    if (
+      current?.generation === generation &&
+      current.videoCodec === videoCodec
+    ) {
+      return current.promise;
+    }
+    if (current) {
+      this.finishCodecPreparation(current, false);
+    }
+
+    let resolve!: (accepted: boolean) => void;
+    const promise = new Promise<boolean>((resolvePromise) => {
+      resolve = resolvePromise;
+    });
+    const request: CodecPreparationRequest = {
+      generation,
+      videoCodec,
+      negotiationEpoch: this.nextNegotiationEpoch(),
+      promise,
+      resolve,
+      settled: false,
+    };
+    this.codecPreparation = request;
+    void this.enqueueSenderMutation(() =>
+      this.runCodecPreparation(request),
+    ).then(
+      (accepted) => this.finishCodecPreparation(request, accepted),
+      () => this.finishCodecPreparation(request, false),
+    );
+    return promise;
+  }
+
+  cancelVideoCodecPreparation(): void {
+    const request = this.codecPreparation;
+    if (!request) {
+      return;
+    }
+    this.finishCodecPreparation(request, false);
+    if (this.disposed) {
+      return;
+    }
+    const epoch = this.nextNegotiationEpoch();
+    void this.enqueueNegotiation(async () => {
+      if (
+        this.disposed ||
+        epoch !== this.negotiationEpoch ||
+        this.codecPreparation
+      ) {
+        return;
+      }
+      await this.rollbackPendingLocalOffer();
     });
   }
 
@@ -199,8 +340,7 @@ export class HostPeer {
         if (payload.description.type !== "answer") {
           return;
         }
-        await this.connection.setRemoteDescription(payload.description);
-        await this.flushCandidates();
+        await this.enqueueNegotiation(() => this.acceptAnswer(payload));
       } else if (this.connection.remoteDescription) {
         await this.connection.addIceCandidate(payload.candidate);
       } else if (this.pendingCandidates.length < MAX_PENDING_CANDIDATES) {
@@ -212,16 +352,34 @@ export class HostPeer {
   }
 
   async restartIce(): Promise<boolean> {
-    if (this.disposed) {
-      return false;
+    while (!this.disposed) {
+      const codecPreparation = this.codecPreparation;
+      if (codecPreparation) {
+        await codecPreparation.promise;
+        continue;
+      }
+      const restarted = await this.enqueueNegotiation(async () => {
+        if (this.disposed) {
+          return false;
+        }
+        if (this.codecPreparation) {
+          return null;
+        }
+        if (this.connection.signalingState !== "stable") {
+          return false;
+        }
+        const accepted = await this.createOwnedOffer(
+          true,
+          this.nextNegotiationEpoch(),
+          null,
+        );
+        return !accepted && this.codecPreparation ? null : accepted;
+      });
+      if (restarted !== null) {
+        return restarted;
+      }
     }
-    if (this.negotiating) {
-      return true;
-    }
-    if (this.connection.signalingState !== "stable") {
-      return false;
-    }
-    return this.createOffer(true);
+    return false;
   }
 
   isConnected(): boolean {
@@ -250,10 +408,13 @@ export class HostPeer {
       return;
     }
     this.disposed = true;
+    this.nextNegotiationEpoch();
+    this.ordinaryAnswerEpoch = null;
     if (this.statsTimer !== null) {
       window.clearInterval(this.statsTimer);
       this.statsTimer = null;
     }
+    this.cancelVideoCodecPreparation();
     this.connection.close();
   }
 
@@ -285,27 +446,60 @@ export class HostPeer {
     return result;
   }
 
-  private async createOffer(restart: boolean): Promise<boolean> {
-    if (this.disposed) {
+  private enqueueNegotiation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.negotiationTail.then(operation, operation);
+    this.negotiationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private createOffer(restart: boolean): Promise<boolean> {
+    return this.enqueueNegotiation(async () => {
+      if (this.disposed || this.codecPreparation) {
+        return false;
+      }
+      return this.createOwnedOffer(
+        restart,
+        this.nextNegotiationEpoch(),
+        null,
+      );
+    });
+  }
+
+  private async createOwnedOffer(
+    restart: boolean,
+    epoch: number,
+    negotiationGeneration: CodecTransitionGeneration | null,
+    request: CodecPreparationRequest | null = null,
+  ): Promise<boolean> {
+    if (!this.ownsLocalOffer(epoch, request)) {
       return false;
     }
-    this.negotiating = true;
     try {
       if (restart) {
         this.connection.restartIce();
       }
       const offer = await this.connection.createOffer();
-      if (this.disposed) {
+      if (!this.ownsLocalOffer(epoch, request)) {
         return false;
       }
       await this.connection.setLocalDescription(offer);
-      if (this.disposed || !this.connection.localDescription) {
+      if (
+        !this.ownsLocalOffer(epoch, request) ||
+        !this.connection.localDescription
+      ) {
         return false;
+      }
+      if (negotiationGeneration === null) {
+        this.ordinaryAnswerEpoch = epoch;
       }
       if (
         !this.events.sendSignal(this.peerId, {
           kind: "description",
           connectionId: this.connectionId,
+          negotiationGeneration,
           description: {
             type: "offer",
             sdp: this.connection.localDescription.sdp,
@@ -318,10 +512,17 @@ export class HostPeer {
       this.emit();
       return true;
     } catch (error) {
+      if (!this.ownsLocalOffer(epoch, request)) {
+        return false;
+      }
+      if (
+        negotiationGeneration === null &&
+        this.ordinaryAnswerEpoch === epoch
+      ) {
+        this.ordinaryAnswerEpoch = null;
+      }
       this.setError(error, restart ? "恢复连接失败" : "创建连接失败");
       return false;
-    } finally {
-      this.negotiating = false;
     }
   }
 
@@ -329,6 +530,209 @@ export class HostPeer {
     const candidates = this.pendingCandidates.splice(0);
     for (const candidate of candidates) {
       await this.connection.addIceCandidate(candidate);
+    }
+  }
+
+  private async acceptAnswer(
+    payload: Extract<SignalPayload, { kind: "description" }>,
+  ): Promise<void> {
+    const owner = this.currentAnswerOwner(payload.negotiationGeneration);
+    if (!owner) {
+      return;
+    }
+    try {
+      await this.connection.setRemoteDescription(payload.description);
+      if (!this.ownsAnswer(owner)) {
+        return;
+      }
+      await this.flushCandidates();
+      if (this.ownsAnswer(owner)) {
+        this.completeAnswer(owner, true);
+      }
+    } catch (error) {
+      if (!this.ownsAnswer(owner)) {
+        return;
+      }
+      this.completeAnswer(owner, false);
+      throw error;
+    }
+  }
+
+  private currentAnswerOwner(
+    generation: CodecTransitionGeneration | null,
+  ): NegotiationAnswerOwner | null {
+    if (generation === null) {
+      const epoch = this.ordinaryAnswerEpoch;
+      return epoch !== null && epoch === this.negotiationEpoch
+        ? { kind: "ordinary", epoch }
+        : null;
+    }
+    const waiter = this.codecAnswerWaiter;
+    return waiter &&
+      waiter.epoch === this.negotiationEpoch &&
+      waiter.request.generation === generation &&
+      this.ownsCodecPreparation(waiter.request)
+      ? { kind: "codec", epoch: waiter.epoch, waiter }
+      : null;
+  }
+
+  private ownsAnswer(owner: NegotiationAnswerOwner): boolean {
+    if (this.disposed || owner.epoch !== this.negotiationEpoch) {
+      return false;
+    }
+    return owner.kind === "ordinary"
+      ? this.ordinaryAnswerEpoch === owner.epoch
+      : this.codecAnswerWaiter === owner.waiter &&
+          this.ownsCodecPreparation(owner.waiter.request);
+  }
+
+  private completeAnswer(
+    owner: NegotiationAnswerOwner,
+    accepted: boolean,
+  ): void {
+    if (!this.ownsAnswer(owner)) {
+      return;
+    }
+    if (owner.kind === "ordinary") {
+      this.ordinaryAnswerEpoch = null;
+      return;
+    }
+    this.codecAnswerWaiter = null;
+    owner.waiter.resolve(accepted);
+  }
+
+  private settleCodecAnswer(
+    accepted: boolean,
+    generation?: CodecTransitionGeneration,
+    epoch?: number,
+  ): void {
+    const waiter = this.codecAnswerWaiter;
+    if (
+      (generation !== undefined &&
+        waiter?.request.generation !== generation) ||
+      (epoch !== undefined && waiter?.epoch !== epoch)
+    ) {
+      return;
+    }
+    this.codecAnswerWaiter = null;
+    waiter?.resolve(accepted);
+  }
+
+  private async runCodecPreparation(
+    request: CodecPreparationRequest,
+  ): Promise<boolean> {
+    const negotiation = await this.enqueueNegotiation(async () => {
+      const transceiver = this.videoTransceiver;
+      if (
+        !this.ownsCodecPreparation(request) ||
+        request.negotiationEpoch !== this.negotiationEpoch ||
+        !transceiver ||
+        !(await this.rollbackPendingLocalOffer()) ||
+        !this.ownsCodecPreparation(request) ||
+        request.negotiationEpoch !== this.negotiationEpoch ||
+        !applyVideoCodecPreference(transceiver, request.videoCodec)
+      ) {
+        return null;
+      }
+      const answer = new Promise<boolean>((resolve) => {
+        this.codecAnswerWaiter = {
+          request,
+          epoch: request.negotiationEpoch,
+          resolve,
+        };
+      });
+      if (
+        !(await this.createOwnedOffer(
+          false,
+          request.negotiationEpoch,
+          request.generation,
+          request,
+        ))
+      ) {
+        this.settleCodecAnswer(
+          false,
+          request.generation,
+          request.negotiationEpoch,
+        );
+        return null;
+      }
+      return { answer };
+    });
+    if (!negotiation) {
+      return false;
+    }
+    const accepted = await negotiation.answer;
+    if (!accepted || !this.ownsCodecPreparation(request)) {
+      return false;
+    }
+    this.desiredProfile = {
+      ...this.desiredProfile,
+      videoCodec: request.videoCodec,
+    };
+    this.appliedVideoProfile = this.appliedVideoProfile
+      ? { ...this.appliedVideoProfile, videoCodec: request.videoCodec }
+      : { ...this.desiredProfile };
+    return true;
+  }
+
+  private ownsLocalOffer(
+    epoch: number,
+    request: CodecPreparationRequest | null,
+  ): boolean {
+    return (
+      !this.disposed &&
+      epoch === this.negotiationEpoch &&
+      (request === null ||
+        (request.negotiationEpoch === epoch &&
+          this.ownsCodecPreparation(request)))
+    );
+  }
+
+  private nextNegotiationEpoch(): number {
+    this.ordinaryAnswerEpoch = null;
+    this.negotiationEpoch += 1;
+    return this.negotiationEpoch;
+  }
+
+  private ownsCodecPreparation(request: CodecPreparationRequest): boolean {
+    return (
+      !this.disposed &&
+      !request.settled &&
+      this.codecPreparation === request
+    );
+  }
+
+  private finishCodecPreparation(
+    request: CodecPreparationRequest,
+    accepted: boolean,
+  ): void {
+    if (request.settled) {
+      return;
+    }
+    request.settled = true;
+    if (this.codecAnswerWaiter?.request === request) {
+      const waiter = this.codecAnswerWaiter;
+      this.codecAnswerWaiter = null;
+      waiter.resolve(false);
+    }
+    if (this.codecPreparation === request) {
+      this.codecPreparation = null;
+    }
+    request.resolve(accepted);
+  }
+
+  private async rollbackPendingLocalOffer(): Promise<boolean> {
+    if (this.connection.signalingState === "stable") {
+      return true;
+    }
+    if (this.connection.signalingState !== "have-local-offer") {
+      return false;
+    }
+    try {
+      await this.connection.setLocalDescription({ type: "rollback" });
+      return (this.connection.signalingState as RTCSignalingState) === "stable";
+    } catch {
+      return false;
     }
   }
 
@@ -372,7 +776,7 @@ export class HostPeer {
         ...this.snapshot,
         metrics,
         qualityWarning:
-          this.senderWarning ?? this.persistentLimitationWarning(),
+          this.combinedSenderWarning() ?? this.persistentLimitationWarning(),
       };
       this.emit();
     } catch {
@@ -382,54 +786,106 @@ export class HostPeer {
     }
   }
 
-  private setError(error: unknown, fallback: string): void {
-    const message = error instanceof Error ? error.message : fallback;
-    this.snapshot = { ...this.snapshot, error: message || fallback };
+  private setError(_error: unknown, fallback: string): void {
+    this.snapshot = { ...this.snapshot, error: fallback };
     this.emit();
   }
 
   private async configureSender(
     sender: RTCRtpSender,
     audioSender?: RTCRtpSender,
+    mutation: {
+      profile: QualityProfile;
+      profileRevision: number;
+      video: boolean;
+      audio: boolean;
+    } = {
+      profile: this.desiredProfile,
+      profileRevision: this.profileRevision,
+      video: true,
+      audio: true,
+    },
   ): Promise<boolean> {
-    try {
-      const senderParameters = await configureVideoSender(
-        sender,
-        this.desiredProfile,
-      );
-      if (audioSender?.track) {
-        await configureScreenAudioSender(
-          audioSender,
-          this.desiredProfile.screenAudioQuality,
-        );
+    const { profile, profileRevision } = mutation;
+    let senderParameters = this.snapshot.senderParameters ?? null;
+    let audioSenderParameters = this.appliedAudioSenderParameters;
+    let videoWarning = this.videoSenderWarning;
+    let audioWarning = this.audioSenderWarning;
+    let videoSucceeded = true;
+    let audioSucceeded = true;
+
+    if (mutation.video) {
+      try {
+        senderParameters = await configureVideoSender(sender, profile);
+        videoWarning = senderParameterWarning(senderParameters);
+      } catch {
+        videoSucceeded = false;
+        videoWarning = "应用发送参数失败";
       }
-      if (this.disposed) {
-        return false;
-      }
-      this.senderWarning = senderParameterWarning(senderParameters);
-      this.snapshot = {
-        ...this.snapshot,
-        senderParameters,
-        qualityWarning:
-          this.senderWarning ?? this.persistentLimitationWarning(),
-      };
-      this.emit();
-      return true;
-    } catch (error) {
-      if (this.disposed) {
-        return false;
-      }
-      this.senderWarning =
-        error instanceof Error && error.message
-          ? `应用发送参数失败：${error.message}`
-          : "应用发送参数失败";
-      this.snapshot = {
-        ...this.snapshot,
-        qualityWarning: this.senderWarning,
-      };
-      this.emit();
+    }
+
+    if (
+      this.disposed ||
+      profileRevision !== this.profileRevision ||
+      (mutation.video && this.videoSender !== sender)
+    ) {
       return false;
     }
+
+    if (mutation.audio && audioSender) {
+      if (audioSender.track) {
+        try {
+          audioSenderParameters = await configureScreenAudioSender(
+            audioSender,
+            profile.screenAudioQuality,
+          );
+          audioWarning = audioSenderParameterWarning(audioSenderParameters);
+        } catch {
+          audioSucceeded = false;
+          audioWarning = "应用音频发送参数失败";
+        }
+      } else {
+        audioSenderParameters = null;
+        audioWarning = null;
+      }
+    }
+
+    if (
+      this.disposed ||
+      profileRevision !== this.profileRevision ||
+      (mutation.video && this.videoSender !== sender) ||
+      (mutation.audio && this.audioSender !== audioSender)
+    ) {
+      return false;
+    }
+    this.videoSenderWarning = videoWarning;
+    this.audioSenderWarning = audioWarning;
+    if (mutation.video && videoSucceeded) {
+      this.appliedVideoProfile = profile;
+    }
+    if (mutation.audio && audioSucceeded) {
+      this.appliedAudioQuality = resolveScreenAudioQuality(
+        profile.screenAudioQuality,
+      );
+      this.appliedAudioSenderParameters = audioSenderParameters;
+    }
+    this.snapshot = {
+      ...this.snapshot,
+      senderParameters,
+      audioSenderParameters: this.appliedAudioSenderParameters,
+      qualityWarning:
+        this.combinedSenderWarning() ?? this.persistentLimitationWarning(),
+    };
+    this.emit();
+    return videoSucceeded && audioSucceeded;
+  }
+
+  private combinedSenderWarning(): string | null {
+    const warnings = [
+      this.videoSenderWarning,
+      this.audioSenderWarning,
+    ].filter((warning): warning is string => warning !== null);
+    return warnings.length > 0 ? warnings.join("；") : null;
   }
 
   private updateLimitationWarning(reason: string | null): void {
@@ -459,7 +915,7 @@ export class HostPeer {
         return "浏览器持续报告其他画质限制";
       default:
         return this.limitationReason
-          ? `浏览器持续报告画质限制：${this.limitationReason}`
+          ? "浏览器持续报告未分类的画质限制"
           : null;
     }
   }

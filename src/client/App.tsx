@@ -6,14 +6,13 @@ import {
   getSiteAccess,
   type SiteAccessStatus,
 } from "./lib/api";
-import { readViewerRoute } from "./lib/session";
+import { parseAppRoute, readViewerRoute } from "./lib/session";
 import { HostPage } from "./pages/HostPage";
 import { JoinPage } from "./pages/JoinPage";
 import { ViewerPage } from "./pages/ViewerPage";
 
-const viewerRoute = readViewerRoute();
-const isJoinRoute = /^\/join\/?$/.test(window.location.pathname);
-const isHostRoute = /^\/?$/.test(window.location.pathname);
+const appRoute = parseAppRoute(window.location.pathname);
+const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
 
 type AccessState =
   | { kind: "checking" }
@@ -28,26 +27,30 @@ function stateFromStatus(status: SiteAccessStatus): AccessState {
 }
 
 function readableError(error: unknown): string {
-  return error instanceof Error && error.message
+  return error instanceof ApiError
     ? error.message
     : "无法连接站点访问服务，请重试";
 }
 
 export function App() {
-  if (viewerRoute) {
+  if (appRoute.kind === "viewer" && viewerRoute) {
     return viewerRoute.viewerGrant ? (
       <ViewerPage {...viewerRoute} />
     ) : (
       <SiteAccessGate surface="viewer" />
     );
   }
-  if (isHostRoute) {
+  if (appRoute.kind === "host") {
     return <SiteAccessGate surface="host" />;
   }
-  if (isJoinRoute) {
+  if (appRoute.kind === "join") {
     return <SiteAccessGate surface="join" />;
   }
-  return <UnavailableRoute />;
+  return appRoute.kind === "malformed-room" ? (
+    <MalformedRoomRoute />
+  ) : (
+    <UnavailableRoute />
+  );
 }
 
 function SiteAccessGate({
@@ -191,6 +194,19 @@ function UnavailableRoute() {
       <main className="access-workspace access-workspace-full">
         <section className="access-panel">
           <h1>无法访问</h1>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function MalformedRoomRoute() {
+  return (
+    <div className="app-shell">
+      <main className="access-workspace access-workspace-full">
+        <section className="access-panel">
+          <h1>房间号格式不正确</h1>
+          <p className="section-meta">请输入 1000 至 9999 的四位房间号</p>
         </section>
       </main>
     </div>

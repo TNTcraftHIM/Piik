@@ -32,23 +32,32 @@ Current high-signal boundary:
 - docs/status.md owns the exact source/production/hold state.
 - docs/todo.md is the only executable work ledger and owns ordering.
 - ADR-0005 owns the accepted automatic route model: direct/STUN peer followed
-  only by the dedicated LiveKit SFU/UDP fallback. Current source and production
-  release `8f5b3f1` implement that two-stage model. Real external-network
-  and SFU media evidence remains open. Do not rerun broad or
-  executable/native test suites unless the current acceptance boundary
-  specifically requires them.
-- ADR-0002 owns the source-implemented room model: one process-memory RoomStore,
+  only by the dedicated LiveKit SFU/UDP fallback. Current Browser v9 source
+  checkpoint `d543f38aacad3df5ef65fde1055cc8e733972afe` and production v8 release
+  `8f5b3f1` implement that two-stage model. Current source uses one short-lived
+  exact-generation decoded-frame observer only for the pending candidate inside
+  the existing total deadline; the periodic stats sampler still owns active-path
+  diagnostics and stalls. Real external-network and SFU media evidence remains
+  open. Do not run executable/native suites unless their later acceptance
+  boundary specifically requires them.
+- ADR-0002 owns the implemented room model: one process-memory RoomStore,
   random free four-digit codes, configurable 24-hour dormant leases, restart
   loss, local Host preference replay, an independent expiring Viewer grant, and
-  open/password/disabled code entry. Current source and production use the
-  single `screener-v8` wire and no SQLite runtime; exact rollback artifacts are
-  owned by the deployment document.
-- The owner authorized one atomic Browser v9 Now ledger. Accepted but not yet
-  implemented work includes live audio mutation, paused codec switching, typed
-  Viewer presentation, Host-on-demand route diagnostics, neutral room-code denial, responsive entry controls, a
-  default `1080p30` recommendation, and `480p` only as an advanced 854x480
-  resolution. Production remains exact v8 release `8f5b3f1` until a later
-  verified deployment; do not report any of this batch as implemented or live.
+  open/password/disabled code entry. Current source uses the single
+  `screener-v9` wire, production uses the single `screener-v8` wire, and neither
+  runtime uses SQLite; exact rollback artifacts are owned by deployment.
+- Exact source `d543f38aacad3df5ef65fde1055cc8e733972afe` implements the atomic Browser
+  v9 batch: live audio-ceiling mutation, paused codec switching with exact Resume
+  source authority and proof, typed Viewer presentation, Host-on-demand route
+  diagnostics, neutral room-code denial, responsive entry controls, default
+  `1080p30`, and advanced-only `854x480`. It passed 670 Web tests in 48 files,
+  typecheck, client/server builds, access/privacy, dependency audit, and
+  repository hygiene. Its exact 20-Viewer Chrome run passed on
+  direct loopback with no SFU publication, so it is not SFU or public-network
+  evidence.
+- Production remains exact `8f5b3f192ddd010ca01c969008e512191312736a`,
+  release `8f5b3f1`, wire `screener-v8`. Do not report v9 as deployed until one
+  atomic cutover and postflight prove the exact release.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy
@@ -65,7 +74,13 @@ Current high-signal boundary:
   material. Do not merge or delete them until their unique changes, references,
   and reparse/junction safety are checked against current main.
 
-Follow the current ledger in order, checkpoint accepted truth before dependent
-implementation, and report each verified integration/deployment boundary without
-reviving stale agent or branch facts.
+Current TODO priority is the atomic v9 deployment, then physical codec and audio
+validation, controlled H.264 and Host-background diagnosis, and representative
+direct/peer-relay/SFU network acceptance. Mobile lifecycle, distribution/native
+packages, retained product decisions, and the read-only simplification audit stay
+at their later boundaries.
+
+Follow the current ledger in order and report each verified integration,
+deployment, and physical-evidence boundary without reviving stale agent or branch
+facts.
 ```

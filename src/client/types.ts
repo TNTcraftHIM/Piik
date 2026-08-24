@@ -83,6 +83,9 @@ export interface PeerSnapshot {
   metrics: ConnectionMetrics;
   error: string | null;
   senderParameters?: import("./media/quality").VideoSenderParameterReadback | null;
+  audioSenderParameters?:
+    | import("./media/quality").AudioSenderParameterReadback
+    | null;
   qualityWarning?: string | null;
 }
 

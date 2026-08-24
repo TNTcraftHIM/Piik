@@ -1,13 +1,14 @@
 # Advanced Peer Distribution
 
-- Research date: 2026-08-23
+- Research date: 2026-08-24
 - Scope: current route admission up to twenty trusted viewers, sub-second
   interactive media, endpoint downstream cap `1..3`, and minimal central-server
   media egress; retained advanced-media measurements may cover smaller cohorts
 - Status: deterministic peer distribution and provisional make-before-break are
-  retained evidence; current routing converges through ADR-0005's single
-  child-reparent reconciliation, while advanced encoded-media routes remain
-  unimplemented candidates
+  retained evidence. Exact Browser v9 source
+  `d543f38aacad3df5ef65fde1055cc8e733972afe` implements ADR-0005's single
+  child-reparent reconciliation and exact first-frame transaction; production
+  remains v8, and advanced encoded-media routes remain unimplemented candidates
 
 This document is research evidence, not current architecture or a backlog. See
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) for accepted routing
@@ -260,8 +261,9 @@ restarted. This proves LiveKit participant entry. The timing is consistent with
 the then-current one-shot grant refresh and recovery state machine, but logs do
 not prove those transitions and cannot distinguish
 connect, source, video publish, sender configuration, optional audio publish, or
-transport failure. The accepted v9 diagnostic, which is not part of deployed
-v8, exposes only a closed local stage/outcome enum to an on-demand Host snapshot
+transport failure. Exact v9 source implements the accepted diagnostic, which is
+not part of deployed v8: it exposes only a closed local stage/outcome enum to an
+on-demand Host snapshot
 and deliberately keeps raw errors, URLs, tokens, candidates, and addresses out
 of wire and logs.
 
@@ -290,8 +292,14 @@ it exposes no topology choices. One reconcile loop handles join, waiting,
 disconnect, effective-capacity overflow, and failed edges. W3C
 `framesDecoded` counts successfully decoded video frames, so the first new
 candidate frame is the only application readiness event. LiveKit owns SFU
-reconnection and stream state; the application adds no network-type poll or
-SFU-specific timer.
+reconnection and stream state. The one pending candidate's receive-transport
+owner therefore uses a short-lived exact-generation stats observer until a
+fresh peer/SFU activation has a positive cumulative count; a prepared SFU route
+that remained alive while paused instead takes a Resume-time baseline and waits
+for later progress. It stops on proof, promotion, pause, replacement, or
+teardown, creates no additional deadline, and is distinct from the existing
+two-second active-path diagnostic/stall sampler. The application adds no
+network-type poll or SFU-specific route timer.
 
 The overlap edge is physical: an active Host SFU publication consumes one steady
 sender slot, and a media-producing provisional peer candidate consumes another.
@@ -305,7 +313,7 @@ continues.
 
 ## Sources And License Boundary
 
-Sources checked on 2026-08-20 through 2026-08-23:
+Sources checked on 2026-08-20 through 2026-08-24:
 
 - [WebRTC SVC](https://www.w3.org/TR/webrtc-svc/),
   [Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/),

@@ -70,7 +70,7 @@ export class MediaRouteTransition {
     this.phase = update.phase;
     this.plannedAssignment = cloneAssignment(update.assignment);
     this.preparedCandidate =
-      update.phase === "prepare" ? { ...update.candidate } : null;
+      update.phase === "prepare" ? cloneCandidate(update.candidate) : null;
     if (update.phase === "active") {
       this.activeAssignment = cloneAssignment(update.assignment);
     }
@@ -128,7 +128,9 @@ export class MediaRouteTransition {
   }
 
   getPreparedCandidate(): PreparedRouteCandidate | null {
-    return this.preparedCandidate ? { ...this.preparedCandidate } : null;
+    return this.preparedCandidate
+      ? cloneCandidate(this.preparedCandidate)
+      : null;
   }
 
   reset(): void {
@@ -149,8 +151,34 @@ function sameCandidate(
   return (
     left?.childPeerId === right.childPeerId &&
     left.connectionId === right.connectionId &&
-    left.transport === right.transport
+    left.transport === right.transport &&
+    sameCodecTransition(left.codecTransition, right.codecTransition)
   );
+}
+
+function sameCodecTransition(
+  left: PreparedRouteCandidate["codecTransition"] | undefined,
+  right: PreparedRouteCandidate["codecTransition"],
+): boolean {
+  return (
+    left === right ||
+    (left !== null &&
+      left !== undefined &&
+      right !== null &&
+      left.generation === right.generation &&
+      left.videoCodec === right.videoCodec)
+  );
+}
+
+function cloneCandidate(
+  candidate: PreparedRouteCandidate,
+): PreparedRouteCandidate {
+  return {
+    ...candidate,
+    codecTransition: candidate.codecTransition
+      ? { ...candidate.codecTransition }
+      : null,
+  };
 }
 
 export function reportActivePeerRouteFailure(

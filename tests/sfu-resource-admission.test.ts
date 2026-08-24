@@ -131,7 +131,7 @@ describe("SfuResourceAdmission", () => {
     expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
   });
 
-  it("refunds a new reserved subscription when its candidate aborts", () => {
+  it("keeps a released reserved subscription charged until publication absence", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 1,
       egressCapacity: 2,
@@ -146,9 +146,15 @@ describe("SfuResourceAdmission", () => {
     expect(admission.reserveSubscription(candidate)).toBe(true);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
     expect(admission.releaseSubscription(candidate)).toBe(true);
-    expect(admission.releaseSubscription(candidate)).toBe(false);
+    expect(admission.releaseSubscription(candidate)).toBe(true);
     expect(admission.commitSubscription(candidate)).toBe(false);
-    expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
+    expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
+    expect(
+      admission.reserveSubscription(subscription(active, "viewer_c")),
+    ).toBe(false);
+    expect(admission.beginDrain(active)).toBe(true);
+    expect(admission.completeDrain(active)).toBe(true);
+    expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
   it("reactivates a draining subscription in the current generation without double charging", () => {

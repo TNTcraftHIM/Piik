@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  audioSenderParameterWarning,
   applyCaptureProfile,
   captureDisplay,
   configureScreenAudioSender,
@@ -8,6 +9,7 @@ import {
   configureVideoSender,
   matchingQualityProfileId,
   QUALITY_PROFILES,
+  QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   SCREEN_AUDIO_BITRATES,
   screenShareLowBitrate,
@@ -39,6 +41,30 @@ afterEach(() => {
 });
 
 describe("realtime quality controls", () => {
+  it("keeps exactly three recommended profiles with 1080p30 as the default", () => {
+    expect(Object.keys(QUALITY_PROFILES)).toEqual([
+      "1080p60",
+      "1080p30",
+      "720p30",
+    ]);
+    expect(QUALITY_PROFILES["1080p30"]).toMatchObject({
+      resolution: "1080p",
+      maxFramerate: 30,
+      maxBitrate: 5_000_000,
+    });
+  });
+
+  it("offers 854x480 only through advanced resolution settings", () => {
+    expect(QUALITY_RESOLUTIONS["480p"]).toEqual({
+      width: 854,
+      height: 480,
+      label: "480p",
+    });
+    expect(
+      Object.values(QUALITY_PROFILES).map((profile) => profile.resolution),
+    ).not.toContain("480p");
+  });
+
   it("bounds initial capture to the selected profile", async () => {
     const { stream, videoTrack, audioTrack } = createVideoStream();
     const getDisplayMedia = vi.fn(async () => stream);
@@ -169,9 +195,11 @@ describe("realtime quality controls", () => {
       }),
     } as unknown as RTCRtpSender;
 
-    await expect(configureScreenAudioSender(sender, quality)).resolves.toBe(
-      bitrate,
-    );
+    await expect(configureScreenAudioSender(sender, quality)).resolves.toEqual({
+      requestedMaxBitrate: bitrate,
+      appliedMaxBitrate: bitrate,
+      mismatch: false,
+    });
     expect(applied.encodings).toEqual([{ maxBitrate: bitrate }]);
     expect(SCREEN_AUDIO_BITRATES[quality]).toBe(bitrate);
   });
@@ -185,7 +213,51 @@ describe("realtime quality controls", () => {
       }),
     } as unknown as RTCRtpSender;
 
-    await expect(configureScreenAudioSender(sender)).resolves.toBe(128_000);
+    await expect(configureScreenAudioSender(sender)).resolves.toEqual({
+      requestedMaxBitrate: 128_000,
+      appliedMaxBitrate: 128_000,
+      mismatch: false,
+    });
+  });
+
+  it("reports an audio ceiling the browser rewrites", async () => {
+    const sender = {
+      getParameters: vi
+        .fn<() => RTCRtpSendParameters>()
+        .mockReturnValueOnce({ encodings: [{}] } as RTCRtpSendParameters)
+        .mockReturnValue({
+          encodings: [{ maxBitrate: 96_000 }],
+        } as RTCRtpSendParameters),
+      setParameters: vi.fn(async () => undefined),
+    } as unknown as RTCRtpSender;
+
+    const readback = await configureScreenAudioSender(sender, "music");
+
+    expect(readback).toEqual({
+      requestedMaxBitrate: 128_000,
+      appliedMaxBitrate: 96_000,
+      mismatch: true,
+    });
+    expect(audioSenderParameterWarning(readback)).toBe(
+      "浏览器将音频码率上限改写为 96 kbps",
+    );
+  });
+
+  it("does not mutate prior audio parameters when setParameters fails", async () => {
+    const applied = {
+      encodings: [{ maxBitrate: 64_000 }],
+    } as RTCRtpSendParameters;
+    const sender = {
+      getParameters: () => applied,
+      setParameters: vi.fn(async () => {
+        throw new Error("rejected");
+      }),
+    } as unknown as RTCRtpSender;
+
+    await expect(
+      configureScreenAudioSender(sender, "very-high"),
+    ).rejects.toThrow("rejected");
+    expect(applied.encodings[0]?.maxBitrate).toBe(64_000);
   });
 
   it("reports fields the browser does not retain", async () => {

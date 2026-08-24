@@ -1,4 +1,8 @@
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import type {
+  CodecTransitionGeneration,
+  IceConfig,
+  SignalPayload,
+} from "../../shared/protocol";
 import {
   EMPTY_METRICS,
   type PeerSnapshot,
@@ -6,9 +10,11 @@ import {
 import {
   collectConnectionMetrics,
   createStatsAccumulator,
+  decodedVideoFrames,
   type StatsAccumulator,
 } from "./stats";
 import { preferScreenAudioStereo } from "./screen-audio-sdp";
+import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 
 const MAX_PENDING_CANDIDATES = 64;
 const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
@@ -29,6 +35,7 @@ interface ViewerPeerEvents {
   ) => boolean;
   onStream: (stream: MediaStream) => void;
   onUpdate: (snapshot: PeerSnapshot) => void;
+  onFirstDecodedFrame?: (connectionId: string) => boolean;
   onRecoveryExhausted?: (
     parentPeerId: string,
     connectionId: string,
@@ -47,6 +54,7 @@ export class ViewerPeer {
   private statsAccumulator: StatsAccumulator = createStatsAccumulator();
   private statsTimer: number | null = null;
   private statsInFlightConnection: RTCPeerConnection | null = null;
+  private stopDecodedFrameObserver: (() => void) | null = null;
   private disconnectTimer: number | null = null;
   private initialConnectionTimer: number | null = null;
   private recoveryTimer: number | null = null;
@@ -56,6 +64,10 @@ export class ViewerPeer {
   private disposed = false;
   private currentIceConfig: PeerIceConfig;
   private snapshot: PeerSnapshot | null = null;
+  private descriptionTail: Promise<void> = Promise.resolve();
+  private latestCodecNegotiationGeneration:
+    | CodecTransitionGeneration
+    | null = null;
 
   constructor(
     iceConfig: PeerIceConfig,
@@ -71,101 +83,34 @@ export class ViewerPeer {
     if (this.disposed) {
       return;
     }
-    let operationConnection: RTCPeerConnection | null = null;
-    let operationConnectionId: string | null = null;
-
-    try {
-      if (payload.kind === "description") {
-        if (payload.description.type !== "offer") {
-          return;
-        }
-        if (
-          !this.connection ||
-          this.connectionId !== payload.connectionId ||
-          this.parentPeerId !== parentPeerId
-        ) {
-          this.replaceConnection(parentPeerId, payload.connectionId);
-        }
-        const connection = this.connection;
-        if (!connection) {
-          return;
-        }
-        const connectionId = payload.connectionId;
-        operationConnection = connection;
-        operationConnectionId = connectionId;
-        await connection.setRemoteDescription(payload.description);
-        if (!this.isCurrentConnection(connection, connectionId)) {
-          return;
-        }
-        await this.flushCandidates(connection, connectionId);
-        if (!this.isCurrentConnection(connection, connectionId)) {
-          return;
-        }
-        const answer = preferScreenAudioStereo(await connection.createAnswer());
-        if (!this.isCurrentConnection(connection, connectionId)) {
-          return;
-        }
-        await connection.setLocalDescription(answer);
-        if (!this.isCurrentConnection(connection, connectionId)) {
-          return;
-        }
-        if (!connection.localDescription) {
-          throw new Error("Local description was not created");
-        }
-        if (!this.events.sendSignal(parentPeerId, {
-          kind: "description",
-          connectionId,
-          description: {
-            type: "answer",
-            sdp: connection.localDescription.sdp,
-          },
-        })) {
-          throw new Error("Signaling is unavailable while sending the answer");
-        }
-        this.offerRecoveryAttempts = 0;
-        this.scheduleInitialConnectionDeadline(connection, connectionId);
-      } else if (
-        this.connection &&
-        this.parentPeerId === parentPeerId &&
-        this.connectionId === payload.connectionId &&
-        this.connection.remoteDescription
-      ) {
-        const connection = this.connection;
-        const connectionId = payload.connectionId;
-        operationConnection = connection;
-        operationConnectionId = connectionId;
-        await connection.addIceCandidate(payload.candidate);
-        if (!this.isCurrentConnection(connection, connectionId)) {
-          return;
-        }
-      } else {
-        this.queueCandidate(payload.connectionId, payload.candidate);
-      }
-    } catch (error) {
-      if (
-        !operationConnection ||
-        operationConnectionId === null ||
-        !this.isCurrentConnection(operationConnection, operationConnectionId)
-      ) {
+    if (payload.kind === "description") {
+      if (payload.description.type !== "offer") {
         return;
       }
-      this.setError(error, "处理分享端信令失败");
       if (
-        payload.kind === "description" &&
-        this.offerRecoveryAttempts < 1 &&
-        this.events.sendRestartRequest(
-          parentPeerId,
-          operationConnectionId,
-          true,
-        )
+        !this.connection ||
+        this.connectionId !== payload.connectionId ||
+        this.parentPeerId !== parentPeerId
       ) {
-        this.offerRecoveryAttempts += 1;
-        this.automaticRecoveryRequests = MAX_AUTOMATIC_RECOVERY_REQUESTS;
-        this.scheduleRecoveryDeadline();
-      } else if (payload.kind === "description") {
-        this.reportRecoveryExhausted();
+        this.replaceConnection(parentPeerId, payload.connectionId);
       }
+      const connection = this.connection;
+      if (!connection) {
+        return;
+      }
+      const generation = payload.negotiationGeneration;
+      if (generation !== null) {
+        const latest = this.latestCodecNegotiationGeneration;
+        if (latest !== null && generation <= latest) {
+          return;
+        }
+        this.latestCodecNegotiationGeneration = generation;
+      }
+      return this.enqueueDescription(() =>
+        this.acceptDescription(parentPeerId, connection, payload),
+      );
     }
+    await this.acceptCandidate(parentPeerId, payload);
   }
 
   updateIceConfig(iceConfig: IceConfig): void {
@@ -223,6 +168,11 @@ export class ViewerPeer {
     return this.connection?.connectionState === "connected";
   }
 
+  stopDecodedFrameProof(): void {
+    this.stopDecodedFrameObserver?.();
+    this.stopDecodedFrameObserver = null;
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;
@@ -243,6 +193,8 @@ export class ViewerPeer {
     }
     this.parentPeerId = parentPeerId;
     this.connectionId = connectionId;
+    this.descriptionTail = Promise.resolve();
+    this.latestCodecNegotiationGeneration = null;
     this.remoteStream = new MediaStream();
     this.statsAccumulator = createStatsAccumulator();
 
@@ -304,7 +256,121 @@ export class ViewerPeer {
     this.statsTimer = window.setInterval(() => {
       void this.updateStats(connection, connectionId);
     }, 2_000);
+    if (this.events.onFirstDecodedFrame) {
+      this.stopDecodedFrameObserver = observeDecodedFrameProof({
+        readFramesDecoded: async () => {
+          const track = this.remoteStream.getVideoTracks()[0];
+          return decodedVideoFrames(
+            await connection.getStats(),
+            track ? { trackIdentifier: track.id } : null,
+          );
+        },
+        owns: () => this.isCurrentConnection(connection, connectionId),
+        onProof: () =>
+          this.events.onFirstDecodedFrame?.(connectionId) ?? true,
+      });
+    }
     this.emit();
+  }
+
+  private enqueueDescription(work: () => Promise<void>): Promise<void> {
+    const result = this.descriptionTail.then(work, work);
+    this.descriptionTail = result.catch(() => undefined);
+    return result;
+  }
+
+  private async acceptDescription(
+    parentPeerId: string,
+    connection: RTCPeerConnection,
+    payload: Extract<SignalPayload, { kind: "description" }>,
+  ): Promise<void> {
+    const connectionId = payload.connectionId;
+    const generation = payload.negotiationGeneration;
+    try {
+      await connection.setRemoteDescription(payload.description);
+      if (!this.ownsDescription(connection, connectionId, generation)) {
+        return;
+      }
+      await this.flushCandidates(connection, connectionId);
+      if (!this.ownsDescription(connection, connectionId, generation)) {
+        return;
+      }
+      const answer = preferScreenAudioStereo(await connection.createAnswer());
+      if (!this.ownsDescription(connection, connectionId, generation)) {
+        return;
+      }
+      await connection.setLocalDescription(answer);
+      if (!this.ownsDescription(connection, connectionId, generation)) {
+        return;
+      }
+      if (!connection.localDescription) {
+        throw new Error("Local description was not created");
+      }
+      if (!this.events.sendSignal(parentPeerId, {
+        kind: "description",
+        connectionId,
+        negotiationGeneration: generation,
+        description: {
+          type: "answer",
+          sdp: connection.localDescription.sdp,
+        },
+      })) {
+        throw new Error("Signaling is unavailable while sending the answer");
+      }
+      this.offerRecoveryAttempts = 0;
+      this.scheduleInitialConnectionDeadline(connection, connectionId);
+    } catch (error) {
+      if (!this.ownsDescription(connection, connectionId, generation)) {
+        return;
+      }
+      this.setError(error, "处理分享端信令失败");
+      if (
+        this.offerRecoveryAttempts < 1 &&
+        this.events.sendRestartRequest(parentPeerId, connectionId, true)
+      ) {
+        this.offerRecoveryAttempts += 1;
+        this.automaticRecoveryRequests = MAX_AUTOMATIC_RECOVERY_REQUESTS;
+        this.scheduleRecoveryDeadline();
+      } else {
+        this.reportRecoveryExhausted();
+      }
+    }
+  }
+
+  private async acceptCandidate(
+    parentPeerId: string,
+    payload: Extract<SignalPayload, { kind: "candidate" }>,
+  ): Promise<void> {
+    if (
+      !this.connection ||
+      this.parentPeerId !== parentPeerId ||
+      this.connectionId !== payload.connectionId ||
+      !this.connection.remoteDescription
+    ) {
+      this.queueCandidate(payload.connectionId, payload.candidate);
+      return;
+    }
+    const connection = this.connection;
+    const connectionId = payload.connectionId;
+    try {
+      await connection.addIceCandidate(payload.candidate);
+    } catch (error) {
+      if (this.isCurrentConnection(connection, connectionId)) {
+        this.setError(error, "处理分享端信令失败");
+      }
+    }
+  }
+
+  private ownsDescription(
+    connection: RTCPeerConnection,
+    connectionId: string,
+    generation: CodecTransitionGeneration | null,
+  ): boolean {
+    return (
+      this.isCurrentConnection(connection, connectionId) &&
+      (generation === null ||
+        this.latestCodecNegotiationGeneration === generation)
+    );
   }
 
   private handleConnectionState(state: RTCPeerConnectionState): void {
@@ -555,6 +621,7 @@ export class ViewerPeer {
   private disposeConnection(): void {
     this.clearDisconnectTimer();
     this.clearInitialConnectionTimer();
+    this.stopDecodedFrameProof();
     if (this.statsTimer !== null) {
       window.clearInterval(this.statsTimer);
       this.statsTimer = null;

@@ -104,6 +104,21 @@ describe("StatsGrid progressive disclosure", () => {
     expect(html).not.toContain("aria-expanded");
   });
 
+  it("does not expose an unknown browser quality-limitation value", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatsGrid, {
+        metrics: {
+          ...metrics,
+          qualityLimitationReason: "browser-internal-sentinel",
+        },
+        direction: "send",
+      }),
+    );
+
+    expect(html).toContain("未分类限制");
+    expect(html).not.toContain("browser-internal-sentinel");
+  });
+
   it("shows local inbound playout and repair evidence only for receivers", () => {
     const receiverMetrics = {
       ...metrics,

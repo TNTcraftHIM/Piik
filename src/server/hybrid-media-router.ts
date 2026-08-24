@@ -2,12 +2,16 @@ import { randomBytes } from "node:crypto";
 
 import type {
   ClientMessage,
+  CodecPreparationBinding,
+  CodecProofBinding,
+  CodecTransitionGeneration,
   MediaAssignment,
   MediaRouteUpstream,
   ParticipantRouteAssignment,
   PreparedRouteCandidate,
   Role,
   ServerMessage,
+  VideoCodecPreference,
 } from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
@@ -17,6 +21,8 @@ import {
   type CandidatePlan,
   type CandidateReservation,
   type CandidateTuple,
+  type CodecOperationGuard,
+  type EdgeGuard,
   type OperationSnapshot,
   type RouteSnapshot,
 } from "./room-route-controller.js";
@@ -79,6 +85,15 @@ interface RoomRuntime {
   pump?: Promise<void>;
   deadlineTimer?: NodeJS.Timeout;
   refreshKeys: Set<string>;
+  codecOperation?: CodecOperationRuntime;
+  codecDrainBarrierKey?: string;
+}
+
+interface CodecOperationRuntime {
+  generation: CodecTransitionGeneration;
+  guard: CodecOperationGuard;
+  drainBeforePreparationKey?: string;
+  resolvePreparation?: (snapshot: CodecRouteSnapshot | null) => void;
 }
 
 interface PreparedCandidate {
@@ -86,12 +101,20 @@ interface PreparedCandidate {
   connectionId: string;
   publicationGeneration?: string;
   publicationConnectionId?: string;
+  hostSessionId?: string;
   hostSfuConfig?: Extract<ServerMessage, { type: "sfu-config" }>;
   viewerSfuConfig?: Extract<ServerMessage, { type: "sfu-config" }>;
 }
 
+type ResourceWaiter =
+  | { kind: "admission" }
+  | { kind: "drain"; drainKey: string };
+
 type PrepareResult =
-  | { kind: "denied"; serverAdmission: "sfu" | false }
+  | {
+      kind: "denied";
+      rejectionBucket: "stale" | "sfu-admission" | "candidate-failed";
+    }
   | { kind: "ready"; prepared: PreparedCandidate };
 
 export interface SfuFallbackOptions {
@@ -138,9 +161,24 @@ export interface AuthenticatedRouteParticipant {
   sessionId: string;
 }
 
+export interface CodecRouteTarget {
+  viewerPeerId: string;
+  viewerSessionId: string;
+  preparationOwnerSessionId: string;
+  preparationBinding: CodecPreparationBinding;
+  proofBinding: CodecProofBinding;
+  routeRevision: number;
+  proofReady: boolean;
+}
+
+export interface CodecRouteSnapshot {
+  revision: number;
+  targets: readonly CodecRouteTarget[];
+}
+
 export class HybridMediaRouter {
   private readonly rooms = new Map<string, RoomRuntime>();
-  private readonly resourceWaiterRoomIds = new Set<string>();
+  private readonly resourceWaiters = new Map<string, ResourceWaiter>();
   private readonly sfuDrainTasks = new Map<string, SfuDrainTask>();
   private readonly hostOfflineChecks = new Map<string, HostOfflineCheck>();
   private readonly now: () => number;
@@ -155,7 +193,7 @@ export class HybridMediaRouter {
   async close(): Promise<void> {
     this.closing = true;
     for (const roomId of [...this.rooms.keys()]) this.clearRoom(roomId);
-    this.resourceWaiterRoomIds.clear();
+    this.resourceWaiters.clear();
     for (const check of this.hostOfflineChecks.values()) clearTimeout(check.timer);
     this.hostOfflineChecks.clear();
     const fallback = this.options.sfuFallback;
@@ -190,7 +228,7 @@ export class HybridMediaRouter {
             input.role === "host"
               ? this.options.endpointMediaCopyCapacity
               : (room.advertisedCapacityByViewer.get(input.peerId) ?? 0),
-        }),
+        }, this.now()),
       );
     }
     const snapshot = room.controller?.snapshot();
@@ -227,9 +265,20 @@ export class HybridMediaRouter {
     const room = this.rooms.get(roomId);
     if (!room?.controller) return;
     const before = room.controller.snapshot().revision;
-    this.releaseResources(room.controller.setPaused(paused));
+    this.releaseResources(room.controller.setPaused(paused, this.now()));
     if (room.controller.snapshot().revision !== before) this.broadcastActive(roomId, room);
     if (!paused) this.requestPump(roomId);
+  }
+
+  routeDiagnosticSnapshot(
+    roomId: string,
+  ): Extract<ServerMessage, { type: "route-diagnostic-snapshot" }>["snapshot"] {
+    return (
+      this.rooms.get(roomId)?.controller?.routeDiagnosticSnapshot(this.now()) ?? {
+        children: [],
+        operation: null,
+      }
+    );
   }
 
   isActivePeerParentOf(
@@ -261,6 +310,311 @@ export class HybridMediaRouter {
     return snapshot
       ? (this.assignments(roomId, snapshot).get(viewerPeerId)?.upstream ?? { kind: "none" })
       : { kind: "none" };
+  }
+
+  codecRouteSnapshot(roomId: string): CodecRouteSnapshot | null {
+    const room = this.rooms.get(roomId);
+    const snapshot = room?.controller?.snapshot();
+    if (!room || !snapshot) {
+      return null;
+    }
+    const targets: CodecRouteTarget[] = [];
+    for (const [viewerPeerId, edge] of snapshot.upstreamByViewer) {
+      if (!edge.usable || !edge.physicalActive) {
+        continue;
+      }
+      const viewer = this.options.roomStore.getConnectedViewer(
+        roomId,
+        viewerPeerId,
+      );
+      if (viewer?.sessionId !== edge.childSessionId) {
+        continue;
+      }
+      const pathIsPhysical = this.pathIsPhysical(
+        roomId,
+        snapshot,
+        viewerPeerId,
+      );
+      if (edge.kind === "peer") {
+        const parent = this.connectedPeer(roomId, edge.parentPeerId);
+        if (parent?.sessionId !== edge.parentSessionId) {
+          continue;
+        }
+        targets.push({
+          viewerPeerId,
+          viewerSessionId: edge.childSessionId,
+          preparationOwnerSessionId: edge.parentSessionId,
+          preparationBinding: {
+            kind: "peer",
+            childPeerId: viewerPeerId,
+            connectionId: edge.connectionId,
+          },
+          proofBinding: {
+            kind: "peer",
+            connectionId: edge.connectionId,
+          },
+          routeRevision: snapshot.revision,
+          proofReady: pathIsPhysical,
+        });
+        continue;
+      }
+      const publication = snapshot.hostPublication;
+      const host = this.options.roomStore.getConnectedHost(roomId);
+      if (
+        pathIsPhysical &&
+        publication?.usable &&
+        publication.physicalActive &&
+        publication.generation === edge.publicationGeneration &&
+        host?.sessionId === publication.hostSessionId
+      ) {
+        targets.push({
+          viewerPeerId,
+          viewerSessionId: edge.childSessionId,
+          preparationOwnerSessionId: publication.hostSessionId,
+          preparationBinding: {
+            kind: "sfu",
+            publicationGeneration: edge.publicationGeneration,
+          },
+          proofBinding: {
+            kind: "sfu",
+            connectionId: edge.connectionId,
+            publicationGeneration: edge.publicationGeneration,
+          },
+          routeRevision: snapshot.revision,
+          proofReady: true,
+        });
+      }
+    }
+    const operation = snapshot.operation;
+    const current = operation?.current;
+    if (
+      operation?.owner.kind === "codec" &&
+      current?.tuple.kind === "sfu"
+    ) {
+      const host = this.options.roomStore.getConnectedHost(roomId);
+      const viewer = this.options.roomStore.getConnectedViewer(
+        roomId,
+        operation.childPeerId,
+      );
+      if (
+        host?.sessionId === operation.owner.hostSessionId &&
+        viewer?.sessionId === operation.childSessionId
+      ) {
+          const target: CodecRouteTarget = {
+            viewerPeerId: operation.childPeerId,
+            viewerSessionId: operation.childSessionId,
+            preparationOwnerSessionId: host.sessionId,
+            preparationBinding: {
+              kind: "sfu",
+              publicationGeneration: operation.owner.publicationGeneration,
+            },
+            proofBinding: {
+              kind: "sfu",
+              connectionId: operation.owner.connectionId,
+              publicationGeneration: operation.owner.publicationGeneration,
+            },
+            routeRevision: current.revision,
+            proofReady: false,
+          };
+          const existingIndex = targets.findIndex(
+            (candidate) => candidate.viewerPeerId === operation.childPeerId,
+          );
+          if (existingIndex === -1) targets.push(target);
+          else targets[existingIndex] = target;
+      }
+    }
+    return { revision: snapshot.revision, targets };
+  }
+
+  beginCodecSfuReplacement(input: {
+    roomId: string;
+    hostSessionId: string;
+    generation: CodecTransitionGeneration;
+    videoCodec: VideoCodecPreference;
+    timeoutMs: number;
+  }): Promise<CodecRouteSnapshot | null> {
+    const room = this.rooms.get(input.roomId);
+    const controller = room?.controller;
+    const snapshot = controller?.snapshot();
+    if (
+      !room ||
+      !controller ||
+      !snapshot ||
+      room.codecOperation ||
+      !this.options.sfuFallback
+    ) {
+      return Promise.resolve(null);
+    }
+    const nowMs = this.now();
+    const publicationGeneration = opaqueId();
+    const connectionId = opaqueId();
+    const publicationConnectionId = opaqueId();
+    const begun = controller.beginCodecSfuPublication({
+      routeRevision: snapshot.revision,
+      hostSessionId: input.hostSessionId,
+      codecGeneration: input.generation,
+      videoCodec: input.videoCodec,
+      publicationGeneration,
+      connectionId,
+      publicationConnectionId,
+      nowMs,
+      deadlineAtMs: nowMs + input.timeoutMs,
+    });
+    if (!begun.accepted || !begun.guard) {
+      this.releaseResources(begun.released);
+      return Promise.resolve(null);
+    }
+    let resolvePreparation!: (snapshot: CodecRouteSnapshot | null) => void;
+    const preparation = new Promise<CodecRouteSnapshot | null>((resolve) => {
+      resolvePreparation = resolve;
+    });
+    const carriedDrainBarrierKey = room.codecDrainBarrierKey;
+    const drainBeforePreparationKey =
+      carriedDrainBarrierKey ??
+      (snapshot.hostPublication?.resource.kind === "sfu-publication"
+        ? managedSfuRoomName(snapshot.hostPublication.resource.fence)
+        : undefined);
+    room.codecDrainBarrierKey = undefined;
+    room.codecOperation = {
+      generation: input.generation,
+      guard: begun.guard,
+      ...(drainBeforePreparationKey ? { drainBeforePreparationKey } : {}),
+      resolvePreparation,
+    };
+    this.releaseResources(begun.released);
+    if (controller.snapshot().revision !== snapshot.revision) {
+      this.broadcastActive(input.roomId, room);
+    }
+    this.requestPump(input.roomId);
+    return preparation;
+  }
+
+  parkCodecSfuReplacement(
+    roomId: string,
+    generation: CodecTransitionGeneration,
+  ): boolean {
+    const room = this.rooms.get(roomId);
+    const runtime = room?.codecOperation;
+    const controller = room?.controller;
+    const operation = controller?.snapshot().operation;
+    if (
+      !room ||
+      !runtime ||
+      runtime.generation !== generation ||
+      !controller ||
+      operation?.owner.kind !== "codec"
+    ) {
+      return false;
+    }
+    const expectedPhase = operation.owner.phase;
+    if (expectedPhase !== "preparing" && expectedPhase !== "proving") {
+      return expectedPhase === "prepared";
+    }
+    const parked = controller.transitionCodecOperation({
+      guard: runtime.guard,
+      expectedPhase,
+      phase: "prepared",
+    });
+    this.releaseResources(parked.released);
+    this.clearDeadline(room);
+    return parked.accepted;
+  }
+
+  beginCodecSfuProof(
+    roomId: string,
+    generation: CodecTransitionGeneration,
+    timeoutMs: number,
+  ): boolean {
+    const room = this.rooms.get(roomId);
+    const runtime = room?.codecOperation;
+    const controller = room?.controller;
+    if (!room || !runtime || runtime.generation !== generation || !controller) {
+      return false;
+    }
+    const nowMs = this.now();
+    const proving = controller.transitionCodecOperation({
+      guard: runtime.guard,
+      expectedPhase: "prepared",
+      phase: "proving",
+      nowMs,
+      deadlineAtMs: nowMs + timeoutMs,
+    });
+    this.releaseResources(proving.released);
+    this.clearDeadline(room);
+    return proving.accepted;
+  }
+
+  abortCodecSfuReplacement(
+    roomId: string,
+    generation: CodecTransitionGeneration,
+  ): void {
+    const room = this.rooms.get(roomId);
+    const runtime = room?.codecOperation;
+    const controller = room?.controller;
+    if (!room || !runtime || runtime.generation !== generation || !controller) {
+      return;
+    }
+    const before = controller.snapshot().revision;
+    const aborted = controller.abortCodecOperation(runtime.guard, this.now());
+    this.releaseResources(aborted.released);
+    this.carryCodecDrainBarrier(room);
+    this.resourceWaiters.delete(roomId);
+    this.settleCodecPreparation(room, null);
+    room.codecOperation = undefined;
+    this.clearDeadline(room);
+    if (controller.snapshot().revision !== before) {
+      this.broadcastActive(roomId, room);
+    }
+  }
+
+  routeWaitInvalidCodecTargets(
+    roomId: string,
+    viewerPeerIds: readonly string[],
+  ): number | null {
+    const room = this.rooms.get(roomId);
+    const controller = room?.controller;
+    const snapshot = controller?.snapshot();
+    if (!room || !controller || !snapshot) return null;
+
+    const guards: EdgeGuard[] = [];
+    for (const viewerPeerId of new Set(viewerPeerIds)) {
+      const viewer = this.options.roomStore.getConnectedViewer(
+        roomId,
+        viewerPeerId,
+      );
+      const edge = snapshot.upstreamByViewer.get(viewerPeerId);
+      if (
+        !viewer ||
+        !edge?.physicalActive ||
+        edge.childSessionId !== viewer.sessionId
+      ) {
+        continue;
+      }
+      guards.push({
+        childPeerId: viewerPeerId,
+        childSessionId: viewer.sessionId,
+        routeRevision: snapshot.revision,
+        connectionId: edge.connectionId,
+        ...(edge.kind === "peer"
+          ? { parentSessionId: edge.parentSessionId }
+          : {}),
+      });
+    }
+    if (guards.length === 0) return snapshot.revision;
+
+    const retired = controller.retireCommittedTransportsForRouteWait(
+      guards,
+      this.now(),
+    );
+    if (!retired.accepted) {
+      throw new Error("Codec route targets could not enter route-wait");
+    }
+    this.releaseResources(retired.released);
+    if (retired.activeRevision !== snapshot.revision) {
+      this.broadcastActive(roomId, room);
+    }
+    this.requestPump(roomId);
+    return retired.activeRevision;
   }
 
   viewerSfuMediaStateIsCurrent(
@@ -366,6 +720,7 @@ export class HybridMediaRouter {
         participant.peerId,
         participant.sessionId,
         downstreamEdges,
+        this.now(),
       )
     ) {
       this.requestPump(participant.roomId);
@@ -393,6 +748,10 @@ export class HybridMediaRouter {
       return;
     }
     const before = controller.snapshot().revision;
+    const codecGeneration =
+      operation.owner.kind === "codec"
+        ? operation.owner.codecGeneration
+        : undefined;
     const settled = controller.candidateReady(
       {
         childPeerId: participant.peerId,
@@ -405,14 +764,29 @@ export class HybridMediaRouter {
     );
     this.releaseResources(settled.released);
     if (settled.accepted) {
-      this.resourceWaiterRoomIds.delete(participant.roomId);
+      this.resourceWaiters.delete(participant.roomId);
       this.options.setConnectionId(
         participant.roomId,
         participant.peerId,
         current.connectionId,
       );
+      if (
+        codecGeneration !== undefined &&
+        room.codecOperation?.generation === codecGeneration
+      ) {
+        this.settleCodecPreparation(room, null);
+        room.codecOperation = undefined;
+      }
     }
     if (controller.snapshot().revision !== before) this.broadcastActive(participant.roomId, room);
+    if (settled.exhausted) {
+      this.sendViewerRouteStatus(participant.roomId, participant.peerId, {
+        type: "route-status",
+        revision: controller.snapshot().revision,
+        state: "failed",
+        reason: "route-exhausted",
+      });
+    }
     this.requestPump(participant.roomId);
   }
 
@@ -441,7 +815,7 @@ export class HybridMediaRouter {
       childSessionId: participant.sessionId,
       routeRevision: snapshot.revision,
       connectionId: edge.connectionId,
-    });
+    }, this.now());
     this.requestPump(participant.roomId);
   }
 
@@ -469,7 +843,11 @@ export class HybridMediaRouter {
       const ownsPublication =
         current.tuple.kind === "sfu" &&
         participant.role === "host" &&
-        participant.peerId === room.hostPeerId;
+        participant.peerId === room.hostPeerId &&
+        this.options.roomStore.getConnectedHost(participant.roomId)
+          ?.sessionId === participant.sessionId &&
+        (operation.owner.kind !== "codec" ||
+          operation.owner.hostSessionId === participant.sessionId);
       if (!ownsChild && !ownsParent && !ownsPublication) return;
       if (message.connectionId && message.connectionId !== current.connectionId) return;
       const before = snapshot.revision;
@@ -484,6 +862,18 @@ export class HybridMediaRouter {
       );
       this.releaseResources(settled.released);
       if (controller.snapshot().revision !== before) this.broadcastActive(participant.roomId, room);
+      if (settled.exhausted) {
+        this.sendViewerRouteStatus(
+          participant.roomId,
+          operation.childPeerId,
+          {
+            type: "route-status",
+            revision: controller.snapshot().revision,
+            state: "failed",
+            reason: "route-exhausted",
+          },
+        );
+      }
       this.requestPump(participant.roomId);
       return;
     }
@@ -503,7 +893,7 @@ export class HybridMediaRouter {
         routeRevision: snapshot.revision,
         generation: publication.generation,
         connectionId: publication.connectionId,
-      });
+      }, this.now());
       const invalid = controller.snapshot();
       this.releaseResources(
         controller.retireHostPublication({
@@ -526,13 +916,16 @@ export class HybridMediaRouter {
     ) {
       return;
     }
-    controller.invalidateEdge({
+    const invalidated = controller.invalidateEdge({
       childPeerId: participant.peerId,
       childSessionId: participant.sessionId,
       routeRevision: snapshot.revision,
       connectionId: edge.connectionId,
       ...(edge.kind === "peer" ? { parentSessionId: edge.parentSessionId } : {}),
-    });
+    }, this.now());
+    if (invalidated && edge.usable && snapshot.paused) {
+      this.options.onActiveRouteChanged?.(participant.roomId);
+    }
     this.requestPump(participant.roomId);
   }
 
@@ -557,7 +950,9 @@ export class HybridMediaRouter {
     const room = this.rooms.get(roomId);
     room?.advertisedCapacityByViewer.delete(peerId);
     this.options.deleteConnectionId(roomId, peerId);
-    if (room?.controller?.confirmDeparture(peerId)) this.requestPump(roomId);
+    if (room?.controller?.confirmDeparture(peerId, this.now())) {
+      this.requestPump(roomId);
+    }
   }
 
   stopRoom(roomId: string): void {
@@ -598,7 +993,7 @@ export class HybridMediaRouter {
       role: "host",
       sessionId: host.sessionId,
       effectiveDownstreamCapacity: this.options.endpointMediaCopyCapacity,
-    });
+    }, this.now());
     for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
       room.controller.upsertParticipant({
         peerId: viewer.peerId,
@@ -606,7 +1001,7 @@ export class HybridMediaRouter {
         sessionId: viewer.sessionId,
         effectiveDownstreamCapacity:
           room.advertisedCapacityByViewer.get(viewer.peerId) ?? 0,
-      });
+      }, this.now());
     }
   }
 
@@ -626,6 +1021,10 @@ export class HybridMediaRouter {
         if (room.requested && !this.closing) this.requestPump(roomId);
       }
     })().catch(() => {
+      const generation = room.codecOperation?.generation;
+      if (generation !== undefined) {
+        this.abortCodecSfuReplacement(roomId, generation);
+      }
       console.error("Media route reconciliation failed");
       this.sendRoomError(roomId, "SERVER_ERROR", "Media routing failed");
     });
@@ -639,18 +1038,59 @@ export class HybridMediaRouter {
       const reconciled = controller.reconcile(this.now());
       this.releaseResources(reconciled.released);
       if (controller.snapshot().revision !== beforeRevision) this.broadcastActive(roomId, room);
+      for (const peerId of reconciled.failedPeerIds) {
+        this.sendViewerRouteStatus(roomId, peerId, {
+          type: "route-status",
+          revision: controller.snapshot().revision,
+          state: "failed",
+          reason: "route-exhausted",
+        });
+      }
       const operation = reconciled.operation ?? controller.snapshot().operation;
       if (!operation) {
         this.clearDeadline(room);
+        this.resourceWaiters.delete(roomId);
+        if (room.codecOperation) {
+          this.settleCodecPreparation(room, null);
+          this.carryCodecDrainBarrier(room);
+          room.codecOperation = undefined;
+        }
         return;
       }
       if (operation.current) {
-        this.scheduleDeadline(roomId, room, operation);
+        this.resourceWaiters.delete(roomId);
+        if (operation.owner.kind === "route") {
+          this.scheduleDeadline(roomId, room, operation);
+        } else {
+          this.clearDeadline(room);
+        }
         return;
       }
       const plan = operation.candidates[operation.cursor];
-      if (!plan) return;
+      if (!plan) {
+        this.resourceWaiters.delete(roomId);
+        return;
+      }
+      if (operation.owner.kind === "codec") {
+        const runtime = room.codecOperation;
+        const drainKey = runtime?.drainBeforePreparationKey;
+        if (
+          runtime?.generation === operation.owner.codecGeneration &&
+          drainKey &&
+          this.sfuDrainTasks.has(drainKey)
+        ) {
+          this.resourceWaiters.set(roomId, { kind: "drain", drainKey });
+          this.clearDeadline(room);
+          return;
+        }
+        if (runtime) runtime.drainBeforePreparationKey = undefined;
+      }
       const guard = cursorGuard(operation, plan);
+      if (plan.tuple.kind === "sfu") {
+        this.resourceWaiters.set(roomId, { kind: "admission" });
+      } else {
+        this.resourceWaiters.delete(roomId);
+      }
       const preparation = await this.prepareCandidate(
         roomId,
         room,
@@ -660,28 +1100,73 @@ export class HybridMediaRouter {
           (plan.endpointTransition.kind === "bounded-gap" ? 2 : 1),
       );
       if (preparation.kind === "denied") {
-        if (preparation.serverAdmission === "sfu") {
-          this.resourceWaiterRoomIds.add(roomId);
+        if (preparation.rejectionBucket !== "sfu-admission") {
+          this.resourceWaiters.delete(roomId);
+        }
+        if (operation.owner.kind === "codec") {
+          if (preparation.rejectionBucket === "sfu-admission") {
+            this.resourceWaiters.set(roomId, { kind: "admission" });
+            this.clearDeadline(room);
+            return;
+          }
+          this.abortCodecSfuReplacement(
+            roomId,
+            operation.owner.codecGeneration,
+          );
+          return;
+        }
+        if (preparation.rejectionBucket === "sfu-admission") {
+          if (
+            !controller.noteCurrentCandidateRejection(
+              guard,
+              "sfu-admission",
+            )
+          ) {
+            continue;
+          }
+          this.resourceWaiters.set(roomId, { kind: "admission" });
+          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+            type: "route-status",
+            revision: operation.baseRevision,
+            state: "waiting",
+            reason: "sfu-admission",
+          });
           this.scheduleDeadline(roomId, room, operation);
           return;
         }
-        const skipped = controller.skipCurrentCandidate(guard, this.now());
+        const skipped = controller.skipCurrentCandidate(
+          guard,
+          this.now(),
+          preparation.rejectionBucket,
+        );
         this.releaseResources(skipped.released);
         if (skipped.exhausted) {
-          this.sendViewerError(
-            roomId,
-            operation.childPeerId,
-            "PEER_NOT_FOUND",
-            "No usable media route is available",
-          );
+          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+            type: "route-status",
+            revision: controller.snapshot().revision,
+            state: "failed",
+            reason: "route-exhausted",
+          });
         }
         continue;
       }
+      this.resourceWaiters.delete(roomId);
       let currentOperation = controller.snapshot().operation;
-      if (plan.endpointTransition.kind === "bounded-gap") {
+      if (
+        operation.owner.kind === "route" &&
+        plan.endpointTransition.kind === "bounded-gap"
+      ) {
         const beforeGap = controller.snapshot().revision;
         const gap = controller.retireCurrentCandidateProducer(guard, this.now());
         this.releaseResources(gap.released);
+        if (gap.exhausted) {
+          this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+            type: "route-status",
+            revision: controller.snapshot().revision,
+            state: "failed",
+            reason: "route-exhausted",
+          });
+        }
         if (!gap.accepted) {
           this.releaseReservation(preparation.prepared.reservation);
           continue;
@@ -701,16 +1186,24 @@ export class HybridMediaRouter {
         reservation: preparation.prepared.reservation,
         publicationGeneration: preparation.prepared.publicationGeneration,
         publicationConnectionId: preparation.prepared.publicationConnectionId,
+        hostSessionId: preparation.prepared.hostSessionId,
       });
       this.releaseResources(begun.released);
       if (!begun.accepted || !begun.operation?.current) {
-        if (begun.exhausted) {
-          this.sendViewerError(
+        if (operation.owner.kind === "codec") {
+          this.abortCodecSfuReplacement(
             roomId,
-            operation.childPeerId,
-            "PEER_NOT_FOUND",
-            "No usable media route is available",
+            operation.owner.codecGeneration,
           );
+          return;
+        }
+        if (begun.exhausted) {
+        this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+          type: "route-status",
+          revision: controller.snapshot().revision,
+          state: "failed",
+          reason: "route-exhausted",
+        });
         }
         continue;
       }
@@ -720,7 +1213,15 @@ export class HybridMediaRouter {
         begun.operation,
         preparation.prepared,
       );
-      this.scheduleDeadline(roomId, room, begun.operation);
+      if (begun.operation.owner.kind === "codec") {
+        this.clearDeadline(room);
+        this.settleCodecPreparation(
+          room,
+          this.codecRouteSnapshot(roomId),
+        );
+      } else {
+        this.scheduleDeadline(roomId, room, begun.operation);
+      }
       return;
     }
   }
@@ -736,9 +1237,12 @@ export class HybridMediaRouter {
     const child = this.options.roomStore.getConnectedViewer(roomId, operation.childPeerId);
     const shareGeneration = this.options.getShareGeneration(roomId);
     if (!child || child.sessionId !== operation.childSessionId || !shareGeneration) {
-      return { kind: "denied", serverAdmission: false };
+      return { kind: "denied", rejectionBucket: "stale" };
     }
-    const connectionId = opaqueId();
+    const connectionId =
+      operation.owner.kind === "codec"
+        ? operation.owner.connectionId
+        : opaqueId();
     const overlap =
       plan.endpointTransition.kind === "overlap"
         ? overlapResource(plan.endpointTransition.producerPeerId)
@@ -755,8 +1259,14 @@ export class HybridMediaRouter {
 
     const fallback = this.options.sfuFallback;
     const host = this.options.roomStore.getConnectedHost(roomId);
-    if (!fallback || !host || host.peerId !== room.hostPeerId) {
-      return { kind: "denied", serverAdmission: false };
+    if (
+      !fallback ||
+      !host ||
+      host.peerId !== room.hostPeerId ||
+      (operation.owner.kind === "codec" &&
+        host.sessionId !== operation.owner.hostSessionId)
+    ) {
+      return { kind: "denied", rejectionBucket: "stale" };
     }
     if (plan.tuple.publication === "reuse") {
       const publication = snapshot.hostPublication;
@@ -764,14 +1274,14 @@ export class HybridMediaRouter {
         !publication ||
         publication.resource.kind !== "sfu-publication"
       ) {
-        return { kind: "denied", serverAdmission: false };
+        return { kind: "denied", rejectionBucket: "stale" };
       }
       const fence: SfuSubscriptionFence = {
         ...publication.resource.fence,
         viewerPeerId: operation.childPeerId,
       };
       if (!fallback.admission.reserveSubscription(fence)) {
-        return { kind: "denied", serverAdmission: "sfu" };
+        return { kind: "denied", rejectionBucket: "sfu-admission" };
       }
       const currentEdge = snapshot.upstreamByViewer.get(operation.childPeerId);
       const edge =
@@ -794,6 +1304,7 @@ export class HybridMediaRouter {
           kind: "ready",
           prepared: {
             connectionId,
+            hostSessionId: host.sessionId,
             reservation: {
               kind: "sfu-reuse",
               edge,
@@ -809,8 +1320,8 @@ export class HybridMediaRouter {
           },
         };
       } catch {
-        fallback.admission.releaseSubscription(fence);
-        return { kind: "denied", serverAdmission: false };
+        this.releaseSubscription(fence);
+        return { kind: "denied", rejectionBucket: "candidate-failed" };
       }
     }
 
@@ -822,6 +1333,13 @@ export class HybridMediaRouter {
       shareGeneration,
       host,
       overlap,
+      operation.owner.kind === "codec"
+        ? {
+            publicationGeneration: operation.owner.publicationGeneration,
+            publicationConnectionId:
+              operation.owner.publicationConnectionId,
+          }
+        : undefined,
     );
   }
 
@@ -831,11 +1349,16 @@ export class HybridMediaRouter {
     revision: number,
     connectionId: string,
     shareGeneration: string,
-    host: { peerId: string },
+    host: { peerId: string; sessionId: string },
     overlap?: OverlapRouteResource,
+    codecIdentity?: {
+      publicationGeneration: string;
+      publicationConnectionId: string;
+    },
   ): Promise<PrepareResult> {
     const fallback = this.options.sfuFallback!;
-    const publicationGeneration = opaqueId();
+    const publicationGeneration =
+      codecIdentity?.publicationGeneration ?? opaqueId();
     const publicationFence: SfuResourceFence = {
       roomId,
       shareGeneration,
@@ -846,15 +1369,16 @@ export class HybridMediaRouter {
       viewerPeerId: operation.childPeerId,
     };
     if (!fallback.admission.reservePublication(publicationFence)) {
-      return { kind: "denied", serverAdmission: "sfu" };
+      return { kind: "denied", rejectionBucket: "sfu-admission" };
     }
     if (!fallback.admission.reserveSubscription(subscriptionFence)) {
       fallback.admission.beginDrain(publicationFence);
       this.scheduleSfuDrain(publicationFence);
-      return { kind: "denied", serverAdmission: "sfu" };
+      return { kind: "denied", rejectionBucket: "sfu-admission" };
     }
     const subscription = subscriptionResource(subscriptionFence);
-    const publicationConnectionId = publicationGeneration;
+    const publicationConnectionId =
+      codecIdentity?.publicationConnectionId ?? publicationGeneration;
     const publication = publicationResource(publicationFence);
     try {
       await fallback.roomControl.createRoom(publicationFence);
@@ -880,6 +1404,7 @@ export class HybridMediaRouter {
         kind: "ready",
         prepared: {
           connectionId,
+          hostSessionId: host.sessionId,
           publicationGeneration,
           publicationConnectionId,
           reservation: {
@@ -905,7 +1430,7 @@ export class HybridMediaRouter {
     } catch {
       this.releaseResource(subscription);
       this.releaseResource(publication);
-      return { kind: "denied", serverAdmission: false };
+      return { kind: "denied", rejectionBucket: "candidate-failed" };
     }
   }
 
@@ -947,7 +1472,13 @@ export class HybridMediaRouter {
       return;
     }
     const host = this.options.roomStore.getConnectedHost(roomId);
-    if (prepared.hostSfuConfig && host) {
+    if (
+      prepared.hostSfuConfig &&
+      host &&
+      host.sessionId === prepared.hostSessionId &&
+      (operation.owner.kind !== "codec" ||
+        host.sessionId === operation.owner.hostSessionId)
+    ) {
       this.options.sendToSession(host.sessionId, {
         type: "route-update",
         revision: current.revision,
@@ -1035,20 +1566,25 @@ export class HybridMediaRouter {
       const childPeerIds = [...edges]
         .filter(([, candidate]) =>
           candidate.kind === "peer" &&
-          candidate.parentPeerId === peerId &&
-          sourceReachable(candidate.parentPeerId),
+          candidate.parentPeerId === peerId,
         )
         .map(([childPeerId]) => childPeerId);
       assignments.set(peerId, {
         upstream:
-          peerId === hostPeerId || !reachable || !edge
+          peerId === hostPeerId || !edge
             ? { kind: "none" }
             : edge.kind === "peer"
               ? { kind: "peer", peerId: edge.parentPeerId }
-              : { kind: "sfu" },
+              : reachable
+                ? { kind: "sfu" }
+                : { kind: "none" },
         childPeerIds,
         sfuPublicationGeneration:
-          peerId === hostPeerId ? publicationGeneration : null,
+          peerId === hostPeerId
+            ? publicationGeneration
+            : reachable && edge?.kind === "sfu"
+              ? edge.publicationGeneration
+              : null,
       });
     }
     return assignments;
@@ -1112,7 +1648,7 @@ export class HybridMediaRouter {
       if (seen.has(current)) return false;
       seen.add(current);
       const edge = snapshot.upstreamByViewer.get(current);
-      if (!edge?.physicalActive) return false;
+      if (!edge?.physicalActive || !edge.usable) return false;
       if (edge.kind === "sfu") {
         return Boolean(
           snapshot.hostPublication?.physicalActive &&
@@ -1169,7 +1705,13 @@ export class HybridMediaRouter {
   }
 
   private releaseResources(resources: readonly RouteResource[]): void {
-    for (const resource of resources) this.releaseResource(resource);
+    // Generation drain owns physical release; its child handles stay charged until absence.
+    for (const resource of resources) {
+      if (resource.kind === "sfu-publication") this.releaseResource(resource);
+    }
+    for (const resource of resources) {
+      if (resource.kind !== "sfu-publication") this.releaseResource(resource);
+    }
   }
 
   private releaseResource(resource: RouteResource): void {
@@ -1177,17 +1719,43 @@ export class HybridMediaRouter {
     resource.released = true;
     if (resource.kind === "overlap") return;
     if (resource.kind === "sfu-subscription") {
-      this.options.sfuFallback?.admission.releaseSubscription(resource.fence);
+      this.releaseSubscription(resource.fence);
       return;
     }
     if (this.options.sfuFallback?.admission.beginDrain(resource.fence)) {
+      const room = this.rooms.get(resource.fence.roomId);
+      if (room?.codecOperation) {
+        room.codecOperation.drainBeforePreparationKey = managedSfuRoomName(
+          resource.fence,
+        );
+      }
       this.scheduleSfuDrain(resource.fence);
     }
   }
 
-  private wakeResourceWaiters(): void {
-    const roomIds = [...this.resourceWaiterRoomIds];
-    this.resourceWaiterRoomIds.clear();
+  private releaseSubscription(fence: SfuSubscriptionFence): boolean {
+    const admission = this.options.sfuFallback?.admission;
+    if (!admission) return false;
+    const beforeEgress = admission.usage().egress;
+    const accepted = admission.releaseSubscription(fence);
+    if (accepted && admission.usage().egress < beforeEgress) {
+      this.wakeResourceWaiters();
+    }
+    return accepted;
+  }
+
+  private wakeResourceWaiters(completedDrainKey?: string): void {
+    const roomIds: string[] = [];
+    for (const [roomId, waiter] of this.resourceWaiters) {
+      if (
+        waiter.kind === "drain" &&
+        waiter.drainKey !== completedDrainKey
+      ) {
+        continue;
+      }
+      this.resourceWaiters.delete(roomId);
+      roomIds.push(roomId);
+    }
     for (const roomId of roomIds) {
       const controller = this.rooms.get(roomId)?.controller;
       if (!controller) continue;
@@ -1210,12 +1778,12 @@ export class HybridMediaRouter {
       this.releaseResources(expired.released);
       if (room.controller.snapshot().revision !== before) this.broadcastActive(roomId, room);
       if (expired.exhausted) {
-        this.sendViewerError(
-          roomId,
-          operation.childPeerId,
-          "PEER_NOT_FOUND",
-          "No usable media route is available",
-        );
+        this.sendViewerRouteStatus(roomId, operation.childPeerId, {
+          type: "route-status",
+          revision: room.controller.snapshot().revision,
+          state: "failed",
+          reason: "route-exhausted",
+        });
       }
       this.requestPump(roomId);
     }, Math.max(0, operation.wakeAtMs - this.now()));
@@ -1322,7 +1890,7 @@ export class HybridMediaRouter {
       routeRevision: snapshot.revision,
       generation: publication.generation,
       connectionId: publication.connectionId,
-    });
+    }, this.now());
     const invalid = controller.snapshot();
     this.releaseResources(
       controller.retireHostPublication({
@@ -1368,7 +1936,11 @@ export class HybridMediaRouter {
           throw new Error("LiveKit drain has no matching resource generation");
         }
         this.sfuDrainTasks.delete(key);
-        this.wakeResourceWaiters();
+        const room = this.rooms.get(task.fence.roomId);
+        if (room?.codecDrainBarrierKey === key) {
+          room.codecDrainBarrierKey = undefined;
+        }
+        this.wakeResourceWaiters(key);
       } catch (error) {
         if (this.sfuDrainTasks.get(key) !== task) return;
         if (this.closing) throw error;
@@ -1385,21 +1957,39 @@ export class HybridMediaRouter {
     return tracked;
   }
 
+  private settleCodecPreparation(
+    room: RoomRuntime,
+    snapshot: CodecRouteSnapshot | null,
+  ): void {
+    const resolve = room.codecOperation?.resolvePreparation;
+    if (!resolve) return;
+    room.codecOperation!.resolvePreparation = undefined;
+    resolve(snapshot);
+  }
+
+  private carryCodecDrainBarrier(room: RoomRuntime): void {
+    const key = room.codecOperation?.drainBeforePreparationKey;
+    if (key && this.sfuDrainTasks.has(key)) {
+      room.codecDrainBarrierKey = key;
+    }
+  }
+
   private clearRoom(roomId: string): void {
     const room = this.rooms.get(roomId);
     if (!room) return;
     this.clearDeadline(room);
     this.cancelHostOfflineCheck(roomId);
+    this.settleCodecPreparation(room, null);
+    room.codecOperation = undefined;
     const controller = room.controller;
     room.controller = undefined;
     room.requested = false;
     if (controller) this.releaseResources(controller.dispose());
     this.rooms.delete(roomId);
-    this.resourceWaiterRoomIds.delete(roomId);
+    this.resourceWaiters.delete(roomId);
     for (const fence of this.options.sfuFallback?.admission.beginDrainRoom(roomId) ?? []) {
       this.scheduleSfuDrain(fence);
     }
-    this.wakeResourceWaiters();
   }
 
   private sendRoomError(roomId: string, code: ErrorCode, message: string): void {
@@ -1407,14 +1997,13 @@ export class HybridMediaRouter {
     if (host) this.options.sendToSession(host.sessionId, { type: "error", code, message });
   }
 
-  private sendViewerError(
+  private sendViewerRouteStatus(
     roomId: string,
     viewerPeerId: string,
-    code: ErrorCode,
-    message: string,
+    message: Extract<ServerMessage, { type: "route-status" }>,
   ): void {
     const viewer = this.options.roomStore.getConnectedViewer(roomId, viewerPeerId);
-    if (viewer) this.options.sendToSession(viewer.sessionId, { type: "error", code, message });
+    if (viewer) this.options.sendToSession(viewer.sessionId, message);
   }
 }
 
@@ -1423,6 +2012,7 @@ function cursorGuard(
   plan: CandidatePlan,
 ): CandidateCursorGuard {
   return {
+    owner: { ...operation.owner },
     childPeerId: operation.childPeerId,
     childSessionId: operation.childSessionId,
     baseRevision: operation.baseRevision,
@@ -1457,6 +2047,13 @@ function preparedRouteCandidate(
     childPeerId: operation.childPeerId,
     connectionId,
     transport: tuple.kind === "peer" ? tuple.transport : "sfu",
+    codecTransition:
+      operation.owner.kind === "codec"
+        ? {
+            generation: operation.owner.codecGeneration,
+            videoCodec: operation.owner.videoCodec,
+          }
+        : null,
   };
 }
 

@@ -21,15 +21,15 @@ export type {
 export type QualityProfile = QualitySettings;
 
 export const QUALITY_PROFILES = {
-  "1080p60": DEFAULT_QUALITY_SETTINGS,
-  "1080p30": {
+  "1080p60": {
     resolution: "1080p",
-    maxFramerate: 30,
-    maxBitrate: 5_000_000,
+    maxFramerate: 60,
+    maxBitrate: 8_000_000,
     degradationPreference: "balanced",
     videoCodec: "automatic",
     screenAudioQuality: "music",
   },
+  "1080p30": DEFAULT_QUALITY_SETTINGS,
   "720p30": {
     resolution: "720p",
     maxFramerate: 30,
@@ -47,6 +47,7 @@ export const QUALITY_PROFILE_LABELS = {
 } as const satisfies Record<QualityProfileId, string>;
 
 export const QUALITY_RESOLUTIONS = {
+  "480p": { width: 854, height: 480, label: "480p" },
   "720p": { width: 1280, height: 720, label: "720p" },
   "1080p": { width: 1920, height: 1080, label: "1080p" },
   "1440p": { width: 2560, height: 1440, label: "1440p" },
@@ -101,6 +102,12 @@ export interface TwoLayerVideoSenderParameterReadback {
   high: VideoSenderParameterReadback;
 }
 
+export interface AudioSenderParameterReadback {
+  requestedMaxBitrate: number;
+  appliedMaxBitrate: number | null;
+  mismatch: boolean;
+}
+
 export const SCREEN_SHARE_LOW_SCALE = 2;
 
 export function resolveScreenAudioQuality(
@@ -124,11 +131,29 @@ export function qualitySettingsEqual(
   right: QualitySettings,
 ): boolean {
   return (
+    videoQualitySettingsEqual(left, right) &&
+    screenAudioQualityEqual(left, right)
+  );
+}
+
+export function videoQualitySettingsEqual(
+  left: QualitySettings,
+  right: QualitySettings,
+): boolean {
+  return (
     left.resolution === right.resolution &&
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
     left.degradationPreference === right.degradationPreference &&
-    (left.videoCodec ?? "automatic") === (right.videoCodec ?? "automatic") &&
+    (left.videoCodec ?? "automatic") === (right.videoCodec ?? "automatic")
+  );
+}
+
+export function screenAudioQualityEqual(
+  left: QualitySettings,
+  right: QualitySettings,
+): boolean {
+  return (
     resolveScreenAudioQuality(left.screenAudioQuality) ===
       resolveScreenAudioQuality(right.screenAudioQuality)
   );
@@ -325,14 +350,36 @@ export async function configureVideoSender(
 export async function configureScreenAudioSender(
   sender: RTCRtpSender,
   quality?: ScreenAudioQuality,
-): Promise<number | null> {
-  const parameters = sender.getParameters();
+): Promise<AudioSenderParameterReadback> {
+  const current = sender.getParameters();
+  const parameters = {
+    ...current,
+    encodings: current.encodings.map((encoding) => ({ ...encoding })),
+  };
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
   }
-  parameters.encodings[0]!.maxBitrate = screenAudioBitrate(quality);
+  const requestedMaxBitrate = screenAudioBitrate(quality);
+  parameters.encodings[0]!.maxBitrate = requestedMaxBitrate;
   await sender.setParameters(parameters);
-  return sender.getParameters().encodings[0]?.maxBitrate ?? null;
+  const appliedMaxBitrate =
+    sender.getParameters().encodings[0]?.maxBitrate ?? null;
+  return {
+    requestedMaxBitrate,
+    appliedMaxBitrate,
+    mismatch: appliedMaxBitrate !== requestedMaxBitrate,
+  };
+}
+
+export function audioSenderParameterWarning(
+  readback: AudioSenderParameterReadback,
+): string | null {
+  if (!readback.mismatch) {
+    return null;
+  }
+  return readback.appliedMaxBitrate === null
+    ? "浏览器未读回音频码率上限"
+    : `浏览器将音频码率上限改写为 ${Math.round(readback.appliedMaxBitrate / 1_000)} kbps`;
 }
 
 export async function configureTwoLayerVideoSender(

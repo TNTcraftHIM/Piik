@@ -1,5 +1,6 @@
 import {
   decodeServerMessage,
+  SIGNAL_CLOSE_CODES,
   SIGNALING_PROTOCOL,
   type ClientMessage,
   type DisplayName,
@@ -20,22 +21,24 @@ type SignalingIdentity = WithoutProtocolEnvelope<
 interface SignalingEvents {
   onMessage: (message: ServerMessage) => void;
   onStatus: (status: SignalConnectionState) => void;
-  onTerminated: (message: string) => void;
+  onTerminated: (reason: SignalingTerminationReason) => void;
   onAccessRequired: () => void;
 }
+
+export type SignalingTerminationReason =
+  | "STALE_CLIENT"
+  | "SESSION_REPLACED"
+  | "SIGNAL_TERMINATED";
 
 const FATAL_SIGNAL_ERRORS = new Set([
   "AUTH_REQUIRED",
   "INVALID_TOKEN",
+  "ROOM_ACCESS_DENIED",
   "ROOM_EXPIRED",
   "ROOM_FULL",
   "HOST_ALREADY_CONNECTED",
 ]);
-const SESSION_REPLACED_CLOSE_CODE = 4001;
-const CLIENT_RECONNECT_CLOSE_CODE = 4002;
 const INVALID_MESSAGE_CLOSE_CODE = 1008;
-const VIEWER_ACCESS_REVOKED_CLOSE_CODE = 4004;
-const PROTOCOL_REFRESH_MESSAGE = "页面版本已更新，请刷新后重试";
 const TERMINAL_SEND_TIMEOUT_MS = 15_000;
 const SIGNALING_CHALLENGE_INTERVAL_MS = 5_000;
 const SIGNALING_CHALLENGE_TIMEOUT_MS = 2_000;
@@ -49,9 +52,10 @@ interface PendingSignalingChallenge {
 
 export function shouldReconnectSignaling(code: number): boolean {
   return (
-    code !== SESSION_REPLACED_CLOSE_CODE &&
+    code !== SIGNAL_CLOSE_CODES.sessionReplaced &&
+    code !== SIGNAL_CLOSE_CODES.authenticationFailed &&
     code !== INVALID_MESSAGE_CLOSE_CODE &&
-    code !== VIEWER_ACCESS_REVOKED_CLOSE_CODE
+    code !== SIGNAL_CLOSE_CODES.viewerAccessRevoked
   );
 }
 
@@ -119,7 +123,7 @@ export class SignalingClient {
       return false;
     }
     this.clearSignalingWatchdog();
-    socket.close(CLIENT_RECONNECT_CLOSE_CODE, "client reconnect");
+    socket.close(SIGNAL_CLOSE_CODES.clientReconnect, "client reconnect");
     return true;
   }
 
@@ -150,19 +154,70 @@ export class SignalingClient {
     return this.setDisplayName(displayName);
   }
 
-  setSharingPaused(paused: boolean): boolean {
+  pauseSharing(): boolean {
     if (this.identity.role !== "host") {
       return false;
     }
-    this.identity.sharingPaused = paused;
+    this.identity.sharingPaused = true;
     if (!this.identity.shareGeneration) {
       return false;
     }
-    return this.send({
-      type: "set-sharing-paused",
-      shareGeneration: this.identity.shareGeneration,
-      paused,
-    });
+    try {
+      return this.send({
+        type: "set-sharing-paused",
+        shareGeneration: this.identity.shareGeneration,
+        paused: true,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  confirmSharingPaused(): void {
+    if (this.identity.role === "host") {
+      this.identity.sharingPaused = true;
+    }
+  }
+
+  requestSharingResume(): boolean {
+    if (this.identity.role !== "host" || !this.identity.shareGeneration) {
+      return false;
+    }
+    try {
+      return this.send({
+        type: "request-sharing-resume",
+        shareGeneration: this.identity.shareGeneration,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  confirmSharingResumed(
+    authorization: Extract<
+      ServerMessage,
+      { type: "sharing-resume-authorized" }
+    >,
+  ): boolean {
+    if (
+      this.identity.role !== "host" ||
+      !this.identity.shareGeneration ||
+      authorization.shareGeneration !== this.identity.shareGeneration
+    ) {
+      return false;
+    }
+    let sent = false;
+    try {
+      sent = this.send({
+        type: "sharing-source-enabled",
+        shareGeneration: authorization.shareGeneration,
+        codecGeneration: authorization.codecGeneration,
+        resumeAttempt: authorization.resumeAttempt,
+      });
+    } catch {
+      sent = false;
+    }
+    return sent;
   }
 
   sendThenStop(message: ClientMessage): void {
@@ -290,11 +345,11 @@ export class SignalingClient {
         this.clearTimers();
         this.events.onStatus("offline");
         this.events.onTerminated(
-          event.reason === "Session replaced"
-            ? "此页面的会话已被另一个标签页接管"
+          event.code === SIGNAL_CLOSE_CODES.sessionReplaced
+            ? "SESSION_REPLACED"
             : event.code === INVALID_MESSAGE_CLOSE_CODE
-              ? PROTOCOL_REFRESH_MESSAGE
-              : "信令会话已终止，请刷新后重试",
+              ? "STALE_CLIENT"
+              : "SIGNAL_TERMINATED",
         );
       }
     });
@@ -317,7 +372,7 @@ export class SignalingClient {
 
   private terminateForProtocolMismatch(): void {
     this.stop();
-    this.events.onTerminated(PROTOCOL_REFRESH_MESSAGE);
+    this.events.onTerminated("STALE_CLIENT");
   }
 
   private clearAuthenticationTimer(): void {
@@ -349,6 +404,13 @@ export class SignalingClient {
         message.routeAssignment.upstream.kind !== "none";
     } else if (message.type === "host-status") {
       this.hostOnline = message.online;
+      if (
+        this.identity.role === "host" &&
+        message.online &&
+        !message.paused
+      ) {
+        this.identity.sharingPaused = false;
+      }
     } else if (
       message.type === "route-update" &&
       message.phase === "active" &&
@@ -453,7 +515,7 @@ export class SignalingClient {
     this.clearSignalingWatchdog();
     this.events.onStatus("reconnecting");
     if (socket.readyState < WebSocket.CLOSING) {
-      socket.close(CLIENT_RECONNECT_CLOSE_CODE, "signaling timeout");
+      socket.close(SIGNAL_CLOSE_CODES.clientReconnect, "signaling timeout");
     }
     this.connect();
   }

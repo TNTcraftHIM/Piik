@@ -4,7 +4,9 @@ import {
   createDiagnosticReport,
   DIAGNOSTIC_SCHEMA_VERSION,
   downloadDiagnosticReport,
+  summarizeRouteTiming,
   type DiagnosticConnectionInput,
+  type ViewerDiagnosticInput,
 } from "../src/client/lib/diagnostic-export.ts";
 import { EMPTY_METRICS } from "../src/client/types.ts";
 
@@ -145,6 +147,78 @@ describe("diagnostic export privacy boundary", () => {
     }
   });
 
+  it("exports authenticated Viewer state even with zero connection metrics", () => {
+    const viewerState: ViewerDiagnosticInput = {
+      authenticated: true,
+      stage: "route-failed",
+      revision: 7,
+      failureCode: "ROUTE_EXHAUSTED",
+      signalState: "connected",
+      hostState: "online",
+      routeKind: "sfu",
+      frameProof: "none",
+    };
+    const report = createDiagnosticReport(
+      "viewer",
+      [],
+      new Date("2026-08-24T12:00:00.000Z"),
+      viewerState,
+    );
+
+    expect(report.viewer).toEqual({
+      stage: "route-failed",
+      revision: "changed",
+      failureCode: "ROUTE_EXHAUSTED",
+      signalState: "connected",
+      hostState: "online",
+      routeKind: "sfu",
+      frameProof: "none",
+    });
+    expect(report.connections).toEqual([]);
+  });
+
+  it("limits unauthenticated room denial diagnostics to stage and code", () => {
+    const unsafe = {
+      authenticated: false,
+      stage: "access-denied",
+      revision: 42,
+      failureCode: "ROOM_ACCESS_DENIED",
+      signalState: "reconnecting",
+      hostState: "online",
+      routeKind: "p2p",
+      frameProof: "current",
+      roomId: "private-room",
+      viewerGrant: "private-grant",
+      rawMessage: "private-error",
+    } as unknown as ViewerDiagnosticInput;
+    const report = createDiagnosticReport(
+      "viewer",
+      [
+        {
+          scope: "upstream",
+          route: "p2p",
+          direction: "receive",
+          metrics: { ...EMPTY_METRICS, bitrateKbps: 9_999 },
+        },
+      ],
+      new Date("2026-08-24T12:00:00.000Z"),
+      unsafe,
+    );
+
+    expect(report.viewer).toEqual({
+      stage: "access-denied",
+      failureCode: "ROOM_ACCESS_DENIED",
+    });
+    expect(report.connections).toEqual([]);
+    const json = JSON.stringify(report);
+    expect(json).not.toContain("private-");
+    expect(json).not.toContain("revision");
+    expect(json).not.toContain("signalState");
+    expect(json).not.toContain("hostState");
+    expect(json).not.toContain("routeKind");
+    expect(json).not.toContain("frameProof");
+  });
+
   it("creates one local JSON Blob and revokes its URL after download", async () => {
     let createdBlob: Blob | null = null;
     const link = { href: "", download: "", hidden: false, click: vi.fn(), remove: vi.fn() };
@@ -180,9 +254,100 @@ describe("diagnostic export privacy boundary", () => {
       expect(append).toHaveBeenCalledWith(link);
       expect(link.download).toMatch(/^screener-diagnostics-host-.*\.json$/);
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:diagnostic");
-      expect(await createdBlob!.text()).toContain(`"schemaVersion": 1`);
+      expect(await createdBlob!.text()).toContain(`"schemaVersion": 2`);
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("reports raw 20-Viewer timings with nearest-rank percentiles", () => {
+    const values = Array.from({ length: 20 }, (_, index) =>
+      index % 5 === 0 ? null : (20 - index) * 10,
+    );
+
+    const expected = {
+      sampleCount: 16,
+      pendingCount: 4,
+      rawMs: [
+        10, 20, 30, 40, 60, 70, 80, 90, 110, 120, 130, 140, 160, 170,
+        180, 190,
+      ],
+      p50Ms: 90,
+      p95Ms: 190,
+      maxMs: 190,
+    };
+    expect(summarizeRouteTiming(values)).toEqual(expected);
+    const report = createDiagnosticReport(
+      "host",
+      [],
+      new Date("2026-08-24T12:00:00.000Z"),
+      {
+        children: values.map((finalMs, index) => ({
+          ordinal: index + 1,
+          parent: { kind: "none" as const },
+          effectiveCapacity: 0,
+          childCount: 0,
+          demandAgeMs: 200,
+          queueWaitMs: finalMs,
+          candidateStartMs: finalMs,
+          firstDecodedFrameMs: finalMs,
+          finalMs,
+          finalRoute: finalMs === null ? "waiting" as const : "direct" as const,
+          rejectionBucket: "none" as const,
+        })),
+        operation: null,
+      },
+    );
+    expect(report.route?.children).toHaveLength(20);
+    expect(report.routeTimingSummary?.finalMs).toEqual(expected);
+    expect(summarizeRouteTiming([null, null])).toEqual({
+      sampleCount: 0,
+      pendingCount: 2,
+      rawMs: [],
+      p50Ms: null,
+      p95Ms: null,
+      maxMs: null,
+    });
+  });
+
+  it("includes only sanitized route fields in a Host export", () => {
+    const route = {
+      children: [
+        {
+          ordinal: 1,
+          parent: { kind: "host" as const },
+          effectiveCapacity: 2,
+          childCount: 0,
+          demandAgeMs: 120,
+          queueWaitMs: 10,
+          candidateStartMs: 20,
+          firstDecodedFrameMs: 70,
+          finalMs: 70,
+          finalRoute: "direct" as const,
+          rejectionBucket: "none" as const,
+        },
+      ],
+      operation: null,
+    };
+    const report = createDiagnosticReport(
+      "host",
+      [],
+      new Date("2026-08-24T12:00:00.000Z"),
+      route,
+    );
+
+    expect(report.route).toEqual(route);
+    expect(report.routeTimingSummary).toMatchObject({
+      queueWaitMs: { sampleCount: 1, pendingCount: 0, rawMs: [10] },
+      finalMs: { p50Ms: 70, p95Ms: 70, maxMs: 70 },
+    });
+    expect(
+      createDiagnosticReport(
+        "viewer",
+        [],
+        new Date("2026-08-24T12:00:00.000Z"),
+        route,
+      ),
+    ).toMatchObject({ route: null, routeTimingSummary: null });
   });
 });

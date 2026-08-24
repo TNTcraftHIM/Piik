@@ -1,12 +1,10 @@
 import type {
+  CodecTransitionGeneration,
   IceConfig,
   PreparedRouteCandidate,
   SignalPayload,
 } from "../../shared/protocol";
-import {
-  resolveScreenAudioQuality,
-  type QualityProfile,
-} from "../media/quality";
+import type { QualityProfile } from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
 import { MAX_ENDPOINT_MEDIA_CHILDREN } from "./media-assignment";
@@ -183,12 +181,7 @@ export class ViewerRelay {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    if (
-      this.disposed ||
-      (this.stream !== null &&
-        resolveScreenAudioQuality(profile.screenAudioQuality) !==
-          resolveScreenAudioQuality(this.desiredProfile.screenAudioQuality))
-    ) {
+    if (this.disposed) {
       return Promise.resolve(false);
     }
     this.desiredProfile = profile;
@@ -198,6 +191,24 @@ export class ViewerRelay {
       () => undefined,
     );
     return result.catch(() => false);
+  }
+
+  prepareVideoCodec(
+    childPeerId: string,
+    connectionId: string,
+    generation: CodecTransitionGeneration,
+    videoCodec: QualityProfile["videoCodec"],
+  ): Promise<boolean> {
+    const peer = this.peers.get(childPeerId);
+    if (
+      this.disposed ||
+      !peer ||
+      peer.connectionId !== connectionId ||
+      !this.childPeerIds.includes(childPeerId)
+    ) {
+      return Promise.resolve(false);
+    }
+    return peer.prepareVideoCodec(generation, videoCodec);
   }
 
   getSignalRouteRevision(

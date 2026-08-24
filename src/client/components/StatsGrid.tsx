@@ -2,7 +2,10 @@ import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 
 import type { ConnectionMetrics } from "../types";
-import type { VideoSenderParameterReadback } from "../media/quality";
+import type {
+  AudioSenderParameterReadback,
+  VideoSenderParameterReadback,
+} from "../media/quality";
 import { formatPacketLossPercent } from "./connection-details";
 
 function readableNumber(value: number | null, digits = 0): string {
@@ -16,7 +19,7 @@ function qualityReason(value: string | null): string {
     cpu: "编码受限",
     other: "其他限制",
   };
-  return value ? (labels[value] ?? value) : "未知";
+  return value ? (labels[value] ?? "未分类限制") : "未知";
 }
 
 function requestedApplied(
@@ -81,11 +84,13 @@ export function StatsGrid({
   metrics,
   direction,
   senderParameters,
+  audioSenderParameters,
   progressive = false,
 }: {
   metrics: ConnectionMetrics;
   direction: "send" | "receive";
   senderParameters?: VideoSenderParameterReadback | null;
+  audioSenderParameters?: AudioSenderParameterReadback | null;
   progressive?: boolean;
 }) {
   const [secondaryExpanded, setSecondaryExpanded] = useState(false);
@@ -232,6 +237,16 @@ export function StatsGrid({
         </>
       )}
       <Metric label="音频 Codec" value={metrics.audioCodec ?? "未知"} />
+      {direction === "send" && audioSenderParameters && (
+        <Metric
+          label="音频上限 请求 / 读回"
+          value={requestedApplied(
+            audioSenderParameters.requestedMaxBitrate,
+            audioSenderParameters.appliedMaxBitrate,
+            (value) => `${Math.round(Number(value) / 1_000)} kbps`,
+          )}
+        />
+      )}
       {metrics.audioCodecClockRate !== null && (
         <Metric
           label="音频 RTP 时钟"

@@ -6,6 +6,7 @@ import {
   type CandidateCursorGuard,
   type CandidateReservation,
   type CommittedEdgeSeed,
+  type EdgeGuard,
   type OperationSnapshot,
 } from "../src/server/room-route-controller.ts";
 
@@ -40,17 +41,19 @@ function addViewer(
   routes: RoomRouteController<string>,
   peerId: string,
   capacity: 0 | 1 | 2 | 3,
+  nowMs?: number,
 ) {
   routes.upsertParticipant({
     peerId,
     role: "viewer",
     sessionId: `${peerId}_session`,
     effectiveDownstreamCapacity: capacity,
-  });
+  }, nowMs);
 }
 
 function cursorGuard(operation: OperationSnapshot): CandidateCursorGuard {
   return {
+    owner: { ...operation.owner },
     childPeerId: operation.childPeerId,
     childSessionId: operation.childSessionId,
     baseRevision: operation.baseRevision,
@@ -68,11 +71,15 @@ function beginCandidate(
     reservation: CandidateReservation<string>;
     publicationGeneration?: string;
     publicationConnectionId?: string;
+    hostSessionId?: string;
   },
 ) {
   const operation = routes.snapshot().operation!;
   return routes.beginCurrentCandidate({
     guard: cursorGuard(operation),
+    ...(input.reservation.kind === "direct"
+      ? {}
+      : { hostSessionId: input.hostSessionId ?? "host_session" }),
     ...input,
   });
 }
@@ -119,7 +126,285 @@ function peerEdge(
   };
 }
 
+function beginCodecSfu(
+  routes: RoomRouteController<string>,
+  overrides: Partial<
+    Parameters<typeof routes.beginCodecSfuPublication>[0]
+  > = {},
+) {
+  return routes.beginCodecSfuPublication({
+    routeRevision: routes.snapshot().revision,
+    hostSessionId: "host_session",
+    codecGeneration: 1,
+    videoCodec: "h264",
+    publicationGeneration: "publication_fresh",
+    connectionId: "subscription_fresh",
+    publicationConnectionId: "publication_connection_fresh",
+    nowMs: 10,
+    deadlineAtMs: 110,
+    ...overrides,
+  });
+}
+
 describe("RoomRouteController", () => {
+  it("retains one latest timing sample for a 20-Viewer burst", () => {
+    const routes = controller(2);
+    const viewerPeerIds = Array.from(
+      { length: 20 },
+      (_, index) => `burst_${String(index).padStart(2, "0")}_12345678`,
+    );
+    for (const peerId of viewerPeerIds) addViewer(routes, peerId, 2, 0);
+
+    for (const [index, peerId] of viewerPeerIds.entries()) {
+      const operationStartedAtMs = (index + 1) * 10;
+      expect(routes.reconcile(operationStartedAtMs).operation?.childPeerId).toBe(
+        peerId,
+      );
+      commitCurrent(
+        routes,
+        operationStartedAtMs + 1,
+        `${peerId}_connection`,
+      );
+    }
+
+    const snapshot = routes.routeDiagnosticSnapshot(250);
+    expect(snapshot.children).toHaveLength(20);
+    expect(snapshot.children.map((child) => child.queueWaitMs)).toEqual(
+      Array.from({ length: 20 }, (_, index) => (index + 1) * 10),
+    );
+    expect(snapshot.children.every((child) => child.finalRoute === "direct"))
+      .toBe(true);
+  });
+
+  it("projects latest route timing through snapshot-local ordinals", () => {
+    const routes = controller(2);
+    addViewer(routes, A, 1, 100);
+
+    expect(routes.routeDiagnosticSnapshot(150)).toEqual({
+      children: [
+        {
+          ordinal: 1,
+          parent: { kind: "none" },
+          effectiveCapacity: 1,
+          childCount: 0,
+          demandAgeMs: 50,
+          queueWaitMs: null,
+          candidateStartMs: null,
+          firstDecodedFrameMs: null,
+          finalMs: null,
+          finalRoute: "waiting",
+          rejectionBucket: "none",
+        },
+      ],
+      operation: null,
+    });
+
+    const operation = routes.reconcile(160).operation!;
+    expect(routes.routeDiagnosticSnapshot(165).operation).toEqual({
+      childOrdinal: 1,
+      reason: "join",
+      stage: "admission",
+      cursor: 0,
+      candidateCount: operation.candidates.length,
+    });
+    const prepared = beginCandidate(routes, {
+      nowMs: 170,
+      connectionId: "a_connection",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(routes.routeDiagnosticSnapshot(180)).toMatchObject({
+      children: [
+        {
+          queueWaitMs: 60,
+          candidateStartMs: 70,
+          firstDecodedFrameMs: null,
+          finalMs: null,
+        },
+      ],
+      operation: { childOrdinal: 1, stage: "first-frame" },
+    });
+    expect(
+      routes.candidateReady(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: prepared.current!.revision,
+          connectionId: "a_connection",
+        },
+        230,
+      ).accepted,
+    ).toBe(true);
+    const settled = routes.routeDiagnosticSnapshot(240);
+    expect(settled).toMatchObject({
+      children: [
+        {
+          parent: { kind: "host" },
+          queueWaitMs: 60,
+          candidateStartMs: 70,
+          firstDecodedFrameMs: 130,
+          finalMs: 130,
+          finalRoute: "direct",
+          rejectionBucket: "none",
+        },
+      ],
+      operation: null,
+    });
+    expect(JSON.stringify(settled)).not.toContain(A);
+    expect(JSON.stringify(settled)).not.toContain("a_connection");
+
+    expect(
+      routes.invalidateEdge(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          parentSessionId: "host_session",
+          routeRevision: routes.snapshot().revision,
+          connectionId: "a_connection",
+        },
+        300,
+      ),
+    ).toBe(true);
+    expect(routes.routeDiagnosticSnapshot(320).children[0]).toMatchObject({
+      demandAgeMs: 20,
+      queueWaitMs: null,
+      candidateStartMs: null,
+      firstDecodedFrameMs: null,
+      finalMs: null,
+      finalRoute: "waiting",
+      rejectionBucket: "none",
+    });
+
+    expect(routes.confirmDeparture(A, 330)).toBe(true);
+    expect(routes.routeDiagnosticSnapshot(330)).toEqual({
+      children: [],
+      operation: null,
+    });
+  });
+
+  it("records a bounded candidate failure without retaining route identity", () => {
+    const routes = controller(1);
+    addViewer(routes, A, 0, 0);
+    routes.reconcile(10);
+    const prepared = beginCandidate(routes, {
+      nowMs: 20,
+      connectionId: "failed_candidate",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(
+      routes.candidateFailed(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: prepared.current!.revision,
+          connectionId: "failed_candidate",
+        },
+        30,
+      ),
+    ).toMatchObject({ accepted: true, exhausted: true });
+    expect(routes.routeDiagnosticSnapshot(30).children[0]).toMatchObject({
+      finalMs: 30,
+      finalRoute: "failed",
+      rejectionBucket: "candidate-failed",
+    });
+
+    routes.dispose();
+    expect(routes.routeDiagnosticSnapshot(40)).toEqual({
+      children: [],
+      operation: null,
+    });
+  });
+
+  it("reports a current child that has no usable candidate", () => {
+    const routes = controller(1);
+    addViewer(routes, A, 0);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_connection"));
+    addViewer(routes, B, 0, 0);
+
+    const result = routes.reconcile(10);
+    expect(result.operation).toBeUndefined();
+    expect(result.failedPeerIds).toEqual([B]);
+    expect(routes.routeDiagnosticSnapshot(10).children[1]).toMatchObject({
+      finalMs: 10,
+      finalRoute: "failed",
+      rejectionBucket: "candidate-failed",
+    });
+  });
+
+  it("records SFU admission waiting without advancing the route cursor", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 0, 0);
+    const direct = routes.reconcile(10).operation!;
+    expect(direct.candidates.map((candidate) => candidate.tuple.kind)).toEqual([
+      "peer",
+      "sfu",
+    ]);
+    expect(
+      routes.skipCurrentCandidate(
+        cursorGuard(direct),
+        20,
+        "candidate-failed",
+      ).accepted,
+    ).toBe(true);
+    const sfu = routes.snapshot().operation!;
+    expect(
+      routes.noteCurrentCandidateRejection(
+        cursorGuard(sfu),
+        "sfu-admission",
+      ),
+    ).toBe(true);
+    expect(routes.routeDiagnosticSnapshot(30)).toMatchObject({
+      children: [
+        {
+          finalRoute: "waiting",
+          rejectionBucket: "sfu-admission",
+        },
+      ],
+      operation: {
+        childOrdinal: 1,
+        stage: "admission",
+        cursor: 1,
+        candidateCount: 2,
+      },
+    });
+  });
+
+  it("distinguishes first-frame timeout from the total operation deadline", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 0, 0);
+    const direct = routes.reconcile(10).operation!;
+    beginCandidate(routes, {
+      nowMs: 20,
+      connectionId: "silent_direct",
+      reservation: { kind: "direct" },
+    });
+
+    expect(routes.operationExpired(direct.wakeAtMs)).toMatchObject({
+      accepted: true,
+    });
+    expect(routes.routeDiagnosticSnapshot(direct.wakeAtMs)).toMatchObject({
+      children: [
+        {
+          candidateStartMs: null,
+          finalMs: null,
+          finalRoute: "waiting",
+          rejectionBucket: "first-frame-timeout",
+        },
+      ],
+      operation: { cursor: 1, stage: "admission" },
+    });
+
+    const deadline = routes.snapshot().operation!.deadlineAtMs;
+    expect(routes.operationExpired(deadline)).toMatchObject({
+      accepted: true,
+      exhausted: true,
+    });
+    expect(routes.routeDiagnosticSnapshot(deadline).children[0]).toMatchObject({
+      finalMs: deadline,
+      finalRoute: "failed",
+      rejectionBucket: "operation-deadline",
+    });
+  });
+
   it.each([1, 2, 3] as const)(
     "admits 20 Viewers through one bounded event-driven graph at C=%i",
     (capacity) => {
@@ -854,6 +1139,622 @@ describe("RoomRouteController", () => {
     });
   });
 
+  it("starts one codec-owned SFU gap with a deterministic anchor and retained subtrees", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, B, 1);
+    addViewer(routes, A, 0);
+    addViewer(routes, C, 0);
+    routes.hydrateHostPublication(
+      "publication_old",
+      "publication_resource_old",
+      "publication_connection_old",
+    );
+    for (const peerId of [B, A]) {
+      routes.hydrateEdge(peerId, {
+        kind: "sfu",
+        publicationGeneration: "publication_old",
+        transport: "sfu",
+        connectionId: `${peerId}_sfu_old`,
+        usable: true,
+        physicalActive: true,
+        resource: `${peerId}_subscription_old`,
+      });
+    }
+    routes.hydrateEdge(C, peerEdge(B, "c_from_b"));
+    routes.setPaused(true);
+
+    const begun = beginCodecSfu(routes);
+    expect(begun).toMatchObject({
+      accepted: true,
+      activeRevision: 1,
+      anchorPeerId: B,
+      retiredPeerIds: [B, A],
+      operation: {
+        owner: {
+          kind: "codec",
+          codecGeneration: 1,
+          phase: "preparing",
+          videoCodec: "h264",
+          publicationGeneration: "publication_fresh",
+          connectionId: "subscription_fresh",
+          publicationConnectionId: "publication_connection_fresh",
+        },
+        childPeerId: B,
+        candidates: [{ tuple: { kind: "sfu", publication: "replace" } }],
+      },
+    });
+    expect(begun.released).toEqual(expect.arrayContaining([
+      "publication_resource_old",
+      `${B}_subscription_old`,
+      `${A}_subscription_old`,
+    ]));
+    expect(begun.released).toHaveLength(3);
+    expect(routes.snapshot().hostPublication).toMatchObject({
+      generation: "publication_old",
+      usable: false,
+      physicalActive: false,
+    });
+    for (const peerId of [B, A]) {
+      expect(routes.snapshot().upstreamByViewer.get(peerId)).toMatchObject({
+        kind: "sfu",
+        publicationGeneration: "publication_old",
+        usable: false,
+        physicalActive: false,
+      });
+    }
+    expect(routes.snapshot().upstreamByViewer.get(C)).toMatchObject({
+      kind: "peer",
+      parentPeerId: B,
+      usable: true,
+      physicalActive: true,
+    });
+    expect(beginCodecSfu(routes, { codecGeneration: 2 }).accepted).toBe(false);
+  });
+
+  it("parks an exact codec SFU attempt until proving and rebinds logical subscribers on commit", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 0);
+    addViewer(routes, B, 0);
+    routes.hydrateHostPublication(
+      "publication_old",
+      "publication_resource_old",
+      "publication_connection_old",
+    );
+    for (const peerId of [A, B]) {
+      routes.hydrateEdge(peerId, {
+        kind: "sfu",
+        publicationGeneration: "publication_old",
+        transport: "sfu",
+        connectionId: `${peerId}_sfu_old`,
+        usable: true,
+        physicalActive: true,
+        resource: `${peerId}_subscription_old`,
+      });
+    }
+    routes.setPaused(true);
+    const begun = beginCodecSfu(routes);
+    const guard = begun.guard!;
+
+    const wrongIdentity = beginCandidate(routes, {
+      nowMs: 11,
+      connectionId: "wrong_subscription",
+      publicationGeneration: "publication_fresh",
+      publicationConnectionId: "publication_connection_fresh",
+      reservation: {
+        kind: "sfu-create",
+        edge: "wrong_edge_reservation",
+        publication: "wrong_publication_reservation",
+      },
+    });
+    expect(wrongIdentity.accepted).toBe(false);
+    expect(wrongIdentity.released).toEqual([
+      "wrong_edge_reservation",
+      "wrong_publication_reservation",
+    ]);
+
+    const pending = beginCandidate(routes, {
+      nowMs: 12,
+      connectionId: guard.connectionId,
+      publicationGeneration: guard.publicationGeneration,
+      publicationConnectionId: guard.publicationConnectionId,
+      reservation: {
+        kind: "sfu-create",
+        edge: "subscription_resource_fresh",
+        publication: "publication_resource_fresh",
+      },
+    }).operation!;
+    const readyGuard: CandidateGuard = {
+      childPeerId: pending.childPeerId,
+      childSessionId: pending.childSessionId,
+      revision: pending.current!.revision,
+      connectionId: guard.connectionId,
+    };
+    expect(routes.candidateReady(readyGuard, 13).accepted).toBe(false);
+    expect(routes.transitionCodecOperation({
+      guard,
+      expectedPhase: "preparing",
+      phase: "prepared",
+    }).accepted).toBe(true);
+    expect(routes.operationExpired(10_000).accepted).toBe(false);
+    expect(routes.snapshot().operation?.owner).toMatchObject({
+      kind: "codec",
+      phase: "prepared",
+    });
+    expect(routes.candidateReady(readyGuard, 10_001).accepted).toBe(false);
+    expect(routes.transitionCodecOperation({
+      guard: { ...guard, connectionId: "stale_connection" },
+      expectedPhase: "prepared",
+      phase: "proving",
+      nowMs: 20,
+      deadlineAtMs: 30,
+    }).accepted).toBe(false);
+    expect(routes.transitionCodecOperation({
+      guard,
+      expectedPhase: "prepared",
+      phase: "proving",
+      nowMs: 20,
+      deadlineAtMs: 30,
+    }).accepted).toBe(true);
+    expect(routes.transitionCodecOperation({
+      guard,
+      expectedPhase: "proving",
+      phase: "prepared",
+    }).accepted).toBe(true);
+    expect(routes.operationExpired(1_000).accepted).toBe(false);
+    expect(routes.candidateReady(readyGuard, 1_001).accepted).toBe(false);
+    expect(routes.transitionCodecOperation({
+      guard,
+      expectedPhase: "prepared",
+      phase: "proving",
+      nowMs: 22,
+      deadlineAtMs: 40,
+    }).accepted).toBe(true);
+
+    expect(routes.candidateReady(readyGuard, 23).accepted).toBe(true);
+    const committed = routes.snapshot();
+    expect(committed.operation).toBeUndefined();
+    expect(committed.hostPublication).toMatchObject({
+      generation: "publication_fresh",
+      connectionId: "publication_connection_fresh",
+      usable: true,
+      physicalActive: true,
+      resource: "publication_resource_fresh",
+    });
+    expect(committed.upstreamByViewer.get(A)).toMatchObject({
+      publicationGeneration: "publication_fresh",
+      connectionId: "subscription_fresh",
+      usable: true,
+      physicalActive: true,
+      resource: "subscription_resource_fresh",
+    });
+    expect(committed.upstreamByViewer.get(B)).toMatchObject({
+      publicationGeneration: "publication_fresh",
+      usable: false,
+      physicalActive: false,
+      resource: `${B}_subscription_old`,
+    });
+  });
+
+  it("folds an invalid direct binding into the pending codec revision", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 1);
+    addViewer(routes, B, 0);
+    routes.hydrateHostPublication(
+      "publication_old",
+      "publication_resource_old",
+      "publication_connection_old",
+    );
+    routes.hydrateEdge(A, {
+      kind: "sfu",
+      publicationGeneration: "publication_old",
+      transport: "sfu",
+      connectionId: "a_sfu_old",
+      usable: true,
+      physicalActive: true,
+      resource: "a_subscription_old",
+    });
+    routes.hydrateEdge(B, peerEdge(A, "b_from_a"));
+    routes.setPaused(true);
+    const begun = beginCodecSfu(routes);
+    const guard = begun.guard!;
+    const pending = beginCandidate(routes, {
+      nowMs: 11,
+      connectionId: guard.connectionId,
+      publicationGeneration: guard.publicationGeneration,
+      publicationConnectionId: guard.publicationConnectionId,
+      reservation: {
+        kind: "sfu-create",
+        edge: "subscription_resource_fresh",
+        publication: "publication_resource_fresh",
+      },
+    }).operation!;
+    const pendingRevision = pending.current!.revision;
+    const activeRevision = routes.snapshot().revision;
+
+    expect(
+      routes.retireCommittedTransportsForRouteWait(
+        [
+          {
+            childPeerId: B,
+            childSessionId: `${B}_session`,
+            parentSessionId: `${A}_session`,
+            routeRevision: activeRevision,
+            connectionId: "b_from_a",
+          },
+        ],
+        12,
+      ),
+    ).toMatchObject({
+      accepted: true,
+      activeRevision,
+      retiredPeerIds: [B],
+    });
+    expect(routes.snapshot().revision).toBe(activeRevision);
+    expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+      usable: false,
+      physicalActive: true,
+    });
+    expect(routes.snapshot().operation?.current?.revision).toBe(pendingRevision);
+
+    expect(
+      routes.transitionCodecOperation({
+        guard,
+        expectedPhase: "preparing",
+        phase: "prepared",
+      }).accepted,
+    ).toBe(true);
+    expect(
+      routes.transitionCodecOperation({
+        guard,
+        expectedPhase: "prepared",
+        phase: "proving",
+        nowMs: 13,
+        deadlineAtMs: 30,
+      }).accepted,
+    ).toBe(true);
+    expect(
+      routes.candidateReady(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: pendingRevision,
+          connectionId: guard.connectionId,
+        },
+        14,
+      ).accepted,
+    ).toBe(true);
+    expect(routes.snapshot().revision).toBe(pendingRevision);
+    expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+      usable: false,
+      physicalActive: false,
+    });
+  });
+
+  it.each([
+    ["before-candidate", "commit"],
+    ["before-candidate", "abort"],
+    ["after-candidate", "commit"],
+    ["after-candidate", "abort"],
+  ] as const)(
+    "retires a C=2 invalid exact edge folded %s through codec %s",
+    (foldAt, outcome) => {
+      const routes = controller(2, { sfuEnabled: true });
+      addViewer(routes, A, 0);
+      addViewer(routes, B, 0);
+      routes.hydrateHostPublication(
+        "publication_old",
+        "publication_resource_old",
+        "publication_connection_old",
+      );
+      routes.hydrateEdge(A, {
+        kind: "sfu",
+        publicationGeneration: "publication_old",
+        transport: "sfu",
+        connectionId: "a_sfu_old",
+        usable: true,
+        physicalActive: true,
+        resource: "a_subscription_old",
+      });
+      routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+      routes.setPaused(true);
+      const begun = beginCodecSfu(routes);
+      const guard = begun.guard!;
+      const activeRevision = routes.snapshot().revision;
+      const directGuard: EdgeGuard = {
+        childPeerId: B,
+        childSessionId: `${B}_session`,
+        parentSessionId: "host_session",
+        routeRevision: activeRevision,
+        connectionId: "b_from_host",
+      };
+      const invalidateAndFold = (nowMs: number) => {
+        expect(routes.invalidateEdge(directGuard, nowMs)).toBe(true);
+        expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+          usable: false,
+          physicalActive: true,
+        });
+        const invalidatedFactVersion = routes.snapshot().factVersion;
+        expect(
+          routes.retireCommittedTransportsForRouteWait(
+            [directGuard],
+            nowMs + 1,
+          ),
+        ).toMatchObject({
+          accepted: true,
+          activeRevision,
+          released: [],
+        });
+        expect(routes.snapshot().factVersion).toBe(invalidatedFactVersion);
+        expect(routes.invalidateEdge(directGuard, nowMs + 2)).toBe(true);
+        expect(
+          routes.retireCommittedTransportsForRouteWait(
+            [directGuard],
+            nowMs + 3,
+          ),
+        ).toMatchObject({
+          accepted: true,
+          activeRevision,
+          released: [],
+        });
+        expect(routes.snapshot().factVersion).toBe(invalidatedFactVersion);
+        expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+          usable: false,
+          physicalActive: true,
+        });
+      };
+
+      if (foldAt === "before-candidate") invalidateAndFold(11);
+      const pending = beginCandidate(routes, {
+        nowMs: 20,
+        connectionId: guard.connectionId,
+        publicationGeneration: guard.publicationGeneration,
+        publicationConnectionId: guard.publicationConnectionId,
+        reservation: {
+          kind: "sfu-create",
+          edge: "subscription_resource_fresh",
+          publication: "publication_resource_fresh",
+        },
+      }).operation!;
+      if (foldAt === "after-candidate") invalidateAndFold(21);
+      expect(
+        routes.transitionCodecOperation({
+          guard,
+          expectedPhase: "preparing",
+          phase: "prepared",
+        }).accepted,
+      ).toBe(true);
+      expect(routes.operationExpired(1_000_000).accepted).toBe(false);
+
+      if (outcome === "commit") {
+        expect(
+          routes.transitionCodecOperation({
+            guard,
+            expectedPhase: "prepared",
+            phase: "proving",
+            nowMs: 30,
+            deadlineAtMs: 40,
+          }).accepted,
+        ).toBe(true);
+        const settled = routes.candidateReady(
+          {
+            childPeerId: A,
+            childSessionId: `${A}_session`,
+            revision: pending.current!.revision,
+            connectionId: guard.connectionId,
+          },
+          31,
+        );
+        expect(settled.accepted).toBe(true);
+        expect(settled.activeRevision).toBe(pending.current!.revision);
+      } else {
+        const aborted = routes.abortCodecOperation(guard, 31);
+        expect(aborted.accepted).toBe(true);
+        expect(aborted.activeRevision).toBeGreaterThan(
+          pending.current!.revision,
+        );
+        expect(aborted.released).toEqual([
+          "subscription_resource_fresh",
+          "publication_resource_fresh",
+        ]);
+      }
+      expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+        usable: false,
+        physicalActive: false,
+      });
+      expect(
+        routes.retireCommittedTransportsForRouteWait([directGuard], 32),
+      ).toMatchObject({ accepted: false, released: [] });
+    },
+  );
+
+  it("aborts an exact pending codec publication and starts a fresh retained-anchor rollback", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 0);
+    routes.hydrateHostPublication(
+      "publication_old",
+      "publication_resource_old",
+      "publication_connection_old",
+    );
+    routes.hydrateEdge(A, {
+      kind: "sfu",
+      publicationGeneration: "publication_old",
+      transport: "sfu",
+      connectionId: "subscription_old",
+      usable: true,
+      physicalActive: true,
+      resource: "subscription_resource_old",
+    });
+    routes.setPaused(true);
+    const forward = beginCodecSfu(routes);
+    const forwardGuard = forward.guard!;
+    const pending = beginCandidate(routes, {
+      nowMs: 11,
+      connectionId: forwardGuard.connectionId,
+      publicationGeneration: forwardGuard.publicationGeneration,
+      publicationConnectionId: forwardGuard.publicationConnectionId,
+      reservation: {
+        kind: "sfu-create",
+        edge: "forward_subscription_resource",
+        publication: "forward_publication_resource",
+      },
+    }).operation!;
+    const pendingRevision = pending.current!.revision;
+
+    expect(routes.abortCodecOperation({
+      ...forwardGuard,
+      codecGeneration: 2,
+    }, 12).accepted).toBe(false);
+    const aborted = routes.abortCodecOperation(forwardGuard, 12);
+    expect(aborted.accepted).toBe(true);
+    expect(aborted.activeRevision).toBeGreaterThan(pendingRevision);
+    expect(aborted.released).toEqual([
+      "forward_subscription_resource",
+      "forward_publication_resource",
+    ]);
+    expect(routes.snapshot().operation).toBeUndefined();
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      publicationGeneration: "publication_old",
+      usable: false,
+      physicalActive: false,
+    });
+
+    const rollback = beginCodecSfu(routes, {
+      routeRevision: routes.snapshot().revision,
+      codecGeneration: 2,
+      videoCodec: "automatic",
+      publicationGeneration: "publication_rollback",
+      connectionId: "subscription_rollback",
+      publicationConnectionId: "publication_connection_rollback",
+      nowMs: 20,
+      deadlineAtMs: 120,
+      retainedAnchor: {
+        childPeerId: A,
+        childSessionId: `${A}_session`,
+      },
+    });
+    expect(rollback).toMatchObject({
+      accepted: true,
+      anchorPeerId: A,
+      retiredPeerIds: [],
+      released: [],
+      operation: {
+        owner: {
+          kind: "codec",
+          codecGeneration: 2,
+          phase: "preparing",
+          videoCodec: "automatic",
+          publicationGeneration: "publication_rollback",
+        },
+        candidates: [{ tuple: { kind: "sfu", publication: "replace" } }],
+      },
+    });
+  });
+
+  it.each(["preparing", "proving"] as const)(
+    "reselects a connected logical SFU placeholder when the %s anchor leaves",
+    (phase) => {
+      const routes = controller(1, { sfuEnabled: true });
+      addViewer(routes, A, 0);
+      addViewer(routes, B, 0);
+      routes.hydrateHostPublication(
+        "publication_old",
+        "publication_resource_old",
+        "publication_connection_old",
+      );
+      for (const peerId of [A, B]) {
+        routes.hydrateEdge(peerId, {
+          kind: "sfu",
+          publicationGeneration: "publication_old",
+          transport: "sfu",
+          connectionId: `${peerId}_sfu_old`,
+          usable: true,
+          physicalActive: true,
+          resource: `${peerId}_subscription_old`,
+        });
+      }
+      routes.setPaused(true);
+      const forward = beginCodecSfu(routes);
+      const guard = forward.guard!;
+      beginCandidate(routes, {
+        nowMs: 11,
+        connectionId: guard.connectionId,
+        publicationGeneration: guard.publicationGeneration,
+        publicationConnectionId: guard.publicationConnectionId,
+        reservation: {
+          kind: "sfu-create",
+          edge: "forward_subscription_resource",
+          publication: "forward_publication_resource",
+        },
+      });
+      if (phase === "proving") {
+        expect(routes.transitionCodecOperation({
+          guard,
+          expectedPhase: "preparing",
+          phase: "prepared",
+        }).accepted).toBe(true);
+        expect(routes.transitionCodecOperation({
+          guard,
+          expectedPhase: "prepared",
+          phase: "proving",
+          nowMs: 12,
+          deadlineAtMs: 112,
+        }).accepted).toBe(true);
+      }
+
+      expect(routes.disconnectSession(A, `${A}_session`)).toBe(true);
+      expect(routes.confirmDeparture(A, 13)).toBe(true);
+      expect(routes.abortCodecOperation(guard, 14).accepted).toBe(true);
+      const rollback = beginCodecSfu(routes, {
+        routeRevision: routes.snapshot().revision,
+        codecGeneration: 2,
+        videoCodec: "automatic",
+        publicationGeneration: `publication_rollback_${phase}`,
+        connectionId: `subscription_rollback_${phase}`,
+        publicationConnectionId: `publication_connection_rollback_${phase}`,
+        nowMs: 20,
+        deadlineAtMs: 120,
+      });
+      expect(rollback).toMatchObject({
+        accepted: true,
+        anchorPeerId: B,
+        operation: {
+          owner: {
+            kind: "codec",
+            codecGeneration: 2,
+            phase: "preparing",
+          },
+          childPeerId: B,
+          candidates: [
+            { tuple: { kind: "sfu", publication: "replace" } },
+          ],
+        },
+      });
+    },
+  );
+
+  it("creates a codec SFU publication for an exact retained waiting anchor", () => {
+    const routes = controller(1, { sfuEnabled: true });
+    addViewer(routes, A, 0);
+    routes.setPaused(true);
+    const begun = beginCodecSfu(routes, {
+      retainedAnchor: {
+        childPeerId: A,
+        childSessionId: `${A}_session`,
+      },
+    });
+    expect(begun).toMatchObject({
+      accepted: true,
+      anchorPeerId: A,
+      activeRevision: 0,
+      retiredPeerIds: [],
+      released: [],
+      operation: {
+        owner: { kind: "codec", phase: "preparing" },
+        candidates: [{ tuple: { kind: "sfu", publication: "create" } }],
+      },
+    });
+  });
+
   it("replaces one publication and makes every old subscriber waiting", () => {
     const routes = controller(1, { sfuEnabled: true });
     addViewer(routes, A, 0);
@@ -875,15 +1776,15 @@ describe("RoomRouteController", () => {
       routeRevision: 0,
       generation: "publication_1",
       connectionId: "publication:publication_1",
-    })).toBe(true);
+    }, 10)).toBe(true);
     routes.touchExternalFacts();
-    const operation = routes.reconcile(0).operation!;
+    const operation = routes.reconcile(20).operation!;
     expect(operation.candidates[0]).toMatchObject({
       tuple: { kind: "sfu", publication: "replace" },
       endpointTransition: { kind: "overlap", producerPeerId: HOST },
     });
     const prepared = beginCandidate(routes, {
-      nowMs: 1,
+      nowMs: 21,
       connectionId: "a_sfu_2",
       publicationGeneration: "publication_2",
       publicationConnectionId: "publication_connection_2",
@@ -899,7 +1800,7 @@ describe("RoomRouteController", () => {
       childSessionId: `${A}_session`,
       revision: prepared.current!.revision,
       connectionId: "a_sfu_2",
-    }, 2);
+    }, 22);
     expect(settled.accepted).toBe(true);
     expect(settled.released).toHaveLength(4);
     expect(settled.released).toEqual(expect.arrayContaining([
@@ -912,7 +1813,14 @@ describe("RoomRouteController", () => {
       publicationGeneration: "publication_2",
     });
     expect(routes.snapshot().upstreamByViewer.has(B)).toBe(false);
-    expect(routes.reconcile(3).operation?.childPeerId).toBe(B);
+    expect(routes.routeDiagnosticSnapshot(22).children[1]).toMatchObject({
+      demandAgeMs: 12,
+      finalRoute: "waiting",
+    });
+    expect(routes.reconcile(23).operation).toMatchObject({
+      childPeerId: B,
+      reason: "edge-unavailable",
+    });
   });
 
   it("rebinds direct and SFU media to replacement sessions", () => {

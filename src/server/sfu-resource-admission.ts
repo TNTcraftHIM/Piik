@@ -23,7 +23,6 @@ type ResourceState = "reserved" | "committed" | "draining";
 interface SubscriptionEntry {
   fence: SfuSubscriptionFence;
   state: ResourceState;
-  reservedFromDraining: boolean;
 }
 
 interface PublicationEntry {
@@ -91,7 +90,6 @@ export class SfuResourceAdmission {
       }
       if (publication.state !== "committed") return false;
       existing.state = "reserved";
-      existing.reservedFromDraining = true;
       return true;
     }
     if (this.egressInUse >= this.egressCapacity) return false;
@@ -99,7 +97,6 @@ export class SfuResourceAdmission {
     publication.subscriptions.set(fence.viewerPeerId, {
       fence: cloneSubscriptionFence(fence),
       state: "reserved",
-      reservedFromDraining: false,
     });
     this.egressInUse += 1;
     return true;
@@ -128,7 +125,6 @@ export class SfuResourceAdmission {
     for (const subscription of publication.subscriptions.values()) {
       if (subscription.state === "reserved") {
         subscription.state = "committed";
-        subscription.reservedFromDraining = false;
       }
     }
     return draining;
@@ -148,7 +144,6 @@ export class SfuResourceAdmission {
     if (subscription.state === "committed") return true;
     if (subscription.state !== "reserved") return false;
     subscription.state = "committed";
-    subscription.reservedFromDraining = false;
     return true;
   }
 
@@ -164,13 +159,7 @@ export class SfuResourceAdmission {
       return false;
     }
     if (subscription.state === "reserved") {
-      if (subscription.reservedFromDraining) {
-        subscription.state = "draining";
-        subscription.reservedFromDraining = false;
-      } else {
-        publication.subscriptions.delete(fence.viewerPeerId);
-        this.subtractEgress(1);
-      }
+      subscription.state = "draining";
       return true;
     }
     if (subscription.state === "committed") {
@@ -246,7 +235,6 @@ export class SfuResourceAdmission {
     publication.state = "draining";
     for (const subscription of publication.subscriptions.values()) {
       subscription.state = "draining";
-      subscription.reservedFromDraining = false;
     }
   }
 
