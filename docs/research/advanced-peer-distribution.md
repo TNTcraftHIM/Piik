@@ -46,7 +46,7 @@ overhead. Protocol headers and retransmission overhead are additional.
 | Current full-stream browser chains | at most `2B` | zero on direct peer edges; SFU legs are accounted separately | host up to two encoders; every relay encodes again |
 | Native full-stream RTP relay | at most `2B` | zero on direct peer edges | relay zero encode; native host can share one encode |
 | Two encoded-object stripe trees | about `(1+r)B` | zero on direct peer edges | host one encode; relay zero encode |
-| Host publication with bounded SFU subscriptions | measured `B_pub` | per-subscriber egress; see low-server model | one publication may carry at most two active representations; physical encoder count remains measured evidence |
+| Host publication with bounded SFU subscriptions | measured `B_pub` | per-subscriber egress; see low-server model | current Browser publication carries one representation; dual representation requires a new decision and physical evidence |
 | Full central SFU/MoQ fanout | about `B` | ingress `B`, egress `N*B` | a possible bounded fallback result, never the default topology or mode |
 
 Useful last-hop traffic remains approximately `N*B`; these routes only decide

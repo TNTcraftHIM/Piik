@@ -195,10 +195,11 @@ pass.
 ADR-0006 records a bounded candidate and its failed first product gate, not an
 accepted architecture or shipped sender. The deployed Web sender and ordinary
 viewer remain unchanged. ADR-0007 continues to own path-isolated
-`HIGH + at most one LOW`; this canary cannot advance or replace it.
+representations; the current Browser SFU contract is one `HIGH`, and this canary
+cannot advance or replace it.
 
 ## References
 
 - `docs/research/native-shared-encode-sender.md`
-- `docs/adr/0007-demand-driven-dual-representation-quality.md`
+- `docs/adr/0007-path-isolated-representation-quality.md`
 - `docs/research/browser-screen-audio-quality.md`
