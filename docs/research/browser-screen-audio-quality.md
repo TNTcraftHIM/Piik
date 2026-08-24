@@ -1,39 +1,37 @@
 # Browser Screen-Audio Quality Controls
 
-Accessed: 2026-08-22
+Accessed: 2026-08-25
 
-Status: peer and SFU routes already use stereo and a 128 kbps default, but users
-still report speech-gated movie/game audio, including on a phone connected
-directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
-local speech processing unless the request disables it. The source request is
-explicit. Production runs exact deployed application/runtime revision
-`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
-`main` contains the same runtime code. Current Browser source and production use
-strict `screener-v11`, fixed VP8, no video hint, and no codec UI, quality state,
-or wire field. They expose bounded 64/128/256 kbps choices,
-apply them to new P2P, browser-relay, and SFU senders, and implement serialized
-live mutation with applied readback.
-Target-device audible proof remains open.
+Status: current Browser source and production use strict `screener-v12`, fixed
+VP8, no video hint, and one Opus screen-audio path with bounded 64/128/256 kbps
+sender ceilings. Production runs exact application/runtime revision
+`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`; canonical
+`main` contains the same runtime code. The capture request disables local speech
+processing, live mutation has applied readback, relay track changes preserve the
+persistent stream, and SFU reconnect reacquires exact publications/senders.
+Current-production physical evidence closes the active-source `1 kbps` report;
+audible game quality and real-game SFU A/V synchronization remain open.
 
 ## Observed-Bitrate Identity Boundary
 
-The reported Host audio diagnostic remaining at `1 kbps` after a source switch
-is not explained by a unit conversion or a configured ceiling. The existing
-delta calculation `(bytes * 8) / milliseconds` already returns kbps, and the UI
-only rounds that observed value. A muted or idle Opus stream can produce a value
-around 1 kbps, but the cause of the reported live-source value remains unproven
-until physical reproduction.
+The interval calculation `(bytes * 8) / milliseconds` already returns kbps, and
+the UI rounds that observed value rather than displaying a configured ceiling.
+Current source binds ordinary and SFU publisher stats to the exact active audio
+sender, merges the SFU sender reports, resets identity-changing baselines, keeps
+late relay audio changes on exact children, and reacquires exact SFU senders on
+reconnect. Explicit no-audio remains unknown.
 
-The current source nevertheless has two exact-observation defects. Ordinary
-peer stats select video by the current track identity but do not explicitly bind
-the selected audio RTP record to the current audio track. The SFU publisher
-requests stats only from the video sender even though
-`RTCRtpSender.getStats()` is scoped to that sender. The accepted fix reuses the
-existing exact media selector and report merge: ordinary Host and SFU publisher
-audio metrics bind to the current audio sender track, explicit no-audio returns
-unknown, video and audio sender reports are merged for SFU, and an audio-track
-identity change resets the interval baseline. It does not multiply the observed
-value, substitute the 64/128/256 kbps ceiling, or add an inferred audio state.
+A Chrome 151 gate against exact production `bf32859` used real
+`getDisplayMedia()` with generated active audio. Two Host-direct children, one
+browser-relay child and one SFU Viewer all advanced audio energy and video frames
+at each ceiling and after source replacement; the active UI never remained at
+`1 kbps`. Direct/browser-relay traffic tracked the selected ceiling. SFU wire
+traffic exceeded the 64/128 ceilings because the accepted pinned LiveKit
+publication retains RED; this does not change the exact sender parameter
+readback. Ordinary-route audio-minus-video playout timestamps ranged from -101
+to +4 ms once RTCP mapping arrived. Chrome exposed no such field on the SFU
+subscription, which remains unknown rather than zero or inferred. A muted or
+idle Opus stream may still legitimately use about 1 kbps.
 
 ## Scope And Decision
 
@@ -514,6 +512,7 @@ be copied into Screener's screen-media path.
 - [Chromium web display-audio constraint selection](https://github.com/chromium/chromium/blob/3620c35de32f20cfb11d0a616227c44750e31c67/third_party/blink/renderer/modules/mediastream/media_stream_constraints_util_audio.cc)
 - [Chromium M142 display-audio default restoration](https://chromium.googlesource.com/chromium/src/+/b059fa325c6da901f1b0b6afd9e736d67f62960e)
 - [Chromium display-capture audio processing](https://github.com/chromium/chromium/blob/0d07b03783490c156526384073fb5e97e7463e77/third_party/blink/renderer/modules/mediastream/media_stream_audio_processing_layout.cc)
+- [libwebrtc stats collector](https://webrtc.googlesource.com/src/+/refs/heads/main/pc/rtc_stats_collector.cc)
 - [LiveKit 2.22.0 track options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
 - [LiveKit 2.22.0 publish defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts)
 - [LiveKit 2.22.0 local publication](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)

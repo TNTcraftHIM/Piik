@@ -36,8 +36,8 @@ Current high-signal boundary:
   subscriber PCs explicitly use no external ICE server and check the dedicated
   public SFU candidate directly; ordinary peers and LiveKit server-side public
   IP discovery retain deployment STUN. Production exact deployed
-  application/runtime revision `2d5818ccf57f8ccf0999160ea74a16c9b4d97d12`,
-  release `2d5818c`, uses strict `screener-v12` and includes exact Browser SFU
+  application/runtime revision `bf328590b3de5dfa509fcc70f6316286af3eae7e`,
+  release `bf32859`, uses strict `screener-v12` and includes exact Browser SFU
   ICE-server-isolation implementation
   `ae09c760adec76fd26da611d4928486d105c6d3b`. Owner physical SFU fallback proof
   remains bounded to predecessor release `c4962f5`. The route uses one short-lived
@@ -53,8 +53,9 @@ Current high-signal boundary:
 - Browser display video must leave `contentHint` unset; audio keeps `music`.
   Browser video is fixed VP8 across direct, browser-relay, and SFU paths; strict
   v12 source and production have no codec UI/state/wire or fallback media codec.
-  Automated source gates and the exact deployment postflight passed,
-  but no physical direct, browser-relay, or SFU codec path has been verified.
+  Automated source gates and the exact deployment postflight passed. Chrome 151
+  physically verified direct/browser-relay/SFU screen-audio continuity and all
+  three sender ceilings; the separate VP8 performance/codec gate remains open.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy
