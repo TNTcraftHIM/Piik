@@ -6,7 +6,7 @@ Only items in **Now** are executable after their stated decision gate. A branch 
 
 ## Now
 
-1. **Finish real-network route acceptance.** Measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, exact first-frame commit and rollback, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync, and bounded explicit failure across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish the current failure boundary. Do not add port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
+1. **Finish real-network route acceptance.** Measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish bounded explicit failure. Do not add port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
 
 ## Accepted Later Roadmap
 
