@@ -3,9 +3,9 @@
 - Research date: 2026-08-24
 - Scope: desktop Chrome/Edge Web Host capture while the Host page is
   unfocused, occluded, backgrounded, or minimized
-- Status: one bounded current-browser screening did not observe an immediate
-  Host-page background drop; the reported real-game case remains unreproduced
-  and unattributed, and no new fix is accepted, implemented, or deployed
+- Status: deferred until a current-production real-game reproduction exists;
+  one bounded current-browser screening did not observe an immediate Host-page
+  background drop, and no new fix is accepted, implemented, or deployed
 
 ## Current Conclusion
 
@@ -61,6 +61,14 @@ is fixed in the current contract, but it does not prove that the state-dependent
 background report had the same cause. The physical baseline must therefore
 start from current production rather than carrying the old report forward as a
 current regression.
+
+This investigation is deferred. It reopens only if the report
+reproduces on current production with a continuously changing real game and
+synchronized capture, send, receive, decode, CPU, and GPU evidence. Removing the
+old harmful `motion` hint may have removed a confounding quality defect, but it
+is not established as a background-lifecycle fix. Mobile Viewer background
+playback and assigned-relay survival remain a separate browser/OS lifecycle
+gate and do not inherit this desktop Host result.
 
 ## Current Source Boundary
 
