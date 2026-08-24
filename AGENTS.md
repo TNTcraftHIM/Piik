@@ -30,6 +30,7 @@
 
 - Keep the canonical repository root on a clean, current `main` at audit and integration boundaries. Create branches and worktrees from that exact commit; an auxiliary worktree or old branch is never a truth source.
 - Merge an accepted truth checkpoint before integrating dependent candidates. Rebase or rebuild each retained candidate from that exact `main` once, preserve main's owning truth on conflicts, and transplant only approved scoped code, tests, and new facts.
+- Routine application-only releases verify a new immutable artifact, switch to it atomically, and guarantee the pre-cutover application release only through bounded health and postflight checks; it has no retention contract afterward and is not a maintained backup. A task that changes infrastructure, configuration, secrets, persistent state, or an irreversible surface must define recovery for only those touched surfaces before changing them.
 - Cleanup is last. Preserve user work and verify integration, open references, branch equivalence, and link/reparse safety before removing a worktree or branch.
 - Follow `CONTRIBUTING.md` for branch, research, validation, PR, merge, cleanup, and local-hook details.
 

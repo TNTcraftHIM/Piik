@@ -2,9 +2,9 @@
 
 Last verified against upstream documentation: 2026-08-24.
 
-This page records the production deployment of exact integrated main
-`2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, and the single
-Browser `screener-v10` contract. Product direction and pending work are owned by
+This page records production running exact deployed application/runtime revision
+`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`, and the single
+Browser `screener-v11` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 This section documents the repository's UDP-only deployment candidate: one
@@ -22,26 +22,26 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `2726edde9b87f31fd76e749de47972ef817a9bd5`, release
-`2726edd`, from `/opt/screener/releases/2726edd`. The immutable runtime ZIP
+Production runs exact `679fe3e7af634309322bea83b316641f51ad3d09`, release
+`679fe3e`, from `/opt/screener/releases/679fe3e`. The immutable runtime ZIP
 SHA-256 is
-`07fa6500300bfedc9cedccb0db761b70a9ada8dd77608153728e34835f4e1b78`.
+`fc96137f0fdc4dc4d8e083513d8fe99b9c55f7067a8b1de9202551edc3776c50`.
 Its 38-file path/size/hash manifest SHA-256 is
-`c4ed6321fa3ac8b4c766a7e575d26f8fd4ec2ea929a9addefb7944abafa5b663`.
-The verified pre-v10 rollback boundary is
-`/opt/screener/backups/2726edd-pre-v10-20260824T025357Z`; its internal
-`SHA256SUMS` hash is
-`62d19aa0a3ec400477a4c76121eb0e9e4d553d024404f3da054fa1e95f251939`.
+`73f67c530acd5d4c77b546c19b5752c066f82682a584a72cd7ca596d6c5bec7e`.
 Local and trusted-IP public `/` and `/healthz` return 200; Screener, LiveKit,
-coturn, and nginx are active with `NRestarts=0`. The public main Browser asset is
-`assets/index-BtFMxoNI.js` with SHA-256
-`885b9e50c57c64ac92cc8ffe5488d597bbb6fde6423e7a0b328efb9d1e943ad2`.
+coturn, and nginx are active with `NRestarts=0`, and all six served client files
+match the immutable release. The public main Browser asset is
+`assets/index-CGzoJSvs.js` with SHA-256
+`31cf628d96be88f373cd0c3ac09e4966929fe320414aa1f0f9841264708d5a7e`;
+the retired v10 asset `assets/index-BtFMxoNI.js` returns 404.
 
-The release deploys the single Browser `screener-v10` wire, random four-digit
+The release deploys the single Browser `screener-v11` wire, fixed VP8 for Browser
+direct, browser-relay, and SFU video, no video `contentHint`, no codec UI/state/wire,
+random four-digit
 memory rooms with a 24-hour dormant lease, orthogonal grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
 one-controller exact-candidate route runtime. A credential-free postflight sent
-a well-formed authentication shape with stale `screener-v9`; it received
+a well-formed authentication shape with stale `screener-v10`; it received
 `INVALID_MESSAGE` and WebSocket close 1008 before room authority without creating
 a room. The service unit has no writable room StateDirectory; all room authority
 is process-memory-only. LiveKit is dedicated, has `room.auto_create: false` and
@@ -91,7 +91,7 @@ artifact/inode/permission gates.
 
 Each immutable release must own an independent dependency tree. Never hard-link
 `node_modules` or another file that deployment may `chown`, `chmod`, replace, or
-remove: metadata changes would also mutate the rollback release. A copy or
+remove: metadata changes would also mutate another immutable release. A copy or
 copy-on-write reflink is acceptable only after an inode audit confirms that the
 old and new regular-file sets have zero shared inodes. Do not recursively change
 permissions until that check passes.
@@ -101,14 +101,22 @@ manifest before upload, normalize every relative entry path, and reject absolute
 paths, `..` traversal, unexpected top-level entries, and unapproved links. Verify
 the uploaded archive hash, extract only into a new release directory, then compare
 the exact path set, file types, sizes, and per-file hashes with the manifest before
-switching. Archive format alone is neither integrity nor rollback evidence.
+switching. Archive format alone is neither integrity nor recovery evidence.
+
+A routine application-only cutover leaves infrastructure, configuration, secrets,
+and persistent state untouched. Verify a new immutable artifact, switch to it
+atomically, and guarantee the pre-cutover application release only through
+bounded health and postflight checks. It has no retention contract afterward and
+is not a maintained backup. When a task actually changes infrastructure,
+configuration, secrets, persistent state, or an irreversible surface, define and
+verify recovery only for the touched surfaces before changing them.
 
 In a strict-shell deployment, expected service states are data, not command
 failures. Do not call `systemctl is-active` bare under `set -e`/`ERR`: an
-intentionally stopped service returns a nonzero status and can trigger a false rollback. Read
+intentionally stopped service returns a nonzero status and can trigger a false failure path. Read
 `ActiveState` with `systemctl show`, compare the returned string explicitly, and
-keep stop, symlink switch, start, health check, and rollback as separate steps.
-Preflight every inspection dependency before taking a backup or changing a
+keep stop, symlink switch, start, health check, and any release restoration as
+separate steps. Preflight every inspection dependency before changing a
 service. After a start, poll health for a short bounded window instead of treating
 one request during startup as a
 failed release; retain the last failure while still enforcing the deadline.
@@ -139,7 +147,7 @@ as a `screener.service.d` drop-in on this layout. `After=` orders the services,
 while the bounded `ExecStartPre` waits for TCP 7880 readiness; ActiveState alone
 does not prove the LiveKit control listener is accepting connections.
 
-## Candidate boundary and rollback
+## Candidate boundary and recovery
 
 The accepted target for `share.bonfire.icu` remains distributed and automatic:
 direct/peer UDP first, with one Host publication available to authorized SFU
@@ -157,18 +165,20 @@ separate UDP-only ICE domain.
 
 `PEER_ASSISTED_MEDIA=true` is the process-wide topology/SFU switch. Every normal
 room gets its own bounded controller state and ordinary peer connections remain
-STUN-only. Run candidate releases on an isolated
-instance/hostname and keep
-the old release unchanged for rollback. If the candidate fails, roll back the
-release or instance; do not add a permanent dual-transport branch.
+STUN-only. Run route or infrastructure candidates on an isolated
+instance/hostname and keep the current release unchanged. If the candidate fails,
+stop it and restore only the recovery boundary defined for its changed surfaces;
+do not add a permanent dual-transport branch.
 
 A memory-room release starts with empty process authority. Starting the candidate
 invalidates every current production room, Host token, invitation, password
 verifier, and route; open pages must refresh or explicitly create a replacement
-room. No room state crosses a release boundary in either direction. Preserve the
-immutable current release and the recorded environment, unit, LiveKit, coturn,
-firewall, and reverse-proxy rollback artifact unchanged, and restore that exact
-boundary if postflight fails.
+room. No room state crosses a release boundary in either direction. Guarantee the
+pre-cutover immutable application release only through the bounded postflight; it
+has no retention contract afterward and is not a maintained backup. An
+application-only cutover leaves the environment, unit, LiveKit, coturn, firewall,
+and reverse proxy unchanged; any task that changes one of those surfaces must
+establish its scoped recovery before the change.
 
 A shared-public-IP instance can test candidate behavior, but it cannot prove the
 clean-port boundary or approve broad migration. The room-1 smoke uses this
@@ -222,8 +232,9 @@ SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 Supplying any stale `PEER_ICE_TURN_*` or `SELECTED_EDGE_TURN_*` key, even blank,
 fails startup. Production contains none of those keys, uses the tracked
 STUN-only coturn configuration, and keeps TCP 3478/5349 plus every relay range
-closed. A rollback restores an exact recorded release, environment, coturn
-configuration, and firewall snapshot as one unit.
+closed. An application-only release leaves the environment, coturn configuration,
+and firewall unchanged; a task that changes any of them must define recovery for
+that exact set before modification.
 
 `PEER_ASSISTED_ROOM_IDS` is retired. Supplying it, even blank, fails startup so
 that a stale room-1 deployment cannot silently retain the old scope. With
@@ -244,7 +255,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `2726edd` accepts 1 through 20 and explicitly selects 20. This is an
+Production `679fe3e` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -257,11 +268,9 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `2726edd` runs the deployed server and Browser assets
-atomically on `screener-v10`; every stale Browser or executable-sender wire fails
+Production release `679fe3e` runs the deployed server and Browser assets
+atomically on `screener-v11`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
-Restore only an exact recorded release with its matching environment, unit,
-LiveKit, coturn, and firewall snapshot when rolling back.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
 complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive

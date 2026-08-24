@@ -5,8 +5,11 @@
   trusted viewers; exact v10 direct-loopback evidence reaches twenty and the
   earlier resource/quality gate remains eight
 - Status: historical evidence plus the bounded controller. Exact Browser v10
-  source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` implements the current
-  ADR-0005 route transaction, and production runs that v10 contract. A
+  source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` remains the dated local
+  direct-loopback implementation evidence. Production runs exact deployed
+  application/runtime revision `679fe3e7af634309322bea83b316641f51ad3d09`, release
+  `679fe3e`; canonical `main` contains the same runtime code. Current source and
+  production run the strict `screener-v11` ADR-0005 route transaction. A
   historical v8 canary decoded SFU media. Heterogeneous-network, mobile,
   resource, and endurance evidence remains open.
 
@@ -240,7 +243,7 @@ rather than wire IDs, and `480p` is only the advanced 854x480 resolution. The
 server stores the latest complete object in a room-count-bounded in-memory map,
 defaults to 1080p30 at 5 Mbps with balanced priority, includes it in
 peer-assisted authenticated snapshots, and broadcasts Host changes to online
-Viewers. Production v10 uses the same 1080p30 default and advanced 480p boundary.
+Viewers. Production uses the same 1080p30 default and advanced 480p boundary.
 The value survives a stopped share, is removed with
 the room, and is not persisted.
 Ordinary P2P authentication remains unchanged and
@@ -529,7 +532,7 @@ event arrives later. The application therefore needs a small text-message
 challenge rather than waiting for either protocol Ping/Pong or the old socket's
 close event.
 
-Deployed v10 sends
+Production sends
 `signaling-challenge { sequence }`, and the server sends the exact
 `signaling-challenge-response { sequence }` only to that requesting socket.
 Server and Browser assets deploy atomically; stale Browser and executable-sender
@@ -547,7 +550,7 @@ socket generation are ignored, and the server revalidates the current
 authenticated session before replying. A hidden document, a visibility
 restore, or an obviously late timer callback clears pending evidence and starts
 a fresh five-second baseline instead of declaring failure.
-This response-only watchdog is deployed in v10;
+This response-only watchdog is deployed in production;
 real silent-partition timing remains a production/browser evidence boundary.
 
 The response is socket-local, contains no room state, secret, candidate, or raw

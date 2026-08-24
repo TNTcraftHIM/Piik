@@ -11,9 +11,11 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-Exact current Browser source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`
-uses strict `screener-v11`, fixed VP8, no video `contentHint`, and no codec
-UI, quality state, or wire field. It uses `balanced` as the recommended profile
+Production runs exact deployed application/runtime revision
+`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`main` contains the same runtime code. Current Browser source and production use
+strict `screener-v11`, fixed VP8, no video `contentHint`, and no codec UI,
+quality state, or wire field. They use `balanced` as the recommended profile
 and advanced default;
 `maintain-resolution` and `maintain-framerate` remain explicit choices. These
 preferences leave actual degradation to the browser, so Screener observes
@@ -158,8 +160,8 @@ Screener's accepted boundary forbids adding application SDP bitrate hacks.
 
 The same release was also reported to reduce game-stream frame rate and
 consume noticeable Host resources. That report applies only to
-`769de201f7cc`, not to current production or automatically to the newer
-diagnostics in exact source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`.
+`769de201f7cc`, not to current production or automatically to the current v11
+diagnostics.
 The Web
 sender creates one independent `RTCRtpSender` per viewer and has no cross-PC
 shared-encoder guarantee; its muted local preview creates no media edge or
@@ -190,8 +192,8 @@ A 2026-08-21 report says that selecting fluid preference on an SFU path could
 retain low received FPS without reducing the visible resolution. This is not
 proof that the preference was ignored: `maintain-framerate` is a degradation
 tradeoff rather than an FPS target. It is also not evidence of SFU temporal
-downlayering: the current deployed v10 Browser defaults to VP8 but still lets the
-Host select another value before starting the share. Pinned LiveKit server 1.13.5 installs a temporal selector
+downlayering: the then-deployed v10 Browser defaulted to VP8 but let the Host
+select another value before starting the share. Pinned LiveKit server 1.13.5 installs a temporal selector
 for VP8, but its H.264/H.265 path installs only the simulcast spatial selector.
 With H.264 selected, a `HIGH` ceiling may therefore let BWE choose the
 lower-resolution `q` representation, not a lower temporal layer at the same
@@ -222,7 +224,7 @@ baseline. `HostSfuRoute` may expose that local snapshot to one Host-only
 publisher row; it must not duplicate the shared Host-to-SFU ingress inside each
 SFU Viewer card. Viewer inbound remains the per-Viewer C signal. This needs no
 wire, server telemetry, global score, selector or new UI framework. Production
-deploys this v10 publisher view; its target-browser fields and values still need
+deploys this publisher view; its target-browser fields and values still need
 physical evidence.
 
 ## Browser Codec And Content-Hint Evidence
@@ -233,10 +235,10 @@ as their only video media codec, while RTX/RED/FEC may remain repair formats;
 SFU publication explicitly uses VP8 with no backup codec. The UI and quality
 wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
-Exact source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` implements this strict
-`screener-v11` contract. Production remains exact
-`2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, on v10 with
-video `contentHint = "motion"` and the pre-share codec selector.
+Production runs exact deployed application/runtime revision
+`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`main` contains the same runtime code. Current source and production implement
+this strict `screener-v11` contract.
 
 Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
 libwebrtc clears `is_screencast` for that mode, replacing the display-capture
@@ -712,7 +714,7 @@ The three user-visible profiles remain ceilings rather than promised rates:
 | 1080p30 | 1920x1080 at 30 fps | 5 Mbps |
 | 720p30 | 1280x720 at 30 fps | 3 Mbps |
 
-Current v11 source and v10 production default to the middle `1080p30` ceiling.
+Current v11 source and production default to the middle `1080p30` ceiling.
 Choosing that
 default trades a 60 fps ceiling for a 1080p capture bound. The recommended set
 remains exactly the three profiles
@@ -726,23 +728,20 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - A live profile change uses `track.applyConstraints()` and updates every
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
-- Current source leaves the video hint unset so display capture retains
-  browser screen semantics; production still sets `contentHint = "motion"`
-  until v11 deployment. Recommended profiles and the advanced initial value use
-  `balanced`, with explicit `maintain-resolution` and
+- Current source and production leave the video hint unset so display capture
+  retains browser screen semantics. Recommended profiles and the advanced
+  initial value use `balanced`, with explicit `maintain-resolution` and
   `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
-- The current deployed `screener-v10` Share advanced settings panel accepts
-  480p/720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, the three preferences, and
-  Automatic/H.264/VP8 before sharing starts and defaults to VP8. The `480p` choice is only advanced `854x480`, not a
-  fourth recommended profile. Its 64/128/256 kbps audio ceiling, default 128,
-  is live-switchable on the existing Opus path. Production deploys both the
-  advanced 480p resolution and live audio mutation. Current v11 source keeps
-  those controls, fixes Browser media to VP8, and exposes no codec UI,
-  quality-state field, or wire field. Display capture does not standardize channel-count or
-  sample-rate control. The peer receive
-  contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
+- The strict `screener-v11` Share advanced settings panel in current source and
+  production accepts 480p/720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, and
+  the three preferences. Browser media is fixed VP8, with no codec UI,
+  quality-state field, or wire field. The `480p` choice is only advanced
+  `854x480`, not a fourth recommended profile. Its 64/128/256 kbps audio
+  ceiling, default 128, is live-switchable on the existing Opus path. Display
+  capture does not standardize channel-count or sample-rate control. The peer
+  receive contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
   LiveKit's explicit high-quality stereo/forceStereo option; the selected sender
   ceiling remains separate from negotiated and observed bitrate.
   DTX stays fixed off, RED retains the pinned SDK default, and FEC remains
@@ -761,11 +760,11 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - Pausing sharing disables every track in the current capture stream, producing
   black video and silence without closing the room or media connection.
 
-Current source and deployed v10 stop at manual bounded controls.
-They add no composite score, periodic adjustment, runtime codec switching, SDP bitrate
-manipulation, or scene detector. Three consecutive samples of one non-`none` native
-`qualityLimitationReason` produce one explanatory warning; a reason change or
-recovery resets it and never triggers a media action.
+Current source and production stop at manual bounded controls.
+They add no composite score, periodic adjustment, runtime codec switching, SDP
+bitrate manipulation, or scene detector. Three consecutive samples of one
+non-`none` native `qualityLimitationReason` produce one explanatory warning; a
+reason change or recovery resets it and never triggers a media action.
 
 A Chrome 151 loopback smoke with one host, three viewers, and synthetic 720p30
 video propagated balanced then clarity settings to every participant. Every

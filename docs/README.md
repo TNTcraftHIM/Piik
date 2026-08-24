@@ -4,10 +4,10 @@
 - [方案设计](./方案设计.md): accepted implementation design; unfinished release and validation work is tracked in the current TODO ledger.
 - [Project memory](./project-memory.md): durable current product and source snapshot to read at the start of future work.
 - [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
-- [Verification status](./verification-status.md): exact integrated/deployed v10 gates, current production evidence, open physical proof boundaries, and expensive-test applicability.
+- [Verification status](./verification-status.md): exact integrated/deployed v11 gates, current production evidence, open physical proof boundaries, and expensive-test applicability.
 - [Session handoff](./session-handoff.md): temporary bootstrap prompt that points a new session back to the canonical truth owners.
 - [Current TODO](./todo.md): unresolved work, active truth holds, and decisions that still require user confirmation.
-- [Deployment](./deployment.md): exact current v10 production and rollback configuration, release operations, and transport evidence boundaries.
+- [Deployment](./deployment.md): exact current v11 production, immutable release operations, scoped recovery rules, and transport evidence boundaries.
 - [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
 - [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
 - [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, exact-route implementation evidence, and remaining physical gates.
@@ -19,7 +19,7 @@
 - [Native H.264 opt-in path](./research/native-h264-opt-in-path.md): explicit H.264 sender mode, exact Pion profile registration, and one bounded Host/Viewer loopback with hardware caveats.
 - [Realtime quality adaptation](./research/realtime-quality-adaptation.md): fixed Browser VP8/no-video-hint evidence, manual quality ceilings, diagnostic-only capture/send/receive correlation, path-isolated dual representations, and bounded simulcast/Dynacast/SVC checks.
 - [Browser background capture diagnostics](./research/browser-background-capture.md): browser lifecycle evidence, a privacy-bounded capture/send/receive experiment, interpretation gates, and non-goal keepalive mechanisms.
-- [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, v10 live sender-ceiling readback, Opus negotiation boundaries, and remaining audible/device evidence.
+- [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, live sender-ceiling readback, Opus negotiation boundaries, and remaining audible/device evidence.
 - [Display name and presence boundaries](./research/display-name-presence.md): browser-local storage failure behavior, Unicode normalization, control-character policy, and the Web-only presence capability boundary.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): historical P2P-first baseline; later access and automatic-routing decisions supersede its stale current-state details.

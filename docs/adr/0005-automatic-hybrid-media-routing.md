@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted; deployed in exact release `2726edd`
+- Status: Accepted; deployed in exact release `679fe3e`
 - Date: 2026-08-20
 - Last updated: 2026-08-24
 
@@ -352,9 +352,10 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Exact current source `f5a295c` runs the strict `screener-v11` Browser wire. Exact
-production `2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, runs
-`screener-v10`; `screener-v11` is not deployed. Both use the direct/STUN peer and
+Production runs exact deployed application/runtime revision
+`679fe3e7af634309322bea83b316641f51ad3d09`, release `679fe3e`; canonical
+`main` contains the same runtime code. Current source and production run the
+strict `screener-v11` Browser wire and use the direct/STUN peer and
 LiveKit SFU/UDP route model, including the route, first-frame, typed-status, and
 Host-only diagnostic contract described above. The operation owner is only
 `route`. Exact operational evidence is owned by the deployment document; real
