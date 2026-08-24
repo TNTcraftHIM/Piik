@@ -412,47 +412,6 @@ h3 {
   content: "";
 }
 
-.connection-self-check {
-  display: grid;
-  width: 100%;
-  gap: 8px;
-  justify-items: start;
-}
-
-.connection-self-check-results {
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px 14px;
-}
-
-.connection-self-check-result {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 16px 58px minmax(0, 1fr);
-  gap: 5px;
-  align-items: center;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.connection-self-check-result svg {
-  color: var(--faint);
-}
-
-.connection-self-check-result.is-passed svg {
-  color: var(--green);
-}
-
-.connection-self-check-result.is-failed svg {
-  color: var(--red);
-}
-
-.connection-self-check-result span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 .room-code-entry.is-inline {
   display: grid;
   grid-row: 3;
@@ -588,14 +547,33 @@ h3 {
   grid-column: 1 / -1;
 }
 
+.quality-priority .segmented-control {
+  height: 54px;
+}
+
+.quality-priority .segmented-control button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+.quality-priority .segmented-control small {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.quality-priority .segmented-control button.is-selected small {
+  color: #a9cdb7;
+}
+
 .control-note {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 13px;
-}
-
-.advanced-quality-grid > .button {
-  justify-self: start;
 }
 
 .connection-details-toggle {
@@ -608,7 +586,6 @@ h3 {
   padding: 0 2px;
   color: var(--muted);
   font-size: 13px;
-  cursor: pointer;
 }
 
 .connection-details-toggle:hover {
@@ -619,6 +596,7 @@ h3 {
   display: inline-flex;
   gap: 9px;
   align-items: center;
+  cursor: pointer;
 }
 
 .connection-details-toggle input {
@@ -627,6 +605,7 @@ h3 {
   flex: 0 0 18px;
   margin: 0;
   accent-color: var(--green-strong);
+  cursor: pointer;
 }
 
 .control-group {
@@ -710,6 +689,24 @@ h3 {
   outline: 0;
   color: var(--text);
   background: transparent;
+}
+
+.password-visibility-action {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.password-visibility-action:hover:not(:disabled) {
+  color: var(--text);
 }
 
 .button,
@@ -797,11 +794,8 @@ h3 {
 
 .room-entry-policy {
   display: grid;
-  grid-template-columns:
-    minmax(130px, 0.55fr)
-    minmax(300px, 1.15fr)
-    minmax(260px, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 12px;
   align-items: center;
   margin-top: 12px;
   padding-top: 12px;
@@ -823,6 +817,7 @@ h3 {
 }
 
 .invite-heading-copy {
+  align-items: baseline;
   gap: 6px;
 }
 
@@ -856,67 +851,43 @@ h3 {
 
 .room-entry-heading {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  align-items: flex-start;
-  justify-content: center;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .room-policy-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
 }
 
 .room-policy-control button {
+  display: inline-flex;
   flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
-.room-lease-note {
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
+.room-policy-control .policy-private.is-selected {
+  color: #f3c86f;
+  background: var(--amber-soft);
+  box-shadow: inset 0 -2px var(--amber);
 }
 
 .viewer-password-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px 40px;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  grid-column: 1 / -1;
   width: 100%;
   gap: 6px;
   align-items: center;
-  padding-left: 14px;
-  border-left: 1px solid var(--border);
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
-.room-password-summary {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-left: 14px;
-  border-left: 1px solid var(--border);
-}
-
-.room-password-state,
-.room-password-actions {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-}
-
-.room-password-state {
-  gap: 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.room-password-actions {
-  flex: 0 0 auto;
-  gap: 6px;
-}
-
-.room-password-edit-action {
-  min-height: 40px;
-  padding: 7px 10px;
+.viewer-password-control.has-password {
+  grid-template-columns: minmax(0, 1fr) 40px 40px;
 }
 
 .viewer-password-control > label {
@@ -1193,6 +1164,13 @@ h3 {
   display: none;
 }
 
+.stats-contract-warning {
+  margin: 10px 0 0;
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .metric {
   min-width: 0;
 }
@@ -1438,27 +1416,6 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 
-@media (max-width: 1200px) {
-  .room-entry-policy {
-    grid-template-columns: minmax(130px, 160px) minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .room-entry-heading {
-    grid-row: 1 / span 2;
-    padding-top: 3px;
-  }
-
-  .room-password-summary,
-  .viewer-password-control {
-    grid-column: 2;
-    padding-top: 10px;
-    padding-left: 0;
-    border-top: 1px solid var(--border);
-    border-left: 0;
-  }
-}
-
 @media (max-width: 1050px) {
   .host-workspace {
     grid-template-columns: minmax(0, 1fr) 330px;
@@ -1516,11 +1473,19 @@ h3 {
 
 }
 
-@media (max-width: 520px) {
-  .connection-self-check-results {
+@media (max-width: 680px) {
+  .room-entry-policy {
     grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 
+  .room-policy-control,
+  .viewer-password-control {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 520px) {
   .viewer-title-row {
     flex-wrap: wrap;
   }
@@ -1568,25 +1533,7 @@ h3 {
     white-space: normal;
   }
 
-  .room-entry-policy {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-  }
-
-  .room-entry-heading {
-    grid-row: auto;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 0;
-  }
-
-  .room-password-summary,
-  .viewer-password-control {
-    grid-column: 1;
-  }
-
-  .viewer-password-control {
+  .viewer-password-control.has-password {
     grid-template-columns: minmax(0, 1fr) 40px 40px;
   }
 

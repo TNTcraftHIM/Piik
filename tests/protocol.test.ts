@@ -18,6 +18,8 @@ import {
   decodeClientMessage,
   normalizeDisplayName,
   participantRouteAssignmentSchema,
+  roomAccessUpdateRequestSchema,
+  roomAccessUpdateResponseSchema,
   serverMessageSchema,
   viewerPasswordSchema,
 } from "../src/shared/protocol.js";
@@ -57,6 +59,7 @@ const qualityEvidence = {
     bitrateKbps: 7_500,
     packetsReceivedDelta: 1_500,
     packetsLostDelta: 2,
+    rttMs: 18,
     jitterMs: 3.5,
     framesDecodedDelta: 120,
     framesDroppedDelta: 1,
@@ -67,6 +70,15 @@ const qualityEvidence = {
     codecProfile: "profile-level-id=42e01f",
     codecParameters:
       "packetization-mode=1; level-asymmetry-allowed=1",
+    audioBitrateKbps: 192,
+    audioPacketLossPercent: 0.2,
+    audioJitterMs: 2.5,
+    audioVideoPlayoutDeltaMs: -12.5,
+    videoJitterBufferDelayMs: 24,
+    audioJitterBufferDelayMs: 18,
+    audioConcealedSamplesPercent: 1,
+    audioConcealmentEventsDelta: 3,
+    audioCodec: "audio/opus",
   },
 } as const;
 
@@ -195,14 +207,22 @@ describe("client signaling protocol", () => {
     ).toEqual({ codeEntryPolicy: "open" });
     expect(
       createRoomRequestSchema.parse({
-        codeEntryPolicy: "password",
+        codeEntryPolicy: "private",
         roomPassword: "room-password",
       }),
     ).toEqual({
-      codeEntryPolicy: "password",
+      codeEntryPolicy: "private",
       roomPassword: "room-password",
     });
-    for (const codeEntryPolicy of ["private-link", "public-watch", 1]) {
+    expect(
+      createRoomRequestSchema.parse({ codeEntryPolicy: "private" }),
+    ).toEqual({ codeEntryPolicy: "private" });
+    for (const codeEntryPolicy of [
+      "password",
+      "private-link",
+      "public-watch",
+      1,
+    ]) {
       expect(
         createRoomRequestSchema.safeParse({
           codeEntryPolicy,
@@ -350,29 +370,47 @@ describe("client signaling protocol", () => {
         }).success,
       ).toBe(false);
     }
-    for (const policy of ["open", "password", "disabled"]) {
+    for (const policy of ["open", "private"] as const) {
       expect(
-        clientMessageSchema.safeParse({
-          type: "set-code-entry-policy",
+        roomAccessUpdateRequestSchema.safeParse({
+          action: "set-code-entry-policy",
           policy,
         }).success,
       ).toBe(true);
     }
     expect(
-      clientMessageSchema.safeParse({ type: "rotate-viewer-grant" }).success,
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "rotate-viewer-grant",
+      }).success,
     ).toBe(true);
     expect(
-      clientMessageSchema.safeParse({ type: "revoke-viewer-grant" }).success,
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "revoke-viewer-grant",
+      }).success,
     ).toBe(true);
     expect(
-      clientMessageSchema.safeParse({
-        type: "set-code-entry-policy",
-        policy: "private-link",
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "set-code-entry-policy",
+        policy: "disabled",
       }).success,
     ).toBe(false);
+    expect(
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "set-code-entry-policy",
+        policy: "password",
+      }).success,
+    ).toBe(false);
+    for (const removedMessage of [
+      { type: "set-code-entry-policy", policy: "open" },
+      { type: "rotate-viewer-grant" },
+      { type: "revoke-viewer-grant" },
+      { type: "set-viewer-password", password: "room-password" },
+    ]) {
+      expect(clientMessageSchema.safeParse(removedMessage).success).toBe(false);
+    }
   });
 
-  it("accepts simple bounded Viewer passwords and the Web Host capability", () => {
+  it("accepts simple bounded Viewer passwords and access responses", () => {
     expect(viewerPasswordSchema.safeParse("x").success).toBe(true);
     expect(viewerPasswordSchema.safeParse("simple-password").success).toBe(true);
     for (const invalid of [
@@ -395,24 +433,13 @@ describe("client signaling protocol", () => {
       }).success,
     ).toBe(true);
     expect(
-      clientMessageSchema.safeParse({
-        type: "authenticate",
-        protocol: SIGNALING_PROTOCOL,
-        roomId,
-        role: "host",
-        token,
-        clientId: "client_12345678",
-        viewerPasswordSettings: true,
-      }).success,
-    ).toBe(true);
-    expect(
-      clientMessageSchema.safeParse({
-        type: "set-viewer-password",
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "set-viewer-password",
         password: null,
       }).success,
     ).toBe(true);
     expect(
-      serverMessageSchema.safeParse({
+      roomAccessUpdateResponseSchema.safeParse({
         type: "viewer-password-updated",
         enabled: true,
       }).success,
@@ -1014,12 +1041,31 @@ describe("server signaling protocol", () => {
       connectionId: null,
       viewerPeerIds,
       codeEntryPolicy: "open",
+      viewerPasswordEnabled: false,
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       iceConfig: {
         iceServers: [],
       },
     };
   }
+
+  it("scopes password configuration state to authenticated Hosts", () => {
+    const host = authenticatedMessage(8) as Record<string, unknown>;
+    expect(serverMessageSchema.safeParse(host).success).toBe(true);
+    delete host.viewerPasswordEnabled;
+    expect(serverMessageSchema.safeParse(host).success).toBe(false);
+
+    const viewer = {
+      ...authenticatedMessage(8),
+      role: "viewer",
+      peerId: "viewer_12345678",
+      viewerPeerIds: [],
+    } as Record<string, unknown>;
+    delete viewer.viewerPasswordEnabled;
+    expect(serverMessageSchema.safeParse(viewer).success).toBe(true);
+    viewer.viewerPasswordEnabled = true;
+    expect(serverMessageSchema.safeParse(viewer).success).toBe(false);
+  });
 
   it("accepts dynamic viewer limits within the protocol boundary", () => {
     expect(MAX_VIEWERS_PER_ROOM_LIMIT).toBe(20);
@@ -1381,9 +1427,15 @@ describe("server signaling protocol", () => {
     const forwarded = {
       ...qualityEvidence,
       viewerPeerId: "viewer_12345678",
-      parentPeerId: "host_12345678",
+      upstream: { kind: "peer", peerId: "host_12345678" },
     };
     expect(serverMessageSchema.safeParse(forwarded).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...forwarded,
+        upstream: { kind: "sfu" },
+      }).success,
+    ).toBe(true);
     expect(
       Buffer.byteLength(JSON.stringify(forwarded), "utf8"),
     ).toBeLessThanOrEqual(MAX_VIEWER_QUALITY_EVIDENCE_BYTES);
@@ -1394,6 +1446,12 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         ...qualityEvidence,
         viewerPeerId: "viewer_12345678",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...forwarded,
+        upstream: { kind: "none" },
       }).success,
     ).toBe(false);
   });

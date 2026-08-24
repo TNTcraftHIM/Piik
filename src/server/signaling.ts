@@ -15,8 +15,9 @@ import {
   VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
   decodeClientMessage,
   type ClientMessage,
-  type CodeEntryPolicy,
   type QualitySettings,
+  type RoomAccessUpdateRequest,
+  type RoomAccessUpdateResponse,
   type Role,
   type ServerMessage,
   type ParticipantPresenceEntry,
@@ -26,6 +27,7 @@ import {
   RoomStore,
   RoomStoreError,
   type ConnectedPeer,
+  type ViewerGrantUpdate,
 } from "./room-store.js";
 import {
   HybridMediaRouter,
@@ -48,7 +50,6 @@ interface AuthenticatedSession {
   shareGeneration: string | null;
   displayName: string | null;
   viewerPresence: boolean;
-  viewerPasswordSettings: boolean;
 }
 
 interface SocketState {
@@ -58,15 +59,15 @@ interface SocketState {
   siteAccessAuthenticated: boolean;
   revoked?: boolean;
   authenticating?: boolean;
-  viewerPasswordUpdatePending?: boolean;
   lastSignalingChallengeAtMs?: number;
   authenticated?: AuthenticatedSession;
 }
 
 interface ViewerQualityEvidenceGate {
   viewerSessionId: string;
-  parentSessionId: string;
-  parentPeerId: string;
+  recipientSessionId: string;
+  upstreamKind: "peer" | "sfu";
+  upstreamPeerId: string | null;
   connectionId: string;
   routeRevision: number;
   sequence: number;
@@ -276,6 +277,55 @@ export class SignalingServer {
     });
     if (routeCloseError) {
       throw routeCloseError;
+    }
+  }
+
+  async updateRoomAccess(
+    roomId: string,
+    hostToken: string,
+    request: RoomAccessUpdateRequest,
+  ): Promise<RoomAccessUpdateResponse> {
+    switch (request.action) {
+      case "set-code-entry-policy": {
+        const update = this.options.roomStore.setCodeEntryPolicy(
+          roomId,
+          request.policy,
+          hostToken,
+        );
+        return {
+          type: "code-entry-policy-updated",
+          codeEntryPolicy: update.codeEntryPolicy,
+          viewerPasswordEnabled: update.viewerPasswordEnabled,
+        };
+      }
+      case "set-viewer-password":
+        return {
+          type: "viewer-password-updated",
+          enabled: await this.options.roomStore.setViewerPassword(
+            roomId,
+            request.password,
+            hostToken,
+          ),
+        };
+      case "rotate-viewer-grant":
+      case "revoke-viewer-grant": {
+        const action =
+          request.action === "rotate-viewer-grant" ? "rotate" : "revoke";
+        const update = this.options.roomStore.setViewerGrant(
+          roomId,
+          action,
+          hostToken,
+        );
+        this.revokeGrantViewers(roomId, update);
+        return {
+          type: "viewer-grant-updated",
+          viewerAuthorizationGeneration: update.viewerAuthorizationGeneration,
+          inviteUrl:
+            action === "revoke"
+              ? null
+              : this.viewerInviteUrl(roomId, update.viewerGrant),
+        };
+      }
     }
   }
 
@@ -545,7 +595,6 @@ export class SignalingServer {
             : null
           : (message.displayName ?? DEFAULT_VIEWER_DISPLAY_NAME),
       viewerPresence: message.viewerPresence === true,
-      viewerPasswordSettings: false,
     };
     if (participant.role === "viewer") {
       this.viewerQualityEvidenceGates.delete(
@@ -584,10 +633,9 @@ export class SignalingServer {
       this.fillOrdinaryHostChildren(participant.roomId);
     }
 
-    const authenticatedMessage = {
+    const authenticatedMessageBase = {
       type: "authenticated" as const,
-      protocol: SIGNALING_PROTOCOL,
-      role: participant.role,
+      protocol: SIGNALING_PROTOCOL as typeof SIGNALING_PROTOCOL,
       peerId: participant.peerId,
       roomExpiresAt: participant.expiresAt,
       maxViewers: this.options.roomStore.maxViewersPerRoom,
@@ -610,7 +658,21 @@ export class SignalingServer {
       codeEntryPolicy: participant.codeEntryPolicy,
       viewerAuthorizationGeneration:
         participant.viewerAuthorizationGeneration,
-    } satisfies Extract<ServerMessage, { type: "authenticated" }>;
+    };
+    const authenticatedMessage: Extract<
+      ServerMessage,
+      { type: "authenticated" }
+    > =
+      participant.role === "host"
+        ? {
+            ...authenticatedMessageBase,
+            role: "host" as const,
+            viewerPasswordEnabled: participant.viewerPasswordEnabled,
+          }
+        : {
+            ...authenticatedMessageBase,
+            role: "viewer" as const,
+          };
     if (hybridState) {
       this.send(socket, {
         ...authenticatedMessage,
@@ -628,15 +690,6 @@ export class SignalingServer {
     } else {
       this.send(socket, authenticatedMessage);
     }
-    state.authenticated.viewerPasswordSettings =
-      message.role === "host" && message.viewerPasswordSettings === true;
-    if (state.authenticated.viewerPasswordSettings) {
-      this.send(socket, {
-        type: "viewer-password-updated",
-        enabled: participant.viewerPasswordEnabled,
-      });
-    }
-
     if (participant.replacedSessionId) {
       const replaced = this.socketsBySessionId.get(participant.replacedSessionId);
       if (replaced && replaced !== socket) {
@@ -909,64 +962,6 @@ export class SignalingServer {
         authenticated.displayName = message.displayName;
         this.sendViewerPresence(authenticated.roomId);
         return;
-      case "set-code-entry-policy":
-        if (authenticated.role !== "host") {
-          this.sendError(
-            socket,
-            "FORBIDDEN",
-            "Only the host may change code entry",
-          );
-          return;
-        }
-        this.updateCodeEntryPolicy(socket, authenticated, message.policy);
-        return;
-      case "rotate-viewer-grant":
-      case "revoke-viewer-grant": {
-        if (authenticated.role !== "host") {
-          this.sendError(
-            socket,
-            "FORBIDDEN",
-            "Only the host may change the invitation",
-          );
-          return;
-        }
-        this.updateViewerGrant(
-          socket,
-          authenticated,
-          message.type === "rotate-viewer-grant" ? "rotate" : "revoke",
-        );
-        return;
-      }
-      case "set-viewer-password": {
-        if (
-          authenticated.role !== "host" ||
-          !authenticated.viewerPasswordSettings
-        ) {
-          this.sendError(
-            socket,
-            "FORBIDDEN",
-            "Viewer password settings are unavailable",
-          );
-          return;
-        }
-        const socketState = this.socketStates.get(socket);
-        if (!socketState || socketState.viewerPasswordUpdatePending) {
-          this.sendError(socket, "FORBIDDEN", "Viewer password update is busy");
-          return;
-        }
-        socketState.viewerPasswordUpdatePending = true;
-        void this.updateViewerPassword(
-          socket,
-          authenticated,
-          socketState,
-          message.password,
-        ).finally(() => {
-          if (this.socketStates.get(socket) === socketState) {
-            socketState.viewerPasswordUpdatePending = false;
-          }
-        });
-        return;
-      }
       case "set-sharing-paused":
         if (authenticated.role !== "host") {
           this.sendError(socket, "FORBIDDEN", "只有当前分享者可以暂停分享");
@@ -1049,59 +1044,15 @@ export class SignalingServer {
     }
   }
 
-  private updateCodeEntryPolicy(
-    hostSocket: WebSocket,
-    authenticated: AuthenticatedSession,
-    policy: CodeEntryPolicy,
+  private revokeGrantViewers(
+    roomId: string,
+    update: ViewerGrantUpdate,
   ): void {
-    try {
-      const update = this.options.roomStore.setCodeEntryPolicy(
-        authenticated.roomId,
-        policy,
-        this.socketStates.get(hostSocket)?.sessionId ?? "",
-      );
-      this.send(hostSocket, {
-        type: "code-entry-policy-updated",
-        codeEntryPolicy: update.codeEntryPolicy,
-        viewerPasswordEnabled: update.viewerPasswordEnabled,
-      });
-    } catch {
-      console.error("Code entry policy update failed");
-      this.sendError(
-        hostSocket,
-        "SERVER_ERROR",
-        "Code entry policy could not be updated",
-      );
-    }
-  }
-
-  private updateViewerGrant(
-    hostSocket: WebSocket,
-    authenticated: AuthenticatedSession,
-    action: "rotate" | "revoke",
-  ): void {
-    let update;
-    try {
-      update = this.options.roomStore.setViewerGrant(
-        authenticated.roomId,
-        action,
-        this.socketStates.get(hostSocket)?.sessionId ?? "",
-      );
-    } catch {
-      console.error("Viewer grant update failed");
-      this.sendError(
-        hostSocket,
-        "SERVER_ERROR",
-        "Viewer grant could not be updated",
-      );
-      return;
-    }
-
     if (update.revokedViewers.length > 0) {
-      this.deferredViewerPresenceRooms.add(authenticated.roomId);
+      this.deferredViewerPresenceRooms.add(roomId);
       try {
         for (const viewer of update.revokedViewers) {
-          this.clearViewerState(authenticated.roomId, viewer.peerId);
+          this.clearViewerState(roomId, viewer.peerId);
           if (!viewer.sessionId) {
             continue;
           }
@@ -1115,12 +1066,12 @@ export class SignalingServer {
         if (this.isHybridMediaEnabled()) {
           for (const viewer of update.revokedViewers) {
             this.hybridMediaRouter!.removeViewer(
-              authenticated.roomId,
+              roomId,
               viewer.peerId,
             );
           }
         } else {
-          const host = this.options.roomStore.getConnectedHost(authenticated.roomId);
+          const host = this.options.roomStore.getConnectedHost(roomId);
           if (host) {
             for (const viewer of update.revokedViewers) {
               this.sendToSession(host.sessionId, {
@@ -1138,55 +1089,9 @@ export class SignalingServer {
           this.closeRevokedViewerSession(viewer.sessionId);
         }
       } finally {
-        this.deferredViewerPresenceRooms.delete(authenticated.roomId);
+        this.deferredViewerPresenceRooms.delete(roomId);
       }
-      this.sendViewerPresence(authenticated.roomId);
-    }
-
-    const inviteUrl =
-      action === "revoke"
-        ? null
-        : this.viewerInviteUrl(authenticated.roomId, update.viewerGrant);
-    this.send(hostSocket, {
-      type: "viewer-grant-updated",
-      viewerAuthorizationGeneration: update.viewerAuthorizationGeneration,
-      inviteUrl,
-    });
-  }
-
-  private async updateViewerPassword(
-    hostSocket: WebSocket,
-    authenticated: AuthenticatedSession,
-    state: SocketState,
-    password: string | null,
-  ): Promise<void> {
-    try {
-      const enabled = await this.options.roomStore.setViewerPassword(
-        authenticated.roomId,
-        password,
-        state.sessionId,
-      );
-      if (
-        this.socketStates.get(hostSocket) !== state ||
-        state.authenticated !== authenticated ||
-        state.revoked
-      ) {
-        return;
-      }
-      this.send(hostSocket, { type: "viewer-password-updated", enabled });
-    } catch {
-      if (
-        this.socketStates.get(hostSocket) === state &&
-        state.authenticated === authenticated &&
-        !state.revoked
-      ) {
-        console.error("Viewer password update failed");
-        this.sendError(
-          hostSocket,
-          "SERVER_ERROR",
-          "Viewer password could not be updated",
-        );
-      }
+      this.sendViewerPresence(roomId);
     }
   }
 
@@ -1217,25 +1122,35 @@ export class SignalingServer {
       return;
     }
 
+    const host = this.options.roomStore.getConnectedHost(source.roomId);
     let routeRevision = 0;
-    let parent: ConnectedPeer | undefined;
+    let upstream: { kind: "peer"; peerId: string } | { kind: "sfu" };
+    let recipient: ConnectedPeer | undefined;
     if (this.isHybridMediaEnabled()) {
-      const edge = this.hybridMediaRouter?.resolveActivePeerEdge(
+      const edge = this.hybridMediaRouter?.resolveActiveViewerMediaEdge(
         source.roomId,
         source.peerId,
       );
-      if (!edge) {
+      if (!edge || edge.connectionId !== connectionId) {
         return;
       }
       routeRevision = edge.revision;
-      parent = this.connectedPeer(source.roomId, edge.parentPeerId);
+      upstream = edge.upstream;
+      recipient =
+        upstream.kind === "peer"
+          ? this.connectedPeer(source.roomId, upstream.peerId)
+          : host;
     } else {
-      parent = this.options.roomStore.getConnectedHost(source.roomId);
+      if (!host) {
+        return;
+      }
+      upstream = { kind: "peer", peerId: host.peerId };
+      recipient = host;
     }
     if (
-      !parent ||
+      !recipient ||
       message.guard.routeRevision !== routeRevision ||
-      parent.peerId === source.peerId
+      (upstream.kind === "peer" && upstream.peerId === source.peerId)
     ) {
       return;
     }
@@ -1244,8 +1159,10 @@ export class SignalingServer {
     const previous = this.viewerQualityEvidenceGates.get(gateKey);
     const sameGeneration =
       previous?.viewerSessionId === viewerState.sessionId &&
-      previous.parentSessionId === parent.sessionId &&
-      previous.parentPeerId === parent.peerId &&
+      previous.recipientSessionId === recipient.sessionId &&
+      previous.upstreamKind === upstream.kind &&
+      previous.upstreamPeerId ===
+        (upstream.kind === "peer" ? upstream.peerId : null) &&
       previous.connectionId === connectionId &&
       previous.routeRevision === routeRevision;
     const now = this.now();
@@ -1258,10 +1175,13 @@ export class SignalingServer {
       return;
     }
 
-    const forwarded = {
+    const forwarded: Extract<
+      ServerMessage,
+      { type: "viewer-quality-evidence" }
+    > = {
       type: "viewer-quality-evidence" as const,
       viewerPeerId: source.peerId,
-      parentPeerId: parent.peerId,
+      upstream,
       guard: {
         connectionId,
         routeRevision,
@@ -1274,21 +1194,21 @@ export class SignalingServer {
     if (
       Buffer.byteLength(encoded, "utf8") >
       MAX_VIEWER_QUALITY_EVIDENCE_BYTES ||
-      !this.sendEncodedToSession(parent.sessionId, encoded)
+      !this.sendEncodedToSession(recipient.sessionId, encoded)
     ) {
       return;
     }
     this.viewerQualityEvidenceGates.set(gateKey, {
       viewerSessionId: viewerState.sessionId,
-      parentSessionId: parent.sessionId,
-      parentPeerId: parent.peerId,
+      recipientSessionId: recipient.sessionId,
+      upstreamKind: upstream.kind,
+      upstreamPeerId: upstream.kind === "peer" ? upstream.peerId : null,
       connectionId,
       routeRevision,
       sequence: message.sequence,
       acceptedAtMs: now,
     });
-    const host = this.options.roomStore.getConnectedHost(source.roomId);
-    if (!host || host.sessionId === parent.sessionId) {
+    if (!host || host.sessionId === recipient.sessionId) {
       return;
     }
     const hostSocket = this.socketsBySessionId.get(host.sessionId);

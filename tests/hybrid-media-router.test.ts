@@ -651,6 +651,104 @@ describe("HybridMediaRouter v9 runtime", () => {
     await router.close();
   });
 
+  it("resolves exact direct and peer-relayed Viewer evidence sources", async () => {
+    const { store, sent, router } = harness(1);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const root = connectViewer(store, room, "evidence-root");
+      complete(router, root);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, root.sessionId)).toBeDefined(),
+      );
+      const rootPrepare = preparedFor(sent, root.sessionId)!;
+      expect(
+        router.resolveActiveViewerMediaEdge(room.roomId, root.peerId),
+      ).toBeUndefined();
+      router.handleRouteReady(root, {
+        type: "route-ready",
+        revision: rootPrepare.revision,
+        phase: "prepare",
+      });
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, root.peerId),
+        ).toEqual({
+          revision: rootPrepare.revision,
+          connectionId: rootPrepare.candidate.connectionId,
+          upstream: { kind: "peer", peerId: host.peerId },
+        }),
+      );
+
+      router.setViewerRelayCapacity(root, 1);
+      const child = connectViewer(store, room, "evidence-child");
+      complete(router, child);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, child.sessionId)).toBeDefined(),
+      );
+      const childPrepare = preparedFor(sent, child.sessionId)!;
+      expect(childPrepare.candidate.transport).toBe("direct");
+      router.handleRouteReady(child, {
+        type: "route-ready",
+        revision: childPrepare.revision,
+        phase: "prepare",
+      });
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, child.peerId),
+        ).toEqual({
+          revision: childPrepare.revision,
+          connectionId: childPrepare.candidate.connectionId,
+          upstream: { kind: "peer", peerId: root.peerId },
+        }),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("keeps SFU Viewer and downstream Peer evidence identities separate", async () => {
+    const { store, sent, router } = harness(1, true);
+    try {
+      const room = await store.createRoom();
+      const { first } = await establishSfuRoom(store, sent, router, room);
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)
+            ?.upstream,
+        ).toEqual({ kind: "sfu" }),
+      );
+
+      router.setViewerRelayCapacity(first, 1);
+      const child = connectViewer(store, room, "sfu-peer-child");
+      complete(router, child);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, child.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const childPrepare = preparedFor(sent, child.sessionId)!;
+      router.handleRouteReady(child, {
+        type: "route-ready",
+        revision: childPrepare.revision,
+        phase: "prepare",
+      });
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, child.peerId)
+            ?.upstream,
+        ).toEqual({ kind: "peer", peerId: first.peerId }),
+      );
+      expect(
+        router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)
+          ?.upstream,
+      ).toEqual({ kind: "sfu" });
+    } finally {
+      await router.close();
+    }
+  });
+
 
 
 

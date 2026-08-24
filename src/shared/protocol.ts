@@ -62,17 +62,30 @@ const opaqueIdSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 
+const noMediaRouteUpstreamSchema = z
+  .object({ kind: z.literal("none") })
+  .strict();
+const peerMediaRouteUpstreamSchema = z
+  .object({
+    kind: z.literal("peer"),
+    peerId: opaqueIdSchema,
+  })
+  .strict();
+const sfuMediaRouteUpstreamSchema = z
+  .object({ kind: z.literal("sfu") })
+  .strict();
+
 export const mediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }).strict(),
-  z
-    .object({
-      kind: z.literal("peer"),
-      peerId: opaqueIdSchema,
-    })
-    .strict(),
-  z.object({ kind: z.literal("sfu") }).strict(),
+  noMediaRouteUpstreamSchema,
+  peerMediaRouteUpstreamSchema,
+  sfuMediaRouteUpstreamSchema,
 ]);
 export type MediaRouteUpstream = z.infer<typeof mediaRouteUpstreamSchema>;
+
+const activeMediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
+  peerMediaRouteUpstreamSchema,
+  sfuMediaRouteUpstreamSchema,
+]);
 
 export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
   z
@@ -125,11 +138,7 @@ export const viewerPasswordSchema = z
   .max(MAX_VIEWER_PASSWORD_LENGTH)
   .regex(/^[\x21-\x7e]+$/);
 
-export const codeEntryPolicySchema = z.enum([
-  "open",
-  "password",
-  "disabled",
-]);
+export const codeEntryPolicySchema = z.enum(["open", "private"]);
 export type CodeEntryPolicy = z.infer<typeof codeEntryPolicySchema>;
 
 const liveKitWebSocketUrlSchema = z
@@ -507,6 +516,9 @@ export type ParticipantRouteAssignment = z.infer<
 const nullableEvidenceNumber = (maximum: number) =>
   z.number().finite().min(0).max(maximum).nullable();
 
+const nullableSignedEvidenceNumber = (absoluteMaximum: number) =>
+  z.number().finite().min(-absoluteMaximum).max(absoluteMaximum).nullable();
+
 const nullableEvidenceInteger = (maximum: number) =>
   z.number().int().min(0).max(maximum).nullable();
 
@@ -518,6 +530,7 @@ export const viewerQualityEvidenceMetricsSchema = z
     bitrateKbps: nullableEvidenceNumber(100_000),
     packetsReceivedDelta: nullableEvidenceInteger(1_000_000),
     packetsLostDelta: nullableEvidenceInteger(1_000_000),
+    rttMs: nullableEvidenceNumber(60_000),
     jitterMs: nullableEvidenceNumber(60_000),
     framesDecodedDelta: nullableEvidenceInteger(10_000),
     framesDroppedDelta: nullableEvidenceInteger(10_000),
@@ -538,6 +551,19 @@ export const viewerQualityEvidenceMetricsSchema = z
       .string()
       .max(128)
       .regex(/^[a-z0-9-]+=[a-z0-9]+(?:; [a-z0-9-]+=[a-z0-9]+)*$/)
+      .nullable(),
+    audioBitrateKbps: nullableEvidenceNumber(10_000),
+    audioPacketLossPercent: nullableEvidenceNumber(100),
+    audioJitterMs: nullableEvidenceNumber(60_000),
+    audioVideoPlayoutDeltaMs: nullableSignedEvidenceNumber(60_000),
+    videoJitterBufferDelayMs: nullableEvidenceNumber(60_000),
+    audioJitterBufferDelayMs: nullableEvidenceNumber(60_000),
+    audioConcealedSamplesPercent: nullableEvidenceNumber(100),
+    audioConcealmentEventsDelta: nullableEvidenceInteger(10_000),
+    audioCodec: z
+      .string()
+      .max(64)
+      .regex(/^audio\/[A-Za-z0-9.+-]{1,32}$/i)
       .nullable(),
   })
   .strict()
@@ -602,7 +628,6 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       sharingPaused: z.boolean().optional(),
       qualitySettings: qualitySettingsSchema.optional(),
       viewerPresence: z.literal(true).optional(),
-      viewerPasswordSettings: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
     })
     .strict(),
@@ -699,28 +724,6 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
-      type: z.literal("set-code-entry-policy"),
-      policy: codeEntryPolicySchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("rotate-viewer-grant"),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("revoke-viewer-grant"),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("set-viewer-password"),
-      password: viewerPasswordSchema.nullable(),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("set-sharing-paused"),
       shareGeneration: opaqueIdSchema,
       paused: z.boolean(),
@@ -753,7 +756,6 @@ const errorCodeSchema = z.enum([
 const authenticatedMessageShape = {
   type: z.literal("authenticated"),
   protocol: z.literal(SIGNALING_PROTOCOL),
-  role: roleSchema,
   peerId: opaqueIdSchema,
   roomExpiresAt: z.string().datetime().nullable(),
   maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
@@ -771,17 +773,39 @@ const authenticatedMessageShape = {
   viewerAuthorizationGeneration: opaqueIdSchema,
 };
 
+const authenticatedHostMessageShape = {
+  ...authenticatedMessageShape,
+  role: z.literal("host"),
+  viewerPasswordEnabled: z.boolean(),
+};
+
+const authenticatedViewerMessageShape = {
+  ...authenticatedMessageShape,
+  role: z.literal("viewer"),
+};
+
+const peerAssistedAuthenticatedShape = {
+  mediaMode: z.literal("peer-assisted"),
+  mediaAssignment: mediaAssignmentSchema,
+  routeRevision: mediaRouteRevisionSchema,
+  routeAssignment: participantRouteAssignmentSchema,
+  qualitySettings: qualitySettingsSchema,
+  sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
+};
+
 const authenticatedMessageSchema = z.union([
-  z.object(authenticatedMessageShape).strict(),
+  z.object(authenticatedHostMessageShape).strict(),
+  z.object(authenticatedViewerMessageShape).strict(),
   z
     .object({
-      ...authenticatedMessageShape,
-      mediaMode: z.literal("peer-assisted"),
-      mediaAssignment: mediaAssignmentSchema,
-      routeRevision: mediaRouteRevisionSchema,
-      routeAssignment: participantRouteAssignmentSchema,
-      qualitySettings: qualitySettingsSchema,
-      sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
+      ...authenticatedHostMessageShape,
+      ...peerAssistedAuthenticatedShape,
+    })
+    .strict(),
+  z
+    .object({
+      ...authenticatedViewerMessageShape,
+      ...peerAssistedAuthenticatedShape,
     })
     .strict(),
 ]);
@@ -900,7 +924,7 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("viewer-quality-evidence"),
       viewerPeerId: opaqueIdSchema,
-      parentPeerId: opaqueIdSchema,
+      upstream: activeMediaRouteUpstreamSchema,
       guard: viewerQualityEvidenceGuardSchema,
       ...viewerQualityEvidenceWindowShape,
     })
@@ -939,28 +963,8 @@ export const serverMessageSchema = z.union([
     }),
   z
     .object({
-      type: z.literal("code-entry-policy-updated"),
-      codeEntryPolicy: codeEntryPolicySchema,
-      viewerPasswordEnabled: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("viewer-grant-updated"),
-      viewerAuthorizationGeneration: opaqueIdSchema,
-      inviteUrl: z.string().url().max(2048).nullable(),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("viewer-grant-revoked"),
       viewerAuthorizationGeneration: opaqueIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("viewer-password-updated"),
-      enabled: z.boolean(),
     })
     .strict(),
   z.object({ type: z.literal("sharing-stopped") }).strict(),
@@ -997,6 +1001,52 @@ export const createRoomRequestSchema = z
     roomPassword: viewerPasswordSchema.nullable().optional(),
   })
   .strict();
+
+export const roomAccessUpdateRequestSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      action: z.literal("set-code-entry-policy"),
+      policy: codeEntryPolicySchema,
+    })
+    .strict(),
+  z.object({ action: z.literal("rotate-viewer-grant") }).strict(),
+  z.object({ action: z.literal("revoke-viewer-grant") }).strict(),
+  z
+    .object({
+      action: z.literal("set-viewer-password"),
+      password: viewerPasswordSchema.nullable(),
+    })
+    .strict(),
+]);
+export type RoomAccessUpdateRequest = z.infer<
+  typeof roomAccessUpdateRequestSchema
+>;
+
+export const roomAccessUpdateResponseSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("code-entry-policy-updated"),
+      codeEntryPolicy: codeEntryPolicySchema,
+      viewerPasswordEnabled: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("viewer-grant-updated"),
+      viewerAuthorizationGeneration: opaqueIdSchema,
+      inviteUrl: z.string().url().max(2048).nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("viewer-password-updated"),
+      enabled: z.boolean(),
+    })
+    .strict(),
+]);
+export type RoomAccessUpdateResponse = z.infer<
+  typeof roomAccessUpdateResponseSchema
+>;
 
 export function decodeClientMessage(value: string): ClientMessage {
   return clientMessageSchema.parse(JSON.parse(value));

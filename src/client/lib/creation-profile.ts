@@ -23,8 +23,6 @@ export function readCreationProfile(): HostCreationProfile {
     };
     if (
       !codeEntryPolicySchema.safeParse(parsed.codeEntryPolicy).success ||
-      (parsed.codeEntryPolicy === "password" &&
-        (parsed.roomPassword === null || parsed.roomPassword === undefined)) ||
       (parsed.roomPassword !== null &&
         parsed.roomPassword !== undefined &&
         !viewerPasswordSchema.safeParse(parsed.roomPassword).success)
@@ -48,8 +46,7 @@ export function saveCreationProfile(profile: HostCreationProfile): void {
   if (
     !codeEntryPolicySchema.safeParse(profile.codeEntryPolicy).success ||
     (profile.roomPassword !== null &&
-      !viewerPasswordSchema.safeParse(profile.roomPassword).success) ||
-    (profile.codeEntryPolicy === "password" && profile.roomPassword === null)
+      !viewerPasswordSchema.safeParse(profile.roomPassword).success)
   ) {
     return;
   }

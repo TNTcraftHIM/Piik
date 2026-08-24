@@ -6,11 +6,11 @@ import type { ViteDevServer } from "vite";
 
 import {
   createRoomRequestSchema,
+  roomAccessUpdateRequestSchema,
   type CreateRoomResponse,
 } from "../shared/protocol.js";
 import { SiteAccess } from "./access-session.js";
 import { loadConfig, type ServerConfig } from "./config.js";
-import { createIceConfig } from "./ice.js";
 import type { SfuFallbackOptions } from "./hybrid-media-router.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SfuRoomControl } from "./sfu-room-control.js";
@@ -114,6 +114,7 @@ export async function createScreenerServer(
       roomStore,
       siteAccess,
       () => frontendHandler,
+      () => signaling,
     ).catch((error: unknown) => {
       console.error("HTTP request failed", {
         method: request.method,
@@ -305,6 +306,7 @@ async function handleRequest(
   roomStore: RoomStore,
   siteAccess: SiteAccess,
   getFrontendHandler: () => FrontendHandler | undefined,
+  getSignaling: () => SignalingServer | undefined,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", config.publicBaseUrl);
   if (url.pathname === "/healthz") {
@@ -318,23 +320,84 @@ async function handleRequest(
     return;
   }
 
-  if (url.pathname === "/api/connection-self-check") {
-    response.setHeader("Cache-Control", "no-store");
-    response.setHeader("X-Content-Type-Options", "nosniff");
-    if (request.method !== "GET") {
-      response.setHeader("Allow", "GET");
-      sendJson(response, 405, { error: "Method not allowed" });
-      return;
-    }
-    sendJson(response, 200, {
-      iceConfig: createIceConfig({ stunUrls: config.stunUrls }),
-      sfuConfigured: config.livekitFallback !== undefined,
-    });
+  if (url.pathname === "/api/site-access") {
+    handleSiteAccessRequest(request, response, config, siteAccess);
     return;
   }
 
-  if (url.pathname === "/api/site-access") {
-    handleSiteAccessRequest(request, response, config, siteAccess);
+  const roomAccessMatch = /^\/api\/rooms\/([1-9]\d{3})\/access$/.exec(
+    url.pathname,
+  );
+  if (roomAccessMatch) {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    if (request.method !== "POST") {
+      response.setHeader("Allow", "POST");
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (
+      !isStrictlyAllowedRequestOrigin(
+        request.headers.origin,
+        config.allowedOrigins,
+      )
+    ) {
+      sendJson(response, 403, { error: "Forbidden" });
+      return;
+    }
+    if (!isRoomCreationAuthorized(request, siteAccess)) {
+      sendJson(response, 401, { error: "Unauthorized" });
+      return;
+    }
+    const hostToken = readBearerToken(request);
+    if (!hostToken) {
+      sendJson(response, 404, { error: "Room not found" });
+      return;
+    }
+
+    let parsedRequest;
+    try {
+      parsedRequest = roomAccessUpdateRequestSchema.safeParse(
+        await readJsonBody(request, 1_024),
+      );
+    } catch {
+      sendJson(response, 400, { error: "Invalid room access request" });
+      return;
+    }
+    if (!parsedRequest.success) {
+      sendJson(response, 400, { error: "Invalid room access request" });
+      return;
+    }
+
+    const signaling = getSignaling();
+    if (!signaling) {
+      sendJson(response, 503, { error: "Service unavailable" });
+      return;
+    }
+    try {
+      sendJson(
+        response,
+        200,
+        await signaling.updateRoomAccess(
+          roomAccessMatch[1]!,
+          hostToken,
+          parsedRequest.data,
+        ),
+      );
+    } catch (error) {
+      if (
+        error instanceof RoomStoreError &&
+        error.code === "ROOM_ACCESS_DENIED"
+      ) {
+        sendJson(response, 409, { error: "Room access update rejected" });
+        return;
+      }
+      if (error instanceof RoomStoreError) {
+        sendJson(response, 404, { error: "Room not found" });
+        return;
+      }
+      throw error;
+    }
     return;
   }
 
@@ -521,12 +584,16 @@ function isBearerAuthorized(
   request: IncomingMessage,
   siteAccess: SiteAccess,
 ): boolean {
+  const provided = readBearerToken(request);
+  return provided !== null && siteAccess.passwordMatches(provided);
+}
+
+function readBearerToken(request: IncomingMessage): string | null {
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith("Bearer ")) {
-    return false;
+    return null;
   }
-  const provided = authorization.slice("Bearer ".length);
-  return provided.length > 0 && siteAccess.passwordMatches(provided);
+  return authorization.slice("Bearer ".length) || null;
 }
 
 async function readJsonBody(

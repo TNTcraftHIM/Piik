@@ -214,7 +214,7 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(state)).toMatchObject({
       stage: "recovering",
       overlay: "none",
-      notice: "信令正在恢复，画面仍在播放",
+      notice: "服务器连接正在恢复，画面仍在播放",
     });
   });
 

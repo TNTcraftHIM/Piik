@@ -432,7 +432,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         viewerRelay?.getSnapshot(evidence.viewerPeerId) ?? null;
       if (
         !peerAssisted ||
-        evidence.parentPeerId !== currentPeerId ||
+        evidence.upstream.kind !== "peer" ||
+        evidence.upstream.peerId !== currentPeerId ||
         evidence.guard.routeRevision !== currentRouteRevision ||
         !qualityEvidenceMatchesSnapshot(evidence, relaySnapshot)
       ) {
@@ -701,6 +702,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 String(revision),
                 metrics.intervalFramesDecoded,
               );
+              if (
+                currentRouteAssignment?.upstream.kind === "sfu" &&
+                currentRouteConnectionId &&
+                revision === currentRouteRevision
+              ) {
+                qualityEvidenceReporter.offerMetrics(
+                  currentRouteConnectionId,
+                  metrics,
+                  revision,
+                );
+              }
             }
             setSfuUpstream((current) =>
               metrics && current ? { ...current, metrics } : null,
@@ -1993,8 +2005,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             <StatsGrid
               metrics={relaySnapshot.metrics}
               direction="send"
-              senderParameters={relaySnapshot.senderParameters}
-              audioSenderParameters={relaySnapshot.audioSenderParameters}
             />
           </section>
         )}

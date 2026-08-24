@@ -6,6 +6,7 @@ import {
   viewerQualityEvidenceMessageSchema,
   viewerQualityEvidenceMetricsSchema,
   type ClientMessage,
+  type MediaRouteUpstream,
   type ServerMessage,
   type ViewerQualityEvidenceMetrics,
 } from "../../shared/protocol";
@@ -43,6 +44,17 @@ type ViewerQualityEvidenceWindow = Pick<
 
 function boundedNumber(value: number | null, maximum: number): number | null {
   return value !== null && Number.isFinite(value) && value >= 0 && value <= maximum
+    ? value
+    : null;
+}
+
+function boundedSignedNumber(
+  value: number | null,
+  absoluteMaximum: number,
+): number | null {
+  return value !== null &&
+    Number.isFinite(value) &&
+    Math.abs(value) <= absoluteMaximum
     ? value
     : null;
 }
@@ -98,6 +110,7 @@ export function qualityEvidenceWindowFromMetrics(
       1_000_000,
     ),
     packetsLostDelta: boundedInteger(metrics.intervalPacketsLost, 1_000_000),
+    rttMs: boundedNumber(metrics.rttMs, 60_000),
     jitterMs: boundedNumber(metrics.jitterMs, 60_000),
     framesDecodedDelta: boundedInteger(
       metrics.intervalFramesDecoded,
@@ -125,6 +138,37 @@ export function qualityEvidenceWindowFromMetrics(
       128,
       /^[a-z0-9-]+=[a-z0-9]+(?:; [a-z0-9-]+=[a-z0-9]+)*$/,
     ),
+    audioBitrateKbps: boundedNumber(metrics.audioBitrateKbps, 10_000),
+    audioPacketLossPercent: boundedNumber(
+      metrics.audioPacketLossPercent,
+      100,
+    ),
+    audioJitterMs: boundedNumber(metrics.audioJitterMs, 60_000),
+    audioVideoPlayoutDeltaMs: boundedSignedNumber(
+      metrics.audioVideoPlayoutDeltaMs,
+      60_000,
+    ),
+    videoJitterBufferDelayMs: boundedNumber(
+      metrics.videoJitterBufferDelayMs,
+      60_000,
+    ),
+    audioJitterBufferDelayMs: boundedNumber(
+      metrics.audioJitterBufferDelayMs,
+      60_000,
+    ),
+    audioConcealedSamplesPercent: boundedNumber(
+      metrics.audioConcealedSamplesPercent,
+      100,
+    ),
+    audioConcealmentEventsDelta: boundedInteger(
+      metrics.intervalAudioConcealmentEvents,
+      10_000,
+    ),
+    audioCodec: boundedString(
+      metrics.audioCodec,
+      64,
+      /^audio\/[A-Za-z0-9.+-]{1,32}$/i,
+    ),
   };
   const parsed = viewerQualityEvidenceMetricsSchema.safeParse(candidate);
   return parsed.success ? { windowMs, metrics: parsed.data } : null;
@@ -143,6 +187,18 @@ export class ViewerQualityEvidenceReporter {
   ) {}
 
   offer(snapshot: PeerSnapshot, routeRevision: number): boolean {
+    return this.offerMetrics(
+      snapshot.connectionId,
+      snapshot.metrics,
+      routeRevision,
+    );
+  }
+
+  offerMetrics(
+    connectionId: string,
+    metrics: ConnectionMetrics,
+    routeRevision: number,
+  ): boolean {
     if (
       !Number.isSafeInteger(routeRevision) ||
       routeRevision < 0 ||
@@ -150,8 +206,8 @@ export class ViewerQualityEvidenceReporter {
     ) {
       return false;
     }
-    const window = qualityEvidenceWindowFromMetrics(snapshot.metrics);
-    const sampleTimestampMs = snapshot.metrics.sampleTimestampMs;
+    const window = qualityEvidenceWindowFromMetrics(metrics);
+    const sampleTimestampMs = metrics.sampleTimestampMs;
     if (
       !window ||
       sampleTimestampMs === null ||
@@ -160,8 +216,8 @@ export class ViewerQualityEvidenceReporter {
     ) {
       return false;
     }
-    if (this.connectionId !== snapshot.connectionId) {
-      this.connectionId = snapshot.connectionId;
+    if (this.connectionId !== connectionId) {
+      this.connectionId = connectionId;
       this.routeRevision = routeRevision;
       this.sequence = 0;
       this.lastSentAtMs = null;
@@ -193,7 +249,7 @@ export class ViewerQualityEvidenceReporter {
     const message = {
       type: "viewer-quality-evidence" as const,
       guard: {
-        connectionId: snapshot.connectionId,
+        connectionId,
         routeRevision,
       },
       sequence: this.sequence,
@@ -230,9 +286,21 @@ function sameViewerQualityEvidenceIdentity(
 ): boolean {
   return (
     previous.viewerPeerId === next.viewerPeerId &&
-    previous.parentPeerId === next.parentPeerId &&
+    qualityEvidenceUpstreamMatches(previous, next.upstream) &&
     previous.guard.connectionId === next.guard.connectionId &&
     previous.guard.routeRevision === next.guard.routeRevision
+  );
+}
+
+export function qualityEvidenceUpstreamMatches(
+  evidence: ViewerQualityEvidence,
+  upstream: MediaRouteUpstream,
+): boolean {
+  return (
+    evidence.upstream.kind === upstream.kind &&
+    (evidence.upstream.kind !== "peer" ||
+      (upstream.kind === "peer" &&
+        evidence.upstream.peerId === upstream.peerId))
   );
 }
 
@@ -391,14 +459,17 @@ export function classifyHostViewerQualityEvidence(
   hostPeerId: string | null,
   routeRevision: number,
   directSnapshot: PeerSnapshot | null,
-): "direct" | "peer-relayed" | null {
+): "direct" | "peer-relayed" | "sfu" | null {
   if (
     hostPeerId === null ||
     evidence.guard.routeRevision !== routeRevision
   ) {
     return null;
   }
-  if (evidence.parentPeerId !== hostPeerId) {
+  if (evidence.upstream.kind === "sfu") {
+    return "sfu";
+  }
+  if (evidence.upstream.peerId !== hostPeerId) {
     return "peer-relayed";
   }
   return qualityEvidenceMatchesSnapshot(evidence, directSnapshot)
@@ -428,6 +499,7 @@ export function metricsFromQualityEvidence(
       metrics.packetsReceivedDelta,
       metrics.packetsLostDelta,
     ),
+    rttMs: metrics.rttMs,
     jitterMs: metrics.jitterMs,
     framesDropped: metrics.framesDroppedDelta,
     intervalFramesDecoded: metrics.framesDecodedDelta,
@@ -438,5 +510,14 @@ export function metricsFromQualityEvidence(
     codec: metrics.codec,
     codecProfile: metrics.codecProfile,
     codecParameters: metrics.codecParameters,
+    audioBitrateKbps: metrics.audioBitrateKbps,
+    audioPacketLossPercent: metrics.audioPacketLossPercent,
+    audioJitterMs: metrics.audioJitterMs,
+    audioVideoPlayoutDeltaMs: metrics.audioVideoPlayoutDeltaMs,
+    videoJitterBufferDelayMs: metrics.videoJitterBufferDelayMs,
+    audioJitterBufferDelayMs: metrics.audioJitterBufferDelayMs,
+    audioConcealedSamplesPercent: metrics.audioConcealedSamplesPercent,
+    intervalAudioConcealmentEvents: metrics.audioConcealmentEventsDelta,
+    audioCodec: metrics.audioCodec,
   };
 }

@@ -252,7 +252,7 @@ export class HostPeer {
         this.pendingCandidates.push(payload.candidate);
       }
     } catch (error) {
-      this.setError(error, "处理观看端信令失败");
+      this.setError(error, "建立观看连接失败");
     }
   }
 
@@ -382,7 +382,7 @@ export class HostPeer {
           },
         })
       ) {
-        throw new Error("信令暂时离线，等待重新协商");
+        throw new Error("服务器暂时离线，等待重新连接");
       }
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();

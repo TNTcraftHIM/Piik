@@ -122,14 +122,69 @@ describe("RoomStore", () => {
     );
   });
 
+  it("manages dormant access with the exact Host token without renewing", async () => {
+    const { clock, store: roomStore } = store({ leaseMs: 1_000 });
+    const room = await roomStore.createRoom("open");
+    const otherRoom = await roomStore.createRoom("open");
+    clock.nowMs = 900;
+
+    await expect(
+      roomStore.setViewerPassword(room.roomId, "room-password", "wrong-token"),
+    ).rejects.toEqual(new RoomStoreError("INVALID_TOKEN"));
+    expectRoomError(
+      () =>
+        roomStore.setCodeEntryPolicy(
+          room.roomId,
+          "private",
+          otherRoom.hostToken,
+        ),
+      "INVALID_TOKEN",
+    );
+
+    expect(
+      roomStore.setCodeEntryPolicy(room.roomId, "private", room.hostToken),
+    ).toMatchObject({
+      codeEntryPolicy: "private",
+      viewerPasswordEnabled: false,
+    });
+    expect(
+      await roomStore.setViewerPassword(
+        room.roomId,
+        "room-password",
+        room.hostToken,
+      ),
+    ).toBe(true);
+    expect(
+      await roomStore.setViewerPassword(room.roomId, null, room.hostToken),
+    ).toBe(false);
+    expect(
+      roomStore.setViewerGrant(room.roomId, "rotate", room.hostToken)
+        .viewerGrant,
+    ).toMatch(/^[A-Za-z0-9_-]{21}[AQgw]$/);
+    expect(roomStore.getConnectedHost(room.roomId)).toBeUndefined();
+
+    clock.nowMs = 1_001;
+    expect(roomStore.expireRooms().map((expired) => expired.roomId)).toContain(
+      room.roomId,
+    );
+  });
+
   it("keeps Viewer grants independent from code-entry policy", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
-    const room = await roomStore.createRoom("disabled");
+    const room = await roomStore.createRoom("private");
 
     expectRoomError(
       () => roomStore.connectParticipant(viewerInput(room.roomId, "code-only")),
       "INVALID_TOKEN",
     );
+    await expect(
+      roomStore.connectViewerWithPassword({
+        roomId: room.roomId,
+        password: "any-password",
+        clientId: "private-code-viewer",
+        sessionId: "private-code-session",
+      }),
+    ).rejects.toEqual(new RoomStoreError("INVALID_TOKEN"));
     expect(
       roomStore.connectParticipant(
         viewerInput(room.roomId, "granted", room.viewerGrant!),
@@ -139,7 +194,7 @@ describe("RoomStore", () => {
 
   it("keeps the exact Viewer grant valid for the room incarnation", async () => {
     const { clock, store: roomStore } = store({ leaseMs: 1_000 });
-    const room = await roomStore.createRoom("disabled");
+    const room = await roomStore.createRoom("open");
     roomStore.connectParticipant(hostInput(room.roomId, room.hostToken));
 
     expect(room.viewerGrant).toMatch(/^[A-Za-z0-9_-]{21}[AQgw]$/);
@@ -151,14 +206,14 @@ describe("RoomStore", () => {
     ).toBe("viewer");
   });
 
-  it("supports open, password, and disabled code entry", async () => {
+  it("supports open and password-enabled private code entry", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
     const open = await roomStore.createRoom("open");
     expect(
       roomStore.connectParticipant(viewerInput(open.roomId, "open")).role,
     ).toBe("viewer");
 
-    const password = await roomStore.createRoom("password", "room-password");
+    const password = await roomStore.createRoom("private", "room-password");
     expectRoomError(
       () => roomStore.connectParticipant(viewerInput(password.roomId, "wrong")),
       "INVALID_TOKEN",
@@ -171,12 +226,6 @@ describe("RoomStore", () => {
         sessionId: "password-session",
       }),
     ).toMatchObject({ role: "viewer" });
-
-    const disabled = await roomStore.createRoom("disabled");
-    expectRoomError(
-      () => roomStore.connectParticipant(viewerInput(disabled.roomId, "closed")),
-      "INVALID_TOKEN",
-    );
   });
 
   it("bounds password derivations and uses the same path for unknown rooms", async () => {
@@ -223,7 +272,7 @@ describe("RoomStore", () => {
     const rotated = roomStore.setViewerGrant(
       room.roomId,
       "rotate",
-      "host-session",
+      room.hostToken,
     );
     expectRoomError(
       () =>
@@ -242,7 +291,7 @@ describe("RoomStore", () => {
     const revoked = roomStore.setViewerGrant(
       room.roomId,
       "revoke",
-      "host-session",
+      room.hostToken,
     );
     expect(revoked.viewerGrant).toBeNull();
     expect(revoked.revokedViewers.map((viewer) => viewer.peerId)).toEqual([
@@ -274,7 +323,7 @@ describe("RoomStore", () => {
         );
       },
     });
-    const room = await roomStore.createRoom("disabled");
+    const room = await roomStore.createRoom("open");
     roomStore.connectParticipant(hostInput(room.roomId, room.hostToken));
     const viewer = roomStore.connectParticipant(
       viewerInput(room.roomId, "existing", room.viewerGrant!),
@@ -282,7 +331,7 @@ describe("RoomStore", () => {
 
     failedRandomCall = randomCalls + 2;
     expect(() =>
-      roomStore.setViewerGrant(room.roomId, "rotate", "host-session"),
+      roomStore.setViewerGrant(room.roomId, "rotate", room.hostToken),
     ).toThrow("Authorization generation random source must return 16 bytes");
     failedRandomCall = null;
 
@@ -298,7 +347,7 @@ describe("RoomStore", () => {
 
   it("clears every credential on process restart", async () => {
     const { store: firstStore } = store();
-    const room = await firstStore.createRoom("password", "room-password");
+    const room = await firstStore.createRoom("private", "room-password");
     const { store: secondStore } = store();
 
     const replacement = await secondStore.createRoom("open");
@@ -331,13 +380,13 @@ describe("RoomStore", () => {
     const firstStore = store({
       random: (size) => Buffer.alloc(size, size === 8 ? 0 : 1),
     }).store;
-    const firstRoom = await firstStore.createRoom("disabled");
+    const firstRoom = await firstStore.createRoom("open");
     firstStore.abandonRoom(firstRoom.roomId);
 
     const secondStore = store({
       random: (size) => Buffer.alloc(size, size === 8 ? 0 : 2),
     }).store;
-    const secondRoom = await secondStore.createRoom("disabled");
+    const secondRoom = await secondStore.createRoom("open");
 
     expect(secondRoom.roomId).toBe(firstRoom.roomId);
     expect(secondRoom.viewerGrant).not.toBe(firstRoom.viewerGrant);

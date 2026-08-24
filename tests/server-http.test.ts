@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_VIEWERS_PER_ROOM_LIMIT,
   createRoomResponseSchema,
+  roomAccessUpdateResponseSchema,
 } from "../src/shared/protocol.ts";
 import {
   createScreenerServer,
@@ -79,7 +80,7 @@ async function login(baseUrl: string): Promise<Response> {
 async function createRoom(
   baseUrl: string,
   cookie?: string,
-  codeEntryPolicy: "open" | "password" | "disabled" = "open",
+  codeEntryPolicy: "open" | "private" = "open",
   roomPassword?: string,
 ): Promise<Response> {
   return fetch(`${baseUrl}/api/rooms`, {
@@ -93,6 +94,28 @@ async function createRoom(
       codeEntryPolicy,
       ...(roomPassword === undefined ? {} : { roomPassword }),
     }),
+  });
+}
+
+async function updateRoomAccess(
+  baseUrl: string,
+  roomId: string,
+  hostToken: string | undefined,
+  body: unknown,
+  options: { cookie?: string; origin?: string; method?: string } = {},
+): Promise<Response> {
+  return fetch(`${baseUrl}/api/rooms/${roomId}/access`, {
+    method: options.method ?? "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: options.origin ?? allowedOrigin,
+      ...(options.cookie ? { Cookie: options.cookie } : {}),
+      ...(hostToken ? { Authorization: `Bearer ${hostToken}` } : {}),
+    },
+    body:
+      (options.method ?? "POST") === "POST"
+        ? JSON.stringify(body)
+        : undefined,
   });
 }
 
@@ -288,23 +311,26 @@ describe("room HTTP API", () => {
     );
   });
 
-  it("applies a password creation profile atomically", async () => {
+  it("creates private rooms with optional passwords atomically", async () => {
     const baseUrl = await start();
     const authenticated = await login(baseUrl);
     const cookie = cookiePair(authenticated);
     const response = await createRoom(
       baseUrl,
       cookie,
-      "password",
+      "private",
       "room-password",
     );
     expect(response.status).toBe(201);
     expect(createRoomResponseSchema.parse(await response.json())).toMatchObject({
-      codeEntryPolicy: "password",
+      codeEntryPolicy: "private",
     });
 
-    const missingPassword = await createRoom(baseUrl, cookie, "password");
-    expect(missingPassword.status).toBe(400);
+    const withoutPassword = await createRoom(baseUrl, cookie, "private");
+    expect(withoutPassword.status).toBe(201);
+    expect(
+      createRoomResponseSchema.parse(await withoutPassword.json()),
+    ).toMatchObject({ codeEntryPolicy: "private" });
   });
 
   it("allows explicit open creation without site access in local mode", async () => {
@@ -334,6 +360,157 @@ describe("room HTTP API", () => {
     );
     expect(new Set(rooms.map((room) => room.roomId)).size).toBe(2);
     expect(rooms.every((room) => room.expiresAt !== null)).toBe(true);
+  });
+
+  it("manages dormant room access without starting sharing or renewing", async () => {
+    let nowMs = 0;
+    const baseUrl = await start(
+      testConfig({ roomLeaseMs: 1_000 }),
+      { now: () => nowMs },
+    );
+    const authenticated = await login(baseUrl);
+    const cookie = cookiePair(authenticated);
+    const createdResponse = await createRoom(baseUrl, cookie);
+    const room = createRoomResponseSchema.parse(await createdResponse.json());
+    nowMs = 900;
+
+    const policy = await updateRoomAccess(
+      baseUrl,
+      room.roomId,
+      room.hostToken,
+      { action: "set-code-entry-policy", policy: "private" },
+      { cookie },
+    );
+    expect(policy.status).toBe(200);
+    expect(policy.headers.get("cache-control")).toBe("no-store");
+    expect(roomAccessUpdateResponseSchema.parse(await policy.json())).toEqual({
+      type: "code-entry-policy-updated",
+      codeEntryPolicy: "private",
+      viewerPasswordEnabled: false,
+    });
+
+    const password = await updateRoomAccess(
+      baseUrl,
+      room.roomId,
+      room.hostToken,
+      { action: "set-viewer-password", password: "room-password" },
+      { cookie },
+    );
+    expect(roomAccessUpdateResponseSchema.parse(await password.json())).toEqual({
+      type: "viewer-password-updated",
+      enabled: true,
+    });
+    const removedPassword = await updateRoomAccess(
+      baseUrl,
+      room.roomId,
+      room.hostToken,
+      { action: "set-viewer-password", password: null },
+      { cookie },
+    );
+    expect(
+      roomAccessUpdateResponseSchema.parse(await removedPassword.json()),
+    ).toEqual({
+      type: "viewer-password-updated",
+      enabled: false,
+    });
+
+    const rotated = await updateRoomAccess(
+      baseUrl,
+      room.roomId,
+      room.hostToken,
+      { action: "rotate-viewer-grant" },
+      { cookie },
+    );
+    const rotatedBody = roomAccessUpdateResponseSchema.parse(
+      await rotated.json(),
+    );
+    expect(rotatedBody.type).toBe("viewer-grant-updated");
+    expect(rotatedBody.type === "viewer-grant-updated" && rotatedBody.inviteUrl)
+      .toMatch(/#v=[A-Za-z0-9_-]{22}$/);
+
+    const revoked = await updateRoomAccess(
+      baseUrl,
+      room.roomId,
+      room.hostToken,
+      { action: "revoke-viewer-grant" },
+      { cookie },
+    );
+    expect(roomAccessUpdateResponseSchema.parse(await revoked.json())).toMatchObject({
+      type: "viewer-grant-updated",
+      inviteUrl: null,
+    });
+    expect(runningServer?.roomStore.getConnectedHost(room.roomId)).toBeUndefined();
+
+    nowMs = 1_001;
+    expect(
+      runningServer?.roomStore
+        .expireRooms()
+        .map((expired) => expired.roomId),
+    ).toContain(room.roomId);
+  });
+
+  it("requires same-origin site access and the exact room Host token", async () => {
+    const baseUrl = await start();
+    const authenticated = await login(baseUrl);
+    const cookie = cookiePair(authenticated);
+    const first = createRoomResponseSchema.parse(
+      await (await createRoom(baseUrl, cookie)).json(),
+    );
+    const second = createRoomResponseSchema.parse(
+      await (await createRoom(baseUrl, cookie)).json(),
+    );
+    const action = { action: "rotate-viewer-grant" };
+
+    expect(
+      (await updateRoomAccess(baseUrl, first.roomId, first.hostToken, action))
+        .status,
+    ).toBe(401);
+    expect(
+      (
+        await updateRoomAccess(baseUrl, first.roomId, first.hostToken, action, {
+          cookie,
+          origin: "https://foreign.test",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await updateRoomAccess(baseUrl, first.roomId, undefined, action, { cookie }))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await updateRoomAccess(baseUrl, first.roomId, "wrong-token", action, {
+          cookie,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await updateRoomAccess(baseUrl, first.roomId, second.hostToken, action, {
+          cookie,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await updateRoomAccess(
+          baseUrl,
+          first.roomId,
+          first.hostToken,
+          { action: "unknown" },
+          { cookie },
+        )
+      ).status,
+    ).toBe(400);
+    const method = await updateRoomAccess(
+      baseUrl,
+      first.roomId,
+      first.hostToken,
+      action,
+      { cookie, method: "GET" },
+    );
+    expect(method.status).toBe(405);
+    expect(method.headers.get("allow")).toBe("POST");
   });
 
   it("rejects malformed room requests and foreign browser origins", async () => {
@@ -370,41 +547,6 @@ describe("room HTTP API", () => {
 });
 
 describe("server HTTP listener and health", () => {
-  it("serves only non-secret connection self-check configuration", async () => {
-    const baseUrl = await start(
-      testConfig({
-        peerAssistedMedia: true,
-        stunUrls: ["stun:stun.example.test:3478"],
-        livekitFallback: {
-          url: "ws://livekit.test:7880",
-          apiUrl: "http://livekit.test:7880",
-          apiKey: "test-key",
-          apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
-        },
-      }),
-      { sfuTokenIssuer: { issueToken: async () => "unused-test-token" } },
-    );
-
-    const response = await fetch(`${baseUrl}/api/connection-self-check`);
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(await response.json()).toEqual({
-      iceConfig: {
-        iceServers: [{ urls: ["stun:stun.example.test:3478"] }],
-      },
-      sfuConfigured: true,
-    });
-
-    const rejected = await fetch(`${baseUrl}/api/connection-self-check`, {
-      method: "POST",
-    });
-    expect(rejected.status).toBe(405);
-    expect(rejected.headers.get("allow")).toBe("GET");
-  });
-
   it("starts with an injected optional SFU token issuer", async () => {
     const baseUrl = await start(
       testConfig({

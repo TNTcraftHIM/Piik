@@ -98,6 +98,18 @@ type PrepareResult =
     }
   | { kind: "ready"; prepared: PreparedCandidate };
 
+export type ActiveViewerMediaEdge =
+  | {
+      revision: number;
+      connectionId: string;
+      upstream: { kind: "peer"; peerId: string };
+    }
+  | {
+      revision: number;
+      connectionId: string;
+      upstream: { kind: "sfu" };
+    };
+
 export interface SfuFallbackOptions {
   url: string;
   tokenIssuer: SfuTokenIssuer;
@@ -259,16 +271,39 @@ export class HybridMediaRouter {
     roomId: string,
     childPeerId: string,
   ): { revision: number; parentPeerId: string } | undefined {
+    const activeEdge = this.resolveActiveViewerMediaEdge(roomId, childPeerId);
+    return activeEdge?.upstream.kind === "peer"
+      ? {
+          revision: activeEdge.revision,
+          parentPeerId: activeEdge.upstream.peerId,
+        }
+      : undefined;
+  }
+
+  resolveActiveViewerMediaEdge(
+    roomId: string,
+    childPeerId: string,
+  ): ActiveViewerMediaEdge | undefined {
     const snapshot = this.rooms.get(roomId)?.controller?.snapshot();
     const edge = snapshot?.upstreamByViewer.get(childPeerId);
     if (
       !snapshot ||
-      edge?.kind !== "peer" ||
+      !edge ||
       !this.pathIsPhysical(roomId, snapshot, childPeerId)
     ) {
       return undefined;
     }
-    return { revision: snapshot.revision, parentPeerId: edge.parentPeerId };
+    return edge.kind === "peer"
+      ? {
+          revision: snapshot.revision,
+          connectionId: edge.connectionId,
+          upstream: { kind: "peer", peerId: edge.parentPeerId },
+        }
+      : {
+          revision: snapshot.revision,
+          connectionId: edge.connectionId,
+          upstream: { kind: "sfu" },
+        };
   }
 
   getViewerRouteUpstream(roomId: string, viewerPeerId: string): MediaRouteUpstream {
