@@ -877,6 +877,40 @@ h3 {
   border-top: 1px solid var(--border);
 }
 
+.room-password-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.room-password-state,
+.room-password-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.room-password-state {
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.room-password-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.room-password-edit-action {
+  min-height: 40px;
+  padding: 7px 10px;
+}
+
 .viewer-password-control > label {
   grid-column: 1 / -1;
   color: var(--muted);

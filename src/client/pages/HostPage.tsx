@@ -247,6 +247,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     creationProfileRef.current = creationProfile;
   }, [creationProfile]);
   const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
+  const [viewerPasswordEditorOpen, setViewerPasswordEditorOpen] =
+    useState(false);
   const [viewerPasswordUpdating, setViewerPasswordUpdating] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
@@ -532,6 +534,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     clearHostRoom();
     setRoom(null);
     setCopied(false);
+    setViewerPasswordEditorOpen(false);
+    setViewerPasswordDraft("");
   }
 
   function endSharing(message: string, notifyServer = true): void {
@@ -1234,6 +1238,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordUpdating(false);
       setViewerPasswordDraft("");
       if (action !== undefined) {
+        setViewerPasswordEditorOpen(false);
         setNotice(
           action === null ? "房间密码已移除" : "房间密码已更新",
         );
@@ -2405,67 +2410,102 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     </button>
                   ))}
                 </div>
-                <form
-                  className="viewer-password-control"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    changeViewerPassword(viewerPasswordDraft);
-                  }}
-                >
-                  <label htmlFor="viewer-password">房间密码</label>
-                  <span className="input-with-icon">
-                    <KeyRound size={16} aria-hidden="true" />
-                    <input
-                      id="viewer-password"
-                      type="password"
-                      value={viewerPasswordDraft}
-                      maxLength={MAX_VIEWER_PASSWORD_LENGTH}
-                      autoComplete="new-password"
-                      placeholder={
-                        viewerPasswordEnabled ? "输入新密码" : "设置密码"
-                      }
-                      disabled={viewerPasswordUpdating || phase !== "live"}
-                      onChange={(event) =>
-                        setViewerPasswordDraft(event.target.value)
-                      }
-                    />
-                  </span>
-                  <button
-                    className="icon-button"
-                    type="submit"
-                    title={viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
-                    aria-label={
-                      viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"
-                    }
-                    disabled={
-                      viewerPasswordUpdating ||
-                      phase !== "live" ||
-                      viewerPasswordDraft.length === 0
-                    }
+                {viewerPasswordEditorOpen ? (
+                  <form
+                    className="viewer-password-control"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      changeViewerPassword(viewerPasswordDraft);
+                    }}
                   >
-                    <Check size={18} />
-                  </button>
-                  {viewerPasswordEnabled && (
+                    <label htmlFor="viewer-password">
+                      {viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
+                    </label>
+                    <span className="input-with-icon">
+                      <KeyRound size={16} aria-hidden="true" />
+                      <input
+                        id="viewer-password"
+                        type="password"
+                        value={viewerPasswordDraft}
+                        maxLength={MAX_VIEWER_PASSWORD_LENGTH}
+                        autoComplete="new-password"
+                        placeholder="输入新密码"
+                        autoFocus
+                        disabled={viewerPasswordUpdating || phase !== "live"}
+                        onChange={(event) =>
+                          setViewerPasswordDraft(event.target.value)
+                        }
+                      />
+                    </span>
                     <button
                       className="icon-button"
-                      type="button"
-                      title={
-                        activeCodeEntryPolicy === "password"
-                          ? "请先将房间号加入改为开放或关闭"
-                          : "移除房间密码"
+                      type="submit"
+                      title={viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
+                      aria-label={
+                        viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"
                       }
-                      aria-label="移除房间密码"
                       disabled={
                         viewerPasswordUpdating ||
                         phase !== "live" ||
-                        activeCodeEntryPolicy === "password"
+                        viewerPasswordDraft.length === 0
                       }
-                      onClick={() => changeViewerPassword(null)}
                     >
-                      <Trash2 size={18} />
+                      <Check size={18} aria-hidden="true" />
                     </button>
-                  )}
-                </form>
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title="取消"
+                      aria-label="取消编辑房间密码"
+                      disabled={viewerPasswordUpdating}
+                      onClick={() => {
+                        setViewerPasswordDraft("");
+                        setViewerPasswordEditorOpen(false);
+                      }}
+                    >
+                      <X size={18} aria-hidden="true" />
+                    </button>
+                  </form>
+                ) : (
+                  <div className="room-password-summary">
+                    <span className="room-password-state">
+                      <KeyRound size={15} aria-hidden="true" />
+                      {viewerPasswordEnabled
+                        ? activeCodeEntryPolicy === "password"
+                          ? "密码加入已启用"
+                          : "房间密码已设置"
+                        : "未设置房间密码"}
+                    </span>
+                    <div className="room-password-actions">
+                      <button
+                        className="button button-secondary room-password-edit-action"
+                        type="button"
+                        disabled={viewerPasswordUpdating || phase !== "live"}
+                        onClick={() => setViewerPasswordEditorOpen(true)}
+                      >
+                        {viewerPasswordEnabled ? (
+                          <Pencil size={15} aria-hidden="true" />
+                        ) : (
+                          <KeyRound size={15} aria-hidden="true" />
+                        )}
+                        {viewerPasswordEnabled ? "更改" : "设置密码"}
+                      </button>
+                      {viewerPasswordEnabled &&
+                        activeCodeEntryPolicy !== "password" && (
+                          <button
+                            className="icon-button"
+                            type="button"
+                            title="移除房间密码"
+                            aria-label="移除房间密码"
+                            disabled={viewerPasswordUpdating || phase !== "live"}
+                            onClick={() => changeViewerPassword(null)}
+                          >
+                            <Trash2 size={17} aria-hidden="true" />
+                          </button>
+                        )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
