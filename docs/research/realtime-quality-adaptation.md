@@ -262,10 +262,10 @@ intrinsic bitrate or efficiency win for every implementation or scene; actual
 outbound codec/profile, encoder implementation and decoded stats remain the
 result truth. A codec choice also does not prove shared encode: separate browser
 PeerConnections may construct separate encoders, and the SFU still publishes
-only the configured `q,h` representations. Only after the H.264 root cause is
-fixed and fresh-share physical direct, browser-relay, and SFU runs pass may the
-product separately decide to make H.264 the default; that decision also removes
-the selector instead of retaining a permanent codec control.
+only the configured `q,h` representations. After the H.264 root cause is fixed,
+fresh-share physical direct, browser-relay, and SFU runs choose either VP8 or
+H.264 as the single fixed Browser codec. Either result removes the temporary
+selector instead of retaining a permanent codec control.
 
 The repository diagnostic is a mechanical single-machine preflight, not a
 quality runner. Lifecycle runs fix the accepted v10 VP8 default; each fresh run performs exactly

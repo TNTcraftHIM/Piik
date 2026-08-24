@@ -90,10 +90,12 @@ without compatibility aliases before this simplification is reported as implemen
 or deployed.
 
 Current TODO priority is that codec simplification and atomic deployment, followed
-by physical audio validation, controlled Host-background diagnosis, and representative
-direct/peer-relay/SFU network acceptance. H.264 diagnosis/default reconsideration,
-mobile lifecycle, distribution/native packages, retained product decisions, and the
-read-only simplification audit stay at their later boundaries.
+immediately by controlled H.264 root-cause repair, physical route validation, a
+single final Browser codec decision, and deletion of the temporary selector for
+either VP8 or H.264. Physical audio validation, controlled Host-background diagnosis,
+representative direct/peer-relay/SFU network acceptance, mobile lifecycle,
+distribution/native packages, retained product decisions, and the read-only
+simplification audit follow their ledger order.
 
 Follow the current ledger in order and report each verified physical-evidence
 boundary without reviving stale agent or branch facts.
