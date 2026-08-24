@@ -188,8 +188,8 @@ A 2026-08-21 report says that selecting fluid preference on an SFU path could
 retain low received FPS without reducing the visible resolution. This is not
 proof that the preference was ignored: `maintain-framerate` is a degradation
 tradeoff rather than an FPS target. It is also not evidence of SFU temporal
-downlayering: the current codec is left to automatic negotiation unless the Host
-explicitly selects one. Pinned LiveKit server 1.13.5 installs a temporal selector
+downlayering: the accepted v10 Browser default prefers VP8 unless the Host explicitly
+selects another value before starting the share. Pinned LiveKit server 1.13.5 installs a temporal selector
 for VP8, but its H.264/H.265 path installs only the simulcast spatial selector.
 With H.264 selected, a `HIGH` ceiling may therefore let BWE choose the
 lower-resolution `q` representation, not a lower temporal layer at the same
@@ -229,54 +229,50 @@ physical evidence.
 
 RFC 7742 requires WebRTC browsers to implement both VP8 and H.264 Constrained
 Baseline, while W3C `setCodecPreferences()` lets the application reorder the
-browser's negotiated codec set. The smallest Web policy is automatic by default:
-do not override browser/LiveKit negotiation. Advanced settings can explicitly
-place every advertised H.264 or VP8 entry first while retaining the complete
+browser's negotiated codec set. The accepted v10 Browser default places VP8 first.
+Advanced settings expose Automatic/H.264/VP8 only before sharing starts so a
+fresh share can provide a controlled H.264 comparison. Explicit H.264 or VP8
+places every advertised entry for that codec first while retaining the complete
 repair and fallback list. A missing capability or rejected preference leaves the
-browser default unchanged. LiveKit likewise keeps its default codec for
-`automatic`, overrides it only for an explicit selection, and retains
-`backupCodec=false`; there is no parallel backup-codec publication.
+browser default unchanged. `automatic` passes an empty preference list and does
+not override the LiveKit default; an explicit selection sets the initial LiveKit
+publication codec and retains `backupCodec=false`, so there is no parallel
+backup-codec publication.
 
 Changing `RTCRtpTransceiver.setCodecPreferences()` affects later negotiation; it
 does not itself switch an established sender, and `replaceTrack()` only replaces
-a same-kind source. Mature WebRTC code such as Jitsi follows a codec preference
-change with renegotiation, while pinned LiveKit changes publication codec through
-its publish/republish lifecycle. Screener therefore starts with a paused-share
-transaction: fence the request by codec/media generation, serialize it with
-route mutation, boundedly renegotiate the frozen still-current peer/relay
-targets, and republish the SFU generation when present. Preparation never
-resumes an explicitly paused share. When preparation settles, it stops only the
-running preparation deadline: one room-serial codec mutation owner remains as
-bounded in-memory prepared state, holds no timer while paused, and excludes
-route mutation. The user's ordinary Resume is handled inside that same owner. It
-atomically revalidates the exact frozen bindings, starts the decoded-progress
-proof deadline, and only then enables the source. A zero-target share saves the
-future preference and commits without media proof. If forward proof fails, the
-owner first restores authoritative paused state and then runs bounded
-old-preference rollback preparation. A prepared rollback again holds no timer
-and waits for the user's next ordinary Resume to start its decoded proof; no
-transaction path resumes the share automatically. Passing an empty codec list
-restores default browser preferences.
-This is a deliberate paused bounded-gap path. Unpaused make-before-break is a
-later extension rather than a second codec mechanism.
+a same-kind source. Pinned LiveKit likewise fixes the publication codec through
+its publish lifecycle. Screener therefore applies the selected preference only
+to the first offer/publication of a new share and to later senders created for
+that same share. Once sharing starts, the codec control is disabled in both live
+and paused states. Changing codec requires stopping and starting a fresh share;
+ordinary Pause and Resume only toggle the same capture tracks and one
+share-generation-fenced paused state.
 
-H.264 remains an explicit option because mature cross-device hardware
-encode/decode paths may avoid an observed VP8 software-path cost. A controlled
-Web comparison also found that forcing H.264 could lower downstream FPS with the
-current browser configuration, so the product does not force either codec by
-default. Neither observation proves an intrinsic bitrate or efficiency win for
-every implementation or scene; actual outbound codec/profile, encoder
-implementation and decoded stats remain the result truth. A codec choice also
-does not prove shared encode: separate browser PeerConnections may construct
-separate encoders, and the SFU still publishes only the configured `q,h`
-representations.
+This boundary needs no codec generation, per-Viewer preparation/proof, Resume
+attempt, rollback, or SFU publication replacement. Its wire surface ships
+atomically as the single `screener-v10` contract and rejects v9 before room
+authority; there is no v9 alias, parser, writer, or translator.
+
+H.264 remains a temporary explicit comparison option because mature cross-device
+hardware encode/decode paths may avoid an observed VP8 software-path cost. A
+controlled Web comparison also found that preferring H.264 could lower downstream
+FPS with the current browser configuration. Neither observation proves an
+intrinsic bitrate or efficiency win for every implementation or scene; actual
+outbound codec/profile, encoder implementation and decoded stats remain the
+result truth. A codec choice also does not prove shared encode: separate browser
+PeerConnections may construct separate encoders, and the SFU still publishes
+only the configured `q,h` representations. Only after the H.264 root cause is
+fixed and fresh-share physical direct, browser-relay, and SFU runs pass may the
+product separately decide to make H.264 the default; that decision also removes
+the selector instead of retaining a permanent codec control.
 
 The repository diagnostic is a mechanical single-machine preflight, not a
-quality runner. Lifecycle runs fix `automatic`; each fresh run performs exactly
+quality runner. Lifecycle runs fix the accepted v10 VP8 default; each fresh run performs exactly
 one of observe, preview cycle, Host-peer rebuild, capture replacement, or Host
 reload, keeps the actual codec/profile/parameters stable across that action, and
 rechecks the action budget after its two current-generation evidence windows.
-Codec preflight uses fresh Host/share/PeerConnection sessions for automatic,
+Codec preflight uses fresh Host/share/PeerConnection sessions for Automatic,
 H.264, and VP8 and rejects an actual-codec mismatch. Reports retain only
 allowlisted failure stages and sanitized identifiers.
 
@@ -299,16 +295,16 @@ ships no H.264 codec binary or new codec dependency, so licensing uncertainty is
 not a runtime blocker for the preference. Bundling a codec implementation or
 changing the distribution/service model still requires a separate license review.
 
-These reversible standard preferences are gated by focused ordering, fallback and
-interoperability tests, not by an exhaustive CPU/GPU/game matrix on one ordinary
-PC. Primary specifications, maintained implementation behavior, representative
-target-device observations and sanitized production stats drive product choices.
-Synthetic local runs may verify negotiation, decode, cleanup and edge bounds;
-they must not calibrate capacity, claim performance, or block a standard feature.
-Hardware attribution and controlled performance evidence remain required before
-making efficiency claims or introducing dynamic codec selection. AV1 remains
-outside the default because compression efficiency alone does not establish a
-power-efficient WebRTC encoder on the target cohort.
+These pre-share standard preferences are gated by focused initial-ordering,
+fallback, and interoperability tests, not by an exhaustive CPU/GPU/game matrix
+on one ordinary PC. Primary specifications, maintained implementation behavior,
+representative target-device observations and sanitized production stats drive
+product choices. Synthetic local runs may verify negotiation, decode, cleanup
+and edge bounds; they must not calibrate capacity or claim performance. Hardware
+attribution and controlled physical evidence remain required before changing the
+default or removing the comparison selector. AV1 remains outside the default
+because compression efficiency alone does not establish a power-efficient
+WebRTC encoder on the target cohort.
 
 Discord's published Go Live material is a useful architecture comparison, not
 a preset to copy. It describes native OS/driver-integrated capture and encoding,
@@ -737,15 +733,14 @@ guarantees the emitted resolution, frame rate, or bitrate.
   and `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
-- Exact v9 source's Share advanced settings panel accepts
+- The accepted `screener-v10` Share advanced settings panel accepts
   480p/720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, the three preferences, and
-  Automatic/H.264/VP8. The `480p` choice is only advanced `854x480`, not a
+  Automatic/H.264/VP8 before sharing starts and defaults to VP8. The `480p` choice is only advanced `854x480`, not a
   fourth recommended profile. Its 64/128/256 kbps audio ceiling, default 128,
   is live-switchable on the existing Opus path. Production deploys both the
-  advanced 480p resolution and live audio mutation. The first
-  codec-switch product boundary is a generation-fenced renegotiation and SFU
-  republish while sharing is explicitly paused; pause or `replaceTrack()` alone
-  does not switch codec. Display capture does not standardize channel-count or
+  advanced 480p resolution and live audio mutation. A share keeps its initial
+  codec preference until stopped; live and paused states expose no codec
+  mutation. Display capture does not standardize channel-count or
   sample-rate control. The peer receive
   contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
   LiveKit's explicit high-quality stereo/forceStereo option; the selected sender
@@ -786,8 +781,9 @@ CPU/GPU cost, public networks, or sustained behavior.
 - No canvas pixel-difference detector, machine-learned rate controller, or
   periodic profile switching.
 - No copied x264 CRF/preset recipe in the browser path.
-- No forced codec order until target hardware measurements identify the actual
-  power-efficient encoder.
+- No runtime or automatic codec switching. VP8 remains the static default while
+  fresh-share Automatic/H.264/VP8 comparisons identify the actual encoder and
+  physical result.
 - No channel-count, sample-rate, codec, arbitrary bitrate, stereo, DTX, RED or
   FEC control, and no inference of actual stereo or sample rate from
   `opus/48000/2`. Screen media uses one route-consistent stereo contract;

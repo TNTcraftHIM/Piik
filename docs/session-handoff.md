@@ -81,11 +81,19 @@ Current high-signal boundary:
   material. Do not merge or delete them until their unique changes, references,
   and reparse/junction safety are checked against current main.
 
-Current TODO priority is physical codec and audio validation, controlled H.264
-and Host-background diagnosis, and representative direct/peer-relay/SFU network
-acceptance. Mobile lifecycle, distribution/native
-packages, retained product decisions, and the read-only simplification audit stay
-at their later boundaries.
+The accepted codec contract now defaults new shares to VP8, keeps the codec
+selector pre-share only, fixes the preference for the lifetime of a share, and
+uses ordinary `shareGeneration`-fenced Pause/Resume. Current source and production
+still run the v9 codec transaction described above. The next Browser cutover must
+delete that transaction and its messages, use one new wire version, and reject v9
+without compatibility aliases before this simplification is reported as implemented
+or deployed.
+
+Current TODO priority is that codec simplification and atomic deployment, followed
+by physical audio validation, controlled Host-background diagnosis, and representative
+direct/peer-relay/SFU network acceptance. H.264 diagnosis/default reconsideration,
+mobile lifecycle, distribution/native packages, retained product decisions, and the
+read-only simplification audit stay at their later boundaries.
 
 Follow the current ledger in order and report each verified physical-evidence
 boundary without reviving stale agent or branch facts.
