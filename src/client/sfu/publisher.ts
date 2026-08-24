@@ -29,6 +29,7 @@ import {
   createStatsAccumulator,
   type StatsAccumulator,
 } from "../webrtc/stats";
+import { sfuRoomConnectOptions } from "./connection-options";
 
 export interface SfuConnectionConfig {
   url: string;
@@ -141,9 +142,7 @@ export class SfuPublisher {
         }
       });
 
-      await room.connect(config.url, config.token, {
-        autoSubscribe: false,
-      });
+      await room.connect(config.url, config.token, sfuRoomConnectOptions());
       if (!this.owns(room, generation)) {
         await safeDisconnect(room);
         return false;
