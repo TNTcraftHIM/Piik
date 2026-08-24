@@ -2382,9 +2382,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <div className="segmented-control room-policy-control">
                   {(
                     [
-                      ["open", "开放"],
-                      ["password", "密码"],
-                      ["disabled", "关闭"],
+                      ["open", "直接加入"],
+                      ["password", "密码加入"],
+                      ["disabled", "禁止加入"],
                     ] as const
                   ).map(([policy, label]) => (
                     <button

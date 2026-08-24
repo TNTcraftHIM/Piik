@@ -779,9 +779,9 @@ h3 {
 
 .invite-bar {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  gap: 12px;
+  gap: 0;
   align-items: start;
   margin-top: 18px;
   padding: 11px 12px;
@@ -796,8 +796,16 @@ h3 {
 }
 
 .room-entry-policy {
-  padding-left: 12px;
-  border-left: 1px solid var(--border);
+  display: grid;
+  grid-template-columns:
+    minmax(130px, 0.55fr)
+    minmax(300px, 1.15fr)
+    minmax(260px, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 .invite-heading,
@@ -848,14 +856,14 @@ h3 {
 
 .room-entry-heading {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .room-policy-control {
   width: 100%;
-  margin-top: 8px;
 }
 
 .room-policy-control button {
@@ -865,6 +873,7 @@ h3 {
 .room-lease-note {
   color: var(--muted);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .viewer-password-control {
@@ -873,8 +882,8 @@ h3 {
   width: 100%;
   gap: 6px;
   align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
 }
 
 .room-password-summary {
@@ -883,9 +892,8 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
 }
 
 .room-password-state,
@@ -933,7 +941,7 @@ h3 {
 }
 
 .room-entry-heading .field-label {
-  margin-bottom: 3px;
+  margin-bottom: 0;
 }
 
 .invite-url {
@@ -1430,6 +1438,27 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 
+@media (max-width: 1200px) {
+  .room-entry-policy {
+    grid-template-columns: minmax(130px, 160px) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .room-entry-heading {
+    grid-row: 1 / span 2;
+    padding-top: 3px;
+  }
+
+  .room-password-summary,
+  .viewer-password-control {
+    grid-column: 2;
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+}
+
 @media (max-width: 1050px) {
   .host-workspace {
     grid-template-columns: minmax(0, 1fr) 330px;
@@ -1485,16 +1514,6 @@ h3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .invite-bar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .room-entry-policy {
-    padding-top: 12px;
-    padding-left: 0;
-    border-top: 1px solid var(--border);
-    border-left: 0;
-  }
 }
 
 @media (max-width: 520px) {
@@ -1547,6 +1566,24 @@ h3 {
     min-height: 42px;
     padding: 6px;
     white-space: normal;
+  }
+
+  .room-entry-policy {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .room-entry-heading {
+    grid-row: auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 0;
+  }
+
+  .room-password-summary,
+  .viewer-password-control {
+    grid-column: 1;
   }
 
   .viewer-password-control {
