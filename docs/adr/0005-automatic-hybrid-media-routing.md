@@ -1,12 +1,10 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: The route model is accepted and deployed in exact release `c4962f5`,
-  including Browser SFU ICE-server isolation and owner physical fallback proof;
-  exact source `064db16c1b6d25fd24b7057b7e2fca172002e3c4` removes the product
-  diagnostic-download UI for v12 while retaining the Host-only acceptance
-  snapshot, but that source is not deployed.
+- Status: The route model is accepted and deployed in exact release `b68c471`
+  on strict v12, including Browser SFU ICE-server isolation, no product
+  diagnostic-download UI, and the retained Host-only acceptance snapshot.
 - Date: 2026-08-20
-- Last updated: 2026-08-24
+- Last updated: 2026-08-25
 
 ## Context
 
@@ -156,7 +154,7 @@ A `prepare` route update names that operation's exact child, route kind, and
 server-issued candidate connection identity. Parent and child therefore
 prepare the same connection; neither endpoint infers candidate authority from
 an assignment-list difference.
-The current Browser runtime contract uses the single `screener-v11` wire. On each WebSocket, the
+The current Browser runtime contract uses the single `screener-v12` wire. On each WebSocket, the
 server sends the exact prepare before its SFU configuration; the candidate child
 is queued before a peer parent is allowed to start its offer. WebSocket ordering
 is the companion-delivery contract, so clients keep no reordering inbox.
@@ -363,13 +361,14 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Production and canonical `main` run exact deployed application/runtime revision
-`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`, including exact
+Production runs exact deployed application/runtime revision
+`b68c47167da592dd673a78ec3d072936ef49e3ea`, release `b68c471`; canonical `main`
+contains the same application/runtime tree plus the current truth checkpoint, including exact
 Browser SFU ICE-server-isolation implementation
-`ae09c760adec76fd26da611d4928486d105c6d3b`. Both run strict `screener-v11` and
+`ae09c760adec76fd26da611d4928486d105c6d3b`. Both run strict `screener-v12` and
 the direct/STUN peer plus LiveKit SFU/UDP route model. Browser SFU PCs use empty
-external ICE-server lists, and the owner physically verified fallback media
-after deployment. The operation owner remains only `route`. Exact operational
+external ICE-server lists. Owner physical fallback proof remains bounded to
+predecessor release `c4962f5`; the operation owner remains only `route`. Exact operational
 evidence is owned by the deployment document; broader heterogeneous-network,
 codec, and SFU lifecycle validation remains open.
 

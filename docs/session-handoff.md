@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 This file is a bootstrap prompt, not a product-truth owner. The linked documents
 replace any duplicated or conflicting statement here. Update or remove this file
@@ -36,25 +36,24 @@ Current high-signal boundary:
   subscriber PCs explicitly use no external ICE server and check the dedicated
   public SFU candidate directly; ordinary peers and LiveKit server-side public
   IP discovery retain deployment STUN. Production exact deployed
-  application/runtime revision `c4962f54443ad5f98bc65861195a3d9c74a48996`,
-  release `c4962f5`, uses strict `screener-v11` and includes exact Browser SFU
+  application/runtime revision `b68c47167da592dd673a78ec3d072936ef49e3ea`,
+  release `b68c471`, uses strict `screener-v12` and includes exact Browser SFU
   ICE-server-isolation implementation
-  `ae09c760adec76fd26da611d4928486d105c6d3b`. The owner physically verified
-  deployed SFU fallback media. The route uses one short-lived
+  `ae09c760adec76fd26da611d4928486d105c6d3b`. Owner physical SFU fallback proof
+  remains bounded to predecessor release `c4962f5`. The route uses one short-lived
   exact-generation decoded-frame observer only for the pending candidate inside
   the existing total deadline; the periodic stats sampler still owns active-path
   diagnostics and stalls. Broader external-network and SFU lifecycle evidence
   remains open. Do not run executable/native suites unless their later acceptance
   boundary specifically requires them.
-- ADR-0002 owns the room model. Use `docs/status.md` for the exact current-source
-  and production boundary; production stays exact `c4962f5` on v11 until an
-  explicitly authorized atomic application release.
-  Neither source nor production uses SQLite; exact release operations and
+- ADR-0002 owns the room model. Current source and production use strict v12 with
+  exactly `open | private` code entry and the room-lived 22-character Viewer
+  grant. Neither source nor production uses SQLite; exact release operations and
   change-scoped infrastructure recovery are owned by deployment.
 - Browser display video must leave `contentHint` unset; audio keeps `music`.
   Browser video is fixed VP8 across direct, browser-relay, and SFU paths; strict
-  v12 source and v11 production have no codec UI/state/wire or fallback media
-  codec. Automated source gates and the existing deployment postflight passed,
+  v12 source and production have no codec UI/state/wire or fallback media codec.
+  Automated source gates and the exact deployment postflight passed,
   but no physical direct, browser-relay, or SFU codec path has been verified.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
