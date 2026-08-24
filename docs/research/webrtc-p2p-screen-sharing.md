@@ -294,9 +294,8 @@ WebRTC 媒体本身使用 DTLS-SRTP 加密，但 direct P2P 仍可能让这组�
 
 ## 编解码策略
 
-- 所有合规 WebRTC 浏览器必须支持 VP8 和 H.264 Constrained Baseline；VP9/AV1 是能力协商项。
-- 游戏场景首版通常优先 H.264，因为硬件编码覆盖广；保留 VP8 回退。
-- 不要仅凭 codec 名称判断性能。通过 `RTCRtpSender.getCapabilities()` 协商，通过统计确认 `encoderImplementation`、`powerEfficientEncoder`、`totalEncodeTime/framesEncoded` 和 `qualityLimitationReason`。
+- 当前 Browser 路径固定 VP8，因为它满足 WebRTC 基线互通，且无视频 hint 的受控证据恢复了接近 30 fps、完整分辨率和正常码控；direct、browser relay 与 SFU 不保留另一视频媒体 codec 作为 fallback。
+- 不要仅凭 codec 名称判断性能。通过实际协商与统计确认 `encoderImplementation`、`powerEfficientEncoder`、`totalEncodeTime/framesEncoded` 和 `qualityLimitationReason`；VP8 hardware acceleration 仍需目标平台实测。
 - 软件 VP9/AV1 可能抢占游戏 CPU；只有端点支持且实测硬件高效时才启用。
 - Simulcast/SVC 主要帮助 SFU 按观看者网络选择层。它们不会消除 P2P fan-out 的 `N * B` 上行，还可能增加编码实例。
 

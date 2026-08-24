@@ -16,7 +16,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Source
 
-- Canonical root `main` is the source and integration truth. Current source and production use the single Browser `screener-v10` boundary and reject every other wire before room authority; auxiliary branches and older worktrees do not supersede it.
+- Canonical root `main` is the source and integration truth. Current source and production use the single Browser `screener-v10` boundary and reject every other wire before room authority; auxiliary branches and older worktrees do not supersede it. The accepted replacement is one atomic `screener-v11` contract with fixed Browser VP8 and no codec quality field; it is not yet implemented or deployed.
 - Current source implements one Host plus up to `20` Viewers, one steady outbound media-copy cap for every non-server endpoint (default `2`, static `1/2/3`), and the process-memory room model with random four-digit codes, a default 24-hour dormant lease, exact-Host resume, restart loss, local Host preference replay, independent token invitations, `open | password | disabled` code entry, and no SQLite runtime.
 - One event-driven controller owns the committed graph and at most one room-serial child operation. It uses one deterministic candidate list/cursor and one total direct-then-SFU deadline; exact admission and physical resources remain charged through drain, and the pending candidate commits only after an exact-generation decoded-frame proof. A short-lived 100 ms stats observer proves only that candidate inside the existing deadline, while the 2-second sampler remains responsible for active-path diagnostics and decoded-frame stalls. Healthy edges remain sticky and current-path quality does not authorize reparenting.
 - Ordinary peer ICE is STUN-only and the only application fallback is the dedicated LiveKit SFU over UDP. SFU generations use explicit no-default ingress/egress capacities, exact `reserved | committed | draining` accounting, delete-plus-absence release, one Host publication, and exact Viewer subscription handles. No Screener TURN, ICE/TCP, media TCP, or TLS-relayed media route exists.
@@ -27,7 +27,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Deploy and physically validate the no-video-hint Browser source change. The final Browser codec remains undecided; source and production remain v10, default VP8, with the pre-share diagnostic selector fixed for each share.
+1. Implement and validate the accepted `screener-v11` fixed-VP8/no-video-hint Browser contract, then deploy it atomically and verify direct, browser-relay, and SFU paths from actual codec stats. Current source and production remain v10 with the pre-share selector; production also remains on video `motion`.
 2. Diagnose the reported screen-audio `1 kbps` readout and validate live audio ceilings, then refine the Host invitation controls without changing grant semantics implicitly.
 3. Reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
 4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
@@ -43,6 +43,6 @@ This is the current execution index. Git history owns completed timelines; [veri
 ## Current Hold
 
 There is no active P0/P1 source or deployment hold. Current source and production run the postflight-clean
-Browser v10 contract while the no-video-hint deployment and final codec evidence remain pending. Audio, heterogeneous-network, SFU,
+Browser v10 contract while the accepted v11 fixed-VP8 implementation and no-video-hint deployment remain pending. Audio, heterogeneous-network, SFU,
 background, and mobile evidence remains open. Native/executable work and broad repository cleanup
 remain outside the current evidence boundary.

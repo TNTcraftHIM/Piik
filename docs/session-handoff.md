@@ -45,10 +45,11 @@ Current high-signal boundary:
   open/password/disabled code entry. Neither source nor production uses SQLite;
   exact rollback artifacts are owned by deployment.
 - Browser display video must leave `contentHint` unset; audio keeps `music`.
-  Current source implements that behavior; production still sets video `motion`.
-  The final Browser video codec is not decided. Both remain v10, default VP8,
-  with the diagnostic selector fixed for each share; heterogeneous-network and
-  SFU media evidence remains open.
+  Browser video is fixed VP8 across direct, browser-relay, and SFU paths; the
+  accepted strict v11 contract removes codec UI/state/wire and fallback media
+  codecs. Current source and production remain v10 with the selector, and
+  production still sets video `motion`, until implementation and atomic deploy.
+  Heterogeneous-network and SFU media evidence remains open.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy

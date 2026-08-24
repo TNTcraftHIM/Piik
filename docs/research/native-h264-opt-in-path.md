@@ -70,12 +70,12 @@ Primary sources checked 2026-08-21:
 - [`ID3D11VideoDevice::CreateVideoProcessorInputView`](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11videodevice-createvideoprocessorinputview)
 - [`ID3D11VideoContext::VideoProcessorSetOutputBackgroundColor`](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11videocontext-videoprocessorsetoutputbackgroundcolor)
 
-## 2026-08-21 Web H.264 Source
+## 2026-08-21 Browser-To-Native H.264 Evidence
 
-The Web sender's standard WebRTC path now prefers H.264 while preserving the
-browser's negotiated fallback list. The separate browser-to-Native bridge
-loopback remains Chrome WebCodecs Annex-B -> the local envelope -> the same
-Go/Pion fanout.
+The ordinary Browser WebRTC path is fixed VP8 and is independent of this Native
+research. The browser-to-Native bridge loopback below uses Chrome WebCodecs
+H.264 Annex-B -> the local envelope -> the same Go/Pion fanout only as bounded
+Native-path evidence; it does not add a Browser codec option or fallback.
 
 ## Bounded Loopback Evidence
 

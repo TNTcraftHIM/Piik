@@ -226,12 +226,12 @@ physical evidence.
 
 ## Browser Codec And Content-Hint Evidence
 
-The accepted change is narrow: Browser display video does not set
-`contentHint`; returned audio keeps `contentHint = "music"`. The final Browser
-video codec is not decided. V10 continues to default to VP8 and retains the
-pre-share diagnostic selector, fixed for one share, until a controlled real-game
-comparison supports one codec. Codec/profile/encoder stats remain diagnostic
-and do not authorize automatic switching, route changes, or another controller.
+The accepted Browser contract is fixed VP8 with no video `contentHint`; returned
+audio keeps `contentHint = "music"`. Direct and browser-relay offers contain VP8
+as their only video media codec, while RTX/RED/FEC may remain repair formats;
+SFU publication explicitly uses VP8 with no backup codec. The UI and quality
+wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
+do not authorize automatic switching, route changes, or another controller.
 
 Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
 libwebrtc clears `is_screencast` for that mode. Screener was therefore replacing
@@ -279,14 +279,29 @@ hardware selection across Screener's browser targets. Capability advertisement
 alone is not acceptance; an actual sender must prove codec, implementation,
 power efficiency, rate control, and game-load behavior.
 
+These results select VP8 for the ordinary Browser path: no-hint VP8 met the
+current controlled quality baseline, has the required WebRTC interoperability,
+and does not depend on a page choosing a specific Windows encoder. Current
+accepted implementation uses `RTCRtpTransceiver.setCodecPreferences()` before
+the first offer and fails the edge if the API, a VP8 capability, or the
+preference application is missing; it does not leave another video media codec
+as fallback. Browser VP8
+hardware acceleration is a separate later evidence question. It must be proven
+on the supported browser/platform matrix from the actual encoder and game-load
+measurements before it can change the implementation; custom codecs, another
+codec ladder, and a Native helper are not implied by this decision.
+
 Comparable native products do not resolve this browser boundary. Discord
 negotiates VP8/H.264 and selected-platform HEVC/AV1 through its own capture and
 hardware pipeline, and documents an AMD rate-control/frame-dropper repair.
 Parsec, Steam Remote Play, and Moonlight/Sunshine primarily use controlled
-hardware H.264/HEVC/AV1 paths. Oopz only publicly identifies Agora as its screen
-sharing SDK; Agora may use VP8/H.264/H.265 or automatic selection, so Oopz's
-actual session codec is unknown without runtime stats. These native designs do
-not prove that an ordinary web page can force the same encoder path.
+hardware H.264/HEVC/AV1 paths. A read-only inspection of the installed Oopz
+0.87.425 package found Agora screen sharing, an H.264 Web-viewer configuration,
+and native NVENC/QSV/AMF plus software codec paths; it did not prove the codec or
+encoder active in a real sender session. These native designs do not prove that
+an ordinary web page can force the same encoder path. Reproducibility hashes and
+the exact static boundary are retained in
+[Native shared encode](./native-shared-encode-sender.md#2026-08-20-windows-codec-comparison).
 
 Primary implementation evidence: Chromium's
 [content-hint bridge](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc#36),
@@ -706,7 +721,7 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - A live profile change uses `track.applyConstraints()` and updates every
   current sender with `RTCRtpSender.setParameters()`. It does not reopen the
   source picker or renegotiate healthy peer connections.
-- Current v10 source leaves the video hint unset so display capture retains
+- Current source leaves the video hint unset so display capture retains
   browser screen semantics; production still sets `contentHint = "motion"`
   until deployment. Recommended profiles and the advanced initial value use
   `balanced`, with explicit `maintain-resolution` and
@@ -718,9 +733,9 @@ guarantees the emitted resolution, frame rate, or bitrate.
   Automatic/H.264/VP8 before sharing starts and defaults to VP8. The `480p` choice is only advanced `854x480`, not a
   fourth recommended profile. Its 64/128/256 kbps audio ceiling, default 128,
   is live-switchable on the existing Opus path. Production deploys both the
-  advanced 480p resolution and live audio mutation. A share keeps its initial
-  codec preference until stopped; live and paused states expose no codec
-  mutation. Display capture does not standardize channel-count or
+  advanced 480p resolution and live audio mutation. The accepted v11 replacement
+  removes that codec selector and the corresponding quality-state/wire field;
+  Browser media is fixed VP8. Display capture does not standardize channel-count or
   sample-rate control. The peer receive
   contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
   LiveKit's explicit high-quality stereo/forceStereo option; the selected sender
@@ -731,7 +746,8 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - Every sender update derives from `getParameters()`, calls `setParameters()`,
   then reads requested/applied bitrate, frame rate, scale, and preference.
   Rejection or browser rewriting is visible rather than console-only.
-- A P2P sender receives its profile before the first offer. Explicit source or
+- A P2P or browser-relay sender is constrained to VP8 before the first offer and
+  receives its quality profile before that offer. Explicit source or
   profile changes use the existing serialized sender-mutation path; accepting
   an answer does not trigger an extra whole-profile write.
 - One strict room setting is last-wins for current/future peer relays and the
@@ -761,8 +777,9 @@ CPU/GPU cost, public networks, or sustained behavior.
 - No canvas pixel-difference detector, machine-learned rate controller, or
   periodic profile switching.
 - No copied x264 CRF/preset recipe in the browser path.
-- No runtime or automatic codec switching. The current v10 pre-share selector
-  remains diagnostic and fixed for one share until the final codec decision.
+- No runtime, automatic, or user-selected Browser codec switching. The accepted
+  v11 replacement fixes VP8; implementation and production cutover are tracked
+  separately.
 - No channel-count, sample-rate, codec, arbitrary bitrate, stereo, DTX, RED or
   FEC control, and no inference of actual stereo or sample rate from
   `opus/48000/2`. Screen media uses one route-consistent stereo contract;
