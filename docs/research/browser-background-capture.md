@@ -44,15 +44,19 @@ mechanism.
 
 ## Current Source Boundary
 
-The source review covers canonical source `a26eb39dc677003110787b0ed1581c208f894fd7`;
-production remains exact main `2726edde9b87f31fd76e749de47972ef817a9bd5`.
+The no-video-hint review baseline is
+`a26eb39dc677003110787b0ed1581c208f894fd7`. Exact current source
+`f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` uses strict `screener-v11`,
+fixed VP8, no video hint, and no codec UI, quality state, or wire field.
+Production remains exact `2726edde9b87f31fd76e749de47972ef817a9bd5`,
+release `2726edd`, on v10 with video `motion` and the pre-share codec selector.
 The current path does not claim or implement a page-keepalive mechanism, and
 deployment health supplies no physical background-capture evidence.
 
 - Current `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream,
   applies ideal/max capture constraints, leaves the video hint unset, and
   applies sender bitrate, frame-rate, and degradation ceilings. Production
-  still marks video as `motion` until the source change is deployed. Explicit
+  still marks video as `motion` until v11 is deployed. Explicit
   sharing pause and authoritative reconnect re-pause change capture tracks'
   `enabled` state; neither manufactures foreground activity. Audio
   `contentHint = "music"` remains unchanged.

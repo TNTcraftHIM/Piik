@@ -6,7 +6,7 @@
 2. Create one short-lived branch for one coherent change. Use `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `spike/` followed by a short description.
 3. For non-trivial design, implementation, or bug fixing, inspect the repository and research current primary sources before changing code. Record durable findings under `docs/research/`.
 4. Reconcile the requested outcome against the whole current product model and conflicting evidence. Before implementation, update every affected owning requirement/design/ADR/research document and current memory/status, replace stale current text, and checkpoint that nonvolatile truth in Git. If semantics remain disputed, record a hold and stop dependent implementation.
-5. Implement the smallest complete change from that checkpoint. Add tests and concise rationale comments in proportion to risk, and keep operational/current-truth updates in the same coherent pull request when implementation changes source facts.
+5. Implement from that checkpoint under the repo-tracked [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md). Add tests in proportion to risk, and keep operational/current-truth updates in the same coherent pull request when implementation changes source facts.
 6. Run `sh scripts/check-project-state.sh` on macOS/Linux/Git Bash or `./scripts/check-project-state.ps1` on PowerShell, plus `npm run check` and any relevant manual browser/network checks. Record this local evidence in the pull request; feature branches and pull requests use local gates, while GitHub Actions are reserved for `main` integration, releases, and explicit manual runs. Do not retry zero-step or infrastructure failures.
 7. Merge an accepted truth checkpoint before dependent candidates. Rebase or rebuild a retained candidate from that main once, keeping main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts. Make focused commits using `type(scope): summary` where practical, then push the branch.
    Create any new implementation branch or parallel worktree from that exact canonical `main` commit, never from an older candidate or auxiliary worktree.
@@ -27,7 +27,7 @@ Clean up worktrees and branches only after semantic review and integration are c
 
 ## Pull Request Scope
 
-A pull request should explain the problem, the chosen design, verification performed, user-visible or operational effects, and remaining risks. Keep unrelated refactors and generated churn out of the branch.
+A pull request should explain the problem, the chosen design, verification performed, user-visible or operational effects, and remaining risks.
 
 Changes are not complete when only code is updated. Durable changes must update the relevant documentation and current-memory snapshot in the same pull request.
 

@@ -2,12 +2,12 @@
 
 ## 1. Decision And Durable Truth
 
-- Highest priority: before implementation, cleanup, or deployment, settle the meaning against the whole product model and evidence, challenge contradictions or needless complexity, and write the accepted decision to its owning truth documents. Discussions, examples, review suggestions, experiments, checkboxes, and agent ideas are inputs, not implementation authority; never turn a partial interpretation into code or a branch.
-- Apply Occam's razor as "simple, not simplistic": prefer standards, mature framework behavior, and one small general mechanism that covers the product model. When a concrete failure appears, fix the owning invariant or reconciliation loop first; add a case-specific branch, gate, probe, timer, state container, or test only when evidence shows the general mechanism cannot cover it. Do not implement by repeatedly patching examples.
+- Before substantial work, read and follow the complete repo-tracked [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md). That file is the Screener authority for generic task boundaries; keep any installed copy synchronized with it rather than maintaining divergent variants.
+- Core summary: within higher-priority instructions, the latest explicit user decision defines the task; take only requested actions and proven necessary consequences, and do not treat review/research/implementation as authority for implementation/deployment/cleanup beyond its task type. Broad words such as improve or optimize add no unnamed scope. Prefer standards and one owning invariant over example-specific mechanisms, while preserving unrelated work and necessary callers/tests/security. Reconstruct each deliverable from the accepted current result so it stands alone without rejected alternatives, process narration, or modification traces; inspect only the pending changes and report the result with completion evidence. The full skill governs when this summary is incomplete.
+- Highest priority for repository changes: before implementation, cleanup, or deployment, settle the meaning against the whole product model and evidence, challenge contradictions or needless complexity, and write the accepted decision to its owning truth documents. Never turn a partial interpretation into code or a branch.
 - Until the owner explicitly declares a public release, maintain only the current internal product contract. Do not preserve backward or forward compatibility, legacy wire/config aliases, dual parsers or writers, translators, deprecated APIs, migration shims, or tests whose only consumer is an older release. Upgrade the private deployment atomically, reject stale clients before authority, delete replaced surfaces, and use Git history for rollback. Reassess compatibility only when public release requirements are explicitly opened.
 - Before dependent work starts, update every affected owning requirement, design, ADR or research conclusion, plus `docs/project-memory.md` and `docs/status.md` when their snapshots change. Checkpoint the consistent truth in Git; chat is not durable truth.
 - If semantics remain disputed, record the hold in `docs/todo.md` and freeze only dependent work. Do not encode a guess as accepted truth.
-- **Current-truth ("Dongpo pork") rule:** after a correction, current docs, UI, code, comments, configuration, and PR copy state only the accepted behavior and rationale that still constrains it. Remove rejected alternatives and explanations of their removal; Git history owns that history.
 - Queue new observations in their owner and continue the active milestone unless the user requests immediate investigation or the evidence reveals a P0 blocker.
 
 ## 2. Safety And Privacy
@@ -42,9 +42,8 @@
 
 ## 6. Engineering Defaults
 
-- Apply Occam's razor: implement the smallest complete design with a current consumer, keep unrelated work out, preserve user changes, and avoid speculative frameworks or hooks.
 - Research non-trivial design, implementation, and bug fixes from current primary sources. Record durable findings and license boundaries under `docs/research/`.
 - Add tests and independent review in proportion to risk. Batch expensive browser, network, endurance, and deployment checks at acceptance boundaries; use reproducible WebRTC measurements for performance claims.
-- Keep comments limited to non-obvious rationale and invariants. Keep scripts and hooks deterministic, fast, cross-platform, and CI-runnable.
+- Keep scripts and hooks deterministic, fast, cross-platform, and CI-runnable.
 - Support Windows, macOS, and Linux; avoid absolute paths and OS-specific separators. Text files use LF, and new filenames use ASCII unless an established user-facing convention requires otherwise.
 - Before finishing material work, inspect Git status, report untracked project artifacts, and stage requested files unless told otherwise.

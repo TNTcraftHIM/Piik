@@ -152,13 +152,13 @@ A `prepare` route update names that operation's exact child, route kind, and
 server-issued candidate connection identity. Parent and child therefore
 prepare the same connection; neither endpoint infers candidate authority from
 an assignment-list difference.
-The current Browser runtime contract uses the single `screener-v10` wire. On each WebSocket, the
+The current Browser runtime contract uses the single `screener-v11` wire. On each WebSocket, the
 server sends the exact prepare before its SFU configuration; the candidate child
 is queued before a peer parent is allowed to start its offer. WebSocket ordering
 is the companion-delivery contract, so clients keep no reordering inbox.
-Duplicate current companions are idempotent and stale ones are ignored. Native,
-v9, and executable senders are outside this release and fail the protocol
-boundary before room authority rather than receiving a compatibility path.
+Duplicate current companions are idempotent and stale ones are ignored. Every
+other wire and executable sender fails the protocol boundary before room
+authority rather than receiving a compatibility path.
 A stale or mismatched asynchronous result fails closed and cannot revive an old
 edge.
 Successful candidate `P` is broadcast as active revision `P`. Failure, timeout,
@@ -282,7 +282,7 @@ candidate, retry hint, or other topology data. Access, Host presence, signaling,
 media, and autoplay remain independent presentation inputs.
 
 The room-serial operation does not divide its per-child deadline by Viewer
-count, but simultaneous joins may form a linear queue. The current v10 diagnostic
+count, but simultaneous joins may form a linear queue. The current Browser diagnostic
 surface observes existing route events without changing the controller: for
 each current child it keeps only the latest route-demand, operation-start,
 current-candidate-start, first-decoded-frame, and final-outcome timing. A new
@@ -350,14 +350,15 @@ disappears. A multi-process application deployment requires a shared atomic
 admission and lifecycle owner before it may claim these values are
 deployment-wide.
 
-## Current Deployment Boundary
+## Current Source And Deployment Boundary
 
-Current source and production run the single `screener-v10` Browser runtime with
-direct/STUN peer and LiveKit SFU/UDP routes, including the route, first-frame,
-typed-status, and Host-only diagnostic contract described above. The operation
-owner is only `route`. Exact release and operational evidence are owned by the
-deployment document; real heterogeneous-network and SFU media validation
-remains open.
+Exact current source `f5a295c` runs the strict `screener-v11` Browser wire. Exact
+production `2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, runs
+`screener-v10`; `screener-v11` is not deployed. Both use the direct/STUN peer and
+LiveKit SFU/UDP route model, including the route, first-frame, typed-status, and
+Host-only diagnostic contract described above. The operation owner is only
+`route`. Exact operational evidence is owned by the deployment document; real
+heterogeneous-network and SFU media validation remains open.
 
 ## Acceptance Boundary
 
@@ -433,8 +434,8 @@ Negative:
   burst;
 - make-before-break consumes explicit endpoint and server reservations and may
   require a bounded-gap cutover when no overlap slot exists; and
-- real SFU and target-network evidence is still required. Deploying the v9
-  diagnostic does not grant it route authority or close that physical evidence.
+- real SFU and target-network evidence is still required; diagnostics remain
+  observational and do not grant route authority or close physical evidence.
 
 ## Relationship to other ADRs
 

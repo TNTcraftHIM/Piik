@@ -11,8 +11,10 @@ others. `maintain-framerate` may preserve motion by reducing resolution until
 game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
-Current Browser v10 source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f`
-uses `balanced` as the recommended profile and advanced default;
+Exact current Browser source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`
+uses strict `screener-v11`, fixed VP8, no video `contentHint`, and no codec
+UI, quality state, or wire field. It uses `balanced` as the recommended profile
+and advanced default;
 `maintain-resolution` and `maintain-framerate` remain explicit choices. These
 preferences leave actual degradation to the browser, so Screener observes
 readback and stats rather than claiming a fixed quality outcome.
@@ -157,11 +159,12 @@ Screener's accepted boundary forbids adding application SDP bitrate hacks.
 The same release was also reported to reduce game-stream frame rate and
 consume noticeable Host resources. That report applies only to
 `769de201f7cc`, not to current production or automatically to the newer
-diagnostics on `main`. The Web
+diagnostics in exact source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`.
+The Web
 sender creates one independent `RTCRtpSender` per viewer and has no cross-PC
 shared-encoder guarantee; its muted local preview creates no media edge or
 server traffic but may still consume compositor/GPU work. Compare the exact
-release and current `main` under one fixture, with preview on/off as a separate
+release and exact current source under one fixture, with preview on/off as a separate
 binary intervention.
 
 Desktop background diagnosis must also separate three independent variables:
@@ -200,18 +203,16 @@ Pinned LiveKit client 2.22.0 keeps three relevant pieces of state. Its public
 `LocalVideoTrack.setDegradationPreference()` updates the saved preference used
 when a sender is installed; `LocalVideoTrack.publishOptions` drives encoding
 recomputation after a track restart; and `LocalTrackPublication.options` is the
-input to `republishAllTracks()`. The previous Screener update path configured
-the raw sender and replaced only `track.publishOptions`, so a later SDK
-republish could read the initial publication preference. The bounded fix uses
-the existing publisher operation queue and rollback: call the SDK preference
-API to update its saved state, configure/read back the current `q,h` sender as
-the final write, then assign one merged option object to both retained
+input to `republishAllTracks()`. Current source keeps those three owners aligned
+through the existing publisher operation queue and rollback: call the SDK
+preference API to update its saved state, configure/read back the current `q,h`
+sender as the final write, then assign one merged option object to both retained
 locations. Failure reapplies the previous profile; generation loss cannot
 retain the result as current publisher state. This changes no capture
 constraint, codec, representation, subscriber layer or route policy and does
 not explain an immediate same-publication report.
 
-Host SFU publisher A+B remains a separate observability slice. Current v10 source
+Host SFU publisher A+B remains a separate observability slice. Current source
 implements one two-second, publication-generation-bound local sampler owned by
 `SfuPublisher`: merge its video/audio `LocalTrack` reports, reuse the existing
 strict stats parser and accumulator, correlate capture settings from the owned
@@ -232,10 +233,14 @@ as their only video media codec, while RTX/RED/FEC may remain repair formats;
 SFU publication explicitly uses VP8 with no backup codec. The UI and quality
 wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
+Exact source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` implements this strict
+`screener-v11` contract. Production remains exact
+`2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, on v10 with
+video `contentHint = "motion"` and the pre-share codec selector.
 
 Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
-libwebrtc clears `is_screencast` for that mode. Screener was therefore replacing
-the display-capture screen classification with realtime-camera semantics. Fresh
+libwebrtc clears `is_screencast` for that mode, replacing the display-capture
+screen classification with realtime-camera semantics. Fresh
 Chrome 151 loopback probes on 2026-08-24 used real dynamic tab
 `getDisplayMedia()`, `balanced`, ten seconds of warm-up, and a fifteen-second
 sample:
@@ -281,8 +286,8 @@ power efficiency, rate control, and game-load behavior.
 
 These results select VP8 for the ordinary Browser path: no-hint VP8 met the
 current controlled quality baseline, has the required WebRTC interoperability,
-and does not depend on a page choosing a specific Windows encoder. Current
-accepted implementation uses `RTCRtpTransceiver.setCodecPreferences()` before
+and does not depend on a page choosing a specific Windows encoder. Exact current
+source uses `RTCRtpTransceiver.setCodecPreferences()` before
 the first offer and fails the edge if the API, a VP8 capability, or the
 preference application is missing; it does not leave another video media codec
 as fallback. Browser VP8
@@ -697,7 +702,7 @@ latency, CPU, and memory conflict and must be balanced. Its native encoder
 tuning and hardware integration are not available to a browser-only sender and
 must not be presented as settings this project already has.
 
-## Current Source V10 Policy
+## Current Source Policy
 
 The three user-visible profiles remain ceilings rather than promised rates:
 
@@ -707,11 +712,11 @@ The three user-visible profiles remain ceilings rather than promised rates:
 | 1080p30 | 1920x1080 at 30 fps | 5 Mbps |
 | 720p30 | 1280x720 at 30 fps | 3 Mbps |
 
-V10 source and production default to the middle `1080p30` ceiling. Choosing that
+Current v11 source and v10 production default to the middle `1080p30` ceiling.
+Choosing that
 default trades a 60 fps ceiling for a 1080p capture bound. The recommended set
 remains exactly the three profiles
-above. V10 adds
-`480p` only as an advanced `854x480` resolution whose frame rate and bitrate are
+above. Both expose `480p` only as an advanced `854x480` resolution whose frame rate and bitrate are
 selected independently, not as a fourth profile or preset ID. LiveKit currently
 uses the same 1080p30 at 5 Mbps screen-share preset, but neither preset
 guarantees the emitted resolution, frame rate, or bitrate.
@@ -723,7 +728,7 @@ guarantees the emitted resolution, frame rate, or bitrate.
   source picker or renegotiate healthy peer connections.
 - Current source leaves the video hint unset so display capture retains
   browser screen semantics; production still sets `contentHint = "motion"`
-  until deployment. Recommended profiles and the advanced initial value use
+  until v11 deployment. Recommended profiles and the advanced initial value use
   `balanced`, with explicit `maintain-resolution` and
   `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
@@ -733,9 +738,9 @@ guarantees the emitted resolution, frame rate, or bitrate.
   Automatic/H.264/VP8 before sharing starts and defaults to VP8. The `480p` choice is only advanced `854x480`, not a
   fourth recommended profile. Its 64/128/256 kbps audio ceiling, default 128,
   is live-switchable on the existing Opus path. Production deploys both the
-  advanced 480p resolution and live audio mutation. The accepted v11 replacement
-  removes that codec selector and the corresponding quality-state/wire field;
-  Browser media is fixed VP8. Display capture does not standardize channel-count or
+  advanced 480p resolution and live audio mutation. Current v11 source keeps
+  those controls, fixes Browser media to VP8, and exposes no codec UI,
+  quality-state field, or wire field. Display capture does not standardize channel-count or
   sample-rate control. The peer receive
   contract permits Opus `stereo=1;maxaveragebitrate=256000`, paired with pinned
   LiveKit's explicit high-quality stereo/forceStereo option; the selected sender
@@ -756,9 +761,8 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - Pausing sharing disables every track in the current capture stream, producing
   black video and silence without closing the room or media connection.
 
-The deployed v10 implementation stops at manual bounded controls.
-It adds no composite score, periodic
-adjustment, automatic codec forcing, SDP bitrate
+Current source and deployed v10 stop at manual bounded controls.
+They add no composite score, periodic adjustment, runtime codec switching, SDP bitrate
 manipulation, or scene detector. Three consecutive samples of one non-`none` native
 `qualityLimitationReason` produce one explanatory warning; a reason change or
 recovery resets it and never triggers a media action.
@@ -777,9 +781,8 @@ CPU/GPU cost, public networks, or sustained behavior.
 - No canvas pixel-difference detector, machine-learned rate controller, or
   periodic profile switching.
 - No copied x264 CRF/preset recipe in the browser path.
-- No runtime, automatic, or user-selected Browser codec switching. The accepted
-  v11 replacement fixes VP8; implementation and production cutover are tracked
-  separately.
+- Browser video is fixed VP8, with no runtime, automatic, or user-selected codec
+  switching.
 - No channel-count, sample-rate, codec, arbitrary bitrate, stereo, DTX, RED or
   FEC control, and no inference of actual stereo or sample rate from
   `opus/48000/2`. Screen media uses one route-consistent stereo contract;

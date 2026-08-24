@@ -32,8 +32,9 @@ Current high-signal boundary:
 - docs/status.md owns the exact source/production/hold state.
 - docs/todo.md is the only executable work ledger and owns ordering.
 - ADR-0005 owns the accepted automatic route model: direct/STUN peer followed
-  only by the dedicated LiveKit SFU/UDP fallback. Current source and production
-  use the single `screener-v10` wire. The route uses one short-lived
+  only by the dedicated LiveKit SFU/UDP fallback. Exact source implementation
+  `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` uses strict `screener-v11`;
+  production remains on `screener-v10`. The route uses one short-lived
   exact-generation decoded-frame observer only for the pending candidate inside
   the existing total deadline; the periodic stats sampler still owns active-path
   diagnostics and stalls. Real external-network and SFU media evidence remains
@@ -46,19 +47,17 @@ Current high-signal boundary:
   exact rollback artifacts are owned by deployment.
 - Browser display video must leave `contentHint` unset; audio keeps `music`.
   Browser video is fixed VP8 across direct, browser-relay, and SFU paths; the
-  accepted strict v11 contract removes codec UI/state/wire and fallback media
-  codecs. Current source and production remain v10 with the selector, and
-  production still sets video `motion`, until implementation and atomic deploy.
-  Heterogeneous-network and SFU media evidence remains open.
+  current strict v11 source has no codec UI/state/wire or fallback media codec.
+  It passed the current automated source gates.
+  Production still uses v10, the selector, and video `motion`; v11 is not deployed
+  and has no physical direct, browser-relay, or SFU codec evidence.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy
   decoded edge remains sticky.
-- docs/maintenance.md owns the reusable mechanism-simplification review. SQLite
-  is its reference case because the bounded restart-experience loss did not
-  justify the persistence surface; accepting that tradeoff changed the contract,
-  rather than a prior contract change causing the removal. The later repository
-  audit in TODO is not permission for broad cleanup during this handoff.
+- docs/maintenance.md owns the reusable mechanism-simplification review;
+  ADR-0002 owns the accepted memory-room tradeoff. The later repository audit in
+  TODO is not permission for broad cleanup during this handoff.
 - The canonical root/main checkpoint reconciles the route truth audit with this
   room decision. Use that coherent truth as the base; do not replace it with
   older documents from another worktree.
