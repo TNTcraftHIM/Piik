@@ -15,6 +15,7 @@ import {
 
 export type RoomStoreErrorCode =
   | "INVALID_TOKEN"
+  | "ROOM_ACCESS_DENIED"
   | "ROOM_NOT_FOUND"
   | "ROOM_EXPIRED"
   | "ROOM_FULL"
@@ -351,30 +352,27 @@ export class RoomStore {
   async setViewerPassword(
     roomId: string,
     password: string | null,
-    hostSessionId: string,
+    hostToken: string,
   ): Promise<boolean> {
-    const room = this.getAvailableRoom(roomId);
-    if (room.host?.sessionId !== hostSessionId) {
-      throw new RoomStoreError("INVALID_TOKEN");
-    }
+    const room = this.getHostManagedRoom(roomId, hostToken);
 
     const nextPasswordMaterial = password
       ? await this.createViewerPasswordMaterial(password, () => {
           const currentRoom = this.rooms.get(roomId);
           return (
-            currentRoom === room && currentRoom.host?.sessionId === hostSessionId
+            currentRoom === room &&
+            verifyDigest(hostToken, currentRoom.hostTokenDigest)
           );
         })
       : null;
 
-    const currentRoom = this.getAvailableRoom(roomId);
+    const currentRoom = this.getHostManagedRoom(roomId, hostToken);
     if (
       currentRoom !== room ||
-      currentRoom.host?.sessionId !== hostSessionId ||
       (password !== null && nextPasswordMaterial === null) ||
       (password === null && currentRoom.codeEntryPolicy === "password")
     ) {
-      throw new RoomStoreError("INVALID_TOKEN");
+      throw new RoomStoreError("ROOM_ACCESS_DENIED");
     }
     currentRoom.viewerPasswordMaterial = nextPasswordMaterial;
     return nextPasswordMaterial !== null;
@@ -383,14 +381,11 @@ export class RoomStore {
   setCodeEntryPolicy(
     roomId: string,
     policy: CodeEntryPolicy,
-    hostSessionId: string,
+    hostToken: string,
   ): CodeEntryUpdate {
-    const room = this.getAvailableRoom(roomId);
-    if (room.host?.sessionId !== hostSessionId) {
-      throw new RoomStoreError("INVALID_TOKEN");
-    }
+    const room = this.getHostManagedRoom(roomId, hostToken);
     if (policy === "password" && room.viewerPasswordMaterial === null) {
-      throw new RoomStoreError("INVALID_TOKEN");
+      throw new RoomStoreError("ROOM_ACCESS_DENIED");
     }
     room.codeEntryPolicy = policy;
     return {
@@ -402,12 +397,9 @@ export class RoomStore {
   setViewerGrant(
     roomId: string,
     action: "rotate" | "revoke",
-    hostSessionId: string,
+    hostToken: string,
   ): ViewerGrantUpdate {
-    const room = this.getAvailableRoom(roomId);
-    if (room.host?.sessionId !== hostSessionId) {
-      throw new RoomStoreError("INVALID_TOKEN");
-    }
+    const room = this.getHostManagedRoom(roomId, hostToken);
     const previousViewerAuthorizationGeneration =
       room.viewerAuthorizationGeneration;
     const viewerGrant = action === "rotate" ? this.createViewerGrant() : null;
@@ -633,6 +625,14 @@ export class RoomStore {
     }
     if (roomIsExpired(room, this.now())) {
       throw new RoomStoreError("ROOM_EXPIRED");
+    }
+    return room;
+  }
+
+  private getHostManagedRoom(roomId: string, hostToken: string): Room {
+    const room = this.getAvailableRoom(roomId);
+    if (!verifyDigest(hostToken, room.hostTokenDigest)) {
+      throw new RoomStoreError("INVALID_TOKEN");
     }
     return room;
   }

@@ -412,47 +412,6 @@ h3 {
   content: "";
 }
 
-.connection-self-check {
-  display: grid;
-  width: 100%;
-  gap: 8px;
-  justify-items: start;
-}
-
-.connection-self-check-results {
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px 14px;
-}
-
-.connection-self-check-result {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 16px 58px minmax(0, 1fr);
-  gap: 5px;
-  align-items: center;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.connection-self-check-result svg {
-  color: var(--faint);
-}
-
-.connection-self-check-result.is-passed svg {
-  color: var(--green);
-}
-
-.connection-self-check-result.is-failed svg {
-  color: var(--red);
-}
-
-.connection-self-check-result span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 .room-code-entry.is-inline {
   display: grid;
   grid-row: 3;
@@ -588,14 +547,33 @@ h3 {
   grid-column: 1 / -1;
 }
 
+.quality-priority .segmented-control {
+  height: 54px;
+}
+
+.quality-priority .segmented-control button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+.quality-priority .segmented-control small {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.quality-priority .segmented-control button.is-selected small {
+  color: #a9cdb7;
+}
+
 .control-note {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 13px;
-}
-
-.advanced-quality-grid > .button {
-  justify-self: start;
 }
 
 .connection-details-toggle {
@@ -608,7 +586,6 @@ h3 {
   padding: 0 2px;
   color: var(--muted);
   font-size: 13px;
-  cursor: pointer;
 }
 
 .connection-details-toggle:hover {
@@ -619,6 +596,7 @@ h3 {
   display: inline-flex;
   gap: 9px;
   align-items: center;
+  cursor: pointer;
 }
 
 .connection-details-toggle input {
@@ -627,6 +605,7 @@ h3 {
   flex: 0 0 18px;
   margin: 0;
   accent-color: var(--green-strong);
+  cursor: pointer;
 }
 
 .control-group {
@@ -710,6 +689,24 @@ h3 {
   outline: 0;
   color: var(--text);
   background: transparent;
+}
+
+.password-visibility-action {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.password-visibility-action:hover:not(:disabled) {
+  color: var(--text);
 }
 
 .button,
@@ -1478,10 +1475,6 @@ h3 {
 }
 
 @media (max-width: 520px) {
-  .connection-self-check-results {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .viewer-title-row {
     flex-wrap: wrap;
   }

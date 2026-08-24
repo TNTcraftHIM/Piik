@@ -1,6 +1,8 @@
 import {
   Check,
   Copy,
+  Eye,
+  EyeOff,
   Globe2,
   KeyRound,
   Link2Off,
@@ -31,7 +33,6 @@ import {
   type CodeEntryPolicy,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
-import { ConnectionSelfCheck } from "../components/ConnectionSelfCheck";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
 import { RoomCode } from "../components/RoomCode";
 import { StageEntryActions } from "../components/StageEntryActions";
@@ -45,7 +46,7 @@ import {
 import { StatsGrid } from "../components/StatsGrid";
 import { TopologyView } from "../components/TopologyView";
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
-import { ApiError, createRoom } from "../lib/api";
+import { ApiError, createRoom, updateRoomAccess } from "../lib/api";
 import {
   readCreationProfile,
   saveCreationProfile,
@@ -64,6 +65,7 @@ import {
   type HostRoomState,
   mergeAuthenticatedHostRoom,
   readHostRoom,
+  readViewerGrant,
   replaceViewerInvite,
   writeHostRoom,
 } from "../lib/session";
@@ -75,13 +77,16 @@ import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import {
   applyCaptureProfile,
   captureDisplay,
+  DEGRADATION_PREFERENCE_HINTS,
   DEGRADATION_PREFERENCE_LABELS,
   matchingQualityProfileId,
   QUALITY_PROFILES,
   QUALITY_PROFILE_LABELS,
   QUALITY_RESOLUTIONS,
+  qualitySettingsEqual,
   qualitySettingsLabel,
   resolveScreenAudioQuality,
+  SCREEN_AUDIO_BITRATES,
   SCREEN_AUDIO_QUALITY_LABELS,
   setMediaPaused,
   videoQualitySettingsEqual,
@@ -184,13 +189,19 @@ function closeAbandonedRoom(room: HostRoomIdentity): void {
 }
 
 function hostRoomFromStored(room: HostRoomIdentity | null): HostRoomState | null {
-  return room
-    ? {
-        ...room,
-        codeEntryPolicy: null,
-        inviteUrl: null,
-      }
-    : null;
+  if (!room) {
+    return null;
+  }
+  const viewerGrant = readViewerGrant(room.roomId);
+  const inviteUrl = new URL(room.canonicalUrl);
+  if (viewerGrant) {
+    inviteUrl.hash = `v=${viewerGrant}`;
+  }
+  return {
+    ...room,
+    codeEntryPolicy: null,
+    inviteUrl: viewerGrant ? inviteUrl.toString() : null,
+  };
 }
 
 function hostRoomFromCreated(room: CreateRoomResponse): HostRoomState {
@@ -215,7 +226,7 @@ function hostTerminationMessage(reason: SignalingTerminationReason): string {
     case "SESSION_REPLACED":
       return "此页面的会话已被另一个标签页接管";
     case "SIGNAL_TERMINATED":
-      return "信令会话已终止，请刷新后重试";
+      return "服务器连接已终止，请刷新后重试";
   }
 }
 
@@ -242,15 +253,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [creationProfile, setCreationProfile] =
     useState<HostCreationProfile>(readCreationProfile);
   const creationProfileRef = useRef(creationProfile);
-  const [viewerGrantUpdating, setViewerGrantUpdating] = useState(false);
-  const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(false);
+  const [roomAccessUpdating, setRoomAccessUpdating] = useState(false);
+  const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(
+    creationProfile.roomPassword !== null,
+  );
   useEffect(() => {
     creationProfileRef.current = creationProfile;
   }, [creationProfile]);
-  const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
+  const [viewerPasswordDraft, setViewerPasswordDraft] = useState(
+    creationProfile.roomPassword ?? "",
+  );
+  const [viewerPasswordVisible, setViewerPasswordVisible] = useState(false);
   const [viewerPasswordEditorOpen, setViewerPasswordEditorOpen] =
     useState(false);
-  const [viewerPasswordUpdating, setViewerPasswordUpdating] = useState(false);
   const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
@@ -282,8 +297,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
   const hostClientIdRef = useRef<string | null>(null);
-  const viewerPasswordActionRef = useRef<string | null | undefined>(undefined);
-  const enablePasswordEntryAfterUpdateRef = useRef(false);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
   const retiredConnectionsRef = useRef(new Map<string, string>());
@@ -303,7 +316,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const activeGenerationRef = useRef<number | null>(null);
   const sourceSwitchRef = useRef<object | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
+  const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
+  const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
   const sharingPausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
@@ -379,6 +394,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       generationRef.current += 1;
       sourceSwitchRef.current = null;
       qualityChangeRef.current = null;
+      pendingQualityChangeRef.current = null;
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
@@ -481,6 +497,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function disposeResources(notifyServer: boolean): void {
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
+    pendingQualityChangeRef.current = null;
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
@@ -537,8 +554,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setRoom(null);
     setCopied(false);
     setViewerPasswordEditorOpen(false);
-    enablePasswordEntryAfterUpdateRef.current = false;
-    setViewerPasswordDraft("");
+    setViewerPasswordDraft(creationProfileRef.current.roomPassword ?? "");
+    setViewerPasswordVisible(false);
   }
 
   function endSharing(message: string, notifyServer = true): void {
@@ -682,17 +699,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setSwitchingSource(false);
   }
 
-  function commitQuality(
-    settings: QualitySettings,
-    preserveAdvancedDraft = false,
-  ): void {
+  function commitQuality(settings: QualitySettings): void {
     qualitySettingsRef.current = settings;
     setQualitySettings(settings);
-    setAdvancedQuality((current) =>
-      preserveAdvancedDraft
-        ? { ...current, screenAudioQuality: settings.screenAudioQuality }
-        : settings,
-    );
+    const visibleSettings = pendingQualityChangeRef.current ?? settings;
+    advancedQualityRef.current = visibleSettings;
+    setAdvancedQuality(visibleSettings);
   }
 
   function changeScreenAudioQuality(
@@ -701,17 +713,36 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     if (phase === "starting") {
       return;
     }
-    const next = { ...qualitySettingsRef.current, screenAudioQuality };
-    void changeQuality(next, true);
+    const next = { ...advancedQualityRef.current, screenAudioQuality };
+    void changeQuality(next);
   }
 
-  async function changeQuality(
-    nextProfile: QualitySettings,
-    preserveAdvancedDraft = false,
-  ): Promise<void> {
-    const previousProfile = qualitySettingsRef.current;
+  function changeAdvancedQuality(
+    patch: Partial<QualitySettings>,
+  ): void {
+    const next = { ...advancedQualityRef.current, ...patch };
+    advancedQualityRef.current = next;
+    setAdvancedQuality(next);
+    void changeQuality(next);
+  }
+
+  async function changeQuality(nextProfile: QualitySettings): Promise<void> {
+    advancedQualityRef.current = nextProfile;
+    setAdvancedQuality(nextProfile);
     if (phase !== "live") {
-      commitQuality(nextProfile, preserveAdvancedDraft);
+      if (qualitySettingsEqual(qualitySettingsRef.current, nextProfile)) {
+        return;
+      }
+      commitQuality(nextProfile);
+      return;
+    }
+    if (qualityChangeRef.current) {
+      pendingQualityChangeRef.current = nextProfile;
+      return;
+    }
+
+    const previousProfile = qualitySettingsRef.current;
+    if (qualitySettingsEqual(previousProfile, nextProfile)) {
       return;
     }
 
@@ -721,12 +752,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       generation === null ||
       !activeStream ||
       !isCurrentGeneration(generation) ||
-      sourceSwitchRef.current ||
-      qualityChangeRef.current
+      sourceSwitchRef.current
     ) {
       return;
     }
-
     const token = {};
     qualityChangeRef.current = token;
     setChangingQuality(true);
@@ -735,11 +764,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       previousProfile,
       nextProfile,
     );
+    const captureChanged =
+      previousProfile.resolution !== nextProfile.resolution ||
+      previousProfile.maxFramerate !== nextProfile.maxFramerate;
     const audioChanged =
       resolveScreenAudioQuality(previousProfile.screenAudioQuality) !==
       resolveScreenAudioQuality(nextProfile.screenAudioQuality);
     try {
-      if (videoChanged) {
+      if (captureChanged) {
         await applyCaptureProfile(activeStream, nextProfile);
       }
       if (
@@ -750,8 +782,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         return;
       }
 
-      commitQuality(nextProfile, preserveAdvancedDraft);
-      if (videoChanged) {
+      commitQuality(nextProfile);
+      if (captureChanged) {
         setDetails(captureDetails(activeStream));
       }
       const roomSettingsSent =
@@ -790,7 +822,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             : null;
         const syncWarning = roomSettingsSent
           ? null
-          : "房间画质同步将在信令重连后继续";
+          : "房间画质同步将在服务器重连后继续";
         const warning = [sfuWarning ?? connectionWarning, syncWarning]
           .filter((message): message is string => message !== null)
           .join("；");
@@ -807,12 +839,26 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         isCurrentGeneration(generation) &&
         qualityChangeRef.current === token
       ) {
+        if (pendingQualityChangeRef.current === null) {
+          advancedQualityRef.current = qualitySettingsRef.current;
+          setAdvancedQuality(qualitySettingsRef.current);
+        }
         setNotice(readableError(error, "quality"));
       }
     } finally {
       if (qualityChangeRef.current === token) {
         qualityChangeRef.current = null;
-        setChangingQuality(false);
+        const pending = pendingQualityChangeRef.current;
+        pendingQualityChangeRef.current = null;
+        if (
+          pending &&
+          isCurrentGeneration(generation) &&
+          !qualitySettingsEqual(qualitySettingsRef.current, pending)
+        ) {
+          void changeQuality(pending);
+        } else {
+          setChangingQuality(false);
+        }
       }
     }
   }
@@ -832,7 +878,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         setMediaPaused(activeStream, true);
         hostSfuRouteRef.current?.setPaused(true);
         signalRef.current?.confirmSharingPaused();
-        setNotice("信令正在恢复，分享仍保持暂停");
+        setNotice("服务器连接正在恢复，分享仍保持暂停");
         return;
       }
       sharingPausedRef.current = false;
@@ -851,7 +897,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setNotice(
       signalRef.current?.setSharingPaused(true) === true
         ? "音视频分享已暂停"
-        : "信令正在恢复，分享保持暂停",
+        : "服务器连接正在恢复，分享保持暂停",
     );
   }
 
@@ -1121,7 +1167,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       discardPreparedHostChild();
       hostPeerIdRef.current = message.peerId;
       endpointMediaCopyCapacityRef.current = message.endpointMediaCopyCapacity;
-      setViewerGrantUpdating(false);
+      setRoomAccessUpdating(false);
+      const localRoomPassword = creationProfileRef.current.roomPassword;
+      setViewerPasswordEnabled(
+        message.codeEntryPolicy === "password" || localRoomPassword !== null,
+      );
+      setViewerPasswordDraft(
+        localRoomPassword ?? "",
+      );
+      setViewerPasswordVisible(false);
       clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
         "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
@@ -1184,85 +1238,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         if (!currentViewerIds.has(peerId)) {
           removePeer(peerId);
         }
-      }
-      return;
-    }
-    if (message.type === "code-entry-policy-updated") {
-      enablePasswordEntryAfterUpdateRef.current = false;
-      setViewerPasswordEditorOpen(false);
-      const profile = {
-        codeEntryPolicy: message.codeEntryPolicy,
-        roomPassword: creationProfileRef.current.roomPassword,
-      };
-      saveCreationProfile(profile);
-      setCreationProfile(profile);
-      setRoom((current) =>
-        current
-          ? { ...current, codeEntryPolicy: message.codeEntryPolicy }
-          : current,
-      );
-      setNotice(
-        message.codeEntryPolicy === "open"
-          ? "已允许仅凭房间号加入"
-          : "房间号加入已要求密码",
-      );
-      return;
-    }
-    if (message.type === "viewer-grant-updated") {
-      setViewerGrantUpdating(false);
-      replaceViewerInvite(activeRoomId, message.inviteUrl);
-      setRoom((current) =>
-        current
-          ? {
-              ...current,
-              inviteUrl: message.inviteUrl,
-            }
-          : current,
-      );
-      setNotice(
-        message.inviteUrl
-          ? "已生成新的邀请链接，旧邀请已失效"
-          : "已撤销当前邀请链接",
-      );
-      return;
-    }
-    if (message.type === "viewer-password-updated") {
-      const action = viewerPasswordActionRef.current;
-      const enablePasswordEntry =
-        enablePasswordEntryAfterUpdateRef.current &&
-        message.enabled &&
-        action !== null;
-      viewerPasswordActionRef.current = null;
-      enablePasswordEntryAfterUpdateRef.current = false;
-      if (action !== undefined) {
-        const profile = {
-          codeEntryPolicy: creationProfileRef.current.codeEntryPolicy,
-          roomPassword: action,
-        };
-        saveCreationProfile(profile);
-        setCreationProfile(profile);
-      }
-      setViewerPasswordEnabled(message.enabled);
-      setViewerPasswordUpdating(false);
-      setViewerPasswordDraft("");
-      if (enablePasswordEntry) {
-        if (
-          signalRef.current?.send({
-            type: "set-code-entry-policy",
-            policy: "password",
-          })
-        ) {
-          setNotice("房间密码已设置，正在启用密码加入");
-          return;
-        }
-        setNotice("房间密码已设置，但密码加入未启用");
-        return;
-      }
-      if (action !== undefined) {
-        setViewerPasswordEditorOpen(false);
-        setNotice(
-          action === null ? "房间密码已移除" : "房间密码已更新",
-        );
       }
       return;
     }
@@ -1399,10 +1374,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "error") {
-      setViewerGrantUpdating(false);
-      setViewerPasswordUpdating(false);
-      viewerPasswordActionRef.current = null;
-      enablePasswordEntryAfterUpdateRef.current = false;
+      setRoomAccessUpdating(false);
       if (["INVALID_TOKEN", "ROOM_EXPIRED"].includes(message.code)) {
         forgetRoom();
         endSharing("房间已失效，再次点击将创建新房", false);
@@ -1505,7 +1477,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             sharingPaused: false,
             qualitySettings: qualitySettingsRef.current,
             viewerPresence: true,
-            viewerPasswordSettings: true,
             displayName: initialDisplayName,
           },
           {
@@ -1812,57 +1783,108 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
   }
 
-  function changeCodeEntryPolicy(policy: CodeEntryPolicy): void {
+  function handleRoomAccessFailure(error: unknown): void {
+    if (error instanceof ApiError && error.status === 401) {
+      onAuthorizationRequired?.();
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      forgetRoom();
+    }
+    setNotice(
+      error instanceof ApiError
+        ? error.message
+        : "当前无法更新房间设置，请稍后重试",
+    );
+  }
+
+  async function changeCodeEntryPolicy(policy: CodeEntryPolicy): Promise<void> {
     if (policy === activeCodeEntryPolicy) {
-      enablePasswordEntryAfterUpdateRef.current = false;
       setViewerPasswordEditorOpen(false);
       setNotice(null);
       return;
     }
     if (policy === "password" && !viewerPasswordEnabled) {
-      if (phase !== "live" || viewerPasswordUpdating) {
-        setNotice("开始分享并连接后才能修改房间号加入方式");
-        return;
-      }
-      enablePasswordEntryAfterUpdateRef.current = true;
       setViewerPasswordEditorOpen(true);
       setNotice(null);
       return;
     }
-    if (
-      (viewerGrantUpdating || viewerPasswordUpdating) ||
-      phase !== "live" ||
-      !signalRef.current?.send({
-        type: "set-code-entry-policy",
-        policy,
-      })
-    ) {
-      setNotice("开始分享并连接后才能修改房间号加入方式");
+    const activeRoom = room;
+    if (!activeRoom || roomAccessUpdating) {
       return;
     }
-    enablePasswordEntryAfterUpdateRef.current = false;
-    setNotice(null);
+    setRoomAccessUpdating(true);
+    try {
+      const response = await updateRoomAccess(
+        activeRoom.roomId,
+        activeRoom.hostToken,
+        { action: "set-code-entry-policy", policy },
+      );
+      if (response.type !== "code-entry-policy-updated") {
+        throw new Error("Unexpected room access response");
+      }
+      const profile = {
+        codeEntryPolicy: response.codeEntryPolicy,
+        roomPassword: creationProfileRef.current.roomPassword,
+      };
+      saveCreationProfile(profile);
+      setCreationProfile(profile);
+      setViewerPasswordEnabled(response.viewerPasswordEnabled);
+      setViewerPasswordEditorOpen(false);
+      setViewerPasswordVisible(false);
+      setRoom((current) =>
+        current
+          ? { ...current, codeEntryPolicy: response.codeEntryPolicy }
+          : current,
+      );
+      setNotice(
+        response.codeEntryPolicy === "open"
+          ? "已允许公开加入"
+          : "已启用密码加入",
+      );
+    } catch (error) {
+      handleRoomAccessFailure(error);
+    } finally {
+      setRoomAccessUpdating(false);
+    }
   }
 
-  function changeViewerGrant(action: "rotate" | "revoke"): void {
-    if (
-      viewerGrantUpdating ||
-      phase !== "live" ||
-      !signalRef.current?.send({
-        type:
-          action === "rotate"
-            ? "rotate-viewer-grant"
-            : "revoke-viewer-grant",
-      })
-    ) {
-      setNotice("开始分享并连接后才能修改邀请链接");
+  async function changeViewerGrant(action: "rotate" | "revoke"): Promise<void> {
+    const activeRoom = room;
+    if (!activeRoom || roomAccessUpdating) {
       return;
     }
-    setViewerGrantUpdating(true);
-    setNotice(null);
+    setRoomAccessUpdating(true);
+    try {
+      const response = await updateRoomAccess(
+        activeRoom.roomId,
+        activeRoom.hostToken,
+        {
+          action:
+            action === "rotate"
+              ? "rotate-viewer-grant"
+              : "revoke-viewer-grant",
+        },
+      );
+      if (response.type !== "viewer-grant-updated") {
+        throw new Error("Unexpected room access response");
+      }
+      replaceViewerInvite(activeRoom.roomId, response.inviteUrl);
+      setRoom((current) =>
+        current ? { ...current, inviteUrl: response.inviteUrl } : current,
+      );
+      setNotice(
+        response.inviteUrl
+          ? "邀请链接已更新"
+          : "邀请链接已撤销",
+      );
+    } catch (error) {
+      handleRoomAccessFailure(error);
+    } finally {
+      setRoomAccessUpdating(false);
+    }
   }
 
-  function changeViewerPassword(password: string | null): void {
+  async function changeViewerPassword(password: string | null): Promise<void> {
     if (
       password !== null &&
       !viewerPasswordSchema.safeParse(password).success
@@ -1872,18 +1894,62 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       );
       return;
     }
-    if (
-      viewerPasswordUpdating ||
-      phase !== "live" ||
-      !signalRef.current?.send({ type: "set-viewer-password", password })
-    ) {
-      setNotice("开始分享并连接后才能修改房间密码");
+    const activeRoom = room;
+    if (!activeRoom || roomAccessUpdating) {
       return;
     }
-    viewerPasswordActionRef.current = password;
-    setViewerPasswordUpdating(true);
-    setViewerPasswordDraft("");
-    setNotice(null);
+    const enablePasswordEntry =
+      password !== null &&
+      !viewerPasswordEnabled &&
+      viewerPasswordEditorOpen;
+    setRoomAccessUpdating(true);
+    try {
+      const response = await updateRoomAccess(
+        activeRoom.roomId,
+        activeRoom.hostToken,
+        { action: "set-viewer-password", password },
+      );
+      if (response.type !== "viewer-password-updated") {
+        throw new Error("Unexpected room access response");
+      }
+      const passwordProfile = {
+        codeEntryPolicy: creationProfileRef.current.codeEntryPolicy,
+        roomPassword: password,
+      };
+      saveCreationProfile(passwordProfile);
+      setCreationProfile(passwordProfile);
+      setViewerPasswordEnabled(response.enabled);
+      setViewerPasswordDraft(password ?? "");
+      setViewerPasswordVisible(false);
+      setViewerPasswordEditorOpen(false);
+
+      if (enablePasswordEntry) {
+        const policyResponse = await updateRoomAccess(
+          activeRoom.roomId,
+          activeRoom.hostToken,
+          { action: "set-code-entry-policy", policy: "password" },
+        );
+        if (policyResponse.type !== "code-entry-policy-updated") {
+          throw new Error("Unexpected room access response");
+        }
+        const profile = {
+          codeEntryPolicy: "password" as const,
+          roomPassword: password,
+        };
+        saveCreationProfile(profile);
+        setCreationProfile(profile);
+        setRoom((current) =>
+          current ? { ...current, codeEntryPolicy: "password" } : current,
+        );
+        setNotice("房间密码已设置");
+      } else {
+        setNotice(password === null ? "房间密码已移除" : "房间密码已更新");
+      }
+    } catch (error) {
+      handleRoomAccessFailure(error);
+    } finally {
+      setRoomAccessUpdating(false);
+    }
   }
 
   function commitDisplayName(): void {
@@ -2129,10 +2195,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             )}
           </div>
 
-          {(phase === "idle" || phase === "ended" || phase === "error") && (
-            <ConnectionSelfCheck />
-          )}
-
           {showConnectionDetails && details && stream && (
             <div className="capture-strip" aria-label="实际捕获参数">
               <span>{details.resolution}</span>
@@ -2161,7 +2223,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <div className="setup-controls">
             <div className="quality-controls">
               <fieldset className="control-group">
-                <legend>推荐画质</legend>
+                <legend>视频预设</legend>
                 <div className="segmented-control">
                   {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
                     (id) => (
@@ -2174,16 +2236,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                             : undefined
                         }
                         aria-pressed={selectedQualityProfileId === id}
+                        title={`${QUALITY_PROFILE_LABELS[id]} · ${(QUALITY_PROFILES[id].maxBitrate / 1_000_000).toFixed(0)} Mbps`}
                         disabled={
                           phase === "starting" ||
-                          switchingSource ||
-                          changingQuality
+                          switchingSource
                         }
                         onClick={() =>
                           void changeQuality({
                             ...QUALITY_PROFILES[id],
                             screenAudioQuality: resolveScreenAudioQuality(
-                              qualitySettingsRef.current.screenAudioQuality,
+                              advancedQualityRef.current.screenAudioQuality,
                             ),
                           })
                         }
@@ -2196,19 +2258,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </fieldset>
 
               <details className="advanced-quality">
-                <summary>分享高级设置</summary>
+                <summary>高级设置</summary>
                 <div className="advanced-quality-grid">
                   <label>
                     <span>分辨率上限</span>
                     <select
                       value={advancedQuality.resolution}
-                      disabled={changingQuality}
+                      disabled={phase === "starting" || switchingSource}
                       onChange={(event) =>
-                        setAdvancedQuality((current) => ({
-                          ...current,
+                        changeAdvancedQuality({
                           resolution: event.target
                             .value as QualitySettings["resolution"],
-                        }))
+                        })
                       }
                     >
                       {Object.entries(QUALITY_RESOLUTIONS).map(
@@ -2229,12 +2290,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         max="60"
                         step="5"
                         value={advancedQuality.maxFramerate}
-                        disabled={changingQuality}
+                        disabled={phase === "starting" || switchingSource}
                         onChange={(event) =>
-                          setAdvancedQuality((current) => ({
-                            ...current,
+                          changeAdvancedQuality({
                             maxFramerate: Number(event.target.value),
-                          }))
+                          })
                         }
                       />
                       <output>{advancedQuality.maxFramerate} fps</output>
@@ -2249,12 +2309,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         max="12000000"
                         step="500000"
                         value={advancedQuality.maxBitrate}
-                        disabled={changingQuality}
+                        disabled={phase === "starting" || switchingSource}
                         onChange={(event) =>
-                          setAdvancedQuality((current) => ({
-                            ...current,
+                          changeAdvancedQuality({
                             maxBitrate: Number(event.target.value),
-                          }))
+                          })
                         }
                       />
                       <output>
@@ -2263,7 +2322,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     </div>
                   </label>
                   <fieldset className="control-group quality-priority">
-                    <legend>质量优先级</legend>
+                    <legend>画面偏好</legend>
                     <div className="segmented-control">
                       {(
                         Object.keys(
@@ -2281,15 +2340,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           aria-pressed={
                             advancedQuality.degradationPreference === preference
                           }
-                          disabled={changingQuality}
+                          disabled={phase === "starting" || switchingSource}
                           onClick={() =>
-                            setAdvancedQuality((current) => ({
-                              ...current,
+                            changeAdvancedQuality({
                               degradationPreference: preference,
-                            }))
+                            })
                           }
                         >
-                          {DEGRADATION_PREFERENCE_LABELS[preference]}
+                          <span>
+                            {DEGRADATION_PREFERENCE_LABELS[preference]}
+                          </span>
+                          <small>
+                            {DEGRADATION_PREFERENCE_HINTS[preference]}
+                          </small>
                         </button>
                       ))}
                     </div>
@@ -2317,32 +2380,25 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                               advancedQuality.screenAudioQuality,
                             ) === audioQuality
                           }
+                          title={`${SCREEN_AUDIO_QUALITY_LABELS[audioQuality]} · ${SCREEN_AUDIO_BITRATES[audioQuality] / 1_000} kbps 上限`}
                           disabled={
                             phase === "starting" ||
-                            switchingSource ||
-                            changingQuality
+                            switchingSource
                           }
                           onClick={() =>
                             changeScreenAudioQuality(audioQuality)
                           }
                         >
-                          {SCREEN_AUDIO_QUALITY_LABELS[audioQuality]}
+                          <span>
+                            {SCREEN_AUDIO_QUALITY_LABELS[audioQuality]}
+                          </span>
+                          <small>
+                            {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000} kbps
+                          </small>
                         </button>
                       ))}
                     </div>
                   </fieldset>
-                  <button
-                    className="button button-secondary"
-                    type="button"
-                    disabled={
-                      phase === "starting" ||
-                      switchingSource ||
-                      changingQuality
-                    }
-                    onClick={() => void changeQuality(advancedQuality)}
-                  >
-                    {changingQuality ? "正在应用" : "应用分享设置"}
-                  </button>
                 </div>
               </details>
             </div>
@@ -2354,7 +2410,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   <div className="invite-heading-copy">
                     <span className="field-label">邀请链接</span>
                     <span className="invite-status">
-                      {room.inviteUrl ? "可用" : "已撤销"}
+                      {room.inviteUrl ? "可用" : "暂无"}
                     </span>
                   </div>
                   <div className="invite-icon-actions">
@@ -2363,8 +2419,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       type="button"
                       title="更新邀请链接"
                       aria-label="更新邀请链接"
-                      disabled={viewerGrantUpdating || phase !== "live"}
-                      onClick={() => changeViewerGrant("rotate")}
+                      disabled={roomAccessUpdating}
+                      onClick={() => void changeViewerGrant("rotate")}
                     >
                       <RefreshCw size={17} aria-hidden="true" />
                     </button>
@@ -2373,10 +2429,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       type="button"
                       title="撤销邀请链接"
                       aria-label="撤销邀请链接"
-                      disabled={
-                        !room.inviteUrl || viewerGrantUpdating || phase !== "live"
-                      }
-                      onClick={() => changeViewerGrant("revoke")}
+                      disabled={!room.inviteUrl || roomAccessUpdating}
+                      onClick={() => void changeViewerGrant("revoke")}
                     >
                       <Link2Off size={17} aria-hidden="true" />
                     </button>
@@ -2387,12 +2441,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     className="invite-url"
                     title={room.inviteUrl ?? undefined}
                   >
-                    {room.inviteUrl ?? "当前没有有效邀请链接"}
+                    {room.inviteUrl ??
+                      (activeCodeEntryPolicy === "password"
+                        ? "暂无邀请链接，仍可凭房间号和密码加入"
+                        : "暂无邀请链接，仍可凭房间号加入")}
                   </span>
                   <button
                     className="button button-primary invite-copy-action"
                     type="button"
-                    disabled={!room.inviteUrl || viewerGrantUpdating}
+                    disabled={!room.inviteUrl || roomAccessUpdating}
                     onClick={() => void copyInvite()}
                   >
                     {copied ? (
@@ -2424,12 +2481,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           : ""
                       }`}
                       aria-pressed={presentedCodeEntryPolicy === policy}
-                      disabled={
-                        viewerGrantUpdating ||
-                        viewerPasswordUpdating ||
-                        phase !== "live"
-                      }
-                      onClick={() => changeCodeEntryPolicy(policy)}
+                      disabled={roomAccessUpdating}
+                      onClick={() => void changeCodeEntryPolicy(policy)}
                     >
                       <Icon size={16} aria-hidden="true" />
                       <span>{label}</span>
@@ -2442,27 +2495,50 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     className="viewer-password-control"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      changeViewerPassword(viewerPasswordDraft);
+                      void changeViewerPassword(viewerPasswordDraft);
                     }}
                   >
                     <label htmlFor="viewer-password">
-                      {viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
+                      {viewerPasswordEnabled
+                        ? "房间密码已设置"
+                        : "设置房间密码"}
                     </label>
                     <span className="input-with-icon">
                       <KeyRound size={16} aria-hidden="true" />
                       <input
                         id="viewer-password"
-                        type="password"
+                        type={viewerPasswordVisible ? "text" : "password"}
                         value={viewerPasswordDraft}
                         maxLength={MAX_VIEWER_PASSWORD_LENGTH}
                         autoComplete="new-password"
-                        placeholder="输入新密码"
-                        autoFocus
-                        disabled={viewerPasswordUpdating || phase !== "live"}
+                        placeholder="输入密码"
+                        autoFocus={!viewerPasswordEnabled}
+                        disabled={roomAccessUpdating}
                         onChange={(event) =>
                           setViewerPasswordDraft(event.target.value)
                         }
                       />
+                      {viewerPasswordEnabled && viewerPasswordDraft.length > 0 && (
+                        <button
+                          className="password-visibility-action"
+                          type="button"
+                          title={viewerPasswordVisible ? "隐藏密码" : "显示密码"}
+                          aria-label={
+                            viewerPasswordVisible ? "隐藏房间密码" : "显示房间密码"
+                          }
+                          aria-pressed={viewerPasswordVisible}
+                          disabled={roomAccessUpdating}
+                          onClick={() =>
+                            setViewerPasswordVisible((current) => !current)
+                          }
+                        >
+                          {viewerPasswordVisible ? (
+                            <EyeOff size={17} aria-hidden="true" />
+                          ) : (
+                            <Eye size={17} aria-hidden="true" />
+                          )}
+                        </button>
+                      )}
                     </span>
                     <button
                       className="icon-button"
@@ -2472,9 +2548,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"
                       }
                       disabled={
-                        viewerPasswordUpdating ||
-                        phase !== "live" ||
-                        viewerPasswordDraft.length === 0
+                        roomAccessUpdating ||
+                        viewerPasswordDraft.length === 0 ||
+                        (viewerPasswordEnabled &&
+                          viewerPasswordDraft ===
+                            creationProfile.roomPassword)
                       }
                     >
                       <Check size={18} aria-hidden="true" />
@@ -2485,10 +2563,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         type="button"
                         title="取消"
                         aria-label="取消设置房间密码"
-                        disabled={viewerPasswordUpdating}
+                        disabled={roomAccessUpdating}
                         onClick={() => {
-                          enablePasswordEntryAfterUpdateRef.current = false;
-                          setViewerPasswordDraft("");
+                          setViewerPasswordDraft(
+                            creationProfileRef.current.roomPassword ?? "",
+                          );
+                          setViewerPasswordVisible(false);
                           setViewerPasswordEditorOpen(false);
                         }}
                       >

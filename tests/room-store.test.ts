@@ -122,6 +122,51 @@ describe("RoomStore", () => {
     );
   });
 
+  it("manages dormant access with the exact Host token without renewing", async () => {
+    const { clock, store: roomStore } = store({ leaseMs: 1_000 });
+    const room = await roomStore.createRoom("open");
+    const otherRoom = await roomStore.createRoom("open");
+    clock.nowMs = 900;
+
+    await expect(
+      roomStore.setViewerPassword(room.roomId, "room-password", "wrong-token"),
+    ).rejects.toEqual(new RoomStoreError("INVALID_TOKEN"));
+    expectRoomError(
+      () =>
+        roomStore.setCodeEntryPolicy(
+          room.roomId,
+          "password",
+          otherRoom.hostToken,
+        ),
+      "INVALID_TOKEN",
+    );
+
+    expect(
+      await roomStore.setViewerPassword(
+        room.roomId,
+        "room-password",
+        room.hostToken,
+      ),
+    ).toBe(true);
+    expect(
+      roomStore.setCodeEntryPolicy(
+        room.roomId,
+        "password",
+        room.hostToken,
+      ).codeEntryPolicy,
+    ).toBe("password");
+    expect(
+      roomStore.setViewerGrant(room.roomId, "rotate", room.hostToken)
+        .viewerGrant,
+    ).toMatch(/^[A-Za-z0-9_-]{21}[AQgw]$/);
+    expect(roomStore.getConnectedHost(room.roomId)).toBeUndefined();
+
+    clock.nowMs = 1_001;
+    expect(roomStore.expireRooms().map((expired) => expired.roomId)).toContain(
+      room.roomId,
+    );
+  });
+
   it("keeps Viewer grants independent from code-entry policy", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
     const room = await roomStore.createRoom("password", "room-password");
@@ -217,7 +262,7 @@ describe("RoomStore", () => {
     const rotated = roomStore.setViewerGrant(
       room.roomId,
       "rotate",
-      "host-session",
+      room.hostToken,
     );
     expectRoomError(
       () =>
@@ -236,7 +281,7 @@ describe("RoomStore", () => {
     const revoked = roomStore.setViewerGrant(
       room.roomId,
       "revoke",
-      "host-session",
+      room.hostToken,
     );
     expect(revoked.viewerGrant).toBeNull();
     expect(revoked.revokedViewers.map((viewer) => viewer.peerId)).toEqual([
@@ -276,7 +321,7 @@ describe("RoomStore", () => {
 
     failedRandomCall = randomCalls + 2;
     expect(() =>
-      roomStore.setViewerGrant(room.roomId, "rotate", "host-session"),
+      roomStore.setViewerGrant(room.roomId, "rotate", room.hostToken),
     ).toThrow("Authorization generation random source must return 16 bytes");
     failedRandomCall = null;
 

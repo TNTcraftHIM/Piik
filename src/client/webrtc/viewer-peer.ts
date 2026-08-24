@@ -297,7 +297,7 @@ export class ViewerPeer {
           sdp: connection.localDescription.sdp,
         },
       })) {
-        throw new Error("Signaling is unavailable while sending the answer");
+        throw new Error("服务器连接暂时不可用");
       }
       this.offerRecoveryAttempts = 0;
       this.scheduleInitialConnectionDeadline(connection, connectionId);
@@ -305,7 +305,7 @@ export class ViewerPeer {
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
-      this.setError(error, "处理分享端信令失败");
+      this.setError(error, "建立分享连接失败");
       if (
         this.offerRecoveryAttempts < 1 &&
         this.events.sendRestartRequest(parentPeerId, connectionId, true)
@@ -338,7 +338,7 @@ export class ViewerPeer {
       await connection.addIceCandidate(payload.candidate);
     } catch (error) {
       if (this.isCurrentConnection(connection, connectionId)) {
-        this.setError(error, "处理分享端信令失败");
+        this.setError(error, "建立分享连接失败");
       }
     }
   }

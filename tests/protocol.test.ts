@@ -18,6 +18,8 @@ import {
   decodeClientMessage,
   normalizeDisplayName,
   participantRouteAssignmentSchema,
+  roomAccessUpdateRequestSchema,
+  roomAccessUpdateResponseSchema,
   serverMessageSchema,
   viewerPasswordSchema,
 } from "../src/shared/protocol.js";
@@ -350,29 +352,41 @@ describe("client signaling protocol", () => {
         }).success,
       ).toBe(false);
     }
-    for (const policy of ["open", "password"]) {
+    for (const policy of ["open", "password"] as const) {
       expect(
-        clientMessageSchema.safeParse({
-          type: "set-code-entry-policy",
+        roomAccessUpdateRequestSchema.safeParse({
+          action: "set-code-entry-policy",
           policy,
         }).success,
       ).toBe(true);
     }
     expect(
-      clientMessageSchema.safeParse({ type: "rotate-viewer-grant" }).success,
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "rotate-viewer-grant",
+      }).success,
     ).toBe(true);
     expect(
-      clientMessageSchema.safeParse({ type: "revoke-viewer-grant" }).success,
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "revoke-viewer-grant",
+      }).success,
     ).toBe(true);
     expect(
-      clientMessageSchema.safeParse({
-        type: "set-code-entry-policy",
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "set-code-entry-policy",
         policy: "disabled",
       }).success,
     ).toBe(false);
+    for (const removedMessage of [
+      { type: "set-code-entry-policy", policy: "open" },
+      { type: "rotate-viewer-grant" },
+      { type: "revoke-viewer-grant" },
+      { type: "set-viewer-password", password: "room-password" },
+    ]) {
+      expect(clientMessageSchema.safeParse(removedMessage).success).toBe(false);
+    }
   });
 
-  it("accepts simple bounded Viewer passwords and the Web Host capability", () => {
+  it("accepts simple bounded Viewer passwords and access responses", () => {
     expect(viewerPasswordSchema.safeParse("x").success).toBe(true);
     expect(viewerPasswordSchema.safeParse("simple-password").success).toBe(true);
     for (const invalid of [
@@ -395,24 +409,13 @@ describe("client signaling protocol", () => {
       }).success,
     ).toBe(true);
     expect(
-      clientMessageSchema.safeParse({
-        type: "authenticate",
-        protocol: SIGNALING_PROTOCOL,
-        roomId,
-        role: "host",
-        token,
-        clientId: "client_12345678",
-        viewerPasswordSettings: true,
-      }).success,
-    ).toBe(true);
-    expect(
-      clientMessageSchema.safeParse({
-        type: "set-viewer-password",
+      roomAccessUpdateRequestSchema.safeParse({
+        action: "set-viewer-password",
         password: null,
       }).success,
     ).toBe(true);
     expect(
-      serverMessageSchema.safeParse({
+      roomAccessUpdateResponseSchema.safeParse({
         type: "viewer-password-updated",
         enabled: true,
       }).success,

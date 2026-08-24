@@ -501,7 +501,7 @@ export function deriveViewerPresentation(
       notice: state.host === "offline"
         ? "分享者连接已中断，画面仍然可用"
         : signalRecovering
-        ? "信令正在恢复，画面仍在播放"
+        ? "服务器连接正在恢复，画面仍在播放"
         : mediaRecovering
           ? "媒体连接正在恢复"
           : null,

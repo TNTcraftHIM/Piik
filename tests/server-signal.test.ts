@@ -8,8 +8,10 @@ import {
   SIGNALING_PROTOCOL,
   decodeServerMessage,
   type QualitySettings,
+  type RoomAccessUpdateRequest,
   type Role,
   type ServerMessage,
+  roomAccessUpdateResponseSchema,
 } from "../src/shared/protocol.ts";
 import {
   createScreenerServer,
@@ -180,6 +182,26 @@ async function startHarness(
   };
 }
 
+async function updateRoomAccess(
+  harness: SignalHarness,
+  request: RoomAccessUpdateRequest,
+) {
+  const response = await fetch(
+    `${harness.baseUrl}/api/rooms/${harness.room.roomId}/access`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${harness.room.hostToken}`,
+        "Content-Type": "application/json",
+        Origin: allowedOrigin,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  expect(response.status).toBe(200);
+  return roomAccessUpdateResponseSchema.parse(await response.json());
+}
+
 async function openClient(
   webSocketUrl: string,
   cookie?: string,
@@ -253,7 +275,6 @@ async function authenticate(
   presence: {
     displayName?: string;
     viewerPresence?: true;
-    viewerPasswordSettings?: true;
     viewerPassword?: string;
     codeOnly?: true;
     sharingPaused?: boolean;
@@ -278,9 +299,6 @@ async function authenticate(
               ? { qualitySettings: presence.qualitySettings }
               : {}),
             ...(presence.viewerPresence ? { viewerPresence: true } : {}),
-            ...(presence.viewerPasswordSettings
-              ? { viewerPasswordSettings: true }
-              : {}),
             ...(presence.displayName
               ? { displayName: presence.displayName }
               : {}),
@@ -456,12 +474,6 @@ describe("WebSocket signaling", () => {
     await host.inbox.expectNone(40);
 
     host.socket.send(
-      JSON.stringify({ type: "set-viewer-password", password: "unused" }),
-    );
-    expect(await host.inbox.next("error")).toMatchObject({
-      code: "FORBIDDEN",
-    });
-    host.socket.send(
       JSON.stringify({ type: "set-display-name", displayName: "Native 不应改名" }),
     );
     expect(await host.inbox.next("error")).toMatchObject({
@@ -470,41 +482,26 @@ describe("WebSocket signaling", () => {
     await host.inbox.expectNone(40);
   });
 
-  it("lets an opted-in Web Host set and remove room password access", async () => {
+  it("lets the exact Host token set and remove room password access", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);
-    const hostAuth = await authenticate(
-      host,
-      harness.room,
-      "host",
-      "password-settings-host",
-      1,
-      undefined,
-      { viewerPasswordSettings: true },
-    );
-    expect("viewerPasswordEnabled" in hostAuth).toBe(false);
-    expect(await host.inbox.next("viewer-password-updated")).toEqual({
-      type: "viewer-password-updated",
-      enabled: false,
-    });
+    await authenticate(host, harness.room, "host", "password-settings-host");
 
-    host.socket.send(
-      JSON.stringify({
-        type: "set-viewer-password",
+    expect(
+      await updateRoomAccess(harness, {
+        action: "set-viewer-password",
         password: "easy-password",
       }),
-    );
-    expect(await host.inbox.next("viewer-password-updated")).toEqual({
+    ).toEqual({
       type: "viewer-password-updated",
       enabled: true,
     });
-    host.socket.send(
-      JSON.stringify({
-        type: "set-code-entry-policy",
+    expect(
+      await updateRoomAccess(harness, {
+        action: "set-code-entry-policy",
         policy: "password",
       }),
-    );
-    expect(await host.inbox.next("code-entry-policy-updated")).toEqual({
+    ).toEqual({
       type: "code-entry-policy-updated",
       codeEntryPolicy: "password",
       viewerPasswordEnabled: true,
@@ -539,21 +536,22 @@ describe("WebSocket signaling", () => {
     ).resolves.toMatchObject({ role: "viewer" });
     await host.inbox.next("peer-joined");
 
-    host.socket.send(
-      JSON.stringify({
-        type: "set-code-entry-policy",
+    expect(
+      await updateRoomAccess(harness, {
+        action: "set-code-entry-policy",
         policy: "open",
       }),
-    );
-    expect(await host.inbox.next("code-entry-policy-updated")).toEqual({
+    ).toEqual({
       type: "code-entry-policy-updated",
       codeEntryPolicy: "open",
       viewerPasswordEnabled: true,
     });
-    host.socket.send(
-      JSON.stringify({ type: "set-viewer-password", password: null }),
-    );
-    expect(await host.inbox.next("viewer-password-updated")).toEqual({
+    expect(
+      await updateRoomAccess(harness, {
+        action: "set-viewer-password",
+        password: null,
+      }),
+    ).toEqual({
       type: "viewer-password-updated",
       enabled: false,
     });
@@ -906,9 +904,9 @@ describe("WebSocket signaling", () => {
     const firstClosed = new Promise<number>((resolve) =>
       firstViewer.socket.once("close", (code) => resolve(code)),
     );
-    host.socket.send(
-      JSON.stringify({ type: "rotate-viewer-grant" }),
-    );
+    const rotated = await updateRoomAccess(harness, {
+      action: "rotate-viewer-grant",
+    });
     expect(await firstViewer.inbox.next("viewer-grant-revoked")).toMatchObject({
       viewerAuthorizationGeneration:
         firstViewerAuth.viewerAuthorizationGeneration,
@@ -920,8 +918,12 @@ describe("WebSocket signaling", () => {
     expect(
       viewerPresenceEntries(await host.inbox.next("viewer-presence")),
     ).toEqual([]);
-    const rotated = await host.inbox.next("viewer-grant-updated");
     await host.inbox.expectNone(30);
+
+    expect(rotated.type).toBe("viewer-grant-updated");
+    if (rotated.type !== "viewer-grant-updated") {
+      throw new Error("Expected a rotated Viewer grant");
+    }
 
     const rotatedGrant = new URLSearchParams(
       new URL(rotated.inviteUrl!).hash.slice(1),
@@ -951,9 +953,9 @@ describe("WebSocket signaling", () => {
     const secondClosed = new Promise<number>((resolve) =>
       secondViewer.socket.once("close", (code) => resolve(code)),
     );
-    host.socket.send(
-      JSON.stringify({ type: "revoke-viewer-grant" }),
-    );
+    const revoked = await updateRoomAccess(harness, {
+      action: "revoke-viewer-grant",
+    });
     await secondViewer.inbox.next("viewer-grant-revoked");
     expect(await secondClosed).toBe(4004);
     expect((await host.inbox.next("peer-left")).peerId).toBe(
@@ -962,7 +964,7 @@ describe("WebSocket signaling", () => {
     expect(
       viewerPresenceEntries(await host.inbox.next("viewer-presence")),
     ).toEqual([]);
-    expect(await host.inbox.next("viewer-grant-updated")).toMatchObject({
+    expect(revoked).toMatchObject({
       inviteUrl: null,
     });
     await host.inbox.expectNone(30);
@@ -1015,7 +1017,7 @@ describe("WebSocket signaling", () => {
     const grantClosed = new Promise<number>((resolve) =>
       grantViewer.socket.once("close", (code) => resolve(code)),
     );
-    host.socket.send(JSON.stringify({ type: "rotate-viewer-grant" }));
+    await updateRoomAccess(harness, { action: "rotate-viewer-grant" });
     await grantViewer.inbox.next("viewer-grant-revoked");
     expect(await grantClosed).toBe(4004);
     expect((await host.inbox.next("peer-left")).peerId).toBe(grantAuth.peerId);
@@ -1385,8 +1387,19 @@ describe("WebSocket signaling", () => {
       .mockImplementationOnce(() => {
         throw new Error("simulated database write failure");
       });
-    host.socket.send(JSON.stringify({ type: "rotate-viewer-grant" }));
-    expect(await host.inbox.next("error")).toMatchObject({ code: "SERVER_ERROR" });
+    const response = await fetch(
+      `${harness.baseUrl}/api/rooms/${harness.room.roomId}/access`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${harness.room.hostToken}`,
+          "Content-Type": "application/json",
+          Origin: allowedOrigin,
+        },
+        body: JSON.stringify({ action: "rotate-viewer-grant" }),
+      },
+    );
+    expect(response.status).toBe(500);
     await expect(
       viewer.inbox.next("viewer-grant-revoked", 30),
     ).rejects.toThrow("Timed out");

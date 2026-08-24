@@ -598,7 +598,6 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       sharingPaused: z.boolean().optional(),
       qualitySettings: qualitySettingsSchema.optional(),
       viewerPresence: z.literal(true).optional(),
-      viewerPasswordSettings: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
     })
     .strict(),
@@ -691,28 +690,6 @@ export const clientMessageSchema = z.union([
     .object({
       type: z.literal("set-display-name"),
       displayName: displayNameSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("set-code-entry-policy"),
-      policy: codeEntryPolicySchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("rotate-viewer-grant"),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("revoke-viewer-grant"),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("set-viewer-password"),
-      password: viewerPasswordSchema.nullable(),
     })
     .strict(),
   z
@@ -935,28 +912,8 @@ export const serverMessageSchema = z.union([
     }),
   z
     .object({
-      type: z.literal("code-entry-policy-updated"),
-      codeEntryPolicy: codeEntryPolicySchema,
-      viewerPasswordEnabled: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("viewer-grant-updated"),
-      viewerAuthorizationGeneration: opaqueIdSchema,
-      inviteUrl: z.string().url().max(2048).nullable(),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("viewer-grant-revoked"),
       viewerAuthorizationGeneration: opaqueIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("viewer-password-updated"),
-      enabled: z.boolean(),
     })
     .strict(),
   z.object({ type: z.literal("sharing-stopped") }).strict(),
@@ -993,6 +950,52 @@ export const createRoomRequestSchema = z
     roomPassword: viewerPasswordSchema.nullable().optional(),
   })
   .strict();
+
+export const roomAccessUpdateRequestSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      action: z.literal("set-code-entry-policy"),
+      policy: codeEntryPolicySchema,
+    })
+    .strict(),
+  z.object({ action: z.literal("rotate-viewer-grant") }).strict(),
+  z.object({ action: z.literal("revoke-viewer-grant") }).strict(),
+  z
+    .object({
+      action: z.literal("set-viewer-password"),
+      password: viewerPasswordSchema.nullable(),
+    })
+    .strict(),
+]);
+export type RoomAccessUpdateRequest = z.infer<
+  typeof roomAccessUpdateRequestSchema
+>;
+
+export const roomAccessUpdateResponseSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("code-entry-policy-updated"),
+      codeEntryPolicy: codeEntryPolicySchema,
+      viewerPasswordEnabled: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("viewer-grant-updated"),
+      viewerAuthorizationGeneration: opaqueIdSchema,
+      inviteUrl: z.string().url().max(2048).nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("viewer-password-updated"),
+      enabled: z.boolean(),
+    })
+    .strict(),
+]);
+export type RoomAccessUpdateResponse = z.infer<
+  typeof roomAccessUpdateResponseSchema
+>;
 
 export function decodeClientMessage(value: string): ClientMessage {
   return clientMessageSchema.parse(JSON.parse(value));

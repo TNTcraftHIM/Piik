@@ -1,4 +1,4 @@
-import { Hash, LogIn } from "lucide-react";
+import { ArrowRight, Hash } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { roomRouteForExplicitEntry } from "../lib/session";
 
@@ -67,7 +67,7 @@ export function RoomCodeEntry({ id, autoFocus = false, inline = false }: RoomCod
         title={inline ? "加入房间" : undefined}
         aria-label={inline ? "加入房间" : undefined}
       >
-        {inline ? <LogIn size={18} aria-hidden="true" /> : "加入"}
+        {inline ? <ArrowRight size={18} aria-hidden="true" /> : "加入"}
       </button>
     </form>
   );

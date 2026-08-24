@@ -37,9 +37,9 @@ export const QUALITY_PROFILES = {
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
 export const QUALITY_PROFILE_LABELS = {
-  "1080p60": "1080p 60",
-  "1080p30": "1080p 30",
-  "720p30": "720p 30",
+  "1080p60": "1080p · 60 帧",
+  "1080p30": "1080p · 30 帧",
+  "720p30": "720p · 30 帧",
 } as const satisfies Record<QualityProfileId, string>;
 
 export const QUALITY_RESOLUTIONS = {
@@ -53,15 +53,21 @@ export const QUALITY_RESOLUTIONS = {
 >;
 
 export const DEGRADATION_PREFERENCE_LABELS = {
-  "maintain-resolution": "清晰优先",
-  balanced: "平衡",
-  "maintain-framerate": "流畅优先",
+  "maintain-resolution": "清晰",
+  balanced: "均衡",
+  "maintain-framerate": "流畅",
+} as const satisfies Record<DegradationPreference, string>;
+
+export const DEGRADATION_PREFERENCE_HINTS = {
+  "maintain-resolution": "保留细节",
+  balanced: "自动权衡",
+  "maintain-framerate": "优先帧率",
 } as const satisfies Record<DegradationPreference, string>;
 
 export const SCREEN_AUDIO_QUALITY_LABELS = {
-  saver: "64 kbps 省流",
-  music: "128 kbps 音乐默认",
-  "very-high": "256 kbps 极高音质",
+  saver: "清晰",
+  music: "音乐",
+  "very-high": "高质",
 } as const satisfies Record<ScreenAudioQuality, string>;
 
 export const DEFAULT_SCREEN_AUDIO_QUALITY: ScreenAudioQuality = "music";

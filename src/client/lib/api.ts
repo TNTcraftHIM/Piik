@@ -1,7 +1,10 @@
 import {
   createRoomResponseSchema,
+  roomAccessUpdateResponseSchema,
   type CreateRoomResponse,
   type CodeEntryPolicy,
+  type RoomAccessUpdateRequest,
+  type RoomAccessUpdateResponse,
 } from "../../shared/protocol";
 
 export interface SiteAccessStatus {
@@ -112,6 +115,39 @@ export async function createRoom(
   const parsed = createRoomResponseSchema.safeParse(body);
   if (!parsed.success) {
     throw new ApiError("建房服务返回的数据格式不正确", 502);
+  }
+  return parsed.data;
+}
+
+export async function updateRoomAccess(
+  roomId: string,
+  hostToken: string,
+  request: RoomAccessUpdateRequest,
+): Promise<RoomAccessUpdateResponse> {
+  const response = await fetch(`/api/rooms/${roomId}/access`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${hostToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw new ApiError(
+      response.status === 401
+        ? "站点访问已失效，请重新验证"
+        : response.status === 404
+          ? "房间不存在或已过期"
+          : `当前无法更新房间设置 (${response.status})`,
+      response.status,
+    );
+  }
+
+  const parsed = roomAccessUpdateResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new ApiError("房间设置服务返回的数据格式不正确", 502);
   }
   return parsed.data;
 }
