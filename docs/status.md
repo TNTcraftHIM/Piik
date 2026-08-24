@@ -36,12 +36,12 @@ This is the current execution index. Git history owns completed timelines; [veri
 - `fix/configurable-relay-cap` is an old, incomplete draft and must not be merged as-is.
 - Open PR #192 and the Native stack are evidence/research, not pending product releases. Native senders, capture helpers, shared-encode executables, and their test binaries are outside the current Browser milestone and are not built or run.
 - Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
-- Room lifetime, authorization/storage semantics, restart loss, Browser v10 entry/presentation, and rollback restoration are aligned between exact main and production.
+- Room lifetime, authorization/storage semantics, restart loss, Browser v10 entry/presentation, and rollback restoration are aligned between current source and production.
 - Real SFU recovery, heterogeneous networks, mobile lifecycle, audio/A-V device behavior, and endurance/resource measurements remain external acceptance evidence, not blockers for unrelated reversible work.
 
 ## Current Hold
 
-There is no active P0/P1 source or deployment hold. Exact main and production run the postflight-clean
+There is no active P0/P1 source or deployment hold. Current source and production run the postflight-clean
 Browser v10 contract. Physical H.264 quality, audio, heterogeneous-network, SFU,
 background, and mobile evidence remains open. Native/executable work and broad repository cleanup
 remain outside the current evidence boundary.
