@@ -27,10 +27,11 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Physically verify the deployed `screener-v11` fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
-2. Diagnose the reported screen-audio `1 kbps` readout and validate live audio ceilings, then refine the Host invitation controls without changing grant semantics implicitly.
-3. Reproduce the Host background/minimized report under controlled conditions while recording the actual negotiated codec.
-4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
+1. Reproduce the Host background/minimized report under controlled conditions while recording actual capture, codec, send, receive, decode, CPU, and GPU evidence.
+2. Diagnose the reported screen-audio `1 kbps` readout and physically validate live audio ceilings.
+3. Physically verify the deployed `screener-v11` fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
+4. Refine the Host invitation controls without changing grant semantics implicitly.
+5. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
 
 ## Active Boundaries
 

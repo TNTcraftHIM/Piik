@@ -39,8 +39,8 @@ Last updated: 2026-08-24
 
 ## Current Priority
 
-1. Physically validate exact direct, browser-relay, and SFU codec behavior on the deployed single-wire Browser v11 contract.
-2. Then follow the current ledger in order: diagnose screen audio, refine the invitation UI, diagnose desktop Host background behavior, and finish real-network route acceptance. Browser VP8 hardware acceleration and mobile Viewer lifecycle remain Accepted Later; Native/executable, distribution, and repository-wide simplification remain later phases.
+1. Diagnose desktop Host background/minimized behavior under controlled capture, codec, send, receive, decode, CPU, and GPU measurement, then diagnose the screen-audio `1 kbps` readout and physically validate live audio ceilings.
+2. Then physically validate exact direct, browser-relay, and SFU codec behavior on deployed Browser v11, refine the invitation UI, and finish real-network route acceptance. Browser VP8 hardware acceleration and mobile Viewer lifecycle remain Accepted Later; Native/executable, distribution, and repository-wide simplification remain later phases.
 
 ## Working Rules
 
