@@ -226,7 +226,7 @@ when a sender is installed; `LocalVideoTrack.publishOptions` drives encoding
 recomputation after a track restart; and `LocalTrackPublication.options` is the
 input to `republishAllTracks()`. Current source keeps those three owners aligned
 through the existing publisher operation queue and rollback: call the SDK
-preference API to update its saved state, configure/read back the current `q,h`
+preference API to update its saved state, configure/read back the exact single
 sender as the final write, then assign one merged option object to both retained
 locations. Failure reapplies the previous profile; generation loss cannot
 retain the result as current publisher state. This changes no capture
@@ -408,7 +408,7 @@ time deltas, `remoteId` linkage, and the selected path reached through that RTP
 stream's transport. Source replacement blocks sampling and invalidates in-flight
 generations. Direct/relay edges bind that evidence to the
 current track and PeerConnection. The Host SFU publisher also samples only its
-active LiveKit sender's `h` representation and binds the result again to the
+exact active LiveKit sender and binds the result again to the
 current publication generation; replacement, profile reset, retirement,
 disconnect, and authoritative resync clear the old identity before another
 sample can appear. The Host details UI renders that source once as `SFU 发送`,
@@ -443,11 +443,10 @@ one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
-Current source and production still configure the ordered `q,h` publication,
-but the exact-production gate above rejected it because the active lower
-representation reduced `HIGH`. ADR-0007 now accepts one Browser SFU `HIGH`;
-source implementation and the exact single-representation production gate are
-the next scoped work.
+The exact-production gate above rejected its ordered `q,h` publication because
+the active lower representation reduced `HIGH`. Current source now implements
+ADR-0007's one Browser SFU `HIGH`; production remains `q,h` until the exact
+single-representation deployment gate passes.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)

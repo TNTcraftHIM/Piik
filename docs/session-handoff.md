@@ -58,7 +58,8 @@ Current high-signal boundary:
   three sender ceilings. An exact-production VP8 gate sustained about 59.5 fps
   on direct and Browser-relay paths and rejected the current SFU `q,h`
   publication because active `LOW` reduced `HIGH`. ADR-0007 accepts one Browser
-  SFU `HIGH`; source and production remain `q,h` until the next scoped change.
+  SFU `HIGH`; current source implements that single representation, while
+  production remains `q,h` until the next application cutover and physical gate.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy
