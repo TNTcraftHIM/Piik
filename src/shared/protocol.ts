@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v11";
+export const SIGNALING_PROTOCOL = "screener-v12";
 export const SIGNAL_CLOSE_CODES = {
   sessionReplaced: 4001,
   clientReconnect: 4002,
@@ -116,9 +116,8 @@ const tokenSchema = z
 
 export const viewerGrantSchema = z
   .string()
-  .min(50)
-  .max(96)
-  .regex(/^g1\.[1-9]\d{3}\.[1-9]\d{0,12}\.[A-Za-z0-9_-]{43}$/);
+  .length(22)
+  .regex(/^[A-Za-z0-9_-]{21}[AQgw]$/);
 
 export const viewerPasswordSchema = z
   .string()
@@ -742,6 +741,7 @@ const errorCodeSchema = z.enum([
   "INVALID_MESSAGE",
   "INVALID_TOKEN",
   "ROOM_ACCESS_DENIED",
+  "ROOM_NOT_FOUND",
   "ROOM_EXPIRED",
   "ROOM_FULL",
   "HOST_ALREADY_CONNECTED",
@@ -949,7 +949,6 @@ export const serverMessageSchema = z.union([
       type: z.literal("viewer-grant-updated"),
       viewerAuthorizationGeneration: opaqueIdSchema,
       inviteUrl: z.string().url().max(2048).nullable(),
-      viewerGrantExpiresAt: z.string().datetime().nullable(),
     })
     .strict(),
   z
@@ -987,7 +986,6 @@ export const createRoomResponseSchema = z
     hostToken: tokenSchema,
     inviteUrl: z.string().url().max(2048),
     codeEntryPolicy: codeEntryPolicySchema,
-    viewerGrantExpiresAt: z.string().datetime().nullable(),
     expiresAt: z.string().datetime().nullable(),
   })
   .strict();

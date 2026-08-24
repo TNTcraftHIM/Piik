@@ -1151,7 +1151,6 @@ export class SignalingServer {
       type: "viewer-grant-updated",
       viewerAuthorizationGeneration: update.viewerAuthorizationGeneration,
       inviteUrl,
-      viewerGrantExpiresAt: update.viewerGrantExpiresAt,
     });
   }
 
@@ -2075,6 +2074,8 @@ function authenticationErrorMessage(code: ErrorCode): string {
   switch (code) {
     case "ROOM_ACCESS_DENIED":
       return "Room access denied";
+    case "ROOM_NOT_FOUND":
+      return "Room not found or expired";
     case "ROOM_EXPIRED":
       return "Room has expired";
     case "ROOM_FULL":
@@ -2099,9 +2100,17 @@ function authenticationErrorCode(
     return error.code;
   }
   if (!message.viewerGrant) {
+    if (
+      error.code === "ROOM_NOT_FOUND" ||
+      error.code === "ROOM_EXPIRED"
+    ) {
+      return "ROOM_NOT_FOUND";
+    }
     return "ROOM_ACCESS_DENIED";
   }
-  return error.code === "ROOM_EXPIRED" ? "INVALID_TOKEN" : error.code;
+  return error.code === "ROOM_EXPIRED" || error.code === "ROOM_NOT_FOUND"
+    ? "INVALID_TOKEN"
+    : error.code;
 }
 
 function rejectUpgrade(socket: Duplex, status: number, message: string): void {

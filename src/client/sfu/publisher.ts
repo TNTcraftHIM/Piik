@@ -27,6 +27,7 @@ import {
   captureMetrics,
   collectConnectionMetricsFromReport,
   createStatsAccumulator,
+  mergeStatsReports,
   type StatsAccumulator,
 } from "../webrtc/stats";
 import { sfuRoomConnectOptions } from "./connection-options";
@@ -67,8 +68,11 @@ interface PublishedAudioConfiguration {
 
 interface PublisherStatsIdentity {
   video: PublishedTrack;
-  sender: RTCRtpSender;
-  rawTrack: MediaStreamTrack;
+  videoSender: RTCRtpSender;
+  videoTrack: MediaStreamTrack;
+  audio: PublishedTrack | null;
+  audioSender: RTCRtpSender | null;
+  audioTrack: MediaStreamTrack | null;
   accumulator: StatsAccumulator;
 }
 
@@ -885,23 +889,37 @@ export class SfuPublisher {
     ) {
       return;
     }
-    const sender = video.publication.videoTrack?.sender;
-    if (!sender || sender.track !== video.rawTrack) {
+    const videoSender = video.publication.videoTrack?.sender;
+    const audio = this.audio;
+    const audioSender = audio?.publication.audioTrack?.sender ?? null;
+    if (
+      !videoSender ||
+      videoSender.track !== video.rawTrack ||
+      (audio !== null &&
+        (!audioSender || audioSender.track !== audio.rawTrack))
+    ) {
       this.resetStatsIdentity();
       return;
     }
+    const audioTrack = audio?.rawTrack ?? null;
     let identity = this.statsIdentity;
     if (
       !identity ||
       identity.video !== video ||
-      identity.sender !== sender ||
-      identity.rawTrack !== video.rawTrack
+      identity.videoSender !== videoSender ||
+      identity.videoTrack !== video.rawTrack ||
+      identity.audio !== audio ||
+      identity.audioSender !== audioSender ||
+      identity.audioTrack !== audioTrack
     ) {
       this.resetStatsIdentity();
       identity = {
         video,
-        sender,
-        rawTrack: video.rawTrack,
+        videoSender,
+        videoTrack: video.rawTrack,
+        audio,
+        audioSender,
+        audioTrack,
         accumulator: createStatsAccumulator(),
       };
       this.statsIdentity = identity;
@@ -911,14 +929,26 @@ export class SfuPublisher {
     }
     this.statsInFlight = identity;
     try {
-      const report = await identity.sender.getStats();
+      const report = mergeStatsReports(
+        await Promise.all([
+          identity.videoSender.getStats(),
+          identity.audioSender?.getStats(),
+        ]),
+      );
       if (
+        !report ||
         this.state !== "active" ||
         this.statsIdentity !== identity ||
         this.video !== identity.video ||
-        identity.video.rawTrack !== identity.rawTrack ||
-        identity.video.publication.videoTrack?.sender !== identity.sender ||
-        identity.sender.track !== identity.rawTrack
+        identity.video.rawTrack !== identity.videoTrack ||
+        identity.video.publication.videoTrack?.sender !==
+          identity.videoSender ||
+        identity.videoSender.track !== identity.videoTrack ||
+        this.audio !== identity.audio ||
+        (identity.audio?.rawTrack ?? null) !== identity.audioTrack ||
+        (identity.audio?.publication.audioTrack?.sender ?? null) !==
+          identity.audioSender ||
+        (identity.audioSender?.track ?? null) !== identity.audioTrack
       ) {
         return;
       }
@@ -927,9 +957,13 @@ export class SfuPublisher {
           report,
           "send",
           identity.accumulator,
-          { trackIdentifier: identity.rawTrack.id, rid: "h" },
+          {
+            trackIdentifier: identity.videoTrack.id,
+            rid: "h",
+            audioTrackIdentifier: identity.audioTrack?.id ?? null,
+          },
         ),
-        ...captureMetrics(identity.rawTrack),
+        ...captureMetrics(identity.videoTrack),
       };
       this.events.onStats?.(metrics);
     } catch {

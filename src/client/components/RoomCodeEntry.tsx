@@ -1,6 +1,6 @@
 import { Hash, LogIn } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { roomRouteFromInput } from "../lib/session";
+import { roomRouteForExplicitEntry } from "../lib/session";
 
 interface RoomCodeEntryProps {
   id: string;
@@ -15,7 +15,7 @@ export function RoomCodeEntry({ id, autoFocus = false, inline = false }: RoomCod
 
   function join(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    const route = roomRouteFromInput(roomId);
+    const route = roomRouteForExplicitEntry(roomId);
     if (!route) {
       setError("请输入 1000 至 9999 的四位房间号");
       return;

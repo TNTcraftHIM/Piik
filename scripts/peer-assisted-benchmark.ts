@@ -30,11 +30,6 @@ import {
   type QualityProfileId,
   type QualitySettings,
 } from "../src/client/media/quality";
-import {
-  summarizeRouteTiming,
-  type RouteTimingDistribution,
-} from "../src/client/lib/diagnostic-export";
-
 const PROFILE_SETTINGS = QUALITY_PROFILES;
 type ProfileId = QualityProfileId;
 type PageRole = "host" | "viewer";
@@ -47,6 +42,14 @@ const ROUTE_TIMING_KEYS = [
   "finalMs",
 ] as const satisfies readonly (keyof RouteDiagnosticSnapshot["children"][number])[];
 type RouteTimingKey = (typeof ROUTE_TIMING_KEYS)[number];
+interface RouteTimingDistribution {
+  sampleCount: number;
+  pendingCount: number;
+  rawMs: number[];
+  p50Ms: number | null;
+  p95Ms: number | null;
+  maxMs: number | null;
+}
 export type BenchmarkRouteTimingSamples = {
   [Key in RouteTimingKey]: Array<
     RouteDiagnosticSnapshot["children"][number][Key]
@@ -383,6 +386,30 @@ export function summarizeBenchmarkRouteTiming(
       summarizeRouteTiming(samples[key]),
     ]),
   ) as BenchmarkRouteTimingSummary;
+}
+
+function summarizeRouteTiming(
+  values: readonly (number | null)[],
+): RouteTimingDistribution {
+  const rawMs = values
+    .filter((value): value is number => value !== null)
+    .toSorted((left, right) => left - right);
+  return {
+    sampleCount: rawMs.length,
+    pendingCount: values.length - rawMs.length,
+    rawMs,
+    p50Ms: nearestRank(rawMs, 0.5),
+    p95Ms: nearestRank(rawMs, 0.95),
+    maxMs: rawMs.at(-1) ?? null,
+  };
+}
+
+function nearestRank(
+  sortedValues: readonly number[],
+  percentile: number,
+): number | null {
+  if (sortedValues.length === 0) return null;
+  return sortedValues[Math.ceil(percentile * sortedValues.length) - 1] ?? null;
 }
 
 export function buildRouteTimingCheck(
@@ -2696,7 +2723,10 @@ async function runCase(
     const viewerUrl = await evaluate<string>(
       cdp,
       hostPage,
-      "document.querySelector('.invite-url')?.getAttribute('title') || ''",
+      `(() => {
+        const grant = sessionStorage.getItem('screener:viewer-grant:${roomId}');
+        return grant ? location.origin + '/r/${roomId}#v=' + grant : '';
+      })()`,
     );
     if (!viewerUrl.startsWith(`${baseUrl}/r/${roomId}#v=`)) {
       throw new Error("Host private Viewer invite was unavailable");

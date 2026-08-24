@@ -137,6 +137,20 @@ describe("RoomStore", () => {
     ).toBe("viewer");
   });
 
+  it("keeps the exact Viewer grant valid for the room incarnation", async () => {
+    const { clock, store: roomStore } = store({ leaseMs: 1_000 });
+    const room = await roomStore.createRoom("disabled");
+    roomStore.connectParticipant(hostInput(room.roomId, room.hostToken));
+
+    expect(room.viewerGrant).toMatch(/^[A-Za-z0-9_-]{21}[AQgw]$/);
+    clock.nowMs = 8 * 24 * 60 * 60 * 1_000;
+    expect(
+      roomStore.connectParticipant(
+        viewerInput(room.roomId, "room-lived-grant", room.viewerGrant!),
+      ).role,
+    ).toBe("viewer");
+  });
+
   it("supports open, password, and disabled code entry", async () => {
     const { store: roomStore } = store({ maxRooms: 3 });
     const open = await roomStore.createRoom("open");
@@ -189,10 +203,16 @@ describe("RoomStore", () => {
       results.every(
         (result) =>
           result.status === "rejected" &&
-          result.reason instanceof RoomStoreError &&
-          result.reason.code === "INVALID_TOKEN",
+          result.reason instanceof RoomStoreError,
       ),
     ).toBe(true);
+    expect(
+      results.filter(
+        (result) =>
+          result.status === "rejected" &&
+          result.reason.code === "ROOM_NOT_FOUND",
+      ),
+    ).toHaveLength(2);
   });
 
   it("rotates and revokes Viewer grants without changing code entry", async () => {
@@ -242,14 +262,17 @@ describe("RoomStore", () => {
   });
 
   it("keeps the old grant and viewers when rotation cannot create a generation", async () => {
-    let failGeneration = false;
+    let failedRandomCall: number | null = null;
+    let randomCalls = 0;
     let randomValue = 0;
     const { store: roomStore } = store({
-      random: (size) =>
-        Buffer.alloc(
-          failGeneration && size === 16 ? size - 1 : size,
+      random: (size) => {
+        randomCalls += 1;
+        return Buffer.alloc(
+          randomCalls === failedRandomCall ? size - 1 : size,
           ++randomValue,
-        ),
+        );
+      },
     });
     const room = await roomStore.createRoom("disabled");
     roomStore.connectParticipant(hostInput(room.roomId, room.hostToken));
@@ -257,11 +280,11 @@ describe("RoomStore", () => {
       viewerInput(room.roomId, "existing", room.viewerGrant!),
     );
 
-    failGeneration = true;
+    failedRandomCall = randomCalls + 2;
     expect(() =>
       roomStore.setViewerGrant(room.roomId, "rotate", "host-session"),
     ).toThrow("Authorization generation random source must return 16 bytes");
-    failGeneration = false;
+    failedRandomCall = null;
 
     expect(
       roomStore.getConnectedViewer(room.roomId, viewer.peerId),
@@ -301,6 +324,29 @@ describe("RoomStore", () => {
         clientId: "viewer",
         sessionId: "session",
       }),
-    ).rejects.toThrow(new RoomStoreError("INVALID_TOKEN"));
+    ).rejects.toThrow(new RoomStoreError("ROOM_NOT_FOUND"));
+  });
+
+  it("rejects an old grant when a new room reuses the same code", async () => {
+    const firstStore = store({
+      random: (size) => Buffer.alloc(size, size === 8 ? 0 : 1),
+    }).store;
+    const firstRoom = await firstStore.createRoom("disabled");
+    firstStore.abandonRoom(firstRoom.roomId);
+
+    const secondStore = store({
+      random: (size) => Buffer.alloc(size, size === 8 ? 0 : 2),
+    }).store;
+    const secondRoom = await secondStore.createRoom("disabled");
+
+    expect(secondRoom.roomId).toBe(firstRoom.roomId);
+    expect(secondRoom.viewerGrant).not.toBe(firstRoom.viewerGrant);
+    expectRoomError(
+      () =>
+        secondStore.connectParticipant(
+          viewerInput(secondRoom.roomId, "old-incarnation", firstRoom.viewerGrant!),
+        ),
+      "INVALID_TOKEN",
+    );
   });
 });

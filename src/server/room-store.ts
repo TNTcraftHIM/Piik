@@ -7,7 +7,6 @@ import {
 
 import {
   MAX_VIEWERS_PER_ROOM_LIMIT,
-  ROOM_CODE_LENGTH,
   viewerGrantSchema,
   viewerPasswordSchema,
   type CodeEntryPolicy,
@@ -16,12 +15,12 @@ import {
 
 export type RoomStoreErrorCode =
   | "INVALID_TOKEN"
+  | "ROOM_NOT_FOUND"
   | "ROOM_EXPIRED"
   | "ROOM_FULL"
   | "HOST_ALREADY_CONNECTED"
   | "ROOM_LIMIT";
 
-const VIEWER_GRANT_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const ROOM_CODE_COUNT = 9_000;
 const ROOM_CODE_FIRST = 1_000;
 const VIEWER_PASSWORD_SALT_BYTES = 16;
@@ -58,7 +57,6 @@ interface Room {
   roomId: string;
   hostTokenDigest: Buffer;
   viewerGrantDigest: Buffer;
-  viewerGrantExpiresAtMs: number | null;
   viewerPasswordMaterial: Buffer | null;
   viewerAuthorizationGeneration: string;
   codeEntryPolicy: CodeEntryPolicy;
@@ -73,7 +71,6 @@ export interface CreatedRoom {
   hostToken: string;
   codeEntryPolicy: CodeEntryPolicy;
   viewerGrant: string | null;
-  viewerGrantExpiresAt: string | null;
   expiresAt: string | null;
 }
 
@@ -136,7 +133,6 @@ export interface RevokedViewer {
 
 export interface ViewerGrantUpdate {
   viewerGrant: string | null;
-  viewerGrantExpiresAt: string | null;
   viewerAuthorizationGeneration: string;
   previousViewerAuthorizationGeneration: string;
   revokedViewers: readonly RevokedViewer[];
@@ -204,9 +200,6 @@ export class RoomStore {
     }
 
     const createdAtMs = this.now();
-    const viewerGrantExpiresAtMs = toEpochSecondsMs(
-      createdAtMs + VIEWER_GRANT_TTL_MS,
-    );
     const viewerPasswordMaterial = roomPassword
       ? await this.createViewerPasswordMaterial(roomPassword)
       : null;
@@ -220,17 +213,13 @@ export class RoomStore {
         throw new Error("Host token random source must return 32 bytes");
       }
       const hostToken = hostTokenBytes.toString("base64url");
-      const viewerGrant = this.createViewerGrant(
-        roomId,
-        viewerGrantExpiresAtMs,
-      );
+      const viewerGrant = this.createViewerGrant();
       const viewerAuthorizationGeneration = this.newAuthorizationGeneration();
 
       this.rooms.set(roomId, {
         roomId,
         hostTokenDigest: digest(hostToken),
         viewerGrantDigest: digest(viewerGrant),
-        viewerGrantExpiresAtMs,
         viewerPasswordMaterial,
         viewerAuthorizationGeneration,
         codeEntryPolicy,
@@ -244,7 +233,6 @@ export class RoomStore {
         hostToken,
         codeEntryPolicy,
         viewerGrant,
-        viewerGrantExpiresAt: formatExpiresAt(viewerGrantExpiresAtMs),
         expiresAt: formatExpiresAt(createdAtMs + this.options.leaseMs),
       };
     } catch (error) {
@@ -254,7 +242,20 @@ export class RoomStore {
   }
 
   connectParticipant(input: ConnectParticipantInput): ConnectedParticipant {
-    const room = this.getAvailableRoom(input.roomId);
+    let room: Room;
+    try {
+      room = this.getAvailableRoom(input.roomId);
+    } catch (error) {
+      if (
+        input.role === "viewer" &&
+        !input.viewerGrant &&
+        error instanceof RoomStoreError &&
+        (error.code === "INVALID_TOKEN" || error.code === "ROOM_EXPIRED")
+      ) {
+        throw new RoomStoreError("ROOM_NOT_FOUND");
+      }
+      throw error;
+    }
     if (input.role === "host") {
       if (!verifyDigest(input.token, room.hostTokenDigest)) {
         throw new RoomStoreError("INVALID_TOKEN");
@@ -322,7 +323,7 @@ export class RoomStore {
       currentRoom = this.getAvailableRoom(input.roomId);
     } catch (error) {
       if (error instanceof RoomStoreError) {
-        throw new RoomStoreError("INVALID_TOKEN");
+        throw new RoomStoreError("ROOM_NOT_FOUND");
       }
       throw error;
     }
@@ -409,14 +410,7 @@ export class RoomStore {
     }
     const previousViewerAuthorizationGeneration =
       room.viewerAuthorizationGeneration;
-    const viewerGrantExpiresAtMs =
-      action === "rotate"
-        ? toEpochSecondsMs(this.now() + VIEWER_GRANT_TTL_MS)
-        : null;
-    const viewerGrant =
-      viewerGrantExpiresAtMs === null
-        ? null
-        : this.createViewerGrant(room.roomId, viewerGrantExpiresAtMs);
+    const viewerGrant = action === "rotate" ? this.createViewerGrant() : null;
 
     const revokedViewers = [...room.viewers.values()]
       .filter((viewer) => viewer.admittedBy === "grant")
@@ -429,7 +423,6 @@ export class RoomStore {
       : this.randomDigest();
     const viewerAuthorizationGeneration = this.newAuthorizationGeneration();
     room.viewerGrantDigest = viewerGrantDigest;
-    room.viewerGrantExpiresAtMs = viewerGrantExpiresAtMs;
     room.viewerAuthorizationGeneration = viewerAuthorizationGeneration;
     for (const [clientId, viewer] of room.viewers) {
       if (viewer.admittedBy === "grant") {
@@ -438,7 +431,6 @@ export class RoomStore {
     }
     return {
       viewerGrant,
-      viewerGrantExpiresAt: formatExpiresAt(viewerGrantExpiresAtMs),
       viewerAuthorizationGeneration: room.viewerAuthorizationGeneration,
       previousViewerAuthorizationGeneration,
       revokedViewers,
@@ -702,24 +694,15 @@ export class RoomStore {
     if (!grant || !viewerGrantSchema.safeParse(grant).success) {
       return false;
     }
-    const parsed = parseViewerGrant(grant);
-    return Boolean(
-      parsed &&
-        parsed.roomId === room.roomId &&
-        parsed.expiresAtMs > this.now() &&
-        room.viewerGrantExpiresAtMs !== null &&
-        parsed.expiresAtMs <= room.viewerGrantExpiresAtMs &&
-        verifyDigest(grant, room.viewerGrantDigest),
-    );
+    return verifyDigest(grant, room.viewerGrantDigest);
   }
 
-  private createViewerGrant(roomId: string, expiresAtMs: number): string {
-    const expiresAtSeconds = Math.floor(expiresAtMs / 1_000);
-    const secret = this.random(32);
-    if (secret.byteLength !== 32) {
-      throw new Error("Viewer grant random source must return 32 bytes");
+  private createViewerGrant(): string {
+    const secret = this.random(16);
+    if (secret.byteLength !== 16) {
+      throw new Error("Viewer grant random source must return 16 bytes");
     }
-    return `g1.${roomId}.${expiresAtSeconds}.${secret.toString("base64url")}`;
+    return secret.toString("base64url");
   }
 
   private async createViewerPasswordMaterial(
@@ -764,16 +747,8 @@ function roomIsExpired(room: Room, nowMs: number): boolean {
   );
 }
 
-function isRoomCode(value: string): boolean {
-  return value.length === ROOM_CODE_LENGTH && /^[1-9]\d{3}$/.test(value);
-}
-
 function formatExpiresAt(expiresAtMs: number | null): string | null {
   return expiresAtMs === null ? null : new Date(expiresAtMs).toISOString();
-}
-
-function toEpochSecondsMs(value: number): number {
-  return Math.floor(value / 1_000) * 1_000;
 }
 
 function findViewerByPeerId(
@@ -876,23 +851,3 @@ const viewerPasswordKdfGate = new AsyncGate(
   VIEWER_PASSWORD_KDF_CONCURRENCY,
   VIEWER_PASSWORD_KDF_PENDING_LIMIT,
 );
-
-function parseViewerGrant(
-  value: string,
-): { roomId: string; expiresAtMs: number } | null {
-  const [version, roomId, expiresAtText, secret, ...extra] = value.split(".");
-  if (
-    version !== "g1" ||
-    extra.length > 0 ||
-    !isRoomCode(roomId ?? "") ||
-    !/^[1-9]\d{0,12}$/.test(expiresAtText ?? "") ||
-    !/^[A-Za-z0-9_-]{43}$/.test(secret ?? "")
-  ) {
-    return null;
-  }
-  const expiresAtSeconds = Number(expiresAtText);
-  if (!Number.isSafeInteger(expiresAtSeconds)) {
-    return null;
-  }
-  return { roomId: roomId!, expiresAtMs: expiresAtSeconds * 1_000 };
-}

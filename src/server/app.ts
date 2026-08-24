@@ -393,7 +393,6 @@ async function handleRequest(
         hostToken: room.hostToken,
         inviteUrl: inviteUrl.toString(),
         codeEntryPolicy: room.codeEntryPolicy,
-        viewerGrantExpiresAt: room.viewerGrantExpiresAt,
         expiresAt: room.expiresAt,
       };
       sendJson(response, 201, responseBody);

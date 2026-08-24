@@ -779,7 +779,7 @@ h3 {
 
 .invite-bar {
   display: grid;
-  grid-template-columns: minmax(280px, 3fr) minmax(260px, 2fr);
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
   min-width: 0;
   gap: 12px;
   align-items: start;
@@ -800,16 +800,50 @@ h3 {
   border-left: 1px solid var(--border);
 }
 
-.invite-actions {
+.invite-heading,
+.invite-heading-copy,
+.invite-icon-actions {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  align-items: center;
+}
+
+.invite-heading {
+  min-height: 40px;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.invite-heading-copy {
   gap: 6px;
+}
+
+.invite-icon-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.invite-icon-action.is-danger {
+  color: var(--red);
+}
+
+.invite-copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  gap: 6px;
+  align-items: start;
   margin-top: 8px;
 }
 
-.invite-action {
-  min-height: 34px;
-  padding: 6px 9px;
+.invite-copy-action {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.invite-status {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .room-entry-heading {
@@ -855,10 +889,6 @@ h3 {
   gap: 12px;
 }
 
-.access-diagnostic-action {
-  justify-self: end;
-}
-
 .viewer-password-control .input-with-icon {
   min-width: 0;
 }
@@ -868,19 +898,24 @@ h3 {
   width: 100%;
 }
 
-.invite-primary .field-label,
 .room-entry-heading .field-label {
   margin-bottom: 3px;
 }
 
 .invite-url {
-  display: block;
-  overflow: hidden;
+  display: flex;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
   color: var(--text);
+  background: var(--surface-raised);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .viewer-panel {
@@ -1415,6 +1450,17 @@ h3 {
   .viewer-stats .stats-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .invite-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .room-entry-policy {
+    padding-top: 12px;
+    padding-left: 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1467,17 +1513,6 @@ h3 {
     min-height: 42px;
     padding: 6px;
     white-space: normal;
-  }
-
-  .invite-bar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .room-entry-policy {
-    padding-top: 12px;
-    padding-left: 0;
-    border-top: 1px solid var(--border);
-    border-left: 0;
   }
 
   .viewer-password-control {

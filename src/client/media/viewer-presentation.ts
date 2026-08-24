@@ -10,6 +10,7 @@ export type ViewerHostState =
 export type ViewerRouteKind = "none" | "p2p" | "sfu";
 
 export type ViewerFailureCode =
+  | "ROOM_NOT_FOUND"
   | "ROOM_ACCESS_DENIED"
   | "INVALID_TOKEN"
   | "ROOM_CLOSED"
@@ -28,6 +29,7 @@ export type ViewerFailureCode =
 
 export type ViewerStage =
   | "joining"
+  | "room-not-found"
   | "access-denied"
   | "invalid-invite"
   | "room-closed"
@@ -399,6 +401,13 @@ export function deriveViewerPresentation(
   }
   if (state.access === "denied") {
     switch (state.failure) {
+      case "ROOM_NOT_FOUND":
+        return presentation(
+          "room-not-found",
+          "房间不存在或已过期",
+          "blocking",
+          state,
+        );
       case "ROOM_ACCESS_DENIED":
         return presentation(
           "access-denied",

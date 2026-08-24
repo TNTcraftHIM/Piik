@@ -53,6 +53,7 @@ export interface StatsAccumulator {
 export interface StatsMediaSelector {
   trackIdentifier: string | null;
   rid?: string | null;
+  audioTrackIdentifier?: string | null;
 }
 
 export function captureMetrics(
@@ -679,7 +680,17 @@ export function collectConnectionMetricsFromReport(
   const codecEvidence = deriveCodecEvidence(linkedCodec);
   const mediaSource =
     direction === "send" ? mediaSourceRecord(report, media) : null;
-  const audio = mediaRecord(report, direction, null, "audio");
+  const audio =
+    selector?.audioTrackIdentifier === null
+      ? null
+      : mediaRecord(
+          report,
+          direction,
+          selector?.audioTrackIdentifier === undefined
+            ? null
+            : { trackIdentifier: selector.audioTrackIdentifier },
+          "audio",
+        );
   const audioTransport = transportRecord(report, audio);
   const audioRemoteInbound =
     direction === "send"

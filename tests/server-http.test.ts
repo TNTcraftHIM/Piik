@@ -266,12 +266,10 @@ describe("room HTTP API", () => {
     expect(body.roomId).toMatch(/^[1-9]\d{3}$/);
     expect(invite.origin).toBe("https://share.example.test");
     expect(invite.pathname).toBe(`/r/${body.roomId}`);
-    expect(invite.hash).toMatch(
-      new RegExp(`^#v=g1\\.${body.roomId}\\.\\d+\\.[A-Za-z0-9_-]{43}$`),
-    );
+    expect(invite.hash).toMatch(/^#v=[A-Za-z0-9_-]{21}[AQgw]$/);
     expect(invite.search).toBe("");
     expect(body.codeEntryPolicy).toBe("open");
-    expect(body.viewerGrantExpiresAt).toBeTruthy();
+    expect("viewerGrantExpiresAt" in body).toBe(false);
     expect(body.expiresAt).toBeTruthy();
     expect("iceConfig" in body).toBe(false);
   });
@@ -318,7 +316,6 @@ describe("room HTTP API", () => {
     const body = createRoomResponseSchema.parse(await response.json());
     expect(body).toMatchObject({
       codeEntryPolicy: "open",
-      viewerGrantExpiresAt: expect.any(String),
     });
     expect(new URL(body.inviteUrl).hash).toContain("#v=");
   });

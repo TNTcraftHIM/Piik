@@ -319,5 +319,16 @@ describe("Viewer presentation reducer", () => {
       message: "当前无法通过房间号加入",
       retryAvailable: false,
     });
+
+    const notFound = reduceViewerPresentation(failed, {
+      type: "access",
+      access: "denied",
+      failure: "ROOM_NOT_FOUND",
+    });
+    expect(deriveViewerPresentation(notFound)).toMatchObject({
+      stage: "room-not-found",
+      message: "房间不存在或已过期",
+      retryAvailable: false,
+    });
   });
 });
