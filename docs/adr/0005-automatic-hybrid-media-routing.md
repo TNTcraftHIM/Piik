@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: The route model is accepted and deployed in exact release `b68c471`
+- Status: The route model is accepted and deployed in exact release `2d5818c`
   on strict v12, including Browser SFU ICE-server isolation, no product
   diagnostic-download UI, and the retained Host-only acceptance snapshot.
 - Date: 2026-08-20
@@ -362,7 +362,7 @@ deployment-wide.
 ## Current Source And Deployment Boundary
 
 Production runs exact deployed application/runtime revision
-`b68c47167da592dd673a78ec3d072936ef49e3ea`, release `b68c471`; canonical `main`
+`2d5818ccf57f8ccf0999160ea74a16c9b4d97d12`, release `2d5818c`; canonical `main`
 contains the same application/runtime tree plus the current truth checkpoint, including exact
 Browser SFU ICE-server-isolation implementation
 `ae09c760adec76fd26da611d4928486d105c6d3b`. Both run strict `screener-v12` and

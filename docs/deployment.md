@@ -3,7 +3,7 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`b68c47167da592dd673a78ec3d072936ef49e3ea`, release `b68c471`, and the single
+`2d5818ccf57f8ccf0999160ea74a16c9b4d97d12`, release `2d5818c`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -13,8 +13,8 @@ Caddy or nginx; ordinary peer ICE advertises only STUN, while Browser LiveKit
 PCs configure no external ICE server and retain LiveKit-signaled UDP candidates.
 LiveKit supplies bounded SFU fallback capacity. Normal media remains distributed
 through direct or peer edges whenever those paths work. Production includes
-implementation `ae09c760adec76fd26da611d4928486d105c6d3b`; the owner physically
-verified SFU fallback media after the cutover.
+implementation `ae09c760adec76fd26da611d4928486d105c6d3b`; the owner's physical SFU
+fallback media proof remains bounded to predecessor release `c4962f5`.
 
 A deployment may additionally provide one dedicated single-node LiveKit process
 as the current controller's automatic final media fallback. This capacity is
@@ -25,16 +25,16 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `b68c47167da592dd673a78ec3d072936ef49e3ea`, release
-`b68c471`, from `/opt/screener/releases/b68c471`. The immutable runtime ZIP
+Production runs exact `2d5818ccf57f8ccf0999160ea74a16c9b4d97d12`, release
+`2d5818c`, from `/opt/screener/releases/2d5818c`. The immutable runtime ZIP
 SHA-256 is
-`e5932880677ebb745ef9325f8def2185d88cdd7bb557fada7c3e1a9e1a7c2ffd`.
+`a2e4c6b3bdf062103cd09b75c7de072eedcb8f311264070f57fbb0dfcf2bf315`.
 Its 38-file path/size/hash manifest SHA-256 is
-`12e092822abad0d8448d9c6ec87386e8ff82eaafecfeab766e050fa0f3b46710`.
+`eb118c51759e087bb81b530c7d765fd862220227d5f70bcf807628b61155b5f4`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-BSZhUco2.js` with SHA-256
-`30cf3bea2a7f80c5b0140f0e40fb0f3f3c082a6195e2ad0990509c663a605f96`.
+`assets/index-CgT-8Ltd.js` with SHA-256
+`f04c6ed8e963694a584b0e7de4bbf44820a7be1da10360a3ae99fb36149fb6be`.
 
 The release deploys the single Browser `screener-v12` wire, fixed VP8 for Browser
 direct, browser-relay, and SFU video, no video `contentHint`, no codec UI/state/wire,
@@ -42,9 +42,10 @@ random four-digit
 memory rooms with a 24-hour dormant lease, a room-lived 22-character grant,
 orthogonal `open | private` grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
-one-controller exact-candidate route runtime. Production postflight verified open
-code entry, private invitation-only and password entry, grant rotation/revocation,
-typed missing-room failure, and stale `screener-v11` rejection with
+one-controller exact-candidate route runtime. Exact predecessor release
+`b68c471` production postflight verified open code entry, private invitation-only
+and password entry, grant rotation/revocation, typed missing-room failure, and
+stale `screener-v11` rejection with
 `INVALID_MESSAGE` and WebSocket close 1008 before room authority. The service unit
 has no writable room StateDirectory; all room authority is process-memory-only.
 LiveKit is dedicated, has `room.auto_create: false` and
@@ -270,7 +271,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `b68c471` accepts 1 through 20 and explicitly selects 20. This is an
+Production `2d5818c` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -283,7 +284,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `b68c471` runs the deployed server and Browser assets
+Production release `2d5818c` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 
