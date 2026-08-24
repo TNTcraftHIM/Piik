@@ -1581,6 +1581,46 @@ describe("ViewerRelay downstream ownership", () => {
     relay.dispose();
   });
 
+  it("syncs same-stream audio changes into the prepared connection", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+    const video = createTrack("video", "persistent-video");
+    let audio: MediaStreamTrack | null = null;
+    const persistentStream = {
+      getTracks: () => (audio ? [video, audio] : [video]),
+      getVideoTracks: () => [video],
+      getAudioTracks: () => (audio ? [audio] : []),
+    } as unknown as MediaStream;
+
+    relay.setStream(persistentStream);
+    expect(
+      relay.prepareChild(
+        7,
+        routeCandidate(7, "prepared-child"),
+        ["prepared-child"],
+      ),
+    ).toBe(true);
+    const preparedConnection = FakePeerConnection.latest!;
+    expect(preparedConnection.senders[1]?.track).toBeNull();
+
+    audio = createTrack("audio", "late-audio");
+    relay.setStream(persistentStream);
+    await vi.waitFor(() =>
+      expect(preparedConnection.senders[1]?.track).toBe(audio),
+    );
+
+    audio = null;
+    relay.setStream(persistentStream);
+    await vi.waitFor(() =>
+      expect(preparedConnection.senders[1]?.track).toBeNull(),
+    );
+    expect(FakePeerConnection.latest).toBe(preparedConnection);
+    relay.dispose();
+  });
+
   it("admits provisional children until endpoint cap three is full", async () => {
     const relay = new ViewerRelay(
       { iceServers: [] },

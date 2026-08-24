@@ -172,10 +172,10 @@ export class ViewerRelay {
     if (this.disposed) {
       return;
     }
-    const replacePrepared = this.stream !== null && this.stream !== stream;
+    const preparedPeer = this.preparedChild?.peer ?? null;
     this.stream = stream;
     this.syncQueue = this.syncQueue
-      .then(() => this.syncStream(stream, replacePrepared))
+      .then(() => this.syncStream(stream, preparedPeer))
       .catch(() => undefined);
   }
 
@@ -318,14 +318,17 @@ export class ViewerRelay {
 
   private async syncStream(
     stream: MediaStream,
-    replacePrepared: boolean,
+    preparedPeer: HostPeer | null,
   ): Promise<void> {
     if (this.disposed || this.stream !== stream) {
       return;
     }
-    const prepared = replacePrepared ? this.preparedChild : null;
-    if (prepared && !(await this.replacePeerStream(prepared.peer, stream))) {
-      this.failPreparedChild(prepared.peer);
+    if (
+      preparedPeer &&
+      this.preparedChild?.peer === preparedPeer &&
+      !(await this.replacePeerStream(preparedPeer, stream))
+    ) {
+      this.failPreparedChild(preparedPeer);
     }
     if (this.disposed || this.stream !== stream) {
       return;

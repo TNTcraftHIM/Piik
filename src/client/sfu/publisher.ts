@@ -712,18 +712,77 @@ export class SfuPublisher {
       if (!this.owns(room, generation) || this.state !== "active") {
         return false;
       }
-      const audio = this.audio;
-      const profile = this.desiredProfile;
       const sdk = this.sdk;
+      if (!sdk) {
+        return false;
+      }
+
+      const previousVideo = this.video;
+      const previousAudio = this.audio;
+      const previousVideoSender =
+        previousVideo?.publication.videoTrack?.sender ?? null;
+      const video = previousVideo
+        ? currentPublishedTrack(
+            room,
+            sdk.Track.Source.ScreenShare,
+            previousVideo.rawTrack,
+          )
+        : null;
+      const videoSender = video?.publication.videoTrack?.sender ?? null;
+      if (!video || !videoSender) {
+        this.failureStage = "transport";
+        await this.failClosed(room, generation);
+        return false;
+      }
+      const audio = previousAudio
+        ? currentPublishedTrack(
+            room,
+            sdk.Track.Source.ScreenShareAudio,
+            previousAudio.rawTrack,
+          )
+        : null;
+      const audioSender = audio?.publication.audioTrack?.sender ?? null;
+      if (previousAudio && (!audio || !audioSender)) {
+        this.failureStage = "transport";
+        await this.failClosed(room, generation);
+        return false;
+      }
+      this.stopStats();
+      this.video = video;
+      this.audio = audio;
+      if (
+        video.publication !== previousVideo?.publication ||
+        videoSender !== previousVideoSender
+      ) {
+        this.senderParameters = null;
+        this.videoQualityWarning = null;
+      }
+      this.startStats(video);
+
+      const profile = this.desiredProfile;
       const profileRevision = this.profileRevision;
-      if (!audio || !profile || !sdk) {
+      if (!audio || !profile) {
+        this.audioSenderParameters = null;
+        this.audioParametersSender = null;
+        this.audioQualityWarning = null;
         return true;
       }
       retainPublishedAudioOptions(audio, profile, sdk);
 
-      let audioSender: RTCRtpSender | null = null;
+      if (!audioSender) {
+        this.failureStage = "transport";
+        await this.failClosed(room, generation);
+        return false;
+      }
+      if (
+        audio.publication !== previousAudio?.publication ||
+        this.audioParametersSender !== audioSender
+      ) {
+        this.audioSenderParameters = null;
+        this.audioParametersSender = null;
+        this.audioQualityWarning = null;
+      }
       try {
-        audioSender = publishedAudioSender(audio);
         const ownedAudioSender = audioSender;
         const configured = await configurePublishedAudio(
           audio,
@@ -1105,6 +1164,23 @@ function publishedAudioSender(published: PublishedTrack): RTCRtpSender {
     throw new Error("SFU audio publication has no RTP sender");
   }
   return sender;
+}
+
+function currentPublishedTrack(
+  room: Room,
+  source: Track.Source,
+  expectedRawTrack: MediaStreamTrack,
+): PublishedTrack | null {
+  const publication = room.localParticipant.getTrackPublication(source);
+  const rawTrack = publication?.track?.mediaStreamTrack;
+  if (
+    !publication ||
+    !rawTrack ||
+    rawTrack !== expectedRawTrack
+  ) {
+    return null;
+  }
+  return { publication, rawTrack };
 }
 
 function retainPublishedAudioOptions(
