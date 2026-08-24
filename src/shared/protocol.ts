@@ -62,17 +62,30 @@ const opaqueIdSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 
+const noMediaRouteUpstreamSchema = z
+  .object({ kind: z.literal("none") })
+  .strict();
+const peerMediaRouteUpstreamSchema = z
+  .object({
+    kind: z.literal("peer"),
+    peerId: opaqueIdSchema,
+  })
+  .strict();
+const sfuMediaRouteUpstreamSchema = z
+  .object({ kind: z.literal("sfu") })
+  .strict();
+
 export const mediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }).strict(),
-  z
-    .object({
-      kind: z.literal("peer"),
-      peerId: opaqueIdSchema,
-    })
-    .strict(),
-  z.object({ kind: z.literal("sfu") }).strict(),
+  noMediaRouteUpstreamSchema,
+  peerMediaRouteUpstreamSchema,
+  sfuMediaRouteUpstreamSchema,
 ]);
 export type MediaRouteUpstream = z.infer<typeof mediaRouteUpstreamSchema>;
+
+const activeMediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
+  peerMediaRouteUpstreamSchema,
+  sfuMediaRouteUpstreamSchema,
+]);
 
 export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
   z
@@ -503,6 +516,9 @@ export type ParticipantRouteAssignment = z.infer<
 const nullableEvidenceNumber = (maximum: number) =>
   z.number().finite().min(0).max(maximum).nullable();
 
+const nullableSignedEvidenceNumber = (absoluteMaximum: number) =>
+  z.number().finite().min(-absoluteMaximum).max(absoluteMaximum).nullable();
+
 const nullableEvidenceInteger = (maximum: number) =>
   z.number().int().min(0).max(maximum).nullable();
 
@@ -514,6 +530,7 @@ export const viewerQualityEvidenceMetricsSchema = z
     bitrateKbps: nullableEvidenceNumber(100_000),
     packetsReceivedDelta: nullableEvidenceInteger(1_000_000),
     packetsLostDelta: nullableEvidenceInteger(1_000_000),
+    rttMs: nullableEvidenceNumber(60_000),
     jitterMs: nullableEvidenceNumber(60_000),
     framesDecodedDelta: nullableEvidenceInteger(10_000),
     framesDroppedDelta: nullableEvidenceInteger(10_000),
@@ -534,6 +551,19 @@ export const viewerQualityEvidenceMetricsSchema = z
       .string()
       .max(128)
       .regex(/^[a-z0-9-]+=[a-z0-9]+(?:; [a-z0-9-]+=[a-z0-9]+)*$/)
+      .nullable(),
+    audioBitrateKbps: nullableEvidenceNumber(10_000),
+    audioPacketLossPercent: nullableEvidenceNumber(100),
+    audioJitterMs: nullableEvidenceNumber(60_000),
+    audioVideoPlayoutDeltaMs: nullableSignedEvidenceNumber(60_000),
+    videoJitterBufferDelayMs: nullableEvidenceNumber(60_000),
+    audioJitterBufferDelayMs: nullableEvidenceNumber(60_000),
+    audioConcealedSamplesPercent: nullableEvidenceNumber(100),
+    audioConcealmentEventsDelta: nullableEvidenceInteger(10_000),
+    audioCodec: z
+      .string()
+      .max(64)
+      .regex(/^audio\/[A-Za-z0-9.+-]{1,32}$/i)
       .nullable(),
   })
   .strict()
@@ -894,7 +924,7 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("viewer-quality-evidence"),
       viewerPeerId: opaqueIdSchema,
-      parentPeerId: opaqueIdSchema,
+      upstream: activeMediaRouteUpstreamSchema,
       guard: viewerQualityEvidenceGuardSchema,
       ...viewerQualityEvidenceWindowShape,
     })

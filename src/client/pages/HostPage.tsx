@@ -95,10 +95,7 @@ import {
   type QualitySettings,
   type ScreenAudioQuality,
 } from "../media/quality";
-import {
-  HostSfuRoute,
-  type HostSfuPublisherSnapshot,
-} from "../media/host-sfu-route";
+import { HostSfuRoute } from "../media/host-sfu-route";
 import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
@@ -108,6 +105,7 @@ import {
   metricsFromQualityEvidence,
   nextViewerQualityEvidencePresentationExpiryAt,
   presentViewerQualityEvidence,
+  qualityEvidenceUpstreamMatches,
   reconcileViewerQualityEvidencePresentation,
   refreshViewerQualityEvidencePresentation,
   type ViewerQualityEvidencePresentation,
@@ -268,8 +266,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
   );
-  const [sfuPublisherSnapshot, setSfuPublisherSnapshot] =
-    useState<HostSfuPublisherSnapshot | null>(null);
   const [participantPresence, setParticipantPresence] = useState<
     ParticipantPresenceEntry[]
   >([]);
@@ -447,14 +443,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         isCurrentGeneration(generation) && hostSfuRouteRef.current === route
           ? signalRef.current?.send(message) === true
           : false,
-      onPublisherUpdate: (snapshot) => {
-        if (
-          isCurrentGeneration(generation) &&
-          hostSfuRouteRef.current === route
-        ) {
-          setSfuPublisherSnapshot(snapshot);
-        }
-      },
     });
     hostSfuRouteRef.current = route;
     return route;
@@ -463,7 +451,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function clearHostSfuRoute(): void {
     const route = hostSfuRouteRef.current;
     hostSfuRouteRef.current = null;
-    setSfuPublisherSnapshot(null);
     sfuStandbyPrewarmerRef.current?.setUrl(null);
     void route?.disconnect();
   }
@@ -520,7 +507,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
-    setSfuPublisherSnapshot(null);
     sfuStandbyPrewarmerRef.current?.setUrl(null);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -2583,24 +2569,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           )}
 
           <div className="viewer-list">
-            {showConnectionDetails && sfuPublisherSnapshot && (
-              <article className="viewer-item" aria-label="SFU 发送详情">
-                <div className="viewer-item-heading">
-                  <div>
-                    <h3>SFU 发送</h3>
-                    <MediaRouteBadge route="sfu" />
-                  </div>
-                </div>
-                <StatsGrid
-                  metrics={sfuPublisherSnapshot.metrics}
-                  direction="send"
-                  senderParameters={sfuPublisherSnapshot.senderParameters}
-                  audioSenderParameters={
-                    sfuPublisherSnapshot.audioSenderParameters
-                  }
-                />
-              </article>
-            )}
             {viewers.map((viewer) => {
               const snapshot =
                 viewer.upstream.kind === "peer" &&
@@ -2613,8 +2581,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               );
               const qualityEvidence = qualityPresentation?.evidence;
               const hasMatchingQualityEvidence =
-                viewer.upstream.kind === "peer" &&
-                qualityEvidence?.parentPeerId === viewer.upstream.peerId;
+                qualityEvidence !== undefined &&
+                qualityEvidenceUpstreamMatches(
+                  qualityEvidence,
+                  viewer.upstream,
+                );
               const hasCurrentQualityEvidence =
                 hasMatchingQualityEvidence &&
                 qualityPresentation?.fresh === true;
@@ -2633,6 +2604,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 hasCurrentConnectionEvidence
                   ? "connected"
                   : (snapshot?.connectionState ?? "routing");
+              const detailMetrics = hasMatchingQualityEvidence
+                ? metricsFromQualityEvidence(qualityEvidence)
+                : snapshot && hasPeerRouteEvidence(snapshot)
+                  ? snapshot.metrics
+                  : null;
+              const detailDirection = hasMatchingQualityEvidence
+                ? "receive"
+                : "send";
               return (
                 <article className="viewer-item" key={viewer.peerId}>
                   <div className="viewer-item-heading">
@@ -2650,28 +2629,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       />
                     </div>
                   )}
-                  {showConnectionDetails &&
-                    snapshot &&
-                    hasPeerRouteEvidence(snapshot) && (
-                      <StatsGrid
-                        metrics={snapshot.metrics}
-                        direction="send"
-                        senderParameters={snapshot.senderParameters}
-                        audioSenderParameters={snapshot.audioSenderParameters}
-                        progressive
-                      />
-                    )}
-                  {showConnectionDetails &&
-                    qualityEvidence &&
-                    hasMatchingQualityEvidence && (
-                    <>
-                      <p className="section-meta">观看端接收</p>
-                      <StatsGrid
-                        metrics={metricsFromQualityEvidence(qualityEvidence)}
-                        direction="receive"
-                        progressive
-                      />
-                    </>
+                  {showConnectionDetails && detailMetrics && (
+                    <StatsGrid
+                      metrics={detailMetrics}
+                      direction={detailDirection}
+                      progressive
+                    />
                   )}
                   {snapshot?.error && (
                     <p className="inline-error">{snapshot.error}</p>

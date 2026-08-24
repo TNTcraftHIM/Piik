@@ -59,6 +59,7 @@ const qualityEvidence = {
     bitrateKbps: 7_500,
     packetsReceivedDelta: 1_500,
     packetsLostDelta: 2,
+    rttMs: 18,
     jitterMs: 3.5,
     framesDecodedDelta: 120,
     framesDroppedDelta: 1,
@@ -69,6 +70,15 @@ const qualityEvidence = {
     codecProfile: "profile-level-id=42e01f",
     codecParameters:
       "packetization-mode=1; level-asymmetry-allowed=1",
+    audioBitrateKbps: 192,
+    audioPacketLossPercent: 0.2,
+    audioJitterMs: 2.5,
+    audioVideoPlayoutDeltaMs: -12.5,
+    videoJitterBufferDelayMs: 24,
+    audioJitterBufferDelayMs: 18,
+    audioConcealedSamplesPercent: 1,
+    audioConcealmentEventsDelta: 3,
+    audioCodec: "audio/opus",
   },
 } as const;
 
@@ -1417,9 +1427,15 @@ describe("server signaling protocol", () => {
     const forwarded = {
       ...qualityEvidence,
       viewerPeerId: "viewer_12345678",
-      parentPeerId: "host_12345678",
+      upstream: { kind: "peer", peerId: "host_12345678" },
     };
     expect(serverMessageSchema.safeParse(forwarded).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...forwarded,
+        upstream: { kind: "sfu" },
+      }).success,
+    ).toBe(true);
     expect(
       Buffer.byteLength(JSON.stringify(forwarded), "utf8"),
     ).toBeLessThanOrEqual(MAX_VIEWER_QUALITY_EVIDENCE_BYTES);
@@ -1430,6 +1446,12 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         ...qualityEvidence,
         viewerPeerId: "viewer_12345678",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        ...forwarded,
+        upstream: { kind: "none" },
       }).success,
     ).toBe(false);
   });

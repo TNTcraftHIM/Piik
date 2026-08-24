@@ -65,8 +65,9 @@ interface SocketState {
 
 interface ViewerQualityEvidenceGate {
   viewerSessionId: string;
-  parentSessionId: string;
-  parentPeerId: string;
+  recipientSessionId: string;
+  upstreamKind: "peer" | "sfu";
+  upstreamPeerId: string | null;
   connectionId: string;
   routeRevision: number;
   sequence: number;
@@ -1121,25 +1122,35 @@ export class SignalingServer {
       return;
     }
 
+    const host = this.options.roomStore.getConnectedHost(source.roomId);
     let routeRevision = 0;
-    let parent: ConnectedPeer | undefined;
+    let upstream: { kind: "peer"; peerId: string } | { kind: "sfu" };
+    let recipient: ConnectedPeer | undefined;
     if (this.isHybridMediaEnabled()) {
-      const edge = this.hybridMediaRouter?.resolveActivePeerEdge(
+      const edge = this.hybridMediaRouter?.resolveActiveViewerMediaEdge(
         source.roomId,
         source.peerId,
       );
-      if (!edge) {
+      if (!edge || edge.connectionId !== connectionId) {
         return;
       }
       routeRevision = edge.revision;
-      parent = this.connectedPeer(source.roomId, edge.parentPeerId);
+      upstream = edge.upstream;
+      recipient =
+        upstream.kind === "peer"
+          ? this.connectedPeer(source.roomId, upstream.peerId)
+          : host;
     } else {
-      parent = this.options.roomStore.getConnectedHost(source.roomId);
+      if (!host) {
+        return;
+      }
+      upstream = { kind: "peer", peerId: host.peerId };
+      recipient = host;
     }
     if (
-      !parent ||
+      !recipient ||
       message.guard.routeRevision !== routeRevision ||
-      parent.peerId === source.peerId
+      (upstream.kind === "peer" && upstream.peerId === source.peerId)
     ) {
       return;
     }
@@ -1148,8 +1159,10 @@ export class SignalingServer {
     const previous = this.viewerQualityEvidenceGates.get(gateKey);
     const sameGeneration =
       previous?.viewerSessionId === viewerState.sessionId &&
-      previous.parentSessionId === parent.sessionId &&
-      previous.parentPeerId === parent.peerId &&
+      previous.recipientSessionId === recipient.sessionId &&
+      previous.upstreamKind === upstream.kind &&
+      previous.upstreamPeerId ===
+        (upstream.kind === "peer" ? upstream.peerId : null) &&
       previous.connectionId === connectionId &&
       previous.routeRevision === routeRevision;
     const now = this.now();
@@ -1162,10 +1175,13 @@ export class SignalingServer {
       return;
     }
 
-    const forwarded = {
+    const forwarded: Extract<
+      ServerMessage,
+      { type: "viewer-quality-evidence" }
+    > = {
       type: "viewer-quality-evidence" as const,
       viewerPeerId: source.peerId,
-      parentPeerId: parent.peerId,
+      upstream,
       guard: {
         connectionId,
         routeRevision,
@@ -1178,21 +1194,21 @@ export class SignalingServer {
     if (
       Buffer.byteLength(encoded, "utf8") >
       MAX_VIEWER_QUALITY_EVIDENCE_BYTES ||
-      !this.sendEncodedToSession(parent.sessionId, encoded)
+      !this.sendEncodedToSession(recipient.sessionId, encoded)
     ) {
       return;
     }
     this.viewerQualityEvidenceGates.set(gateKey, {
       viewerSessionId: viewerState.sessionId,
-      parentSessionId: parent.sessionId,
-      parentPeerId: parent.peerId,
+      recipientSessionId: recipient.sessionId,
+      upstreamKind: upstream.kind,
+      upstreamPeerId: upstream.kind === "peer" ? upstream.peerId : null,
       connectionId,
       routeRevision,
       sequence: message.sequence,
       acceptedAtMs: now,
     });
-    const host = this.options.roomStore.getConnectedHost(source.roomId);
-    if (!host || host.sessionId === parent.sessionId) {
+    if (!host || host.sessionId === recipient.sessionId) {
       return;
     }
     const hostSocket = this.socketsBySessionId.get(host.sessionId);

@@ -12,6 +12,7 @@ import {
   nextViewerQualityEvidencePresentationExpiryAt,
   presentViewerQualityEvidence,
   qualityEvidenceMatchesSnapshot,
+  qualityEvidenceUpstreamMatches,
   qualityEvidenceWindowFromMetrics,
   reconcileViewerQualityEvidencePresentation,
   refreshViewerQualityEvidencePresentation,
@@ -38,12 +39,17 @@ function receiveMetrics(
     bitrateKbps: 7_500,
     intervalPacketsReceived: 1_500,
     intervalPacketsLost: 2,
+    rttMs: 18,
     jitterMs: 3.5,
-    audioVideoPlayoutDeltaMs: 12.5,
+    audioBitrateKbps: 192,
+    audioPacketLossPercent: 0.2,
+    audioJitterMs: 2.5,
+    audioVideoPlayoutDeltaMs: -12.5,
     videoJitterBufferDelayMs: 24,
     audioJitterBufferDelayMs: 18,
     audioConcealedSamplesPercent: 1,
     intervalAudioConcealmentEvents: 3,
+    audioCodec: "audio/opus",
     intervalFramesDecoded: 120,
     intervalFramesDropped: 1,
     intervalDecodeMs: 2.4,
@@ -75,7 +81,7 @@ function snapshot(
 function serverEvidence(
   overrides: {
     viewerPeerId?: string;
-    parentPeerId?: string;
+    upstream?: { kind: "peer"; peerId: string } | { kind: "sfu" };
     connectionId?: string;
     routeRevision?: number;
     sequence?: number;
@@ -86,7 +92,10 @@ function serverEvidence(
   return {
     type: "viewer-quality-evidence",
     viewerPeerId: overrides.viewerPeerId ?? "viewer_12345678",
-    parentPeerId: overrides.parentPeerId ?? "host_12345678",
+    upstream: overrides.upstream ?? {
+      kind: "peer",
+      peerId: "host_12345678",
+    },
     guard: {
       connectionId: overrides.connectionId ?? "connection_12345678",
       routeRevision: overrides.routeRevision ?? 0,
@@ -108,6 +117,7 @@ describe("viewer quality evidence", () => {
         bitrateKbps: 7_500,
         packetsReceivedDelta: 1_500,
         packetsLostDelta: 2,
+        rttMs: 18,
         jitterMs: 3.5,
         framesDecodedDelta: 120,
         framesDroppedDelta: 1,
@@ -118,6 +128,15 @@ describe("viewer quality evidence", () => {
         codecProfile: "profile-level-id=42e01f",
         codecParameters:
           "packetization-mode=1; level-asymmetry-allowed=1",
+        audioBitrateKbps: 192,
+        audioPacketLossPercent: 0.2,
+        audioJitterMs: 2.5,
+        audioVideoPlayoutDeltaMs: -12.5,
+        videoJitterBufferDelayMs: 24,
+        audioJitterBufferDelayMs: 18,
+        audioConcealedSamplesPercent: 1,
+        audioConcealmentEventsDelta: 3,
+        audioCodec: "audio/opus",
       },
     });
 
@@ -135,7 +154,13 @@ describe("viewer quality evidence", () => {
           frameHeight: 0,
         bitrateKbps: 200_000,
         intervalPacketsLost: -1,
+        rttMs: 70_000,
+        audioBitrateKbps: 20_000,
+        audioPacketLossPercent: 101,
+        audioVideoPlayoutDeltaMs: -70_000,
+        audioCodec: "audio/not valid",
         codecParameters: "raw fmtp; secret=value/with/slash",
+        audioCodecParameters: "useinbandfec=1",
         localCandidateAddress: "192.0.2.10",
         localCandidatePort: 50_000,
         remoteCandidateAddress: "203.0.113.20",
@@ -147,16 +172,19 @@ describe("viewer quality evidence", () => {
       height: null,
       bitrateKbps: null,
       packetsLostDelta: null,
+      rttMs: null,
+      audioBitrateKbps: null,
+      audioPacketLossPercent: null,
+      audioVideoPlayoutDeltaMs: null,
+      audioCodec: null,
       codecParameters: null,
     });
     expect(JSON.stringify(bounded)).not.toContain("rtpStatsId");
     expect(JSON.stringify(bounded)).not.toContain("must-not-leave-the-client");
     expect(JSON.stringify(bounded)).not.toContain("scalabilityMode");
     expect(JSON.stringify(bounded)).not.toContain("L3T3_KEY");
-    expect(JSON.stringify(bounded)).not.toContain("audioVideoPlayoutDeltaMs");
-    expect(JSON.stringify(bounded)).not.toContain("JitterBufferDelayMs");
-    expect(JSON.stringify(bounded)).not.toContain("Concealed");
-    expect(JSON.stringify(bounded)).not.toContain("ConcealmentEvents");
+    expect(JSON.stringify(bounded)).not.toContain("audioCodecParameters");
+    expect(JSON.stringify(bounded)).not.toContain("useinbandfec=1");
     expect(JSON.stringify(bounded)).not.toContain("192.0.2.10");
     expect(JSON.stringify(bounded)).not.toContain("203.0.113.20");
   });
@@ -257,11 +285,37 @@ describe("viewer quality evidence", () => {
     ]);
   });
 
-  it("pairs and renders only the current parent connection", () => {
+  it("reports SFU metrics with the exact route identity", () => {
+    const sent: ClientMessage[] = [];
+    const reporter = new ViewerQualityEvidenceReporter((message) => {
+      sent.push(message);
+      return true;
+    });
+
+    expect(
+      reporter.offerMetrics(
+        "sfu_connection_12345678",
+        receiveMetrics(),
+        3,
+      ),
+    ).toBe(true);
+    expect(sent).toEqual([
+      expect.objectContaining({
+        type: "viewer-quality-evidence",
+        guard: {
+          connectionId: "sfu_connection_12345678",
+          routeRevision: 3,
+        },
+        sequence: 0,
+      }),
+    ]);
+  });
+
+  it("pairs and renders only the current upstream connection", () => {
     const evidence = {
       type: "viewer-quality-evidence",
       viewerPeerId: "viewer_12345678",
-      parentPeerId: "host_12345678",
+      upstream: { kind: "peer", peerId: "host_12345678" },
       guard: {
         connectionId: "connection_12345678",
         routeRevision: 0,
@@ -284,7 +338,7 @@ describe("viewer quality evidence", () => {
     expect(
       classifyHostViewerQualityEvidence(
         evidence,
-        evidence.parentPeerId,
+        "host_12345678",
         evidence.guard.routeRevision,
         current,
       ),
@@ -292,23 +346,47 @@ describe("viewer quality evidence", () => {
     expect(
       classifyHostViewerQualityEvidence(
         evidence,
-        evidence.parentPeerId,
+        "host_12345678",
         evidence.guard.routeRevision,
         { ...current, connectionId: "connection_replaced_12345678" },
       ),
     ).toBeNull();
     expect(
       classifyHostViewerQualityEvidence(
-        { ...evidence, parentPeerId: "viewer_relay_12345678" },
-        evidence.parentPeerId,
+        {
+          ...evidence,
+          upstream: { kind: "peer", peerId: "viewer_relay_12345678" },
+        },
+        "host_12345678",
         evidence.guard.routeRevision,
         null,
       ),
     ).toBe("peer-relayed");
+    const sfuEvidence = {
+      ...evidence,
+      upstream: { kind: "sfu" as const },
+    };
+    expect(
+      classifyHostViewerQualityEvidence(
+        sfuEvidence,
+        "host_12345678",
+        evidence.guard.routeRevision,
+        null,
+      ),
+    ).toBe("sfu");
+    expect(qualityEvidenceUpstreamMatches(sfuEvidence, { kind: "sfu" })).toBe(
+      true,
+    );
+    expect(
+      qualityEvidenceUpstreamMatches(sfuEvidence, {
+        kind: "peer",
+        peerId: "host_12345678",
+      }),
+    ).toBe(false);
     expect(
       classifyHostViewerQualityEvidence(
         evidence,
-        evidence.parentPeerId,
+        "host_12345678",
         evidence.guard.routeRevision + 1,
         current,
       ),
@@ -321,11 +399,21 @@ describe("viewer quality evidence", () => {
       bitrateKbps: 7_500,
       packetsLost: 2,
       packetLossPercent: (2 / 1_502) * 100,
+      rttMs: 18,
       framesDropped: 1,
       intervalFramesDecoded: 120,
       intervalFramesDropped: 1,
       intervalFreezeCount: 0,
       codec: "video/H264",
+      audioBitrateKbps: 192,
+      audioPacketLossPercent: 0.2,
+      audioJitterMs: 2.5,
+      audioVideoPlayoutDeltaMs: -12.5,
+      videoJitterBufferDelayMs: 24,
+      audioJitterBufferDelayMs: 18,
+      audioConcealedSamplesPercent: 1,
+      intervalAudioConcealmentEvents: 3,
+      audioCodec: "audio/opus",
     });
   });
 

@@ -1164,6 +1164,13 @@ h3 {
   display: none;
 }
 
+.stats-contract-warning {
+  margin: 10px 0 0;
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .metric {
   min-width: 0;
 }

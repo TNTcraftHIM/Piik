@@ -29,8 +29,8 @@ const metrics = {
   candidatePairSampleWindowMs: 2_000,
   codec: "video/VP8",
   codecParameters: "max-fs=8160",
-  captureWidth: 1920,
-  captureHeight: 1080,
+  captureWidth: 1_920,
+  captureHeight: 1_080,
   captureFramesPerSecond: 60,
   mediaSourceFramesPerSecond: 58.5,
   rtpRid: "h",
@@ -44,7 +44,7 @@ const metrics = {
 } satisfies ConnectionMetrics;
 
 describe("StatsGrid progressive disclosure", () => {
-  it("keeps route-critical metrics above an accessible collapsed deep panel", () => {
+  it("keeps one-glance picture results above an accessible detail panel", () => {
     const html = renderToStaticMarkup(
       createElement(StatsGrid, {
         metrics,
@@ -53,20 +53,11 @@ describe("StatsGrid progressive disclosure", () => {
       }),
     );
 
-    for (const label of [
-      "发送码率",
-      "帧率",
-      "分辨率",
-      "RTT",
-      "视频丢包率",
-      "传输协议",
-      "候选路径",
-      "质量状态",
-    ]) {
+    for (const label of ["分辨率", "帧率", "码率", "丢包率"]) {
       expect(html).toContain(label);
     }
     expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('title="展开更多连接指标"');
+    expect(html).toContain('title="展开详细指标"');
     const controlId = html.match(/aria-controls="([^"]+)"/)?.[1];
     expect(controlId).toBeTruthy();
     const panelStart = html.indexOf(`<dl id="${controlId}"`);
@@ -74,34 +65,62 @@ describe("StatsGrid progressive disclosure", () => {
     expect(html.slice(panelStart, html.indexOf(">", panelStart))).toContain(
       'hidden=""',
     );
-    expect(html.indexOf("质量状态")).toBeLessThan(panelStart);
-    expect(html.indexOf("本地候选地址")).toBeGreaterThan(panelStart);
-    expect(html.indexOf("远端候选地址")).toBeGreaterThan(panelStart);
-    expect(html).toContain("192.0.2.10:50000");
-    expect(html).toContain("[2001:db8::10]:50001");
-    expect(html).toContain("候选对 ID");
-    expect(html).toContain("candidate-pair-7");
-    expect(html).toContain("STUN 响应");
-    expect(html).toContain("18 累计 · +1 / 2.0 s");
-    expect(html.indexOf("视频 Codec")).toBeGreaterThan(panelStart);
-    expect(html.indexOf("音频发送码率")).toBeGreaterThan(panelStart);
-    expect(html.indexOf("编码输入帧率")).toBeGreaterThan(panelStart);
-    expect(html.indexOf("最近区间编码量")).toBeGreaterThan(panelStart);
-    expect(html.indexOf("最近区间编码/帧")).toBeGreaterThan(panelStart);
+    for (const label of [
+      "RTT",
+      "可用上行",
+      "质量状态",
+      "捕获设置",
+      "编码输入帧率",
+      "编码器",
+      "编码耗时/帧",
+      "音频码率",
+    ]) {
+      expect(html.indexOf(label)).toBeGreaterThan(panelStart);
+    }
     expect(html).toContain("58.5 fps");
-    expect(html).toContain("116 帧 · 371.2 ms");
-    expect(html).toContain("当前 RID");
   });
 
-  it("keeps the existing full grid when progressive disclosure is not requested", () => {
+  it("omits fixed codecs and browser-internal transport details", () => {
     const html = renderToStaticMarkup(
       createElement(StatsGrid, { metrics, direction: "send" }),
     );
 
-    expect(html).toContain("视频 Codec");
-    expect(html).toContain("音频发送码率");
-    expect(html).not.toContain("更多指标");
+    for (const omitted of [
+      "视频 Codec",
+      "音频 Codec",
+      "候选路径",
+      "本地候选地址",
+      "远端候选地址",
+      "候选对 ID",
+      "STUN 响应",
+      "candidate-pair-7",
+      "192.0.2.10",
+      "当前 RID",
+      "max-fs=8160",
+      "请求 / 应用",
+    ]) {
+      expect(html).not.toContain(omitted);
+    }
+    expect(html).not.toContain("详细指标");
     expect(html).not.toContain("aria-expanded");
+  });
+
+  it("shows codecs only when the negotiated contract is unexpected", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatsGrid, {
+        metrics: {
+          ...metrics,
+          codec: "video/H264",
+          audioCodec: "audio/PCMU",
+        },
+        direction: "receive",
+      }),
+    );
+
+    expect(html).toContain("视频编码为 H264，预期 VP8");
+    expect(html).toContain("音频编码为 PCMU，预期 Opus");
+    expect(html).not.toContain("视频 Codec");
+    expect(html).not.toContain("音频 Codec");
   });
 
   it("does not expose an unknown browser quality-limitation value", () => {
@@ -119,9 +138,14 @@ describe("StatsGrid progressive disclosure", () => {
     expect(html).not.toContain("browser-internal-sentinel");
   });
 
-  it("shows local inbound playout and repair evidence only for receivers", () => {
+  it("shows available inbound playback and repair evidence only for receivers", () => {
     const receiverMetrics = {
       ...metrics,
+      jitterMs: 4.5,
+      framesDropped: 2,
+      intervalDecodeMs: 2.1,
+      intervalFreezeCount: 1,
+      intervalFreezeDurationMs: 120,
       audioVideoPlayoutDeltaMs: -12.5,
       videoJitterBufferDelayMs: 24.5,
       audioJitterBufferDelayMs: 18.5,
@@ -140,41 +164,36 @@ describe("StatsGrid progressive disclosure", () => {
         direction: "send",
       }),
     );
-    const unavailableReceiveHtml = renderToStaticMarkup(
-      createElement(StatsGrid, {
-        metrics,
-        direction: "receive",
-      }),
-    );
 
     for (const label of [
+      "网络抖动",
+      "丢帧",
+      "解码耗时/帧",
+      "画面冻结",
+      "冻结时长",
       "音视频播放差",
-      "视频抖动缓冲",
-      "音频抖动缓冲",
-      "音频补偿样本率",
-      "音频补偿事件",
+      "视频缓冲",
+      "音频缓冲",
+      "音频补偿率",
+      "音频补偿",
     ]) {
       expect(receiveHtml).toContain(label);
       expect(sendHtml).not.toContain(label);
-      expect(unavailableReceiveHtml).not.toContain(label);
     }
     expect(receiveHtml).toContain("-12.5 ms");
     expect(receiveHtml).toContain("1.3%");
   });
 
-  it("omits candidate endpoints when the browser withholds either field", () => {
+  it("does not render an empty second level", () => {
     const html = renderToStaticMarkup(
       createElement(StatsGrid, {
-        metrics: {
-          ...metrics,
-          localCandidatePort: null,
-          remoteCandidateAddress: null,
-        },
+        metrics: EMPTY_METRICS,
         direction: "receive",
+        progressive: true,
       }),
     );
 
-    expect(html).not.toContain("本地候选地址");
-    expect(html).not.toContain("远端候选地址");
+    expect(html).not.toContain("详细指标");
+    expect(html).not.toContain("aria-expanded");
   });
 });
