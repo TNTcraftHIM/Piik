@@ -89,8 +89,6 @@ import {
   type QualityProfileId,
   type QualitySettings,
   type ScreenAudioQuality,
-  type VideoCodecPreference,
-  VIDEO_CODEC_PREFERENCE_LABELS,
 } from "../media/quality";
 import {
   HostSfuRoute,
@@ -125,7 +123,6 @@ import {
   shouldPauseLocalPreview,
   sourceSwitchNotice,
   type HostAction,
-  videoCodecLockNotice,
 } from "./host-page-notices";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
@@ -738,16 +735,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     );
   }
 
-  function changeVideoCodec(videoCodec: VideoCodecPreference): void {
-    if (phase === "starting" || phase === "live") {
-      return;
-    }
-    const next = { ...qualitySettingsRef.current, videoCodec };
-    qualitySettingsRef.current = next;
-    setQualitySettings(next);
-    setAdvancedQuality((current) => ({ ...current, videoCodec }));
-  }
-
   function changeScreenAudioQuality(
     screenAudioQuality: ScreenAudioQuality,
   ): void {
@@ -763,13 +750,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     preserveAdvancedDraft = false,
   ): Promise<void> {
     const previousProfile = qualitySettingsRef.current;
-    if (
-      phase === "live" &&
-      (nextProfile.videoCodec ?? "vp8") !==
-        (previousProfile.videoCodec ?? "vp8")
-    ) {
-      return;
-    }
     if (phase !== "live") {
       commitQuality(nextProfile, preserveAdvancedDraft);
       return;
@@ -1953,8 +1933,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     : null;
   const activeCodeEntryPolicy =
     room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
-  const codecLockNotice = videoCodecLockNotice(phase);
-
   return (
     <div className="app-shell">
       <AppHeader
@@ -2250,8 +2228,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         onClick={() =>
                           void changeQuality({
                             ...QUALITY_PROFILES[id],
-                            videoCodec:
-                              qualitySettingsRef.current.videoCodec ?? "vp8",
                             screenAudioQuality: resolveScreenAudioQuality(
                               qualitySettingsRef.current.screenAudioQuality,
                             ),
@@ -2363,49 +2339,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         </button>
                       ))}
                     </div>
-                  </fieldset>
-                  <fieldset
-                    className="control-group quality-priority"
-                    aria-describedby={
-                      codecLockNotice ? "video-codec-lock-notice" : undefined
-                    }
-                  >
-                    <legend>视频编码</legend>
-                    <div className="segmented-control">
-                      {(
-                        Object.keys(
-                          VIDEO_CODEC_PREFERENCE_LABELS,
-                        ) as VideoCodecPreference[]
-                      ).map((codec) => (
-                        <button
-                          key={codec}
-                          type="button"
-                          className={
-                            (advancedQuality.videoCodec ?? "vp8") === codec
-                              ? "is-selected"
-                              : undefined
-                          }
-                          aria-pressed={
-                            (advancedQuality.videoCodec ?? "vp8") === codec
-                          }
-                          disabled={
-                            phase === "starting" ||
-                            phase === "live" ||
-                            changingQuality
-                          }
-                          onClick={() =>
-                            changeVideoCodec(codec)
-                          }
-                        >
-                          {VIDEO_CODEC_PREFERENCE_LABELS[codec]}
-                        </button>
-                      ))}
-                    </div>
-                    {codecLockNotice && (
-                      <p id="video-codec-lock-notice" className="control-note">
-                        {codecLockNotice}
-                      </p>
-                    )}
                   </fieldset>
                   <fieldset className="control-group quality-priority">
                     <legend>音频质量</legend>

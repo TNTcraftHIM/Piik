@@ -232,13 +232,13 @@ networks.
 ## Implemented Bounded Quality Coordination
 
 The implementation coordinates one strict `QualitySettings` object across the
-peer-assisted tree without adaptation logic. Exact v10 source accepts advanced
+peer-assisted tree without adaptation logic. Current source and production accept advanced
 480p/720p/1080p/1440p resolution values, integer 15-60 fps, integer 2-12 Mbps,
 and the three standard degradation preferences; missing, extra, or out-of-range
 fields fail schema validation. The three visible presets are recommendations
 rather than wire IDs, and `480p` is only the advanced 854x480 resolution. The
 server stores the latest complete object in a room-count-bounded in-memory map,
-defaults to 1080p30 at 5 Mbps with balanced priority in v10 source, includes it in
+defaults to 1080p30 at 5 Mbps with balanced priority, includes it in
 peer-assisted authenticated snapshots, and broadcasts Host changes to online
 Viewers. Production v10 uses the same 1080p30 default and advanced 480p boundary.
 The value survives a stopped share, is removed with

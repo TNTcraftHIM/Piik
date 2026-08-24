@@ -4,9 +4,7 @@
 
 仓库是跨 session、设备和 agent 的持久事实源。会影响后续工作的结论必须先进入其权威文档；聊天、agent 摘要、旧分支和临时计划都不能替代仓库真相。
 
-常驻上下文只保留每次工作都需要的边界和导航。细节按需读取，完成历史交给 Git。选择满足已验证需求的最简单方案，不为假设性规模、没有消费者的能力或一次性过程增加常驻规则。
-
-“东坡肉规则”适用于所有 current truth：纠正一个方案后，当前文档、代码、UI、配置和 PR 文案只描述现行结论，以及仍约束该结论的理由。被否定方案和“为什么删掉它”的解释一并移除，由 Git 历史保存。
+常驻上下文只保留每次工作都需要的边界和导航。细节按需读取，完成历史交给 Git。任务范围、最小正确结果和 current-result 交付遵循 `AGENTS.md` 摘要并完整读取仓库内的 [`stop-that-shit` skill](../.agents/skills/stop-that-shit/SKILL.md)；本文件只维护仓库特有的事实治理规则。
 
 ## 事实分层
 
@@ -31,33 +29,28 @@
 
 ## 真相更新顺序
 
-1. 把讨论、纠正、示例、review 建议、实验或 agent 发现视为输入，先复述目标和源头理由。
-2. 对照完整产品模型、当前代码、测试和证据，指出冲突、不必要复杂度和仍未确定的语义。
-3. 就地更新受影响的 requirement、design、ADR 或 research owner；仅在快照确实变化时同步 memory/status，未决执行项进入 TODO。
-4. 删除冲突旧文本和被否定方案的残留，检查各 current 文档内部一致。
-5. 形成 Git-tracked truth checkpoint，再开始依赖该结论的实现或派发。
+1. 按 [`stop-that-shit`](../.agents/skills/stop-that-shit/SKILL.md) 的 authority 和 scope 规则，对照完整产品模型、当前代码、测试和证据确定目标；语义未定时只冻结依赖项。
+2. 就地更新受影响的 requirement、design、ADR 或 research owner；仅在快照确实变化时同步 memory/status，未决执行项进入 TODO。
+3. 检查各 current owner 一致并形成 Git-tracked truth checkpoint，再开始依赖该结论的实现或派发。
 
 语义仍未决定时，在 TODO 记录 hold，只冻结依赖项。接受的真相先进入 canonical `main`；保留候选再从该精确提交 rebase 或重建一次，只移植获批的 scoped code、tests 和 new facts。旧分支的 truth 文档不得覆盖当前 owner。具体 Git 和 worktree 操作遵循 `CONTRIBUTING.md`。
 
 ## 机制减负审查
 
-设计或扩展机制前，先确认它服务哪个用户行为，量化删除后真正损失的功能和体验，再把这份收益与新增的代码、配置、迁移、测试、运行时状态、部署和故障面比较。已有需求或消费者不自动证明机制值得保留；还要问当前规模和使用方式是否真的需要它，现有标准、框架行为或更小的状态是否已经够用。若退让有界且 owner 接受，先更新产品合同，再整体删除失去必要性的组件、开关和分支；若退让不可接受，则保留合同并寻找更小实现。减负审查先做只读清点，不以行数为目标，也不演变成无边界重构。
+机制减负遵循 [`stop-that-shit`](../.agents/skills/stop-that-shit/SKILL.md) 的 scope 和 smallest-correct-result 规则。本仓库的审查先只读清点机制服务的用户行为，量化移除后的真实退让，并与代码、配置、迁移、测试、运行时状态、部署和故障面的整体成本比较。若 owner 接受有界退让，先更新产品合同再删除失去必要性的完整表面；否则保留合同并寻找更小实现。审查不以行数为目标，也不授权无边界重构。
 
-内存房间决定是基准案例：先衡量删除 SQLite 的真实退让。应用重启本来就会中断全部活动媒体，额外损失只是当前房间号、邀请和休眠租约；同一浏览器还能重放本地创建偏好。对当前私用、最多 20 名 Viewer、允许重启清空的产品，这点体验回退很小。相较之下，SQLite 会持续引入 schema、迁移、路径配置、可写目录、备份、测试分支和跨重启状态语义。产品因此主动接受这份有界回退并更新合同，随后才选择进程内模型和整体删除持久层。结论不是“小项目不应使用 SQLite”，而是不要为价值很小的能力长期维护一整套机制。
-
-应用层 TURN 是第二个基准案例：它只能覆盖 direct peer 穿透失败但 UDP 仍可到达中继的窄区间，公开 SFU/UDP 已覆盖当前产品所需的中央兜底；全部 UDP 被封时 TURN/UDP 同样无效。保留它却需要独立 URL/credential schema、短期签发、route tuple、allocation ledger、relay-only rebuild、UI、测试、coturn relay 配置和额外端口。产品接受当前 UDP-only 的明确失败边界，把未来严格防火墙传输留给有真实证据时的 LiveKit 内部能力，并整体删除应用 TURN。生产因此从 TCP/UDP 3478 加 relay range 收敛为 STUN-only UDP 3478，核心 direct/SFU 能力不变。结论不是“TURN 标准没有用途”，而是不要在已有更小通用机制覆盖主要行为时，继续维护重复的应用层路径。
+内存房间与应用层 TURN 分别是 [ADR-0002](./adr/0002-memory-resident-protected-rooms.md) 和 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md) 已接受的机制减负实例；TURN 的完整成本证据由 [ICE/TURN 研究](./research/built-in-peer-ice-turn.md)维护。具体取舍和当前边界不在本文件复制，也不推广为对 SQLite 或 TURN 的通用结论。
 
 ## 检查点与恢复
 
 在需求或优先级被接受、设计或研究结论改变、实质阶段切换、分支/PR/agent 交接、可能 compaction 或长暂停前更新事实 owner。不要为每个函数、工具调用或未形成结论的探索建立检查点。
 
-检查点只保存以后仍需要的结论、当前状态、下一步和真实阻塞。不要保存原始对话、完整日志、工具输出、临时路径、重复代码结构、可廉价重查的事实或过程性 TODO 流水账。
+检查点按 [`stop-that-shit`](../.agents/skills/stop-that-shit/SKILL.md) 的 current-result 规则，只保存以后仍需要的结论、当前状态、下一步和真实阻塞；不保存原始对话或工具输出、完整日志、临时路径、可廉价重查的事实和过程性 TODO 流水账。
 
 恢复上下文时依次读取 `AGENTS.md`、project memory、status、TODO、相关需求/设计/ADR/研究，然后检查当前分支、`git status`、近期 commit 和 PR。摘要与仓库冲突时，以当前代码、测试和权威文档为准。
 
 ## 清理规则
 
-- 新事实与旧事实冲突时，在同一变更中替换或删除旧内容。
 - `project-memory.md` 和 `status.md` 接近预算时，先删除可从代码或 Git 恢复的完成/失效内容，再把仍需保留的细节迁到现有 owner；不要反复微压缩句子。
 - `todo.md` 只保留真实未完工作、明确 hold 和待用户决策，不保留完成清单或一次性审计过程。
 - `verification-status.md` 只保留仍影响验收的跨模块证据；成熟结论迁回 requirement、ADR、research 或 deployment，过期结果删除。

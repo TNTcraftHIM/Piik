@@ -746,7 +746,7 @@ describe("client signaling recovery policy", () => {
     Object.defineProperty(authenticated, "data", {
       value: JSON.stringify({
         type: "authenticated",
-        protocol: "screener-v10",
+        protocol: "screener-v11",
         role: "viewer",
         peerId: "viewer_12345678",
         roomExpiresAt: null,
@@ -815,7 +815,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v10",
+        protocol: "screener-v11",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -851,7 +851,7 @@ describe("client signaling recovery policy", () => {
     });
     receive(sockets[1]!, {
       type: "authenticated",
-      protocol: "screener-v10",
+      protocol: "screener-v11",
       role: "host",
       peerId: "host_12345678",
       roomExpiresAt: null,
@@ -936,7 +936,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v10",
+        protocol: "screener-v11",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -1061,7 +1061,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v10",
+      protocol: "screener-v11",
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -1086,7 +1086,6 @@ describe("client signaling recovery policy", () => {
         maxFramerate: 30,
         maxBitrate: 5_000_000,
         degradationPreference: "balanced",
-        videoCodec: "automatic",
         screenAudioQuality: "music",
       },
     });
@@ -1189,7 +1188,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v10",
+        protocol: "screener-v11",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });

@@ -101,7 +101,7 @@ all code-only Viewer attempts. A valid room grant may bypass that site gate only
 for the exact Viewer role and room. Neither a code, room password, nor Viewer
 grant can create a room or become Host authority.
 
-The current `screener-v10` room-entry boundary uses exactly one
+The current Browser room-entry boundary uses exactly one
 `ROOM_ACCESS_DENIED` result. It applies only after site access to a well-formed
 code-only Viewer attempt whose expected admission rejects an unknown or expired
 room, disabled code entry, an absent or incorrect room password, a full room, or
@@ -151,7 +151,7 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   storage does not. No fingerprint or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
   of application/proxy logs and server durable storage.
-- On `screener-v10`, every expected denial of a well-formed, site-authorized
+- On the current Browser wire, every expected denial of a well-formed, site-authorized
   code-only attempt yields only `ROOM_ACCESS_DENIED` with the same public
   message and connection-close behavior. Tests cover unknown/expired rooms,
   disabled entry, absent/wrong passwords, full and bounded admission, while
@@ -160,12 +160,14 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 
 ## Implementation Status
 
-Current source and production run the single `screener-v10` wire and implement
-this complete room boundary,
-including allocation, leases, orthogonal grant/code admission, rotate/revoke,
-password policy, local profile replay, restart loss, browser storage privacy,
-and the neutral `ROOM_ACCESS_DENIED` result. All expected code-only denials use
-that same public result followed by the shared authentication-failed close code.
+Exact current source `f5a295c` runs the strict `screener-v11` wire. Exact
+production `2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, runs
+`screener-v10`; `screener-v11` is not deployed. Both implement this complete
+room boundary, including allocation, leases, orthogonal grant/code admission,
+rotate/revoke, password policy, local profile replay, restart loss, browser
+storage privacy, and the neutral `ROOM_ACCESS_DENIED` result. All expected
+code-only denials use that same public result followed by the shared
+authentication-failed close code.
 
 Exact release and operational evidence remain owned by deployment and
 verification status.

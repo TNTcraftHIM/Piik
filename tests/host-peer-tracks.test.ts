@@ -79,6 +79,8 @@ class FakePeerConnection {
   static activeCount = 0;
   static peakActiveCount = 0;
   static offersFailing = 0;
+  static omitCodecPreferenceSetter = false;
+  static codecPreferenceCallsFailing = 0;
 
   readonly configurations: RTCConfiguration[] = [];
   readonly senders: FakeSender[] = [];
@@ -87,6 +89,7 @@ class FakePeerConnection {
     init?: RTCRtpTransceiverInit;
   }> = [];
   readonly codecPreferenceCalls: RTCRtpCodec[][] = [];
+  createOfferCallCount = 0;
   remoteDescriptionCallCount = 0;
   deferRemoteDescriptionCall: number | null = null;
   private releaseRemoteDescription: (() => void) | null = null;
@@ -128,15 +131,24 @@ class FakePeerConnection {
     this.transceiverInputs.push({ trackOrKind, init });
     return {
       sender,
-      setCodecPreferences: (codecs: RTCRtpCodec[]) => {
-        this.codecPreferenceCalls.push([...codecs]);
-      },
+      ...(FakePeerConnection.omitCodecPreferenceSetter
+        ? {}
+        : {
+            setCodecPreferences: (codecs: RTCRtpCodec[]) => {
+              if (FakePeerConnection.codecPreferenceCallsFailing > 0) {
+                FakePeerConnection.codecPreferenceCallsFailing -= 1;
+                throw new Error("setCodecPreferences failed");
+              }
+              this.codecPreferenceCalls.push([...codecs]);
+            },
+          }),
     } as unknown as RTCRtpTransceiver;
   }
 
   addEventListener(): void {}
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
+    this.createOfferCallCount += 1;
     if (FakePeerConnection.offersFailing > 0) {
       FakePeerConnection.offersFailing -= 1;
       throw new Error("createOffer failed");
@@ -349,6 +361,8 @@ beforeEach(() => {
   FakePeerConnection.activeCount = 0;
   FakePeerConnection.peakActiveCount = 0;
   FakePeerConnection.offersFailing = 0;
+  FakePeerConnection.omitCodecPreferenceSetter = false;
+  FakePeerConnection.codecPreferenceCallsFailing = 0;
   statsCallbacks.length = 0;
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
   vi.stubGlobal("RTCRtpSender", {
@@ -392,63 +406,93 @@ describe("HostPeer source replacement", () => {
     expect(updates.at(-1)?.error).not.toContain("createOffer failed");
   });
 
-  it("prefers VP8 before the first offer by default", async () => {
+  it("offers only advertised VP8 and repair codecs", async () => {
+    vi.stubGlobal("RTCRtpSender", {
+      getCapabilities: () => ({
+        codecs: [
+          { mimeType: "video/H264", clockRate: 90_000 },
+          { mimeType: "video/rtx", clockRate: 90_000 },
+          { mimeType: "video/VP9", clockRate: 90_000 },
+          { mimeType: "video/RED", clockRate: 90_000 },
+          { mimeType: "video/VP8", clockRate: 90_000 },
+          { mimeType: "video/ulpfec", clockRate: 90_000 },
+          { mimeType: "video/AV1", clockRate: 90_000 },
+          { mimeType: "video/flexfec-03", clockRate: 90_000 },
+        ],
+        headerExtensions: [],
+      }),
+    });
     const peer = createPeer(createStream(createTrack("video", "video"), null));
 
     await expect(peer.start()).resolves.toBe(true);
 
+    const connection = FakePeerConnection.latest!;
     expect(
-      FakePeerConnection.latest!.codecPreferenceCalls[0]?.[0]?.mimeType,
-    ).toBe("video/VP8");
+      connection.codecPreferenceCalls[0]?.map(({ mimeType }) =>
+        mimeType.toLowerCase(),
+      ),
+    ).toEqual([
+      "video/vp8",
+      "video/rtx",
+      "video/red",
+      "video/ulpfec",
+      "video/flexfec-03",
+    ]);
+    expect(connection.createOfferCallCount).toBe(1);
   });
 
-  it("restores browser codec ordering for explicit automatic", async () => {
+  it("fails before creating an offer when codec preferences are unavailable", async () => {
+    FakePeerConnection.omitCodecPreferenceSetter = true;
+    const updates: PeerSnapshot[] = [];
     const peer = createPeer(
       createStream(createTrack("video", "video"), null),
-      () => undefined,
-      { iceServers: [] },
-      { ...QUALITY_PROFILES["720p30"], videoCodec: "automatic" },
+      (snapshot) => updates.push(snapshot),
     );
 
-    await expect(peer.start()).resolves.toBe(true);
+    await expect(peer.start()).resolves.toBe(false);
 
-    expect(FakePeerConnection.latest!.codecPreferenceCalls).toEqual([[]]);
+    expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
+    expect(FakePeerConnection.latest!.localDescription).toBeNull();
+    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用 VP8 视频编码");
   });
 
-  it.each(["h264", "vp8"] as const)(
-    "prefers %s before the first offer while retaining fallback codecs",
-    async (videoCodec) => {
-      vi.stubGlobal("RTCRtpSender", {
-        getCapabilities: () => ({
-          codecs: [
-            { mimeType: "video/VP8", clockRate: 90_000 },
-            { mimeType: "video/rtx", clockRate: 90_000 },
-            {
-              mimeType: "video/H264",
-              clockRate: 90_000,
-              sdpFmtpLine: "packetization-mode=1;profile-level-id=42001f",
-            },
-            { mimeType: "video/rtx", clockRate: 90_000 },
-          ],
-          headerExtensions: [],
-        }),
-      });
-      const peer = createPeer(
-        createStream(createTrack("video", "video"), null),
-        () => undefined,
-        { iceServers: [] },
-        { ...QUALITY_PROFILES["720p30"], videoCodec },
-      );
+  it("fails before creating an offer when VP8 is unavailable", async () => {
+    vi.stubGlobal("RTCRtpSender", {
+      getCapabilities: () => ({
+        codecs: [
+          { mimeType: "video/H264", clockRate: 90_000 },
+          { mimeType: "video/rtx", clockRate: 90_000 },
+        ],
+        headerExtensions: [],
+      }),
+    });
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      (snapshot) => updates.push(snapshot),
+    );
 
-      await expect(peer.start()).resolves.toBe(true);
+    await expect(peer.start()).resolves.toBe(false);
 
-      const preferences = FakePeerConnection.latest!.codecPreferenceCalls[0]!;
-      expect(preferences[0]?.mimeType.toLowerCase()).toBe(`video/${videoCodec}`);
-      expect(preferences.map(({ mimeType }) => mimeType.toLowerCase())).toEqual(
-        expect.arrayContaining(["video/h264", "video/vp8", "video/rtx"]),
-      );
-    },
-  );
+    expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
+    expect(FakePeerConnection.latest!.localDescription).toBeNull();
+    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用 VP8 视频编码");
+  });
+
+  it("fails before creating an offer when codec preference setup fails", async () => {
+    FakePeerConnection.codecPreferenceCallsFailing = 1;
+    const updates: PeerSnapshot[] = [];
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      (snapshot) => updates.push(snapshot),
+    );
+
+    await expect(peer.start()).resolves.toBe(false);
+
+    expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
+    expect(FakePeerConnection.latest!.localDescription).toBeNull();
+    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用 VP8 视频编码");
+  });
 
   it("applies STUN-only ICE configuration at creation and update", () => {
     const peer = createPeer(

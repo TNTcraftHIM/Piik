@@ -11,6 +11,7 @@ package-lock.json
 tsconfig.json
 .codex/config.toml
 .codex/README.md
+.agents/skills/stop-that-shit/SKILL.md
 .githooks/pre-commit
 .github/pull_request_template.md
 .github/workflows/repository-hygiene.yml

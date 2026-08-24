@@ -36,23 +36,27 @@ does not say that minimizing the separate capturing page must reduce capture.
 Capture constraints are post-selection preferences and allow frame decimation,
 so requested `maxFramerate` is not proof of actual source or encoded frame rate.
 
-The current deployed default video preference is VP8. Every run records
-the actual negotiated codec and encoder rather than inferring either from
-the preference. H.264, VP8, and encoder implementation are diagnostic variables
-only after a stable baseline exists; none is a page-keepalive mechanism.
+The accepted Browser video codec is fixed VP8. Every run still records the
+actual negotiated codec and encoder rather than inferring either from
+configuration. Encoder implementation is a diagnostic variable only after a
+stable baseline exists; neither codec nor encoder choice is a page-keepalive
+mechanism.
 
 ## Current Source Boundary
 
-The source review covers exact Browser v10 source
-`fdd5a4a529ff297f41c05ea3388bf484d76afe8f`, integrated and deployed by exact
-main `2726edde9b87f31fd76e749de47972ef817a9bd5`. The current path does not claim or
-implement a page-keepalive mechanism, and deployment health supplies no
-physical background-capture evidence.
+The no-video-hint review baseline is
+`a26eb39dc677003110787b0ed1581c208f894fd7`. Exact current source
+`f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` uses strict `screener-v11`,
+fixed VP8, no video hint, and no codec UI, quality state, or wire field.
+Production remains exact `2726edde9b87f31fd76e749de47972ef817a9bd5`,
+release `2726edd`, on v10 with video `motion` and the pre-share codec selector.
+The current path does not claim or implement a page-keepalive mechanism, and
+deployment health supplies no physical background-capture evidence.
 
 - Current `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream,
   applies ideal/max capture constraints, leaves the video hint unset, and
   applies sender bitrate, frame-rate, and degradation ceilings. Production
-  still marks video as `motion` until the source change is deployed. Explicit
+  still marks video as `motion` until v11 is deployed. Explicit
   sharing pause and authoritative reconnect re-pause change capture tracks'
   `enabled` state; neither manufactures foreground activity. Audio
   `contentHint = "music"` remains unchanged.
@@ -265,7 +269,7 @@ The diagnostic does not adopt:
   service-worker activity as a liveness proof;
 - the Web Screen Wake Lock API as a capture-priority control;
 - product launch flags that disable browser background policies;
-- visibility-triggered H.264/VP8 switching, forced H.264, extra sender
+- visibility-triggered codec switching, another Browser media codec, extra sender
   generations, or automatic capture replacement;
 - server-side media telemetry, raw diagnostic upload, periodic probes, routing
   changes, quality-driven reparenting, or magic quality thresholds; or

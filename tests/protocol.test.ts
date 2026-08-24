@@ -32,10 +32,14 @@ const qualitySettings = {
   degradationPreference: "maintain-resolution",
 } as const;
 
-const qualitySettingsWithCodec = {
+const qualitySettingsWithAudio = {
   ...qualitySettings,
-  videoCodec: "h264",
   screenAudioQuality: "music",
+} as const;
+
+const legacyCodecQualitySettings = {
+  ...qualitySettings,
+  videoCodec: "vp8",
 } as const;
 
 const qualityEvidence = {
@@ -67,7 +71,7 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
-  it("keeps executable senders outside the Browser-only v10 checkpoint", () => {
+  it("keeps executable senders outside the Browser-only v11 checkpoint", () => {
     const nativeWire = readFileSync(
       join(
         import.meta.dirname,
@@ -76,7 +80,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v10");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v11");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -247,13 +251,13 @@ describe("client signaling protocol", () => {
           token,
           clientId: "host_client_12345678",
           shareGeneration: "share_generation_12345678",
-          qualitySettings: qualitySettingsWithCodec,
+          qualitySettings: qualitySettingsWithAudio,
         }),
       ),
     ).toMatchObject({
       role: "host",
       shareGeneration: "share_generation_12345678",
-      qualitySettings: qualitySettingsWithCodec,
+      qualitySettings: qualitySettingsWithAudio,
     });
     expect(
       clientMessageSchema.safeParse({
@@ -588,7 +592,7 @@ describe("client signaling protocol", () => {
   });
 
   it("accepts only strict, bounded quality settings", () => {
-    expect(DEFAULT_QUALITY_SETTINGS.videoCodec).toBe("vp8");
+    expect(DEFAULT_QUALITY_SETTINGS).not.toHaveProperty("videoCodec");
     expect(
       clientMessageSchema.safeParse({
         type: "set-quality-settings",
@@ -598,7 +602,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "set-quality-settings",
-        qualitySettings: qualitySettingsWithCodec,
+        qualitySettings: qualitySettingsWithAudio,
       }).success,
     ).toBe(true);
     expect(
@@ -628,7 +632,7 @@ describe("client signaling protocol", () => {
       { ...qualitySettings, maxBitrate: 12_000_001 },
       { ...qualitySettings, maxBitrate: 5_000_000.5 },
       { ...qualitySettings, degradationPreference: "automatic" },
-      { ...qualitySettings, videoCodec: "vp9" },
+      legacyCodecQualitySettings,
       { ...qualitySettings, screenAudioQuality: "lossless" },
       { ...qualitySettings, screenAudioQuality: 960_000 },
       { ...qualitySettings, codec: "video/VP9" },

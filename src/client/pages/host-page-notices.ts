@@ -94,9 +94,3 @@ export function shouldPauseLocalPreview(
 ): boolean {
   return visibilityState !== "visible" || !hasFocus;
 }
-
-export function videoCodecLockNotice(phase: string): string | null {
-  return phase === "starting" || phase === "live"
-    ? "本次分享的视频编码已固定，停止分享后可更改"
-    : null;
-}

@@ -6,11 +6,15 @@ Status: peer and SFU routes already use stereo and a 128 kbps default, but users
 still report speech-gated movie/game audio, including on a phone connected
 directly through the SFU. Current Chromium web `getDisplayMedia()` defaults to
 local speech processing unless the request disables it. The source request is
-explicit. Current Browser v10 source
-`fdd5a4a529ff297f41c05ea3388bf484d76afe8f` exposes bounded 64/128/256 kbps
+explicit. Exact current Browser source
+`f5a295c52e0ac7d18e5a7949217861c7aa74e9c9` uses strict `screener-v11`,
+fixed VP8, no video hint, and no codec UI, quality state, or wire field. It
+exposes bounded 64/128/256 kbps
 choices, applies them to new P2P, browser-relay, and SFU senders, and implements
-serialized live mutation with applied readback. Production deploys that v10
-path. Target-device audible proof remains open.
+serialized live mutation with applied readback. Production remains exact
+`2726edde9b87f31fd76e749de47972ef817a9bd5`, release `2726edd`, on v10 with
+video `motion` and the pre-share codec selector; it deploys the same audio path.
+Target-device audible proof remains open.
 
 ## Scope And Decision
 
@@ -48,7 +52,7 @@ stereo music in a 64--128 kbps sweet spot, and LiveKit 2.22.0 names 128 kbps
 `musicHighQualityStereo`. Requested, applied, negotiated, and observed states
 remain separate.
 
-The advanced panel is named Share advanced settings. Current v10 source stores the
+The advanced panel is named Share advanced settings. Current source stores the
 64/128/256 choice and applies that sender `maxBitrate` ceiling on the existing
 Opus path when it creates a sender. A change during an active share serializes
 `getParameters()`/`setParameters()` updates and readback, keeps media and the old
@@ -67,8 +71,8 @@ voice-processed source.
 
 Users first reported that production
 `6ccb516a47261054f91dfa2fafa408d39ced59fc` sounded poor for movie/video screen
-audio. Later source and production revisions added peer/SFU stereo and the
-matching `maxaveragebitrate=128000`, but the speech-gated sound remained. A
+audio. Current source and production use peer/SFU stereo and the matching
+`maxaveragebitrate=128000`, but the speech-gated sound remained. A
 phone Viewer connected directly through the SFU reproduced it, so browser-relay
 decode/re-encode is a route-specific amplifier rather than the common cause.
 The shared Host capture path runs before direct P2P, SFU and peer-relay routes.
@@ -87,10 +91,9 @@ environment observation, not a cross-browser source guarantee.
 
 ## Voice-Processing Boundary
 
-The earlier conclusion that Chromium content capture defaults all speech
-processing off incorrectly generalized extension `tabCapture`/`desktopCapture`
-tests to the Web Screen Capture API. Chromium M142 restored separate defaults
-after a regression and now classifies ordinary web `getDisplayMedia()` as
+Extension `tabCapture`/`desktopCapture` tests do not establish speech-processing
+defaults for the Web Screen Capture API. Chromium M142 classifies ordinary web
+`getDisplayMedia()` as
 `kOther`, not `kExtensionScreenShare`. Without explicit constraints, that path
 selects browser-decided echo cancellation and defaults noise suppression and
 automatic gain control on. Its processed candidate also defaults to one channel.
@@ -448,7 +451,8 @@ deltas in earlier video loopbacks. This is functional evidence, not packaging,
 real-game sync, second-Viewer, SFU/UDP, or endurance evidence.
 
 Run one bounded matrix rather than a full route Cartesian product: exact
-production and current `main` on Windows Chrome/Edge for tab/window/monitor,
+production and exact v11 source `f5a295c52e0ac7d18e5a7949217861c7aa74e9c9`
+on Windows Chrome/Edge for tab/window/monitor,
 audio selected/unselected, and a simultaneous voice call; then the native
 candidate on current Windows 11 with game parent and child audio, an independent
 voice process, notifications, no render stream, and process restart. Windows 10
@@ -463,7 +467,7 @@ A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 ## UI And Voice Boundary
 
 Share advanced settings offers exactly 64/128/256 kbps and defaults to 128.
-Current v10 source applies the selected choice before sharing, to every newly
+Current source applies the selected choice before sharing, to every newly
 created P2P, browser-relay, or SFU sender, and through a serialized live
 mutation; production deploys the same path. It reads
 the latest desired profile into each sender and keeps endpoint-local applied

@@ -51,13 +51,7 @@ describe("realtime quality controls", () => {
       resolution: "1080p",
       maxFramerate: 30,
       maxBitrate: 5_000_000,
-      videoCodec: "vp8",
     });
-    expect(
-      Object.values(QUALITY_PROFILES).every(
-        (profile) => profile.videoCodec === "vp8",
-      ),
-    ).toBe(true);
   });
 
   it("offers 854x480 only through advanced resolution settings", () => {
@@ -124,12 +118,6 @@ describe("realtime quality controls", () => {
           profile.degradationPreference === "balanced",
       ),
     ).toBe(true);
-  });
-
-  it("keeps codec selection orthogonal to the recommended quality profile", () => {
-    const h264 = { ...QUALITY_PROFILES["1080p60"], videoCodec: "h264" } as const;
-    expect(matchingQualityProfileId(h264)).toBe("1080p60");
-    expect(qualitySettingsEqual(h264, QUALITY_PROFILES["1080p60"])).toBe(false);
   });
 
   it("keeps audio selection orthogonal while defaulting old settings to music", () => {

@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v10";
+export const SIGNALING_PROTOCOL = "screener-v11";
 export const SIGNAL_CLOSE_CODES = {
   sessionReplaced: 4001,
   clientReconnect: 4002,
@@ -179,15 +179,6 @@ export type DegradationPreference = z.infer<
   typeof degradationPreferenceSchema
 >;
 
-export const videoCodecPreferenceSchema = z.enum([
-  "automatic",
-  "h264",
-  "vp8",
-]);
-export type VideoCodecPreference = z.infer<
-  typeof videoCodecPreferenceSchema
->;
-
 export const screenAudioQualitySchema = z.enum([
   "saver",
   "music",
@@ -201,7 +192,6 @@ export const qualitySettingsSchema = z
     maxFramerate: z.number().int().min(15).max(60),
     maxBitrate: z.number().int().min(2_000_000).max(12_000_000),
     degradationPreference: degradationPreferenceSchema,
-    videoCodec: videoCodecPreferenceSchema.optional(),
     screenAudioQuality: screenAudioQualitySchema.optional(),
   })
   .strict();
@@ -211,7 +201,6 @@ export const DEFAULT_QUALITY_SETTINGS = {
   maxFramerate: 30,
   maxBitrate: 5_000_000,
   degradationPreference: "balanced",
-  videoCodec: "vp8",
   screenAudioQuality: "music",
 } as const satisfies QualitySettings;
 
