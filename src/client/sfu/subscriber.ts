@@ -313,11 +313,6 @@ export class SfuSubscriber {
     }
     this.desiredTrackSids.add(publication.trackSid);
     publication.setSubscribed(true);
-    if (publication.source === sdk.Track.Source.ScreenShare) {
-      // HIGH is a ceiling. LiveKit's per-subscriber BWE may still forward LOW
-      // while this path is constrained and return to HIGH after recovery.
-      publication.setVideoQuality(sdk.VideoQuality.HIGH);
-    }
   }
 
   private rememberHostParticipant(

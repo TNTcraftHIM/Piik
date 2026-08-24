@@ -8,13 +8,10 @@ import type {
 import {
   audioSenderParameterWarning,
   configureScreenAudioSender,
-  configureTwoLayerVideoSender,
-  QUALITY_RESOLUTIONS,
+  configureVideoSender,
   resolveScreenAudioQuality,
   screenAudioQualityEqual,
-  SCREEN_SHARE_LOW_SCALE,
   screenAudioBitrate,
-  screenShareLowBitrate,
   senderParameterWarning,
   videoQualitySettingsEqual,
   type AudioSenderParameterReadback,
@@ -191,7 +188,7 @@ export class SfuPublisher {
           room,
           videoTrack,
           sdk.Track.Source.ScreenShare,
-          videoPublishOptions(sdk, profile),
+          videoPublishOptions(profile),
         );
         if (!this.owns(room, generation)) {
           return false;
@@ -200,7 +197,6 @@ export class SfuPublisher {
         const videoConfiguration = await configurePublishedVideo(
           video,
           profile,
-          sdk,
           () => this.owns(room, generation),
         );
         if (!videoConfiguration || !this.owns(room, generation)) {
@@ -396,7 +392,6 @@ export class SfuPublisher {
         const videoConfiguration = await configurePublishedVideo(
           previousVideo,
           profile,
-          sdk,
           () => this.owns(room, generation),
         );
         if (!videoConfiguration || !this.owns(room, generation)) {
@@ -450,7 +445,6 @@ export class SfuPublisher {
             const videoConfiguration = await configurePublishedVideo(
               previousVideo,
               previousVideoProfile,
-              sdk,
               () => this.owns(room, generation),
             );
             if (!videoConfiguration || !this.owns(room, generation)) {
@@ -537,7 +531,6 @@ export class SfuPublisher {
           const configured = await configurePublishedVideo(
             video,
             profile,
-            sdk,
             () =>
               this.owns(room, generation) &&
               requestedRevision === this.profileRevision &&
@@ -569,7 +562,6 @@ export class SfuPublisher {
             const rolledBack = await configurePublishedVideo(
               video,
               previousVideoProfile,
-              sdk,
               () =>
                 this.owns(room, generation) &&
                 requestedRevision === this.profileRevision &&
@@ -1018,7 +1010,6 @@ export class SfuPublisher {
           identity.accumulator,
           {
             trackIdentifier: identity.videoTrack.id,
-            rid: "h",
             audioTrackIdentifier: identity.audioTrack?.id ?? null,
           },
         ),
@@ -1091,7 +1082,6 @@ async function unpublishTrack(room: Room, published: PublishedTrack): Promise<vo
 async function configurePublishedVideo(
   published: PublishedTrack,
   profile: QualityProfile,
-  sdk: LiveKit,
   ownsPublication: () => boolean,
 ): Promise<PublishedVideoConfiguration | null> {
   const videoTrack = published.publication.videoTrack;
@@ -1107,7 +1097,7 @@ async function configurePublishedVideo(
     }
     return null;
   }
-  const readbacks = await configureTwoLayerVideoSender(sender, profile);
+  const readback = await configureVideoSender(sender, profile);
   if (!ownsPublication()) {
     if (previousPreference) {
       await videoTrack.setDegradationPreference(previousPreference);
@@ -1117,18 +1107,13 @@ async function configurePublishedVideo(
   const retainedPublishOptions = {
     ...published.publication.options,
     ...videoTrack.publishOptions,
-    ...videoPublishOptions(sdk, profile),
+    ...videoPublishOptions(profile),
   };
   published.publication.options = retainedPublishOptions;
   videoTrack.publishOptions = retainedPublishOptions;
-  const highWarning = senderParameterWarning(readbacks.high);
-  const lowWarning = senderParameterWarning(readbacks.low);
   return {
-    readback: readbacks.high,
-    warning: mergeQualityWarnings(
-      highWarning,
-      lowWarning ? `低档表示：${lowWarning}` : null,
-    ),
+    readback,
+    warning: senderParameterWarning(readback),
   };
 }
 
@@ -1205,27 +1190,15 @@ function mergeQualityWarnings(...warnings: Array<string | null>): string | null 
   return present.length > 0 ? present.join("；") : null;
 }
 
-function videoPublishOptions(
-  sdk: LiveKit,
-  profile: QualityProfile,
-): TrackPublishOptions {
-  const highResolution = QUALITY_RESOLUTIONS[profile.resolution];
+function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
   return {
     backupCodec: false,
     videoCodec: "vp8",
-    simulcast: true,
+    simulcast: false,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,
       maxFramerate: profile.maxFramerate,
     },
-    screenShareSimulcastLayers: [
-      new sdk.VideoPreset(
-        Math.floor(highResolution.width / SCREEN_SHARE_LOW_SCALE),
-        Math.floor(highResolution.height / SCREEN_SHARE_LOW_SCALE),
-        screenShareLowBitrate(profile),
-        profile.maxFramerate,
-      ),
-    ],
     degradationPreference: profile.degradationPreference,
   };
 }
