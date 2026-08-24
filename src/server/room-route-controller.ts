@@ -1,11 +1,9 @@
 import {
   MAX_MEDIA_ROUTE_REVISION,
-  type CodecTransitionGeneration,
   type RouteDemandReason,
   type RouteDiagnosticFinalRoute,
   type RouteDiagnosticRejectionBucket,
   type RouteDiagnosticSnapshot,
-  type VideoCodecPreference,
 } from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 
@@ -76,7 +74,6 @@ export interface CandidateGuard {
 }
 
 export interface CandidateCursorGuard {
-  owner: OperationOwner;
   childPeerId: string;
   childSessionId: string;
   baseRevision: number;
@@ -115,23 +112,7 @@ interface Attempt<Resource> {
   reservation: CandidateReservation<Resource>;
 }
 
-export type CodecOperationPhase = "preparing" | "prepared" | "proving";
-
-export type OperationOwner =
-  | { kind: "route" }
-  | {
-      kind: "codec";
-      codecGeneration: CodecTransitionGeneration;
-      phase: CodecOperationPhase;
-      videoCodec: VideoCodecPreference;
-      hostSessionId: string;
-      publicationGeneration: string;
-      connectionId: string;
-      publicationConnectionId: string;
-    };
-
 interface ChildOperation<Resource> {
-  owner: OperationOwner;
   childPeerId: string;
   childSessionId: string;
   reason: RouteDemandReason;
@@ -140,12 +121,10 @@ interface ChildOperation<Resource> {
   cursor: number;
   deadlineAtMs: number;
   builtAtFactVersion: number;
-  deferredRetirements: EdgeGuard[];
   current?: Attempt<Resource>;
 }
 
 export interface OperationSnapshot {
-  owner: OperationOwner;
   childPeerId: string;
   childSessionId: string;
   reason: RouteDemandReason;
@@ -186,64 +165,6 @@ export interface BeginResult<Resource> {
   operation?: OperationSnapshot;
   exhausted?: boolean;
   released: readonly Resource[];
-}
-
-export interface RetireTransportsResult<Resource> {
-  accepted: boolean;
-  activeRevision: number;
-  retiredPeerIds: readonly string[];
-  released: readonly Resource[];
-}
-
-export interface CodecOperationGuard {
-  codecGeneration: CodecTransitionGeneration;
-  hostSessionId: string;
-  childPeerId: string;
-  childSessionId: string;
-  publicationGeneration: string;
-  connectionId: string;
-  publicationConnectionId: string;
-}
-
-export interface BeginCodecSfuPublicationInput {
-  routeRevision: number;
-  hostSessionId: string;
-  codecGeneration: CodecTransitionGeneration;
-  videoCodec: VideoCodecPreference;
-  publicationGeneration: string;
-  connectionId: string;
-  publicationConnectionId: string;
-  nowMs: number;
-  deadlineAtMs: number;
-  retainedAnchor?: {
-    childPeerId: string;
-    childSessionId: string;
-  };
-}
-
-export interface BeginCodecSfuPublicationResult<Resource> {
-  accepted: boolean;
-  activeRevision: number;
-  anchorPeerId?: string;
-  guard?: CodecOperationGuard;
-  retiredPeerIds: readonly string[];
-  operation?: OperationSnapshot;
-  released: readonly Resource[];
-}
-
-export interface CodecOperationMutationResult<Resource> {
-  accepted: boolean;
-  activeRevision: number;
-  operation?: OperationSnapshot;
-  released: readonly Resource[];
-}
-
-export interface TransitionCodecOperationInput {
-  guard: CodecOperationGuard;
-  expectedPhase: CodecOperationPhase;
-  phase: CodecOperationPhase;
-  nowMs?: number;
-  deadlineAtMs?: number;
 }
 
 interface HostPublication<Resource> {
@@ -518,242 +439,6 @@ export class RoomRouteController<Resource = unknown> {
     this.assertGraph();
   }
 
-  beginCodecSfuPublication(
-    input: BeginCodecSfuPublicationInput,
-  ): BeginCodecSfuPublicationResult<Resource> {
-    assertCodecOperationInput(input);
-    const rejected = (): BeginCodecSfuPublicationResult<Resource> => ({
-      accepted: false,
-      activeRevision: this.revision,
-      retiredPeerIds: [],
-      released: [],
-    });
-    const host = this.participants.get(this.options.hostPeerId);
-    if (
-      !this.options.sfuEnabled ||
-      !this.paused ||
-      this.operation ||
-      this.revision !== input.routeRevision ||
-      host?.sessionId !== input.hostSessionId ||
-      host.departureConfirmed
-    ) {
-      return rejected();
-    }
-
-    const publication = this.hostPublication;
-    if (
-      publication &&
-      (publication.hostSessionId !== input.hostSessionId ||
-        publication.generation === input.publicationGeneration ||
-        publication.connectionId === input.publicationConnectionId)
-    ) {
-      return rejected();
-    }
-    const publicationViewers = publication
-      ? [...this.upstreamByViewer]
-          .filter(
-            ([, edge]) =>
-              edge.kind === "sfu" &&
-              edge.publicationGeneration === publication.generation,
-          )
-          .map(([peerId]) => this.participants.get(peerId))
-          .filter((participant): participant is Participant =>
-            Boolean(participant?.sessionId && !participant.departureConfirmed),
-          )
-          .sort(compareParticipant)
-      : [];
-    let anchor: Participant | undefined;
-    if (input.retainedAnchor) {
-      const retained = this.participants.get(input.retainedAnchor.childPeerId);
-      const retainedEdge = this.upstreamByViewer.get(
-        input.retainedAnchor.childPeerId,
-      );
-      if (
-        retained?.role !== "viewer" ||
-        retained.sessionId !== input.retainedAnchor.childSessionId ||
-        retained.departureConfirmed ||
-        (publication &&
-          (retainedEdge?.kind !== "sfu" ||
-            retainedEdge.publicationGeneration !== publication.generation ||
-            (publication.physicalActive &&
-              (!retainedEdge.physicalActive || !retainedEdge.usable)))) ||
-        (!publication && retainedEdge)
-      ) {
-        return rejected();
-      }
-      anchor = retained;
-    } else {
-      anchor = publication?.physicalActive
-        ? publicationViewers.find((participant) => {
-            const edge = this.upstreamByViewer.get(participant.peerId);
-            return edge?.physicalActive && edge.usable;
-          })
-        : publicationViewers[0];
-    }
-    if (!anchor?.sessionId) return rejected();
-    const anchorEdge = this.upstreamByViewer.get(anchor.peerId);
-    if (anchorEdge?.connectionId === input.connectionId) return rejected();
-    const copiesAfterRetirement =
-      this.physicalCopies(this.options.hostPeerId) -
-      (publication?.physicalActive ? 1 : 0);
-    if (copiesAfterRetirement + 1 > host.effectiveDownstreamCapacity) {
-      return rejected();
-    }
-
-    const released = new Set<Resource>();
-    const retiredPeerIds: string[] = [];
-    if (publication) {
-      for (const [viewerPeerId, edge] of this.upstreamByViewer) {
-        if (
-          edge.kind !== "sfu" ||
-          edge.publicationGeneration !== publication.generation
-        ) {
-          continue;
-        }
-        if (edge.physicalActive) {
-          released.add(edge.resource);
-          retiredPeerIds.push(viewerPeerId);
-        }
-        edge.physicalActive = false;
-        edge.usable = false;
-        const participant = this.participants.get(viewerPeerId);
-        if (participant) {
-          participant.blockedAtFactVersion = undefined;
-          participant.failedTuple = undefined;
-        }
-        this.recordDemand(viewerPeerId, input.nowMs, "edge-unavailable");
-      }
-      if (publication.physicalActive) released.add(publication.resource);
-      publication.physicalActive = false;
-      publication.usable = false;
-      this.revision = this.allocateRevision();
-      this.touchFacts();
-    }
-
-    const tuple: CandidateTuple = {
-      kind: "sfu",
-      publication: publication ? "replace" : "create",
-    };
-    const plan = this.planCandidate(anchor.peerId, tuple);
-    if (!plan) {
-      throw new Error("Codec SFU publication candidate is not admissible");
-    }
-    this.ensureDemand(anchor.peerId, input.nowMs, "edge-unavailable");
-    this.startOperationTiming(anchor.peerId, input.nowMs);
-    this.operation = {
-      owner: {
-        kind: "codec",
-        codecGeneration: input.codecGeneration,
-        phase: "preparing",
-        videoCodec: input.videoCodec,
-        hostSessionId: input.hostSessionId,
-        publicationGeneration: input.publicationGeneration,
-        connectionId: input.connectionId,
-        publicationConnectionId: input.publicationConnectionId,
-      },
-      childPeerId: anchor.peerId,
-      childSessionId: anchor.sessionId,
-      reason: "edge-unavailable",
-      baseRevision: this.revision,
-      candidates: [plan],
-      cursor: 0,
-      deadlineAtMs: input.deadlineAtMs,
-      builtAtFactVersion: this.factVersion,
-      deferredRetirements: [],
-    };
-    this.assertGraph();
-    const guard = codecOperationGuard(this.operation);
-    return {
-      accepted: true,
-      activeRevision: this.revision,
-      anchorPeerId: anchor.peerId,
-      guard,
-      retiredPeerIds,
-      operation: this.operationSnapshot(),
-      released: [...released],
-    };
-  }
-
-  transitionCodecOperation(
-    input: TransitionCodecOperationInput,
-  ): CodecOperationMutationResult<Resource> {
-    const operation = this.operation;
-    if (
-      !operation ||
-      !codecOperationGuardMatches(input.guard, operation) ||
-      operation.owner.kind !== "codec" ||
-      !operation.current ||
-      operation.owner.phase !== input.expectedPhase ||
-      !codecPhaseTransitionAllowed(input.expectedPhase, input.phase)
-    ) {
-      return {
-        accepted: false,
-        activeRevision: this.revision,
-        operation: this.operationSnapshot(),
-        released: [],
-      };
-    }
-    if (input.phase === "proving") {
-      if (
-        input.nowMs === undefined ||
-        input.deadlineAtMs === undefined ||
-        !Number.isSafeInteger(input.deadlineAtMs) ||
-        input.deadlineAtMs <= input.nowMs
-      ) {
-        throw new Error("Codec proof deadline must be in the future");
-      }
-      operation.deadlineAtMs = input.deadlineAtMs;
-    }
-    operation.owner.phase = input.phase;
-    return {
-      accepted: true,
-      activeRevision: this.revision,
-      operation: this.operationSnapshot(),
-      released: [],
-    };
-  }
-
-  abortCodecOperation(
-    guard: CodecOperationGuard,
-    nowMs?: number,
-  ): CodecOperationMutationResult<Resource> {
-    const operation = this.operation;
-    if (!operation || !codecOperationGuardMatches(guard, operation)) {
-      return {
-        accepted: false,
-        activeRevision: this.revision,
-        operation: this.operationSnapshot(),
-        released: [],
-      };
-    }
-    const released = operation.current
-      ? [...reservationResources(operation.current.reservation)]
-      : [];
-    if (nowMs !== undefined) {
-      this.finishTiming(
-        operation.childPeerId,
-        nowMs,
-        this.currentFinalRoute(operation.childPeerId),
-        "aborted",
-      );
-    }
-    let revisionAdvanced = Boolean(operation.current);
-    if (operation.current) this.advanceActiveRevision(operation);
-    if (this.retireDeferredCodecEdges(operation, released)) {
-      if (!revisionAdvanced) {
-        this.advanceActiveRevision(operation);
-        revisionAdvanced = true;
-      }
-      this.touchFacts();
-    }
-    this.operation = undefined;
-    return {
-      accepted: true,
-      activeRevision: this.revision,
-      released,
-    };
-  }
-
   invalidateEdge(guard: EdgeGuard, nowMs?: number): boolean {
     const child = this.participants.get(guard.childPeerId);
     const edge = this.upstreamByViewer.get(guard.childPeerId);
@@ -849,92 +534,6 @@ export class RoomRouteController<Resource = unknown> {
     return edge.transport === "direct" ? [] : [edge.resource];
   }
 
-  retireCommittedTransportsForRouteWait(
-    guards: readonly EdgeGuard[],
-    nowMs: number,
-  ): RetireTransportsResult<Resource> {
-    const childPeerIds = new Set<string>();
-    const owned: Array<{
-      childPeerId: string;
-      child: Participant;
-      edge: CommittedEdge<Resource>;
-    }> = [];
-    const codecOperation =
-      this.operation?.owner.kind === "codec" ? this.operation : undefined;
-    if (
-      !this.paused ||
-      (this.operation && !codecOperation) ||
-      guards.length === 0
-    ) {
-      return {
-        accepted: false,
-        activeRevision: this.revision,
-        retiredPeerIds: [],
-        released: [],
-      };
-    }
-    for (const guard of guards) {
-      const child = this.participants.get(guard.childPeerId);
-      const edge = this.upstreamByViewer.get(guard.childPeerId);
-      if (
-        childPeerIds.has(guard.childPeerId) ||
-        guard.routeRevision !== this.revision ||
-        !child ||
-        child.sessionId !== guard.childSessionId ||
-        !edge ||
-        !edge.physicalActive ||
-        edge.childSessionId !== guard.childSessionId ||
-        edge.connectionId !== guard.connectionId ||
-        (edge.kind === "peer" &&
-          edge.parentSessionId !== guard.parentSessionId)
-      ) {
-        return {
-          accepted: false,
-          activeRevision: this.revision,
-          retiredPeerIds: [],
-          released: [],
-        };
-      }
-      childPeerIds.add(guard.childPeerId);
-      owned.push({ childPeerId: guard.childPeerId, child, edge });
-    }
-
-    const released: Resource[] = [];
-    let invalidated = false;
-    for (const { childPeerId, child, edge } of owned) {
-      if (edge.usable) {
-        edge.usable = false;
-        this.recordDemand(childPeerId, nowMs, "edge-unavailable");
-        invalidated = true;
-      }
-      child.blockedAtFactVersion = undefined;
-      child.failedTuple = undefined;
-    }
-    if (codecOperation) {
-      const deferred = guards.filter(
-        (guard) =>
-          !codecOperation.deferredRetirements.some((candidate) =>
-            edgeGuardEquals(candidate, guard),
-          ),
-      );
-      codecOperation.deferredRetirements.push(
-        ...deferred.map((guard) => ({ ...guard })),
-      );
-      if (invalidated) this.touchFacts();
-      codecOperation.builtAtFactVersion = this.factVersion;
-    } else if (invalidated) {
-      this.revision = this.allocateRevision();
-      this.touchFacts();
-    }
-    this.assertGraph();
-    return {
-      accepted: true,
-      activeRevision: this.revision,
-      retiredPeerIds: [...childPeerIds],
-      released,
-    };
-  }
-
   retireHostPublication(guard: {
     hostSessionId: string;
     routeRevision: number;
@@ -1009,7 +608,6 @@ export class RoomRouteController<Resource = unknown> {
       }
       this.startOperationTiming(childPeerId, nowMs);
       this.operation = {
-        owner: { kind: "route" },
         childPeerId,
         childSessionId: child.sessionId!,
         reason,
@@ -1018,7 +616,6 @@ export class RoomRouteController<Resource = unknown> {
         cursor: 0,
         deadlineAtMs: nowMs + this.options.operationTimeoutMs,
         builtAtFactVersion: this.factVersion,
-        deferredRetirements: [],
       };
       return {
         operation: this.operationSnapshot(),
@@ -1055,27 +652,6 @@ export class RoomRouteController<Resource = unknown> {
         accepted: false,
         released: [...validation.released, ...reservationResources(input.reservation)],
         exhausted: validation.exhausted,
-      };
-    }
-    if (
-      operation.owner.kind === "codec" &&
-      (operation.owner.phase !== "preparing" ||
-        plan.tuple.kind !== "sfu" ||
-        this.participants.get(this.options.hostPeerId)?.sessionId !==
-          operation.owner.hostSessionId ||
-        input.connectionId !== operation.owner.connectionId ||
-        input.publicationGeneration !==
-          operation.owner.publicationGeneration ||
-        input.publicationConnectionId !==
-          operation.owner.publicationConnectionId)
-    ) {
-      return {
-        accepted: false,
-        operation: this.operationSnapshot(),
-        released: [
-          ...validation.released,
-          ...reservationResources(input.reservation),
-        ],
       };
     }
     if (plan.endpointTransition.kind === "bounded-gap") {
@@ -1238,16 +814,6 @@ export class RoomRouteController<Resource = unknown> {
     const validation = this.validateOrAdvance(nowMs);
     const operation = this.operation;
     const attempt = operation?.current;
-    if (
-      operation?.owner.kind === "codec" &&
-      operation.owner.phase !== "proving"
-    ) {
-      return {
-        accepted: false,
-        activeRevision: this.revision,
-        released: validation.released,
-      };
-    }
     if (!operation || !attempt || !this.guardMatches(guard, operation, attempt)) {
       return { accepted: false, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
     }
@@ -1339,13 +905,7 @@ export class RoomRouteController<Resource = unknown> {
     } = { released, expired: false, consumedGuard: false };
     let operation = this.operation;
     if (!operation) return result;
-    if (
-      !(
-        operation.owner.kind === "codec" &&
-        operation.owner.phase === "prepared"
-      ) &&
-      nowMs >= operation.deadlineAtMs
-    ) {
+    if (nowMs >= operation.deadlineAtMs) {
       if (operation.current) released.push(...reservationResources(operation.current.reservation));
       const revisionAdvanced = Boolean(operation.current);
       if (operation.current) this.advanceActiveRevision(operation);
@@ -1376,12 +936,7 @@ export class RoomRouteController<Resource = unknown> {
     }
     if (this.participants.get(operation.childPeerId)?.sessionId !== operation.childSessionId) {
       if (operation.current) released.push(...reservationResources(operation.current.reservation));
-      const revisionAdvanced = Boolean(operation.current);
       if (operation.current) this.advanceActiveRevision(operation);
-      if (this.retireDeferredCodecEdges(operation, released)) {
-        if (!revisionAdvanced) this.advanceActiveRevision(operation);
-        this.touchFacts();
-      }
       this.finishTiming(
         operation.childPeerId,
         nowMs,
@@ -1448,17 +1003,9 @@ export class RoomRouteController<Resource = unknown> {
   private commitAttempt(operation: ChildOperation<Resource>, attempt: Attempt<Resource>): Resource[] {
     const beforeResources = new Set(this.committedResources());
     const old = this.upstreamByViewer.get(operation.childPeerId);
-    const codecReplacementGeneration =
-      operation.owner.kind === "codec" &&
-      attempt.tuple.kind === "sfu" &&
-      attempt.tuple.publication === "replace"
-        ? this.hostPublication?.generation
-        : undefined;
 
     if (attempt.tuple.kind === "sfu" && attempt.tuple.publication === "replace") {
-      if (operation.owner.kind === "route") {
-        this.removePublicationGeneration(this.hostPublication!.generation);
-      }
+      this.removePublicationGeneration(this.hostPublication!.generation);
     }
 
     if (attempt.tuple.kind === "peer") {
@@ -1489,20 +1036,6 @@ export class RoomRouteController<Resource = unknown> {
           resource: reservation.publication,
         };
       }
-      if (codecReplacementGeneration) {
-        for (const [viewerPeerId, existing] of this.upstreamByViewer) {
-          if (
-            viewerPeerId === operation.childPeerId ||
-            existing.kind !== "sfu" ||
-            existing.publicationGeneration !== codecReplacementGeneration
-          ) {
-            continue;
-          }
-          existing.publicationGeneration = generation;
-          existing.usable = false;
-          existing.physicalActive = false;
-        }
-      }
       const edge = (attempt.reservation as Extract<CandidateReservation<Resource>, { kind: "sfu-reuse" | "sfu-create" }>).edge;
       this.upstreamByViewer.set(operation.childPeerId, {
         kind: "sfu", childSessionId: operation.childSessionId,
@@ -1511,7 +1044,6 @@ export class RoomRouteController<Resource = unknown> {
       });
     }
     this.revision = attempt.revision;
-    this.retireDeferredCodecEdges(operation);
     this.operation = undefined;
     this.touchFacts();
     const participant = this.participants.get(operation.childPeerId);
@@ -1767,12 +1299,7 @@ export class RoomRouteController<Resource = unknown> {
     const released = operation.current
       ? [...reservationResources(operation.current.reservation)]
       : [];
-    const revisionAdvanced = Boolean(operation.current);
     if (operation.current) this.advanceActiveRevision(operation);
-    if (this.retireDeferredCodecEdges(operation, released)) {
-      if (!revisionAdvanced) this.advanceActiveRevision(operation);
-      this.touchFacts();
-    }
     this.operation = undefined;
     return released;
   }
@@ -1789,51 +1316,18 @@ export class RoomRouteController<Resource = unknown> {
     revisionAdvanced = false,
   ): void {
     const child = this.participants.get(operation.childPeerId);
-    const retiredDeferred = this.retireDeferredCodecEdges(operation, released);
     this.operation = undefined;
     const retiredInvalid = block && child
       ? this.retireInvalidOperationEdge(operation.childPeerId, released)
       : false;
-    if ((retiredDeferred || retiredInvalid) && !revisionAdvanced) {
+    if (retiredInvalid && !revisionAdvanced) {
       this.revision = this.allocateRevision();
     }
-    if (retiredDeferred || retiredInvalid) {
+    if (retiredInvalid) {
       this.touchFacts();
     }
     if (!block || !child) return;
     child.blockedAtFactVersion = this.factVersion;
-  }
-
-  private retireDeferredCodecEdges(
-    operation: ChildOperation<Resource>,
-    released: Resource[] = [],
-  ): boolean {
-    if (
-      operation.owner.kind !== "codec" ||
-      operation.deferredRetirements.length === 0
-    ) {
-      return false;
-    }
-    let retired = false;
-    for (const guard of operation.deferredRetirements) {
-      const edge = this.upstreamByViewer.get(guard.childPeerId);
-      if (
-        !edge ||
-        !edge.physicalActive ||
-        edge.childSessionId !== guard.childSessionId ||
-        edge.connectionId !== guard.connectionId ||
-        (edge.kind === "peer" &&
-          edge.parentSessionId !== guard.parentSessionId)
-      ) {
-        continue;
-      }
-      edge.physicalActive = false;
-      edge.usable = false;
-      if (edge.kind === "sfu") released.push(edge.resource);
-      retired = true;
-    }
-    operation.deferredRetirements = [];
-    return retired;
   }
 
   private retireInvalidOperationEdge(childPeerId: string, released: Resource[]): boolean {
@@ -1887,8 +1381,7 @@ export class RoomRouteController<Resource = unknown> {
   private operationSnapshot(): OperationSnapshot | undefined {
     const operation = this.operation;
     if (!operation) return undefined;
-    return { owner: { ...operation.owner },
-      childPeerId: operation.childPeerId, childSessionId: operation.childSessionId,
+    return { childPeerId: operation.childPeerId, childSessionId: operation.childSessionId,
       reason: operation.reason,
       baseRevision: operation.baseRevision, factVersion: operation.builtAtFactVersion,
       candidates: operation.candidates.map(cloneCandidatePlan),
@@ -1903,12 +1396,6 @@ export class RoomRouteController<Resource = unknown> {
     nowMs: number,
     released: Resource[],
   ): boolean {
-    if (
-      operation.owner.kind === "codec" &&
-      operation.owner.phase === "prepared"
-    ) {
-      return false;
-    }
     const plan = operation.current
       ? { tuple: operation.current.tuple }
       : operation.candidates[operation.cursor];
@@ -2008,7 +1495,7 @@ export class RoomRouteController<Resource = unknown> {
 
   private cursorGuardMatches(guard: CandidateCursorGuard, operation: ChildOperation<Resource>): boolean {
     const plan = operation.candidates[operation.cursor];
-    return Boolean(plan && operationOwnerEquals(guard.owner, operation.owner) &&
+    return Boolean(plan &&
       guard.childPeerId === operation.childPeerId &&
       guard.childSessionId === operation.childSessionId && guard.baseRevision === operation.baseRevision &&
       guard.factVersion === operation.builtAtFactVersion && guard.cursor === operation.cursor &&
@@ -2323,102 +1810,6 @@ export class RoomRouteController<Resource = unknown> {
     if (this.latestRevision >= MAX_MEDIA_ROUTE_REVISION) throw new Error("Media route revision space exhausted");
     this.latestRevision += 1;
     return this.latestRevision;
-  }
-}
-
-function codecOperationGuard<Resource>(
-  operation: ChildOperation<Resource>,
-): CodecOperationGuard {
-  if (operation.owner.kind !== "codec") {
-    throw new Error("Route operation is not codec-owned");
-  }
-  return {
-    codecGeneration: operation.owner.codecGeneration,
-    hostSessionId: operation.owner.hostSessionId,
-    childPeerId: operation.childPeerId,
-    childSessionId: operation.childSessionId,
-    publicationGeneration: operation.owner.publicationGeneration,
-    connectionId: operation.owner.connectionId,
-    publicationConnectionId: operation.owner.publicationConnectionId,
-  };
-}
-
-function codecOperationGuardMatches<Resource>(
-  guard: CodecOperationGuard,
-  operation: ChildOperation<Resource>,
-): boolean {
-  return (
-    operation.owner.kind === "codec" &&
-    operation.owner.codecGeneration === guard.codecGeneration &&
-    operation.owner.hostSessionId === guard.hostSessionId &&
-    operation.childPeerId === guard.childPeerId &&
-    operation.childSessionId === guard.childSessionId &&
-    operation.owner.publicationGeneration ===
-      guard.publicationGeneration &&
-    operation.owner.connectionId === guard.connectionId &&
-    operation.owner.publicationConnectionId ===
-      guard.publicationConnectionId
-  );
-}
-
-function operationOwnerEquals(left: OperationOwner, right: OperationOwner): boolean {
-  if (left.kind !== right.kind) return false;
-  if (left.kind === "route" || right.kind === "route") return true;
-  return (
-    left.codecGeneration === right.codecGeneration &&
-    left.phase === right.phase &&
-    left.videoCodec === right.videoCodec &&
-    left.hostSessionId === right.hostSessionId &&
-    left.publicationGeneration === right.publicationGeneration &&
-    left.connectionId === right.connectionId &&
-    left.publicationConnectionId === right.publicationConnectionId
-  );
-}
-
-function edgeGuardEquals(left: EdgeGuard, right: EdgeGuard): boolean {
-  return (
-    left.childPeerId === right.childPeerId &&
-    left.childSessionId === right.childSessionId &&
-    left.parentSessionId === right.parentSessionId &&
-    left.routeRevision === right.routeRevision &&
-    left.connectionId === right.connectionId
-  );
-}
-
-function codecPhaseTransitionAllowed(
-  from: CodecOperationPhase,
-  to: CodecOperationPhase,
-): boolean {
-  return (
-    (from === "preparing" && to === "prepared") ||
-    (from === "prepared" && to === "proving") ||
-    (from === "proving" && to === "prepared")
-  );
-}
-
-function assertCodecOperationInput(input: BeginCodecSfuPublicationInput): void {
-  if (!Number.isSafeInteger(input.codecGeneration) || input.codecGeneration <= 0) {
-    throw new Error("Codec generation must be a positive safe integer");
-  }
-  if (
-    !Number.isFinite(input.nowMs) ||
-    !Number.isSafeInteger(input.deadlineAtMs) ||
-    input.deadlineAtMs <= input.nowMs
-  ) {
-    throw new Error("Codec preparation deadline must be in the future");
-  }
-  if (
-    ![input.publicationGeneration, input.connectionId, input.publicationConnectionId]
-      .every((value) => value.length > 0)
-  ) {
-    throw new Error("Codec SFU identity is invalid");
-  }
-  if (
-    input.retainedAnchor &&
-    (!input.retainedAnchor.childPeerId ||
-      !input.retainedAnchor.childSessionId)
-  ) {
-    throw new Error("Codec SFU retained anchor is invalid");
   }
 }
 

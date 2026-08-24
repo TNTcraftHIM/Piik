@@ -5,7 +5,6 @@ import {
   hostServerErrorNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
-  VIDEO_CODEC_TRANSITION_FAILED_NOTICE,
   videoCodecLockNotice,
 } from "../src/client/pages/host-page-notices.ts";
 
@@ -97,22 +96,14 @@ describe("sourceSwitchNotice", () => {
 });
 
 describe("videoCodecLockNotice", () => {
-  it("exposes codec switching only after the active share is paused", () => {
-    expect(videoCodecLockNotice("starting", false)).toBe(
-      "分享开始后，暂停分享即可切换视频编码",
-    );
-    expect(videoCodecLockNotice("live", false)).toBe(
-      "暂停分享后可切换视频编码",
-    );
-    expect(videoCodecLockNotice("live", true)).toBeNull();
-    for (const phase of ["idle", "ended", "error"]) {
-      expect(videoCodecLockNotice(phase, false)).toBeNull();
+  it("keeps codec selection pre-share only", () => {
+    for (const phase of ["starting", "live"]) {
+      expect(videoCodecLockNotice(phase)).toBe(
+        "本次分享的视频编码已固定，停止分享后可更改",
+      );
     }
-  });
-
-  it("keeps a failed codec transaction visible until sharing stops", () => {
-    expect(videoCodecLockNotice("live", true, "failed")).toBe(
-      VIDEO_CODEC_TRANSITION_FAILED_NOTICE,
-    );
+    for (const phase of ["idle", "ended", "error"]) {
+      expect(videoCodecLockNotice(phase)).toBeNull();
+    }
   });
 });

@@ -13,7 +13,6 @@ import {
 const offer: SignalPayload = {
   kind: "description",
   connectionId: "connection_12345678",
-  negotiationGeneration: null,
   description: { type: "offer", sdp: "test-offer" },
 };
 

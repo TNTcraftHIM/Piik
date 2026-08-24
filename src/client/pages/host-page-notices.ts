@@ -95,21 +95,8 @@ export function shouldPauseLocalPreview(
   return visibilityState !== "visible" || !hasFocus;
 }
 
-export const VIDEO_CODEC_TRANSITION_FAILED_NOTICE =
-  "视频编码切换已失效，请停止分享后重试";
-
-export function videoCodecLockNotice(
-  phase: string,
-  sharingPaused: boolean,
-  codecTransitionPhase: string | null = null,
-): string | null {
-  if (codecTransitionPhase === "failed") {
-    return VIDEO_CODEC_TRANSITION_FAILED_NOTICE;
-  }
-  if (phase === "starting") {
-    return "分享开始后，暂停分享即可切换视频编码";
-  }
-  return phase === "live" && !sharingPaused
-    ? "暂停分享后可切换视频编码"
+export function videoCodecLockNotice(phase: string): string | null {
+  return phase === "starting" || phase === "live"
+    ? "本次分享的视频编码已固定，停止分享后可更改"
     : null;
 }

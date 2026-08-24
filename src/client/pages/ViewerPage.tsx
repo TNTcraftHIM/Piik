@@ -73,10 +73,6 @@ import {
   isAutoplayPolicyRejection,
   observeCompositedVideoFrame,
 } from "../media/video-frame-proof";
-import {
-  CodecProofReporter,
-  type CodecProofRouteSample,
-} from "../media/codec-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
 import {
@@ -347,8 +343,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       revision: number;
       connectionId: string;
     } | null = null;
-    let activePeerProofSnapshot: PeerSnapshot | null = null;
-    let activeSfuProofMetrics: ConnectionMetrics | null = null;
     let endpointMediaCopyCapacity = MAX_ENDPOINT_MEDIA_CHILDREN;
     let viewerAuthorizationGeneration: string | null = null;
     let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
@@ -440,67 +434,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
       (message) => active && signal.send(message),
     );
-    const codecProofReporter = new CodecProofReporter(
-      (message) => active && signal.send(message),
-    );
-
-    function currentCodecProofSample(): CodecProofRouteSample | null {
-      const assignment = currentRouteAssignment;
-      const connectionId = currentRouteConnectionId;
-      if (!assignment || !connectionId) {
-        return null;
-      }
-      if (assignment.upstream.kind === "peer") {
-        const snapshot = activePeerProofSnapshot;
-        if (
-          !snapshot ||
-          snapshot.peerId !== assignment.upstream.peerId ||
-          snapshot.connectionId !== connectionId
-        ) {
-          return null;
-        }
-        return {
-          routeRevision: currentRouteRevision,
-          binding: { kind: "peer", connectionId },
-          metrics: snapshot.metrics,
-        };
-      }
-      if (
-        assignment.upstream.kind !== "sfu" ||
-        assignment.sfuPublicationGeneration === null
-      ) {
-        return null;
-      }
-      return {
-        routeRevision: currentRouteRevision,
-        binding: {
-          kind: "sfu",
-          connectionId,
-          publicationGeneration: assignment.sfuPublicationGeneration,
-        },
-        metrics: activeSfuProofMetrics,
-      };
-    }
-
-    function offerCodecProof(): void {
-      const sample = currentCodecProofSample();
-      if (sample) {
-        codecProofReporter.offer(sample);
-      }
-    }
-
-    function activateProofRoute(
+    function activateRouteIdentity(
       revision: number,
       assignment: ParticipantRouteAssignment,
       connectionId: string | null,
     ): void {
-      codecProofReporter.clear();
       currentRouteRevision = revision;
       currentRouteAssignment = assignment;
       currentRouteConnectionId =
         assignment.upstream.kind === "none" ? null : connectionId;
-      activePeerProofSnapshot = null;
-      activeSfuProofMetrics = null;
       pendingRouteConnection = null;
     }
 
@@ -732,8 +674,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
             ensureViewerRelay()?.setStream(probe.stream);
             bindRemoteStream(probe.stream, revision);
-            activePeerProofSnapshot = probe.snapshot;
-            offerCodecProof();
             setPeerSnapshot(probe.snapshot);
             setSfuUpstream(null);
             return true;
@@ -813,10 +753,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         },
         onSfuUpdate: (metrics, revision) => {
           if (active && viewerSfuRoute === route) {
-            if (revision === currentRouteRevision) {
-              activeSfuProofMetrics = metrics;
-              offerCodecProof();
-            }
             if (metrics) {
               observeActiveDecodedFrames(
                 "sfu",
@@ -895,8 +831,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       const route = viewerSfuRoute;
       discardPendingPeer();
       viewerSfuRoute = null;
-      activeSfuProofMetrics = null;
-      codecProofReporter.clear();
       setSfuUpstream(null);
       void route?.disconnect();
     }
@@ -932,8 +866,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
     function clearUpstreamState(clearMedia = false): void {
       qualityEvidenceReporter.reset();
-      codecProofReporter.clear();
-      activePeerProofSnapshot = null;
       const peer = peerRef.current;
       peer?.dispose();
       peerRef.current = null;
@@ -995,8 +927,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               probe.snapshot = snapshot;
               provePendingPeer();
             } else if (active && peerRef.current === peer) {
-              activePeerProofSnapshot = snapshot;
-              offerCodecProof();
               observeActiveDecodedFrames(
                 "peer",
                 `${probe.parentPeerId}:${snapshot.connectionId}`,
@@ -1082,8 +1012,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           },
           onUpdate: (snapshot) => {
             if (active) {
-              activePeerProofSnapshot = snapshot;
-              offerCodecProof();
               observeActiveDecodedFrames(
                 "peer",
                 `${snapshot.peerId}:${snapshot.connectionId}`,
@@ -1164,7 +1092,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         currentRouteRevision = nextRouteRevision;
         if (nextPeerAssisted && "routeAssignment" in message) {
-          activateProofRoute(
+          activateRouteIdentity(
             message.routeRevision,
             message.routeAssignment,
             message.connectionId,
@@ -1174,12 +1102,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             message.routeAssignment.upstream,
           );
         } else {
-          codecProofReporter.clear();
           currentRouteAssignment = null;
           currentRouteConnectionId = null;
           pendingRouteConnection = null;
-          activePeerProofSnapshot = null;
-          activeSfuProofMetrics = null;
           setAssignedRoute(null);
           dispatchPresentation({
             type: "route",
@@ -1290,7 +1215,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   : samePeerUpstream || sameSfuUpstream
                     ? currentRouteConnectionId
                     : null;
-              activateProofRoute(
+              activateRouteIdentity(
                 message.revision,
                 message.assignment,
                 connectionId,
@@ -1303,32 +1228,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
           }
         }
-        return;
-      }
-      if (message.type === "video-codec-prepare") {
-        const accepted =
-          peerAssisted &&
-          currentHostPaused &&
-          message.binding.kind === "peer" &&
-          (await ensureViewerRelay()?.prepareVideoCodec(
-            message.binding.childPeerId,
-            message.binding.connectionId,
-            message.generation,
-            message.videoCodec,
-          )) === true;
-        if (active && messageAuthority.owns(authorityToken)) {
-          signal.send({
-            type: "video-codec-prepared",
-            shareGeneration: message.shareGeneration,
-            generation: message.generation,
-            binding: message.binding,
-            accepted,
-          });
-        }
-        return;
-      }
-      if (message.type === "video-codec-proof-request") {
-        codecProofReporter.request(message);
         return;
       }
       if (message.type === "route-status") {
@@ -1458,7 +1357,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "sharing-stopped") {
-        codecProofReporter.clear();
         currentRouteAssignment = null;
         currentRouteConnectionId = null;
         pendingRouteConnection = null;
@@ -1572,7 +1470,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       active = false;
       currentPeerId = null;
       qualityEvidenceReporter.reset();
-      codecProofReporter.clear();
       clearRelayChildEvidence();
       sfuStandbyPrewarmer?.dispose();
       signal.stop();

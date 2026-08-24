@@ -11,7 +11,7 @@ export function applyVideoCodecPreference(
   transceiver: RTCRtpTransceiver,
   preference: VideoCodecPreference | undefined,
 ): boolean {
-  const resolvedPreference = preference ?? "automatic";
+  const resolvedPreference = preference ?? "vp8";
   if (typeof transceiver.setCodecPreferences !== "function") {
     return false;
   }

@@ -1,8 +1,4 @@
-import type {
-  CodecTransitionGeneration,
-  IceConfig,
-  SignalPayload,
-} from "../../shared/protocol";
+import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import {
   EMPTY_METRICS,
   type PeerSnapshot,
@@ -65,9 +61,6 @@ export class ViewerPeer {
   private currentIceConfig: PeerIceConfig;
   private snapshot: PeerSnapshot | null = null;
   private descriptionTail: Promise<void> = Promise.resolve();
-  private latestCodecNegotiationGeneration:
-    | CodecTransitionGeneration
-    | null = null;
 
   constructor(
     iceConfig: PeerIceConfig,
@@ -97,14 +90,6 @@ export class ViewerPeer {
       const connection = this.connection;
       if (!connection) {
         return;
-      }
-      const generation = payload.negotiationGeneration;
-      if (generation !== null) {
-        const latest = this.latestCodecNegotiationGeneration;
-        if (latest !== null && generation <= latest) {
-          return;
-        }
-        this.latestCodecNegotiationGeneration = generation;
       }
       return this.enqueueDescription(() =>
         this.acceptDescription(parentPeerId, connection, payload),
@@ -194,7 +179,6 @@ export class ViewerPeer {
     this.parentPeerId = parentPeerId;
     this.connectionId = connectionId;
     this.descriptionTail = Promise.resolve();
-    this.latestCodecNegotiationGeneration = null;
     this.remoteStream = new MediaStream();
     this.statsAccumulator = createStatsAccumulator();
 
@@ -285,22 +269,21 @@ export class ViewerPeer {
     payload: Extract<SignalPayload, { kind: "description" }>,
   ): Promise<void> {
     const connectionId = payload.connectionId;
-    const generation = payload.negotiationGeneration;
     try {
       await connection.setRemoteDescription(payload.description);
-      if (!this.ownsDescription(connection, connectionId, generation)) {
+      if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
       await this.flushCandidates(connection, connectionId);
-      if (!this.ownsDescription(connection, connectionId, generation)) {
+      if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
       const answer = preferScreenAudioStereo(await connection.createAnswer());
-      if (!this.ownsDescription(connection, connectionId, generation)) {
+      if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
       await connection.setLocalDescription(answer);
-      if (!this.ownsDescription(connection, connectionId, generation)) {
+      if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
       if (!connection.localDescription) {
@@ -309,7 +292,6 @@ export class ViewerPeer {
       if (!this.events.sendSignal(parentPeerId, {
         kind: "description",
         connectionId,
-        negotiationGeneration: generation,
         description: {
           type: "answer",
           sdp: connection.localDescription.sdp,
@@ -320,7 +302,7 @@ export class ViewerPeer {
       this.offerRecoveryAttempts = 0;
       this.scheduleInitialConnectionDeadline(connection, connectionId);
     } catch (error) {
-      if (!this.ownsDescription(connection, connectionId, generation)) {
+      if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
       this.setError(error, "处理分享端信令失败");
@@ -359,18 +341,6 @@ export class ViewerPeer {
         this.setError(error, "处理分享端信令失败");
       }
     }
-  }
-
-  private ownsDescription(
-    connection: RTCPeerConnection,
-    connectionId: string,
-    generation: CodecTransitionGeneration | null,
-  ): boolean {
-    return (
-      this.isCurrentConnection(connection, connectionId) &&
-      (generation === null ||
-        this.latestCodecNegotiationGeneration === generation)
-    );
   }
 
   private handleConnectionState(state: RTCPeerConnectionState): void {

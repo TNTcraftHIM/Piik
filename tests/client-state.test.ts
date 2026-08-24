@@ -746,7 +746,7 @@ describe("client signaling recovery policy", () => {
     Object.defineProperty(authenticated, "data", {
       value: JSON.stringify({
         type: "authenticated",
-        protocol: "screener-v9",
+        protocol: "screener-v10",
         role: "viewer",
         peerId: "viewer_12345678",
         roomExpiresAt: null,
@@ -767,7 +767,7 @@ describe("client signaling recovery policy", () => {
     expect(signal.reconnect()).toBe(false);
   });
 
-  it("keeps a Host paused across reconnect until the server confirms Resume", () => {
+  it("keeps a Host paused across reconnect until an explicit Resume is sent", () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
     class FakeWebSocket extends EventTarget {
@@ -815,7 +815,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v9",
+        protocol: "screener-v10",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -843,21 +843,6 @@ describe("client signaling recovery policy", () => {
 
     signal.start();
     authenticate(sockets[0]!);
-    expect(
-      signal.confirmSharingResumed({
-        type: "sharing-resume-authorized",
-        shareGeneration: "share_generation_12345678",
-        codecGeneration: null,
-        resumeAttempt: 1,
-      }),
-    ).toBe(true);
-    expect(
-      JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0])),
-    ).toMatchObject({
-      type: "sharing-source-enabled",
-      resumeAttempt: 1,
-    });
-
     reconnect(sockets[0]!);
     sockets[1]!.dispatchEvent(new Event("open"));
     expect(JSON.parse(String(sockets[1]!.send.mock.calls[0]![0]))).toMatchObject({
@@ -866,7 +851,7 @@ describe("client signaling recovery policy", () => {
     });
     receive(sockets[1]!, {
       type: "authenticated",
-      protocol: "screener-v9",
+      protocol: "screener-v10",
       role: "host",
       peerId: "host_12345678",
       roomExpiresAt: null,
@@ -880,9 +865,12 @@ describe("client signaling recovery policy", () => {
       codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678",
     });
-    receive(sockets[1]!, {
-      type: "host-status",
-      online: true,
+    expect(signal.setSharingPaused(false)).toBe(true);
+    expect(
+      JSON.parse(String(sockets[1]!.send.mock.calls.at(-1)![0])),
+    ).toMatchObject({
+      type: "set-sharing-paused",
+      shareGeneration: "share_generation_12345678",
       paused: false,
     });
 
@@ -948,7 +936,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v9",
+        protocol: "screener-v10",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -1073,7 +1061,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v9",
+      protocol: "screener-v10",
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -1201,7 +1189,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v9",
+        protocol: "screener-v10",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });

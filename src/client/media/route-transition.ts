@@ -151,34 +151,14 @@ function sameCandidate(
   return (
     left?.childPeerId === right.childPeerId &&
     left.connectionId === right.connectionId &&
-    left.transport === right.transport &&
-    sameCodecTransition(left.codecTransition, right.codecTransition)
-  );
-}
-
-function sameCodecTransition(
-  left: PreparedRouteCandidate["codecTransition"] | undefined,
-  right: PreparedRouteCandidate["codecTransition"],
-): boolean {
-  return (
-    left === right ||
-    (left !== null &&
-      left !== undefined &&
-      right !== null &&
-      left.generation === right.generation &&
-      left.videoCodec === right.videoCodec)
+    left.transport === right.transport
   );
 }
 
 function cloneCandidate(
   candidate: PreparedRouteCandidate,
 ): PreparedRouteCandidate {
-  return {
-    ...candidate,
-    codecTransition: candidate.codecTransition
-      ? { ...candidate.codecTransition }
-      : null,
-  };
+  return { ...candidate };
 }
 
 export function reportActivePeerRouteFailure(

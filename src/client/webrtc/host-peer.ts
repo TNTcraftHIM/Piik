@@ -1,8 +1,4 @@
-import type {
-  CodecTransitionGeneration,
-  IceConfig,
-  SignalPayload,
-} from "../../shared/protocol";
+import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import {
   audioSenderParameterWarning,
@@ -39,39 +35,12 @@ interface HostPeerEvents {
   onUpdate: (snapshot: PeerSnapshot) => void;
 }
 
-interface CodecPreparationRequest {
-  generation: CodecTransitionGeneration;
-  videoCodec: QualityProfile["videoCodec"];
-  negotiationEpoch: number;
-  promise: Promise<boolean>;
-  resolve: (accepted: boolean) => void;
-  settled: boolean;
-}
-
-interface CodecAnswerWaiter {
-  request: CodecPreparationRequest;
-  epoch: number;
-  resolve: (accepted: boolean) => void;
-}
-
-type NegotiationAnswerOwner =
-  | {
-      kind: "ordinary";
-      epoch: number;
-    }
-  | {
-      kind: "codec";
-      epoch: number;
-      waiter: CodecAnswerWaiter;
-    };
-
 export class HostPeer {
   readonly connectionId: string;
 
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
   private statsAccumulator = createStatsAccumulator();
-  private videoTransceiver: RTCRtpTransceiver | null = null;
   private videoSender: RTCRtpSender | null = null;
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
@@ -90,8 +59,6 @@ export class HostPeer {
   private profileRevision = 0;
   private negotiationEpoch = 0;
   private ordinaryAnswerEpoch: number | null = null;
-  private codecPreparation: CodecPreparationRequest | null = null;
-  private codecAnswerWaiter: CodecAnswerWaiter | null = null;
   private senderMutationTail: Promise<void> = Promise.resolve();
   private negotiationTail: Promise<void> = Promise.resolve();
   private snapshot: PeerSnapshot;
@@ -133,13 +100,7 @@ export class HostPeer {
       direction: "sendonly",
       streams: [this.stream],
     });
-    if (this.desiredProfile.videoCodec !== "automatic") {
-      applyVideoCodecPreference(
-        videoTransceiver,
-        this.desiredProfile.videoCodec,
-      );
-    }
-    this.videoTransceiver = videoTransceiver;
+    applyVideoCodecPreference(videoTransceiver, this.desiredProfile.videoCodec);
     this.videoSender = videoTransceiver.sender;
     this.audioSender = this.connection.addTransceiver(audioTrack ?? "audio", {
       direction: "sendonly",
@@ -271,65 +232,6 @@ export class HostPeer {
     });
   }
 
-  prepareVideoCodec(
-    generation: CodecTransitionGeneration,
-    videoCodec: QualityProfile["videoCodec"],
-  ): Promise<boolean> {
-    const current = this.codecPreparation;
-    if (
-      current?.generation === generation &&
-      current.videoCodec === videoCodec
-    ) {
-      return current.promise;
-    }
-    if (current) {
-      this.finishCodecPreparation(current, false);
-    }
-
-    let resolve!: (accepted: boolean) => void;
-    const promise = new Promise<boolean>((resolvePromise) => {
-      resolve = resolvePromise;
-    });
-    const request: CodecPreparationRequest = {
-      generation,
-      videoCodec,
-      negotiationEpoch: this.nextNegotiationEpoch(),
-      promise,
-      resolve,
-      settled: false,
-    };
-    this.codecPreparation = request;
-    void this.enqueueSenderMutation(() =>
-      this.runCodecPreparation(request),
-    ).then(
-      (accepted) => this.finishCodecPreparation(request, accepted),
-      () => this.finishCodecPreparation(request, false),
-    );
-    return promise;
-  }
-
-  cancelVideoCodecPreparation(): void {
-    const request = this.codecPreparation;
-    if (!request) {
-      return;
-    }
-    this.finishCodecPreparation(request, false);
-    if (this.disposed) {
-      return;
-    }
-    const epoch = this.nextNegotiationEpoch();
-    void this.enqueueNegotiation(async () => {
-      if (
-        this.disposed ||
-        epoch !== this.negotiationEpoch ||
-        this.codecPreparation
-      ) {
-        return;
-      }
-      await this.rollbackPendingLocalOffer();
-    });
-  }
-
   async acceptSignal(payload: SignalPayload): Promise<void> {
     if (this.disposed || payload.connectionId !== this.connectionId) {
       return;
@@ -352,34 +254,15 @@ export class HostPeer {
   }
 
   async restartIce(): Promise<boolean> {
-    while (!this.disposed) {
-      const codecPreparation = this.codecPreparation;
-      if (codecPreparation) {
-        await codecPreparation.promise;
-        continue;
+    return this.enqueueNegotiation(async () => {
+      if (
+        this.disposed ||
+        this.connection.signalingState !== "stable"
+      ) {
+        return false;
       }
-      const restarted = await this.enqueueNegotiation(async () => {
-        if (this.disposed) {
-          return false;
-        }
-        if (this.codecPreparation) {
-          return null;
-        }
-        if (this.connection.signalingState !== "stable") {
-          return false;
-        }
-        const accepted = await this.createOwnedOffer(
-          true,
-          this.nextNegotiationEpoch(),
-          null,
-        );
-        return !accepted && this.codecPreparation ? null : accepted;
-      });
-      if (restarted !== null) {
-        return restarted;
-      }
-    }
-    return false;
+      return this.createOwnedOffer(true, this.nextNegotiationEpoch());
+    });
   }
 
   isConnected(): boolean {
@@ -414,7 +297,6 @@ export class HostPeer {
       window.clearInterval(this.statsTimer);
       this.statsTimer = null;
     }
-    this.cancelVideoCodecPreparation();
     this.connection.close();
   }
 
@@ -457,24 +339,18 @@ export class HostPeer {
 
   private createOffer(restart: boolean): Promise<boolean> {
     return this.enqueueNegotiation(async () => {
-      if (this.disposed || this.codecPreparation) {
+      if (this.disposed) {
         return false;
       }
-      return this.createOwnedOffer(
-        restart,
-        this.nextNegotiationEpoch(),
-        null,
-      );
+      return this.createOwnedOffer(restart, this.nextNegotiationEpoch());
     });
   }
 
   private async createOwnedOffer(
     restart: boolean,
     epoch: number,
-    negotiationGeneration: CodecTransitionGeneration | null,
-    request: CodecPreparationRequest | null = null,
   ): Promise<boolean> {
-    if (!this.ownsLocalOffer(epoch, request)) {
+    if (!this.ownsLocalOffer(epoch)) {
       return false;
     }
     try {
@@ -482,24 +358,21 @@ export class HostPeer {
         this.connection.restartIce();
       }
       const offer = await this.connection.createOffer();
-      if (!this.ownsLocalOffer(epoch, request)) {
+      if (!this.ownsLocalOffer(epoch)) {
         return false;
       }
       await this.connection.setLocalDescription(offer);
       if (
-        !this.ownsLocalOffer(epoch, request) ||
+        !this.ownsLocalOffer(epoch) ||
         !this.connection.localDescription
       ) {
         return false;
       }
-      if (negotiationGeneration === null) {
-        this.ordinaryAnswerEpoch = epoch;
-      }
+      this.ordinaryAnswerEpoch = epoch;
       if (
         !this.events.sendSignal(this.peerId, {
           kind: "description",
           connectionId: this.connectionId,
-          negotiationGeneration,
           description: {
             type: "offer",
             sdp: this.connection.localDescription.sdp,
@@ -512,13 +385,10 @@ export class HostPeer {
       this.emit();
       return true;
     } catch (error) {
-      if (!this.ownsLocalOffer(epoch, request)) {
+      if (!this.ownsLocalOffer(epoch)) {
         return false;
       }
-      if (
-        negotiationGeneration === null &&
-        this.ordinaryAnswerEpoch === epoch
-      ) {
+      if (this.ordinaryAnswerEpoch === epoch) {
         this.ordinaryAnswerEpoch = null;
       }
       this.setError(error, restart ? "恢复连接失败" : "创建连接失败");
@@ -536,204 +406,44 @@ export class HostPeer {
   private async acceptAnswer(
     payload: Extract<SignalPayload, { kind: "description" }>,
   ): Promise<void> {
-    const owner = this.currentAnswerOwner(payload.negotiationGeneration);
-    if (!owner) {
+    const epoch = this.ordinaryAnswerEpoch;
+    if (epoch === null || !this.ownsAnswer(epoch)) {
       return;
     }
     try {
       await this.connection.setRemoteDescription(payload.description);
-      if (!this.ownsAnswer(owner)) {
+      if (!this.ownsAnswer(epoch)) {
         return;
       }
       await this.flushCandidates();
-      if (this.ownsAnswer(owner)) {
-        this.completeAnswer(owner, true);
+      if (this.ownsAnswer(epoch)) {
+        this.ordinaryAnswerEpoch = null;
       }
     } catch (error) {
-      if (!this.ownsAnswer(owner)) {
+      if (!this.ownsAnswer(epoch)) {
         return;
       }
-      this.completeAnswer(owner, false);
+      this.ordinaryAnswerEpoch = null;
       throw error;
     }
   }
 
-  private currentAnswerOwner(
-    generation: CodecTransitionGeneration | null,
-  ): NegotiationAnswerOwner | null {
-    if (generation === null) {
-      const epoch = this.ordinaryAnswerEpoch;
-      return epoch !== null && epoch === this.negotiationEpoch
-        ? { kind: "ordinary", epoch }
-        : null;
-    }
-    const waiter = this.codecAnswerWaiter;
-    return waiter &&
-      waiter.epoch === this.negotiationEpoch &&
-      waiter.request.generation === generation &&
-      this.ownsCodecPreparation(waiter.request)
-      ? { kind: "codec", epoch: waiter.epoch, waiter }
-      : null;
-  }
-
-  private ownsAnswer(owner: NegotiationAnswerOwner): boolean {
-    if (this.disposed || owner.epoch !== this.negotiationEpoch) {
-      return false;
-    }
-    return owner.kind === "ordinary"
-      ? this.ordinaryAnswerEpoch === owner.epoch
-      : this.codecAnswerWaiter === owner.waiter &&
-          this.ownsCodecPreparation(owner.waiter.request);
-  }
-
-  private completeAnswer(
-    owner: NegotiationAnswerOwner,
-    accepted: boolean,
-  ): void {
-    if (!this.ownsAnswer(owner)) {
-      return;
-    }
-    if (owner.kind === "ordinary") {
-      this.ordinaryAnswerEpoch = null;
-      return;
-    }
-    this.codecAnswerWaiter = null;
-    owner.waiter.resolve(accepted);
-  }
-
-  private settleCodecAnswer(
-    accepted: boolean,
-    generation?: CodecTransitionGeneration,
-    epoch?: number,
-  ): void {
-    const waiter = this.codecAnswerWaiter;
-    if (
-      (generation !== undefined &&
-        waiter?.request.generation !== generation) ||
-      (epoch !== undefined && waiter?.epoch !== epoch)
-    ) {
-      return;
-    }
-    this.codecAnswerWaiter = null;
-    waiter?.resolve(accepted);
-  }
-
-  private async runCodecPreparation(
-    request: CodecPreparationRequest,
-  ): Promise<boolean> {
-    const negotiation = await this.enqueueNegotiation(async () => {
-      const transceiver = this.videoTransceiver;
-      if (
-        !this.ownsCodecPreparation(request) ||
-        request.negotiationEpoch !== this.negotiationEpoch ||
-        !transceiver ||
-        !(await this.rollbackPendingLocalOffer()) ||
-        !this.ownsCodecPreparation(request) ||
-        request.negotiationEpoch !== this.negotiationEpoch ||
-        !applyVideoCodecPreference(transceiver, request.videoCodec)
-      ) {
-        return null;
-      }
-      const answer = new Promise<boolean>((resolve) => {
-        this.codecAnswerWaiter = {
-          request,
-          epoch: request.negotiationEpoch,
-          resolve,
-        };
-      });
-      if (
-        !(await this.createOwnedOffer(
-          false,
-          request.negotiationEpoch,
-          request.generation,
-          request,
-        ))
-      ) {
-        this.settleCodecAnswer(
-          false,
-          request.generation,
-          request.negotiationEpoch,
-        );
-        return null;
-      }
-      return { answer };
-    });
-    if (!negotiation) {
-      return false;
-    }
-    const accepted = await negotiation.answer;
-    if (!accepted || !this.ownsCodecPreparation(request)) {
-      return false;
-    }
-    this.desiredProfile = {
-      ...this.desiredProfile,
-      videoCodec: request.videoCodec,
-    };
-    this.appliedVideoProfile = this.appliedVideoProfile
-      ? { ...this.appliedVideoProfile, videoCodec: request.videoCodec }
-      : { ...this.desiredProfile };
-    return true;
-  }
-
-  private ownsLocalOffer(
-    epoch: number,
-    request: CodecPreparationRequest | null,
-  ): boolean {
+  private ownsAnswer(epoch: number): boolean {
     return (
       !this.disposed &&
       epoch === this.negotiationEpoch &&
-      (request === null ||
-        (request.negotiationEpoch === epoch &&
-          this.ownsCodecPreparation(request)))
+      this.ordinaryAnswerEpoch === epoch
     );
+  }
+
+  private ownsLocalOffer(epoch: number): boolean {
+    return !this.disposed && epoch === this.negotiationEpoch;
   }
 
   private nextNegotiationEpoch(): number {
     this.ordinaryAnswerEpoch = null;
     this.negotiationEpoch += 1;
     return this.negotiationEpoch;
-  }
-
-  private ownsCodecPreparation(request: CodecPreparationRequest): boolean {
-    return (
-      !this.disposed &&
-      !request.settled &&
-      this.codecPreparation === request
-    );
-  }
-
-  private finishCodecPreparation(
-    request: CodecPreparationRequest,
-    accepted: boolean,
-  ): void {
-    if (request.settled) {
-      return;
-    }
-    request.settled = true;
-    if (this.codecAnswerWaiter?.request === request) {
-      const waiter = this.codecAnswerWaiter;
-      this.codecAnswerWaiter = null;
-      waiter.resolve(false);
-    }
-    if (this.codecPreparation === request) {
-      this.codecPreparation = null;
-    }
-    request.resolve(accepted);
-  }
-
-  private async rollbackPendingLocalOffer(): Promise<boolean> {
-    if (this.connection.signalingState === "stable") {
-      return true;
-    }
-    if (this.connection.signalingState !== "have-local-offer") {
-      return false;
-    }
-    try {
-      await this.connection.setLocalDescription({ type: "rollback" });
-      return (this.connection.signalingState as RTCSignalingState) === "stable";
-    } catch {
-      return false;
-    }
   }
 
   private async updateStats(): Promise<void> {

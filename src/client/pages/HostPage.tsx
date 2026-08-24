@@ -28,8 +28,6 @@ import {
   type PreparedRouteCandidate,
   type ServerMessage,
   type CodeEntryPolicy,
-  type CodecTransitionGeneration,
-  type ResumeAttempt,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionSelfCheck } from "../components/ConnectionSelfCheck";
@@ -98,7 +96,6 @@ import {
   HostSfuRoute,
   type HostSfuPublisherSnapshot,
 } from "../media/host-sfu-route";
-import { applyAuthoritativeHostPause } from "../media/host-source-authority";
 import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
@@ -128,24 +125,10 @@ import {
   shouldPauseLocalPreview,
   sourceSwitchNotice,
   type HostAction,
-  VIDEO_CODEC_TRANSITION_FAILED_NOTICE,
   videoCodecLockNotice,
 } from "./host-page-notices";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
-type CodecTransitionPhase =
-  | "preparing"
-  | "prepared"
-  | "proving"
-  | "rollback-preparing"
-  | "rollback-prepared"
-  | "failed";
-
-interface CodecTransitionState {
-  generation: CodecTransitionGeneration | null;
-  requested: VideoCodecPreference;
-  rollback: boolean;
-}
 
 type ViewerQualityEvidence = Extract<
   ServerMessage,
@@ -291,9 +274,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
-  const [resumePending, setResumePending] = useState(false);
-  const [codecTransitionPhase, setCodecTransitionPhase] =
-    useState<CodecTransitionPhase | null>(null);
   const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
@@ -329,10 +309,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const qualityChangeRef = useRef<object | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
   const sharingPausedRef = useRef(false);
-  const resumePendingRef = useRef(false);
-  const activeResumeAttemptRef = useRef<ResumeAttempt | null>(null);
-  const codecTransitionRef = useRef<CodecTransitionState | null>(null);
-  const codecTransitionPhaseRef = useRef<CodecTransitionPhase | null>(null);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
@@ -510,31 +486,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           setSfuPublisherSnapshot(snapshot);
         }
       },
-      onCodecPublisherPrepared: (result) => {
-        const shareGeneration = shareGenerationRef.current;
-        if (
-          !shareGeneration ||
-          !isCurrentGeneration(generation) ||
-          hostSfuRouteRef.current !== route
-        ) {
-          return;
-        }
-        const rollback =
-          codecTransitionRef.current?.rollback === true ||
-          codecTransitionPhaseRef.current === "rollback-preparing";
-        codecTransitionRef.current = {
-          generation: result.generation,
-          requested: result.videoCodec,
-          rollback,
-        };
-        signalRef.current?.send({
-          type: "video-codec-prepared",
-          shareGeneration,
-          generation: result.generation,
-          binding: result.binding,
-          accepted: result.accepted,
-        });
-      },
     });
     hostSfuRouteRef.current = route;
     return route;
@@ -625,12 +576,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setChangingQuality(false);
     sharingPausedRef.current = false;
     setSharingPaused(false);
-    resumePendingRef.current = false;
-    setResumePending(false);
-    activeResumeAttemptRef.current = null;
-    codecTransitionRef.current = null;
-    codecTransitionPhaseRef.current = null;
-    setCodecTransitionPhase(null);
   }
 
   function forgetRoom(): void {
@@ -794,45 +739,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function changeVideoCodec(videoCodec: VideoCodecPreference): void {
-    if (phase === "starting") {
-      return;
-    }
-    if (phase === "live") {
-      const shareGeneration = shareGenerationRef.current;
-      if (
-        !sharingPausedRef.current ||
-        !peerAssistedRef.current ||
-        !shareGeneration ||
-        changingQuality ||
-        switchingSource ||
-        codecTransitionRef.current
-      ) {
-        return;
-      }
-      if (
-        (qualitySettingsRef.current.videoCodec ?? "automatic") === videoCodec
-      ) {
-        return;
-      }
-      if (
-        signalRef.current?.send({
-          type: "request-video-codec-transition",
-          shareGeneration,
-          videoCodec,
-        }) !== true
-      ) {
-        setNotice("信令正在恢复，暂时无法切换视频编码");
-        return;
-      }
-      codecTransitionRef.current = {
-        generation: null,
-        requested: videoCodec,
-        rollback: false,
-      };
-      codecTransitionPhaseRef.current = "preparing";
-      setCodecTransitionPhase("preparing");
-      setAdvancedQuality((current) => ({ ...current, videoCodec }));
-      setNotice("正在准备视频编码");
+    if (phase === "starting" || phase === "live") {
       return;
     }
     const next = { ...qualitySettingsRef.current, videoCodec };
@@ -856,24 +763,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     preserveAdvancedDraft = false,
   ): Promise<void> {
     const previousProfile = qualitySettingsRef.current;
-    const codecTransition = codecTransitionRef.current;
     if (
       phase === "live" &&
-      (nextProfile.videoCodec ?? "automatic") !==
-        (previousProfile.videoCodec ?? "automatic")
-    ) {
-      return;
-    }
-    if (
-      phase === "live" &&
-      codecTransition &&
-      !videoQualitySettingsEqual(previousProfile, nextProfile)
-    ) {
-      return;
-    }
-    if (
-      phase === "live" &&
-      codecTransitionPhaseRef.current === "failed"
+      (nextProfile.videoCodec ?? "vp8") !==
+        (previousProfile.videoCodec ?? "vp8")
     ) {
       return;
     }
@@ -905,10 +798,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     const audioChanged =
       resolveScreenAudioQuality(previousProfile.screenAudioQuality) !==
       resolveScreenAudioQuality(nextProfile.screenAudioQuality);
-    const endpointProfile = codecTransition
-      ? { ...nextProfile, videoCodec: codecTransition.requested }
-      : nextProfile;
-
     try {
       if (videoChanged) {
         await applyCaptureProfile(activeStream, nextProfile);
@@ -936,14 +825,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         Promise.all(
           [
             ...[...peersRef.current.values()].map((peer) =>
-              peer.updateProfile(endpointProfile),
+              peer.updateProfile(nextProfile),
             ),
             ...(hostProvisionalChildRef.current
-              ? [hostProvisionalChildRef.current.updateProfile(endpointProfile)]
+              ? [hostProvisionalChildRef.current.updateProfile(nextProfile)]
               : []),
           ],
         ),
-        activeSfuRoute?.updateProfile(endpointProfile) ??
+        activeSfuRoute?.updateProfile(nextProfile) ??
           Promise.resolve(true),
       ]);
       if (
@@ -994,16 +883,21 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (sharingPausedRef.current) {
-      if (resumePendingRef.current) {
+      if (!setMediaPaused(activeStream, false)) {
+        setNotice("当前分享没有可恢复的媒体轨道");
         return;
       }
-      if (signalRef.current?.requestSharingResume() !== true) {
+      hostSfuRouteRef.current?.setPaused(false);
+      if (signalRef.current?.setSharingPaused(false) !== true) {
+        setMediaPaused(activeStream, true);
+        hostSfuRouteRef.current?.setPaused(true);
+        signalRef.current?.confirmSharingPaused();
         setNotice("信令正在恢复，分享仍保持暂停");
         return;
       }
-      resumePendingRef.current = true;
-      setResumePending(true);
-      setNotice("正在恢复分享");
+      sharingPausedRef.current = false;
+      setSharingPaused(false);
+      setNotice("音视频分享已恢复");
       return;
     }
     if (!setMediaPaused(activeStream, true)) {
@@ -1014,17 +908,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setSharingPaused(true);
     hostSfuRouteRef.current?.setPaused(true);
     discardPreparedHostChild();
-    signalRef.current?.pauseSharing();
-    activeResumeAttemptRef.current = null;
-    const codecState = codecTransitionRef.current;
-    if (codecState && codecTransitionPhaseRef.current === "proving") {
-      const nextPhase = codecState.rollback
-        ? "rollback-prepared"
-        : "prepared";
-      codecTransitionPhaseRef.current = nextPhase;
-      setCodecTransitionPhase(nextPhase);
-    }
-    setNotice("音视频分享已暂停");
+    setNotice(
+      signalRef.current?.setSharingPaused(true) === true
+        ? "音视频分享已暂停"
+        : "信令正在恢复，分享保持暂停",
+    );
   }
 
   async function enterPreviewFullscreen(): Promise<void> {
@@ -1280,55 +1168,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     );
   }
 
-  async function prepareVideoCodec(
-    message: Extract<ServerMessage, { type: "video-codec-prepare" }>,
-    generation: number,
-  ): Promise<void> {
-    const shareGeneration = shareGenerationRef.current;
-    if (
-      !shareGeneration ||
-      message.shareGeneration !== shareGeneration ||
-      !isCurrentGeneration(generation)
-    ) {
-      return;
-    }
-
-    const rollback =
-      codecTransitionRef.current?.rollback === true ||
-      codecTransitionPhaseRef.current === "rollback-preparing";
-    codecTransitionRef.current = {
-      generation: message.generation,
-      requested: message.videoCodec,
-      rollback,
-    };
-
-    let accepted = false;
-    if (message.binding.kind === "peer") {
-      const peer = peersRef.current.get(message.binding.childPeerId);
-      if (peer?.connectionId === message.binding.connectionId) {
-        peer.cancelVideoCodecPreparation();
-        accepted = await peer.prepareVideoCodec(
-          message.generation,
-          message.videoCodec,
-        );
-      }
-    }
-
-    if (
-      !isCurrentGeneration(generation) ||
-      shareGenerationRef.current !== shareGeneration
-    ) {
-      return;
-    }
-    signalRef.current?.send({
-      type: "video-codec-prepared",
-      shareGeneration,
-      generation: message.generation,
-      binding: message.binding,
-      accepted,
-    });
-  }
-
   function handleSignalMessage(
     message: ServerMessage,
     generation: number,
@@ -1339,15 +1178,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "authenticated" && message.role === "host") {
-      peersRef.current.forEach((peer) =>
-        peer.cancelVideoCodecPreparation(),
-      );
-      codecTransitionRef.current = null;
-      codecTransitionPhaseRef.current = null;
-      setCodecTransitionPhase(null);
-      resumePendingRef.current = false;
-      setResumePending(false);
-      activeResumeAttemptRef.current = null;
       discardPreparedHostChild();
       hostPeerIdRef.current = message.peerId;
       endpointMediaCopyCapacityRef.current = message.endpointMediaCopyCapacity;
@@ -1374,32 +1204,21 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           ...message.routeAssignment.childPeerIds,
         ];
         peerAssistedRef.current = true;
-        const activeCodecTransition = codecTransitionRef.current;
         if (reauthenticated) {
-          commitQuality(
-            message.qualitySettings,
-            activeCodecTransition !== null,
-          );
-          if (activeCodecTransition === null) {
-            const endpointUpdates = [
-              ...[...peersRef.current.values()].map((peer) =>
-                peer.updateProfile(message.qualitySettings),
-              ),
-              ...(hostProvisionalChildRef.current
-                ? [
-                    hostProvisionalChildRef.current.updateProfile(
-                      message.qualitySettings,
-                    ),
-                  ]
-                : []),
-            ];
-            void Promise.allSettled(endpointUpdates);
-          }
-        } else {
-          signalRef.current?.send({
-            type: "set-quality-settings",
-            qualitySettings: qualitySettingsRef.current,
-          });
+          commitQuality(message.qualitySettings);
+          const endpointUpdates = [
+            ...[...peersRef.current.values()].map((peer) =>
+              peer.updateProfile(message.qualitySettings),
+            ),
+            ...(hostProvisionalChildRef.current
+              ? [
+                  hostProvisionalChildRef.current.updateProfile(
+                    message.qualitySettings,
+                  ),
+                ]
+              : []),
+          ];
+          void Promise.allSettled(endpointUpdates);
         }
         const route = ensureHostSfuRoute(generation);
         void route
@@ -1409,11 +1228,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             assignment: message.routeAssignment,
           })
           .then(async () => {
-            if (
-              reauthenticated &&
-              codecTransitionRef.current === null &&
-              hostSfuRouteRef.current === route
-            ) {
+            if (reauthenticated && hostSfuRouteRef.current === route) {
               await route.updateProfile(message.qualitySettings);
             }
             showHostSfuQualityWarning(route, generation);
@@ -1503,166 +1318,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       downloadDiagnosticReport("host", connections, message.snapshot);
       return;
     }
-    if (message.type === "video-codec-prepare") {
-      void prepareVideoCodec(message, generation);
-      return;
-    }
-    if (message.type === "video-codec-result") {
-      let transition = codecTransitionRef.current;
-      if (
-        !transition &&
-        message.status === "failed" &&
-        message.failure === "stale-binding"
-      ) {
-        transition = {
-          generation: message.generation,
-          requested: message.videoCodec,
-          rollback: true,
-        };
-        codecTransitionRef.current = transition;
-      }
-      if (
-        !transition ||
-        (transition.generation !== null &&
-          transition.generation !== message.generation)
-      ) {
-        return;
-      }
-      transition.generation = message.generation;
-      if (message.status === "prepared") {
-        codecTransitionPhaseRef.current = "prepared";
-        setCodecTransitionPhase("prepared");
-        setNotice("视频编码已准备，恢复分享后完成验证");
-        return;
-      }
-      if (message.status === "rollback-prepared") {
-        transition.rollback = true;
-        transition.requested = message.videoCodec;
-        codecTransitionPhaseRef.current = "rollback-prepared";
-        setCodecTransitionPhase("rollback-prepared");
-        setAdvancedQuality((current) => ({
-          ...current,
-          videoCodec: message.videoCodec,
-        }));
-        setNotice("新编码未通过验证；原编码已准备，恢复分享后完成恢复");
-        return;
-      }
-      if (message.status === "committed") {
-        activeResumeAttemptRef.current = null;
-        codecTransitionRef.current = null;
-        codecTransitionPhaseRef.current = null;
-        setCodecTransitionPhase(null);
-        commitQuality(
-          { ...qualitySettingsRef.current, videoCodec: message.videoCodec },
-          true,
-        );
-        setAdvancedQuality((current) => ({
-          ...current,
-          videoCodec: message.videoCodec,
-        }));
-        setNotice(
-          message.failure
-            ? "已恢复原视频编码"
-            : `视频编码已切换为 ${VIDEO_CODEC_PREFERENCE_LABELS[message.videoCodec]}`,
-        );
-      } else {
-        transition.requested = message.videoCodec;
-        transition.rollback = true;
-        codecTransitionPhaseRef.current = "failed";
-        setCodecTransitionPhase("failed");
-        resumePendingRef.current = false;
-        setResumePending(false);
-        activeResumeAttemptRef.current = null;
-        setAdvancedQuality((current) => ({
-          ...current,
-          videoCodec: message.videoCodec,
-        }));
-        setNotice(VIDEO_CODEC_TRANSITION_FAILED_NOTICE);
-      }
-      return;
-    }
-    if (message.type === "sharing-resume-authorized") {
+    if (message.type === "pause-sharing-source") {
       if (message.shareGeneration !== shareGenerationRef.current) {
         return;
       }
-      const transition = codecTransitionRef.current;
-      if (
-        (message.codecGeneration === null && transition !== null) ||
-        (message.codecGeneration !== null &&
-          (transition?.generation !== message.codecGeneration ||
-            (codecTransitionPhaseRef.current !== "prepared" &&
-              codecTransitionPhaseRef.current !== "rollback-prepared")))
-      ) {
-        activeResumeAttemptRef.current = null;
-        signalRef.current?.pauseSharing();
-        resumePendingRef.current = false;
-        setResumePending(false);
-        setNotice("恢复授权已失效，分享仍保持暂停");
-        return;
-      }
-      activeResumeAttemptRef.current = message.resumeAttempt;
       const activeStream = streamRef.current;
-      if (!activeStream || !setMediaPaused(activeStream, false)) {
-        activeResumeAttemptRef.current = null;
-        signalRef.current?.pauseSharing();
-        resumePendingRef.current = false;
-        setResumePending(false);
-        setNotice("当前分享没有可恢复的媒体轨道");
-        return;
-      }
-      hostSfuRouteRef.current?.setPaused(false);
-      if (signalRef.current?.confirmSharingResumed(message) !== true) {
+      if (activeStream) {
         setMediaPaused(activeStream, true);
-        hostSfuRouteRef.current?.setPaused(true);
-        signalRef.current?.pauseSharing();
-        activeResumeAttemptRef.current = null;
-        resumePendingRef.current = false;
-        setResumePending(false);
-        setNotice("信令正在恢复，分享仍保持暂停");
-        return;
       }
-      sharingPausedRef.current = false;
-      setSharingPaused(false);
-      resumePendingRef.current = false;
-      setResumePending(false);
-      if (message.codecGeneration !== null) {
-        codecTransitionPhaseRef.current = "proving";
-        setCodecTransitionPhase("proving");
-        setNotice("正在验证视频编码");
-      } else {
-        setNotice("音视频分享已恢复");
-      }
-      return;
-    }
-    if (message.type === "pause-sharing-source") {
-      const transition = codecTransitionRef.current;
-      const pause = applyAuthoritativeHostPause({
-        message,
-        currentShareGeneration: shareGenerationRef.current,
-        activeResumeAttempt: activeResumeAttemptRef.current,
-        activeCodecGeneration: transition?.generation ?? null,
-        stream: streamRef.current,
-        pauseSfuRoute: () => hostSfuRouteRef.current?.setPaused(true),
-        markHostPaused: () => {
-          sharingPausedRef.current = true;
-          setSharingPaused(true);
-          signalRef.current?.confirmSharingPaused();
-          resumePendingRef.current = false;
-          setResumePending(false);
-          activeResumeAttemptRef.current = null;
-        },
-      });
-      if (!pause) {
-        return;
-      }
-      if (transition && pause.localCodecContextMatches) {
-        transition.rollback = true;
-        codecTransitionPhaseRef.current = "rollback-preparing";
-        setCodecTransitionPhase("rollback-preparing");
-        setNotice("新编码未通过验证，正在恢复原编码");
-      } else {
-        setNotice("分享仍保持暂停");
-      }
+      hostSfuRouteRef.current?.setPaused(true);
+      sharingPausedRef.current = true;
+      setSharingPaused(true);
+      signalRef.current?.confirmSharingPaused();
+      setNotice("分享仍保持暂停");
       return;
     }
     if (message.type === "route-update") {
@@ -1779,20 +1447,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "error") {
-      if (
-        codecTransitionRef.current?.generation === null &&
-        codecTransitionPhaseRef.current === "preparing"
-      ) {
-        codecTransitionRef.current = null;
-        codecTransitionPhaseRef.current = null;
-        setCodecTransitionPhase(null);
-        setAdvancedQuality((current) => ({
-          ...current,
-          videoCodec: qualitySettingsRef.current.videoCodec ?? "automatic",
-        }));
-      }
-      resumePendingRef.current = false;
-      setResumePending(false);
       setViewerGrantUpdating(false);
       setViewerPasswordUpdating(false);
       viewerPasswordActionRef.current = null;
@@ -1896,6 +1550,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             clientId: hostClientId,
             shareGeneration,
             sharingPaused: false,
+            qualitySettings: qualitySettingsRef.current,
             viewerPresence: true,
             viewerPasswordSettings: true,
             displayName: initialDisplayName,
@@ -2298,14 +1953,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     : null;
   const activeCodeEntryPolicy =
     room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
-  const codecLockNotice = videoCodecLockNotice(
-    phase,
-    sharingPaused,
-    codecTransitionPhase,
-  );
-  const codecResumeReady =
-    codecTransitionPhase === "prepared" ||
-    codecTransitionPhase === "rollback-prepared";
+  const codecLockNotice = videoCodecLockNotice(phase);
 
   return (
     <div className="app-shell">
@@ -2347,11 +1995,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     type="button"
                     disabled={
                       switchingSource ||
-                      changingQuality ||
-                      resumePending ||
-                      (sharingPaused &&
-                        codecTransitionPhase !== null &&
-                        !codecResumeReady)
+                      changingQuality
                     }
                     onClick={toggleSharingPause}
                   >
@@ -2360,11 +2004,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     ) : (
                       <Pause size={16} fill="currentColor" aria-hidden="true" />
                     )}
-                    {resumePending
-                      ? "正在恢复"
-                      : sharingPaused
-                        ? "恢复分享"
-                        : "暂停分享"}
+                    {sharingPaused ? "恢复分享" : "暂停分享"}
                   </button>
                 )}
                 {phase === "live" && (
@@ -2373,8 +2013,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     type="button"
                     disabled={
                       switchingSource ||
-                      changingQuality ||
-                      codecTransitionPhase !== null
+                      changingQuality
                     }
                     onClick={() => void switchSource()}
                   >
@@ -2606,14 +2245,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         disabled={
                           phase === "starting" ||
                           switchingSource ||
-                          changingQuality ||
-                          codecTransitionPhase !== null
+                          changingQuality
                         }
                         onClick={() =>
                           void changeQuality({
                             ...QUALITY_PROFILES[id],
                             videoCodec:
-                              qualitySettingsRef.current.videoCodec ?? "automatic",
+                              qualitySettingsRef.current.videoCodec ?? "vp8",
                             screenAudioQuality: resolveScreenAudioQuality(
                               qualitySettingsRef.current.screenAudioQuality,
                             ),
@@ -2743,18 +2381,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           key={codec}
                           type="button"
                           className={
-                            (advancedQuality.videoCodec ?? "automatic") === codec
+                            (advancedQuality.videoCodec ?? "vp8") === codec
                               ? "is-selected"
                               : undefined
                           }
                           aria-pressed={
-                            (advancedQuality.videoCodec ?? "automatic") === codec
+                            (advancedQuality.videoCodec ?? "vp8") === codec
                           }
                           disabled={
                             phase === "starting" ||
-                            (phase === "live" && !sharingPaused) ||
-                            changingQuality ||
-                            codecTransitionPhase !== null
+                            phase === "live" ||
+                            changingQuality
                           }
                           onClick={() =>
                             changeVideoCodec(codec)
@@ -2796,8 +2433,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           disabled={
                             phase === "starting" ||
                             switchingSource ||
-                            changingQuality ||
-                            codecTransitionPhase === "failed"
+                            changingQuality
                           }
                           onClick={() =>
                             changeScreenAudioQuality(audioQuality)
@@ -2814,8 +2450,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     disabled={
                       phase === "starting" ||
                       switchingSource ||
-                      changingQuality ||
-                      codecTransitionPhase !== null
+                      changingQuality
                     }
                     onClick={() => void changeQuality(advancedQuality)}
                   >
