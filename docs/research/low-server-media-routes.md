@@ -6,8 +6,9 @@
 - Status: research and dated route evidence. Current invariants and assisted
   transport roles are in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md).
   Exact Browser v9 source `d543f38aacad3df5ef65fde1055cc8e733972afe`
-  implements the current route transaction and diagnostics; production remains
-  v8, while real-network validation remains in [verification status](../verification-status.md).
+  implements the current route transaction and diagnostics; production now runs
+  that v9 contract, while real-network validation remains in
+  [verification status](../verification-status.md).
 
 ## Current Transport Conclusion
 
@@ -59,7 +60,7 @@ fail closed at `sender-config`. After correcting that contract, Viewer inbound
 packets and decoded/rendered frames increased, endpoint edges stayed bounded,
 and both clients left cleanly. TURN did not participate in that first run. A
 later exact-source canary against the then-production media tuple proved the
-historical Host-ingress selected relay described below. The current `8f5b3f1`
+historical Host-ingress selected relay described below. A historical v8
 production canary subsequently committed two SFU assignments and decoded
 1920x1080 video. These are functional, not performance, evidence; heterogeneous
 networks, mobile, resources, and endurance remain open.
@@ -300,9 +301,8 @@ ingress/egress caps.
 ## Privacy-Safe Route Diagnostic Boundary
 
 Start with locally retained, redacted `webrtc-internals` as manual ground truth.
-The deployed v8 product already has a user-initiated local stats export. Exact
-v9 source also implements the route-timing snapshot, but it is not deployed. It
-may observe only existing
+Production v9 deploys the user-initiated local stats export and route-timing
+snapshot. It may observe only existing
 join, route-demand, operation-start, candidate-start, first-decoded-frame,
 settle, share-stop, departure, and room-delete events. It keeps one latest
 timing/outcome record per current child; a new demand overwrites that record,
@@ -557,10 +557,10 @@ counters would not be deployment-wide admission.
 | Route | Where copies are emitted | Endpoint cost | Evidence status |
 | --- | --- | --- | --- |
 | Direct host P2P | Host emits one copy per Viewer | Host upload and sender pipelines grow with Viewers | Baseline evidence; current capacity is owned by the product contract |
-| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | V9 source and v8 production admit up to 20; the exact v9 local direct loopback gate passed, while heterogeneous networks remain open |
+| Bounded browser relay DAG | Host and each Web relay emit at most the configured endpoint cap | Ordinary browser, but every relay decodes and re-encodes and adds a hop | V9 source and production admit up to 20; the exact v9 local direct loopback gate passed, while heterogeneous networks remain open |
 | Native shared-encode host | Host targets one encode for standard WebRTC edges | libwebrtc public-API proxy risk spike, with Pion as fallback | Research evidence; still pays per-edge upload |
 | Native volunteer encoded-RTP relay | Each volunteer forwards one encoded copy | Native install, RTP/RTCP forwarding, packaging, and opt-in relay policy | Research only; no current product authorization |
-| SFU service | SFU emits authorized subscription copies | Service pays bounded egress; an authoritative Host publisher supplies media | V9 source implements the current topology/admission and a v8 production canary decoded media; v9 deployment plus heterogeneous-network/resource validation remain open |
+| SFU service | SFU emits authorized subscription copies | Service pays bounded egress; an authoritative Host publisher supplies media | Production deploys the v9 topology/admission; only a historical v8 production canary decoded media, so current heterogeneous-network/resource validation remains open |
 | SFU fallback | SFU emits authorized copies | Additional central ingress and egress cost | Deployed bounded path; real heterogeneous-network and resource acceptance remains open |
 | SVC plus multiple trees | Peers emit striped layer copies across several trees | Layer scheduling, reassembly, redundancy, and more churn state | Separate conditional spike; target endpoint upload near `B` |
 | Network coding | Peers or servers emit coded blocks | Generations, buffering, decoding, integrity, and a custom media plane | Trace/FEC spike only; optimize loss recovery, not clean bandwidth |

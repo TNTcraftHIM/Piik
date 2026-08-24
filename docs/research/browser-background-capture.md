@@ -44,9 +44,10 @@ stable baseline exists; none is a page-keepalive mechanism.
 ## Current Source Boundary
 
 The source review covers exact Browser v9 source
-`d543f38aacad3df5ef65fde1055cc8e733972afe`. Production remains exact v8
-`8f5b3f192ddd010ca01c969008e512191312736a`; none of the v9 changes claims or
-implements a page-keepalive mechanism.
+`d543f38aacad3df5ef65fde1055cc8e733972afe`, integrated and deployed by exact
+main `39fcf93bae057fcbb1002702c3be6b90bac9027f`. None of the v9 changes claims or
+implements a page-keepalive mechanism, and the production cutover added no
+physical background-capture evidence.
 
 - `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream, applies
   ideal/max capture constraints, marks video as `motion`, and applies sender

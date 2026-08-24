@@ -6,9 +6,9 @@
   earlier resource/quality gate remains eight
 - Status: historical evidence plus the bounded controller. Exact Browser v9
   source `d543f38aacad3df5ef65fde1055cc8e733972afe` implements the current
-  ADR-0005 route transaction; production remains v8 and a controlled canary
-  decoded SFU media. Heterogeneous-network, mobile, resource, and endurance
-  evidence remains open.
+  ADR-0005 route transaction, and production now runs that v9 contract. A
+  historical v8 canary decoded SFU media. Heterogeneous-network, mobile,
+  resource, and endurance evidence remains open.
 
 This document owns dated measurements and implementation evidence. Current
 capacity and routing authority live in [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md)
@@ -36,11 +36,11 @@ publication and per-Viewer SFU subscriptions provide server-fed ingress when sel
 same bounded controller. Direct P2P remains the
 simplest path while a healthy endpoint sender slot is available; later Viewers
 may be assigned to peers automatically. ADR-0005 makes SFU capacity part of the flagship
-target while retaining peer descendants. The first production rollout used a
-room-`1` exact smoke and observed only participant entry. Production later
-removed that room boundary; a controlled current-release canary subsequently
-committed two SFU assignments and decoded 1920x1080 video. That does not close
-the real-network or resource matrix.
+target while retaining peer descendants. The historical v8 production rollout
+used a room-`1` exact smoke and observed only participant entry, then removed
+that room boundary. A controlled v8 canary subsequently committed two SFU
+assignments and decoded 1920x1080 video. That does not close the real-network or
+resource matrix.
 
 ## What Browsers Can Share
 
@@ -240,8 +240,8 @@ rather than wire IDs, and `480p` is only the advanced 854x480 resolution. The
 server stores the latest complete object in a room-count-bounded in-memory map,
 defaults to 1080p30 at 5 Mbps with balanced priority in v9 source, includes it in
 peer-assisted authenticated snapshots, and broadcasts Host changes to online
-Viewers. Production v8 retains its 1080p60 default and lacks advanced 480p until
-the atomic v9 deployment. The value survives a stopped share, is removed with
+Viewers. Production v9 uses the same 1080p30 default and advanced 480p boundary.
+The value survives a stopped share, is removed with
 the room, and is not persisted.
 Ordinary P2P authentication remains unchanged and
 setting-control messages are forbidden in that mode.
@@ -508,9 +508,9 @@ relay experiment keeps standard P2P plus explicit user-operated or central SFU
 fallbacks.
 
 Passing these historical gates proved only that a second design phase was
-justified. ADR-0005 subsequently accepted the bounded controller; production
-first ran a room-`1` smoke and later removed that rollout boundary. A controlled
-current-release canary decoded two SFU assignments; heterogeneous-network,
+justified. ADR-0005 subsequently accepted the bounded controller; historical v8
+production first ran a room-`1` smoke and later removed that rollout boundary. A
+controlled v8 canary decoded two SFU assignments; heterogeneous-network,
 resource, and broader audio/A-V verification remain open. The
 native host shared-encode sender is a separate planned phase regardless of this
 experiment's result and is not implemented here.
@@ -529,7 +529,7 @@ event arrives later. The application therefore needs a small text-message
 challenge rather than waiting for either protocol Ping/Pong or the old socket's
 close event.
 
-Exact v9 source and deployed v8 both send
+Deployed v9 sends
 `signaling-challenge { sequence }`, and the server sends the exact
 `signaling-challenge-response { sequence }` only to that requesting socket.
 Server and Browser assets deploy atomically; stale Browser and executable-sender
@@ -547,7 +547,7 @@ socket generation are ignored, and the server revalidates the current
 authenticated session before replying. A hidden document, a visibility
 restore, or an obviously late timer callback clears pending evidence and starts
 a fresh five-second baseline instead of declaring failure.
-This response-only watchdog remains deployed in v8 and retained in v9 source;
+This response-only watchdog is deployed in v9;
 real silent-partition timing remains a production/browser evidence boundary.
 
 The response is socket-local, contains no room state, secret, candidate, or raw

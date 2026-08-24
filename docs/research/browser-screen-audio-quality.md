@@ -9,8 +9,8 @@ local speech processing unless the request disables it. The source request is
 explicit. Exact Browser v9 source
 `d543f38aacad3df5ef65fde1055cc8e733972afe` exposes bounded 64/128/256 kbps
 choices, applies them to new P2P, browser-relay, and SFU senders, and implements
-serialized live mutation with applied readback. Production remains v8 and does
-not yet deploy live mutation. Target-device audible proof remains open.
+serialized live mutation with applied readback. Production now deploys that v9
+path. Target-device audible proof remains open.
 
 ## Scope And Decision
 
@@ -465,7 +465,7 @@ A/V playout timing using a distinguishable stereo fixture plus game/film audio.
 Share advanced settings offers exactly 64/128/256 kbps and defaults to 128.
 Exact v9 source applies the selected choice before sharing, to every newly
 created P2P, browser-relay, or SFU sender, and through a serialized live
-mutation. Production v8 does not live-update an active sender. The v9 path reads
+mutation; production deploys the same path. It reads
 the latest desired profile into each sender and keeps endpoint-local applied
 readback rather than claiming one room-wide applied commit. The setting remains
 a sender ceiling, not a guaranteed or constant bitrate. Do not expose sample

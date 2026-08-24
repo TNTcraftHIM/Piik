@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted; route core deployed in v8; v9 route/diagnostic source implemented at `d543f38aacad3df5ef65fde1055cc8e733972afe`, not deployed
+- Status: Accepted; v9 route and diagnostic contract deployed in exact release `39fcf93`
 - Date: 2026-08-20
 - Last updated: 2026-08-24
 
@@ -353,15 +353,13 @@ deployment-wide.
 
 ## Current Deployment Boundary
 
-Production exact `8f5b3f192ddd010ca01c969008e512191312736a`, release `8f5b3f1`,
-runs the `screener-v8` Browser runtime with only direct/STUN peer and LiveKit
-SFU/UDP routes. Its exact configuration, rollback artifacts, and postflight
-evidence are owned by the deployment document; real heterogeneous-network and
-SFU media validation remains open.
-
-Exact source `d543f38aacad3df5ef65fde1055cc8e733972afe` implements the single
-`screener-v9` route, first-frame, typed-status, and Host-only diagnostic
-contract described above. Production has not deployed that source contract.
+Production exact `39fcf93bae057fcbb1002702c3be6b90bac9027f`, release `39fcf93`,
+runs the single `screener-v9` Browser runtime with direct/STUN peer and LiveKit
+SFU/UDP routes, including the route, first-frame, typed-status, and Host-only
+diagnostic contract described above. The atomic deployment postflight passed;
+its rollback boundary is `/opt/screener/backups/39fcf93-pre-v9-20260824T004257Z`.
+Exact configuration and operational evidence are owned by the deployment
+document; real heterogeneous-network and SFU media validation remains open.
 
 ## Acceptance Boundary
 
@@ -437,9 +435,8 @@ Negative:
   burst;
 - make-before-break consumes explicit endpoint and server reservations and may
   require a bounded-gap cutover when no overlap slot exists; and
-- real SFU and target-network evidence is still required. The v9 diagnostic
-  source is not part of deployed v8 and must ship atomically with its single
-  current protocol.
+- real SFU and target-network evidence is still required. Deploying the v9
+  diagnostic does not grant it route authority or close that physical evidence.
 
 ## Relationship to other ADRs
 

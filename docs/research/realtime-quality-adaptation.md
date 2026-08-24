@@ -222,7 +222,8 @@ baseline. `HostSfuRoute` may expose that local snapshot to one Host-only
 publisher row; it must not duplicate the shared Host-to-SFU ingress inside each
 SFU Viewer card. Viewer inbound remains the per-Viewer C signal. This needs no
 wire, server telemetry, global score, selector or new UI framework. Production
-v8 does not yet deploy this v9 publisher view.
+deploys this v9 publisher view; its target-browser fields and values still need
+physical evidence.
 
 ## Codec Preference And Evidence Boundary
 
@@ -717,9 +718,9 @@ The three user-visible profiles remain ceilings rather than promised rates:
 | 1080p30 | 1920x1080 at 30 fps | 5 Mbps |
 | 720p30 | 1280x720 at 30 fps | 3 Mbps |
 
-Exact v9 source defaults to the middle `1080p30` ceiling; production v8 still
-defaults to `1080p60`. Choosing the v9 default trades a 60 fps ceiling for a
-1080p capture bound. The recommended set remains exactly the three profiles
+V9 source and production default to the middle `1080p30` ceiling. Choosing that
+default trades a 60 fps ceiling for a 1080p capture bound. The recommended set
+remains exactly the three profiles
 above. V9 adds
 `480p` only as an advanced `854x480` resolution whose frame rate and bitrate are
 selected independently, not as a fourth profile or preset ID. LiveKit currently
@@ -740,8 +741,8 @@ guarantees the emitted resolution, frame rate, or bitrate.
   480p/720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, the three preferences, and
   Automatic/H.264/VP8. The `480p` choice is only advanced `854x480`, not a
   fourth recommended profile. Its 64/128/256 kbps audio ceiling, default 128,
-  is live-switchable on the existing Opus path. Production v8 has neither the
-  480p advanced resolution nor live audio mutation. The first
+  is live-switchable on the existing Opus path. Production deploys both the
+  advanced 480p resolution and live audio mutation. The first
   codec-switch product boundary is a generation-fenced renegotiation and SFU
   republish while sharing is explicitly paused; pause or `replaceTrack()` alone
   does not switch codec. Display capture does not standardize channel-count or
@@ -764,8 +765,8 @@ guarantees the emitted resolution, frame rate, or bitrate.
 - Pausing sharing disables every track in the current capture stream, producing
   black video and silence without closing the room or media connection.
 
-The exact v9 source implementation deliberately stops at manual bounded
-controls and is not yet deployed. It adds no composite score, periodic
+The deployed v9 implementation deliberately stops at manual bounded controls.
+It adds no composite score, periodic
 adjustment, automatic codec forcing, SDP bitrate
 manipulation, or scene detector. Three consecutive samples of one non-`none` native
 `qualityLimitationReason` produce one explanatory warning; a reason change or
