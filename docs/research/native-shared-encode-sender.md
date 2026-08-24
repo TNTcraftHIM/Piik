@@ -254,19 +254,13 @@ conservative feedback-derived reconfiguration while feeding two transports. It
 does not establish heterogeneous feedback behavior and must not evolve into a
 room-wide minimum controller.
 
-ADR-0007 keeps stock WebRTC GCC per direct/peer path. Each SFU path starts with
-a `HIGH` ceiling and built-in BWE selects from one shared `HIGH+LOW` pair. App
-evidence is diagnostic and does not select routes or ordinary layers. `LOW` may
-already be active, and idle stop depends on the resource
-gate. The active representation/layer limit is two, never one per viewer; the
-the host follows the configured non-server outbound media-copy capacity; the
-two-edge result in this experiment is a historical configuration, not a fixed
-policy.
-
-If a qualified hardware/power-efficient `LOW` path is unavailable or its
-measured encoder/CPU/GPU game or upload load is unacceptable, `LOW` fails closed
-for weak paths while healthy paths keep `HIGH`. `LOW` may remain active when
-that measured budget passes; stopping it while idle is an optimization.
+ADR-0007 keeps stock WebRTC GCC per direct/peer path and accepts one Browser SFU
+`HIGH` representation. The exact-production gate rejected an always-active
+`LOW` because it reduced `HIGH` on the shared Host-to-SFU congestion budget.
+Application evidence remains diagnostic and does not select routes or layers.
+The Host still follows the configured non-server outbound media-copy capacity;
+the two-edge result in this experiment is a historical configuration, not a
+fixed policy.
 
 The app does not derive topology eligibility from representation state. Viewer
 quality requests are authenticated, rate-limited, deduplicated diagnostic advice
@@ -274,25 +268,18 @@ and do not form a composite score. UA and device identity do not participate.
 
 A native relay forwards the selected encoded packets and must not decode or
 re-encode them. An ordinary non-scalable representation cannot be forwarded
-into a second quality; the bounded choices are a second encode, SVC, or
-transcoding. ADR-0007 statically closes current Web P2P simulcast and
-Web/LiveKit SVC as cross-path shortcuts, but keeps pinned LiveKit exactly-two
-simulcast with built-in SFU bandwidth adaptation as the priority runtime
-candidate. SFU BWE does not change topology. Explicit subscriber quality is next
-if built-in selection fails; manual sender activation follows if always-on cost
-fails; custom/native dual encode is last. A future native SVC decision may
-reopen only with an explicit hardware encoder contract, at most two decodable
-layers, one encoded
-output reused across direct/peer/SFU, independent path selection, and the real
-game/power matrix. Media Capabilities or RTCStats power-efficiency signals are
-diagnostics, not hardware proof; an unestablished path stays disabled rather
-than silently using software. Future dual-tree/striped distribution may reduce
-two-copy host upload toward one copy plus redundancy, but does not block
-dual-representation work.
+into a second quality; doing so would require another encode, scalable layers,
+or transcoding. ADR-0007 closes current Web P2P simulcast, Browser dual
+representation, and Web/LiveKit SVC. A future native decision may reopen a
+second representation only with an explicit hardware contract, bounded layer
+count, one encoded output reused across accepted transports, independent path
+selection, and the real game/power matrix. Media Capabilities and RTCStats
+power-efficiency fields remain diagnostics, not hardware proof.
 
 Simulcast does not change this native proof boundary: one sender may negotiate
-`HIGH`/`LOW`, but separate direct PeerConnections have no portable shared-encode
-contract and inactive API state is not physical resource proof. ADR-0007 and
+multiple representations, but separate direct PeerConnections have no portable
+shared-encode contract and inactive API state is not physical resource proof.
+ADR-0007 and
 [Realtime Quality Adaptation](./realtime-quality-adaptation.md) own the
 static standard-path results and any future native reopen gate. This path still
 requires measured per-representation traffic/resources and cannot bypass #28's

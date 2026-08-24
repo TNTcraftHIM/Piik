@@ -55,7 +55,10 @@ Current high-signal boundary:
   v12 source and production have no codec UI/state/wire or fallback media codec.
   Automated source gates and the exact deployment postflight passed. Chrome 151
   physically verified direct/browser-relay/SFU screen-audio continuity and all
-  three sender ceilings; the separate VP8 performance/codec gate remains open.
+  three sender ceilings. An exact-production VP8 gate sustained about 59.5 fps
+  on direct and Browser-relay paths and rejected the current SFU `q,h`
+  publication because active `LOW` reduced `HIGH`. ADR-0007 accepts one Browser
+  SFU `HIGH`; source and production remain `q,h` until the next scoped change.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy

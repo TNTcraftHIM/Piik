@@ -1,7 +1,8 @@
-# ADR-0007: Path-Isolated Dual-Representation Quality
+# ADR-0007: Path-Isolated Representation Quality
 
 - Status: Accepted quality/representation decision; topology capacity follows ADR-0005
 - Date: 2026-08-19
+- Last reviewed: 2026-08-25
 
 ## Context
 
@@ -21,35 +22,32 @@ relay/SFU. Per-viewer encoders would violate the game's performance budget.
 
 ## Decision
 
-Use path-isolated dual representations:
+Use path-isolated representations:
 
 1. Direct/peer paths keep their requested `HIGH` target and independent stock
    WebRTC congestion control. No viewer feedback changes another path's target.
-2. Each SFU path starts with a `HIGH` ceiling. The preferred implementation
-   publishes one shared `HIGH+LOW` pair and lets LiveKit BWE independently
-   choose and recover the forwarded layer for each subscriber. If that gate
-   passes, Screener does not add a media-layer selector.
+2. The Browser Host's single SFU publication sends one `HIGH` VP8
+   representation. LiveKit/WebRTC independently controls each SFU downlink,
+   but the application does not publish `LOW`, enable simulcast or Dynacast, or
+   add a media-layer selector.
 3. Sender/viewer evidence diagnoses capture, encode, transport, receive, and
    decode behavior. It does not change topology or command ordinary built-in
    layer changes. ADR-0005 reacts only to an exact child edge's hard connection
    failure or non-paused decoded-frame stall.
-4. Explicit subscriber quality or sender layer activation is considered only
-   if the built-in candidate fails its bounded gate. Deactivating an unused
-   `LOW` is a resource optimization, not an acceptance requirement.
-5. The active representation/layer count is a hard `HIGH + at most one LOW <=
-   2`; it never grows with viewer count.
+4. A future dual-representation Browser path requires a new accepted decision
+   and physical evidence that the additional representation does not reduce
+   `HIGH`, game performance, or the Host-to-SFU upload budget.
+5. The accepted Browser representation count is exactly one and never grows
+   with Viewer count.
 
-Making `LOW` available is conditional on positive hardware-encoder evidence and
-measured spare game-performance and upload budget. A permanently active
-two-representation path is acceptable when that gate passes; stopping unused
-`LOW` remains a later optimization. If the hardware path is absent or the
-additional representation causes unacceptable CPU/GPU/game/upload cost, fail
-closed for that attempt: preserve `HIGH` and show the weak path an explicit
-degraded/unavailable state. This is exceptional damage containment, not
-permission to ignore a weak path indefinitely. A supported sender cohort that
-cannot reliably provide the one shared `LOW`, either always-on or on demand,
-fails quality acceptance; optimize its encode path or mark
-that cohort unsupported. Never protect a weak path by reducing `HIGH`.
+The pinned two-layer LiveKit candidate failed this gate. On exact production,
+an always-active `LOW` consumed the same Host-to-SFU congestion budget and
+reduced the progressing 1904x928 `HIGH` stream from about 23 fps to about 9 fps
+under the measured public path. `LOW` therefore cannot remain active, and the
+current Browser contract preserves only `HIGH`. A constrained SFU ingress may
+still emit fewer frames because sender ceilings are not guarantees; that is a
+stock WebRTC result, not authority to restore `LOW`, change routes, or add a
+custom controller.
 
 There is no weighted score, device ranking, machine-learning controller, custom
 media selector, or continuous room-wide optimizer. Representation evidence does
@@ -63,11 +61,11 @@ encoded packets without decoding or re-encoding. Future dual-tree or striped
 delivery may reduce host upload from about two full copies toward one copy plus
 necessary redundancy, but it does not block this decision.
 
-LiveKit may downshift an SFU subscription before the application observes it.
-That is normal per-subscriber adaptation and does not alter relay eligibility.
+With one encoded representation, LiveKit may adapt an SFU downlink but cannot
+create a second spatial representation. That does not alter relay eligibility.
 If the exact ingress later hard-fails or stops decoding while unpaused,
-ADR-0005 reparents that Viewer as a child and retains its subtree. A viewer's
-advisory quality request cannot trigger route mutation by itself.
+ADR-0005 reparents that Viewer as a child and retains its subtree. Viewer
+quality evidence cannot trigger route mutation or publication changes.
 
 ## Evidence Contract
 
@@ -104,10 +102,8 @@ stats, candidate addresses, or raw device/network identifiers. Opaque
 server-issued path and connection IDs authorize diagnostic correlation only.
 Do not build a general telemetry schema.
 
-A viewer may request `LOW`, but the request is advisory. It must be carried on
-an authenticated, current room/path session and be rate-limited and deduplicated.
-It may be shown with matching sender/viewer diagnosis, but it cannot lower
-quality, start a representation, or change topology.
+Authenticated Viewer quality evidence may diagnose only its current path. It
+cannot lower Host quality, start another representation, or change topology.
 
 UA, platform, and device-model detection does not participate in quality or
 relay-capacity selection. Browser capability queries can guide a bounded probe,
@@ -133,50 +129,29 @@ results do not create an application media-layer selector or route authority:
    required product semantic is absent. In particular, the normative rule that
    `active=false` stops sending an encoding is not evidence that its physical
    encoder, CPU work, or GPU allocation is released.
-2. **Pinned LiveKit two-layer simulcast: implemented; acceptance remains open.**
-   Client 2.22.0 can publish a screen-share original plus one lower simulcast
-   encoding. `RemoteTrackPublication.setVideoQuality(HIGH)` sets a per-subscriber
-   spatial-quality ceiling. Server 1.13.5 derives requested spatial/temporal
-   maxima from quality, dimensions and FPS, but actual selection is
-   codec-specific: VP8 has temporal selection, while H.264/H.265 simulcast is
-   spatial-only. A VP8 publication can adapt each SFU downtrack between
-   `q,h` spatial representations and recover it independently. Server
-   Dynacast takes the maximum requested quality and enables every quality at or
-   below it, so any `HIGH` root keeps `LOW` active. That cumulative behavior
-   prevents dynamic `LOW` stop while `HIGH` is subscribed, but dynamic stop is
-   now an optimization rather than a hard requirement.
+2. **Pinned LiveKit two-layer simulcast: rejected for the current Browser
+   contract (`no-go-livekit-always-on-low`).** Client 2.22.0 can publish a
+   screen-share original plus one lower simulcast encoding, but server 1.13.5
+   Dynacast enables every quality at or below the highest requested quality.
+   Any `HIGH` subscriber therefore keeps `LOW` active; turning Dynacast on does
+   not isolate the Host-to-SFU congestion budget.
 
-   The candidate therefore publishes exactly `HIGH+LOW` with standard
-   simulcast/send encodings, leaves each LiveKit root's ceiling at `HIGH`, and
-   first tests built-in per-subscriber SFU bandwidth adaptation on
-   zero-descendant leaf viewers. Start with deterministic two-layer publication
-   and Dynacast off. Dynacast controls publisher-layer pausing from aggregated
-   subscriber demand; disabling it does not disable server-side per-subscriber
-   BWE or turn a `HIGH` ceiling into a guaranteed received layer. Its pinned
-   cumulative behavior can later be measured as the equivalent always-on case.
-   Screener's
-   subscriber does not attach a `RemoteTrack`, so LiveKit `adaptiveStream` is not
-   directly usable without changing that ownership; it is not required for the
-   SFU bandwidth-adaptation candidate. A root with children uses the same
-   built-in BWE; an automatic downshift does not mutate topology. If built-in selection
-   fails the product gates, test explicit standard subscriber quality selection
-   before sender activation/deactivation. The gate must prove that a healthy
-   P2P/`HIGH` path is unchanged, no third layer appears, the expected layer is
-   actually received, and hardware encoder, game FPS/p1 low, CPU/GPU, interval
-   encode cost, host upload, and `HIGH+LOW` bytes fit budget. Every active SFU
-   publication now configures exactly two ordered `q,h` encodings, constructs
-   `Room({ dynacast: false })`, disables backup-codec publication, and sets each
-   subscriber's ceiling to `HIGH`; the two-layer publication is not behind a
-   separate quality flag. Client 2.22.0 also defaults Dynacast to `false`, but
-   the explicit option prevents silent option drift and `backupCodec: false`
-   prevents the pinned multi-codec path from enabling it automatically.
-   The 2026-08-22 executable preflight verifies this configuration, retains a
-   zero-child subscriber, and rejects excess central roots. Per-subscriber BWE,
-   actual layer forwarding for leaves and relay roots, and hardware cost remain
-   unverified, so no runtime performance claim follows. If the always-on
-   cost fails, test manual standard sender activation/deactivation next;
-   custom/native dual encoding follows only if built-in and manual standard
-   primitives fail.
+   The exact production gate used Chrome 151, runtime `bf32859`, a continuously
+   changing 1904x928 capture, and the same public SFU path. With ordered `q,h`
+   encodings active, the `h` stream stabilized near 9.2 fps and 1.37 Mbps. With
+   `q` inactive from the first sender-parameter application, `h` stabilized near
+   23.3 fps and 3.32 Mbps while encoding took about 4.46 ms per frame, packet
+   loss and retransmission remained zero, and the selected pair reported about
+   4.81 Mbps available outgoing bitrate. Source and capture remained near 60
+   fps. The lower representation therefore consumed the shared ingress budget
+   and materially reduced `HIGH`; the candidate fails the existing stop line.
+
+   The current Browser decision is one `HIGH` representation without simulcast,
+   Dynacast, or a manual layer controller. The measured public `q`-inactive A/B
+   remained bandwidth-constrained, so this verdict does not claim SFU 60 fps or
+   replace the pending exact single-representation production gate.
+   Reopening a dual/native representation is a new decision with new physical
+   game, encoder, and upload evidence.
 3. **Current Web/LiveKit SVC: rejected
    (`no-go-web-svc-cross-path-hardware-contract`).** WebRTC-SVC adds
    `scalabilityMode` to sender encoding parameters, but it adds no receiver
@@ -192,7 +167,7 @@ results do not create an application media-layer selector or route authority:
    Pinned LiveKit narrows the result further. Client 2.22.0 overwrites SVC
    screen-share publication to `L1T3`: one spatial resolution and three temporal
    layers, so it provides no low-resolution base and exceeds this product's
-   two-active-layer ceiling. Its `RemoteTrackPublication.setVideoQuality()`
+   current one-representation contract. Its `RemoteTrackPublication.setVideoQuality()`
    controls per-subscriber spatial quality, while server 1.13.5 maps
    quality/dimensions/FPS to requested spatial/temporal maxima. Actual selection
    remains codec-dependent: VP8 has a temporal selector, whereas H.264/H.265
@@ -208,12 +183,13 @@ results do not create an application media-layer selector or route authority:
    media run, so no harness was written and no browser was run.
 
 None may reuse PR #28's minimum-of-two target, bypass a per-edge stock WebRTC
-congestion controller, or expand the representation limit beyond two.
+congestion controller, or expand the current one-representation contract.
 
 ## SVC Static Verdict
 
-This static verdict rejects current Web/LiveKit SVC, not the separate LiveKit
-two-layer simulcast candidate above. Requested and post-negotiation applied
+This static verdict rejects current Web/LiveKit SVC; the two-layer LiveKit
+simulcast candidate is independently rejected by its physical gate. Requested
+and post-negotiation applied
 `scalabilityMode` remain useful diagnostics, because the browser may apply a
 different mode or omit the field when none was requested. They are not proof
 of the actual hardware implementation, and neither a support query nor a
@@ -233,18 +209,16 @@ decision, not completion of this browser spike.
 Positive:
 
 - Healthy viewers are not reduced to the worst path.
-- One shared `LOW` is available to all SFU paths and LiveKit selects it per
-  subscriber; its idle deactivation is allowed but not required. Physical
-  encoder instances and resource cost remain measured outcomes.
-- Encode cost is bounded independently of viewer count.
+- Browser SFU uses one outbound `HIGH` representation, so publication and
+  ingress cost stay bounded independently of Viewer count.
 - The diagnostic evidence remains inspectable.
 
 Negative:
 
-- An always-on `LOW` adds representation bandwidth and may require another
-  physical encoder even without a weak path; the exact cost is an acceptance
-  measurement, not an assumed negligible overhead.
-- Any later explicit quality/layer fallback needs a keyframe-safe transition.
+- A weak SFU downlink cannot select a separate low-resolution representation;
+  stock congestion control may reduce bitrate, resolution, or encoded cadence.
+- A configured 60 fps ceiling is not a delivery guarantee on a constrained
+  Host-to-SFU path.
 - Browser capability reporting cannot by itself prove hardware or sustained
   decode performance. The current SVC path is rejected before that matrix;
   custom/native candidates still require it.
@@ -258,30 +232,25 @@ Negative:
 - Do not create one representation or encoder per viewer.
 - Do not use UA/device identity as a quality signal.
 - Do not enable software SVC as an invisible fallback.
-- Do not start or retain `LOW` when its measured hardware, game, or upload cost
-  violates budget.
+- Do not publish `LOW` in the current Browser contract.
 - Do not add a composite health score or media selector when built-in adaptation
   and ADR-0005 edge recovery suffice.
 
 ## Verification Gates
 
-- Direct/peer paths retain independent stock WebRTC congestion control. Each SFU
-  path starts with a `HIGH` ceiling; under shaping, built-in LiveKit BWE sends a
-  weak leaf the shared `LOW` while a healthy leaf stays `HIGH`, then restores the
-  weak leaf without an application media selector.
-- An idle `LOW` may remain active only after hardware, game-performance, and
-  upload cost passes. If idle stopping exists, verify bytes/frames stop;
-  otherwise record and accept the bounded always-on cost.
-- Representation count never exceeds two. Host and relay endpoint media copies
-  follow ADR-0005 steady capacity `C`; the two-edge result is only the bounded
-  experiment configuration.
+- Direct/peer paths retain independent stock WebRTC congestion control.
+- An active Browser SFU publication exposes exactly one outbound video RTP
+  encoding using VP8, with no `q,h` RID simulcast or second representation.
+- Host and relay endpoint media copies follow ADR-0005 steady capacity `C`;
+  SFU publication accounting is unchanged by the representation decision.
 - Built-in BWE downshift and recovery remain local to each SFU subscription and
   do not change topology. Exact ingress failure is handled only by ADR-0005's
   generic child reparent operation.
-- An unavailable/over-budget `LOW` fails visibly for weak paths while healthy
-  paths and `HIGH` remain unchanged.
-- Every supported sender cohort can reliably provide the one shared `LOW`,
-  always-on or on demand; otherwise the quality gate does not pass.
+- Controlled exact-production evidence records source, capture, encode, send,
+  receive, decode, render, selected transport, bitrate, loss, and encoder cost;
+  it does not require 60 fps where the measured path cannot carry it.
+- No second representation sends frames or bytes, and a Viewer quality report
+  cannot start one.
 - Native relays show packet forwarding without an added decode/encode stage.
 - Spoofed, stale, duplicated, or rate-excessive viewer requests have no effect.
 - Controlled capture/CPU/bandwidth/direct/SFU/receiver/display cases produce the
@@ -289,7 +258,7 @@ Negative:
 
 ## References
 
-Primary sources checked through 2026-08-22:
+Primary sources checked through 2026-08-25:
 
 - [W3C WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [W3C Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/)

@@ -1,8 +1,8 @@
 # Realtime Screen-Share Quality Adaptation
 
-- Research date: 2026-08-24
+- Research date: 2026-08-25
 - Scope: realtime game screen sharing in the browser
-- Status: implementation input; real-device quality remains unverified
+- Status: exact-production Browser gate completed; real-game and heterogeneous-device quality remain unverified
 
 ## Finding
 
@@ -12,9 +12,9 @@ game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
 Production runs exact deployed application/runtime revision
-`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
+`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`; canonical
 `main` contains the same runtime code. Current Browser source and production use
-strict `screener-v11`, fixed VP8, no video `contentHint`, and no codec UI,
+strict `screener-v12`, fixed VP8, no video `contentHint`, and no codec UI,
 quality state, or wire field. They use `balanced` as the recommended profile
 and advanced default;
 `maintain-resolution` and `maintain-framerate` remain explicit choices. These
@@ -36,6 +36,30 @@ An older libwebrtc experiment could detect animated screen content under
 on 2024-05-22; the commit says it had already been disabled for several years
 and was not maintained. Current Chromium behavior must therefore not be
 described as automatically detecting game motion and forcing a 720p cap.
+
+## 2026-08-25 Exact-Production VP8 Gate
+
+Chrome 151 exercised exact production `bf32859` with real `getDisplayMedia()`, a
+continuously changing source, separate Browser processes, VP8/libvpx, and no
+video content hint. The direct path stabilized near 59.5 encoded, received,
+decoded, and rendered fps at 1904x928 and about 7.5 Mbps. A Browser relay kept
+every stage near 59.4--59.7 fps; its outbound adapted to 1428x696 under the
+available bandwidth without losing frame cadence. Both paths needed about
+25--30 seconds for stock bandwidth-estimation ramp-up. This closes the reported
+intrinsic VP8/no-hint localhost 60 fps shortfall; sender ceilings are not startup
+or delivery guarantees, and no application start-bitrate hack follows.
+
+The exact SFU path isolated a different issue. With the current ordered `q,h`
+publication, the 1904x928 `h` stream stabilized near 9.2 fps and 1.37 Mbps. With
+`q` inactive from the first sender-parameter application, the otherwise
+unchanged `h` stream reached about 23.3 fps and 3.32 Mbps. Source/capture stayed
+near 60 fps, encode cost was about 4.46 ms per frame, packet loss and
+retransmission were zero, and the selected pair reported about 4.81 Mbps
+available outgoing bitrate. The always-active lower representation therefore
+consumed the same Host-to-SFU congestion budget and materially reduced `HIGH`.
+ADR-0007 rejects that candidate and accepts one Browser SFU `HIGH`
+representation. The public SFU ingress remained constrained, so this gate does
+not claim SFU 60 fps or real-game performance.
 
 ## Route Quality Authority
 
@@ -147,16 +171,11 @@ updates, but an accepted answer itself does not rewrite the profile. A future
 workaround requires a controlled, real-capture reproduction that isolates one
 intervention from stock BWE ramp-up.
 
-This evidence does not justify an SFU change. The current SFU publisher always
-publishes the ordered `q,h` pair when an SFU route is active and configures its
-sender after SDK publication. The pinned client publication defaults to
-`HIGH`, and Screener also requests a `HIGH` subscriber ceiling immediately
-after subscribing. A low SFU receive layer can still be a valid server BWE
-choice. Diagnose that case by correlating publisher high-layer stats with the
-Viewer's actual inbound layer; do not infer a missing `HIGH` request or change
-the application policy without those measurements. LiveKit's pinned client
-also contains an SDP start-bitrate mitigation for initial video blur, but
-Screener's accepted boundary forbids adding application SDP bitrate hacks.
+This observation alone did not justify an SFU change because stock BWE ramp-up
+was not isolated. The later exact-production gate above independently measured
+the SFU publication and rejected its always-active lower representation.
+LiveKit's pinned client contains an SDP start-bitrate mitigation for initial
+video blur, but Screener does not add application SDP bitrate hacks.
 
 The same release was also reported to reduce game-stream frame rate and
 consume noticeable Host resources. That report applies only to
@@ -236,9 +255,9 @@ SFU publication explicitly uses VP8 with no backup codec. The UI and quality
 wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
 Production runs exact deployed application/runtime revision
-`c4962f54443ad5f98bc65861195a3d9c74a48996`, release `c4962f5`; canonical
+`bf328590b3de5dfa509fcc70f6316286af3eae7e`, release `bf32859`; canonical
 `main` contains the same runtime code. Current source and production implement
-this strict `screener-v11` contract.
+this strict `screener-v12` contract.
 
 Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
 libwebrtc clears `is_screencast` for that mode, replacing the display-capture
@@ -424,11 +443,11 @@ one unambiguous encoding. Current quality settings do not request a mode, so
 the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
-The current SFU publisher already configures the shared ordered `q,h`
-`HIGH+LOW` publication. Real LiveKit per-subscriber BWE downshift/recovery,
-hardware and game-resource cost, and heterogeneous-network behavior remain open
-acceptance evidence. Physically stopping an unused `LOW` is a resource
-optimization rather than a prerequisite.
+Current source and production still configure the ordered `q,h` publication,
+but the exact-production gate above rejected it because the active lower
+representation reduced `HIGH`. ADR-0007 now accepts one Browser SFU `HIGH`;
+source implementation and the exact single-representation production gate are
+the next scoped work.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -453,178 +472,29 @@ default. Chromium currently maps its configured per-stream mode into the
 outbound stats field; other browser implementations may omit any optional
 member, which remains null rather than a capability conclusion.
 
-## Accepted Adaptation Direction
+## Superseded Two-Layer Candidate Analysis (2026-08-22)
 
-ADR-0007 rejects room-wide worst-link adaptation. Direct/peer paths retain their
-independent stock WebRTC congestion control. Each SFU path starts with a `HIGH`
-ceiling; the preferred candidate publishes one shared `HIGH+LOW` pair and lets
-LiveKit BWE independently select and recover its forwarded layer. If that gate
-passes, Screener does not add a media-layer selector. The hard active
-representation/layer limit is two, never one per viewer, and stopping idle
-`LOW` remains optional.
+This retained analysis explains the candidate that the 2026-08-25 physical gate
+rejected. It does not define current product truth, implementation scope, or a
+next gate; ADR-0007 owns the accepted single-`HIGH` decision.
 
-Sender/viewer evidence diagnoses capture, encode, transport, receive, and decode
-behavior. It does not classify topology eligibility. An observed BWE downshift
-is ordinary per-subscriber adaptation and does not command route or media-layer
-changes.
-
-`LOW` itself is conditional: if no qualified hardware/power-efficient media
-path exists or the additional representation exceeds the measured
-CPU/GPU/game/upload budget, the system preserves `HIGH` and fails visibly for
-the weak path. It never intentionally buys weak-path recovery by degrading
-healthy paths.
-
-That fail-closed result is exceptional damage containment, not a supported
-steady state. A supported sender cohort that cannot reliably provide the one
-shared `LOW`, either always-on or on demand, fails the quality gate; its encoding
-path must be improved or the cohort explicitly marked unsupported. `HIGH`
-remains protected in either case.
-
-A viewer's `LOW` request is advisory and must be authenticated, session-bound,
-rate-limited, deduplicated, and corroborated by sender transport/encode and
-viewer receive/decode stats. UA or device-model detection is not quality or
-relay-capacity evidence. A valid report does not change topology or command
-built-in WebRTC/LiveKit media adaptation. Built-in SFU BWE may downshift and
-recover a subscription without any Screener route action; only the exact
-ingress's hard failure or non-paused decoded-frame stall wakes ADR-0005.
-
-An ordinary non-scalable stream cannot yield a second independent quality by
-packet forwarding alone. The alternatives are a second representation,
-scalable layers, or relay/SFU transcoding. Static review closes current Web P2P
-simulcast and Web/LiveKit SVC as cross-path shortcuts, while pinned LiveKit
-two-layer simulcast remains the priority bounded runtime candidate. This SVC
-gate does not run a browser or select a custom implementation.
-
-WebRTC provides sender-side encoding control but no
-`RTCRtpReceiver.setParameters()` or other standard per-RID subscription method.
-Consequently, direct P2P receivers cannot explicitly choose `HIGH` versus `LOW`
-from one shared simulcast sender, while separate viewer PeerConnections have no
-portable shared-encoder contract. This is
-`no-go-web-p2p-simulcast-layer-selection`. The unrun sender experiment makes no
-claim about per-RID traffic or whether `active=false` releases a physical
-encoder, CPU work, or GPU allocation.
-
-Pinned LiveKit 2.22.0 can publish screen-share original plus one lower
-simulcast encoding. `RemoteTrackPublication.setVideoQuality(HIGH)` sets a
-per-subscriber spatial-quality ceiling. Server 1.13.5 derives requested
-spatial/temporal maxima from quality, dimensions and FPS, but applies them
-through codec-specific selectors: VP8 has temporal selection, while H.264/H.265
-simulcast is spatial-only. When H.264 is selected, the candidate can adapt each
-SFU downtrack between `q,h` spatial representations and recover it independently.
-Server Dynacast
-takes the maximum quality requested across subscribers and subscriber nodes,
-then enables every quality at or below that maximum; a `HIGH` root therefore
-keeps `LOW` active. That prevents dynamic `LOW` stop while `HIGH` is subscribed,
-but idle-layer stop is only an optimization, so this cumulative behavior is not
-a product no-go. The Firefox branch's 4x scale, 10 bps, and non-standard
-`maxFrameRate` fallback likewise cautions against assuming a clean stopped
-layer; it does not invalidate the always-on two-layer candidate.
-
-The next runtime gate must publish exactly `HIGH+LOW` with standard
-simulcast/send encodings, leave each SFU subscription's ceiling at `HIGH`, and
-test built-in per-subscriber SFU bandwidth adaptation and
-recovery. Start with Dynacast off for a deterministic always-on measurement;
-pinned cumulative
-Dynacast-on is another always-on form, not a third representation. Prove the
-received layer, the two-layer ceiling, unchanged healthy P2P/`HIGH`, and
-hardware encoder, game FPS/p1 low, CPU/GPU, interval encode cost, upload, and
-per-layer byte budgets for both leaves and relay roots. An autonomous downshift
-does not evacuate children or alter route state. Screener's current publisher always
-configures exactly two ordered `q`/`h` encodings whenever an SFU publication is
-active, explicitly constructs `Room({ dynacast: false })`, disables backup-codec
-publication, and its subscriber sets a `HIGH` ceiling after selectively
-subscribing. Client 2.22.0 also defaults Dynacast to `false`; the explicit option
-prevents silent drift, while `backupCodec: false` prevents the pinned
-multi-codec publish path from enabling Dynacast automatically. Dynacast off
-prevents the pinned SDK's subscribed-quality handler from toggling publisher
-encoding activation. It does not disable per-subscriber SFU BWE, force the
-server to forward `HIGH`, or prove that both encoders consume resources
-continuously. The publication is not behind a separate quality flag. The
-subscriber also does not attach a
-`RemoteTrack`, so SDK `adaptiveStream` is not directly usable without changing
-that ownership; built-in SFU bandwidth adaptation does not depend on enabling
-that feature. If built-in selection fails the product gates, test explicit
-standard subscriber quality selection before manual sender
-activation/deactivation.
+The candidate assumed one shared `HIGH+LOW` SFU publication could preserve
+healthy `HIGH` while LiveKit selected a lower representation per constrained
+subscriber. Static review established two limits before the runtime gate:
+ordinary WebRTC receivers have no portable per-RID selection API across
+separate PeerConnections, and LiveKit 1.13.5 Dynacast cumulatively enables every
+quality below the highest requested quality. A `HIGH` subscriber therefore
+keeps `LOW` active. The 2026-08-25 exact-production A/B then proved that this
+always-active lower representation materially reduced `HIGH`, so ADR-0007
+rejected the candidate. Sender/viewer evidence remains diagnostic and does not
+change topology or command a representation.
 
 ### Historical SFU Source Gate
 
-This section records the exact 2026-08-22 source gate; it is evidence rather
-than current routing policy.
-
-The 2026-08-22 `gate:sfu-root-invariants` source gate proves that the publisher
-passes explicit `dynacast: false`, exposes exactly the ordered active `q,h`
-encodings, and the selectively subscribed screen publication retains a `HIGH`
-ceiling. Server route state and token allowlists reject a third SFU root. A Host
-with one direct child plus one active SFU publication is charged two outbound
-media edges, while a third edge fails. A committed SFU root with zero peer
-children stays selected across reauthentication, and its active subscriber is
-reconciled with an empty child list without deactivation. The benchmark
-acceptance evaluator independently rejects a third root or Host media edge.
-
-This preflight does not start LiveKit 1.13.5, a browser, or a network shaper. It
-therefore does not prove packet receipt/forwarding, autonomous BWE downshift and
-recovery, actual `LOW`/`HIGH` dimensions, per-layer bytes, encoder count, CPU/GPU,
-game frame time, or upload cost. Those remain acceptance requirements for the
-isolated run below; relay-root behavior remains resource and quality evidence,
-not a route gate.
-
-### Per-Flow Shaping Preflight
-
-The 2026-08-22 Windows 11 re-audit stopped before writing a harness or starting
-media. Chrome 151 and Edge 151 are installed. A cached official LiveKit 1.13.5
-Linux amd64 archive contains only `LICENSE` and `livekit-server`; its SHA-256
-`c020fac437b7cc9b776eef1ad5ea8af77be9acfa07602eca20a3a44930dfbc70`
-matches the release asset digest. Obtaining the pinned server is therefore not
-the blocker.
-
-The workstation has no Docker, Podman, nerdctl, Lima, Multipass, Vagrant, QEMU,
-Go, Linux `ip`, or Linux `tc`. `wsl.exe --version`, `--status`, and
-`--list --verbose` all report that WSL itself is not installed, not merely that
-a distribution is stopped, and the current session is not elevated. The
-existing peer-assisted benchmark can start Screener and Chromium and already
-collect route/media snapshots plus whole-browser CDP CPU deltas, but it starts
-neither LiveKit nor an SFU quality fixture, isolates no leaf transport, and CDP
-does not provide the required server or browser RSS. Those parts are reusable
-sampling seams, not shaped-media evidence.
-
-Windows policy-based QoS can match outbound traffic by application or IP
-tuple, but this setup has not proved that it can follow one ICE-generated,
-ephemeral subscriber downtrack across generation changes or apply an auditable
-limit to the local loopback media path. CDP `Network` throttling likewise has no
-accepted per-WebRTC-flow contract. Neither mechanism may be used as evidence
-that one SFU subscriber was weakened while another stayed healthy.
-
-The minimum external prerequisite is a disposable Linux VM or equivalent host
-with root or `CAP_NET_ADMIN`, `iproute2` (`ip`, `tc`, `tbf`, and a tuple-capable
-filter such as `flower`), readable per-process CPU/RSS counters, Node 24, and a
-supported Chromium. It must put the publisher, healthy leaf, and weak leaf in
-separate network namespaces with separate veth devices and allow the selected
-LiveKit UDP flow to cross those devices. Run the pinned application and
-LiveKit 1.13.5 without TURN or media TCP and without touching production
-networking or firewall state. Before media, prove only the namespace, route,
-veth, filter, and qdisc availability; the selected ICE tuple does not exist yet.
-Use `tbf` for a bounded rate and `netem` only when the case explicitly adds loss
-or delay.
-
-The sole browser run has three ordered phases. First establish both leaves
-without shaping, identify the selected LiveKit ICE/UDP tuples locally, record
-the healthy and weak veth baselines, and require `HIGH/HIGH`. Next attach the
-filter and qdisc to only the weak leaf's selected media tuple and direction.
-Require filter packet/byte growth, independent TBF overlimit/queue evidence and
-the expected weak-path throughput bound before accepting `HIGH/LOW`; a filter
-counter alone proves classification, not shaping. The healthy veth counters,
-inbound bitrate, dimensions, FPS, and decode progress must remain within the
-unshaped baseline envelope. Finally remove the weak qdisc and require recovery
-to `HIGH/HIGH` while the healthy leaf remains unchanged.
-
-Retain gate evidence for the publisher's ordered `q`/`h` encodings and
-per-layer bytes, both subscribers' actual dimensions, FPS, bytes, codec and
-decode progress, correlated A+B/C windows, Host upload and interval encode
-cost, and available system CPU/GPU/game proxies. A third layer, an affected
-healthy leaf, missing classification or shaping counters, or an
-application-issued `LOW` command fails the run. Root migration remains outside
-this zero-descendant-leaf gate.
+The 2026-08-22 source-only gate verified ordered `q,h` configuration and existing
+SFU route/admission accounting, but did not start LiveKit or a Browser. The
+2026-08-25 exact-production gate supersedes that candidate's quality verdict;
+Git history retains the abandoned shaping plan.
 
 SVC is the third static no-go,
 `no-go-web-svc-cross-path-hardware-contract`. WebRTC-SVC configures an outgoing
@@ -666,25 +536,12 @@ the high layer, so the application does not own the actual layer choice.
 For this screen-share product the pin has an additional hard mismatch. Client
 2.22.0 overwrites SVC screen-share publication to `L1T3`, even when another
 mode was supplied: one spatial resolution and three temporal layers. It
-therefore supplies no low-resolution base and exceeds the two-active-layer
-ceiling. LiveKit also documents that Dynacast can pause only an entire SVC
+therefore supplies no low-resolution base and exceeds the accepted
+one-representation contract. LiveKit also documents that Dynacast can pause only an entire SVC
 stream, not individual SVC layers. Changing those contracts would require a
 different dependency/native design decision, not a runtime proof of the pinned
 path. No SVC harness was written and no Chrome run was performed. None of the
 rejected standard paths may bypass PR #28's stock-GCC/RTX stop line.
-
-If built-in LiveKit selection fails the product gates, test explicit standard
-subscriber quality selection. If the always-on representation cost itself
-exceeds budget, test manual activation/deactivation through standard sender
-primitives. Only if these standard forms fail may custom/native dual
-representation remain a candidate. Retain the
-favorable, testable hypothesis that one low-rate, low-resolution hardware `LOW`
-may have no material game impact, but compare `HIGH` against `HIGH+LOW` under
-one scene using game FPS/p1 low, CPU, GPU video-encode/copy activity, interval
-encode cost, actual encoder identity, upload, and per-layer bytes before
-accepting any custom path. Failure preserves `HIGH` and fails the weak path
-visibly. It cannot reopen an earlier static no-go or bypass the topology policy
-and resource budget.
 
 ## Why Offline Encoding Presets Do Not Transfer
 
@@ -714,7 +571,7 @@ The three user-visible profiles remain ceilings rather than promised rates:
 | 1080p30 | 1920x1080 at 30 fps | 5 Mbps |
 | 720p30 | 1280x720 at 30 fps | 3 Mbps |
 
-Current v11 source and production default to the middle `1080p30` ceiling.
+Current v12 source and production default to the middle `1080p30` ceiling.
 Choosing that
 default trades a 60 fps ceiling for a 1080p capture bound. The recommended set
 remains exactly the three profiles
@@ -734,7 +591,7 @@ guarantees the emitted resolution, frame rate, or bitrate.
   `maintain-framerate` choices. None promises an emitted resolution or rate.
 - `maxBitrate` and `maxFramerate` are ceilings. They are neither minimums nor
   target guarantees, and the project does not use SDP bitrate hacks.
-- The strict `screener-v11` Share advanced settings panel in current source and
+- The strict `screener-v12` Share advanced settings panel in current source and
   production accepts 480p/720p/1080p/1440p, integer 15-60 fps, 2-12 Mbps, and
   the three preferences. Browser media is fixed VP8, with no codec UI,
   quality-state field, or wire field. The `480p` choice is only advanced
@@ -815,12 +672,11 @@ pipeline.
 Compare image readability and motion continuity instead of declaring success
 from FPS alone. If reproducible evidence later shows a supported preference
 oscillates or makes the wrong tradeoff on supported machines, revise that
-explicit option before enabling ADR-0007. Its acceptance matrix must prove that built-in
-LiveKit BWE independently moves one shaped SFU leaf to the shared `LOW` and back
-while a healthy leaf remains `HIGH`, without an application media selector. The
-application's evidence windows remain diagnostic only. Each supported sender cohort must provide `LOW`
-within measured hardware, game, and upload budgets; idle-layer resource release
-is a separate optimization.
+explicit option only from a new controlled gate. Browser SFU verification must
+show exactly one VP8 outbound video encoding, no `q,h` simulcast, continuing
+publisher/subscriber frame progress, and unchanged ADR-0005 resource accounting.
+The application's evidence windows remain diagnostic only; they do not command
+another representation, change topology, or override stock congestion control.
 
 ## Primary Sources
 
