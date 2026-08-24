@@ -29,10 +29,11 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. After explicit owner instruction, release the exact v12 source atomically and verify stale-wire rejection, health, invitation/access behavior, and unchanged direct/SFU operation; no deployment has occurred at this checkpoint.
-2. Physically validate the corrected live screen-audio statistics and 64/128/256 kbps ceilings with known audible content across direct, browser-relay, and SFU paths.
-3. Physically verify fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
-4. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
+1. Implement the accepted two-state `open | password` room-code contract on strict v12: remove `disabled`, preserve default `open` plus the independently generated invitation, and present public/password entry with globe/lock controls and an on-demand password field. Current source and production still retain the older three-state implementation at this truth checkpoint.
+2. After explicit owner instruction, release the exact v12 source atomically and verify stale-wire rejection, health, invitation/access behavior, and unchanged direct/SFU operation; no deployment has occurred at this checkpoint.
+3. Physically validate the corrected live screen-audio statistics and 64/128/256 kbps ceilings with known audible content across direct, browser-relay, and SFU paths.
+4. Physically verify fixed-VP8/no-video-hint direct, browser-relay, and SFU paths from actual codec, capture, outbound, and decoded stats.
+5. Finish representative ICE/STUN/SFU acceptance including mobile networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
 
 ## Active Boundaries
 
