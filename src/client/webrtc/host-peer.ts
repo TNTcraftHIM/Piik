@@ -21,7 +21,7 @@ import {
   collectConnectionMetrics,
   createStatsAccumulator,
 } from "./stats";
-import { applyVp8Codec } from "./vp8-codec";
+import { applyVp8Codec, preferVp8StartBitrate } from "./vp8-codec";
 
 const MAX_PENDING_CANDIDATES = 64;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
@@ -375,7 +375,9 @@ export class HostPeer {
       if (!this.ownsLocalOffer(epoch)) {
         return false;
       }
-      await this.connection.setLocalDescription(offer);
+      await this.connection.setLocalDescription(
+        preferVp8StartBitrate(offer, this.desiredProfile.maxBitrate),
+      );
       if (
         !this.ownsLocalOffer(epoch) ||
         !this.connection.localDescription

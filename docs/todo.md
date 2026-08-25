@@ -27,30 +27,37 @@ later topic is not implementation authority by itself.
 
 ## Accepted Later Roadmap
 
-1. **Quality-based topology research.** After the real-network baseline, decide
+1. **Preferred room reacquisition.** Keep the last assigned four-digit code and
+   its 24-hour preference window in the Host browser. When prior ownership is
+   no longer valid, the next explicit share requests that code only if the
+   preference is still current; the server grants it only while free and
+   otherwise uses normal random allocation. This does not reserve a dormant
+   code or restore the old room incarnation, Host token, Viewer grant, password
+   verifier, lease, participants, or routes.
+2. **Quality-based topology research.** After the real-network baseline, decide
    whether measured user-visible quality justifies any active parent-selection
    mechanism. Current evidence cannot compare an active route with an
    unconnected alternative, so no quality score, all-pairs probing, periodic
    rebalancing, relay abdication threshold, or active parent switch is accepted.
    Prefer mature algorithms and one general model if this boundary is reopened.
-2. **Platform output only when real.** Revisit AirPlay/Cast only when a target
+3. **Platform output only when real.** Revisit AirPlay/Cast only when a target
    browser and physical receiver prove the live `MediaStream` contract. System
    mirroring remains external.
-3. **Public-server one-click package.** After functional and real-network work,
+4. **Public-server one-click package.** After functional and real-network work,
    package the exact application, STUN/SFU, reverse proxy, secrets, and health
    checks for a user-owned public server. Do not call a partial installer ready.
-4. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
+5. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
    application server, and local state without requiring source or Node. Report
    public-origin, TLS, gateway, NAT, and firewall limits honestly.
-5. **Native Host and shared encode, Windows first.** Productize only after real
+6. **Native Host and shared encode, Windows first.** Productize only after real
    capture, hardware-only encode, audio, identity, RTP/RTCP feedback, resource,
    packaging, and licensing gates pass. Browser Host/relay keeps standard
    per-`RTCPeerConnection` encoding.
-6. **Whole-product UI and bilingual decision.** Once media and route behavior
+7. **Whole-product UI and bilingual decision.** Once media and route behavior
    stabilizes, review copy, responsive hierarchy, visual consistency, restrained
    motion, bundle/rendering cost, and Chinese/English scope once as a whole.
    Ordinary screen-specific edits do not create parallel documentation.
-7. **Repository simplification audit.** After the Browser, route, room, and
+8. **Repository simplification audit.** After the Browser, route, room, and
    physical-media checkpoints settle, inventory components, configuration,
    migrations, timers, compatibility paths, tests, and truth duplication using
    the [maintenance review](./maintenance.md#机制减负审查). Begin read-only and do

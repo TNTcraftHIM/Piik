@@ -39,11 +39,12 @@ quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
 
-The Host applies the selected profile from fresh sender parameters before the
-first offer. Libwebrtc retains those initial parameters until the negotiated
-SSRC exists and then applies them to the active sender. A connection event only
-applies a newer profile selected during negotiation or retries an initial
-failure; no periodic controller or bandwidth-estimator reset exists.
+Chrome supports sender parameters before negotiation, but applying the same
+values again after connection is a native no-op. Raw peer offers therefore add
+the same screen-share `x-google-start-bitrate` hint as pinned LiveKit: 90% of
+the selected target bitrate. The selected sender ceiling is still applied from
+fresh parameters, and native BWE may immediately reduce actual delivery. No
+post-encode rewrite, periodic controller, or bandwidth-estimator reset exists.
 
 ## LiveKit SFU Evidence
 
@@ -52,6 +53,13 @@ the SDK's default VP8 screen-share simulcast can expose original and lower
 representations, and that server send-side BWE can select a lower representation
 for a constrained subscriber while an unconstrained subscriber receives the
 highest available representation.
+
+LiveKit's current client applies `x-google-start-bitrate` to all negotiated
+video codecs because browser BWE can otherwise begin at very low bitrate and
+take more than ten seconds to ramp. For screen share it starts at 90% of the
+configured aggregate target without the camera cap. The pinned client contains
+that upstream mechanism; raw P2P uses the same offer hint, while Screener does
+not add a post-encode rewrite or another startup estimator.
 
 An earlier exact-production A/B also showed that forcing an always-active lower
 encoding can consume the same Host-to-SFU congestion budget and reduce the
@@ -161,8 +169,8 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
-- [libwebrtc initial sender parameters](https://webrtc.googlesource.com/src/+/master/api/rtp_sender_interface.h)
-- [libwebrtc negotiated SSRC parameter application](https://webrtc.googlesource.com/src/+/bb7239ecea3db0e41b8fa6eb26c3a749deb41076/pc/rtp_sender.cc)
+- [LiveKit initial-quality fix](https://github.com/livekit/client-sdk-js/pull/1987)
+- [LiveKit initial-quality implementation](https://github.com/livekit/client-sdk-js/commit/5db17af)
 - [LiveKit screen-share encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)

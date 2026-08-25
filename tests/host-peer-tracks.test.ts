@@ -79,6 +79,7 @@ class FakePeerConnection {
   static activeCount = 0;
   static peakActiveCount = 0;
   static offersFailing = 0;
+  static offerSdp = "test-offer";
   static omitCodecPreferenceSetter = false;
   static codecPreferenceCallsFailing = 0;
 
@@ -165,7 +166,7 @@ class FakePeerConnection {
       FakePeerConnection.offersFailing -= 1;
       throw new Error("createOffer failed");
     }
-    return { type: "offer", sdp: "test-offer" };
+    return { type: "offer", sdp: FakePeerConnection.offerSdp };
   }
 
   async setLocalDescription(
@@ -420,6 +421,7 @@ beforeEach(() => {
   FakePeerConnection.activeCount = 0;
   FakePeerConnection.peakActiveCount = 0;
   FakePeerConnection.offersFailing = 0;
+  FakePeerConnection.offerSdp = "test-offer";
   FakePeerConnection.omitCodecPreferenceSetter = false;
   FakePeerConnection.codecPreferenceCallsFailing = 0;
   statsCallbacks.length = 0;
@@ -498,6 +500,37 @@ describe("HostPeer source replacement", () => {
       "video/flexfec-03",
     ]);
     expect(connection.createOfferCallCount).toBe(1);
+  });
+
+  it("starts raw peer VP8 near the selected screen-share bitrate", async () => {
+    FakePeerConnection.offerSdp = [
+      "v=0",
+      "o=- 1 1 IN IP4 127.0.0.1",
+      "s=-",
+      "t=0 0",
+      "m=video 9 UDP/TLS/RTP/SAVPF 96 97",
+      "c=IN IP4 0.0.0.0",
+      "a=rtpmap:96 VP8/90000",
+      "a=fmtp:96 max-fs=3600;x-google-start-bitrate=100",
+      "a=rtpmap:97 rtx/90000",
+      "a=fmtp:97 apt=96",
+      "a=sendonly",
+      "",
+    ].join("\r\n");
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      () => undefined,
+      { iceServers: [] },
+      QUALITY_PROFILES["1080p30"],
+    );
+
+    await expect(peer.start()).resolves.toBe(true);
+
+    const sdp = FakePeerConnection.latest!.localDescription!.sdp;
+    expect(sdp).toContain(
+      "a=fmtp:96 max-fs=3600;x-google-start-bitrate=4500",
+    );
+    expect(sdp).toContain("a=fmtp:97 apt=96");
   });
 
   it("fails before creating an offer when codec preferences are unavailable", async () => {
