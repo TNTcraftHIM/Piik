@@ -17,6 +17,7 @@ export type {
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
+export const STARTUP_VIDEO_ENCODED_FRAMES = 5;
 
 export const QUALITY_PROFILES = {
   "720p30": {
@@ -78,6 +79,18 @@ export const SCREEN_AUDIO_BITRATES = {
 } as const satisfies Record<ScreenAudioQuality, number>;
 export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE =
   SCREEN_AUDIO_BITRATES["very-high"];
+
+export function startupVideoProfile(
+  profile: QualityProfile,
+): QualityProfile {
+  return profile.degradationPreference === "maintain-resolution"
+    ? profile
+    : { ...profile, degradationPreference: "maintain-resolution" };
+}
+
+export function needsStartupVideoProfile(profile: QualityProfile): boolean {
+  return profile.degradationPreference !== "maintain-resolution";
+}
 
 export interface VideoSenderParameterValues {
   maxBitrate: number | null;

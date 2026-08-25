@@ -39,12 +39,21 @@ quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
 
-Chrome supports sender parameters before negotiation, but applying the same
-values again after connection is a native no-op. Raw peer offers therefore add
-the same screen-share `x-google-start-bitrate` hint as pinned LiveKit: 90% of
-the selected target bitrate. The selected sender ceiling is still applied from
-fresh parameters, and native BWE may immediately reduce actual delivery. No
-post-encode rewrite, periodic controller, or bandwidth-estimator reset exists.
+Chrome 151 controlled loopback reproduced the production symptom without an
+external network: `motion + balanced` started at 480x270 with a bandwidth
+limitation, while `motion + maintain-resolution`, no hint, and `detail` started
+at 1920x1080. A 4500 kbps `x-google-start-bitrate` did not change the balanced
+result. Chromium maps `motion` to non-screencast realtime video, where balanced
+permits startup resolution restrictions; entering or leaving balanced clears
+those restrictions.
+
+Screener keeps `motion` because its later multilevel resolution adaptation is
+required. Each new peer sender and SFU publication therefore starts with the
+selected ceilings but an effective `maintain-resolution` preference. After the
+current sender has encoded at least five frames, the existing stats path applies
+the user's desired preference once. Connected was too early, and one encoded
+frame retained only 720p in the controlled matrix; five frames retained 1080p.
+There is no added timer, periodic rewrite, or application quality controller.
 
 ## LiveKit SFU Evidence
 
@@ -54,12 +63,9 @@ representations, and that server send-side BWE can select a lower representation
 for a constrained subscriber while an unconstrained subscriber receives the
 highest available representation.
 
-LiveKit's current client applies `x-google-start-bitrate` to all negotiated
-video codecs because browser BWE can otherwise begin at very low bitrate and
-take more than ten seconds to ramp. For screen share it starts at 90% of the
-configured aggregate target without the camera cap. The pinned client contains
-that upstream mechanism; raw P2P uses the same offer hint, while Screener does
-not add a post-encode rewrite or another startup estimator.
+Pinned LiveKit retains its own codec and startup-bitrate behavior. Screener does
+not add an SDP startup hint to raw peers; the controlled matrix showed that it
+does not address this `motion + balanced` restriction.
 
 An earlier exact-production A/B also showed that forcing an always-active lower
 encoding can consume the same Host-to-SFU congestion budget and reduce the
@@ -169,6 +175,10 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
+- [Chromium content-hint capture mapping](https://chromium.googlesource.com/chromium/src/+/3468eea378284a9cc42d05532cf3e1ee1f716fa9/content/renderer/media/webrtc/webrtc_video_capturer_adapter.cc)
+- [libwebrtc content-hint sender mapping](https://webrtc.googlesource.com/src/+/98c256dadcab7c69e45de78091da9932d244f2e3/pc/rtp_sender.cc)
+- [libwebrtc balanced restriction reset](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/call/adaptation/video_stream_adapter.cc)
+- [libwebrtc startup frame dropper](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/video/adaptation/video_stream_encoder_resource_manager.cc)
 - [LiveKit initial-quality fix](https://github.com/livekit/client-sdk-js/pull/1987)
 - [LiveKit initial-quality implementation](https://github.com/livekit/client-sdk-js/commit/5db17af)
 - [LiveKit screen-share encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)

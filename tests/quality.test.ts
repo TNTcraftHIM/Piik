@@ -7,12 +7,14 @@ import {
   configureScreenAudioSender,
   configureVideoSender,
   matchingQualityProfileId,
+  needsStartupVideoProfile,
   QUALITY_PROFILES,
   QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   SCREEN_AUDIO_BITRATES,
   senderParameterWarning,
   setMediaPaused,
+  startupVideoProfile,
 } from "../src/client/media/quality.ts";
 
 function createVideoStream() {
@@ -113,6 +115,21 @@ describe("realtime quality controls", () => {
     expect(QUALITY_PROFILES["1080p30"].degradationPreference).toBe("balanced");
     expect(QUALITY_PROFILES["1080p60"].degradationPreference).toBe("balanced");
     expect(QUALITY_PROFILES["720p30"].degradationPreference).toBe("balanced");
+  });
+
+  it("holds resolution only while a scaling preference starts", () => {
+    expect(needsStartupVideoProfile(QUALITY_PROFILES["1080p30"])).toBe(true);
+    expect(startupVideoProfile(QUALITY_PROFILES["1080p30"])).toMatchObject({
+      degradationPreference: "maintain-resolution",
+      maxBitrate: 5_000_000,
+      maxFramerate: 30,
+    });
+    const clarity = {
+      ...QUALITY_PROFILES["1080p30"],
+      degradationPreference: "maintain-resolution",
+    } as const;
+    expect(needsStartupVideoProfile(clarity)).toBe(false);
+    expect(startupVideoProfile(clarity)).toBe(clarity);
   });
 
   it("keeps audio selection orthogonal while defaulting missing settings to music", () => {

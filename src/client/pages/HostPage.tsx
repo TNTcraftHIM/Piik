@@ -2268,7 +2268,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           aria-pressed={
                             advancedQuality.degradationPreference === preference
                           }
-                          disabled={phase === "starting" || switchingSource}
+                          disabled={phase !== "live" || switchingSource}
                           onClick={() =>
                             changeAdvancedQuality({
                               degradationPreference: preference,

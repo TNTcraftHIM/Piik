@@ -4,9 +4,12 @@ import {
   audioSenderParameterWarning,
   configureScreenAudioSender,
   configureVideoSender,
+  needsStartupVideoProfile,
   resolveScreenAudioQuality,
   screenAudioQualityEqual,
   senderParameterWarning,
+  STARTUP_VIDEO_ENCODED_FRAMES,
+  startupVideoProfile,
   videoQualitySettingsEqual,
   type AudioSenderParameterReadback,
   type QualityProfile,
@@ -21,7 +24,7 @@ import {
   collectConnectionMetrics,
   createStatsAccumulator,
 } from "./stats";
-import { applyVp8Codec, preferVp8StartBitrate } from "./vp8-codec";
+import { applyVp8Codec } from "./vp8-codec";
 
 const MAX_PENDING_CANDIDATES = 64;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
@@ -61,6 +64,7 @@ export class HostPeer {
   private ordinaryAnswerEpoch: number | null = null;
   private senderMutationTail: Promise<void> = Promise.resolve();
   private negotiationTail: Promise<void> = Promise.resolve();
+  private startupVideoProfilePending: boolean;
   private snapshot: PeerSnapshot;
 
   constructor(
@@ -72,6 +76,7 @@ export class HostPeer {
     connectionId = createOpaqueId(),
   ) {
     this.connectionId = connectionId;
+    this.startupVideoProfilePending = needsStartupVideoProfile(desiredProfile);
     this.connection = new RTCPeerConnection({
       iceServers: iceConfig.iceServers,
     });
@@ -113,7 +118,12 @@ export class HostPeer {
       if (this.disposed || !this.videoSender || !this.audioSender) {
         return false;
       }
-      return this.configureSender(this.videoSender, this.audioSender);
+      return this.configureSender(this.videoSender, this.audioSender, {
+        profile: startupVideoProfile(this.desiredProfile),
+        profileRevision: this.profileRevision,
+        video: true,
+        audio: true,
+      });
     });
     if (!(await this.createOffer(false)) || this.disposed) {
       return false;
@@ -161,11 +171,14 @@ export class HostPeer {
           return false;
         }
         this.stream = nextStream;
+        this.startupVideoProfilePending = needsStartupVideoProfile(
+          this.desiredProfile,
+        );
         this.limitationReason = null;
         this.limitationSamples = 0;
         this.snapshot = { ...this.snapshot, metrics: { ...EMPTY_METRICS } };
         await this.configureSender(videoSender, audioSender, {
-          profile: this.desiredProfile,
+          profile: startupVideoProfile(this.desiredProfile),
           profileRevision: this.profileRevision,
           video: this.connection.connectionState === "connected",
           audio: true,
@@ -184,10 +197,18 @@ export class HostPeer {
     if (this.disposed) {
       return Promise.resolve(false);
     }
+    if (!needsStartupVideoProfile(profile)) {
+      this.startupVideoProfilePending = false;
+    }
+    const effectiveVideoProfile = this.startupVideoProfilePending
+      ? startupVideoProfile(profile)
+      : profile;
     const requestedVideo =
-      !videoQualitySettingsEqual(this.desiredProfile, profile) ||
       this.appliedVideoProfile === null ||
-      !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+      !videoQualitySettingsEqual(
+        this.appliedVideoProfile,
+        effectiveVideoProfile,
+      );
     const requestedAudio =
       !screenAudioQualityEqual(this.desiredProfile, profile) ||
       this.appliedAudioQuality !==
@@ -209,7 +230,10 @@ export class HostPeer {
         this.connection.connectionState === "connected" &&
         (requestedVideo ||
           this.appliedVideoProfile === null ||
-          !videoQualitySettingsEqual(this.appliedVideoProfile, profile));
+          !videoQualitySettingsEqual(
+            this.appliedVideoProfile,
+            effectiveVideoProfile,
+          ));
       const updateAudio =
         requestedAudio ||
         this.appliedAudioQuality !==
@@ -219,7 +243,7 @@ export class HostPeer {
       }
       if (
         !(await this.configureSender(videoSender, audioSender, {
-          profile,
+          profile: effectiveVideoProfile,
           profileRevision: requestedRevision,
           video: updateVideo,
           audio: updateAudio,
@@ -326,9 +350,6 @@ export class HostPeer {
     });
     this.connection.addEventListener("connectionstatechange", () => {
       this.emit();
-      if (this.connection.connectionState === "connected") {
-        void this.updateProfile(this.desiredProfile);
-      }
     });
     this.connection.addEventListener("iceconnectionstatechange", () => this.emit());
   }
@@ -375,9 +396,7 @@ export class HostPeer {
       if (!this.ownsLocalOffer(epoch)) {
         return false;
       }
-      await this.connection.setLocalDescription(
-        preferVp8StartBitrate(offer, this.desiredProfile.maxBitrate),
-      );
+      await this.connection.setLocalDescription(offer);
       if (
         !this.ownsLocalOffer(epoch) ||
         !this.connection.localDescription
@@ -506,6 +525,13 @@ export class HostPeer {
           metrics.trackIdentifier !== captureTrack.id)
       ) {
         return;
+      }
+      if (
+        this.startupVideoProfilePending &&
+        (statsAccumulator.frames ?? 0) >= STARTUP_VIDEO_ENCODED_FRAMES
+      ) {
+        this.startupVideoProfilePending = false;
+        void this.updateProfile(this.desiredProfile);
       }
       this.updateLimitationWarning(metrics.qualityLimitationReason);
       this.snapshot = {

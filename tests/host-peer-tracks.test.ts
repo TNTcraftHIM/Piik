@@ -79,7 +79,6 @@ class FakePeerConnection {
   static activeCount = 0;
   static peakActiveCount = 0;
   static offersFailing = 0;
-  static offerSdp = "test-offer";
   static omitCodecPreferenceSetter = false;
   static codecPreferenceCallsFailing = 0;
 
@@ -166,7 +165,7 @@ class FakePeerConnection {
       FakePeerConnection.offersFailing -= 1;
       throw new Error("createOffer failed");
     }
-    return { type: "offer", sdp: FakePeerConnection.offerSdp };
+    return { type: "offer", sdp: "test-offer" };
   }
 
   async setLocalDescription(
@@ -410,9 +409,28 @@ async function acceptPeerAnswer(peer: HostPeer): Promise<void> {
   });
   connection.connectionState = "connected";
   connection.dispatchEvent(new Event("connectionstatechange"));
-  await vi.waitFor(() =>
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalled(),
+  await completeVideoStartup(connection);
+}
+
+async function completeVideoStartup(
+  connection: FakePeerConnection,
+  framesEncoded = 5,
+): Promise<void> {
+  const statsCalls = connection.getStats.mock.calls.length;
+  connection.statsReports.push(
+    sendStatsReport({
+      bytesSent: 10_000,
+      framesEncoded,
+      timestamp: 1_000,
+      qualityLimitationReason: "none",
+      trackIdentifier: connection.senders[0]?.track?.id ?? "video",
+    }),
   );
+  statsCallbacks.at(-1)!();
+  await vi.waitFor(() =>
+    expect(connection.getStats).toHaveBeenCalledTimes(statsCalls + 1),
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 beforeEach(() => {
@@ -421,7 +439,6 @@ beforeEach(() => {
   FakePeerConnection.activeCount = 0;
   FakePeerConnection.peakActiveCount = 0;
   FakePeerConnection.offersFailing = 0;
-  FakePeerConnection.offerSdp = "test-offer";
   FakePeerConnection.omitCodecPreferenceSetter = false;
   FakePeerConnection.codecPreferenceCallsFailing = 0;
   statsCallbacks.length = 0;
@@ -500,37 +517,6 @@ describe("HostPeer source replacement", () => {
       "video/flexfec-03",
     ]);
     expect(connection.createOfferCallCount).toBe(1);
-  });
-
-  it("starts raw peer VP8 near the selected screen-share bitrate", async () => {
-    FakePeerConnection.offerSdp = [
-      "v=0",
-      "o=- 1 1 IN IP4 127.0.0.1",
-      "s=-",
-      "t=0 0",
-      "m=video 9 UDP/TLS/RTP/SAVPF 96 97",
-      "c=IN IP4 0.0.0.0",
-      "a=rtpmap:96 VP8/90000",
-      "a=fmtp:96 max-fs=3600;x-google-start-bitrate=100",
-      "a=rtpmap:97 rtx/90000",
-      "a=fmtp:97 apt=96",
-      "a=sendonly",
-      "",
-    ].join("\r\n");
-    const peer = createPeer(
-      createStream(createTrack("video", "video"), null),
-      () => undefined,
-      { iceServers: [] },
-      QUALITY_PROFILES["1080p30"],
-    );
-
-    await expect(peer.start()).resolves.toBe(true);
-
-    const sdp = FakePeerConnection.latest!.localDescription!.sdp;
-    expect(sdp).toContain(
-      "a=fmtp:96 max-fs=3600;x-google-start-bitrate=4500",
-    );
-    expect(sdp).toContain("a=fmtp:97 apt=96");
   });
 
   it("fails before creating an offer when codec preferences are unavailable", async () => {
@@ -648,7 +634,7 @@ describe("HostPeer source replacement", () => {
     expect(connection.senders[0]?.track).toBe(nextVideo);
     expect(connection.senders[1]?.track).toBe(nextAudio);
     expect(connection.transceiverInputs).toHaveLength(2);
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(3);
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
       192_000,
       192_000,
@@ -710,7 +696,7 @@ describe("HostPeer source replacement", () => {
 
     expect(connection.senders[0]?.replaceTrack).not.toHaveBeenCalled();
     expect(connection.senders[1]?.replaceTrack).not.toHaveBeenCalled();
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(3);
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
@@ -725,7 +711,7 @@ describe("HostPeer source replacement", () => {
         screenAudioQuality: "very-high",
       }),
     ).resolves.toBe(true);
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(3);
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledTimes(2);
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
       128_000,
@@ -807,13 +793,16 @@ describe("HostPeer source replacement", () => {
     );
   });
 
-  it("applies the selected video profile before creating the offer", async () => {
+  it("enables the selected balanced profile after startup frames", async () => {
     const video = createTrack("video", "video");
     const peer = createPeer(createStream(video, createTrack("audio", "audio")));
 
     await expect(peer.start()).resolves.toBe(true);
     const connection = FakePeerConnection.latest!;
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
+    expect(
+      connection.senders[0]?.setParameters.mock.calls[0]?.[0],
+    ).toMatchObject({ degradationPreference: "maintain-resolution" });
     const pendingCandidate = { candidate: "candidate-before-answer" };
     await peer.acceptSignal({
       kind: "candidate",
@@ -836,6 +825,12 @@ describe("HostPeer source replacement", () => {
     connection.dispatchEvent(new Event("connectionstatechange"));
     await Promise.resolve();
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
+
+    await completeVideoStartup(connection, 4);
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
+
+    await completeVideoStartup(connection, 5);
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
@@ -917,7 +912,7 @@ describe("HostPeer source replacement", () => {
       peer.updateProfile(QUALITY_PROFILES["1080p60"]),
     ).resolves.toBe(true);
 
-    expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(4);
     expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
       degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
@@ -942,7 +937,7 @@ describe("HostPeer source replacement", () => {
     statsCallbacks[0]!();
     await vi.waitFor(() => expect(connection.statsReports).toHaveLength(0));
     statsCallbacks[0]!();
-    expect(connection.getStats).toHaveBeenCalledOnce();
+    expect(connection.getStats).toHaveBeenCalledTimes(2);
 
     await expect(
       peer.updateProfile(QUALITY_PROFILES["1080p60"]),
@@ -1291,11 +1286,11 @@ describe("HostPeer source replacement", () => {
     expect(updates.at(-1)?.qualityWarning).toBeNull();
     await sample();
     expect(updates.at(-1)?.qualityWarning).toContain("持续受带宽限制");
-    expect(sender.setParameters).toHaveBeenCalledOnce();
+    expect(sender.setParameters).toHaveBeenCalledTimes(2);
 
     await sample();
     expect(updates.at(-1)?.qualityWarning).toBeNull();
-    expect(sender.setParameters).toHaveBeenCalledOnce();
+    expect(sender.setParameters).toHaveBeenCalledTimes(2);
   });
 
   it("does not expose an unknown browser quality-limitation value", async () => {
@@ -2018,11 +2013,7 @@ describe("ViewerRelay downstream ownership", () => {
     ).resolves.toBe(true);
     firstConnection.connectionState = "connected";
     firstConnection.dispatchEvent(new Event("connectionstatechange"));
-    await vi.waitFor(() =>
-      expect(
-        FakePeerConnection.latest?.senders[0]?.setParameters,
-      ).toHaveBeenCalled(),
-    );
+    await completeVideoStartup(firstConnection);
 
     await expect(
       relay.updateProfile(customSettings),
@@ -2059,9 +2050,7 @@ describe("ViewerRelay downstream ownership", () => {
     ).resolves.toBe(true);
     secondConnection.connectionState = "connected";
     secondConnection.dispatchEvent(new Event("connectionstatechange"));
-    await vi.waitFor(() =>
-      expect(secondConnection.senders[0]?.setParameters).toHaveBeenCalled(),
-    );
+    await completeVideoStartup(secondConnection);
     expect(
       secondConnection.senders[0]?.setParameters.mock.calls[0]?.[0],
     ).toMatchObject({

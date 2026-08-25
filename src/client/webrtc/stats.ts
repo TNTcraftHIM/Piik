@@ -278,6 +278,25 @@ export function decodedVideoFrames(
   return numberValue(mediaRecord(report, "receive", selector), "framesDecoded");
 }
 
+export function maxEncodedVideoFrames(
+  report: RTCStatsReport,
+  trackIdentifier: string,
+): number {
+  let frames = 0;
+  report.forEach((raw) => {
+    const record = raw as StatsRecord;
+    if (
+      record.type === "outbound-rtp" &&
+      record.kind === "video" &&
+      record.isRemote !== true &&
+      mediaTrackIdentifier(report, record, "send") === trackIdentifier
+    ) {
+      frames = Math.max(frames, numberValue(record, "framesEncoded") ?? 0);
+    }
+  });
+  return frames;
+}
+
 function transportRecord(
   report: RTCStatsReport,
   media: StatsRecord | null,
