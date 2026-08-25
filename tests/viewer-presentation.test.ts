@@ -124,6 +124,38 @@ describe("Viewer presentation reducer", () => {
     expect(nextRoute.connection).toBe("connecting");
   });
 
+  it("rebases proven media when only the room graph revision changes", () => {
+    const playing = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 2, phase: "active", kind: "p2p" },
+      { type: "connection", revision: 2, connection: "connected" },
+      { type: "media-bound", generation: 4, revision: 2 },
+      { type: "frame-presented", generation: 4, revision: 2 },
+    );
+    const rebased = reduceViewerPresentation(playing, {
+      type: "route",
+      revision: 3,
+      phase: "active",
+      kind: "p2p",
+      preserveMedia: true,
+    });
+
+    expect(rebased.media).toEqual({
+      generation: 4,
+      revision: 3,
+      framePresented: true,
+    });
+    expect(rebased.connection).toBe("connected");
+    expect(deriveViewerPresentation(rebased)).toMatchObject({
+      stage: "playing",
+      overlay: "none",
+      hasCurrentFrame: true,
+      hasRetainedFrame: false,
+    });
+  });
+
   it("ignores a late playback failure from a replaced media binding", () => {
     const rebound = apply(
       { type: "access", access: "ready" },

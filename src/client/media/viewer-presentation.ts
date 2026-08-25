@@ -103,6 +103,7 @@ export type ViewerPresentationAction =
       revision: number;
       phase: "prepare" | "active";
       kind: ViewerRouteKind;
+      preserveMedia?: boolean;
     }
   | {
       type: "route-status";
@@ -197,6 +198,10 @@ export function reduceViewerPresentation(
       }
       const revisionChanged = state.revision !== action.revision;
       const currentFrame = hasCurrentFrame(state);
+      const preserveMedia =
+        revisionChanged &&
+        action.preserveMedia === true &&
+        state.media?.revision === state.revision;
       return {
         ...state,
         revision: action.revision,
@@ -210,12 +215,17 @@ export function reduceViewerPresentation(
           state.routeStatus.state === "waiting"
             ? state.routeStatus
             : null,
-        autoplayBlockedGeneration: revisionChanged
+        media: preserveMedia
+          ? { ...state.media!, revision: action.revision }
+          : state.media,
+        autoplayBlockedGeneration: revisionChanged && !preserveMedia
           ? null
           : state.autoplayBlockedGeneration,
         retainedFrame:
-          state.retainedFrame || (revisionChanged && currentFrame),
-        connection: revisionChanged
+          preserveMedia
+            ? state.retainedFrame
+            : state.retainedFrame || (revisionChanged && currentFrame),
+        connection: revisionChanged && !preserveMedia
           ? action.kind === "none"
             ? "idle"
             : "connecting"

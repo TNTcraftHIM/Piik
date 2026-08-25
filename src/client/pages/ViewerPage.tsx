@@ -283,7 +283,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     revision: number,
     upstream: ParticipantRouteAssignment["upstream"],
     phase: "prepare" | "active" = "active",
+    preserveMedia = false,
   ): void {
+    if (preserveMedia) {
+      const current = remoteMediaRef.current;
+      if (current && current.revision !== revision) {
+        const rebased = { ...current, revision };
+        remoteMediaRef.current = rebased;
+        setRemoteMedia(rebased);
+      }
+    }
     setAssignedRoute((current) =>
       current && revision < current.revision
         ? current
@@ -294,6 +303,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       revision,
       phase,
       kind: routeKindFromAssignment(upstream),
+      preserveMedia,
     });
   }
 
@@ -1201,11 +1211,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 revision: message.revision,
                 connectionId: message.candidate.connectionId,
               };
+              acceptAssignedRoute(
+                message.revision,
+                message.assignment.upstream,
+                "prepare",
+              );
             }
-            if (result === "accepted" && message.phase === "active") {
-              if (message.revision !== currentRouteRevision) {
-                clearRelayChildEvidence();
-              }
+            if (message.phase === "active") {
               const samePeerUpstream =
                 currentRouteAssignment?.upstream.kind === "peer" &&
                 message.assignment.upstream.kind === "peer" &&
@@ -1216,23 +1228,41 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 message.assignment.upstream.kind === "sfu" &&
                 currentRouteAssignment.sfuPublicationGeneration ===
                   message.assignment.sfuPublicationGeneration;
+              const peerIdentity = peerRef.current?.getConnectionIdentity();
+              const exactPeerUpstream =
+                samePeerUpstream &&
+                currentRouteAssignment?.upstream.kind === "peer" &&
+                currentRouteConnectionId !== null &&
+                peerIdentity != null &&
+                peerIdentity.parentPeerId ===
+                  currentRouteAssignment.upstream.peerId &&
+                peerIdentity.connectionId === currentRouteConnectionId;
+              const preserveMedia =
+                remoteMediaRef.current !== null &&
+                (sameSfuUpstream || exactPeerUpstream);
               const connectionId =
                 pendingRouteConnection?.revision === message.revision
                   ? pendingRouteConnection.connectionId
                   : samePeerUpstream || sameSfuUpstream
                     ? currentRouteConnectionId
                     : null;
-              activateRouteIdentity(
+              if (result === "accepted") {
+                if (message.revision !== currentRouteRevision) {
+                  clearRelayChildEvidence();
+                }
+                activateRouteIdentity(
+                  message.revision,
+                  message.assignment,
+                  connectionId,
+                );
+              }
+              acceptAssignedRoute(
                 message.revision,
-                message.assignment,
-                connectionId,
+                message.assignment.upstream,
+                "active",
+                preserveMedia,
               );
             }
-            acceptAssignedRoute(
-              message.revision,
-              message.assignment.upstream,
-              message.phase,
-            );
           }
         }
         return;
