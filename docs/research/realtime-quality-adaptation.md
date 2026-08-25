@@ -18,13 +18,6 @@ representation, scene detector, quality score, parent probe, periodic
 rebalancing loop, or manual layer selector. It supplies standard content intent,
 the selected sender ceiling, and readback of what the browser accepted.
 
-Chromium maps the `motion` content hint to `MAINTAIN_FRAMERATE`. Explicit
-`BALANCED` uses a separate adaptation policy that can retain both frame-rate and
-resolution restrictions; entering or leaving Balanced resets adaptation counts,
-while rewriting the same preference does not provide that reset. Screener
-therefore defaults game sharing to `maintain-framerate` and keeps Balanced and
-clarity-first as explicit choices.
-
 The active topology remains availability-driven. A hard connection failure,
 non-paused 15-second decoded-frame stall, parent departure, or capacity
 invalidation may trigger the ADR-0005 recovery operation. Loss, RTT, jitter,
@@ -46,10 +39,11 @@ quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
 
-The Host carries the desired profile through negotiation and applies it from
-fresh video-sender parameters when the PeerConnection becomes connected. It
-does not preconfigure video encoding parameters before the first offer, run a
-periodic controller, or reset bandwidth estimation on a timer.
+The Host applies the selected profile from fresh sender parameters before the
+first offer. Libwebrtc retains those initial parameters until the negotiated
+SSRC exists and then applies them to the active sender. A connection event only
+applies a newer profile selected during negotiation or retries an initial
+failure; no periodic controller or bandwidth-estimator reset exists.
 
 ## LiveKit SFU Evidence
 
@@ -167,8 +161,8 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
-- [libwebrtc content-hint degradation mapping](https://webrtc.googlesource.com/src/+/refs/heads/main/media/engine/webrtc_video_engine.cc)
-- [libwebrtc degradation adaptation](https://webrtc.googlesource.com/src/+/refs/heads/main/call/adaptation/video_stream_adapter.cc)
+- [libwebrtc initial sender parameters](https://webrtc.googlesource.com/src/+/master/api/rtp_sender_interface.h)
+- [libwebrtc negotiated SSRC parameter application](https://webrtc.googlesource.com/src/+/bb7239ecea3db0e41b8fa6eb26c3a749deb41076/pc/rtp_sender.cc)
 - [LiveKit screen-share encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)

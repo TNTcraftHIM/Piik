@@ -113,12 +113,7 @@ export class HostPeer {
       if (this.disposed || !this.videoSender || !this.audioSender) {
         return false;
       }
-      return this.configureSender(this.videoSender, this.audioSender, {
-        profile: this.desiredProfile,
-        profileRevision: this.profileRevision,
-        video: false,
-        audio: true,
-      });
+      return this.configureSender(this.videoSender, this.audioSender);
     });
     if (!(await this.createOffer(false)) || this.disposed) {
       return false;

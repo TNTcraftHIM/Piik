@@ -681,7 +681,7 @@ describe("HostPeer source replacement", () => {
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "maintain-framerate",
+      degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
@@ -774,13 +774,13 @@ describe("HostPeer source replacement", () => {
     );
   });
 
-  it("applies the selected video profile only after the connection is live", async () => {
+  it("applies the selected video profile before creating the offer", async () => {
     const video = createTrack("video", "video");
     const peer = createPeer(createStream(video, createTrack("audio", "audio")));
 
     await expect(peer.start()).resolves.toBe(true);
     const connection = FakePeerConnection.latest!;
-    expect(connection.senders[0]?.setParameters).not.toHaveBeenCalled();
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
     const pendingCandidate = { candidate: "candidate-before-answer" };
     await peer.acceptSignal({
       kind: "candidate",
@@ -797,17 +797,16 @@ describe("HostPeer source replacement", () => {
     expect(connection.remoteDescription?.type).toBe("answer");
     expect(connection.addedIceCandidates).toEqual([pendingCandidate]);
     expect(connection.senders[0]?.track).toBe(video);
-    expect(connection.senders[0]?.setParameters).not.toHaveBeenCalled();
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
 
     connection.connectionState = "connected";
     connection.dispatchEvent(new Event("connectionstatechange"));
-    await vi.waitFor(() =>
-      expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce(),
-    );
+    await Promise.resolve();
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "maintain-framerate",
+      degradationPreference: "balanced",
       encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
     });
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
@@ -823,15 +822,18 @@ describe("HostPeer source replacement", () => {
 
     await expect(peer.start()).resolves.toBe(true);
     const videoSender = FakePeerConnection.latest!.senders[0]!;
-    expect(videoSender.setParameters).not.toHaveBeenCalled();
+    expect(videoSender.setParameters).toHaveBeenCalledOnce();
 
     await expect(
       peer.updateProfile(QUALITY_PROFILES["1080p60"]),
     ).resolves.toBe(true);
-    expect(videoSender.setParameters).not.toHaveBeenCalled();
+    expect(videoSender.setParameters).toHaveBeenCalledOnce();
 
     await acceptPeerAnswer(peer);
-    expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
+    await vi.waitFor(() =>
+      expect(videoSender.setParameters).toHaveBeenCalledTimes(2),
+    );
+    expect(videoSender.appliedMaxBitrates).toEqual([3_000_000, 8_000_000]);
   });
 
   it("continues queued profile updates after initial configuration rejects", async () => {
@@ -844,9 +846,10 @@ describe("HostPeer source replacement", () => {
       (snapshot) => updates.push(snapshot),
     );
 
-    await expect(peer.start()).resolves.toBe(true);
+    const starting = peer.start();
     const videoSender = FakePeerConnection.latest!.senders[0]!;
     videoSender.failNextSetParameters = true;
+    await expect(starting).resolves.toBe(true);
     await acceptPeerAnswer(peer);
 
     const failureWarning = updates.find((snapshot) =>
@@ -857,8 +860,8 @@ describe("HostPeer source replacement", () => {
     await expect(
       peer.updateProfile(QUALITY_PROFILES["1080p60"]),
     ).resolves.toBe(true);
-    expect(videoSender.setParameters).toHaveBeenCalledTimes(2);
-    expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
+    expect(videoSender.appliedMaxBitrates).toEqual([3_000_000, 8_000_000]);
   });
 
   it("can retry the selected quality after a sender update fails", async () => {
@@ -883,7 +886,7 @@ describe("HostPeer source replacement", () => {
 
     expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
     expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
-      degradationPreference: "maintain-framerate",
+      degradationPreference: "balanced",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });
