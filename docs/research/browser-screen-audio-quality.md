@@ -16,8 +16,8 @@ stereo and disables echo cancellation, noise suppression, automatic gain, and
 voice isolation where the browser supports those constraints. These are
 preferences and readback fields, not portable fidelity guarantees.
 
-The only user-facing audio-quality choices are sender ceilings of 64, 128, and
-256 kbps, with 128 kbps as the default. They update live on current P2P,
+The only user-facing audio-quality choices are sender ceilings of 96, 128, and
+192 kbps, with 96 kbps as the default. They update live on current P2P,
 Browser-relay, and SFU senders and apply to future senders. Actual RTP traffic
 can remain below a ceiling because of content and congestion, and includes
 transport behavior not represented by the selected number.
@@ -26,11 +26,11 @@ transport behavior not represented by the selected number.
 
 Direct and Browser-relay Viewer answers use one structured `sdp-transform`
 operation on the single active Opus audio section. It idempotently requests
-`stereo=1` and `maxaveragebitrate=256000`, preserving every unrelated codec,
+`stereo=1` and `maxaveragebitrate=192000`, preserving every unrelated codec,
 format parameter, media section, and session attribute. Missing, ambiguous, or
 malformed targets return the browser-generated answer unchanged.
 
-The 256 kbps receive maximum permits every sender ceiling; it is not a current
+The 192 kbps receive maximum permits every sender ceiling; it is not a current
 target or minimum. Screener does not set `sprop-stereo`, rewrite FEC, force a
 sample rate, or add broad string/regular-expression SDP mutation.
 
@@ -41,8 +41,9 @@ room-wide atomic convergence.
 
 ## LiveKit Contract
 
-The SFU publisher maps the three ceilings to pinned LiveKit stereo music presets
-or an explicit 256 kbps preset. Every SFU audio publication uses:
+The SFU publisher maps 96 and 128 kbps to pinned LiveKit music presets and uses
+an explicit 192 kbps preset for the highest ceiling. Every SFU audio publication
+uses:
 
 - `forceStereo: true`;
 - `dtx: false`; and
@@ -81,9 +82,10 @@ identity, so stale asynchronous samples cannot overwrite the new route.
 ## Evidence Boundary
 
 Chrome 151 production gates exercised direct Host children, a Browser-relay
-child, and an SFU subscriber with generated screen audio. Video and decoded
-audio energy advanced at all three 64/128/256 kbps ceilings and after source
-replacement. Direct and Browser-relay traffic tracked the selected ceiling;
+child, and an SFU subscriber with generated screen audio. Under the preceding
+64/128/256 kbps contract, video and decoded audio energy advanced at all three
+ceilings and after source replacement. Direct and Browser-relay traffic tracked
+the selected ceiling;
 the then-enabled SFU RED path explained the approximately doubled SFU audio
 payload.
 

@@ -248,6 +248,7 @@ const livekit = vi.hoisted(() => {
 
   const AudioPresets = {
     musicStereo: { maxBitrate: 64_000 },
+    musicHighQuality: { maxBitrate: 96_000 },
     musicHighQualityStereo: { maxBitrate: 128_000 },
   } as const;
 
@@ -674,7 +675,7 @@ describe("SfuPublisher", () => {
     ).not.toHaveProperty("simulcast");
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 128_000 },
+      audioPreset: { maxBitrate: 96_000 },
       forceStereo: true,
       dtx: false,
       red: false,
@@ -712,9 +713,9 @@ describe("SfuPublisher", () => {
   });
 
   it.each([
-    ["saver", 64_000],
+    ["saver", 96_000],
     ["music", 128_000],
-    ["very-high", 256_000],
+    ["very-high", 192_000],
   ] as const)("maps the %s audio preset to %i bps", async (screenAudioQuality, bitrate) => {
     const publisher = new SfuPublisher();
     const video = track("video", `video-${screenAudioQuality}`);
@@ -820,24 +821,24 @@ describe("SfuPublisher", () => {
     expect(videoPublication.track.sender.setParameters).toHaveBeenCalledOnce();
     expect(audioPublication.track.sender.setParameters).toHaveBeenCalledTimes(2);
     expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
-      256_000,
+      192_000,
     );
     expect(audioPublication.options).toMatchObject({
-      audioPreset: { maxBitrate: 256_000 },
+      audioPreset: { maxBitrate: 192_000 },
       forceStereo: true,
       dtx: false,
       red: false,
     });
     expect(publisher.getAudioSenderParameters()).toEqual({
-      requestedMaxBitrate: 256_000,
-      appliedMaxBitrate: 256_000,
+      requestedMaxBitrate: 192_000,
+      appliedMaxBitrate: 192_000,
       mismatch: false,
     });
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
 
     await room.localParticipant.republishAllTracks();
     expect(room.localParticipant.republishedOptions[1]).toMatchObject({
-      audioPreset: { maxBitrate: 256_000 },
+      audioPreset: { maxBitrate: 192_000 },
       forceStereo: true,
       dtx: false,
       red: false,
@@ -873,7 +874,7 @@ describe("SfuPublisher", () => {
       128_000,
     );
     expect(audioPublication.options).toMatchObject({
-      audioPreset: { maxBitrate: 256_000 },
+      audioPreset: { maxBitrate: 192_000 },
     });
     expect(videoPublication.track.sender.setParameters).toHaveBeenCalledOnce();
     expect(room.disconnect).not.toHaveBeenCalled();
@@ -886,7 +887,7 @@ describe("SfuPublisher", () => {
       }),
     ).resolves.toBe(true);
     expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      256_000,
+      192_000,
     );
     expect(publisher.getQualityWarning()).toBeNull();
   });
@@ -956,9 +957,9 @@ describe("SfuPublisher", () => {
     await vi.waitFor(() =>
       expect(replacementSender.setParameters).toHaveBeenCalledOnce(),
     );
-    expect(replacementSender.parameters.encodings[0]?.maxBitrate).toBe(256_000);
+    expect(replacementSender.parameters.encodings[0]?.maxBitrate).toBe(192_000);
     expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      256_000,
+      192_000,
     );
     expect(room.localParticipant.republishAllTracks).not.toHaveBeenCalled();
   });
@@ -997,10 +998,10 @@ describe("SfuPublisher", () => {
     );
     expect(audioPublication.track.sender.setParameters).not.toHaveBeenCalled();
     expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
-      256_000,
+      192_000,
     );
     expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      256_000,
+      192_000,
     );
     expect(publisher.getSenderParameters()).toBeNull();
     expect(publisher.getQualityWarning()).toBeNull();
@@ -1393,7 +1394,7 @@ describe("SfuPublisher", () => {
 
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 256_000 },
+      audioPreset: { maxBitrate: 192_000 },
       forceStereo: true,
       dtx: false,
       red: false,

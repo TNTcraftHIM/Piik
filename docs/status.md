@@ -30,7 +30,7 @@ This is the current execution index. Git history owns completed timelines;
   The SFU publisher leaves representation construction to pinned LiveKit,
   enables Dynacast, uses server send-side BWE, keeps AdaptiveStream disabled,
   and configures no external ICE servers on Browser SFU PCs.
-- Screen audio provides live 64/128/256 kbps ceilings with 128 default. SFU
+- Screen audio provides live 96/128/192 kbps ceilings with 96 default. SFU
   publication uses stereo, DTX off, and RED off. Early autoplay presentation is
   gated by current media connection state.
 

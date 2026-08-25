@@ -35,7 +35,7 @@ describe("preferScreenAudioStereo", () => {
     expect(session.media[0]?.fmtp).toContainEqual({
       payload: 111,
       config:
-        "minptime=10;useinbandfec=1;x-stereo=keep;stereo=1;maxaveragebitrate=256000",
+        "minptime=10;useinbandfec=1;x-stereo=keep;stereo=1;maxaveragebitrate=192000",
     });
     expect(session.media[1]?.fmtp).toEqual([
       { payload: 96, config: "packetization-mode=1;profile-level-id=42e01f" },
@@ -52,7 +52,7 @@ describe("preferScreenAudioStereo", () => {
     });
 
     expect(parse(result.sdp!).media[0]?.fmtp[0]?.config).toBe(
-      "stereo=1;x-stereo=0;maxaveragebitrate=256000;x-maxaveragebitrate=keep",
+      "stereo=1;x-stereo=0;maxaveragebitrate=192000;x-maxaveragebitrate=keep",
     );
   });
 
@@ -64,7 +64,7 @@ describe("preferScreenAudioStereo", () => {
 
     expect(parse(result.sdp!).media[0]?.fmtp).toContainEqual({
       payload: 111,
-      config: "stereo=1;maxaveragebitrate=256000",
+      config: "stereo=1;maxaveragebitrate=192000",
     });
   });
 
@@ -82,7 +82,7 @@ describe("preferScreenAudioStereo", () => {
 
     expect(audio[0]?.fmtp[0]?.config).toBe("stereo=0");
     expect(audio[1]?.fmtp[0]?.config).toContain("stereo=1");
-    expect(audio[1]?.fmtp[0]?.config).toContain("maxaveragebitrate=256000");
+    expect(audio[1]?.fmtp[0]?.config).toContain("maxaveragebitrate=192000");
   });
 
   it.each([

@@ -19,27 +19,27 @@ export type {
 export type QualityProfile = QualitySettings;
 
 export const QUALITY_PROFILES = {
-  "1080p60": {
-    resolution: "1080p",
-    maxFramerate: 60,
-    maxBitrate: 8_000_000,
-    degradationPreference: "balanced",
-    screenAudioQuality: "music",
-  },
-  "1080p30": DEFAULT_QUALITY_SETTINGS,
   "720p30": {
     resolution: "720p",
     maxFramerate: 30,
     maxBitrate: 3_000_000,
     degradationPreference: "balanced",
-    screenAudioQuality: "music",
+    screenAudioQuality: "saver",
+  },
+  "1080p30": DEFAULT_QUALITY_SETTINGS,
+  "1080p60": {
+    resolution: "1080p",
+    maxFramerate: 60,
+    maxBitrate: 8_000_000,
+    degradationPreference: "balanced",
+    screenAudioQuality: "saver",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
 export const QUALITY_PROFILE_LABELS = {
-  "1080p60": "1080p · 60 帧",
-  "1080p30": "1080p · 30 帧",
   "720p30": "720p · 30 帧",
+  "1080p30": "1080p · 30 帧",
+  "1080p60": "1080p · 60 帧",
 } as const satisfies Record<QualityProfileId, string>;
 
 export const QUALITY_RESOLUTIONS = {
@@ -65,16 +65,16 @@ export const DEGRADATION_PREFERENCE_HINTS = {
 } as const satisfies Record<DegradationPreference, string>;
 
 export const SCREEN_AUDIO_QUALITY_LABELS = {
-  saver: "清晰",
+  saver: "普通",
   music: "音乐",
-  "very-high": "高质",
+  "very-high": "保真",
 } as const satisfies Record<ScreenAudioQuality, string>;
 
-export const DEFAULT_SCREEN_AUDIO_QUALITY: ScreenAudioQuality = "music";
+export const DEFAULT_SCREEN_AUDIO_QUALITY: ScreenAudioQuality = "saver";
 export const SCREEN_AUDIO_BITRATES = {
-  saver: 64_000,
+  saver: 96_000,
   music: 128_000,
-  "very-high": 256_000,
+  "very-high": 192_000,
 } as const satisfies Record<ScreenAudioQuality, number>;
 export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE =
   SCREEN_AUDIO_BITRATES["very-high"];
