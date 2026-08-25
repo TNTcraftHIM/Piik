@@ -1,8 +1,9 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: The route model is accepted and deployed in exact release `af348ee`
-  on strict v12, including Browser SFU ICE-server isolation, no product
-  diagnostic-download UI, and the retained Host-only acceptance snapshot.
+- Status: Accepted and deployed on strict v12, including Browser SFU ICE-server
+  isolation, no product diagnostic-download UI, and the retained Host-only
+  acceptance snapshot. Exact current identity is owned by
+  [status](../status.md).
 - Date: 2026-08-20
 - Last updated: 2026-08-25
 
@@ -373,9 +374,9 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Production and canonical `main` run exact application/runtime revision
-`af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, on strict
-`screener-v12` with the direct/STUN peer plus LiveKit SFU/UDP route model.
+Production and canonical application/runtime source use strict `screener-v12`
+with the direct/STUN peer plus LiveKit SFU/UDP route model. Exact current source
+and deployment identity is indexed by [status](../status.md).
 Browser SFU PCs use empty external ICE-server lists. The controlled exact-
 candidate rollback/SFU commit and active-SFU cadence gates are closed. The
 operation owner remains only `route`; broader heterogeneous-network and SFU
