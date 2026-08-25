@@ -109,10 +109,16 @@ describe("realtime quality controls", () => {
     });
   });
 
-  it("defaults every recommended profile to balanced", () => {
-    expect(QUALITY_PROFILES["1080p30"].degradationPreference).toBe("balanced");
-    expect(QUALITY_PROFILES["1080p60"].degradationPreference).toBe("balanced");
-    expect(QUALITY_PROFILES["720p30"].degradationPreference).toBe("balanced");
+  it("defaults every recommended profile to framerate priority", () => {
+    expect(QUALITY_PROFILES["1080p30"].degradationPreference).toBe(
+      "maintain-framerate",
+    );
+    expect(QUALITY_PROFILES["1080p60"].degradationPreference).toBe(
+      "maintain-framerate",
+    );
+    expect(QUALITY_PROFILES["720p30"].degradationPreference).toBe(
+      "maintain-framerate",
+    );
   });
 
   it("keeps audio selection orthogonal while defaulting missing settings to music", () => {
@@ -155,14 +161,14 @@ describe("realtime quality controls", () => {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
-        degradationPreference: "balanced",
+        degradationPreference: "maintain-framerate",
         scalabilityMode: null,
       },
       applied: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 4 / 3,
-        degradationPreference: "balanced",
+        degradationPreference: "maintain-framerate",
         scalabilityMode: null,
       },
       mismatches: [],
@@ -343,7 +349,7 @@ describe("realtime quality controls", () => {
           scalabilityMode: "L1T2",
         },
       ],
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-framerate",
     } as unknown as RTCRtpSendParameters;
     const sender = {
       track: { getSettings: () => ({ width: 1920, height: 1080 }) },

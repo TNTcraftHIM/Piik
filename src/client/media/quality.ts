@@ -23,7 +23,7 @@ export const QUALITY_PROFILES = {
     resolution: "720p",
     maxFramerate: 30,
     maxBitrate: 3_000_000,
-    degradationPreference: "balanced",
+    degradationPreference: "maintain-framerate",
     screenAudioQuality: "music",
   },
   "1080p30": DEFAULT_QUALITY_SETTINGS,
@@ -31,7 +31,7 @@ export const QUALITY_PROFILES = {
     resolution: "1080p",
     maxFramerate: 60,
     maxBitrate: 8_000_000,
-    degradationPreference: "balanced",
+    degradationPreference: "maintain-framerate",
     screenAudioQuality: "music",
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;

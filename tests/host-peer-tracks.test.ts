@@ -681,7 +681,7 @@ describe("HostPeer source replacement", () => {
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-framerate",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
@@ -807,7 +807,7 @@ describe("HostPeer source replacement", () => {
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-framerate",
       encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
     });
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
@@ -883,7 +883,7 @@ describe("HostPeer source replacement", () => {
 
     expect(videoSender.setParameters).toHaveBeenCalledTimes(3);
     expect(videoSender.setParameters.mock.calls.at(-1)?.[0]).toMatchObject({
-      degradationPreference: "balanced",
+      degradationPreference: "maintain-framerate",
       encodings: [{ maxBitrate: 8_000_000, maxFramerate: 60 }],
     });
   });

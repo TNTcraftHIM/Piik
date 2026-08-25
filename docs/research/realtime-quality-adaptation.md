@@ -18,6 +18,13 @@ representation, scene detector, quality score, parent probe, periodic
 rebalancing loop, or manual layer selector. It supplies standard content intent,
 the selected sender ceiling, and readback of what the browser accepted.
 
+Chromium maps the `motion` content hint to `MAINTAIN_FRAMERATE`. Explicit
+`BALANCED` uses a separate adaptation policy that can retain both frame-rate and
+resolution restrictions; entering or leaving Balanced resets adaptation counts,
+while rewriting the same preference does not provide that reset. Screener
+therefore defaults game sharing to `maintain-framerate` and keeps Balanced and
+clarity-first as explicit choices.
+
 The active topology remains availability-driven. A hard connection failure,
 non-paused 15-second decoded-frame stall, parent departure, or capacity
 invalidation may trigger the ADR-0005 recovery operation. Loss, RTT, jitter,
@@ -160,6 +167,8 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
+- [libwebrtc content-hint degradation mapping](https://webrtc.googlesource.com/src/+/refs/heads/main/media/engine/webrtc_video_engine.cc)
+- [libwebrtc degradation adaptation](https://webrtc.googlesource.com/src/+/refs/heads/main/call/adaptation/video_stream_adapter.cc)
 - [LiveKit screen-share encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
