@@ -100,6 +100,7 @@ class FakePeerConnection {
   remoteDescription: RTCSessionDescription | null = null;
   readonly addedIceCandidates: Array<RTCIceCandidateInit | null> = [];
   readonly statsReports: Array<RTCStatsReport | Promise<RTCStatsReport>> = [];
+  private readonly eventListeners = new Map<string, Array<() => void>>();
 
   constructor(configuration?: RTCConfiguration) {
     FakePeerConnection.latest = this;
@@ -145,7 +146,18 @@ class FakePeerConnection {
     } as unknown as RTCRtpTransceiver;
   }
 
-  addEventListener(): void {}
+  addEventListener(type: string, listener: () => void): void {
+    const listeners = this.eventListeners.get(type) ?? [];
+    listeners.push(listener);
+    this.eventListeners.set(type, listeners);
+  }
+
+  dispatchEvent(event: Event): boolean {
+    for (const listener of this.eventListeners.get(event.type) ?? []) {
+      listener();
+    }
+    return true;
+  }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
     this.createOfferCallCount += 1;
@@ -389,11 +401,17 @@ function createPeer(
 }
 
 async function acceptPeerAnswer(peer: HostPeer): Promise<void> {
+  const connection = FakePeerConnection.latest!;
   await peer.acceptSignal({
     kind: "description",
     connectionId: peer.connectionId,
     description: { type: "answer", sdp: "test-answer" },
   });
+  connection.connectionState = "connected";
+  connection.dispatchEvent(new Event("connectionstatechange"));
+  await vi.waitFor(() =>
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalled(),
+  );
 }
 
 beforeEach(() => {
@@ -756,7 +774,7 @@ describe("HostPeer source replacement", () => {
     );
   });
 
-  it("applies the selected video profile only after accepting an answer", async () => {
+  it("applies the selected video profile only after the connection is live", async () => {
     const video = createTrack("video", "video");
     const peer = createPeer(createStream(video, createTrack("audio", "audio")));
 
@@ -779,7 +797,13 @@ describe("HostPeer source replacement", () => {
     expect(connection.remoteDescription?.type).toBe("answer");
     expect(connection.addedIceCandidates).toEqual([pendingCandidate]);
     expect(connection.senders[0]?.track).toBe(video);
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
+    expect(connection.senders[0]?.setParameters).not.toHaveBeenCalled();
+
+    connection.connectionState = "connected";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    await vi.waitFor(() =>
+      expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce(),
+    );
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
@@ -1944,6 +1968,7 @@ describe("ViewerRelay downstream ownership", () => {
       expect(relay.getSnapshot("first-profile-child")).not.toBeNull(),
     );
     const firstConnectionId = relay.getSnapshot("first-profile-child")!.connectionId;
+    const firstConnection = FakePeerConnection.latest!;
     await expect(
       relay.acceptSignal(
         "first-profile-child",
@@ -1955,12 +1980,13 @@ describe("ViewerRelay downstream ownership", () => {
         0,
       ),
     ).resolves.toBe(true);
+    firstConnection.connectionState = "connected";
+    firstConnection.dispatchEvent(new Event("connectionstatechange"));
     await vi.waitFor(() =>
       expect(
         FakePeerConnection.latest?.senders[0]?.setParameters,
       ).toHaveBeenCalled(),
     );
-    const firstConnection = FakePeerConnection.latest!;
 
     await expect(
       relay.updateProfile(customSettings),
@@ -1995,6 +2021,8 @@ describe("ViewerRelay downstream ownership", () => {
         0,
       ),
     ).resolves.toBe(true);
+    secondConnection.connectionState = "connected";
+    secondConnection.dispatchEvent(new Event("connectionstatechange"));
     await vi.waitFor(() =>
       expect(secondConnection.senders[0]?.setParameters).toHaveBeenCalled(),
     );

@@ -1586,7 +1586,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     if (reconnectRoute === "sfu") {
       viewerSfuRouteRef.current?.reconnectActive();
     } else if (reconnectRoute === "p2p") {
-      if (peerRef.current?.requestRecovery()) {
+      if (peerRef.current?.requestRecovery(true)) {
         dispatchPresentation({
           type: "connection",
           revision: presentationState.revision ?? assignedRoute?.revision ?? 0,

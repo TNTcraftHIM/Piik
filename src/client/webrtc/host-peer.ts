@@ -172,7 +172,7 @@ export class HostPeer {
         await this.configureSender(videoSender, audioSender, {
           profile: this.desiredProfile,
           profileRevision: this.profileRevision,
-          video: this.connection.remoteDescription?.type === "answer",
+          video: this.connection.connectionState === "connected",
           audio: true,
         });
         this.snapshot = { ...this.snapshot, error: null };
@@ -211,7 +211,7 @@ export class HostPeer {
         return false;
       }
       const updateVideo =
-        this.connection.remoteDescription?.type === "answer" &&
+        this.connection.connectionState === "connected" &&
         (requestedVideo ||
           this.appliedVideoProfile === null ||
           !videoQualitySettingsEqual(this.appliedVideoProfile, profile));
@@ -329,7 +329,12 @@ export class HostPeer {
           : null,
       });
     });
-    this.connection.addEventListener("connectionstatechange", () => this.emit());
+    this.connection.addEventListener("connectionstatechange", () => {
+      this.emit();
+      if (this.connection.connectionState === "connected") {
+        void this.updateProfile(this.desiredProfile);
+      }
+    });
     this.connection.addEventListener("iceconnectionstatechange", () => this.emit());
   }
 
@@ -430,19 +435,6 @@ export class HostPeer {
         return;
       }
       await this.flushCandidates();
-      await this.enqueueSenderMutation(async () => {
-        const videoSender = this.videoSender;
-        const audioSender = this.audioSender;
-        if (this.disposed || !videoSender || !audioSender) {
-          return false;
-        }
-        return this.configureSender(videoSender, audioSender, {
-          profile: this.desiredProfile,
-          profileRevision: this.profileRevision,
-          video: true,
-          audio: false,
-        });
-      });
       if (this.ownsAnswer(epoch)) {
         this.ordinaryAnswerEpoch = null;
       }

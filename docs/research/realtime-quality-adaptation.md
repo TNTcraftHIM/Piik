@@ -39,10 +39,10 @@ quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
 
-The Host carries the desired profile through offer creation and applies it to
-the video sender from fresh parameters after each accepted answer. It does not
-preconfigure video encoding parameters before the first offer, run a periodic
-controller, or reset bandwidth estimation on a timer.
+The Host carries the desired profile through negotiation and applies it from
+fresh video-sender parameters when the PeerConnection becomes connected. It
+does not preconfigure video encoding parameters before the first offer, run a
+periodic controller, or reset bandwidth estimation on a timer.
 
 ## LiveKit SFU Evidence
 

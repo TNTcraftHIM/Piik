@@ -611,20 +611,20 @@ describe("ViewerPeer connection generations", () => {
     await peer.acceptSignal("parent-new", offer("connection-new"));
     expect(signalPeers).toEqual(["parent-old", "parent-new"]);
 
-    expect(peer.requestRecovery()).toBe(true);
-    expect(peer.requestRecovery()).toBe(false);
+    expect(peer.requestRecovery(true)).toBe(true);
+    expect(peer.requestRecovery(true)).toBe(false);
     expect(restartRequests).toEqual([
       {
         peerId: "parent-new",
         connectionId: "connection-new",
-        rebuild: false,
+        rebuild: true,
       },
     ]);
 
     const connection = FakePeerConnection.instances.at(-1)!;
     connection.connectionState = "connected";
     [...timeoutCallbacks.values()].at(-1)!();
-    expect(peer.requestRecovery()).toBe(true);
+    expect(peer.requestRecovery(true)).toBe(true);
     expect(restartRequests).toHaveLength(2);
     peer.dispose();
   });
