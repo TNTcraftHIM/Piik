@@ -1,6 +1,6 @@
 # ADR-0007: LiveKit-Owned SFU Representation Adaptation
 
-- Status: Accepted design target; implementation and deployment held for the pinned physical gate
+- Status: Accepted; not implemented or deployed
 - Date: 2026-08-19
 - Last reviewed: 2026-08-25
 
@@ -19,6 +19,14 @@ competed with `HIGH` on that constrained Host-to-SFU path; it did not test
 LiveKit-owned demand-driven layer control and does not justify a permanent
 single-`HIGH` contract.
 
+The earlier application-layer controller discussion started from the false
+premise that LiveKit/WebRTC did not already own per-subscriber bandwidth
+estimation and layer selection. Built-in media control is the default owner.
+Screener supplies the bounded representations and product ceilings but does not
+reimplement that controller. A resource-constrained Host can explicitly choose
+a lower existing share profile; the product does not protect it by silently
+removing the representation required by constrained Viewers.
+
 ## Decision
 
 1. Direct and peer paths retain independent stock WebRTC congestion control.
@@ -33,40 +41,41 @@ single-`HIGH` contract.
 4. `HIGH` is a subscriber ceiling, not a forced delivery layer. A weak downlink
    may receive `LOW` while another subscriber remains on `HIGH` when the pinned
    LiveKit stack can sustain that contract.
-5. AdaptiveStream is a display-demand input, not a network detector. It may be
-   used only when the LiveKit `RemoteVideoTrack` is attached to the actual leaf
-   Viewer element. It must not derive an SFU-fed relay's subscription from that
-   relay page's element size or visibility because LiveKit cannot see the
-   relay's peer children.
+5. AdaptiveStream is a display-demand input, not a network detector. Current
+   Screener subscribers keep it disabled because any Viewer may become a relay
+   and LiveKit cannot see that Viewer's peer children. Network adaptation uses
+   the server stream allocator/BWE instead.
 6. ADR-0005 remains the only route owner. Layer choice does not change topology,
    endpoint capacity, SFU admission, or decoded-stall recovery authority.
 
 Current source and production remain the deployed single-`HIGH` implementation
-until the gate below passes and a separate implementation is integrated. That
-is deployment state, not the accepted quality target.
+until a separate implementation is integrated and deployed. That is deployment
+state, not the accepted quality target.
 
-## Pinned Physical Gate
+## Pinned Physical Result
 
-Use LiveKit server `1.13.5`, client `2.22.0`, Chrome 151, one continuously
-changing VP8 source, and one `HIGH+LOW` screen-share publication. Record adjacent
-publisher outbound-RTP deltas by RID plus subscriber inbound resolution, frame,
-and byte deltas for these states:
+The 2026-08-25 gate used LiveKit server `1.13.5`, client `2.22.0`, Chrome 151,
+a continuously changing VP8 source, and one `HIGH+LOW` screen-share publication.
+Manual selection delivered `1280x720` HIGH and `640x360` LOW at about 30 fps,
+and the same connection recovered from LOW to HIGH.
 
-1. no subscriber, then one `HIGH` subscriber;
-2. the same subscriber requesting `LOW`, then recovering to `HIGH`;
-3. a leaf subscriber using AdaptiveStream while its attached element changes
-   between large, small, hidden, and visible;
-4. an SFU-fed relay without a LiveKit-attached display element.
+With the server default receiver-side BWE, an approximately 0.96 Mbps subscriber
+remained on HIGH for about 21 seconds and ended at zero decoded fps. Enabling
+LiveKit `congestion_control.use_send_side_bwe` made the native stream allocator
+select LOW; by the third steady window it delivered `640x360` at about 29 fps and
+88 KB/s. A fresh unshaped subscriber immediately received HIGH. The constrained
+connection's automatic upgrade after removing shaping was not isolated because
+Chrome bound that test condition when creating the PeerConnection; manual and
+AdaptiveStream same-connection LOW-to-HIGH recovery were independently proven.
 
-The gate must establish which layers actually encode and send, not merely which
-options were requested. It passes the product target only if LiveKit owns the
-transitions, a low demand can receive a lower spatial representation, recovery
-returns to `HIGH`, and an unrelated weak or hidden leaf does not lower a healthy
-subscriber. CPU, bitrate, and FPS evidence must distinguish an inactive layer
-from one that remains encoded but is not forwarded.
-
-If the fixed stack cannot provide demand-driven activation, stop at the
-dependency decision. Do not compensate with a Screener layer controller.
+Dynacast paused layers with no subscribers after about five seconds. LOW-only
+demand disabled HIGH, while any HIGH demand kept both LOW and HIGH encoding; the
+second VP8 simulcast encode is therefore an accepted bounded cost, not eliminated
+by Dynacast. AdaptiveStream selected HIGH for a large attached element, LOW for a
+small element, paused a hidden element, and recovered when visible. With no
+attached element it received only LOW, confirming that it cannot own relay
+ingress. The accepted product combination is VP8 HIGH+LOW simulcast, Dynacast,
+server send-side BWE, and `adaptiveStream: false` for Screener subscribers.
 
 ## Evidence Boundary
 
@@ -87,7 +96,10 @@ mutation or predict another parent.
 - A weak SFU Viewer can receive a real lower spatial representation when the
   framework selects it; the SFU does not transcode.
 - The Host publishes at most two SFU representations regardless of Viewer
-  count, and Dynacast is responsible for avoiding unused work where supported.
+  count. Dynacast pauses layers above aggregate demand and all layers when no
+  subscriber remains; HIGH demand keeps both VP8 simulcast encodings active.
+- Host encode capacity is handled through the existing explicit share profiles,
+  not by falling back to single HIGH and abandoning constrained subscribers.
 - An SFU-fed relay keeps a subscription ceiling sufficient for its subtree;
   local DOM visibility alone cannot pause that ingress.
 - A configured 60 fps or bitrate remains a ceiling, not a delivery guarantee.

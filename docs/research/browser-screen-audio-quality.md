@@ -20,6 +20,16 @@ sender, merges the SFU sender reports, resets identity-changing baselines, keeps
 late relay audio changes on exact children, and reacquires exact SFU senders on
 reconnect. Explicit no-audio remains unknown.
 
+Pinned LiveKit 2.22.0 already republishes screen tracks after a full reconnect
+from the saved publication options, including the audio preset; a signal-only
+resume does not replace the sender. Screener must still reacquire its own exact
+publication/sender references, reset identity-bound stats, fail closed when an
+expected republish is missing, and propagate same-stream audio changes to its
+downstream peer children. Reapplying unchanged audio sender parameters after
+every `Reconnected` event duplicates the SDK on stable reconnects. A later
+cleanup may skip that write when the sender identity and desired readback already
+match, while retaining saved-option updates and the latest-profile race check.
+
 A Chrome 151 gate against exact production `bf32859` used real
 `getDisplayMedia()` with generated active audio. Two Host-direct children, one
 browser-relay child and one SFU Viewer all advanced audio energy and video frames
