@@ -39,13 +39,39 @@ quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
 
-Chrome 151 controlled loopback reproduced the production symptom without an
-external network: `motion + balanced` started at 480x270 with a bandwidth
-limitation, while `motion + maintain-resolution`, no hint, and `detail` started
-at 1920x1080. A 4500 kbps `x-google-start-bitrate` did not change the balanced
-result. Chromium maps `motion` to non-screencast realtime video, where balanced
-permits startup resolution restrictions; entering or leaving balanced clears
-those restrictions.
+### Chrome 151 Startup Matrix
+
+On 2026-08-25, Chrome `151.0.7922.174` on Windows reproduced the production
+symptom in a controlled local loopback with no external network. Every run used
+the same fake `getDisplayMedia` monitor at 1920x1080@30, one P2P sender and
+receiver, VP8 `libvpx` with `powerEfficientEncoder = false`, and sender ceilings
+of 5 Mbps and 30 fps. Only the named startup input changed.
+
+| Startup input | About 1 second | About 4 seconds | About 8 seconds | Limitation |
+| --- | --- | --- | --- | --- |
+| `motion + balanced` | 480x270, 13 fps | 480x270, 15 fps | 480x270, 14 fps | `bandwidth` |
+| `motion + balanced + x-google-start-bitrate=4500` | 480x270, 14 fps | 480x270, 15 fps | 480x270, 14 fps | `bandwidth` |
+| no hint + balanced | 1920x1080, 18 fps | 1920x1080, 19 fps | 1920x1080, 20 fps | `none` |
+| `detail + balanced` | 1920x1080, 18 fps | 1920x1080, 19 fps | 1920x1080, 20 fps | `none` |
+| `motion + maintain-resolution` | 1920x1080, 17 fps | 1920x1080, 20 fps | 1920x1080, 20 fps | `none` |
+
+The transition matrix then started with `motion + maintain-resolution` and
+changed only the sender degradation preference to balanced:
+
+| Balanced transition | Observed result |
+| --- | --- |
+| At connection, about 11 ms | Fell to 480x270 and remained bandwidth-limited |
+| After the first encoded frame, about 80 ms | Retained 1280x720 but remained bandwidth-limited |
+| After five encoded frames, about 442 ms | Retained 1920x1080 with no limitation through 8 seconds |
+| After one or two seconds | Retained 1920x1080 with no limitation through 8 seconds |
+
+This isolates the failure from network, codec selection, hardware encoding,
+capture constraints, sender readback, and the startup-bitrate SDP hint.
+Chromium maps `motion` to non-screencast realtime video, where balanced permits
+startup resolution restrictions; entering or leaving balanced clears those
+restrictions. Five encoded frames is the first measured safe media fact and is
+beyond libwebrtc's four-frame startup-drop bound, rather than an arbitrary wall
+clock delay.
 
 Screener keeps `motion` because its later multilevel resolution adaptation is
 required. Each new peer sender and SFU publication therefore starts with the
