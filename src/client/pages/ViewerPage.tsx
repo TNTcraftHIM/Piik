@@ -31,7 +31,10 @@ import {
 } from "../components/StatusBadge";
 import { StatsGrid } from "../components/StatsGrid";
 import { TopologyView } from "../components/TopologyView";
-import { viewerRouteEvidence } from "../components/status-badge-model";
+import {
+  viewerReconnectRoute,
+  viewerRouteEvidence,
+} from "../components/status-badge-model";
 import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
@@ -196,6 +199,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     peerSnapshot,
     sfuUpstream,
   );
+  const peerConnectionIdentity = peerRef.current?.getConnectionIdentity() ?? null;
+  const reconnectRoute = viewerReconnectRoute(
+    assignedRoute?.upstream ?? null,
+    peerSnapshot,
+    sfuUpstream,
+    peerConnectionIdentity,
+  );
+  const reconnectAvailable =
+    signalStatus === "connected" && reconnectRoute !== null;
   const routeConnectionState =
     routePresentation.evidence?.connectionState ??
     (hostOnline ? "routing" : "waiting");
@@ -1355,7 +1367,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         clearPeerState(true);
         clearHostPresence();
         setHostOnline(false);
-        dispatchPresentation({ type: "host", host: "stopped" });
+        dispatchPresentation({ type: "sharing-stopped" });
         return;
       }
       if (message.type === "viewer-grant-revoked") {
@@ -1558,28 +1570,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     }
   }, [presentation.overlay]);
 
-  useEffect(() => {
-    dispatchPresentation({
-      type: "retry-available",
-      available: Boolean(
-        signalStatus === "connected" &&
-          (peerSnapshot ||
-            (assignedRoute?.phase === "active" &&
-              assignedRoute.upstream.kind === "sfu")),
-      ),
-    });
-  }, [assignedRoute, peerSnapshot, signalStatus]);
-
   function retryConnection(): void {
     const requested =
-      assignedRoute?.phase === "active" &&
-      assignedRoute.upstream.kind === "sfu"
+      reconnectRoute === "sfu"
         ? signalRef.current?.reconnect() === true
-        : peerRef.current?.requestRecovery(true) === true;
+        : reconnectRoute === "p2p" &&
+          peerRef.current?.requestRecovery(true) === true;
     if (requested) {
       dispatchPresentation({
         type: "connection",
-        revision: assignedRoute?.revision ?? 0,
+        revision: presentationState.revision ?? assignedRoute?.revision ?? 0,
         connection: "reconnecting",
       });
     }
@@ -1879,7 +1879,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               className="icon-button viewer-status-action"
               title="重新连接媒体"
               aria-label="重新连接媒体"
-              disabled={!presentation.retryAvailable}
+              disabled={!reconnectAvailable}
               onClick={retryConnection}
             >
               <RefreshCw size={18} />

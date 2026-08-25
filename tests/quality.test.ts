@@ -109,13 +109,12 @@ describe("realtime quality controls", () => {
     });
   });
 
-  it("defaults every recommended profile to balanced degradation", () => {
-    expect(
-      Object.values(QUALITY_PROFILES).every(
-        (profile) =>
-          profile.degradationPreference === "balanced",
-      ),
-    ).toBe(true);
+  it("defaults 1080p30 to clarity without changing the other presets", () => {
+    expect(QUALITY_PROFILES["1080p30"].degradationPreference).toBe(
+      "maintain-resolution",
+    );
+    expect(QUALITY_PROFILES["1080p60"].degradationPreference).toBe("balanced");
+    expect(QUALITY_PROFILES["720p30"].degradationPreference).toBe("balanced");
   });
 
   it("keeps audio selection orthogonal while defaulting old settings to music", () => {

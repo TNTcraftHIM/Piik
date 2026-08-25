@@ -56,3 +56,24 @@ export function viewerRouteEvidence(
   }
   return { route: null, evidence: null };
 }
+
+export function viewerReconnectRoute(
+  upstream: ParticipantRouteAssignment["upstream"] | null,
+  peer: PeerSnapshot | null,
+  sfu: {
+    connectionState: "connected" | "reconnecting";
+    metrics: ConnectionMetrics | null;
+  } | null,
+  peerIdentity: { parentPeerId: string; connectionId: string } | null,
+): PresentedMediaRoute | null {
+  const route = viewerRouteEvidence(upstream, peer, sfu).route;
+  if (route === "sfu") {
+    return "sfu";
+  }
+  return route === "p2p" &&
+    peer !== null &&
+    peerIdentity?.parentPeerId === peer.peerId &&
+    peerIdentity.connectionId === peer.connectionId
+    ? "p2p"
+    : null;
+}
