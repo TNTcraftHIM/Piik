@@ -78,9 +78,6 @@ export const SCREEN_AUDIO_BITRATES = {
 } as const satisfies Record<ScreenAudioQuality, number>;
 export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE =
   SCREEN_AUDIO_BITRATES["very-high"];
-export const SCREEN_SHARE_LOW_SCALE = 2;
-const SCREEN_SHARE_LOW_MAX_FRAMERATE = 30;
-const SCREEN_SHARE_LOW_MIN_BITRATE = 150_000;
 
 export interface VideoSenderParameterValues {
   maxBitrate: number | null;
@@ -112,21 +109,6 @@ export function screenAudioBitrate(
   quality: ScreenAudioQuality | undefined,
 ): number {
   return SCREEN_AUDIO_BITRATES[resolveScreenAudioQuality(quality)];
-}
-
-export function screenShareLowFramerate(profile: QualityProfile): number {
-  return Math.min(profile.maxFramerate, SCREEN_SHARE_LOW_MAX_FRAMERATE);
-}
-
-export function screenShareLowBitrate(profile: QualityProfile): number {
-  const lowFramerate = screenShareLowFramerate(profile);
-  return Math.max(
-    SCREEN_SHARE_LOW_MIN_BITRATE,
-    Math.floor(
-      (profile.maxBitrate * lowFramerate) /
-        (SCREEN_SHARE_LOW_SCALE ** 2 * profile.maxFramerate),
-    ),
-  );
 }
 
 export function qualitySettingsEqual(
@@ -214,6 +196,7 @@ export async function captureDisplay(
     stream.getTracks().forEach((track) => track.stop());
     throw new Error("浏览器没有返回可分享的视频轨道");
   }
+  videoTrack.contentHint = "motion";
   for (const audioTrack of stream.getAudioTracks()) {
     audioTrack.contentHint = "music";
   }
@@ -322,7 +305,6 @@ export async function configureVideoSender(
     parameters.encodings = [{}];
   }
   // Pinned LiveKit orders simulcast encodings by increasing spatial resolution.
-  // Its lower encoding remains SDK-owned so Dynacast cannot race this write.
   const encodingIndex = parameters.encodings.length - 1;
   parameters.encodings[encodingIndex]!.maxBitrate = profile.maxBitrate;
   parameters.encodings[encodingIndex]!.maxFramerate = profile.maxFramerate;

@@ -11,8 +11,6 @@ import {
   QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   SCREEN_AUDIO_BITRATES,
-  screenShareLowBitrate,
-  screenShareLowFramerate,
   senderParameterWarning,
   setMediaPaused,
 } from "../src/client/media/quality.ts";
@@ -90,7 +88,7 @@ describe("realtime quality controls", () => {
       systemAudio: "include",
       windowAudio: "window",
     });
-    expect(videoTrack.contentHint).toBe("");
+    expect(videoTrack.contentHint).toBe("motion");
     expect(audioTrack.contentHint).toBe("music");
   });
 
@@ -118,14 +116,6 @@ describe("realtime quality controls", () => {
           profile.degradationPreference === "balanced",
       ),
     ).toBe(true);
-  });
-
-  it("derives a half-resolution lower representation without exceeding 30 fps", () => {
-    expect(screenShareLowFramerate(QUALITY_PROFILES["1080p60"])).toBe(30);
-    expect(screenShareLowBitrate(QUALITY_PROFILES["1080p60"])).toBe(1_000_000);
-    expect(screenShareLowFramerate(QUALITY_PROFILES["1080p30"])).toBe(30);
-    expect(screenShareLowBitrate(QUALITY_PROFILES["1080p30"])).toBe(1_250_000);
-    expect(screenShareLowBitrate(QUALITY_PROFILES["720p30"])).toBe(750_000);
   });
 
   it("keeps audio selection orthogonal while defaulting old settings to music", () => {
