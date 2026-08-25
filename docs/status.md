@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `4f46d9ebc4fe11a6648749f2b8b447eb83041fd5`, release `4f46d9e`, wire
-  `screener-v12`, from `/opt/screener/releases/4f46d9e`. The immutable runtime
+  `3e2ee0a0e7afc083d0fac483ad223a2cfc869ee0`, release `3e2ee0a`, wire
+  `screener-v12`, from `/opt/screener/releases/3e2ee0a`. The immutable runtime
   tar SHA-256 is
-  `a832fd401955f9913e8ac03857851b302c49f8eef7b049c39d21a214586227d2`;
+  `b6fb95a045b219287bd9bfebdf0223b4983e9505f64950ea0f0a3e1515550ae6`;
   its 39-file manifest SHA-256 is
-  `47050583ff4a7e691339bc4087f95e704c242625a2ec92ff2d5166cf3c6eca7c`.
-- The served Browser entry references `assets/index-kQCZyrsd.js`; the public
-  asset is 486071 bytes with SHA-256
-  `28b706a88085ff411b70eee8865fad53406b7679020cfe3fd0fa47e5091792e9`.
+  `34dd608d33e686bd1062299b2d4cc9c2bb2ceec0fe1727fb4a14afd47a044405`.
+- The served Browser entry references `assets/index-yh0dZOhf.js`; the public
+  asset is 485754 bytes with SHA-256
+  `c05cd17564b47f65b93bca439f13d88a695f0d6fdb18ade22d248dba1d1c3a14`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production uses process-memory four-digit rooms, a 24-hour dormant lease,
@@ -37,7 +37,7 @@ This is the current execution index. Git history owns completed timelines;
 ## Current Source
 
 - Canonical root `main` is clean and its application/runtime tree matches exact
-  production revision `4f46d9e`. Auxiliary branches and worktrees do not
+  production revision `3e2ee0a`. Auxiliary branches and worktrees do not
   supersede it.
 - One event-driven controller owns the committed graph and one room-serial child
   operation. It uses exact candidate identity, first-decoded-frame commit,
