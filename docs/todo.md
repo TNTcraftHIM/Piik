@@ -69,6 +69,7 @@ later topic is not implementation authority by itself.
 | Item | Decision |
 | --- | --- |
 | Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
+| Cross-restart room identity and media continuity | Decide whether stable invitations and uninterrupted control justify durable or signed room lineage plus exact route/resource recovery. Preferred code/password replay alone remains a new room incarnation. |
 
 ## Evidence Boundaries
 
