@@ -58,8 +58,9 @@ may be interpreted. Git and pull requests own routine completed checks.
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
 - Viewer page-resume decoded-stall rebaselining, current-frame presentation
-  authority, native controls, and same-route manual reconnect are current source
-  and production behavior.
+  authority, hidden-page stall suppression, retryable failure reporting, native
+  controls, and same-route manual reconnect are current source behavior. Mobile
+  physical evidence remains open.
 
 ## Open Physical Gates
 

@@ -49,10 +49,10 @@ This is the current execution index. Git history owns completed timelines;
   quality score, layer selector, periodic rebalancing, or quality-driven parent
   change. P2P and SFU recover their current route before actual failure enters
   normal reassignment.
-- Viewer page resume rebaselines decoded-stall timing, a new current-generation
-  frame clears stale media recovery state, native Viewer video controls own local
-  playback, Host preview is control-free, and manual reconnect stays on the
-  current P2P parent or SFU subscription.
+- Viewer hidden/freeze/pagehide suppress decoded-stall routing authority;
+  visible/resume/pageshow rebaseline and rearm current-frame proof. SFU
+  pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
+  controls still own playback, and manual reconnect stays on the current route.
 
 ## Current Milestone
 
