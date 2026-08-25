@@ -12,8 +12,7 @@ game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
 Production runs exact deployed application/runtime revision
-`1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
-`main` contains newer SFU publication source pending deployment. Current Browser source and production use
+`e14eb0e3e62731a43dca8ff92fa6d5165c8267a3`, release `e14eb0e`. Current Browser source and production use
 strict `screener-v12`, fixed VP8, no video `contentHint`, and no codec UI,
 quality state, or wire field. They use `balanced` as the recommended profile
 and advanced default;
@@ -107,6 +106,45 @@ Screener does not add a bandwidth estimator or layer controller. AdaptiveStream
 stays disabled for current subscribers because every Viewer may become a relay.
 The earlier dual-encode cost is handled through explicit Host share profiles,
 not by silently abandoning low-bandwidth Viewers.
+
+## 2026-08-25 Content Classification And Bounded Scaling Gate
+
+Chrome `151.0.7922.174` exercised one real `getDisplayMedia()` track, one VP8
+P2P sender/receiver pair, `maintain-framerate`, and the same deterministic
+moving 1904x928 source for 30-second windows. At an 8 Mbps ceiling, no video
+hint held about 60 fps at 1904x928 and about 8 Mbps with no resolution changes.
+`contentHint = "motion"` held 60 fps but the native quality scaler reduced the
+track and sender to 242x118 and remained there through the steady window.
+Applying an 854x480 minimum track constraint before the motion run did not form
+an encoder floor: the steady sender was 428x208 at about 60 fps and 8 Mbps.
+
+The result matches Chrome's exact libwebrtc pin: VP8 automatic resize is disabled
+for a screencast and enabled only for a realtime, single-active-stream encoder.
+The motion hint therefore restores native bandwidth/QP spatial scaling by
+changing the whole content classification, not by enabling an independent
+quality switch. The available standard track constraint does not bound that
+internal encoder scaling. Restoring motion would recover multiple resolution
+steps but can make game UI unreadable, so current source must not restore it as
+a global or fluid-profile shortcut.
+
+This gate proves the mechanism, not visual quality for every game. It also means
+the no-hint result is not a free efficiency gain: it preserves screen encoding
+semantics and resolution while shifting pressure into quantization or frame
+drops. A future bounded P2P spatial controller is a separate product mechanism,
+not a hidden consequence of `degradationPreference`.
+
+The same production session exposed the separate SFU ingress boundary. A
+1440p60/8 Mbps publication advertised a same-FPS half-resolution 2 Mbps lower
+representation. The SFU Viewer received the highest representation at
+2400x1350, about 37 fps and 1.84 Mbps while its downlink reported 54 ms RTT and
+zero loss; the simultaneous P2P Viewer received about 59 fps and 5 Mbps. A
+server interval measured about 4.46 Mbps ingress and 2.63 Mbps egress, consistent
+with the unforwarded lower representation consuming Host-to-SFU budget. Later,
+the native allocator selected only LOW and an RTP-layer sample observed LOW
+traffic with no HIGH traffic, so downstream layer selection itself was not
+stuck. The accepted correction keeps that native selector and reduces only the
+60 fps lower representation to at most 30 fps using the SDK's proportional
+bitrate formula.
 
 ## Route Quality Authority
 
