@@ -7,7 +7,6 @@ import {
   KeyRound,
   Link2Off,
   LockKeyhole,
-  Maximize2,
   MonitorUp,
   Network,
   Pause,
@@ -882,24 +881,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         ? "音视频分享已暂停"
         : "服务器连接正在恢复，分享保持暂停",
     );
-  }
-
-  async function enterPreviewFullscreen(): Promise<void> {
-    const video = videoRef.current as
-      | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
-      | null;
-    if (!video) {
-      return;
-    }
-    try {
-      if (video.requestFullscreen) {
-        await video.requestFullscreen();
-      } else {
-        video.webkitEnterFullscreen?.();
-      }
-    } catch {
-      setNotice("当前浏览器无法放大本地预览");
-    }
   }
 
   function removePeer(peerId: string): void {
@@ -2102,18 +2083,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             aria-label="分享或加入房间"
           >
             {stream ? (
-              <>
-                <video ref={videoRef} autoPlay muted playsInline />
-                <button
-                  className="icon-button local-preview-action"
-                  type="button"
-                  title="放大本地预览"
-                  aria-label="放大本地预览"
-                  onClick={() => void enterPreviewFullscreen()}
-                >
-                  <Maximize2 size={18} aria-hidden="true" />
-                </button>
-              </>
+              <video ref={videoRef} autoPlay muted playsInline />
             ) : phase === "idle" ||
               phase === "ended" ||
               phase === "error" ? (

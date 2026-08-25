@@ -41,4 +41,25 @@ describe("DecodedFrameStallDetector", () => {
       detector.observe("peer:1:a", 0, ROUTE_DECODED_FRAME_STALL_MS * 4),
     ).toBe(true);
   });
+
+  it("rebases elapsed time after the page resumes", () => {
+    const detector = new DecodedFrameStallDetector();
+    detector.observe("peer:1:a", 0, 0);
+    detector.rebaseline(ROUTE_DECODED_FRAME_STALL_MS * 4);
+
+    expect(
+      detector.observe(
+        "peer:1:a",
+        null,
+        ROUTE_DECODED_FRAME_STALL_MS * 5 - 1,
+      ),
+    ).toBe(false);
+    expect(
+      detector.observe(
+        "peer:1:a",
+        0,
+        ROUTE_DECODED_FRAME_STALL_MS * 5,
+      ),
+    ).toBe(true);
+  });
 });

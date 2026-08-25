@@ -9,6 +9,10 @@ export class DecodedFrameStallDetector {
   setPaused(paused: boolean, nowMs = Date.now()): void {
     if (this.paused === paused) return;
     this.paused = paused;
+    this.rebaseline(nowMs);
+  }
+
+  rebaseline(nowMs = Date.now()): void {
     this.lastDecodedAt = nowMs;
     this.reported = false;
   }
