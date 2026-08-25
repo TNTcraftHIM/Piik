@@ -189,6 +189,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
+  const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
   const remoteMediaRef = useRef<RemoteMediaBinding | null>(null);
@@ -207,7 +208,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     peerConnectionIdentity,
   );
   const reconnectAvailable =
-    signalStatus === "connected" && reconnectRoute !== null;
+    signalStatus === "connected" &&
+    reconnectRoute !== null &&
+    presentationState.connection !== "reconnecting";
   const routeConnectionState =
     routePresentation.evidence?.connectionState ??
     (hostOnline ? "routing" : "waiting");
@@ -822,6 +825,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           active && viewerSfuRoute === route ? signal.send(message) : false,
       });
       viewerSfuRoute = route;
+      viewerSfuRouteRef.current = route;
       return route;
     }
 
@@ -829,6 +833,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       const route = viewerSfuRoute;
       discardPendingPeer();
       viewerSfuRoute = null;
+      if (viewerSfuRouteRef.current === route) {
+        viewerSfuRouteRef.current = null;
+      }
       setSfuUpstream(null);
       void route?.disconnect();
     }
@@ -1483,6 +1490,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         signalRef.current = null;
       }
       void viewerSfuRoute?.disconnect();
+      if (viewerSfuRouteRef.current === viewerSfuRoute) {
+        viewerSfuRouteRef.current = null;
+      }
       viewerSfuRoute = null;
       preparedParentPeerId = null;
       preparedParentSignals = [];
@@ -1573,9 +1583,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   function retryConnection(): void {
     const requested =
       reconnectRoute === "sfu"
-        ? signalRef.current?.reconnect() === true
+        ? viewerSfuRouteRef.current?.reconnectActive() === true
         : reconnectRoute === "p2p" &&
-          peerRef.current?.requestRecovery(true) === true;
+          peerRef.current?.requestRecovery() === true;
     if (requested) {
       dispatchPresentation({
         type: "connection",

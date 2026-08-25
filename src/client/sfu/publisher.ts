@@ -1233,7 +1233,7 @@ function audioPublishOptions(
   const resolvedQuality = resolveScreenAudioQuality(quality);
   const audioPreset =
     resolvedQuality === "saver"
-      ? sdk.AudioPresets.musicHighQuality
+      ? sdk.AudioPresets.musicStereo
       : resolvedQuality === "music"
         ? sdk.AudioPresets.musicHighQualityStereo
         : { maxBitrate: screenAudioBitrate(resolvedQuality) };

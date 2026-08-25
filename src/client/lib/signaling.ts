@@ -113,21 +113,6 @@ export class SignalingClient {
     this.events.onStatus("offline");
   }
 
-  reconnect(): boolean {
-    const socket = this.socket;
-    if (
-      this.stopped ||
-      !this.authenticated ||
-      !socket ||
-      socket.readyState >= WebSocket.CLOSING
-    ) {
-      return false;
-    }
-    this.clearSignalingWatchdog();
-    socket.close(SIGNAL_CLOSE_CODES.clientReconnect, "client reconnect");
-    return true;
-  }
-
   send(message: ClientMessage): boolean {
     if (
       !this.authenticated ||

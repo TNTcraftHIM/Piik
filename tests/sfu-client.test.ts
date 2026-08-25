@@ -248,7 +248,6 @@ const livekit = vi.hoisted(() => {
 
   const AudioPresets = {
     musicStereo: { maxBitrate: 64_000 },
-    musicHighQuality: { maxBitrate: 96_000 },
     musicHighQualityStereo: { maxBitrate: 128_000 },
   } as const;
 
@@ -675,7 +674,7 @@ describe("SfuPublisher", () => {
     ).not.toHaveProperty("simulcast");
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 96_000 },
+      audioPreset: { maxBitrate: 128_000 },
       forceStereo: true,
       dtx: false,
       red: false,
@@ -713,7 +712,7 @@ describe("SfuPublisher", () => {
   });
 
   it.each([
-    ["saver", 96_000],
+    ["saver", 64_000],
     ["music", 128_000],
     ["very-high", 192_000],
   ] as const)("maps the %s audio preset to %i bps", async (screenAudioQuality, bitrate) => {

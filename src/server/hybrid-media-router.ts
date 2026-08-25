@@ -78,7 +78,7 @@ interface RoomRuntime {
   requested: boolean;
   pump?: Promise<void>;
   deadlineTimer?: NodeJS.Timeout;
-  refreshKeys: Set<string>;
+  sfuRefreshesInFlight: Set<string>;
 }
 
 interface PreparedCandidate {
@@ -617,9 +617,11 @@ export class HybridMediaRouter {
     const snapshot = room?.controller?.snapshot();
     if (!room || !snapshot || snapshot.revision !== revision) return;
     const key = `${revision}\u0000${participant.peerId}\u0000${participant.sessionId}`;
-    if (room.refreshKeys.has(key)) return;
-    room.refreshKeys.add(key);
-    void this.sendFreshSfuConfig(participant).catch(() => undefined);
+    if (room.sfuRefreshesInFlight.has(key)) return;
+    room.sfuRefreshesInFlight.add(key);
+    void this.sendFreshSfuConfig(participant)
+      .catch(() => undefined)
+      .finally(() => room.sfuRefreshesInFlight.delete(key));
   }
 
   disconnectParticipant(roomId: string, peerId: string, sessionId: string): void {
@@ -652,7 +654,7 @@ export class HybridMediaRouter {
       room = {
         advertisedCapacityByViewer: new Map(),
         requested: false,
-        refreshKeys: new Set(),
+        sfuRefreshesInFlight: new Set(),
       };
       this.rooms.set(roomId, room);
     }
