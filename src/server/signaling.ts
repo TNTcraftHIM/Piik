@@ -1333,6 +1333,14 @@ export class SignalingServer {
         signalKind: message.payload.kind,
         ...(description ? { descriptionType: description.type } : {}),
       });
+    this.hybridMediaRouter!.debugPeerSignal({
+      roomId: source.roomId,
+      sourcePeerId: source.peerId,
+      targetPeerId: target.peerId,
+      signalKind: message.payload.kind,
+      ...(description ? { descriptionType: description.type } : {}),
+      authorization: candidateAuthorized,
+    });
     const assignedEdgeAuthorized = description
       ? description.type === "offer"
         ? parentToChild

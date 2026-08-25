@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { debuglog } from "node:util";
 
 import type {
   ClientMessage,
@@ -34,6 +35,7 @@ type ErrorCode = Extract<ServerMessage, { type: "error" }>["code"];
 const DEFAULT_ROUTE_OPERATION_TIMEOUT_MS = 20_000;
 const DEFAULT_SFU_DRAIN_RETRY_MS = 1_000;
 const DEFAULT_HOST_OFFLINE_CHECK_MS = 5_000;
+const routeDebug = debuglog("screener-route");
 
 interface RouteResourceBase {
   released: boolean;
@@ -405,11 +407,33 @@ export class HybridMediaRouter {
     return input.connectionId === edge.connectionId;
   }
 
+  debugPeerSignal(input: {
+    roomId: string;
+    sourcePeerId: string;
+    targetPeerId: string;
+    signalKind: "candidate" | "description";
+    descriptionType?: "offer" | "answer";
+    authorization: boolean | "probe" | undefined;
+  }): void {
+    this.debug(input.roomId, "peer-signal", {
+      source: this.debugPeer(input.roomId, input.sourcePeerId),
+      target: this.debugPeer(input.roomId, input.targetPeerId),
+      signalKind: input.signalKind,
+      descriptionType: input.descriptionType ?? null,
+      authorization:
+        input.authorization === undefined ? "assignment" : input.authorization,
+    });
+  }
+
   setViewerRelayCapacity(
     participant: AuthenticatedRouteParticipant,
     downstreamEdges: number,
   ): void {
     const room = this.room(participant.roomId);
+    this.debug(participant.roomId, "relay-capacity-received", {
+      participant: this.debugPeer(participant.roomId, participant.peerId),
+      downstreamEdges,
+    });
     room.advertisedCapacityByViewer.set(participant.peerId, downstreamEdges);
     if (
       room.controller?.setEffectiveCapacity(
@@ -428,6 +452,10 @@ export class HybridMediaRouter {
     message: Extract<ClientMessage, { type: "route-ready" }>,
   ): void {
     if (participant.role !== "viewer" || message.phase !== "prepare") return;
+    this.debug(participant.roomId, "route-ready-received", {
+      participant: this.debugPeer(participant.roomId, participant.peerId),
+      revision: message.revision,
+    });
     const room = this.rooms.get(participant.roomId);
     const controller = room?.controller;
     const operation = controller?.snapshot().operation;
@@ -454,6 +482,12 @@ export class HybridMediaRouter {
       this.now(),
       (reservation) => this.commitReservation(reservation),
     );
+    this.debug(participant.roomId, "route-ready-settled", {
+      participant: this.debugPeer(participant.roomId, participant.peerId),
+      revision: message.revision,
+      accepted: settled.accepted,
+      exhausted: settled.exhausted === true,
+    });
     this.releaseResources(settled.released);
     if (settled.accepted) {
       this.resourceWaiters.delete(participant.roomId);
@@ -480,6 +514,10 @@ export class HybridMediaRouter {
     message: Extract<ClientMessage, { type: "route-media-unavailable" }>,
   ): void {
     if (participant.role !== "viewer") return;
+    this.debug(participant.roomId, "sfu-media-unavailable", {
+      participant: this.debugPeer(participant.roomId, participant.peerId),
+      revision: message.revision,
+    });
     const room = this.rooms.get(participant.roomId);
     const controller = room?.controller;
     const snapshot = controller?.snapshot();
@@ -508,6 +546,13 @@ export class HybridMediaRouter {
     participant: AuthenticatedRouteParticipant,
     message: Extract<ClientMessage, { type: "route-failed" }>,
   ): void {
+    this.debug(participant.roomId, "route-failed-received", {
+      participant: this.debugPeer(participant.roomId, participant.peerId),
+      role: participant.role,
+      phase: message.phase,
+      revision: message.revision,
+      hasConnectionId: Boolean(message.connectionId),
+    });
     const room = this.rooms.get(participant.roomId);
     const controller = room?.controller;
     const snapshot = controller?.snapshot();
@@ -668,6 +713,7 @@ export class HybridMediaRouter {
   ): void {
     room.controller = new RoomRouteController<RouteResource>({
       hostPeerId: host.peerId,
+      debugRoomId: roomId,
       endpointMediaCopyCapacity: this.options.endpointMediaCopyCapacity,
       operationTimeoutMs:
         this.options.sfuFallback?.prepareTimeoutMs ?? DEFAULT_ROUTE_OPERATION_TIMEOUT_MS,
@@ -758,6 +804,12 @@ export class HybridMediaRouter {
           (plan.endpointTransition.kind === "bounded-gap" ? 2 : 1),
       );
       if (preparation.kind === "denied") {
+        this.debug(roomId, "candidate-preparation-denied", {
+          child: this.debugPeer(roomId, operation.childPeerId),
+          route: this.debugTuple(roomId, plan.tuple),
+          rejectionBucket: preparation.rejectionBucket,
+          cursor: operation.cursor,
+        });
         if (preparation.rejectionBucket !== "sfu-admission") {
           this.resourceWaiters.delete(roomId);
         }
@@ -797,6 +849,11 @@ export class HybridMediaRouter {
         continue;
       }
       this.resourceWaiters.delete(roomId);
+      this.debug(roomId, "candidate-prepared", {
+        child: this.debugPeer(roomId, operation.childPeerId),
+        route: this.debugTuple(roomId, plan.tuple),
+        cursor: operation.cursor,
+      });
       let currentOperation = controller.snapshot().operation;
       if (plan.endpointTransition.kind === "bounded-gap") {
         const beforeGap = controller.snapshot().revision;
@@ -831,6 +888,12 @@ export class HybridMediaRouter {
         publicationConnectionId: preparation.prepared.publicationConnectionId,
         hostSessionId: preparation.prepared.hostSessionId,
       });
+      this.debug(roomId, "candidate-begin-settled", {
+        child: this.debugPeer(roomId, operation.childPeerId),
+        route: this.debugTuple(roomId, plan.tuple),
+        accepted: begun.accepted,
+        exhausted: begun.exhausted === true,
+      });
       this.releaseResources(begun.released);
       if (!begun.accepted || !begun.operation?.current) {
         if (begun.exhausted) {
@@ -849,6 +912,11 @@ export class HybridMediaRouter {
         begun.operation,
         preparation.prepared,
       );
+      this.debug(roomId, "candidate-prepare-sent", {
+        child: this.debugPeer(roomId, operation.childPeerId),
+        route: this.debugTuple(roomId, plan.tuple),
+        revision: begun.operation.current.revision,
+      });
       this.scheduleDeadline(roomId, room, begun.operation);
       return;
     }
@@ -1201,6 +1269,20 @@ export class HybridMediaRouter {
   private broadcastActive(roomId: string, room: RoomRuntime): void {
     const snapshot = room.controller?.snapshot();
     if (!snapshot) return;
+    this.debug(roomId, "active-topology", {
+      revision: snapshot.revision,
+      paused: snapshot.paused,
+      hostPublication: snapshot.hostPublication?.physicalActive === true,
+      routes: [...snapshot.upstreamByViewer].map(([childPeerId, edge]) => ({
+        child: this.debugPeer(roomId, childPeerId),
+        parent:
+          edge.kind === "peer"
+            ? this.debugPeer(roomId, edge.parentPeerId)
+            : "sfu",
+        usable: edge.usable,
+        physicalActive: edge.physicalActive,
+      })),
+    });
     const assignments = this.assignments(roomId, snapshot);
     const participants = [
       this.options.roomStore.getConnectedHost(roomId),
@@ -1363,11 +1445,25 @@ export class HybridMediaRouter {
     operation: OperationSnapshot,
   ): void {
     this.clearDeadline(room);
+    this.debug(roomId, "deadline-scheduled", {
+      child: this.debugPeer(roomId, operation.childPeerId),
+      wakeInMs: Math.max(0, operation.wakeAtMs - this.now()),
+      cursor: operation.cursor,
+      candidateCount: operation.candidates.length,
+      current: operation.current
+        ? this.debugTuple(roomId, operation.current.tuple)
+        : null,
+    });
     const timer = setTimeout(() => {
       if (room.deadlineTimer !== timer || !room.controller) return;
       room.deadlineTimer = undefined;
       const before = room.controller.snapshot().revision;
       const expired = room.controller.operationExpired(this.now());
+      this.debug(roomId, "deadline-fired", {
+        child: this.debugPeer(roomId, operation.childPeerId),
+        accepted: expired.accepted,
+        exhausted: expired.exhausted === true,
+      });
       this.releaseResources(expired.released);
       if (room.controller.snapshot().revision !== before) this.broadcastActive(roomId, room);
       if (expired.exhausted) {
@@ -1560,6 +1656,28 @@ export class HybridMediaRouter {
     for (const fence of this.options.sfuFallback?.admission.beginDrainRoom(roomId) ?? []) {
       this.scheduleSfuDrain(fence);
     }
+  }
+
+  private debugPeer(roomId: string, peerId: string): string {
+    if (peerId === this.rooms.get(roomId)?.hostPeerId) return "host";
+    const viewerIndex = this.options.roomStore
+      .getViewerPeerIds(roomId)
+      .indexOf(peerId);
+    return viewerIndex >= 0 ? `viewer-${viewerIndex + 1}` : "viewer-unknown";
+  }
+
+  private debugTuple(roomId: string, tuple: CandidateTuple): string {
+    return tuple.kind === "peer"
+      ? `p2p:${this.debugPeer(roomId, tuple.parentPeerId)}`
+      : `sfu:${tuple.publication}`;
+  }
+
+  private debug(
+    roomId: string,
+    event: string,
+    details: Record<string, unknown>,
+  ): void {
+    routeDebug("%s", JSON.stringify({ event, roomId, ...details }));
   }
 
   private sendRoomError(roomId: string, code: ErrorCode, message: string): void {
