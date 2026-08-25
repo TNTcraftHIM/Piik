@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 ## Current Product Truth
 
@@ -12,7 +12,9 @@ Last updated: 2026-08-25
 - Rooms are bounded process memory: random free `1000..9999` code, default
   24-hour dormant lease, active sharing never expires, exact Host token resume,
   Viewer activity does not renew, and process restart loses every room and
-  credential. There is no database or migration path.
+  credential. A Host may request its last locally remembered active code when
+  creating a new room; the server uses it only while free and always creates a
+  new room incarnation. There is no database or migration path.
 - Every room has one 128-bit/22-character Viewer grant bound to that exact room
   incarnation and independent `open | private` code entry. Private without a
   password is invitation-only; adding a password also permits matching code
@@ -38,16 +40,18 @@ Last updated: 2026-08-25
 - One room controller owns one committed acyclic source-reachable graph, one
   event-driven reconciliation loop, and at most one room-serial child operation.
   The operation owns one deterministic candidate list/cursor, one current
-  candidate and reservations, one fact version, and one total direct-then-SFU
-  deadline.
+  candidate and reservations, one fact version, and one total deadline.
 - Candidate filtering enforces current authority, reachability, acyclicity,
   capacity, transition slots, and server admission. Eligible P2P parents are
-  ordered by resulting depth, remaining capacity, stable join order, and peer
-  identity before SFU.
+  ordered by resulting depth, remaining capacity, a stable child-parent hash,
+  join order, and peer identity.
 - A candidate commits only after the exact child decodes its first new video
-  frame. Failure releases resources, broadcasts a strictly newer rollback
-  revision, advances the cursor without resetting the deadline, and preserves
-  unaffected healthy branches. A relay with bad ingress reparents itself while
+  frame. Exact direct transport-connected progress may retain the candidate
+  through the total deadline but cannot commit. Failure releases resources,
+  broadcasts a strictly newer rollback revision, advances the cursor without
+  resetting the deadline, and preserves unaffected healthy branches. SFU-backed
+  Viewers keep working media while finite direct candidates converge in
+  background round-robin. A relay with bad ingress reparents itself while
   retaining its subtree.
 - Healthy decoded routes remain sticky. There is no periodic rebalancing,
   quality score, all-pairs probing, parent blacklist, NAT classification, port
@@ -77,8 +81,8 @@ Last updated: 2026-08-25
   layers. Pinned LiveKit defaults own representations, Dynacast owns aggregate
   demand, and server send-side BWE owns subscriber forwarding. AdaptiveStream
   stays disabled because any Viewer may relay its received track.
-- Screen audio requests capture by default and offers live 96/128/192 kbps
-  sender ceilings with 96 default. Peer answers request Opus stereo with a
+- Screen audio requests capture by default and offers live 64/128/192 kbps
+  sender ceilings with 128 default. Peer answers request Opus stereo with a
   192 kbps receive maximum. SFU publication uses stereo, DTX off, and RED off;
   disabling RED accepts reduced burst-loss resilience in exchange for bounded
   publisher traffic.
@@ -103,8 +107,9 @@ Last updated: 2026-08-25
 - Production and the matching canonical application/runtime tree use strict
   `screener-v12`; exact identity is indexed by [status](./status.md).
 - Production uses random memory rooms, 20-Viewer admission, endpoint cap `2`,
-  dedicated LiveKit admission `1` ingress / `20` egress, STUN UDP 3478, LiveKit
-  media UDP 7882, and Web TCP 80/443. Node 8787 and LiveKit 7880 remain private.
+  fixed 9,000-publication ingress and `9000 * 20` subscription egress admission,
+  STUN UDP 3478, LiveKit media UDP 7882, and Web TCP 80/443. Node 8787 and
+  LiveKit 7880 remain private.
 - Exact artifact and service state are owned by [deployment](./deployment.md)
   and indexed by [status](./status.md). Physical evidence boundaries are owned
   by [verification status](./verification-status.md).

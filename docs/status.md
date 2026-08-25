@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `3e2ee0a0e7afc083d0fac483ad223a2cfc869ee0`, release `3e2ee0a`, wire
-  `screener-v12`, from `/opt/screener/releases/3e2ee0a`. The immutable runtime
+  `d8307a36b69a11a9264657363966c175d6d36c0d`, release `d8307a3`, wire
+  `screener-v12`, from `/opt/screener/releases/d8307a3`. The immutable runtime
   tar SHA-256 is
-  `b6fb95a045b219287bd9bfebdf0223b4983e9505f64950ea0f0a3e1515550ae6`;
+  `dd9f3e919663c71294976a18b8bbd2f02f15c999849ba168564bcf52d6de0eef`;
   its 39-file manifest SHA-256 is
-  `34dd608d33e686bd1062299b2d4cc9c2bb2ceec0fe1727fb4a14afd47a044405`.
-- The served Browser entry references `assets/index-yh0dZOhf.js`; the public
-  asset is 485754 bytes with SHA-256
-  `c05cd17564b47f65b93bca439f13d88a695f0d6fdb18ade22d248dba1d1c3a14`.
+  `f20005e50376e5cd8caea79acfba0c7e2733fa52e9fa5324c450efa4cf3a4592`.
+- The served Browser entry references `assets/index-rzD5Vq8B.js`; the public
+  asset is 492366 bytes with SHA-256
+  `5a2beb0ef73abfd0dae15903532e47723bc401f2a58a75f33317240f9a0f6a07`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production uses process-memory four-digit rooms, a 24-hour dormant lease,
@@ -30,19 +30,21 @@ This is the current execution index. Git history owns completed timelines;
   The SFU publisher leaves representation construction to pinned LiveKit,
   enables Dynacast, uses server send-side BWE, keeps AdaptiveStream disabled,
   and configures no external ICE servers on Browser SFU PCs.
-- Screen audio provides live 96/128/192 kbps ceilings with 96 default. SFU
+- Screen audio provides live 64/128/192 kbps ceilings with 128 default. SFU
   publication uses stereo, DTX off, and RED off. Early autoplay presentation is
   gated by current media connection state.
 
 ## Current Source
 
 - Canonical root `main` is clean and its application/runtime tree matches exact
-  production revision `3e2ee0a`. Auxiliary branches and worktrees do not
+  production revision `d8307a3`. Auxiliary branches and worktrees do not
   supersede it.
 - One event-driven controller owns the committed graph and one room-serial child
-  operation. It uses exact candidate identity, first-decoded-frame commit,
-  strict rollback revisions, direct-then-SFU total deadline, and typed endpoint
-  plus SFU resource accounting. Healthy decoded edges remain sticky.
+  operation. Initial direct acquisition uses a five-second foreground window;
+  exact transport-connected progress may retain that candidate through the
+  total deadline, while first decoded frame remains the only commit proof. SFU
+  provides working media before finite background direct convergence. Healthy
+  decoded edges remain sticky.
 - WebRTC/LiveKit own media adaptation. Screener has no custom SFU layer list,
   quality score, layer selector, periodic rebalancing, or quality-driven parent
   change. P2P and SFU recover their current route before actual failure enters

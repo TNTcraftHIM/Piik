@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 This ledger records evidence that still changes how current source or production
 may be interpreted. Git and pull requests own routine completed checks.
@@ -8,14 +8,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `3e2ee0a0e7afc083d0fac483ad223a2cfc869ee0`, release `3e2ee0a`, wire
-  `screener-v12`, from `/opt/screener/releases/3e2ee0a`.
+  `d8307a36b69a11a9264657363966c175d6d36c0d`, release `d8307a3`, wire
+  `screener-v12`, from `/opt/screener/releases/d8307a3`.
 - Runtime tar SHA-256:
-  `b6fb95a045b219287bd9bfebdf0223b4983e9505f64950ea0f0a3e1515550ae6`.
+  `dd9f3e919663c71294976a18b8bbd2f02f15c999849ba168564bcf52d6de0eef`.
   The 39-file manifest SHA-256 is
-  `34dd608d33e686bd1062299b2d4cc9c2bb2ceec0fe1727fb4a14afd47a044405`.
-- Public Browser asset `assets/index-yh0dZOhf.js` is 485754 bytes with SHA-256
-  `c05cd17564b47f65b93bca439f13d88a695f0d6fdb18ade22d248dba1d1c3a14`.
+  `f20005e50376e5cd8caea79acfba0c7e2733fa52e9fa5324c450efa4cf3a4592`.
+- Public Browser asset `assets/index-rzD5Vq8B.js` is 492366 bytes with SHA-256
+  `5a2beb0ef73abfd0dae15903532e47723bc401f2a58a75f33317240f9a0f6a07`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
@@ -28,9 +28,9 @@ may be interpreted. Git and pull requests own routine completed checks.
   source and production gates.
 - Endpoint capacity `1/2/3`, default `2`, one active upstream, acyclicity,
   source reachability, deterministic parent order, exact candidate identity,
-  first-decoded-frame commit, strictly newer rollback, bounded-gap resource
-  accounting, SFU admission, and delete-plus-absence release have focused unit
-  and controller coverage.
+  transport-connected wake extension, first-decoded-frame commit, strictly newer
+  rollback, bounded resource accounting, SFU admission, and delete-plus-absence
+  release have focused unit and controller coverage.
 - Controlled Chrome routing proved direct prepare failure, rollback, SFU
   prepare, exact first-frame ready, SFU commit, and continuing UDP media without
   external ICE servers on Browser LiveKit PCs. This does not replace public
@@ -49,7 +49,7 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- Current `3e2ee0a` uses Browser VP8 with `contentHint = "motion"`, reapplies the
+- Current `d8307a3` uses Browser VP8 with `contentHint = "motion"`, reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
