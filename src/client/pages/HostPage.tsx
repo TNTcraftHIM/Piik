@@ -64,9 +64,11 @@ import {
   type HostRoomState,
   mergeAuthenticatedHostRoom,
   readHostRoom,
+  readPreferredRoomId,
   readViewerGrant,
   replaceViewerInvite,
   writeHostRoom,
+  writePreferredRoom,
 } from "../lib/session";
 import {
   SignalingClient,
@@ -210,6 +212,7 @@ function hostRoomFromCreated(room: CreateRoomResponse): HostRoomState {
     roomId: room.roomId,
     hostToken: room.hostToken,
     expiresAt: room.expiresAt,
+    roomLeaseSeconds: room.roomLeaseSeconds,
     canonicalUrl: canonicalUrl.toString(),
     codeEntryPolicy: room.codeEntryPolicy,
     inviteUrl: room.inviteUrl,
@@ -231,6 +234,8 @@ interface HostPageProps {
   onAuthorizationRequired?: () => void;
 }
 
+const MAX_BROWSER_TIMER_DELAY_MS = 2_147_000_000;
+
 export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
@@ -247,6 +252,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [room, setRoom] = useState<HostRoomState | null>(() =>
     hostRoomFromStored(readHostRoom()),
   );
+  const roomRef = useRef(room);
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
   const [creationProfile, setCreationProfile] =
     useState<HostCreationProfile>(readCreationProfile);
   const creationProfileRef = useRef(creationProfile);
@@ -316,6 +325,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
+  const preferredRoomRenewalTimerRef = useRef<number | null>(null);
 
   const mediaViewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -388,6 +398,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       sourceSwitchRef.current = null;
       qualityChangeRef.current = null;
       pendingQualityChangeRef.current = null;
+      stopPreferredRoomRenewal();
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
@@ -418,6 +429,34 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     return (
       generationRef.current === generation &&
       activeGenerationRef.current === generation
+    );
+  }
+
+  function stopPreferredRoomRenewal(): void {
+    if (preferredRoomRenewalTimerRef.current !== null) {
+      window.clearInterval(preferredRoomRenewalTimerRef.current);
+      preferredRoomRenewalTimerRef.current = null;
+    }
+  }
+
+  function startPreferredRoomRenewal(activeRoom: HostRoomState): void {
+    stopPreferredRoomRenewal();
+    const renew = () =>
+      writePreferredRoom(
+        activeRoom.roomId,
+        activeRoom.roomLeaseSeconds,
+      );
+    renew();
+    const intervalMs = Math.max(
+      1_000,
+      Math.min(
+        Math.floor((activeRoom.roomLeaseSeconds * 1_000) / 2),
+        MAX_BROWSER_TIMER_DELAY_MS,
+      ),
+    );
+    preferredRoomRenewalTimerRef.current = window.setInterval(
+      renew,
+      intervalMs,
     );
   }
 
@@ -479,6 +518,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function disposeResources(notifyServer: boolean): void {
+    stopPreferredRoomRenewal();
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
@@ -547,6 +587,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     activeGenerationRef.current = null;
     generationRef.current += 1;
+    const currentRoom = roomRef.current;
+    if (notifyServer && currentRoom) {
+      writePreferredRoom(
+        currentRoom.roomId,
+        currentRoom.roomLeaseSeconds,
+      );
+    }
     disposeResources(notifyServer);
     setNotice(message);
     setPhase("ended");
@@ -1410,6 +1457,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         const response = await createRoom(
           creationProfileRef.current.codeEntryPolicy,
           creationProfileRef.current.roomPassword,
+          readPreferredRoomId(),
         );
         createdRoom = hostRoomFromCreated(response);
         if (!isCurrentGeneration(generation)) {
@@ -1510,6 +1558,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   ...activeRoom,
                   expiresAt: message.roomExpiresAt,
                 });
+                startPreferredRoomRenewal(activeRoom);
                 setPhase("live");
               }
               handleSignalMessage(
@@ -1528,6 +1577,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           const response = await createRoom(
             creationProfileRef.current.codeEntryPolicy,
             creationProfileRef.current.roomPassword,
+            readPreferredRoomId(),
           );
           const replacement = hostRoomFromCreated(response);
           if (!isCurrentGeneration(generation)) {

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-08-25
+Last reviewed: 2026-08-26
 
 Only **Now** is executable. A branch, old experiment, observation, or accepted
 later topic is not implementation authority by itself.
@@ -20,43 +20,43 @@ later topic is not implementation authority by itself.
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,
-   Wi-Fi/cellular, and Host/Viewer TUN/VPN cases. Include an all-UDP-blocked case
-   and weak-network audio after SFU RED was disabled. Every exhausted path must
-   end in bounded wait/failure without TURN, TCP probing, NAT classification,
+   Wi-Fi/cellular, and Host/Viewer TUN/VPN cases. Verify two simultaneous rooms
+   can own independent SFU publications. Include an all-UDP-blocked case and
+   weak-network audio after SFU RED was disabled. Every exhausted path must end
+   in bounded wait/failure without TURN, TCP probing, NAT classification,
    guessed candidates, or another watchdog.
 
 ## Accepted Later Roadmap
 
-1. **Preferred room reacquisition.** Keep the last assigned four-digit code and
-   its 24-hour preference window in the Host browser. When prior ownership is
-   no longer valid, the next explicit share requests that code only if the
-   preference is still current; the server grants it only while free and
-   otherwise uses normal random allocation. This does not reserve a dormant
-   code or restore the old room incarnation, Host token, Viewer grant, password
-   verifier, lease, participants, or routes.
-2. **Quality-based topology research.** After the real-network baseline, decide
+1. **Quality-based topology research.** After the real-network baseline, decide
    whether measured user-visible quality justifies any active parent-selection
-   mechanism. Current evidence cannot compare an active route with an
+   mechanism. A weak-Host production session showed a usable P2P Viewer with
+   worse playback than SFU Viewers, so reachability alone is not the eventual
+   optimization target. Current evidence still cannot compare an active route with an
    unconnected alternative, so no quality score, all-pairs probing, periodic
    rebalancing, relay abdication threshold, or active parent switch is accepted.
    Prefer mature algorithms and one general model if this boundary is reopened.
-3. **Platform output only when real.** Revisit AirPlay/Cast only when a target
+2. **Platform output only when real.** Revisit AirPlay/Cast only when a target
    browser and physical receiver prove the live `MediaStream` contract. System
    mirroring remains external.
-4. **Public-server one-click package.** After functional and real-network work,
+3. **Public-server one-click package.** After functional and real-network work,
    package the exact application, STUN/SFU, reverse proxy, secrets, and health
    checks for a user-owned public server. Do not call a partial installer ready.
-5. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
+4. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
    application server, and local state without requiring source or Node. Report
    public-origin, TLS, gateway, NAT, and firewall limits honestly.
-6. **Native Host and shared encode, Windows first.** Productize only after real
+5. **Native Host and shared encode, Windows first.** Productize only after real
    capture, hardware-only encode, audio, identity, RTP/RTCP feedback, resource,
    packaging, and licensing gates pass. Browser Host/relay keeps standard
    per-`RTCPeerConnection` encoding.
-7. **Whole-product UI and bilingual decision.** Once media and route behavior
+6. **Whole-product UI and bilingual decision.** Once media and route behavior
    stabilizes, review copy, responsive hierarchy, visual consistency, restrained
    motion, bundle/rendering cost, and Chinese/English scope once as a whole.
    Ordinary screen-specific edits do not create parallel documentation.
+7. **Client-input security review.** Inventory HTTP and WebSocket inputs once as
+   a whole: strict schemas, authentication, authorization, rate and body bounds,
+   resource effects, error disclosure, logging, and secret handling. Begin
+   read-only and add no parallel security framework without a proven gap.
 8. **Repository simplification audit.** After the Browser, route, room, and
    physical-media checkpoints settle, inventory components, configuration,
    migrations, timers, compatibility paths, tests, and truth duplication using
@@ -68,6 +68,7 @@ later topic is not implementation authority by itself.
 | Item | Decision |
 | --- | --- |
 | Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
+| Cross-restart room identity and media continuity | Decide whether stable invitations and uninterrupted control justify durable or signed room lineage plus exact route/resource recovery. Preferred code/password replay alone remains a new room incarnation. |
 
 ## Evidence Boundaries
 

@@ -15,7 +15,6 @@ const MAX_SITE_ACCESS_PASSWORD_BYTES = 128;
 const MIN_LIVEKIT_API_SECRET_BYTES = 32;
 const DEFAULT_MAX_VIEWERS_PER_ROOM = 8;
 const DEFAULT_ROOM_LEASE_SECONDS = 86_400;
-const MAX_ROOMS = 9_000;
 const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]+$/;
 const REMOVED_ENVIRONMENT_VARIABLES = [
   "TURN_URLS",
@@ -31,7 +30,6 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
   "PEER_ASSISTED_ROOM_IDS",
   "HOST_ADMISSION_PASSWORD",
   "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
-  "MAX_SFU_ROOTS_PER_ROOM",
   "ROOM_DATABASE_PATH",
   "ROOM_TTL_SECONDS",
 ] as const;
@@ -41,8 +39,6 @@ export interface LiveKitFallbackConfig {
   apiUrl: string;
   apiKey: string;
   apiSecret: string;
-  ingressCapacity: number;
-  egressCapacity: number;
 }
 
 export interface ServerConfig {
@@ -53,7 +49,6 @@ export interface ServerConfig {
   allowedOrigins: ReadonlySet<string>;
   siteAccessPassword?: string;
   roomLeaseMs: number;
-  maxRooms: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
   endpointMediaCopyCapacity: number;
@@ -84,20 +79,6 @@ function parsePositiveInteger(
   name: string,
 ): number {
   const parsed = value === undefined || value === "" ? fallback : Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive integer`);
-  }
-  return parsed;
-}
-
-function parseRequiredPositiveInteger(
-  value: string | undefined,
-  name: string,
-): number {
-  if (value === undefined || value === "") {
-    throw new Error(`${name} must be a positive integer`);
-  }
-  const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error(`${name} must be a positive integer`);
   }
@@ -139,28 +120,12 @@ function parseLiveKitFallback(
   const apiKey = environment.LIVEKIT_API_KEY?.trim() || undefined;
   const apiSecret = environment.LIVEKIT_API_SECRET?.trim() || undefined;
   const configuredValues = [url, apiUrl, apiKey, apiSecret].filter(Boolean).length;
-  const ingressCapacity = environment.SFU_INGRESS_CAPACITY?.trim() || undefined;
-  const egressCapacity = environment.SFU_EGRESS_CAPACITY?.trim() || undefined;
-  const configuredCapacities = [ingressCapacity, egressCapacity].filter(
-    Boolean,
-  ).length;
-
   if (configuredValues === 0) {
-    if (configuredCapacities > 0) {
-      throw new Error(
-        "SFU_INGRESS_CAPACITY and SFU_EGRESS_CAPACITY require LiveKit fallback",
-      );
-    }
     return undefined;
   }
   if (configuredValues !== 4) {
     throw new Error(
       "LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together",
-    );
-  }
-  if (configuredCapacities !== 2) {
-    throw new Error(
-      "SFU_INGRESS_CAPACITY and SFU_EGRESS_CAPACITY must be configured with LiveKit fallback",
     );
   }
   if (Buffer.byteLength(apiSecret!) < MIN_LIVEKIT_API_SECRET_BYTES) {
@@ -224,14 +189,6 @@ function parseLiveKitFallback(
     apiUrl: parsedApiUrl.origin,
     apiKey: apiKey!,
     apiSecret: apiSecret!,
-    ingressCapacity: parseRequiredPositiveInteger(
-      ingressCapacity,
-      "SFU_INGRESS_CAPACITY",
-    ),
-    egressCapacity: parseRequiredPositiveInteger(
-      egressCapacity,
-      "SFU_EGRESS_CAPACITY",
-    ),
   };
 }
 
@@ -297,8 +254,6 @@ export function loadConfig(
           ? `${name} is no longer supported; use SITE_ACCESS_PASSWORD`
           : name === "PEER_ASSISTED_ROOM_IDS"
           ? `${name} is no longer supported; peer-assisted media applies to every room when enabled`
-          : name === "MAX_SFU_ROOTS_PER_ROOM"
-          ? `${name} is no longer supported; use SFU_INGRESS_CAPACITY and SFU_EGRESS_CAPACITY`
           : `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
       );
     }
@@ -413,13 +368,6 @@ export function loadConfig(
         DEFAULT_ROOM_LEASE_SECONDS,
         "ROOM_LEASE_SECONDS",
       ) * 1_000,
-    maxRooms: parseBoundedInteger(
-      environment.MAX_ROOMS,
-      1_000,
-      "MAX_ROOMS",
-      1,
-      MAX_ROOMS,
-    ),
     maxViewersPerRoom,
     peerAssistedMedia,
     endpointMediaCopyCapacity,

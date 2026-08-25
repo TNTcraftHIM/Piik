@@ -38,10 +38,13 @@ All room state lives in the authoritative application process:
   verifier;
 - authorization generations and the existing signaling/route state.
 
-The free-code pool contains every currently unallocated four-digit code. Room
-creation selects uniformly from that pool, and room release returns the code to
-it. `MAX_ROOMS` must not exceed the 9,000-code space; its product default remains
-1,000. A room code is a locator, not a secret or permanent identity.
+The free-code pool contains every currently unallocated four-digit code. A room
+creation request may name one locally preferred code: the store takes it only if
+it is still in the free pool, otherwise it selects uniformly from the current
+pool. Room release returns the code to that pool. The complete `1000..9999`
+space fixes active room capacity at 9,000; there is no separate room-limit
+configuration. A room code is a locator and best-effort preference, not a
+secret, reservation, or permanent identity.
 
 `ROOM_LEASE_SECONDS` is the single room-lifetime setting and defaults to 86,400
 seconds. An authenticated, actively sharing Host prevents expiry. When sharing
@@ -52,7 +55,7 @@ invalidates its credentials, and releases its code.
 
 Process restart deliberately clears every room, lease, credential digest,
 password verifier, and participant. Old Host records and invitations then fail
-closed, and the next Host share creates a new room. There is no room database,
+closed, and the next Host share creates a new room incarnation. There is no room database,
 `ROOM_DATABASE_PATH`, persistent-room mode, schema migration, or compatibility
 reader. The site-access secret remains deployment configuration rather than room
 state.
@@ -65,13 +68,18 @@ raw token in same-origin `localStorage`; the server keeps only its digest in the
 current room. Clearing local data or changing browser/device loses ownership.
 
 The Host browser also keeps one local creation profile containing its display
-name, code-entry policy, and optional room password. When an old room no longer
-exists, the next explicit share creates a new room and atomically reapplies that
-profile, so the same browser retains its preferences but receives a new code,
-Host token, and Viewer grant. The site-access password is never part of this
-profile. A Host room password may be stored locally as a convenience for this
-private product; the server receives it only over the authenticated creation or
-update path, derives the verifier, and never stores or logs the plaintext.
+name, code-entry policy, and optional room password, plus an independent
+non-secret preferred room code with a deadline equal to that room's configured
+lease duration (24 hours by default). Host sharing renews it every half lease;
+normal stop renews it once more. When old ownership no longer works, the next explicit
+share requests the still-current preferred code and atomically reapplies the
+creation profile. A free code may therefore be reused, but the result always has
+a new Host token, Viewer grant, password material, lease, and room incarnation;
+an occupied or expired preference falls back to random allocation. The site-access
+password is never part of this profile. A Host room password may be stored locally
+as a convenience for this private product; the server receives it only over the
+authenticated creation or update path, derives the verifier, and never stores or
+logs the plaintext.
 
 ### Orthogonal Viewer Access
 
@@ -135,8 +143,9 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   invitations. Active media already disconnects at that boundary; the additional
   cost is a new room code and invitation. Same-browser Host preferences are
   reapplied automatically on the next explicit share.
-- A room unused beyond the lease is released. With a 24-hour value, any dormant
-  interval longer than 24 hours produces a new code.
+- A room unused beyond the lease is released. The local code preference is
+  renewed while sharing and once on normal stop, then expires after the same
+  configured lease duration.
 - Recycled code-only bookmarks may eventually identify a different room. A stale
   grant remains unusable because the new room has a different digest.
 - Multi-process room coordination, seamless restart, and horizontal scaling are
@@ -146,7 +155,8 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 ## Acceptance Gates
 
 - Allocation uses only `1000` through `9999`, never duplicates an active code,
-  respects `MAX_ROOMS`, and returns released codes to the free pool.
+  admits at most the fixed 9,000-code capacity, and returns released codes to
+  the free pool.
 - An active Host is not expired. Stop/disconnect starts the configured dormant
   lease; the exact Host token resumes before expiry; Viewer activity does not.
 - Expiry and process restart reject the old Host token, Viewer grant, room
@@ -157,8 +167,10 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   valid for exactly the current room incarnation and has no independent expiry.
   `open` and `private` code entry, including private rooms with and without a
   password, are covered independently from grant rotate/revoke.
-- Same-browser recreation reapplies the Host profile; another browser or cleared
-  storage does not. No fingerprint or server user record participates.
+- Same-browser recreation reapplies the Host profile and requests a current
+  preferred code only while it is free; another browser, cleared storage, an
+  expired preference, or an occupied code uses random allocation. No fingerprint
+  or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
   of application/proxy logs and server durable storage.
 - On the accepted `screener-v12` Browser wire, a well-formed, site-authorized

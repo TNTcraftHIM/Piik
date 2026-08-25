@@ -373,6 +373,19 @@ describe("Viewer presentation reducer", () => {
       hasRetainedFrame: true,
       failureCode: "ROUTE_EXHAUSTED",
     });
+
+    const stillPlaying = reduceViewerPresentation(failed, {
+      type: "frame-presented",
+      generation: 3,
+      revision: 4,
+    });
+    expect(deriveViewerPresentation(stillPlaying)).toMatchObject({
+      stage: "playing",
+      overlay: "none",
+      hasCurrentFrame: true,
+      hasRetainedFrame: false,
+      failureCode: null,
+    });
   });
 
   it("honors terminal access, Host pause, and typed route status priority", () => {

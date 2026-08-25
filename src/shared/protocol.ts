@@ -346,6 +346,7 @@ export const routeDemandReasonSchema = z.enum([
   "parent-departed",
   "capacity-reduction",
   "sfu-bootstrap",
+  "direct-convergence",
 ]);
 export type RouteDemandReason = z.infer<typeof routeDemandReasonSchema>;
 
@@ -696,6 +697,13 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
+      type: z.literal("route-transport-connected"),
+      revision: mediaRouteRevisionSchema,
+      connectionId: opaqueIdSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("route-media-unavailable"),
       revision: mediaRouteRevisionSchema,
     })
@@ -991,6 +999,7 @@ export const createRoomResponseSchema = z
     inviteUrl: z.string().url().max(2048),
     codeEntryPolicy: codeEntryPolicySchema,
     expiresAt: z.string().datetime().nullable(),
+    roomLeaseSeconds: z.number().int().positive(),
   })
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;
@@ -999,6 +1008,7 @@ export const createRoomRequestSchema = z
   .object({
     codeEntryPolicy: codeEntryPolicySchema,
     roomPassword: viewerPasswordSchema.nullable().optional(),
+    preferredRoomId: roomCodeSchema.optional(),
   })
   .strict();
 

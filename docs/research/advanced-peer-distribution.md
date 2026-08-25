@@ -1,6 +1,6 @@
 # Advanced Peer Distribution
 
-- Research date: 2026-08-24
+- Research date: 2026-08-26
 - Scope: current route admission up to twenty trusted viewers, sub-second
   interactive media, endpoint downstream cap `1..3`, and minimal central-server
   media egress; retained advanced-media measurements may cover smaller cohorts
@@ -242,9 +242,9 @@ and a four-second state reconciliation that requires three consecutive
 mismatches before a full reconnect. Jitsi Videobridge similarly defaults to a
 15-second first-transfer timeout and an eight-second inactivity limit. These are
 reference boundaries, not universal prescriptions. Screener's separately owned
-15-second initial deadline is a deployed implementation value, not an accepted
-experience target; mobile-network evidence may justify revisiting the one total
-deadline only through ADR-0005.
+15-second ViewerPeer connection watchdog and the controller's 20-second route
+deadline are implementation values, not accepted experience targets;
+mobile-network evidence may justify revisiting them only through ADR-0005.
 
 WebRTC/LiveKit first owns transient reconnect. A hard failure or non-paused
 decoded-frame stall wakes ADR-0005 once and seeds the exact failed
@@ -268,6 +268,44 @@ stage/outcome enum to an on-demand Host snapshot and deliberately keeps raw
 errors, URLs, tokens, candidates, and addresses out of wire and logs.
 
 ## Automatic Route Controller Boundary
+
+The 2026-08-26 production trace established a controller defect rather than a
+missing relay topology: one SFU-fed Viewer was repeatedly tried as the first
+direct parent, and its silent 10-second attempt caused every later direct parent
+to be skipped before SFU reuse. Offer, answer, trickled candidates, relay
+capacity, and the untried P2P-fed parent were all present. A room-wide serial
+candidate therefore amplified one slow parent into queue delay for every later
+Viewer.
+
+The same trace contained four exact P2P first-frame successes at 0.488, 0.584,
+0.593, and 2.901 seconds. The current five-second foreground head start covers
+that observed maximum while halving the failed-candidate queue delay. It is a
+measured product budget, not a browser or ICE standard; SFU-backed background
+convergence preserves slower candidates for the full route deadline.
+Standard `RTCPeerConnection.connectionState = connected` proves that the exact
+ICE/DTLS transport is established but not that RTP video decoded. Screener may
+therefore use it only to retain that candidate through the total route deadline;
+the first newly decoded frame remains the sole graph-commit proof.
+
+Browser ICE already races and paces address, interface, and NAT candidate pairs
+inside one exact `RTCPeerConnection`. There is no mature Web API that races
+multiple remote peers as one connection; each additional peer requires another
+offer/answer, ICE/DTLS/RTP state, reservation, and potentially another media
+encode. Jitsi provides the closest deployed model: it retains its JVB session,
+attempts one exact P2P session, and stops using JVB only after P2P ICE succeeds.
+Chunk swarms such as CoolStreaming, WebTorrent, PeerTube, and commercial eCDN
+systems can contact several suppliers because buffered segments are
+interchangeable; that model does not apply to one live RTP `MediaStream`.
+
+The retained Browser design consequently keeps one current candidate and one
+authoritative graph. Initial acquisition gives one best direct parent a bounded
+head start before SFU and uses a stable pairwise hash to distribute otherwise
+equal parent choices; once SFU has a current decoded frame, the remaining exact
+direct parents are attempted one at a time behind that media. A new unrouted or
+repairing Viewer preempts this low-priority convergence. Direct success commits
+make-before-break on its first decoded frame; exhaustion leaves healthy SFU
+unchanged. Literal multi-parent racing or concurrent child operations require a
+new wire/revision/reservation model and remain outside the current result.
 
 The accepted controller preserves healthy peer edges and chooses one route per
 logical edge: direct/STUN first, then the dedicated SFU/UDP path when needed. A
@@ -326,6 +364,14 @@ Sources checked on 2026-08-20 through 2026-08-24:
   source copied.
 - [WebRTC Recommendation](https://www.w3.org/TR/webrtc/) - `failed` ICE restart
   and `disconnected` bytes/stats guidance.
+- [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html),
+  [ICE Happy Eyeballs, RFC 8421](https://www.rfc-editor.org/rfc/rfc8421.html),
+  [Trickle ICE, RFC 8838](https://www.rfc-editor.org/rfc/rfc8838.html), and
+  [ICE PAC, RFC 8863](https://www.rfc-editor.org/rfc/rfc8863.html) - one exact
+  peer's native candidate checks and why application deadlines cannot infer an
+  untried parent.
+- [JitsiConference P2P/JVB ownership](https://github.com/jitsi/lib-jitsi-meet/blob/master/JitsiConference.ts)
+  - mature server-media retention until one exact P2P session succeeds.
 - [LiveKit client 2.22 reconnect policy](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/DefaultReconnectPolicy.ts),
   [room defaults](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/defaults.ts),
   and [state reconciliation](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)
@@ -353,8 +399,7 @@ Sources checked on 2026-08-20 through 2026-08-24:
   [WebTorrent](https://github.com/webtorrent/webtorrent), and
   [P2P Media Loader](https://github.com/Novage/p2p-media-loader) - mature
   chunk/segment swarms, not an RTP route implementation.
-- [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/),
-  [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html), and
+- [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/) and
   [LiveKit SFU](https://docs.livekit.io/reference/internals/livekit-sfu/) -
   observable path boundaries and the centralized low-latency alternative.
 - [LiveKit client 2.22 room events](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/Room.ts)

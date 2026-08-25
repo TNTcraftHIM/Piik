@@ -5,8 +5,6 @@ import { loadConfig } from "../src/server/config.ts";
 
 const liveKitAdmission = {
   LIVEKIT_API_URL: "https://livekit-api.test",
-  SFU_INGRESS_CAPACITY: "4",
-  SFU_EGRESS_CAPACITY: "16",
 } as const;
 
 describe("server configuration", () => {
@@ -30,8 +28,6 @@ describe("server configuration", () => {
       LIVEKIT_API_URL: " http://livekit.test:7880 ",
       LIVEKIT_API_KEY: " test-key ",
       LIVEKIT_API_SECRET: ` ${"s".repeat(32)} `,
-      SFU_INGRESS_CAPACITY: " 4 ",
-      SFU_EGRESS_CAPACITY: " 16 ",
     });
 
     expect(config.livekitFallback).toEqual({
@@ -39,33 +35,7 @@ describe("server configuration", () => {
       apiUrl: "http://livekit.test:7880",
       apiKey: "test-key",
       apiSecret: "s".repeat(32),
-      ingressCapacity: 4,
-      egressCapacity: 16,
     });
-  });
-
-  it.each(["1", "9007199254740991"])(
-    "accepts an explicit positive safe SFU capacity of %s",
-    (capacity) => {
-      const config = loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
-        LIVEKIT_URL: "wss://livekit.test",
-        LIVEKIT_API_URL: "https://livekit-api.test",
-        LIVEKIT_API_KEY: "test-key",
-        LIVEKIT_API_SECRET: "s".repeat(32),
-        SFU_INGRESS_CAPACITY: capacity,
-        SFU_EGRESS_CAPACITY: capacity,
-      });
-
-      expect(config.livekitFallback?.ingressCapacity).toBe(Number(capacity));
-      expect(config.livekitFallback?.egressCapacity).toBe(Number(capacity));
-    },
-  );
-
-  it("rejects SFU capacity without the LiveKit credential tuple", () => {
-    expect(() => loadConfig({ SFU_INGRESS_CAPACITY: "2" })).toThrow(
-      "require LiveKit fallback",
-    );
   });
 
   it("requires peer-assisted media for LiveKit fallback", () => {
@@ -142,8 +112,6 @@ describe("server configuration", () => {
         LIVEKIT_API_URL: apiUrl,
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
-        SFU_INGRESS_CAPACITY: "4",
-        SFU_EGRESS_CAPACITY: "16",
       }),
     ).toThrow("LIVEKIT_API_URL");
   });
@@ -158,8 +126,6 @@ describe("server configuration", () => {
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
-      SFU_INGRESS_CAPACITY: "4",
-      SFU_EGRESS_CAPACITY: "16",
     };
     expect(() =>
       loadConfig({
@@ -175,7 +141,7 @@ describe("server configuration", () => {
     ).toBe("http://127.0.0.1:7880");
   });
 
-  it("rejects a short LiveKit API secret and invalid SFU capacities", () => {
+  it("rejects a short LiveKit API secret", () => {
     const fallback = {
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
@@ -186,32 +152,6 @@ describe("server configuration", () => {
     expect(() =>
       loadConfig({ ...fallback, LIVEKIT_API_SECRET: "too-short" }),
     ).toThrow("LIVEKIT_API_SECRET must contain at least 32 bytes");
-    for (const capacity of ["0", "1.5", "9007199254740992"]) {
-      expect(() =>
-        loadConfig({
-          ...fallback,
-          SFU_EGRESS_CAPACITY: capacity,
-        }),
-      ).toThrow("SFU_EGRESS_CAPACITY");
-    }
-  });
-
-  it("requires both SFU capacities with LiveKit and rejects the removed root key", () => {
-    const fallback = {
-      LIVEKIT_URL: "wss://livekit.test",
-      LIVEKIT_API_URL: "https://livekit-api.test",
-      LIVEKIT_API_KEY: "test-key",
-      LIVEKIT_API_SECRET: "s".repeat(32),
-    };
-    expect(() => loadConfig(fallback)).toThrow(
-      "must be configured with LiveKit fallback",
-    );
-    expect(() =>
-      loadConfig({ ...fallback, SFU_INGRESS_CAPACITY: "2" }),
-    ).toThrow("must be configured with LiveKit fallback");
-    expect(() => loadConfig({ MAX_SFU_ROOTS_PER_ROOM: "" })).toThrow(
-      "MAX_SFU_ROOTS_PER_ROOM is no longer supported",
-    );
   });
 
   it.each([
@@ -458,13 +398,6 @@ describe("server configuration", () => {
     );
     expect(() => loadConfig({ ROOM_LEASE_SECONDS: "0" })).toThrow(
       "ROOM_LEASE_SECONDS must be a positive integer",
-    );
-  });
-
-  it("bounds MAX_ROOMS to the four-digit code space", () => {
-    expect(loadConfig({ MAX_ROOMS: "9000" }).maxRooms).toBe(9_000);
-    expect(() => loadConfig({ MAX_ROOMS: "9001" })).toThrow(
-      "MAX_ROOMS must be between 1 and 9000",
     );
   });
 

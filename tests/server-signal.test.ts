@@ -18,7 +18,11 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
-import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
+import {
+  ROOM_CAPACITY,
+  RoomStore,
+  type CreatedRoom,
+} from "../src/server/room-store.ts";
 
 const allowedOrigin = "http://allowed.test";
 let runningServer: ScreenerServer | undefined;
@@ -123,7 +127,6 @@ function testConfig(): ServerConfig {
     publicBaseUrl: new URL("https://share.example.test"),
     allowedOrigins: new Set([allowedOrigin]),
     roomLeaseMs: 86_400_000,
-    maxRooms: 10,
     maxViewersPerRoom: 8,
     peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
@@ -155,7 +158,7 @@ async function startHarness(
   config.maxViewersPerRoom = maxViewersPerRoom;
   const roomStore = new RoomStore({
     leaseMs: config.roomLeaseMs,
-    maxRooms: config.maxRooms,
+    maxRooms: ROOM_CAPACITY,
     maxViewersPerRoom,
     now: overrides.now,
   });
@@ -701,6 +704,13 @@ describe("WebSocket signaling", () => {
           throw new Error(`route error: ${error.message}`);
         }),
       ]);
+      viewer.socket.send(
+        JSON.stringify({
+          type: "route-transport-connected",
+          revision: prepared.revision,
+          connectionId: prepared.candidate.connectionId,
+        }),
+      );
       viewer.socket.send(
         JSON.stringify({
           type: "route-ready",

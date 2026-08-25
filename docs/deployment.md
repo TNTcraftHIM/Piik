@@ -3,7 +3,7 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`3e2ee0a0e7afc083d0fac483ad223a2cfc869ee0`, release `3e2ee0a`, and the single
+`d8307a36b69a11a9264657363966c175d6d36c0d`, release `d8307a3`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,16 +25,16 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `3e2ee0a0e7afc083d0fac483ad223a2cfc869ee0`, release
-`3e2ee0a`, from `/opt/screener/releases/3e2ee0a`. The immutable runtime tar
+Production runs exact `d8307a36b69a11a9264657363966c175d6d36c0d`, release
+`d8307a3`, from `/opt/screener/releases/d8307a3`. The immutable runtime tar
 SHA-256 is
-`b6fb95a045b219287bd9bfebdf0223b4983e9505f64950ea0f0a3e1515550ae6`.
+`dd9f3e919663c71294976a18b8bbd2f02f15c999849ba168564bcf52d6de0eef`.
 Its 39-file path/size/hash manifest SHA-256 is
-`34dd608d33e686bd1062299b2d4cc9c2bb2ceec0fe1727fb4a14afd47a044405`.
+`f20005e50376e5cd8caea79acfba0c7e2733fa52e9fa5324c450efa4cf3a4592`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-yh0dZOhf.js` with SHA-256
-`c05cd17564b47f65b93bca439f13d88a695f0d6fdb18ade22d248dba1d1c3a14`.
+`assets/index-rzD5Vq8B.js` with SHA-256
+`5a2beb0ef73abfd0dae15903532e47723bc401f2a58a75f33317240f9a0f6a07`.
 
 The release deploys the single Browser `screener-v12` wire, fixed VP8 for Browser
 direct, browser-relay, and SFU video, pinned LiveKit default screen-share
@@ -51,8 +51,9 @@ stale `screener-v11` rejection with
 `INVALID_MESSAGE` and WebSocket close 1008 before room authority. The service unit
 has no writable room StateDirectory; all room authority is process-memory-only.
 LiveKit is dedicated, has `room.auto_create: false` and
-`max_participants: 21`, and is admitted to one global publication ingress plus
-twenty subscription egress handles. Coturn listens only on UDP 3478 for STUN;
+`max_participants: 21`, and the application derives deployment admission as
+9,000 publication ingress plus `9000 * MAX_VIEWERS_PER_ROOM` subscription
+egress handles. Coturn listens only on UDP 3478 for STUN;
 LiveKit media listens on UDP 7882. The stable application firewall table
 `inet bonfire_filter` has SHA-256
 `afaf9d066e9f292d8bd19032b38c0978ccf60dd01c2fe7f210968ff751f90534`,
@@ -238,7 +239,6 @@ PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
 SITE_ACCESS_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
 ROOM_LEASE_SECONDS=86400
-MAX_ROOMS=1000
 MAX_VIEWERS_PER_ROOM=20
 ENDPOINT_MEDIA_COPY_CAPACITY=2
 
@@ -253,8 +253,6 @@ LIVEKIT_URL=wss://share.example.com
 LIVEKIT_API_URL=http://127.0.0.1:7880
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
-SFU_INGRESS_CAPACITY=<MEASURED_DEPLOYMENT_INGRESS_COPIES>
-SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 ```
 
 Supplying any stale `PEER_ICE_TURN_*` or `SELECTED_EDGE_TURN_*` key, even blank,
@@ -283,7 +281,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `3e2ee0a` accepts 1 through 20 and explicitly selects 20. This is an
+Production `d8307a3` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -296,18 +294,15 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `3e2ee0a` runs the deployed server and Browser assets
+Production release `d8307a3` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
-complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
-safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values. The two
-capacities have no defaults and must be selected from the instance's measured
-publisher/subscriber/bitrate and accepted concurrency matrix. Supplying either
-capacity without the complete fallback configuration fails startup rather than
-silently enabling or ignoring a partial policy. An empty tuple with neither
-capacity keeps the optional SDK and server path dormant. `LIVEKIT_URL` must be a
+complete tuple requires `PEER_ASSISTED_MEDIA=true`. The four-digit code space
+fixes ingress at 9,000 Host publications; egress is 9,000 multiplied by
+`MAX_VIEWERS_PER_ROOM`. There is no separate SFU capacity configuration. An
+empty tuple keeps the optional SDK and server path dormant. `LIVEKIT_URL` must be a
 plain `ws:` or `wss:` origin with no `/rtc` suffix; production requires `wss:`.
 `LIVEKIT_API_URL` must be a plain `http:` or `https:` origin with no path;
 production permits plaintext only on loopback and otherwise requires `https:`.
@@ -380,7 +375,7 @@ The Host may update or revoke that grant without changing code-entry policy.
 Room allocation and lifetime use one deliberately small model:
 
 - random unallocated codes come only from `1000` through `9999`, never duplicate
-  an active code, respect `MAX_ROOMS <= 9000`, and return on room release;
+  an active code, use the fixed 9,000-room capacity, and return on room release;
 - active Host sharing does not expire; stop, capture-track end, or Host
   disconnect starts `ROOM_LEASE_SECONDS`;
 - only the exact Host token resumes and renews before expiry, Viewer activity

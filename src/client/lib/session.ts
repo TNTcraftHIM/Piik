@@ -5,20 +5,29 @@ import {
   type CreateRoomResponse,
   type CodeEntryPolicy,
 } from "../../shared/protocol";
+import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
+const HOST_ROOM_PREFERENCE_STORAGE_KEY = "screener:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({
   roomId: true,
   hostToken: true,
   inviteUrl: true,
   expiresAt: true,
+  roomLeaseSeconds: true,
 });
+const hostRoomPreferenceSchema = z
+  .object({
+    roomId: roomCodeSchema,
+    preferenceExpiresAt: z.string().datetime(),
+  })
+  .strict();
 
 export type HostRoomIdentity = Pick<
   CreateRoomResponse,
-  "roomId" | "hostToken" | "expiresAt"
+  "roomId" | "hostToken" | "expiresAt" | "roomLeaseSeconds"
 > & { canonicalUrl: string };
 
 export interface HostRoomState extends HostRoomIdentity {
@@ -100,12 +109,76 @@ export function readHostRoom(): HostRoomIdentity | null {
       roomId: parsed.data.roomId,
       hostToken: parsed.data.hostToken,
       expiresAt: parsed.data.expiresAt,
+      roomLeaseSeconds: parsed.data.roomLeaseSeconds,
       canonicalUrl: canonicalViewerUrl(parsed.data.inviteUrl),
     };
     return room;
   } catch {
     clearHostRoom();
     return null;
+  }
+}
+
+export function readPreferredRoomId(nowMs = Date.now()): string | null {
+  let stored: string | null;
+  try {
+    stored = window.localStorage.getItem(HOST_ROOM_PREFERENCE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  if (!stored) {
+    return null;
+  }
+  try {
+    const parsed = hostRoomPreferenceSchema.safeParse(JSON.parse(stored));
+    if (
+      !parsed.success ||
+      Date.parse(parsed.data.preferenceExpiresAt) <= nowMs
+    ) {
+      clearPreferredRoom();
+      return null;
+    }
+    return parsed.data.roomId;
+  } catch {
+    clearPreferredRoom();
+    return null;
+  }
+}
+
+export function writePreferredRoom(
+  roomId: string,
+  roomLeaseSeconds: number,
+  nowMs = Date.now(),
+): void {
+  if (
+    !roomCodeSchema.safeParse(roomId).success ||
+    !Number.isSafeInteger(roomLeaseSeconds) ||
+    roomLeaseSeconds <= 0
+  ) {
+    return;
+  }
+  const expiresAtMs = nowMs + roomLeaseSeconds * 1_000;
+  if (!Number.isFinite(expiresAtMs)) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      HOST_ROOM_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        roomId,
+        preferenceExpiresAt: new Date(expiresAtMs).toISOString(),
+      }),
+    );
+  } catch {
+    // A storage failure only disables best-effort code reuse.
+  }
+}
+
+export function clearPreferredRoom(): void {
+  try {
+    window.localStorage.removeItem(HOST_ROOM_PREFERENCE_STORAGE_KEY);
+  } catch {
+    // Restricted storage is equivalent to having no local preference.
   }
 }
 
@@ -123,6 +196,7 @@ export function writeHostRoom(
         roomId: room.roomId,
         hostToken: room.hostToken,
         expiresAt: room.expiresAt,
+        roomLeaseSeconds: room.roomLeaseSeconds,
         inviteUrl: canonicalUrl,
       }),
     );

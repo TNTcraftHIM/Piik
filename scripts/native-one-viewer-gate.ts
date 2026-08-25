@@ -11,6 +11,7 @@ import WebSocket from "ws";
 import { createScreenerServer, type ScreenerServer } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 import {
+  ROOM_CAPACITY,
   RoomStore,
   type ConnectedParticipant,
   type ConnectParticipantInput,
@@ -381,7 +382,7 @@ async function main(): Promise<void> {
     });
     const roomStore = new ObservedRoomStore({
       leaseMs: config.roomLeaseMs,
-      maxRooms: config.maxRooms,
+      maxRooms: ROOM_CAPACITY,
       maxViewersPerRoom: config.maxViewersPerRoom,
     }, () => senderLedger.record({ hostWssAuthenticated: true }));
     server = await createScreenerServer({ config, roomStore });

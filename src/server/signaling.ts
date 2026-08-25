@@ -886,6 +886,19 @@ export class SignalingServer {
           message,
         );
         return;
+      case "route-transport-connected":
+        if (!this.isHybridMediaEnabled()) {
+          this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
+          return;
+        }
+        this.hybridMediaRouter!.handleRouteTransportConnected(
+          {
+            ...authenticated,
+            sessionId: this.socketStates.get(socket)!.sessionId,
+          },
+          message,
+        );
+        return;
       case "route-media-unavailable":
         if (!this.isHybridMediaEnabled()) {
           this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
@@ -1333,6 +1346,14 @@ export class SignalingServer {
         signalKind: message.payload.kind,
         ...(description ? { descriptionType: description.type } : {}),
       });
+    this.hybridMediaRouter!.debugPeerSignal({
+      roomId: source.roomId,
+      sourcePeerId: source.peerId,
+      targetPeerId: target.peerId,
+      signalKind: message.payload.kind,
+      ...(description ? { descriptionType: description.type } : {}),
+      authorization: candidateAuthorized,
+    });
     const assignedEdgeAuthorized = description
       ? description.type === "offer"
         ? parentToChild

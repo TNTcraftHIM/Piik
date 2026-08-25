@@ -21,6 +21,7 @@ import {
 } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 import {
+  ROOM_CAPACITY,
   RoomStore,
 } from "../src/server/room-store";
 import {
@@ -3042,7 +3043,7 @@ export async function main(): Promise<number> {
       config: serverConfig,
       roomStore: new RoomStore({
         leaseMs: serverConfig.roomLeaseMs,
-        maxRooms: serverConfig.maxRooms,
+        maxRooms: ROOM_CAPACITY,
         maxViewersPerRoom: serverConfig.maxViewersPerRoom,
       }),
     });

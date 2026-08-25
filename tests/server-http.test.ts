@@ -11,6 +11,7 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
+import { RoomStore } from "../src/server/room-store.ts";
 import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const allowedOrigin = "http://allowed.test";
@@ -30,7 +31,6 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     allowedOrigins: new Set([allowedOrigin]),
     siteAccessPassword,
     roomLeaseMs: 86_400_000,
-    maxRooms: 10,
     maxViewersPerRoom: 8,
     peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
@@ -43,7 +43,11 @@ async function start(
   config = testConfig(),
   options: Pick<
     CreateServerOptions,
-    "now" | "siteAccessTtlSeconds" | "sfuTokenIssuer" | "sfuRoomControl"
+    | "now"
+    | "roomStore"
+    | "siteAccessTtlSeconds"
+    | "sfuTokenIssuer"
+    | "sfuRoomControl"
   > = {},
 ): Promise<string> {
   const sfuRoomControl =
@@ -82,6 +86,7 @@ async function createRoom(
   cookie?: string,
   codeEntryPolicy: "open" | "private" = "open",
   roomPassword?: string,
+  preferredRoomId?: string,
 ): Promise<Response> {
   return fetch(`${baseUrl}/api/rooms`, {
     method: "POST",
@@ -93,6 +98,7 @@ async function createRoom(
     body: JSON.stringify({
       codeEntryPolicy,
       ...(roomPassword === undefined ? {} : { roomPassword }),
+      ...(preferredRoomId === undefined ? {} : { preferredRoomId }),
     }),
   });
 }
@@ -294,6 +300,7 @@ describe("room HTTP API", () => {
     expect(body.codeEntryPolicy).toBe("open");
     expect("viewerGrantExpiresAt" in body).toBe(false);
     expect(body.expiresAt).toBeTruthy();
+    expect(body.roomLeaseSeconds).toBe(86_400);
     expect("iceConfig" in body).toBe(false);
   });
 
@@ -360,6 +367,24 @@ describe("room HTTP API", () => {
     );
     expect(new Set(rooms.map((room) => room.roomId)).size).toBe(2);
     expect(rooms.every((room) => room.expiresAt !== null)).toBe(true);
+  });
+
+  it("reuses a free preferred code and never replaces an occupied room", async () => {
+    const baseUrl = await start(testConfig({ roomLeaseMs: 90_000 }));
+    const authenticated = await login(baseUrl);
+    const cookie = cookiePair(authenticated);
+
+    const preferred = createRoomResponseSchema.parse(
+      await (await createRoom(baseUrl, cookie, "open", undefined, "4321")).json(),
+    );
+    const fallback = createRoomResponseSchema.parse(
+      await (await createRoom(baseUrl, cookie, "open", undefined, "4321")).json(),
+    );
+
+    expect(preferred.roomId).toBe("4321");
+    expect(preferred.roomLeaseSeconds).toBe(90);
+    expect(fallback.roomId).not.toBe("4321");
+    expect(fallback.hostToken).not.toBe(preferred.hostToken);
   });
 
   it("manages dormant room access without starting sharing or renewing", async () => {
@@ -537,7 +562,14 @@ describe("room HTTP API", () => {
 
   it("returns service unavailable at the global room bound", async () => {
     const baseUrl = await start(
-      testConfig({ siteAccessPassword: undefined, maxRooms: 1 }),
+      testConfig({ siteAccessPassword: undefined }),
+      {
+        roomStore: new RoomStore({
+          leaseMs: 86_400_000,
+          maxRooms: 1,
+          maxViewersPerRoom: 8,
+        }),
+      },
     );
     const create = () => createRoom(baseUrl);
 
@@ -556,8 +588,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://livekit.test:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       {
@@ -587,8 +617,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       {
@@ -619,8 +647,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,
@@ -667,8 +693,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,
@@ -703,8 +727,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,
@@ -761,8 +783,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,

@@ -96,7 +96,7 @@ async function main(): Promise<void> {
       nodeEnv: "production", port: appPort, listenHost: "127.0.0.1",
       publicBaseUrl: new URL(baseUrl), allowedOrigins: new Set([baseUrl]),
       siteAccessPassword: sitePassword, roomLeaseMs: 86_400_000,
-      maxRooms: 4, maxViewersPerRoom: 2, endpointMediaCopyCapacity: 2,
+      maxViewersPerRoom: 2, endpointMediaCopyCapacity: 2,
       peerAssistedMedia: false, stunUrls: [],
     };
     server = await createScreenerServer({ config, staticDirectory: resolve(root, "dist/client") });
