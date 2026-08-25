@@ -107,12 +107,22 @@ copy-on-write reflink is acceptable only after an inode audit confirms that the
 old and new regular-file sets have zero shared inodes. Do not recursively change
 permissions until that check passes.
 
-Either a POSIX archive or ZIP is acceptable transport. Build an explicit runtime
-manifest before upload, normalize every relative entry path, and reject absolute
-paths, `..` traversal, unexpected top-level entries, and unapproved links. Verify
-the uploaded archive hash, extract only into a new release directory, then compare
-the exact path set, file types, sizes, and per-file hashes with the manifest before
-switching. Archive format alone is neither integrity nor recovery evidence.
+Routine application releases use the tracked
+[`package-app-release.mjs`](../scripts/package-app-release.mjs) build-host entry
+and [`release-app.sh`](../deploy/release-app.sh) server entry. The packager accepts
+only a clean exact Git revision and already-built `dist`, emits one normalized
+`tar.gz`, an exact path/size/hash manifest, and a non-secret release descriptor,
+then extracts and verifies its own result. The archive also carries the full Git
+revision. The server entry accepts only that descriptor, verifies the uploaded
+hashes and revision, extracts into a new release directory, compares the exact
+regular-file set with the manifest, installs an independent runtime dependency
+tree under the existing resource bounds, and performs the atomic cutover and
+bounded recovery checks. Release-specific scripts must not be copied and edited.
+
+Infrastructure, configuration, secrets, and persistent state are outside this
+application wrapper. A release that changes one of those surfaces uses a separate
+scoped transaction with its own pre-change value and recovery path; it must not
+make the routine application primitive conditional on that one-off change.
 
 A routine application-only cutover leaves infrastructure, configuration, secrets,
 and persistent state untouched. Verify a new immutable artifact, switch to it
