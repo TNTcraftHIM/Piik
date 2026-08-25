@@ -72,9 +72,9 @@ export const SCREEN_AUDIO_QUALITY_LABELS = {
 
 export const DEFAULT_SCREEN_AUDIO_QUALITY: ScreenAudioQuality = "saver";
 export const SCREEN_AUDIO_BITRATES = {
-  saver: 64_000,
+  saver: 96_000,
   music: 128_000,
-  "very-high": 256_000,
+  "very-high": 192_000,
 } as const satisfies Record<ScreenAudioQuality, number>;
 export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE =
   SCREEN_AUDIO_BITRATES["very-high"];

@@ -77,9 +77,9 @@ Last updated: 2026-08-25
   layers. Pinned LiveKit defaults own representations, Dynacast owns aggregate
   demand, and server send-side BWE owns subscriber forwarding. AdaptiveStream
   stays disabled because any Viewer may relay its received track.
-- Screen audio requests capture by default and offers live 64/128/256 kbps
-  sender ceilings with 64 default. Peer answers request Opus stereo with a
-  256 kbps receive maximum. SFU publication uses stereo, DTX off, and RED off;
+- Screen audio requests capture by default and offers live 96/128/192 kbps
+  sender ceilings with 96 default. Peer answers request Opus stereo with a
+  192 kbps receive maximum. SFU publication uses stereo, DTX off, and RED off;
   disabling RED accepts reduced burst-loss resilience in exchange for bounded
   publisher traffic.
 - Configured resolution, FPS, bitrate, preference, codec, and audio ceiling are
