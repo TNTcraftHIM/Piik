@@ -68,9 +68,9 @@ current room. Clearing local data or changing browser/device loses ownership.
 
 The Host browser also keeps one local creation profile containing its display
 name, code-entry policy, and optional room password, plus an independent
-non-secret preferred room code. It has no deadline while the Host is sharing;
-normal stop starts a local deadline equal to that room's configured lease
-duration (24 hours by default). When old ownership no longer works, the next explicit
+non-secret preferred room code with a deadline equal to that room's configured
+lease duration (24 hours by default). Host sharing renews it every half lease;
+normal stop renews it once more. When old ownership no longer works, the next explicit
 share requests the still-current preferred code and atomically reapplies the
 creation profile. A free code may therefore be reused, but the result always has
 a new Host token, Viewer grant, password material, lease, and room incarnation;
@@ -142,9 +142,9 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   invitations. Active media already disconnects at that boundary; the additional
   cost is a new room code and invitation. Same-browser Host preferences are
   reapplied automatically on the next explicit share.
-- A room unused beyond the lease is released. The local code preference likewise
-  starts its configured lease countdown on normal stop; active sharing does not
-  count down.
+- A room unused beyond the lease is released. The local code preference is
+  renewed while sharing and once on normal stop, then expires after the same
+  configured lease duration.
 - Recycled code-only bookmarks may eventually identify a different room. A stale
   grant remains unusable because the new room has a different digest.
 - Multi-process room coordination, seamless restart, and horizontal scaling are

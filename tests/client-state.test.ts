@@ -485,9 +485,6 @@ describe("client session identity", () => {
       },
     });
 
-    writePreferredRoom("4321", null, 1_000);
-    expect(readPreferredRoomId(Number.MAX_SAFE_INTEGER)).toBe("4321");
-
     writePreferredRoom("4321", 90, 1_000);
 
     clearHostRoom();

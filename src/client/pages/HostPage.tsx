@@ -234,6 +234,8 @@ interface HostPageProps {
   onAuthorizationRequired?: () => void;
 }
 
+const MAX_BROWSER_TIMER_DELAY_MS = 2_147_000_000;
+
 export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
@@ -323,6 +325,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
+  const preferredRoomRenewalTimerRef = useRef<number | null>(null);
 
   const mediaViewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -395,6 +398,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       sourceSwitchRef.current = null;
       qualityChangeRef.current = null;
       pendingQualityChangeRef.current = null;
+      stopPreferredRoomRenewal();
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
@@ -425,6 +429,34 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     return (
       generationRef.current === generation &&
       activeGenerationRef.current === generation
+    );
+  }
+
+  function stopPreferredRoomRenewal(): void {
+    if (preferredRoomRenewalTimerRef.current !== null) {
+      window.clearInterval(preferredRoomRenewalTimerRef.current);
+      preferredRoomRenewalTimerRef.current = null;
+    }
+  }
+
+  function startPreferredRoomRenewal(activeRoom: HostRoomState): void {
+    stopPreferredRoomRenewal();
+    const renew = () =>
+      writePreferredRoom(
+        activeRoom.roomId,
+        activeRoom.roomLeaseSeconds,
+      );
+    renew();
+    const intervalMs = Math.max(
+      1_000,
+      Math.min(
+        Math.floor((activeRoom.roomLeaseSeconds * 1_000) / 2),
+        MAX_BROWSER_TIMER_DELAY_MS,
+      ),
+    );
+    preferredRoomRenewalTimerRef.current = window.setInterval(
+      renew,
+      intervalMs,
     );
   }
 
@@ -486,6 +518,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function disposeResources(notifyServer: boolean): void {
+    stopPreferredRoomRenewal();
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
@@ -1525,10 +1558,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   ...activeRoom,
                   expiresAt: message.roomExpiresAt,
                 });
-                writePreferredRoom(
-                  activeRoom.roomId,
-                  null,
-                );
+                startPreferredRoomRenewal(activeRoom);
                 setPhase("live");
               }
               handleSignalMessage(

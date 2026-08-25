@@ -21,7 +21,7 @@ const hostRoomStorageSchema = createRoomResponseSchema.pick({
 const hostRoomPreferenceSchema = z
   .object({
     roomId: roomCodeSchema,
-    preferenceExpiresAt: z.string().datetime().nullable(),
+    preferenceExpiresAt: z.string().datetime(),
   })
   .strict();
 
@@ -133,8 +133,7 @@ export function readPreferredRoomId(nowMs = Date.now()): string | null {
     const parsed = hostRoomPreferenceSchema.safeParse(JSON.parse(stored));
     if (
       !parsed.success ||
-      (parsed.data.preferenceExpiresAt !== null &&
-        Date.parse(parsed.data.preferenceExpiresAt) <= nowMs)
+      Date.parse(parsed.data.preferenceExpiresAt) <= nowMs
     ) {
       clearPreferredRoom();
       return null;
@@ -148,19 +147,18 @@ export function readPreferredRoomId(nowMs = Date.now()): string | null {
 
 export function writePreferredRoom(
   roomId: string,
-  roomLeaseSeconds: number | null,
+  roomLeaseSeconds: number,
   nowMs = Date.now(),
 ): void {
   if (
     !roomCodeSchema.safeParse(roomId).success ||
-    (roomLeaseSeconds !== null &&
-      (!Number.isSafeInteger(roomLeaseSeconds) || roomLeaseSeconds <= 0))
+    !Number.isSafeInteger(roomLeaseSeconds) ||
+    roomLeaseSeconds <= 0
   ) {
     return;
   }
-  const expiresAtMs =
-    roomLeaseSeconds === null ? null : nowMs + roomLeaseSeconds * 1_000;
-  if (expiresAtMs !== null && !Number.isFinite(expiresAtMs)) {
+  const expiresAtMs = nowMs + roomLeaseSeconds * 1_000;
+  if (!Number.isFinite(expiresAtMs)) {
     return;
   }
   try {
@@ -168,8 +166,7 @@ export function writePreferredRoom(
       HOST_ROOM_PREFERENCE_STORAGE_KEY,
       JSON.stringify({
         roomId,
-        preferenceExpiresAt:
-          expiresAtMs === null ? null : new Date(expiresAtMs).toISOString(),
+        preferenceExpiresAt: new Date(expiresAtMs).toISOString(),
       }),
     );
   } catch {
