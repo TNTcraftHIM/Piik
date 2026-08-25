@@ -706,6 +706,13 @@ describe("WebSocket signaling", () => {
       ]);
       viewer.socket.send(
         JSON.stringify({
+          type: "route-transport-connected",
+          revision: prepared.revision,
+          connectionId: prepared.candidate.connectionId,
+        }),
+      );
+      viewer.socket.send(
+        JSON.stringify({
           type: "route-ready",
           revision: prepared.revision,
           phase: "prepare",

@@ -242,9 +242,9 @@ and a four-second state reconciliation that requires three consecutive
 mismatches before a full reconnect. Jitsi Videobridge similarly defaults to a
 15-second first-transfer timeout and an eight-second inactivity limit. These are
 reference boundaries, not universal prescriptions. Screener's separately owned
-15-second initial deadline is a deployed implementation value, not an accepted
-experience target; mobile-network evidence may justify revisiting the one total
-deadline only through ADR-0005.
+15-second ViewerPeer connection watchdog and the controller's 20-second route
+deadline are implementation values, not accepted experience targets;
+mobile-network evidence may justify revisiting them only through ADR-0005.
 
 WebRTC/LiveKit first owns transient reconnect. A hard failure or non-paused
 decoded-frame stall wakes ADR-0005 once and seeds the exact failed
@@ -277,6 +277,16 @@ capacity, and the untried P2P-fed parent were all present. A room-wide serial
 candidate therefore amplified one slow parent into queue delay for every later
 Viewer.
 
+The same trace contained four exact P2P first-frame successes at 0.488, 0.584,
+0.593, and 2.901 seconds. The current five-second foreground head start covers
+that observed maximum while halving the failed-candidate queue delay. It is a
+measured product budget, not a browser or ICE standard; SFU-backed background
+convergence preserves slower candidates for the full route deadline.
+Standard `RTCPeerConnection.connectionState = connected` proves that the exact
+ICE/DTLS transport is established but not that RTP video decoded. Screener may
+therefore use it only to retain that candidate through the total route deadline;
+the first newly decoded frame remains the sole graph-commit proof.
+
 Browser ICE already races and paces address, interface, and NAT candidate pairs
 inside one exact `RTCPeerConnection`. There is no mature Web API that races
 multiple remote peers as one connection; each additional peer requires another
@@ -289,7 +299,8 @@ interchangeable; that model does not apply to one live RTP `MediaStream`.
 
 The retained Browser design consequently keeps one current candidate and one
 authoritative graph. Initial acquisition gives one best direct parent a bounded
-head start before SFU; once SFU has a current decoded frame, the remaining exact
+head start before SFU and uses a stable pairwise hash to distribute otherwise
+equal parent choices; once SFU has a current decoded frame, the remaining exact
 direct parents are attempted one at a time behind that media. A new unrouted or
 repairing Viewer preempts this low-priority convergence. Direct success commits
 make-before-break on its first decoded frame; exhaustion leaves healthy SFU

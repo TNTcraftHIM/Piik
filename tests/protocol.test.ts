@@ -824,6 +824,13 @@ describe("client signaling protocol", () => {
     ).toBe(true);
     expect(
       clientMessageSchema.safeParse({
+        type: "route-transport-connected",
+        revision: 7,
+        connectionId: "connection_12345678",
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
         type: "route-media-unavailable",
         revision: 7,
       }).success,
@@ -848,6 +855,12 @@ describe("client signaling protocol", () => {
         type: "route-ready",
         revision: -1,
         phase: "prepare",
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-transport-connected",
+        revision: 7,
       }).success,
     ).toBe(false);
     expect(

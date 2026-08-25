@@ -92,8 +92,9 @@ capacity, sender reservations, candidate tuples already tried by the current
 operation, and server admission.
 It then
 orders eligible parents lexicographically by the shallowest resulting depth,
-the greatest remaining steady sender capacity, stable join order, and peer
-identity. It prepares one candidate at a time. The candidate's standard ICE
+the greatest remaining steady sender capacity, a stable child-parent hash,
+join order, and peer identity. The pairwise hash distributes otherwise equal
+first choices without weakening capacity authority. It prepares one candidate at a time. The candidate's standard ICE
 checklist proves transport connectivity; the exact candidate child's first new
 decoded video frame is the application media-ready event. Raw addresses, a
 claimed NAT class, geography, user agent, or a
@@ -120,14 +121,18 @@ parent cannot immediately repeat. A new external fact may make the old
 candidate eligible again; failure does not globally exclude that parent.
 
 Foreground availability and direct convergence have separate priorities but
-use the same controller and candidate transaction. Without a current Host
-publication, route acquisition first tries the best eligible direct parent,
-then SFU, then retains the remaining direct suffix. Once the room has a healthy Host publication, another
-joining Viewer first commits an SFU subscription so an earlier slow direct
-candidate cannot serialize every waiting Viewer. A Viewer that committed SFU
-from foreground acquisition retains that healthy route while the controller later tries its
-remaining direct parents, one exact candidate at a time. Newly unrouted or
-repairing Viewers always preempt this background direct work. The first direct
+use the same controller and candidate transaction. Route acquisition gives the
+best eligible direct parent one five-second head start before SFU. An exact hard
+failure may advance another direct candidate inside that same window, but the
+window never resets. If that exact direct candidate reports standard WebRTC
+transport `connected`, the controller keeps it until the operation deadline;
+this is progress only and cannot commit a route. Reaching the foreground
+boundary without that progress defers the unresolved direct candidate rather
+than declaring it failed, then starts SFU. A Viewer that
+committed SFU retains that healthy route while the controller later tries its
+remaining direct parents, one exact candidate at a time and round-robin across
+SFU Viewers after each consumed candidate. Newly unrouted or repairing Viewers
+always preempt this background direct work. The first direct
 candidate that proves a decoded frame replaces SFU make-before-break; exhausting
 the finite parent list simply keeps SFU. A candidate that would require a
 bounded-gap cutover is skipped because background convergence may not interrupt
@@ -135,14 +140,18 @@ current media. This is event-driven route convergence, not periodic rebalancing
 or quality-based switching.
 
 If an SFU subscription is needed while the Host has no publication and all Host
-slots are occupied, reconciliation uses the same child operation to convert one
-deterministic current Host direct child into the first SFU subscriber. It uses
-the affected child when that child is already a Host direct child; otherwise it
-uses the newest connected Host direct child in stable join order. The candidate
-creates the single Host publication, preserves that child's subtree, and commits
-on its first newly decoded frame. The publication then replaces the released
-Host peer slot, and the next reconciliation handles the original waiting or
-failed child. This creates no bootstrap state or second graph.
+slots are occupied, the controller retains one bounded bootstrap intent: the
+original demand and session, plus the finite Host direct children already tried
+as carriers. Each carrier uses the ordinary child
+operation and must fit in the existing overlap allowance; a transition that
+would first cut a healthy carrier is ineligible. Carrier failure leaves that
+carrier's committed route intact and advances the intent. Exhausting all safe
+carriers fails the waiting demands for that fact, never the healthy carriers.
+On success, the original demand tries the new publication before its eligible
+direct candidates; after its first decoded SFU frame those direct candidates
+resume as background convergence. A new external fact may rebuild the finite carrier
+list. This intent is part of the same controller and owns no second graph,
+concurrent route operation, or independent timer.
 
 ### Authorization and transition
 
@@ -151,19 +160,23 @@ authenticated room and endpoint sessions, current share generation, base route
 revision, and unique pending revision. Connection identity fences the candidate
 PeerConnection, and publication generation remains owned by the SFU resource
 lifecycle.
-A single pending child-operation object aggregates these bindings, the
-deterministic candidate list and cursor, its current candidate and reservations,
-and one deadline. Candidate failure advances only that exact cursor entry.
+A single pending child-operation object aggregates these bindings, its exact
+media child and route-demand owner, the deterministic candidate list and cursor,
+its current candidate and reservations, and one deadline. Candidate failure
+advances only that exact cursor entry.
 Initial availability keeps one bounded direct window before SFU. Background
-direct convergence uses the same bounded window for each remaining exact parent;
-its finite tried set survives between attempts, and a higher-priority route
-demand aborts the current attempt without marking the parent failed. These
+direct convergence uses the operation's full deadline for each remaining exact parent;
+its finite tried set survives between attempts, rotates to the next SFU Viewer
+after a consumed candidate, and a higher-priority route demand aborts the
+current attempt without marking the parent failed. These
 fields do not create another graph, concurrent pending route revision, periodic
 timer, assignment generation, or all-pairs probe.
 A `prepare` route update names that operation's exact child, route kind, and
 server-issued candidate connection identity. Parent and child therefore
 prepare the same connection; neither endpoint infers candidate authority from
-an assignment-list difference.
+an assignment-list difference. The candidate child may report one exact
+transport-connected progress event fenced by the same revision and connection;
+only its later decoded-frame ready event can commit.
 The current Browser runtime contract uses the single `screener-v12` wire. On each WebSocket, the
 server sends the exact prepare before its SFU configuration; the candidate child
 is queued before a peer parent is allowed to start its offer. WebSocket ordering

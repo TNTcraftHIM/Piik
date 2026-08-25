@@ -886,6 +886,19 @@ export class SignalingServer {
           message,
         );
         return;
+      case "route-transport-connected":
+        if (!this.isHybridMediaEnabled()) {
+          this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");
+          return;
+        }
+        this.hybridMediaRouter!.handleRouteTransportConnected(
+          {
+            ...authenticated,
+            sessionId: this.socketStates.get(socket)!.sessionId,
+          },
+          message,
+        );
+        return;
       case "route-media-unavailable":
         if (!this.isHybridMediaEnabled()) {
           this.sendError(socket, "FORBIDDEN", "Media routes are not enabled");

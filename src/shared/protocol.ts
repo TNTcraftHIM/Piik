@@ -697,6 +697,13 @@ export const clientMessageSchema = z.union([
     .strict(),
   z
     .object({
+      type: z.literal("route-transport-connected"),
+      revision: mediaRouteRevisionSchema,
+      connectionId: opaqueIdSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("route-media-unavailable"),
       revision: mediaRouteRevisionSchema,
     })

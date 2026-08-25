@@ -231,6 +231,45 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
+  it("keeps an exact transport-connected direct candidate past the boundary", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { store, sent, router } = harness(2, true, 300);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const viewer = connectViewer(store, room, "transport-connected");
+      complete(router, viewer);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const direct = preparedFor(sent, viewer.sessionId)!;
+      router.handleRouteTransportConnected(viewer, {
+        type: "route-transport-connected",
+        revision: direct.revision,
+        connectionId: direct.candidate.connectionId,
+      });
+      await vi.advanceTimersByTimeAsync(150);
+      expect(preparedFor(sent, viewer.sessionId)).toEqual(direct);
+      router.handleRouteReady(viewer, {
+        type: "route-ready",
+        revision: direct.revision,
+        phase: "prepare",
+      });
+      await vi.waitFor(() =>
+        expect(activeAfter(sent, viewer.sessionId, direct.revision - 1)).toMatchObject({
+          assignment: { upstream: { kind: "peer" } },
+        }),
+      );
+    } finally {
+      await router.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("uses the direct boundary to bootstrap SFU when every Host slot is full", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -283,6 +322,53 @@ describe("HybridMediaRouter v9 runtime", () => {
           "sfu",
         ),
       );
+      const secondBootstrap = preparedFor(sent, secondRoot.sessionId)!;
+      router.handleRouteFailed(secondRoot, {
+        type: "route-failed",
+        revision: secondBootstrap.revision,
+        phase: "prepare",
+        connectionId: secondBootstrap.candidate.connectionId,
+      });
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, firstRoot.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      expect(
+        sent
+          .get(secondRoot.sessionId)
+          ?.some(
+            (message) =>
+              message.type === "route-status" && message.state === "failed",
+          ),
+      ).toBe(false);
+      const firstBootstrap = preparedFor(sent, firstRoot.sessionId)!;
+      router.handleRouteFailed(firstRoot, {
+        type: "route-failed",
+        revision: firstBootstrap.revision,
+        phase: "prepare",
+        connectionId: firstBootstrap.candidate.connectionId,
+      });
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(waiting.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({
+          state: "failed",
+          reason: "route-exhausted",
+        }),
+      );
+      for (const root of [firstRoot, secondRoot]) {
+        expect(
+          sent
+            .get(root.sessionId)
+            ?.some(
+              (message) =>
+                message.type === "route-status" && message.state === "failed",
+            ),
+        ).toBe(false);
+      }
       expect(
         sent
           .get(waiting.sessionId)
@@ -290,7 +376,7 @@ describe("HybridMediaRouter v9 runtime", () => {
             (message) =>
               message.type === "route-status" && message.state === "failed",
           ),
-      ).toBe(false);
+      ).toBe(true);
     } finally {
       await router.close();
       vi.useRealTimers();
@@ -709,7 +795,7 @@ describe("HybridMediaRouter v9 runtime", () => {
   });
 
   it("keeps SFU Viewer and downstream Peer evidence identities separate", async () => {
-    const { store, sent, router } = harness(1, true);
+    const { store, sent, router } = harness(1, true, 1_000);
     try {
       const room = await store.createRoom();
       const { first } = await establishSfuRoom(store, sent, router, room);
@@ -723,6 +809,12 @@ describe("HybridMediaRouter v9 runtime", () => {
       router.setViewerRelayCapacity(first, 1);
       const child = connectViewer(store, room, "sfu-peer-child");
       complete(router, child);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, child.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 510));
       await vi.waitFor(() =>
         expect(preparedFor(sent, child.sessionId)?.candidate.transport).toBe(
           "sfu",

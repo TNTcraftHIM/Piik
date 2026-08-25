@@ -1,11 +1,15 @@
 import {
+  CirclePlay,
   KeyRound,
   LoaderCircle,
   Network,
+  Pause,
   Pencil,
   RefreshCw,
   Save,
+  TriangleAlert,
   VideoOff,
+  WifiOff,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -60,6 +64,7 @@ import {
   reduceViewerPresentation,
   type ViewerFailureCode,
   type ViewerRouteKind,
+  type ViewerStage,
 } from "../media/viewer-presentation";
 import {
   isAutoplayPolicyRejection,
@@ -98,6 +103,7 @@ interface PendingPeerRoute {
   parentPeerId: string;
   peer: ViewerPeer | null;
   decodedFrame: boolean;
+  connectedSent: boolean;
   readySent: boolean;
   candidateConnectionId: string;
   stream: MediaStream | null;
@@ -109,6 +115,43 @@ interface RemoteMediaBinding {
   generation: number;
   revision: number;
   videoTrackKey: string;
+}
+
+function StageOverlayIcon({ stage }: { stage: ViewerStage }) {
+  if (stage === "needs-play") {
+    return <CirclePlay size={36} strokeWidth={1.5} aria-hidden="true" />;
+  }
+  if (stage === "host-paused") {
+    return <Pause size={36} strokeWidth={1.5} aria-hidden="true" />;
+  }
+  if (stage === "host-offline") {
+    return <WifiOff size={36} strokeWidth={1.5} aria-hidden="true" />;
+  }
+  if (
+    stage === "route-failed" ||
+    stage === "playback-failed" ||
+    stage === "server-error"
+  ) {
+    return <TriangleAlert size={36} strokeWidth={1.5} aria-hidden="true" />;
+  }
+  if (
+    stage === "recovering" ||
+    stage === "waiting-sfu" ||
+    stage === "preparing-p2p" ||
+    stage === "preparing-sfu" ||
+    stage === "receiving" ||
+    stage === "allocating"
+  ) {
+    return (
+      <LoaderCircle
+        size={36}
+        strokeWidth={1.5}
+        className="spin"
+        aria-hidden="true"
+      />
+    );
+  }
+  return <VideoOff size={36} strokeWidth={1.5} aria-hidden="true" />;
 }
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
@@ -619,6 +662,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (!probe || probe.readySent) {
         return true;
       }
+      if (
+        !probe.connectedSent &&
+        probe.snapshot?.connectionState === "connected" &&
+        probe.snapshot.connectionId === probe.candidateConnectionId
+      ) {
+        probe.connectedSent = signal.send({
+          type: "route-transport-connected",
+          revision: probe.revision,
+          connectionId: probe.candidateConnectionId,
+        });
+      }
       if (!pendingPeerHasDecodedFrame(probe)) {
         return false;
       }
@@ -702,6 +756,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               parentPeerId: assignment.upstream.peerId,
               peer: null,
               decodedFrame: false,
+              connectedSent: false,
               readySent: false,
               candidateConnectionId: candidate.connectionId,
               stream: null,
@@ -980,6 +1035,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               probe.stream = null;
               probe.snapshot = null;
               probe.decodedFrame = false;
+              probe.connectedSent = false;
               probe.readySent = false;
               peer.dispose();
               return true;
@@ -1549,12 +1605,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       return;
     }
-    video.srcObject = remoteMedia.stream;
+    const streamChanged = video.srcObject !== remoteMedia.stream;
+    if (streamChanged) {
+      video.srcObject = remoteMedia.stream;
+    }
     if (presentationState.host === "paused") {
       video.pause();
       return;
     }
-    attemptPlayback(video, remoteMedia);
+    if (streamChanged) {
+      attemptPlayback(video, remoteMedia);
+    }
   }, [remoteMedia]);
 
   useEffect(() => {
@@ -1890,13 +1951,30 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           />
           {presentation.overlay === "blocking" && (
             <div className="stage-placeholder" role="status">
-              <VideoOff size={36} strokeWidth={1.5} aria-hidden="true" />
+              <StageOverlayIcon stage={presentation.stage} />
               <span>{presentation.message}</span>
             </div>
           )}
-          {presentation.overlay === "status" && (
+          {presentation.overlay === "status" &&
+            presentation.stage === "needs-play" && (
+            <button
+              className="stage-overlay is-interactive"
+              type="button"
+              onClick={() => {
+                const video = videoRef.current;
+                const binding = remoteMediaRef.current;
+                if (video && binding) attemptPlayback(video, binding);
+              }}
+            >
+              <StageOverlayIcon stage={presentation.stage} />
+              <span>{presentation.message}</span>
+            </button>
+          )}
+          {presentation.overlay === "status" &&
+            presentation.stage !== "needs-play" && (
             <div className="stage-overlay" role="status">
-              {presentation.message}
+              <StageOverlayIcon stage={presentation.stage} />
+              <span>{presentation.message}</span>
             </div>
           )}
         </section>
