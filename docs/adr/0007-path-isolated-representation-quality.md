@@ -1,6 +1,6 @@
 # ADR-0007: LiveKit-Owned SFU Representation Adaptation
 
-- Status: Accepted; not implemented or deployed
+- Status: Accepted and implemented in current source; not deployed
 - Date: 2026-08-19
 - Last reviewed: 2026-08-25
 
@@ -11,13 +11,14 @@ controllers. The SFU path is different: one Host publication serves several
 subscribers, so a weak subscriber needs a lower encoded representation without
 lowering every healthy subscriber or creating one encoder per Viewer.
 
-A single non-scalable `HIGH` representation cannot provide that spatial
+A single non-scalable full-resolution representation cannot provide that spatial
 downshift because an SFU forwards encoded packets and does not transcode them.
-The earlier production A/B compared an always-active `LOW+HIGH` publication
-against `LOW` disabled. It showed that the always-active lower representation
-competed with `HIGH` on that constrained Host-to-SFU path; it did not test
+The earlier production A/B compared an always-active two-encoding publication
+against its lower representation disabled. It showed that the always-active
+lower representation competed with the full representation on that constrained
+Host-to-SFU path; it did not test
 LiveKit-owned demand-driven layer control and does not justify a permanent
-single-`HIGH` contract.
+single-encoding contract.
 
 The earlier application-layer controller discussion started from the false
 premise that LiveKit/WebRTC did not already own per-subscriber bandwidth
@@ -31,16 +32,18 @@ removing the representation required by constrained Viewers.
 
 1. Direct and peer paths retain independent stock WebRTC congestion control.
    Viewer feedback is never aggregated into a room-wide target.
-2. The Browser Host SFU publication provides bounded VP8 `HIGH` and `LOW`
-   simulcast representations. The representation count is fixed and does not
+2. The Browser Host SFU publication provides the pinned SDK's bounded VP8
+   screen-share representations: one half-resolution encoding and the original
+   full-resolution encoding. The representation count is fixed and does not
    grow with Viewer count.
 3. LiveKit Dynacast and its per-subscriber stream allocator/BWE own publication
    layer activation and the actual layer forwarded to each SFU subscriber.
    Screener does not implement a quality score, bandwidth estimator, periodic
    layer controller, or per-Viewer encoder.
-4. `HIGH` is a subscriber ceiling, not a forced delivery layer. A weak downlink
-   may receive `LOW` while another subscriber remains on `HIGH` when the pinned
-   LiveKit stack can sustain that contract.
+4. A subscriber's `HIGH` request is a ceiling, not a forced delivery layer. A
+   weak downlink may receive the lower representation while another subscriber
+   receives the highest available representation when the pinned LiveKit stack
+   can sustain that contract.
 5. AdaptiveStream is a display-demand input, not a network detector. Current
    Screener subscribers keep it disabled because any Viewer may become a relay
    and LiveKit cannot see that Viewer's peer children. Network adaptation uses
@@ -48,16 +51,21 @@ removing the representation required by constrained Viewers.
 6. ADR-0005 remains the only route owner. Layer choice does not change topology,
    endpoint capacity, SFU admission, or decoded-stall recovery authority.
 
-Current source and production remain the deployed single-`HIGH` implementation
-until a separate implementation is integrated and deployed. That is deployment
-state, not the accepted quality target.
+Current source leaves the screen-share simulcast layers unset so pinned client
+`2.22.0` supplies its default half-resolution plus original-resolution pair,
+enables Dynacast, and tracks the required server send-side-BWE configuration.
+Those two encodings use RIDs `q,h`; LiveKit's protocol labels them `LOW,MEDIUM`,
+while a subscriber's default `HIGH` ceiling still selects the highest available
+encoding. Production remains the deployed single-encoding implementation until
+cutover.
 
 ## Pinned Physical Result
 
 The 2026-08-25 gate used LiveKit server `1.13.5`, client `2.22.0`, Chrome 151,
-a continuously changing VP8 source, and one `HIGH+LOW` screen-share publication.
-Manual selection delivered `1280x720` HIGH and `640x360` LOW at about 30 fps,
-and the same connection recovered from LOW to HIGH.
+a continuously changing VP8 source, and one full-resolution plus half-resolution
+screen-share publication. Manual maximum/lower selection delivered `1280x720`
+and `640x360` at about 30 fps, and the same connection recovered from the lower
+to the full-resolution representation.
 
 With the server default receiver-side BWE, an approximately 0.96 Mbps subscriber
 remained on HIGH for about 21 seconds and ended at zero decoded fps. Enabling
@@ -68,14 +76,16 @@ connection's automatic upgrade after removing shaping was not isolated because
 Chrome bound that test condition when creating the PeerConnection; manual and
 AdaptiveStream same-connection LOW-to-HIGH recovery were independently proven.
 
-Dynacast paused layers with no subscribers after about five seconds. LOW-only
-demand disabled HIGH, while any HIGH demand kept both LOW and HIGH encoding; the
-second VP8 simulcast encode is therefore an accepted bounded cost, not eliminated
-by Dynacast. AdaptiveStream selected HIGH for a large attached element, LOW for a
+Dynacast paused layers with no subscribers after about five seconds. Lower-only
+demand disabled the full-resolution encoding, while maximum demand kept both
+encodings active; the second VP8 simulcast encode is therefore an accepted
+bounded cost, not eliminated by Dynacast. AdaptiveStream selected the full
+representation for a large attached element, the lower representation for a
 small element, paused a hidden element, and recovered when visible. With no
-attached element it received only LOW, confirming that it cannot own relay
-ingress. The accepted product combination is VP8 HIGH+LOW simulcast, Dynacast,
-server send-side BWE, and `adaptiveStream: false` for Screener subscribers.
+attached element it received only the lower representation, confirming that it
+cannot own relay ingress. The accepted product combination is pinned-default
+VP8 screen-share simulcast, Dynacast, server send-side BWE, and
+`adaptiveStream: false` for Screener subscribers.
 
 ## Evidence Boundary
 
@@ -96,10 +106,11 @@ mutation or predict another parent.
 - A weak SFU Viewer can receive a real lower spatial representation when the
   framework selects it; the SFU does not transcode.
 - The Host publishes at most two SFU representations regardless of Viewer
-  count. Dynacast pauses layers above aggregate demand and all layers when no
-  subscriber remains; HIGH demand keeps both VP8 simulcast encodings active.
+  count. Dynacast pauses representations above aggregate demand and all
+  representations when no subscriber remains; maximum demand keeps both VP8
+  simulcast encodings active.
 - Host encode capacity is handled through the existing explicit share profiles,
-  not by falling back to single HIGH and abandoning constrained subscribers.
+  not by falling back to one encoding and abandoning constrained subscribers.
 - An SFU-fed relay keeps a subscription ceiling sufficient for its subtree;
   local DOM visibility alone cannot pause that ingress.
 - A configured 60 fps or bitrate remains a ceiling, not a delivery guarantee.

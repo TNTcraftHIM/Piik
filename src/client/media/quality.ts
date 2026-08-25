@@ -246,8 +246,9 @@ function requestedScaleResolutionDownBy(
 function readVideoSenderParameters(
   parameters: RTCRtpSendParameters,
   includeAppliedScalabilityMode: boolean,
+  encodingIndex = 0,
 ): VideoSenderParameterValues {
-  const encoding = parameters.encodings[0];
+  const encoding = parameters.encodings[encodingIndex];
   const scalabilityMode = (
     encoding as
       | (RTCRtpEncodingParameters & { scalabilityMode?: unknown })
@@ -302,15 +303,23 @@ export async function configureVideoSender(
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
   }
-  parameters.encodings[0]!.maxBitrate = profile.maxBitrate;
-  parameters.encodings[0]!.maxFramerate = profile.maxFramerate;
-  parameters.encodings[0]!.scaleResolutionDownBy =
-    requestedScaleResolutionDownBy(sender, profile);
+  // Pinned LiveKit orders simulcast encodings by increasing spatial resolution.
+  const encodingIndex = parameters.encodings.length - 1;
+  parameters.encodings[encodingIndex]!.maxBitrate = profile.maxBitrate;
+  parameters.encodings[encodingIndex]!.maxFramerate = profile.maxFramerate;
+  if (parameters.encodings.length === 1) {
+    parameters.encodings[encodingIndex]!.scaleResolutionDownBy =
+      requestedScaleResolutionDownBy(sender, profile);
+  }
   parameters.degradationPreference = profile.degradationPreference;
 
-  const requested = readVideoSenderParameters(parameters, false);
+  const requested = readVideoSenderParameters(parameters, false, encodingIndex);
   await sender.setParameters(parameters);
-  const applied = readVideoSenderParameters(sender.getParameters(), true);
+  const applied = readVideoSenderParameters(
+    sender.getParameters(),
+    true,
+    encodingIndex,
+  );
   return senderParameterReadback(requested, applied);
 }
 

@@ -107,6 +107,18 @@ const livekit = vi.hoisted(() => {
       ) => {
         const localTrack = new FakeLocalTrack(rawTrack);
         localTrack.publishOptions = options;
+        const audioPreset = options.audioPreset;
+        if (
+          rawTrack.kind === "audio" &&
+          typeof audioPreset === "object" &&
+          audioPreset !== null &&
+          "maxBitrate" in audioPreset &&
+          typeof audioPreset.maxBitrate === "number"
+        ) {
+          localTrack.sender.parameters.encodings = [
+            { maxBitrate: audioPreset.maxBitrate },
+          ];
+        }
         const screenShareEncoding = options.screenShareEncoding;
         if (
           rawTrack.kind === "video" &&
@@ -606,13 +618,13 @@ describe("SfuPublisher", () => {
     expect(replacementSender.getStats).toHaveBeenCalledTimes(2);
   });
 
-  it("explicitly keeps Dynacast off while preparing SFU fallback", async () => {
+  it("enables Dynacast while preparing SFU fallback", async () => {
     const publisher = new SfuPublisher();
 
     await expect(publisher.connect(connection)).resolves.toBe(true);
 
     const room = livekit.state.rooms[0];
-    expect(room.options).toEqual({ dynacast: false });
+    expect(room.options).toEqual({ dynacast: true });
     expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
       autoSubscribe: false,
       rtcConfig: { iceServers: [] },
@@ -635,7 +647,7 @@ describe("SfuPublisher", () => {
     expect(livekit.state.rooms[0]?.disconnect).toHaveBeenCalledWith(false);
   });
 
-  it("publishes exactly one VP8 video encoding", async () => {
+  it("leaves VP8 screen-share simulcast layers to LiveKit defaults", async () => {
     const publisher = new SfuPublisher();
     const video = track("video", "video-1");
     const audio = track("audio", "audio-1");
@@ -651,7 +663,6 @@ describe("SfuPublisher", () => {
       source: Track.Source.ScreenShare,
       backupCodec: false,
       videoCodec: "vp8",
-      simulcast: false,
       screenShareEncoding: {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
@@ -660,7 +671,7 @@ describe("SfuPublisher", () => {
     });
     expect(
       room.localParticipant.publishTrack.mock.calls[0]?.[1],
-    ).toHaveProperty("videoCodec", "vp8");
+    ).not.toHaveProperty("simulcast");
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
       audioPreset: { maxBitrate: 128_000 },
@@ -978,8 +989,9 @@ describe("SfuPublisher", () => {
     room.emit(RoomEvent.Reconnected);
 
     await vi.waitFor(() =>
-      expect(audioPublication.track.sender.setParameters).toHaveBeenCalledOnce(),
+      expect(publisher.getAudioSenderParameters()).not.toBeNull(),
     );
+    expect(audioPublication.track.sender.setParameters).not.toHaveBeenCalled();
     expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
       256_000,
     );
@@ -1026,11 +1038,43 @@ describe("SfuPublisher", () => {
     room.emit(RoomEvent.Reconnected);
 
     await vi.waitFor(() =>
-      expect(audioSender.setParameters).toHaveBeenCalledTimes(audioUpdates + 1),
+      expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
+        128_000,
+      ),
     );
+    expect(audioSender.setParameters).toHaveBeenCalledTimes(audioUpdates);
     expect(publisher.getSenderParameters()).toBe(senderParameters);
     expect(publisher.getQualityWarning()).toBe(qualityWarning);
     expect(room.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("keeps publisher stats continuous across a signal-only reconnect", async () => {
+    vi.useFakeTimers();
+    const updates: Array<ConnectionMetrics | null> = [];
+    const publisher = new SfuPublisher({
+      onStats: (metrics) => updates.push(metrics),
+    });
+    const video = track("video", "video-1");
+    await publisher.connect(connection);
+    await publisher.activate(stream(video), qualityProfile);
+    const room = livekit.state.rooms[0];
+    const sender = room.localParticipant.publications[0].track.sender;
+    sender.getStats
+      .mockResolvedValueOnce(senderReport(video.id, 1_000, 100_000, 60))
+      .mockResolvedValueOnce(senderReport(video.id, 3_000, 300_000, 180))
+      .mockResolvedValueOnce(senderReport(video.id, 5_000, 500_000, 300));
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    const resets = updates.filter((update) => update === null).length;
+    room.emit(RoomEvent.Reconnected);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(updates.filter((update) => update === null)).toHaveLength(resets);
+    expect(updates.at(-1)).toMatchObject({
+      bitrateKbps: 800,
+      intervalFramesEncoded: 120,
+    });
   });
 
   it.each(["publication", "sender"] as const)(

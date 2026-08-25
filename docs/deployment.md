@@ -466,7 +466,9 @@ deployment's self-hosted STUN listener for server-side public-IP discovery and
 to prevent pinned LiveKit from substituting a public default in its join
 response. Current Screener source gives Browser publisher/subscriber connects an
 explicit empty list, so those SFU PCs do not use either response after the
-pending application cutover. Do not add Redis for this one-node workload.
+pending application cutover. The tracked `rtc.congestion_control` enables
+`use_send_side_bwe` for LiveKit-owned per-subscriber simulcast selection. Do not
+add Redis for this one-node workload.
 The service journal is the diagnostic log; keep its retention finite and access
 restricted. Pinned LiveKit 1.13.5 includes raw PublisherOffer SDP in info-level
 join records, so the tracked production baseline uses `logging.level: warn` and

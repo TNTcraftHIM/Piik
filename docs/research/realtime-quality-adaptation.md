@@ -13,7 +13,7 @@ may instead lower frame rate. Neither preference overrides congestion control.
 
 Production runs exact deployed application/runtime revision
 `1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
-`main` contains the same runtime code. Current Browser source and production use
+`main` contains newer SFU publication source pending deployment. Current Browser source and production use
 strict `screener-v12`, fixed VP8, no video `contentHint`, and no codec UI,
 quality state, or wire field. They use `balanced` as the recommended profile
 and advanced default;
@@ -79,17 +79,18 @@ real-game quality, heterogeneous networks, or endurance.
 ## 2026-08-25 Pinned Native-Adaptation Gate
 
 LiveKit server `1.13.5`, JS client `2.22.0`, and Chrome 151 exercised a changing
-VP8 `HIGH+LOW` screen-share publication. Manual subscriber selection delivered
-`1280x720` HIGH and `640x360` LOW at about 30 fps, and the same connection
-returned from LOW to HIGH. AdaptiveStream selected HIGH for a large attached
-element, LOW for a small one, paused when hidden, and recovered when visible.
-Without an attached element it received only LOW, so it cannot govern a Viewer
-that may forward the stream to peer children.
+VP8 screen-share publication with full- and half-resolution representations.
+Manual maximum/lower subscriber selection delivered `1280x720` and `640x360`
+at about 30 fps, and the same connection returned from the lower to the full
+representation. AdaptiveStream selected full resolution for a large attached
+element, half resolution for a small one, paused when hidden, and recovered when
+visible. Without an attached element it received only the lower representation,
+so it cannot govern a Viewer that may forward the stream to peer children.
 
-Dynacast stopped layers with no subscribers after about five seconds. LOW-only
-demand stopped HIGH, but any HIGH demand kept LOW and HIGH encoding together.
-It therefore avoids unused work but cannot remove VP8's dual-encode cost while a
-healthy HIGH subscriber exists.
+Dynacast stopped representations with no subscribers after about five seconds.
+Lower-only demand stopped the full representation, but maximum demand kept both
+encodings active. It therefore avoids unused work but cannot remove VP8's
+dual-encode cost while a healthy maximum-quality subscriber exists.
 
 With LiveKit's default receiver-side BWE, an approximately 0.96 Mbps subscriber
 remained on HIGH for about 21 seconds and ended at zero decoded fps. With
@@ -100,7 +101,8 @@ unshaping on the same PeerConnection was not isolated because the Chrome DevTool
 condition was bound when that connection was created; manual and AdaptiveStream
 same-connection upward transitions independently proved layer recovery.
 
-The result accepts VP8 HIGH+LOW simulcast, Dynacast, and server send-side BWE.
+The result accepts pinned-default VP8 dual-representation simulcast, Dynacast,
+and server send-side BWE.
 Screener does not add a bandwidth estimator or layer controller. AdaptiveStream
 stays disabled for current subscribers because every Viewer may become a relay.
 The earlier dual-encode cost is handled through explicit Host share profiles,
@@ -301,7 +303,7 @@ wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
 Production runs exact deployed application/runtime revision
 `1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
-`main` contains the same runtime code. Current source and production implement
+`main` contains newer SFU source pending deployment. Current source and production implement
 this strict `screener-v12` contract.
 
 Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
@@ -489,10 +491,9 @@ the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
 The earlier exact-production gate rejected its ordered `q,h` publication because
-the active lower representation reduced `HIGH`. Current source and production
-still implement one Browser SFU `HIGH`; the exact deployment gate above proved
-that no-RID baseline, while the later native-adaptation gate established the
-accepted two-representation target.
+the active lower representation reduced `HIGH`. Current source implements the
+later accepted LiveKit-owned two-representation target; production remains the
+exact no-RID single-`HIGH` baseline until cutover.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -519,14 +520,15 @@ member, which remains null rather than a capability conclusion.
 
 ## LiveKit Native Representation Boundary
 
-ADR-0007 owns the accepted target: fixed `HIGH+LOW` VP8 simulcast with layer
-activation and per-subscriber selection delegated to LiveKit. The pinned gate
-passed with explicit server send-side BWE. Current source and production remain
-the not-yet-migrated single-`HIGH` baseline.
+ADR-0007 owns the accepted target: the pinned client's default VP8 screen-share
+simulcast pair with representation activation and per-subscriber selection
+delegated to LiveKit. The pinned gate passed with explicit server send-side BWE.
+Current source implements the target; production remains the not-yet-migrated
+single-encoding baseline.
 
-The candidate assumed one shared `HIGH+LOW` SFU publication could preserve
-healthy `HIGH` while LiveKit selected a lower representation per constrained
-subscriber. Static review established two limits before the runtime gate:
+The candidate assumed one shared dual-representation SFU publication could
+preserve full resolution while LiveKit selected a lower representation per
+constrained subscriber. Static review established two limits before the runtime gate:
 ordinary WebRTC receivers have no portable per-RID selection API across
 separate PeerConnections. Runtime evidence confirmed that LiveKit 1.13.5
 Dynacast cumulatively enables qualities below the highest requested quality, so
