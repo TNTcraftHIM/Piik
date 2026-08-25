@@ -25,6 +25,8 @@ docs/maintenance.md
 docs/需求理解.md
 docs/方案设计.md
 docs/deployment.md
+scripts/package-app-release.mjs
+deploy/release-app.sh
 docs/adr/0001-p2p-first-media-topology.md
 docs/research/agent-context-governance.md
 docs/research/webrtc-p2p-screen-sharing.md
