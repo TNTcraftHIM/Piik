@@ -677,6 +677,7 @@ describe("SfuPublisher", () => {
       audioPreset: { maxBitrate: 128_000 },
       forceStereo: true,
       dtx: false,
+      red: false,
     });
     expect(sender.setParameters).toHaveBeenCalledOnce();
     expect(sender.parameters.encodings).toEqual([
@@ -734,6 +735,7 @@ describe("SfuPublisher", () => {
       audioPreset: { maxBitrate: bitrate },
       forceStereo: true,
       dtx: false,
+      red: false,
     });
   });
 
@@ -824,6 +826,7 @@ describe("SfuPublisher", () => {
       audioPreset: { maxBitrate: 256_000 },
       forceStereo: true,
       dtx: false,
+      red: false,
     });
     expect(publisher.getAudioSenderParameters()).toEqual({
       requestedMaxBitrate: 256_000,
@@ -837,6 +840,7 @@ describe("SfuPublisher", () => {
       audioPreset: { maxBitrate: 256_000 },
       forceStereo: true,
       dtx: false,
+      red: false,
     });
   });
 
@@ -1392,6 +1396,7 @@ describe("SfuPublisher", () => {
       audioPreset: { maxBitrate: 256_000 },
       forceStereo: true,
       dtx: false,
+      red: false,
     });
   });
 

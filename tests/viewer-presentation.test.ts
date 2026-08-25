@@ -58,6 +58,7 @@ describe("Viewer presentation reducer", () => {
       { type: "route", revision: 2, phase: "active", kind: "sfu" },
       { type: "media-bound", generation: 4, revision: 2 },
       { type: "autoplay-blocked", generation: 4, revision: 2 },
+      { type: "connection", revision: 2, connection: "connected" },
     );
     expect(deriveViewerPresentation(blocked)).toMatchObject({
       stage: "needs-play",
@@ -79,6 +80,46 @@ describe("Viewer presentation reducer", () => {
       stage: "receiving",
       showPlay: false,
     });
+  });
+
+  it("waits for the current media connection before showing Play", () => {
+    const blockedWhileConnecting = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 2, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 4, revision: 2 },
+      { type: "autoplay-blocked", generation: 4, revision: 2 },
+    );
+    expect(deriveViewerPresentation(blockedWhileConnecting)).toMatchObject({
+      stage: "receiving",
+      showPlay: false,
+    });
+
+    const connected = reduceViewerPresentation(blockedWhileConnecting, {
+      type: "connection",
+      revision: 2,
+      connection: "connected",
+    });
+    expect(deriveViewerPresentation(connected)).toMatchObject({
+      stage: "needs-play",
+      showPlay: true,
+    });
+  });
+
+  it("does not reuse a connected fact after the route revision advances", () => {
+    const connected = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 2, phase: "active", kind: "p2p" },
+      { type: "connection", revision: 2, connection: "connected" },
+    );
+    const nextRoute = reduceViewerPresentation(connected, {
+      type: "route",
+      revision: 3,
+      phase: "prepare",
+      kind: "sfu",
+    });
+    expect(nextRoute.connection).toBe("connecting");
   });
 
   it("ignores a late playback failure from a replaced media binding", () => {

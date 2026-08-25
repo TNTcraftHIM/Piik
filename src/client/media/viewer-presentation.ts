@@ -219,6 +219,11 @@ export function reduceViewerPresentation(
           : state.autoplayBlockedGeneration,
         retainedFrame:
           state.retainedFrame || (revisionChanged && currentFrame),
+        connection: revisionChanged
+          ? action.kind === "none"
+            ? "idle"
+            : "connecting"
+          : state.connection,
         failure:
           revisionChanged &&
           (state.failure === "ROUTE_EXHAUSTED" ||
@@ -478,7 +483,8 @@ export function deriveViewerPresentation(
   if (
     state.media &&
     state.media.revision === state.revision &&
-    state.autoplayBlockedGeneration === state.media.generation
+    state.autoplayBlockedGeneration === state.media.generation &&
+    state.connection === "connected"
   ) {
     return {
       ...presentation("needs-play", "需要点击播放", "blocking", state),
