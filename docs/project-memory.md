@@ -100,9 +100,8 @@ Last updated: 2026-08-25
 
 ## Current Source And Production
 
-- Canonical `main` and production run exact application/runtime revision
-  `af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, on strict
-  `screener-v12`.
+- Production and the matching canonical application/runtime tree use strict
+  `screener-v12`; exact identity is indexed by [status](./status.md).
 - Production uses random memory rooms, 20-Viewer admission, endpoint cap `2`,
   dedicated LiveKit admission `1` ingress / `20` egress, STUN UDP 3478, LiveKit
   media UDP 7882, and Web TCP 80/443. Node 8787 and LiveKit 7880 remain private.
@@ -112,13 +111,13 @@ Last updated: 2026-08-25
 
 ## Current Priority
 
-1. Integrate and deploy the accepted Viewer lifecycle/native-control/current-
-   route reconnect candidate, then finish representative real-network route,
-   screen-audio, real-game A/V, and mobile lifecycle acceptance.
+1. Measure Browser VP8 hardware use and game-load performance, then complete the
+   mobile Viewer lifecycle matrix and representative real-network route/media
+   acceptance.
 
-Quality-driven parent selection, VP8 hardware evidence, Native sender work,
-distribution packages, whole-product UI/bilingual polish, and repository-wide
-simplification remain later decisions in [the TODO ledger](./todo.md).
+Quality-driven parent selection, Native sender work, distribution packages,
+whole-product UI/bilingual polish, and repository-wide simplification remain
+later decisions in [the TODO ledger](./todo.md).
 
 ## Working Rules
 

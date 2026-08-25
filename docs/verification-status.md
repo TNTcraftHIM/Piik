@@ -8,14 +8,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, wire
-  `screener-v12`, from `/opt/screener/releases/af348ee`.
+  `4f46d9ebc4fe11a6648749f2b8b447eb83041fd5`, release `4f46d9e`, wire
+  `screener-v12`, from `/opt/screener/releases/4f46d9e`.
 - Runtime tar SHA-256:
-  `4922cc31d7caaad7c5412b1f2fe1d73f788d16d92386efad6eac358a97b8a78e`.
+  `a832fd401955f9913e8ac03857851b302c49f8eef7b049c39d21a214586227d2`.
   The 39-file manifest SHA-256 is
-  `5b397809b664b9a55885ac603df615b537bf51276e7274416820870956242d7d`.
-- Public Browser asset `assets/index-BvuZY6Hc.js` is 488473 bytes with SHA-256
-  `e8fc0500496ee101031a9cfebfcc22d3b69e66d2cac5e875448b56620dbb21c5`.
+  `47050583ff4a7e691339bc4087f95e704c242625a2ec92ff2d5166cf3c6eca7c`.
+- Public Browser asset `assets/index-kQCZyrsd.js` is 486071 bytes with SHA-256
+  `28b706a88085ff411b70eee8865fad53406b7679020cfe3fd0fa47e5091792e9`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
@@ -49,14 +49,13 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- `af348ee` fixes Browser VP8 with `contentHint = "motion"`, reapplies the
+- Current `4f46d9e` uses Browser VP8 with `contentHint = "motion"`, reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
-- The accepted `fix/viewer-page-lifecycle` candidate has focused coverage for
-  page-resume decoded-stall rebaselining, current-frame presentation authority,
-  and same-parent P2P manual rebuild. TypeScript and the client production build
-  pass. It is not current source or production until its release is integrated.
+- Viewer page-resume decoded-stall rebaselining, current-frame presentation
+  authority, native controls, and same-route manual reconnect are current source
+  and production behavior.
 
 ## Open Physical Gates
 
