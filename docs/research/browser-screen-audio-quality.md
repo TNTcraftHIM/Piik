@@ -17,7 +17,7 @@ voice isolation where the browser supports those constraints. These are
 preferences and readback fields, not portable fidelity guarantees.
 
 The only user-facing audio-quality choices are sender ceilings of 64, 128, and
-256 kbps, with 128 kbps as the default. They update live on current P2P,
+256 kbps, with 64 kbps as the default. They update live on current P2P,
 Browser-relay, and SFU senders and apply to future senders. Actual RTP traffic
 can remain below a ceiling because of content and congestion, and includes
 transport behavior not represented by the selected number.

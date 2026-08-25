@@ -674,7 +674,7 @@ describe("SfuPublisher", () => {
     ).not.toHaveProperty("simulcast");
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 128_000 },
+      audioPreset: { maxBitrate: 64_000 },
       forceStereo: true,
       dtx: false,
       red: false,

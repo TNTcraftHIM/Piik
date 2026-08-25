@@ -613,7 +613,7 @@ describe("HostPeer source replacement", () => {
       ),
     ).resolves.toBe(true);
     expect(connection.senders[1]?.track).toBe(nextAudio);
-    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([128_000]);
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([64_000]);
   });
 
   it("stops sending audio without renegotiating when the new source has none", async () => {
@@ -633,7 +633,7 @@ describe("HostPeer source replacement", () => {
     ).resolves.toBe(true);
 
     expect(connection.senders[1]?.track).toBeNull();
-    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([128_000]);
+    expect(connection.senders[1]?.appliedMaxBitrates).toEqual([64_000]);
   });
 
   it("updates quality parameters without replacing media tracks", async () => {
@@ -667,7 +667,7 @@ describe("HostPeer source replacement", () => {
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledTimes(2);
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
-      128_000,
+      64_000,
       256_000,
     ]);
     expect(peer.getSnapshot().audioSenderParameters).toEqual({
@@ -695,9 +695,9 @@ describe("HostPeer source replacement", () => {
     ).resolves.toBe(false);
 
     expect(audioSender.track).toBe(audio);
-    expect(audioSender.getParameters().encodings[0]?.maxBitrate).toBe(128_000);
+    expect(audioSender.getParameters().encodings[0]?.maxBitrate).toBe(64_000);
     expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(
-      128_000,
+      64_000,
     );
     expect(peer.getSnapshot().qualityWarning).toContain(
       "应用音频发送参数失败",
@@ -721,9 +721,9 @@ describe("HostPeer source replacement", () => {
     const audioSender = FakePeerConnection.latest!.senders[1]!;
     audioSender.deferNextSetParameters = true;
 
-    const saver = peer.updateProfile({
+    const music = peer.updateProfile({
       ...QUALITY_PROFILES["720p30"],
-      screenAudioQuality: "saver",
+      screenAudioQuality: "music",
     });
     await vi.waitFor(() =>
       expect(audioSender.setParameters).toHaveBeenCalledTimes(2),
@@ -734,11 +734,11 @@ describe("HostPeer source replacement", () => {
     });
     audioSender.releaseDeferredSetParameters();
 
-    await expect(saver).resolves.toBe(false);
+    await expect(music).resolves.toBe(false);
     await expect(veryHigh).resolves.toBe(true);
     expect(audioSender.appliedMaxBitrates).toEqual([
-      128_000,
       64_000,
+      128_000,
       256_000,
     ]);
     expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(

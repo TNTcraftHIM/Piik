@@ -164,9 +164,9 @@ export const roleSchema = z.enum(["host", "viewer"]);
 export type Role = z.infer<typeof roleSchema>;
 
 export const qualityProfileIdSchema = z.enum([
-  "1080p60",
-  "1080p30",
   "720p30",
+  "1080p30",
+  "1080p60",
 ]);
 export type QualityProfileId = z.infer<typeof qualityProfileIdSchema>;
 
@@ -209,7 +209,7 @@ export const DEFAULT_QUALITY_SETTINGS = {
   maxFramerate: 30,
   maxBitrate: 5_000_000,
   degradationPreference: "maintain-resolution",
-  screenAudioQuality: "music",
+  screenAudioQuality: "saver",
 } as const satisfies QualitySettings;
 
 export const relayDownstreamEdgesSchema = z

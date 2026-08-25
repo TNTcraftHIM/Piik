@@ -41,9 +41,9 @@ afterEach(() => {
 describe("realtime quality controls", () => {
   it("keeps exactly three recommended profiles with 1080p30 as the default", () => {
     expect(Object.keys(QUALITY_PROFILES)).toEqual([
-      "1080p60",
-      "1080p30",
       "720p30",
+      "1080p30",
+      "1080p60",
     ]);
     expect(QUALITY_PROFILES["1080p30"]).toMatchObject({
       resolution: "1080p",
@@ -117,18 +117,18 @@ describe("realtime quality controls", () => {
     expect(QUALITY_PROFILES["720p30"].degradationPreference).toBe("balanced");
   });
 
-  it("keeps audio selection orthogonal while defaulting old settings to music", () => {
-    const saver = {
+  it("keeps audio selection orthogonal while defaulting old settings to saver", () => {
+    const music = {
       ...QUALITY_PROFILES["1080p60"],
-      screenAudioQuality: "saver",
+      screenAudioQuality: "music",
     } as const;
     const {
       screenAudioQuality: _screenAudioQuality,
       ...legacySettings
     } = QUALITY_PROFILES["1080p60"];
 
-    expect(matchingQualityProfileId(saver)).toBe("1080p60");
-    expect(qualitySettingsEqual(saver, QUALITY_PROFILES["1080p60"])).toBe(false);
+    expect(matchingQualityProfileId(music)).toBe("1080p60");
+    expect(qualitySettingsEqual(music, QUALITY_PROFILES["1080p60"])).toBe(false);
     expect(
       qualitySettingsEqual(legacySettings, QUALITY_PROFILES["1080p60"]),
     ).toBe(true);
@@ -245,7 +245,7 @@ describe("realtime quality controls", () => {
     expect(SCREEN_AUDIO_BITRATES[quality]).toBe(bitrate);
   });
 
-  it("uses the music ceiling for a legacy setting without an audio preset", async () => {
+  it("uses the saver ceiling for a setting without an audio preset", async () => {
     let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
     const sender = {
       getParameters: () => applied,
@@ -255,8 +255,8 @@ describe("realtime quality controls", () => {
     } as unknown as RTCRtpSender;
 
     await expect(configureScreenAudioSender(sender)).resolves.toEqual({
-      requestedMaxBitrate: 128_000,
-      appliedMaxBitrate: 128_000,
+      requestedMaxBitrate: 64_000,
+      appliedMaxBitrate: 64_000,
       mismatch: false,
     });
   });
