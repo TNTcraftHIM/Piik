@@ -15,7 +15,7 @@ import type { SfuFallbackOptions } from "./hybrid-media-router.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SfuRoomControl } from "./sfu-room-control.js";
 import { SfuResourceAdmission } from "./sfu-resource-admission.js";
-import { RoomStore, RoomStoreError } from "./room-store.js";
+import { ROOM_CAPACITY, RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer, type SignalingOptions } from "./signaling.js";
 
 export interface CreateServerOptions {
@@ -71,8 +71,8 @@ export async function createScreenerServer(
           maxViewersPerRoom: config.maxViewersPerRoom,
         }),
       admission: new SfuResourceAdmission({
-        ingressCapacity: livekitFallback.ingressCapacity,
-        egressCapacity: livekitFallback.egressCapacity,
+        ingressCapacity: ROOM_CAPACITY,
+        egressCapacity: ROOM_CAPACITY * config.maxViewersPerRoom,
       }),
       roomControl: sfuRoomControl,
     };
@@ -81,7 +81,7 @@ export async function createScreenerServer(
     options.roomStore ??
     new RoomStore({
       leaseMs: config.roomLeaseMs,
-      maxRooms: config.maxRooms,
+      maxRooms: ROOM_CAPACITY,
       maxViewersPerRoom: config.maxViewersPerRoom,
       now,
     });

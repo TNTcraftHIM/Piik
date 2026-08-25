@@ -41,9 +41,10 @@ All room state lives in the authoritative application process:
 The free-code pool contains every currently unallocated four-digit code. A room
 creation request may name one locally preferred code: the store takes it only if
 it is still in the free pool, otherwise it selects uniformly from the current
-pool. Room release returns the code to that pool. `MAX_ROOMS` must not exceed the
-9,000-code space; its product default remains 1,000. A room code is a locator and
-best-effort preference, not a secret, reservation, or permanent identity.
+pool. Room release returns the code to that pool. The complete `1000..9999`
+space fixes active room capacity at 9,000; there is no separate room-limit
+configuration. A room code is a locator and best-effort preference, not a
+secret, reservation, or permanent identity.
 
 `ROOM_LEASE_SECONDS` is the single room-lifetime setting and defaults to 86,400
 seconds. An authenticated, actively sharing Host prevents expiry. When sharing
@@ -154,7 +155,8 @@ the generic `SERVER_ERROR`. None of those paths is folded into
 ## Acceptance Gates
 
 - Allocation uses only `1000` through `9999`, never duplicates an active code,
-  respects `MAX_ROOMS`, and returns released codes to the free pool.
+  admits at most the fixed 9,000-code capacity, and returns released codes to
+  the free pool.
 - An active Host is not expired. Stop/disconnect starts the configured dormant
   lease; the exact Host token resumes before expiry; Viewer activity does not.
 - Expiry and process restart reject the old Host token, Viewer grant, room

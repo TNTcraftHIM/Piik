@@ -116,11 +116,23 @@ remains an observed acceptance metric.
 
 A candidate identity is one logical upstream path. An operation opened by a
 failed edge seeds that exact current candidate as already tried, so the same
-parent cannot immediately repeat. Other eligible direct/STUN parents use
-deterministic order first, followed by SFU reuse or direct Host publication
-ingress. A new external fact starts a new operation and may make the old
-candidate eligible again. The operation records only exact candidates already
-tried; failure does not globally exclude that parent from later room events.
+parent cannot immediately repeat. A new external fact may make the old
+candidate eligible again; failure does not globally exclude that parent.
+
+Foreground availability and direct convergence have separate priorities but
+use the same controller and candidate transaction. Without a current Host
+publication, route acquisition first tries the best eligible direct parent,
+then SFU, then retains the remaining direct suffix. Once the room has a healthy Host publication, another
+joining Viewer first commits an SFU subscription so an earlier slow direct
+candidate cannot serialize every waiting Viewer. A Viewer that committed SFU
+from foreground acquisition retains that healthy route while the controller later tries its
+remaining direct parents, one exact candidate at a time. Newly unrouted or
+repairing Viewers always preempt this background direct work. The first direct
+candidate that proves a decoded frame replaces SFU make-before-break; exhausting
+the finite parent list simply keeps SFU. A candidate that would require a
+bounded-gap cutover is skipped because background convergence may not interrupt
+current media. This is event-driven route convergence, not periodic rebalancing
+or quality-based switching.
 
 If an SFU subscription is needed while the Host has no publication and all Host
 slots are occupied, reconciliation uses the same child operation to convert one
@@ -141,16 +153,13 @@ PeerConnection, and publication generation remains owned by the SFU resource
 lifecycle.
 A single pending child-operation object aggregates these bindings, the
 deterministic candidate list and cursor, its current candidate and reservations,
-and one total operation deadline. Candidate failure advances the cursor without
-resetting that deadline. These fields do not become separate gates or state
-machines, and this route wave adds no
-assignment, media-binding, or proof generation to the wire.
-The same one timer derives wake boundaries from the route classes actually
-present in the deterministic list: direct peer and SFU. The total deadline is
-divided equally between those semantic stages, without fixed per-candidate
-milliseconds. Hard failures may advance through multiple candidates inside a
-stage; a silent direct candidate at its boundary skips the remaining direct
-candidates so it cannot consume the SFU suffix.
+and one deadline. Candidate failure advances only that exact cursor entry.
+Initial availability keeps one bounded direct window before SFU. Background
+direct convergence uses the same bounded window for each remaining exact parent;
+its finite tried set survives between attempts, and a higher-priority route
+demand aborts the current attempt without marking the parent failed. These
+fields do not create another graph, concurrent pending route revision, periodic
+timer, assignment generation, or all-pairs probe.
 A `prepare` route update names that operation's exact child, route kind, and
 server-issued candidate connection identity. Parent and child therefore
 prepare the same connection; neither endpoint infers candidate authority from
@@ -334,12 +343,12 @@ extra/private fields, deny the request to Viewers, and prove departure and
 room-deletion cleanup.
 
 For the single-process deployment, SFU admission is one injected authority with
-deployment-wide ingress and egress counters. Enabling LiveKit requires explicit
-positive safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values;
-neither has a product default and neither is derived from endpoint capacity,
-Viewer admission, or a fixed root count. One exact room/share/publication entry
-owns the Host publication ingress, while an exact Viewer subscription handle
-under that entry owns one egress unit. The current publication is reused as
+deployment-wide ingress and egress counters. The fixed 9,000-room code space is
+also the ingress ceiling because each room owns at most one Host publication;
+egress is the same room capacity multiplied by per-room Viewer admission.
+Neither has an independent setting. One exact room/share/publication entry owns
+the Host publication ingress, while an exact Viewer subscription handle under
+that entry owns one egress unit. The current publication is reused as
 Viewers enter or leave the SFU path; each child candidate reserves and commits
 only its own subscription handle. Reserved, committed, and draining handles,
 concurrent publication generations, and generations still draining from

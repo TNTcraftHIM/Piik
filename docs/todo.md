@@ -1,26 +1,38 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-08-25
+Last reviewed: 2026-08-26
 
 Only **Now** is executable. A branch, old experiment, observation, or accepted
 later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Preferred room reacquisition.** While sharing, keep the last assigned code
+1. **Restore bounded direct-parent selection.** Diagnose the `2244`/`7723`
+   production traces and replace the class-stage deadline that can let one
+   silent P2P candidate skip every remaining direct parent. Preserve exact
+   candidate failure, direct-before-SFU order, and bounded latency at 20
+   Viewers without linear exhaustive waiting or all-pairs probing.
+2. **Converge Viewer route presentation.** Current decoded media must clear a
+   stale no-route/reconnecting overlay. Manual media reconnect must refresh the
+   current route facts and presentation state without requiring a page reload.
+3. **Verify multi-room SFU admission.** Replace production's single-publication
+   limit with the fixed 9,000-room ingress and
+   `9000 * MAX_VIEWERS_PER_ROOM` subscription egress derived from product
+   admission, then verify two rooms can use independent SFU publications.
+4. **Preferred room reacquisition.** While sharing, keep the last assigned code
    as an unexpired local preference; normal stop starts the configured room
    lease countdown. A new room may request that code, but the server uses it
    only while free and always creates a new room incarnation and credentials.
-2. **Browser VP8 hardware evidence.** Measure supported Chrome/Edge platforms
+5. **Browser VP8 hardware evidence.** Measure supported Chrome/Edge platforms
    under real game load using actual codec, encoder implementation, encode time,
    frame rate, and CPU/GPU attribution. Do not add another codec, custom encoder,
    GPU selector, or Native helper without a new decision.
-3. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+6. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
    survival or controller recovery. Web does not promise background video or
    relay execution after OS suspension.
-4. **Finish real-network route and media acceptance.** Exercise direct peer,
+7. **Finish real-network route and media acceptance.** Exercise direct peer,
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,
@@ -33,7 +45,9 @@ later topic is not implementation authority by itself.
 
 1. **Quality-based topology research.** After the real-network baseline, decide
    whether measured user-visible quality justifies any active parent-selection
-   mechanism. Current evidence cannot compare an active route with an
+   mechanism. A weak-Host production session showed a usable P2P Viewer with
+   worse playback than SFU Viewers, so reachability alone is not the eventual
+   optimization target. Current evidence still cannot compare an active route with an
    unconnected alternative, so no quality score, all-pairs probing, periodic
    rebalancing, relay abdication threshold, or active parent switch is accepted.
    Prefer mature algorithms and one general model if this boundary is reopened.

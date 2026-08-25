@@ -1065,6 +1065,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               failure: "ROUTE_EXHAUSTED",
               revision: currentRouteRevision,
             });
+            setFrameProofEpoch((current) => current + 1);
             return true;
           },
         },
@@ -1211,11 +1212,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 revision: message.revision,
                 connectionId: message.candidate.connectionId,
               };
-              acceptAssignedRoute(
-                message.revision,
-                message.assignment.upstream,
-                "prepare",
-              );
+              if (remoteMediaRef.current === null) {
+                acceptAssignedRoute(
+                  message.revision,
+                  message.assignment.upstream,
+                  "prepare",
+                );
+              }
             }
             if (message.phase === "active") {
               const samePeerUpstream =
@@ -1273,6 +1276,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           revision: message.revision,
           state: message.state,
         });
+        if (message.state === "failed") {
+          setFrameProofEpoch((current) => current + 1);
+        }
         return;
       }
       if (message.type === "viewer-quality-evidence") {

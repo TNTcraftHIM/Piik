@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { RoomStore, RoomStoreError } from "../src/server/room-store.ts";
+import {
+  ROOM_CAPACITY,
+  RoomStore,
+  RoomStoreError,
+} from "../src/server/room-store.ts";
 
 interface MutableClock {
   nowMs: number;
@@ -52,15 +56,15 @@ function expectRoomError(run: () => unknown, code: string) {
 describe("RoomStore", () => {
   it("allocates every free four-digit room code and recycles releases", async () => {
     const { store: roomStore } = store({
-      maxRooms: 9_000,
+      maxRooms: ROOM_CAPACITY,
       random: (size) => Buffer.alloc(size),
     });
 
     const rooms = [];
-    for (let index = 0; index < 9_000; index += 1) {
+    for (let index = 0; index < ROOM_CAPACITY; index += 1) {
       rooms.push(await roomStore.createRoom());
     }
-    expect(new Set(rooms.map((room) => room.roomId)).size).toBe(9_000);
+    expect(new Set(rooms.map((room) => room.roomId)).size).toBe(ROOM_CAPACITY);
     expect(rooms.every((room) => /^[1-9]\d{3}$/.test(room.roomId))).toBe(true);
     await expect(roomStore.createRoom()).rejects.toEqual(
       new RoomStoreError("ROOM_LIMIT"),
@@ -86,8 +90,8 @@ describe("RoomStore", () => {
   });
 
   it("rejects room limits beyond the four-digit code space", () => {
-    expect(() => store({ maxRooms: 9_001 }).store).toThrow(
-      "Room limit must be an integer between 1 and 9000",
+    expect(() => store({ maxRooms: ROOM_CAPACITY + 1 }).store).toThrow(
+      `Room limit must be an integer between 1 and ${ROOM_CAPACITY}`,
     );
   });
 

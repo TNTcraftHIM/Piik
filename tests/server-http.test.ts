@@ -11,6 +11,7 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
+import { RoomStore } from "../src/server/room-store.ts";
 import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const allowedOrigin = "http://allowed.test";
@@ -30,7 +31,6 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     allowedOrigins: new Set([allowedOrigin]),
     siteAccessPassword,
     roomLeaseMs: 86_400_000,
-    maxRooms: 10,
     maxViewersPerRoom: 8,
     peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
@@ -43,7 +43,11 @@ async function start(
   config = testConfig(),
   options: Pick<
     CreateServerOptions,
-    "now" | "siteAccessTtlSeconds" | "sfuTokenIssuer" | "sfuRoomControl"
+    | "now"
+    | "roomStore"
+    | "siteAccessTtlSeconds"
+    | "sfuTokenIssuer"
+    | "sfuRoomControl"
   > = {},
 ): Promise<string> {
   const sfuRoomControl =
@@ -558,7 +562,14 @@ describe("room HTTP API", () => {
 
   it("returns service unavailable at the global room bound", async () => {
     const baseUrl = await start(
-      testConfig({ siteAccessPassword: undefined, maxRooms: 1 }),
+      testConfig({ siteAccessPassword: undefined }),
+      {
+        roomStore: new RoomStore({
+          leaseMs: 86_400_000,
+          maxRooms: 1,
+          maxViewersPerRoom: 8,
+        }),
+      },
     );
     const create = () => createRoom(baseUrl);
 
@@ -577,8 +588,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://livekit.test:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       {
@@ -608,8 +617,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       {
@@ -640,8 +647,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,
@@ -688,8 +693,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,
@@ -724,8 +727,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,
@@ -782,8 +783,6 @@ describe("server HTTP listener and health", () => {
           apiUrl: "http://127.0.0.1:7880",
           apiKey: "test-key",
           apiSecret: "s".repeat(32),
-          ingressCapacity: 4,
-          egressCapacity: 16,
         },
       }),
       serveFrontend: false,

@@ -725,13 +725,30 @@ describe("HybridMediaRouter v9 runtime", () => {
       complete(router, child);
       await vi.waitFor(() =>
         expect(preparedFor(sent, child.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      const sfuPrepare = preparedFor(sent, child.sessionId)!;
+      router.handleRouteReady(child, {
+        type: "route-ready",
+        revision: sfuPrepare.revision,
+        phase: "prepare",
+      });
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, child.peerId)
+            ?.upstream,
+        ).toEqual({ kind: "sfu" }),
+      );
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, child.sessionId)?.candidate.transport).toBe(
           "direct",
         ),
       );
-      const childPrepare = preparedFor(sent, child.sessionId)!;
+      const directPrepare = preparedFor(sent, child.sessionId)!;
       router.handleRouteReady(child, {
         type: "route-ready",
-        revision: childPrepare.revision,
+        revision: directPrepare.revision,
         phase: "prepare",
       });
       await vi.waitFor(() =>

@@ -238,7 +238,6 @@ PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
 SITE_ACCESS_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
 ROOM_LEASE_SECONDS=86400
-MAX_ROOMS=1000
 MAX_VIEWERS_PER_ROOM=20
 ENDPOINT_MEDIA_COPY_CAPACITY=2
 
@@ -253,8 +252,6 @@ LIVEKIT_URL=wss://share.example.com
 LIVEKIT_API_URL=http://127.0.0.1:7880
 LIVEKIT_API_KEY=<GENERATED_LIVEKIT_API_KEY>
 LIVEKIT_API_SECRET=<INDEPENDENT_SECRET_OF_AT_LEAST_32_BYTES>
-SFU_INGRESS_CAPACITY=<MEASURED_DEPLOYMENT_INGRESS_COPIES>
-SFU_EGRESS_CAPACITY=<MEASURED_DEPLOYMENT_EGRESS_COPIES>
 ```
 
 Supplying any stale `PEER_ICE_TURN_*` or `SELECTED_EDGE_TURN_*` key, even blank,
@@ -301,13 +298,10 @@ atomically on `screener-v12`; every stale Browser or executable-sender wire fail
 before room authority. Native senders and helpers are outside this release.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
-complete tuple requires `PEER_ASSISTED_MEDIA=true` plus explicit positive
-safe-integer `SFU_INGRESS_CAPACITY` and `SFU_EGRESS_CAPACITY` values. The two
-capacities have no defaults and must be selected from the instance's measured
-publisher/subscriber/bitrate and accepted concurrency matrix. Supplying either
-capacity without the complete fallback configuration fails startup rather than
-silently enabling or ignoring a partial policy. An empty tuple with neither
-capacity keeps the optional SDK and server path dormant. `LIVEKIT_URL` must be a
+complete tuple requires `PEER_ASSISTED_MEDIA=true`. The four-digit code space
+fixes ingress at 9,000 Host publications; egress is 9,000 multiplied by
+`MAX_VIEWERS_PER_ROOM`. There is no separate SFU capacity configuration. An
+empty tuple keeps the optional SDK and server path dormant. `LIVEKIT_URL` must be a
 plain `ws:` or `wss:` origin with no `/rtc` suffix; production requires `wss:`.
 `LIVEKIT_API_URL` must be a plain `http:` or `https:` origin with no path;
 production permits plaintext only on loopback and otherwise requires `https:`.
@@ -380,7 +374,7 @@ The Host may update or revoke that grant without changing code-entry policy.
 Room allocation and lifetime use one deliberately small model:
 
 - random unallocated codes come only from `1000` through `9999`, never duplicate
-  an active code, respect `MAX_ROOMS <= 9000`, and return on room release;
+  an active code, use the fixed 9,000-room capacity, and return on room release;
 - active Host sharing does not expire; stop, capture-track end, or Host
   disconnect starts `ROOM_LEASE_SECONDS`;
 - only the exact Host token resumes and renews before expiry, Viewer activity

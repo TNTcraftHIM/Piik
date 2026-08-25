@@ -22,7 +22,7 @@ export type RoomStoreErrorCode =
   | "HOST_ALREADY_CONNECTED"
   | "ROOM_LIMIT";
 
-const ROOM_CODE_COUNT = 9_000;
+export const ROOM_CAPACITY = 9_000;
 const ROOM_CODE_FIRST = 1_000;
 const VIEWER_PASSWORD_SALT_BYTES = 16;
 const VIEWER_PASSWORD_VERIFIER_BYTES = 32;
@@ -155,7 +155,7 @@ export interface RoomStoreOptions {
 export class RoomStore {
   private readonly rooms = new Map<string, Room>();
   private readonly freeRoomCodes = Array.from(
-    { length: ROOM_CODE_COUNT },
+    { length: ROOM_CAPACITY },
     (_, index) => (ROOM_CODE_FIRST + index).toString(),
   );
   private readonly now: () => number;
@@ -169,10 +169,10 @@ export class RoomStore {
     if (
       !Number.isSafeInteger(options.maxRooms) ||
       options.maxRooms <= 0 ||
-      options.maxRooms > ROOM_CODE_COUNT
+      options.maxRooms > ROOM_CAPACITY
     ) {
       throw new Error(
-        `Room limit must be an integer between 1 and ${ROOM_CODE_COUNT}`,
+        `Room limit must be an integer between 1 and ${ROOM_CAPACITY}`,
       );
     }
     if (

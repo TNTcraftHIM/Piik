@@ -411,7 +411,7 @@ describe("RoomRouteController", () => {
     },
   );
 
-  it("keeps healthy branches while 18 silent Viewers fall back serially", () => {
+  it("admits waiting Viewers through existing SFU before direct convergence", () => {
     const routes = controller(2, { sfuEnabled: true });
     addViewer(routes, B, 2);
     routes.hydrateHostPublication(
@@ -437,22 +437,14 @@ describe("RoomRouteController", () => {
 
     let nowMs = 0;
     waiting.forEach((peerId, index) => {
-      const directOperation = routes.reconcile(nowMs).operation!;
-      expect(directOperation.childPeerId).toBe(peerId);
-      beginCandidate(routes, {
-        nowMs: nowMs + 1,
-        connectionId: `${peerId}_silent_direct`,
-        reservation: { kind: "direct" },
-      });
-      routes.operationExpired(directOperation.wakeAtMs);
-
-      const sfuOperation = routes.snapshot().operation!;
+      const sfuOperation = routes.reconcile(nowMs).operation!;
+      expect(sfuOperation.childPeerId).toBe(peerId);
       expect(sfuOperation.candidates[sfuOperation.cursor]!.tuple).toEqual({
         kind: "sfu",
         publication: "reuse",
       });
       const prepared = beginCandidate(routes, {
-        nowMs: directOperation.wakeAtMs + 1,
+        nowMs: nowMs + 1,
         connectionId: `${peerId}_sfu`,
         reservation: {
           kind: "sfu-reuse",
@@ -467,10 +459,10 @@ describe("RoomRouteController", () => {
             revision: prepared.current!.revision,
             connectionId: `${peerId}_sfu`,
           },
-          directOperation.wakeAtMs + 2,
+          nowMs + 2,
         ).accepted,
       ).toBe(true);
-      nowMs = directOperation.wakeAtMs + 3;
+      nowMs += 3;
 
       expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
         kind: "sfu",
@@ -492,6 +484,9 @@ describe("RoomRouteController", () => {
     expect(routes.snapshot().hostPublication).toMatchObject({
       generation: "publication_generation",
       usable: true,
+    });
+    expect(routes.reconcile(nowMs).operation).toMatchObject({
+      reason: "direct-convergence",
     });
   });
 
@@ -696,7 +691,7 @@ describe("RoomRouteController", () => {
     });
   });
 
-  it("reaches a healthy SFU reuse stage after silent peer transport", () => {
+  it("keeps SFU active while converging through an SFU-fed parent", () => {
     const routes = controller(2, { sfuEnabled: true });
     addViewer(routes, B, 2);
     routes.hydrateHostPublication(
@@ -716,31 +711,12 @@ describe("RoomRouteController", () => {
     routes.hydrateEdge(C, peerEdge(HOST, "c_from_host"));
     addViewer(routes, A, 0);
 
-    const operation = routes.reconcile(0).operation!;
-    expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual(
-      expect.arrayContaining([
-        { kind: "peer", parentPeerId: B, transport: "direct" },
-        { kind: "sfu", publication: "reuse" },
-      ]),
-    );
-
-    beginCandidate(routes, {
-      nowMs: 1,
-      connectionId: "silent_direct",
-      reservation: { kind: "direct" },
-    });
-    routes.operationExpired(operation.wakeAtMs);
-
-    expect(
-      routes.snapshot().operation!.candidates[
-        routes.snapshot().operation!.cursor
-      ]!.tuple,
-    ).toEqual({
+    expect(routes.reconcile(0).operation?.candidates[0]?.tuple).toEqual({
       kind: "sfu",
       publication: "reuse",
     });
     const prepared = beginCandidate(routes, {
-      nowMs: 7_000,
+      nowMs: 1,
       connectionId: "a_sfu_reuse",
       reservation: { kind: "sfu-reuse", edge: "a_subscription" },
     }).operation!;
@@ -752,7 +728,7 @@ describe("RoomRouteController", () => {
           revision: prepared.current!.revision,
           connectionId: "a_sfu_reuse",
         },
-        8_000,
+        2,
       ).accepted,
     ).toBe(true);
     expect(routes.snapshot().hostPublication).toMatchObject({
@@ -763,6 +739,144 @@ describe("RoomRouteController", () => {
       kind: "sfu",
       publicationGeneration: "publication_generation",
       usable: true,
+    });
+    const convergence = routes.reconcile(3).operation!;
+    expect(convergence).toMatchObject({
+      childPeerId: A,
+      reason: "direct-convergence",
+    });
+    expect(convergence.candidates[0]?.tuple).toEqual({
+      kind: "peer",
+      parentPeerId: B,
+      transport: "direct",
+    });
+    const direct = beginCandidate(routes, {
+      nowMs: 4,
+      connectionId: "a_from_b",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      kind: "sfu",
+      connectionId: "a_sfu_reuse",
+    });
+    expect(routes.candidateReady({
+      childPeerId: A,
+      childSessionId: `${A}_session`,
+      revision: direct.current!.revision,
+      connectionId: "a_from_b",
+    }, 5).accepted).toBe(true);
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      kind: "peer",
+      parentPeerId: B,
+      connectionId: "a_from_b",
+    });
+  });
+
+  it("advances exact direct convergence failures without failing SFU", () => {
+    const routes = controller(2, { sfuEnabled: true });
+    addViewer(routes, D, 0);
+    routes.hydrateEdge(D, peerEdge(HOST, "host_full"));
+    routes.hydrateHostPublication("publication_1", "publication_resource");
+    for (const peerId of [B, C]) {
+      addViewer(routes, peerId, 1);
+      routes.hydrateEdge(peerId, {
+        kind: "sfu",
+        publicationGeneration: "publication_1",
+        transport: "sfu",
+        connectionId: `${peerId}_sfu`,
+        usable: true,
+        physicalActive: true,
+        resource: `${peerId}_subscription`,
+      });
+    }
+    addViewer(routes, A, 0, 0);
+    routes.reconcile(0);
+    const sfu = beginCandidate(routes, {
+      nowMs: 1,
+      connectionId: "a_sfu",
+      reservation: { kind: "sfu-reuse", edge: "a_subscription" },
+    }).operation!;
+    expect(routes.candidateReady({
+      childPeerId: A,
+      childSessionId: `${A}_session`,
+      revision: sfu.current!.revision,
+      connectionId: "a_sfu",
+    }, 2).accepted).toBe(true);
+
+    const first = routes.reconcile(3).operation!;
+    expect(first.candidates[0]?.tuple).toMatchObject({
+      kind: "peer",
+      parentPeerId: B,
+    });
+    const failed = beginCandidate(routes, {
+      nowMs: 4,
+      connectionId: "a_from_b",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(routes.candidateFailed({
+      childPeerId: A,
+      childSessionId: `${A}_session`,
+      revision: failed.current!.revision,
+      connectionId: "a_from_b",
+    }, 5).exhausted).toBeUndefined();
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      kind: "sfu",
+      connectionId: "a_sfu",
+    });
+    expect(routes.reconcile(6).operation?.candidates[0]?.tuple).toMatchObject({
+      kind: "peer",
+      parentPeerId: C,
+    });
+  });
+
+  it("preempts direct convergence when another Viewer needs a route", () => {
+    const routes = controller(2, { sfuEnabled: true });
+    addViewer(routes, B, 2);
+    routes.hydrateHostPublication("publication_1", "publication_resource");
+    routes.hydrateEdge(B, {
+      kind: "sfu",
+      publicationGeneration: "publication_1",
+      transport: "sfu",
+      connectionId: "b_sfu",
+      usable: true,
+      physicalActive: true,
+      resource: "b_subscription",
+    });
+    addViewer(routes, A, 0, 0);
+    routes.reconcile(0);
+    const sfu = beginCandidate(routes, {
+      nowMs: 1,
+      connectionId: "a_sfu",
+      reservation: { kind: "sfu-reuse", edge: "a_subscription" },
+    }).operation!;
+    routes.candidateReady({
+      childPeerId: A,
+      childSessionId: `${A}_session`,
+      revision: sfu.current!.revision,
+      connectionId: "a_sfu",
+    }, 2);
+    expect(routes.reconcile(3).operation?.reason).toBe("direct-convergence");
+    beginCandidate(routes, {
+      nowMs: 4,
+      connectionId: "a_direct_pending",
+      reservation: { kind: "direct", overlap: "a_overlap" },
+    });
+
+    const released = routes.upsertParticipant({
+      peerId: C,
+      role: "viewer",
+      sessionId: `${C}_session`,
+      effectiveDownstreamCapacity: 0,
+    }, 5);
+    expect(released).toEqual(["a_overlap"]);
+    expect(routes.snapshot().operation).toBeUndefined();
+    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+      kind: "sfu",
+      connectionId: "a_sfu",
+    });
+    expect(routes.reconcile(6).operation).toMatchObject({
+      childPeerId: C,
+      reason: "join",
     });
   });
 
@@ -949,7 +1063,7 @@ describe("RoomRouteController", () => {
     expect(blocked.reconcile(1).operation).toBeUndefined();
   });
 
-  it("uses an SFU-fed endpoint as an ordinary parent and aborts pause resources", () => {
+  it("aborts pending SFU resources on pause and repairs publication", () => {
     const routes = controller(1, { sfuEnabled: true });
     addViewer(routes, A, 1);
     addViewer(routes, B, 0);
@@ -965,16 +1079,15 @@ describe("RoomRouteController", () => {
     });
     const operation = routes.reconcile(0).operation!;
     expect(operation.candidates[0]?.tuple).toEqual({
-      kind: "peer",
-      parentPeerId: A,
-      transport: "direct",
+      kind: "sfu",
+      publication: "reuse",
     });
     beginCandidate(routes, {
       nowMs: 1,
       connectionId: "b_candidate",
-      reservation: { kind: "direct" },
+      reservation: { kind: "sfu-reuse", edge: "b_subscription" },
     });
-    expect(routes.setPaused(true)).toEqual([]);
+    expect(routes.setPaused(true)).toEqual(["b_subscription"]);
     expect(routes.snapshot().operation).toBeUndefined();
     expect(routes.snapshot().upstreamByViewer.get(A)?.connectionId).toBe("a_sfu");
     routes.setPaused(false);

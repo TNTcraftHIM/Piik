@@ -246,6 +246,12 @@ export function reduceViewerPresentation(
       const revisionChanged = state.revision !== action.revision;
       const terminal = action.state === "failed";
       const currentFrame = hasCurrentFrame(state);
+      const currentMedia =
+        terminal && state.media?.revision === action.revision
+          ? { ...state.media, framePresented: false }
+          : terminal
+            ? null
+            : state.media;
       return {
         ...state,
         revision: action.revision,
@@ -253,7 +259,7 @@ export function reduceViewerPresentation(
           revision: action.revision,
           state: action.state,
         },
-        media: terminal ? null : state.media,
+        media: currentMedia,
         autoplayBlockedGeneration: revisionChanged || terminal
           ? null
           : state.autoplayBlockedGeneration,
@@ -319,8 +325,12 @@ export function reduceViewerPresentation(
         connection: "connected",
         media: { ...state.media, framePresented: true },
         retainedFrame: false,
+        routeStatus: null,
         failure:
-          state.failure === "PLAYBACK_FAILED" ? null : state.failure,
+          state.failure === "PLAYBACK_FAILED" ||
+          state.failure === "ROUTE_EXHAUSTED"
+            ? null
+            : state.failure,
       };
     case "autoplay-blocked":
       if (
@@ -395,13 +405,21 @@ export function reduceViewerPresentation(
         return state;
       }
       const terminalRoute = action.failure === "ROUTE_EXHAUSTED";
+      const terminalMedia =
+        terminalRoute &&
+        action.revision !== undefined &&
+        state.media?.revision === action.revision
+          ? { ...state.media, framePresented: false }
+          : terminalRoute
+            ? null
+            : state.media;
       return {
         ...state,
         revision:
           action.revision === undefined
             ? state.revision
             : Math.max(state.revision ?? 0, action.revision),
-        media: terminalRoute ? null : state.media,
+        media: terminalMedia,
         retainedFrame:
           state.retainedFrame || (terminalRoute && hasCurrentFrame(state)),
         autoplayBlockedGeneration: terminalRoute

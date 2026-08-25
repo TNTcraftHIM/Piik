@@ -346,6 +346,7 @@ export const routeDemandReasonSchema = z.enum([
   "parent-departed",
   "capacity-reduction",
   "sfu-bootstrap",
+  "direct-convergence",
 ]);
 export type RouteDemandReason = z.infer<typeof routeDemandReasonSchema>;
 
