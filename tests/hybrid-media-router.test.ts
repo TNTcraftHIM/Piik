@@ -749,6 +749,31 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
+  it("serializes fresh SFU configuration without making refresh one-shot", async () => {
+    const { store, sent, router } = harness(1, true);
+    try {
+      const room = await store.createRoom();
+      const { first } = await establishSfuRoom(store, sent, router, room);
+      const active = router.resolveActiveViewerMediaEdge(
+        room.roomId,
+        first.peerId,
+      );
+      expect(active?.upstream).toEqual({ kind: "sfu" });
+      const configCount = () =>
+        sent
+          .get(first.sessionId)
+          ?.filter((message) => message.type === "sfu-config").length ?? 0;
+      const initialCount = configCount();
+
+      router.refreshSfu(first, active!.revision);
+      await vi.waitFor(() => expect(configCount()).toBe(initialCount + 1));
+      router.refreshSfu(first, active!.revision);
+      await vi.waitFor(() => expect(configCount()).toBe(initialCount + 2));
+    } finally {
+      await router.close();
+    }
+  });
+
 
 
 

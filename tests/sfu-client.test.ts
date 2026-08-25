@@ -248,7 +248,6 @@ const livekit = vi.hoisted(() => {
 
   const AudioPresets = {
     musicStereo: { maxBitrate: 64_000 },
-    musicHighQuality: { maxBitrate: 96_000 },
     musicHighQualityStereo: { maxBitrate: 128_000 },
   } as const;
 
@@ -481,6 +480,40 @@ afterEach(() => {
 });
 
 describe("SfuPublisher", () => {
+  it("enables balanced SFU adaptation after startup frames", async () => {
+    vi.useFakeTimers();
+    const publisher = new SfuPublisher();
+    const video = track("video", "startup-video");
+    const balancedProfile = {
+      ...qualityProfile,
+      degradationPreference: "balanced",
+    } as const;
+
+    await publisher.connect(connection);
+    await publisher.activate(stream(video), balancedProfile);
+    const localTrack = livekit.state.rooms[0].localParticipant.publications[0]
+      .track;
+    const sender = localTrack.sender;
+    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
+    expect(sender.parameters.degradationPreference).toBe(
+      "maintain-resolution",
+    );
+
+    sender.getStats
+      .mockResolvedValueOnce(senderReport(video.id, 1_000, 10_000, 4))
+      .mockResolvedValueOnce(senderReport(video.id, 2_000, 20_000, 5));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
+    expect(sender.setParameters).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() =>
+      expect(localTrack.savedDegradationPreference).toBe("balanced"),
+    );
+    expect(sender.parameters.degradationPreference).toBe("balanced");
+    expect(sender.setParameters).toHaveBeenCalledTimes(2);
+  });
+
   it("samples only the current published sender and clears replaced evidence", async () => {
     vi.useFakeTimers();
     const updates: Array<ConnectionMetrics | null> = [];
@@ -675,7 +708,7 @@ describe("SfuPublisher", () => {
     ).not.toHaveProperty("simulcast");
     expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
       source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 96_000 },
+      audioPreset: { maxBitrate: 128_000 },
       forceStereo: true,
       dtx: false,
       red: false,
@@ -713,7 +746,7 @@ describe("SfuPublisher", () => {
   });
 
   it.each([
-    ["saver", 96_000],
+    ["saver", 64_000],
     ["music", 128_000],
     ["very-high", 192_000],
   ] as const)("maps the %s audio preset to %i bps", async (screenAudioQuality, bitrate) => {

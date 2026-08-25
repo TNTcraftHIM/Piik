@@ -9,10 +9,13 @@ import {
   audioSenderParameterWarning,
   configureScreenAudioSender,
   configureVideoSender,
+  needsStartupVideoProfile,
   resolveScreenAudioQuality,
   screenAudioQualityEqual,
   screenAudioBitrate,
   senderParameterWarning,
+  STARTUP_VIDEO_ENCODED_FRAMES,
+  startupVideoProfile,
   videoQualitySettingsEqual,
   type AudioSenderParameterReadback,
   type QualityProfile,
@@ -24,6 +27,7 @@ import {
   captureMetrics,
   collectConnectionMetricsFromReport,
   createStatsAccumulator,
+  maxEncodedVideoFrames,
   mergeStatsReports,
   type StatsAccumulator,
 } from "../webrtc/stats";
@@ -106,6 +110,7 @@ export class SfuPublisher {
   private statsIdentity: PublisherStatsIdentity | null = null;
   private statsInFlight: PublisherStatsIdentity | null = null;
   private statsTimer: ReturnType<typeof setInterval> | null = null;
+  private startupVideoProfilePending = false;
 
   constructor(private readonly events: PublisherEvents = {}) {}
 
@@ -166,6 +171,8 @@ export class SfuPublisher {
 
   activate(stream: MediaStream, profile: QualityProfile): Promise<boolean> {
     this.desiredProfile = profile;
+    this.startupVideoProfilePending = needsStartupVideoProfile(profile);
+    const effectiveVideoProfile = startupVideoProfile(profile);
     ++this.profileRevision;
     const generation = this.generation;
     return this.enqueue(async () => {
@@ -188,7 +195,7 @@ export class SfuPublisher {
           room,
           videoTrack,
           sdk.Track.Source.ScreenShare,
-          videoPublishOptions(profile),
+          videoPublishOptions(effectiveVideoProfile),
         );
         if (!this.owns(room, generation)) {
           return false;
@@ -196,7 +203,7 @@ export class SfuPublisher {
         failureStage = "sender-config";
         const videoConfiguration = await configurePublishedVideo(
           video,
-          profile,
+          effectiveVideoProfile,
           () => this.owns(room, generation),
         );
         if (!videoConfiguration || !this.owns(room, generation)) {
@@ -240,7 +247,7 @@ export class SfuPublisher {
 
         this.video = video;
         this.audio = audio;
-        this.appliedVideoProfile = profile;
+        this.appliedVideoProfile = effectiveVideoProfile;
         this.retainSenderParameters(
           videoConfiguration,
           audioConfiguration?.readback ?? null,
@@ -299,6 +306,7 @@ export class SfuPublisher {
       this.audio = null;
       this.desiredProfile = null;
       this.appliedVideoProfile = null;
+      this.startupVideoProfilePending = false;
       ++this.profileRevision;
       this.senderParameters = null;
       this.audioSenderParameters = null;
@@ -324,6 +332,7 @@ export class SfuPublisher {
       if (!sdk || !previousVideo || !profile || !previousVideoProfile) {
         throw new Error("SFU publisher has no active video publication");
       }
+      const effectiveVideoProfile = startupVideoProfile(profile);
 
       const nextVideoTrack = requiredVideoTrack(stream);
       const nextAudioTrack = stream.getAudioTracks()[0] ?? null;
@@ -391,7 +400,7 @@ export class SfuPublisher {
 
         const videoConfiguration = await configurePublishedVideo(
           previousVideo,
-          profile,
+          effectiveVideoProfile,
           () => this.owns(room, generation),
         );
         if (!videoConfiguration || !this.owns(room, generation)) {
@@ -401,7 +410,8 @@ export class SfuPublisher {
         if (previousAudio && nextAudioTrack) {
           previousAudio.rawTrack = nextAudioTrack;
         }
-        this.appliedVideoProfile = profile;
+        this.startupVideoProfilePending = needsStartupVideoProfile(profile);
+        this.appliedVideoProfile = effectiveVideoProfile;
         this.retainSenderParameters(
           videoConfiguration,
           nextAudioTrack
@@ -471,11 +481,20 @@ export class SfuPublisher {
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
     const previousDesiredProfile = this.desiredProfile;
+    if (!needsStartupVideoProfile(profile)) {
+      this.startupVideoProfilePending = false;
+    }
+    const effectiveVideoProfile = this.startupVideoProfilePending
+      ? startupVideoProfile(profile)
+      : profile;
     const requestedVideo =
       previousDesiredProfile === null ||
       !videoQualitySettingsEqual(previousDesiredProfile, profile) ||
       this.appliedVideoProfile === null ||
-      !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+      !videoQualitySettingsEqual(
+        this.appliedVideoProfile,
+        effectiveVideoProfile,
+      );
     const requestedAudio =
       previousDesiredProfile === null ||
       !screenAudioQualityEqual(previousDesiredProfile, profile) ||
@@ -504,7 +523,10 @@ export class SfuPublisher {
       }
       const updateVideo =
         requestedVideo ||
-        !videoQualitySettingsEqual(previousVideoProfile, profile);
+        !videoQualitySettingsEqual(
+          previousVideoProfile,
+          effectiveVideoProfile,
+        );
       const currentAudioSender = audio?.publication.audioTrack?.sender ?? null;
       const updateAudio =
         audio !== null &&
@@ -530,7 +552,7 @@ export class SfuPublisher {
         try {
           const configured = await configurePublishedVideo(
             video,
-            profile,
+            effectiveVideoProfile,
             () =>
               this.owns(room, generation) &&
               requestedRevision === this.profileRevision &&
@@ -544,7 +566,7 @@ export class SfuPublisher {
           }
           senderParameters = configured.readback;
           videoWarning = configured.warning;
-          appliedVideoProfile = profile;
+          appliedVideoProfile = effectiveVideoProfile;
         } catch {
           if (
             !this.owns(room, generation) ||
@@ -909,6 +931,7 @@ export class SfuPublisher {
     this.audio = null;
     this.desiredProfile = null;
     this.appliedVideoProfile = null;
+    this.startupVideoProfilePending = false;
     ++this.profileRevision;
     this.senderParameters = null;
     this.audioSenderParameters = null;
@@ -1039,6 +1062,17 @@ export class SfuPublisher {
         ),
         ...captureMetrics(identity.videoTrack),
       };
+      if (
+        this.startupVideoProfilePending &&
+        maxEncodedVideoFrames(report, identity.videoTrack.id) >=
+          STARTUP_VIDEO_ENCODED_FRAMES
+      ) {
+        this.startupVideoProfilePending = false;
+        const desiredProfile = this.desiredProfile;
+        if (desiredProfile) {
+          void this.updateProfile(desiredProfile);
+        }
+      }
       this.events.onStats?.(metrics);
     } catch {
       // Stats are observational and must never disrupt active SFU media.
@@ -1233,7 +1267,7 @@ function audioPublishOptions(
   const resolvedQuality = resolveScreenAudioQuality(quality);
   const audioPreset =
     resolvedQuality === "saver"
-      ? sdk.AudioPresets.musicHighQuality
+      ? sdk.AudioPresets.musicStereo
       : resolvedQuality === "music"
         ? sdk.AudioPresets.musicHighQualityStereo
         : { maxBitrate: screenAudioBitrate(resolvedQuality) };

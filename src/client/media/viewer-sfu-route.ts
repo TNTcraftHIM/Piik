@@ -99,6 +99,7 @@ export class ViewerSfuRoute {
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
   private resyncing = false;
+  private manualReconnectRevision: number | null = null;
   private paused = false;
   private closed = false;
 
@@ -138,6 +139,7 @@ export class ViewerSfuRoute {
     }
     if (previousRevision !== update.revision) {
       this.recovery = null;
+      this.manualReconnectRevision = null;
       if (
         update.phase !== "prepare" &&
         this.pendingPeerRevision !== null
@@ -210,7 +212,39 @@ export class ViewerSfuRoute {
     }
   }
 
+  reconnectActive(): boolean {
+    const revision = this.route.getRevision();
+    const assignment = this.route.getActiveAssignment();
+    const active = this.active;
+    if (
+      this.closed ||
+      this.resyncing ||
+      this.manualReconnectRevision !== null ||
+      this.pending !== null ||
+      this.paused ||
+      revision === null ||
+      this.route.getPhase() !== "active" ||
+      assignment?.upstream.kind !== "sfu" ||
+      !active ||
+      active.failed ||
+      !active.activated ||
+      active.revision !== revision ||
+      active.publicationGeneration !== assignment.sfuPublicationGeneration
+    ) {
+      return false;
+    }
+
+    this.manualReconnectRevision = revision;
+    if (!this.events.send({ type: "refresh-sfu", revision })) {
+      this.manualReconnectRevision = null;
+      return false;
+    }
+    this.events.onSfuState?.("reconnecting", revision);
+    return true;
+  }
+
   private discardPending(): void {
+    this.manualReconnectRevision = null;
     this.pendingPeerRevision = null;
     this.events.preparePeer?.(null);
     this.events.prepareChild?.(null);
@@ -233,6 +267,7 @@ export class ViewerSfuRoute {
 
     const resyncGeneration = ++this.resyncGeneration;
     this.resyncing = true;
+    this.manualReconnectRevision = null;
     this.route.reset();
     this.recovery = null;
     this.events.prepareChild?.(null);
@@ -292,6 +327,8 @@ export class ViewerSfuRoute {
     const phase = this.route.getPhase();
     const candidate = this.route.getPreparedCandidate();
     const publicationGeneration = assignment?.sfuPublicationGeneration;
+    const manualReconnect =
+      phase === "active" && this.manualReconnectRevision === message.revision;
     if (
       !token ||
       !phase ||
@@ -307,7 +344,8 @@ export class ViewerSfuRoute {
     if (
       phase === "active" &&
       this.active?.publicationGeneration === publicationGeneration &&
-      this.active.activated
+      this.active.activated &&
+      !manualReconnect
     ) {
       if (phase === "active") {
         await this.queueActiveRoute(token, true, this.paused);
@@ -420,6 +458,7 @@ export class ViewerSfuRoute {
       return;
     }
     this.closed = true;
+    this.manualReconnectRevision = null;
     this.resyncGeneration += 1;
     this.resyncing = false;
     this.route.reset();
@@ -550,10 +589,12 @@ export class ViewerSfuRoute {
   ): Promise<void> {
     const assignment = this.route.getActiveAssignment();
     const publicationGeneration = assignment?.sfuPublicationGeneration;
+    const manualReconnect = this.manualReconnectRevision === token.revision;
     if (
       this.active?.revision === token.revision &&
       this.active.publicationGeneration === publicationGeneration &&
-      this.active.activated
+      this.active.activated &&
+      !manualReconnect
     ) {
       return;
     }
@@ -634,6 +675,7 @@ export class ViewerSfuRoute {
     slot.subscriber.stopDecodedFrameProof();
     this.pending = null;
     const previous = this.active;
+    const manualReconnect = this.manualReconnectRevision === slot.revision;
     this.active = slot;
     if (!this.route.markMediaActive(token)) {
       this.active = previous;
@@ -641,6 +683,9 @@ export class ViewerSfuRoute {
       return;
     }
     this.recovery = null;
+    if (manualReconnect) {
+      this.manualReconnectRevision = null;
+    }
     slot.mediaAvailable = true;
     this.events.onSfuStream(slot.stream, assignment, true, slot.revision);
     if (previous && previous !== slot) {
@@ -650,6 +695,9 @@ export class ViewerSfuRoute {
         // Disconnect remains the fail-closed cleanup path.
       }
       await disconnectSubscriber(previous.subscriber);
+    }
+    if (manualReconnect) {
+      this.events.onSfuState?.("connected", slot.revision);
     }
   }
 
@@ -735,6 +783,12 @@ export class ViewerSfuRoute {
       return;
     }
     const wasActive = this.active === slot;
+    const failedManualReconnect =
+      this.pending === slot &&
+      this.manualReconnectRevision === slot.revision &&
+      this.active?.publicationGeneration === slot.publicationGeneration &&
+      this.active.activated &&
+      !this.active.failed;
     slot.failed = true;
     slot.subscriber.stopDecodedFrameProof();
     if (this.pending === slot) {
@@ -743,6 +797,11 @@ export class ViewerSfuRoute {
     if (wasActive) {
       this.active = null;
       this.events.onSfuUpdate?.(null, slot.revision);
+    }
+    if (failedManualReconnect) {
+      this.manualReconnectRevision = null;
+      this.events.onSfuState?.("connected", slot.revision);
+      return;
     }
 
     const assignment = this.route.getPlannedAssignment();

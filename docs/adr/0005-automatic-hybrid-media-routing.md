@@ -276,10 +276,12 @@ second mutable graph.
   another no-progress sample can invalidate an edge. Frozen JavaScript wall time
   is not media-failure proof. A newly composited current-generation frame clears
   stale local recovery presentation but does not create route authority.
-- Manual media reconnect remains on the current exact route: a peer rebuild uses
-  the same parent, and an SFU reconnect reconstructs the same subscription.
-  Neither action performs quality selection or active reparenting. Only actual
-  recovery exhaustion reports route failure and enters normal reconciliation.
+- Manual media reconnect remains on the current exact route. P2P directly
+  rebuilds the connection to the existing parent; SFU
+  disconnects and reconnects only the current LiveKit subscriber with fresh
+  scoped configuration. Neither action restarts Screener signaling, changes the
+  route revision, performs quality selection, or reparents. Only actual recovery
+  exhaustion reports route failure and enters normal reconciliation.
 - Authoritative pause aborts the pending child operation, including its current
   candidate and reservations, keeps the active graph, suppresses decoded-frame-
   stall decisions, and leaves new participants waiting. Resume always wakes a

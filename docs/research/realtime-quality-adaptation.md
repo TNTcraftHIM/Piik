@@ -39,10 +39,47 @@ quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
 
-The Host configures a sender before the first offer and reapplies the current
-video profile after accepting an answer. The latter is necessary because
-negotiation may replace or rewrite encoding parameters; it is not a periodic
-controller and does not reset bandwidth estimation on a timer.
+### Chrome 151 Startup Matrix
+
+On 2026-08-25, Chrome `151.0.7922.174` on Windows reproduced the production
+symptom in a controlled local loopback with no external network. Every run used
+the same fake `getDisplayMedia` monitor at 1920x1080@30, one P2P sender and
+receiver, VP8 `libvpx` with `powerEfficientEncoder = false`, and sender ceilings
+of 5 Mbps and 30 fps. Only the named startup input changed.
+
+| Startup input | About 1 second | About 4 seconds | About 8 seconds | Limitation |
+| --- | --- | --- | --- | --- |
+| `motion + balanced` | 480x270, 13 fps | 480x270, 15 fps | 480x270, 14 fps | `bandwidth` |
+| `motion + balanced + x-google-start-bitrate=4500` | 480x270, 14 fps | 480x270, 15 fps | 480x270, 14 fps | `bandwidth` |
+| no hint + balanced | 1920x1080, 18 fps | 1920x1080, 19 fps | 1920x1080, 20 fps | `none` |
+| `detail + balanced` | 1920x1080, 18 fps | 1920x1080, 19 fps | 1920x1080, 20 fps | `none` |
+| `motion + maintain-resolution` | 1920x1080, 17 fps | 1920x1080, 20 fps | 1920x1080, 20 fps | `none` |
+
+The transition matrix then started with `motion + maintain-resolution` and
+changed only the sender degradation preference to balanced:
+
+| Balanced transition | Observed result |
+| --- | --- |
+| At connection, about 11 ms | Fell to 480x270 and remained bandwidth-limited |
+| After the first encoded frame, about 80 ms | Retained 1280x720 but remained bandwidth-limited |
+| After five encoded frames, about 442 ms | Retained 1920x1080 with no limitation through 8 seconds |
+| After one or two seconds | Retained 1920x1080 with no limitation through 8 seconds |
+
+This isolates the failure from network, codec selection, hardware encoding,
+capture constraints, sender readback, and the startup-bitrate SDP hint.
+Chromium maps `motion` to non-screencast realtime video, where balanced permits
+startup resolution restrictions; entering or leaving balanced clears those
+restrictions. Five encoded frames is the first measured safe media fact and is
+beyond libwebrtc's four-frame startup-drop bound, rather than an arbitrary wall
+clock delay.
+
+Screener keeps `motion` because its later multilevel resolution adaptation is
+required. Each new peer sender and SFU publication therefore starts with the
+selected ceilings but an effective `maintain-resolution` preference. After the
+current sender has encoded at least five frames, the existing stats path applies
+the user's desired preference once. Connected was too early, and one encoded
+frame retained only 720p in the controlled matrix; five frames retained 1080p.
+There is no added timer, periodic rewrite, or application quality controller.
 
 ## LiveKit SFU Evidence
 
@@ -51,6 +88,10 @@ the SDK's default VP8 screen-share simulcast can expose original and lower
 representations, and that server send-side BWE can select a lower representation
 for a constrained subscriber while an unconstrained subscriber receives the
 highest available representation.
+
+Pinned LiveKit retains its own codec and startup-bitrate behavior. Screener does
+not add an SDP startup hint to raw peers; the controlled matrix showed that it
+does not address this `motion + balanced` restriction.
 
 An earlier exact-production A/B also showed that forcing an always-active lower
 encoding can consume the same Host-to-SFU congestion budget and reduce the
@@ -160,6 +201,12 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
+- [Chromium content-hint capture mapping](https://chromium.googlesource.com/chromium/src/+/3468eea378284a9cc42d05532cf3e1ee1f716fa9/content/renderer/media/webrtc/webrtc_video_capturer_adapter.cc)
+- [libwebrtc content-hint sender mapping](https://webrtc.googlesource.com/src/+/98c256dadcab7c69e45de78091da9932d244f2e3/pc/rtp_sender.cc)
+- [libwebrtc balanced restriction reset](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/call/adaptation/video_stream_adapter.cc)
+- [libwebrtc startup frame dropper](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/video/adaptation/video_stream_encoder_resource_manager.cc)
+- [LiveKit initial-quality fix](https://github.com/livekit/client-sdk-js/pull/1987)
+- [LiveKit initial-quality implementation](https://github.com/livekit/client-sdk-js/commit/5db17af)
 - [LiveKit screen-share encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)

@@ -189,6 +189,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerPeer | null>(null);
+  const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
   const remoteMediaRef = useRef<RemoteMediaBinding | null>(null);
@@ -207,7 +208,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     peerConnectionIdentity,
   );
   const reconnectAvailable =
-    signalStatus === "connected" && reconnectRoute !== null;
+    signalStatus === "connected" &&
+    reconnectRoute !== null &&
+    presentationState.connection !== "reconnecting";
   const routeConnectionState =
     routePresentation.evidence?.connectionState ??
     (hostOnline ? "routing" : "waiting");
@@ -280,7 +283,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     revision: number,
     upstream: ParticipantRouteAssignment["upstream"],
     phase: "prepare" | "active" = "active",
+    preserveMedia = false,
   ): void {
+    if (preserveMedia) {
+      const current = remoteMediaRef.current;
+      if (current && current.revision !== revision) {
+        const rebased = { ...current, revision };
+        remoteMediaRef.current = rebased;
+        setRemoteMedia(rebased);
+      }
+    }
     setAssignedRoute((current) =>
       current && revision < current.revision
         ? current
@@ -291,6 +303,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       revision,
       phase,
       kind: routeKindFromAssignment(upstream),
+      preserveMedia,
     });
   }
 
@@ -822,6 +835,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           active && viewerSfuRoute === route ? signal.send(message) : false,
       });
       viewerSfuRoute = route;
+      viewerSfuRouteRef.current = route;
       return route;
     }
 
@@ -829,6 +843,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       const route = viewerSfuRoute;
       discardPendingPeer();
       viewerSfuRoute = null;
+      if (viewerSfuRouteRef.current === route) {
+        viewerSfuRouteRef.current = null;
+      }
       setSfuUpstream(null);
       void route?.disconnect();
     }
@@ -1033,7 +1050,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               dispatchPresentation({
                 type: "connection",
                 revision: currentRouteRevision,
-                connection: connectionFact(snapshot.connectionState),
+                connection: peer.isRecovering()
+                  ? "reconnecting"
+                  : connectionFact(snapshot.connectionState),
               });
             }
           },
@@ -1192,11 +1211,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 revision: message.revision,
                 connectionId: message.candidate.connectionId,
               };
+              acceptAssignedRoute(
+                message.revision,
+                message.assignment.upstream,
+                "prepare",
+              );
             }
-            if (result === "accepted" && message.phase === "active") {
-              if (message.revision !== currentRouteRevision) {
-                clearRelayChildEvidence();
-              }
+            if (message.phase === "active") {
               const samePeerUpstream =
                 currentRouteAssignment?.upstream.kind === "peer" &&
                 message.assignment.upstream.kind === "peer" &&
@@ -1207,23 +1228,41 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 message.assignment.upstream.kind === "sfu" &&
                 currentRouteAssignment.sfuPublicationGeneration ===
                   message.assignment.sfuPublicationGeneration;
+              const peerIdentity = peerRef.current?.getConnectionIdentity();
+              const exactPeerUpstream =
+                samePeerUpstream &&
+                currentRouteAssignment?.upstream.kind === "peer" &&
+                currentRouteConnectionId !== null &&
+                peerIdentity != null &&
+                peerIdentity.parentPeerId ===
+                  currentRouteAssignment.upstream.peerId &&
+                peerIdentity.connectionId === currentRouteConnectionId;
+              const preserveMedia =
+                remoteMediaRef.current !== null &&
+                (sameSfuUpstream || exactPeerUpstream);
               const connectionId =
                 pendingRouteConnection?.revision === message.revision
                   ? pendingRouteConnection.connectionId
                   : samePeerUpstream || sameSfuUpstream
                     ? currentRouteConnectionId
                     : null;
-              activateRouteIdentity(
+              if (result === "accepted") {
+                if (message.revision !== currentRouteRevision) {
+                  clearRelayChildEvidence();
+                }
+                activateRouteIdentity(
+                  message.revision,
+                  message.assignment,
+                  connectionId,
+                );
+              }
+              acceptAssignedRoute(
                 message.revision,
-                message.assignment,
-                connectionId,
+                message.assignment.upstream,
+                "active",
+                preserveMedia,
               );
             }
-            acceptAssignedRoute(
-              message.revision,
-              message.assignment.upstream,
-              message.phase,
-            );
           }
         }
         return;
@@ -1483,6 +1522,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         signalRef.current = null;
       }
       void viewerSfuRoute?.disconnect();
+      if (viewerSfuRouteRef.current === viewerSfuRoute) {
+        viewerSfuRouteRef.current = null;
+      }
       viewerSfuRoute = null;
       preparedParentPeerId = null;
       preparedParentSignals = [];
@@ -1571,17 +1613,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }, [presentation.overlay]);
 
   function retryConnection(): void {
-    const requested =
-      reconnectRoute === "sfu"
-        ? signalRef.current?.reconnect() === true
-        : reconnectRoute === "p2p" &&
-          peerRef.current?.requestRecovery(true) === true;
-    if (requested) {
-      dispatchPresentation({
-        type: "connection",
-        revision: presentationState.revision ?? assignedRoute?.revision ?? 0,
-        connection: "reconnecting",
-      });
+    if (reconnectRoute === "sfu") {
+      viewerSfuRouteRef.current?.reconnectActive();
+    } else if (reconnectRoute === "p2p") {
+      if (peerRef.current?.requestRecovery(true)) {
+        dispatchPresentation({
+          type: "connection",
+          revision: presentationState.revision ?? assignedRoute?.revision ?? 0,
+          connection: "reconnecting",
+        });
+      }
     }
   }
 

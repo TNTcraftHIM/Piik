@@ -501,6 +501,65 @@ describe("minimal route transition contracts", () => {
     expect(subscribers[0]?.disconnect).toHaveBeenCalledOnce();
   });
 
+  it("reconnects only the active SFU subscriber on the current route", async () => {
+    const messages: ClientMessage[] = [];
+    const streams: MediaStream[] = [];
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    const resetMedia = vi.fn();
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      resetMedia,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: (stream) => streams.push(stream),
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(
+          events,
+          [],
+          `subscriber-${subscribers.length + 1}`,
+        );
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+
+    route.accept({
+      revision: 7,
+      phase: "active",
+      assignment: viewerSfuAssignment(),
+    });
+    await route.acceptConfig(sfuConfig(7));
+    const firstStream = {} as MediaStream;
+    subscribers[0]?.events.onStream(firstStream);
+    subscribers[0]?.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(streams).toEqual([firstStream]));
+
+    expect(route.reconnectActive()).toBe(true);
+    expect(route.reconnectActive()).toBe(false);
+    await vi.waitFor(() =>
+      expect(messages.at(-1)).toEqual({ type: "refresh-sfu", revision: 7 }),
+    );
+    expect(resetMedia).not.toHaveBeenCalled();
+    expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
+    expect(subscribers[0]?.disconnect).not.toHaveBeenCalled();
+
+    await route.acceptConfig({ ...sfuConfig(7), token: "fresh-token" });
+    const nextStream = {} as MediaStream;
+    subscribers[1]?.events.onStream(nextStream);
+    subscribers[1]?.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(streams).toEqual([firstStream, nextStream]));
+    expect(subscribers[1]?.connect).toHaveBeenCalledWith({
+      url: "wss://sfu.example.test",
+      token: "fresh-token",
+    });
+    expect(subscribers[0]?.deactivate).toHaveBeenCalledOnce();
+    expect(subscribers[0]?.disconnect).toHaveBeenCalledOnce();
+    await route.disconnect();
+  });
+
   it("discards a paused pending subscriber and ignores its later evidence", async () => {
     const messages: ClientMessage[] = [];
     let subscriber!: ReturnType<typeof createFakeSubscriber>;

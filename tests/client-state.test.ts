@@ -718,71 +718,6 @@ describe("client signaling recovery policy", () => {
     expect(sockets).toHaveLength(1);
   });
 
-  it("restarts only an authenticated active signaling session on request", () => {
-    const sockets: FakeWebSocket[] = [];
-    class FakeWebSocket extends EventTarget {
-      static readonly CLOSING = 2;
-      readyState = 1;
-      readonly send = vi.fn();
-      readonly close = vi.fn((code?: number, reason?: string) => {
-        void code;
-        void reason;
-        this.readyState = FakeWebSocket.CLOSING;
-      });
-
-      constructor(readonly url: string) {
-        super();
-        sockets.push(this);
-      }
-    }
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-    vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/1234"),
-      setTimeout,
-      clearTimeout,
-    });
-    const signal = new SignalingClient(
-      {
-        roomId: "1234",
-        role: "viewer",
-        clientId: "viewer-client",
-      },
-      {
-        onMessage: () => undefined,
-        onStatus: () => undefined,
-        onTerminated: () => undefined,
-        onAccessRequired: () => undefined,
-      },
-    );
-
-    signal.start();
-    expect(signal.reconnect()).toBe(false);
-    sockets[0]!.dispatchEvent(new Event("open"));
-    const authenticated = new Event("message");
-    Object.defineProperty(authenticated, "data", {
-      value: JSON.stringify({
-        type: "authenticated",
-        protocol: "screener-v12",
-        role: "viewer",
-        peerId: "viewer_12345678",
-        roomExpiresAt: null,
-        maxViewers: 8,
-        endpointMediaCopyCapacity: 2,
-        hostOnline: true,
-        connectionId: null,
-        viewerPeerIds: [],
-        iceConfig: { iceServers: [] },
-        codeEntryPolicy: "open",
-        viewerAuthorizationGeneration: "viewer_generation_12345678",
-      }),
-    });
-    sockets[0]!.dispatchEvent(authenticated);
-
-    expect(signal.reconnect()).toBe(true);
-    expect(sockets[0]!.close).toHaveBeenCalledWith(4002, "client reconnect");
-    expect(signal.reconnect()).toBe(false);
-  });
-
   it("keeps a Host paused across reconnect until an explicit Resume is sent", () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
@@ -848,11 +783,10 @@ describe("client signaling recovery policy", () => {
       });
     };
     const reconnect = (socket: FakeWebSocket) => {
-      expect(signal.reconnect()).toBe(true);
       const close = new Event("close");
       Object.defineProperties(close, {
-        code: { value: 4002 },
-        reason: { value: "client reconnect" },
+        code: { value: 1006 },
+        reason: { value: "network interrupted" },
       });
       socket.dispatchEvent(close);
       vi.advanceTimersByTime(750);
