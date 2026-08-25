@@ -88,6 +88,7 @@ export async function authenticateSiteAccess(
 export async function createRoom(
   codeEntryPolicy: CodeEntryPolicy,
   roomPassword: string | null,
+  preferredRoomId: string | null = null,
 ): Promise<CreateRoomResponse> {
   const response = await fetch("/api/rooms", {
     method: "POST",
@@ -98,6 +99,7 @@ export async function createRoom(
     body: JSON.stringify({
       codeEntryPolicy,
       ...(roomPassword === null ? {} : { roomPassword }),
+      ...(preferredRoomId === null ? {} : { preferredRoomId }),
     }),
   });
 

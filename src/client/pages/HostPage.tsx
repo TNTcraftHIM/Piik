@@ -64,9 +64,11 @@ import {
   type HostRoomState,
   mergeAuthenticatedHostRoom,
   readHostRoom,
+  readPreferredRoomId,
   readViewerGrant,
   replaceViewerInvite,
   writeHostRoom,
+  writePreferredRoom,
 } from "../lib/session";
 import {
   SignalingClient,
@@ -210,6 +212,7 @@ function hostRoomFromCreated(room: CreateRoomResponse): HostRoomState {
     roomId: room.roomId,
     hostToken: room.hostToken,
     expiresAt: room.expiresAt,
+    roomLeaseSeconds: room.roomLeaseSeconds,
     canonicalUrl: canonicalUrl.toString(),
     codeEntryPolicy: room.codeEntryPolicy,
     inviteUrl: room.inviteUrl,
@@ -247,6 +250,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [room, setRoom] = useState<HostRoomState | null>(() =>
     hostRoomFromStored(readHostRoom()),
   );
+  const roomRef = useRef(room);
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
   const [creationProfile, setCreationProfile] =
     useState<HostCreationProfile>(readCreationProfile);
   const creationProfileRef = useRef(creationProfile);
@@ -547,6 +554,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     activeGenerationRef.current = null;
     generationRef.current += 1;
+    const currentRoom = roomRef.current;
+    if (notifyServer && currentRoom) {
+      writePreferredRoom(
+        currentRoom.roomId,
+        currentRoom.roomLeaseSeconds,
+      );
+    }
     disposeResources(notifyServer);
     setNotice(message);
     setPhase("ended");
@@ -1410,6 +1424,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         const response = await createRoom(
           creationProfileRef.current.codeEntryPolicy,
           creationProfileRef.current.roomPassword,
+          readPreferredRoomId(),
         );
         createdRoom = hostRoomFromCreated(response);
         if (!isCurrentGeneration(generation)) {
@@ -1510,6 +1525,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   ...activeRoom,
                   expiresAt: message.roomExpiresAt,
                 });
+                writePreferredRoom(
+                  activeRoom.roomId,
+                  null,
+                );
                 setPhase("live");
               }
               handleSignalMessage(
@@ -1528,6 +1547,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           const response = await createRoom(
             creationProfileRef.current.codeEntryPolicy,
             creationProfileRef.current.roomPassword,
+            readPreferredRoomId(),
           );
           const replacement = hostRoomFromCreated(response);
           if (!isCurrentGeneration(generation)) {

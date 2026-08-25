@@ -217,6 +217,18 @@ describe("client signaling protocol", () => {
     expect(
       createRoomRequestSchema.parse({ codeEntryPolicy: "private" }),
     ).toEqual({ codeEntryPolicy: "private" });
+    expect(
+      createRoomRequestSchema.parse({
+        codeEntryPolicy: "open",
+        preferredRoomId: "4321",
+      }),
+    ).toEqual({ codeEntryPolicy: "open", preferredRoomId: "4321" });
+    expect(
+      createRoomRequestSchema.safeParse({
+        codeEntryPolicy: "open",
+        preferredRoomId: "0432",
+      }).success,
+    ).toBe(false);
     for (const codeEntryPolicy of [
       "password",
       "private-link",

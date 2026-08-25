@@ -991,6 +991,7 @@ export const createRoomResponseSchema = z
     inviteUrl: z.string().url().max(2048),
     codeEntryPolicy: codeEntryPolicySchema,
     expiresAt: z.string().datetime().nullable(),
+    roomLeaseSeconds: z.number().int().positive(),
   })
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;
@@ -999,6 +1000,7 @@ export const createRoomRequestSchema = z
   .object({
     codeEntryPolicy: codeEntryPolicySchema,
     roomPassword: viewerPasswordSchema.nullable().optional(),
+    preferredRoomId: roomCodeSchema.optional(),
   })
   .strict();
 

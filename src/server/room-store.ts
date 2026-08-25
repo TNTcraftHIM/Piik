@@ -192,6 +192,7 @@ export class RoomStore {
   async createRoom(
     codeEntryPolicy: CodeEntryPolicy = "open",
     roomPassword?: string | null,
+    preferredRoomId?: string,
   ): Promise<CreatedRoom> {
     if (this.rooms.size >= this.options.maxRooms) {
       throw new RoomStoreError("ROOM_LIMIT");
@@ -203,7 +204,7 @@ export class RoomStore {
     if (this.rooms.size >= this.options.maxRooms) {
       throw new RoomStoreError("ROOM_LIMIT");
     }
-    const roomId = this.takeRoomCode();
+    const roomId = this.takeRoomCode(preferredRoomId);
     try {
       const hostTokenBytes = this.random(32);
       if (hostTokenBytes.byteLength !== 32) {
@@ -638,9 +639,15 @@ export class RoomStore {
     );
   }
 
-  private takeRoomCode(): string {
+  private takeRoomCode(preferredRoomId?: string): string {
     if (this.freeRoomCodes.length === 0) {
       throw new RoomStoreError("ROOM_LIMIT");
+    }
+    if (preferredRoomId) {
+      const preferredIndex = this.freeRoomCodes.indexOf(preferredRoomId);
+      if (preferredIndex >= 0) {
+        return this.takeRoomCodeAt(preferredIndex);
+      }
     }
     const range = BigInt(this.freeRoomCodes.length);
     const randomLimit = (1n << 64n) - ((1n << 64n) % range);
@@ -654,14 +661,18 @@ export class RoomStore {
         continue;
       }
       const index = Number(value % range);
-      const roomId = this.freeRoomCodes[index]!;
-      const lastRoomId = this.freeRoomCodes.pop()!;
-      if (index < this.freeRoomCodes.length) {
-        this.freeRoomCodes[index] = lastRoomId;
-      }
-      return roomId;
+      return this.takeRoomCodeAt(index);
     }
     throw new Error("Unable to select a room code uniformly");
+  }
+
+  private takeRoomCodeAt(index: number): string {
+    const roomId = this.freeRoomCodes[index]!;
+    const lastRoomId = this.freeRoomCodes.pop()!;
+    if (index < this.freeRoomCodes.length) {
+      this.freeRoomCodes[index] = lastRoomId;
+    }
+    return roomId;
   }
 
   private releaseRoomCode(roomId: string): void {

@@ -17,12 +17,14 @@ import {
   parseAppRoute,
   mergeAuthenticatedHostRoom,
   readHostRoom,
+  readPreferredRoomId,
   readViewerGrant,
   readViewerRoute,
   replaceViewerInvite,
   roomRouteForExplicitEntry,
   roomRouteFromInput,
   writeHostRoom,
+  writePreferredRoom,
 } from "../src/client/lib/session.ts";
 import {
   shouldReconnectSignaling,
@@ -272,6 +274,7 @@ describe("client session identity", () => {
       inviteUrl: `https://share.test/r/1234#v=${"b".repeat(21)}A`,
       codeEntryPolicy: "open" as const,
       expiresAt: null,
+      roomLeaseSeconds: 3_600,
     };
 
     writeHostRoom(room);
@@ -281,12 +284,14 @@ describe("client session identity", () => {
       hostToken: "a".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
       expiresAt: null,
+      roomLeaseSeconds: 3_600,
     });
     expect(values.get("screener:host-room:v1")).toBe(
       JSON.stringify({
         roomId: "1234",
         hostToken: "a".repeat(32),
         expiresAt: null,
+        roomLeaseSeconds: 3_600,
         inviteUrl: "https://share.test/r/1234",
       }),
     );
@@ -304,6 +309,7 @@ describe("client session identity", () => {
           hostToken: "h".repeat(32),
           inviteUrl: "https://share.test/r/1234",
           expiresAt: null,
+          roomLeaseSeconds: 3_600,
         }),
       ],
     ]);
@@ -320,6 +326,7 @@ describe("client session identity", () => {
       hostToken: "h".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
       expiresAt: null,
+      roomLeaseSeconds: 3_600,
     });
   });
 
@@ -338,6 +345,7 @@ describe("client session identity", () => {
       hostToken: "b".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
       expiresAt: "2026-08-18T00:00:00.000Z",
+      roomLeaseSeconds: 3_600,
     };
 
     writeHostRoom(expired);
@@ -435,6 +443,7 @@ describe("client session identity", () => {
       hostToken: "h".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
       expiresAt: null,
+      roomLeaseSeconds: 3_600,
       codeEntryPolicy: "open" as const,
       inviteUrl: oldInvite,
     };
@@ -464,6 +473,27 @@ describe("client session identity", () => {
         "open",
       )?.inviteUrl,
     ).toBeNull();
+  });
+
+  it("keeps a preferred room for the server-configured lease window", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    writePreferredRoom("4321", null, 1_000);
+    expect(readPreferredRoomId(Number.MAX_SAFE_INTEGER)).toBe("4321");
+
+    writePreferredRoom("4321", 90, 1_000);
+
+    clearHostRoom();
+    expect(readPreferredRoomId(90_999)).toBe("4321");
+    expect(readPreferredRoomId(91_000)).toBeNull();
+    expect(values.has("screener:host-room-preference:v1")).toBe(false);
   });
 
   it("removes a legacy Viewer grant from room-scoped session storage", () => {
@@ -575,6 +605,24 @@ describe("site access API", () => {
     );
   });
 
+  it("sends only the preferred room code when one is current", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ error: "test response" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createRoom("open", null, "4321")).rejects.toBeInstanceOf(
+      ApiError,
+    );
+
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ codeEntryPolicy: "open", preferredRoomId: "4321" }),
+    );
+  });
+
   it("accepts an active room with a lease deadline", async () => {
     const room = {
       roomId: "1234",
@@ -582,6 +630,7 @@ describe("site access API", () => {
       inviteUrl: `https://share.test/r/1234#v=${"f".repeat(21)}A`,
       codeEntryPolicy: "open",
       expiresAt: "2026-08-24T00:00:00.000Z",
+      roomLeaseSeconds: 86_400,
     };
     vi.stubGlobal(
       "fetch",

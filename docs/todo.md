@@ -7,16 +7,20 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Browser VP8 hardware evidence.** Measure supported Chrome/Edge platforms
+1. **Preferred room reacquisition.** While sharing, keep the last assigned code
+   as an unexpired local preference; normal stop starts the configured room
+   lease countdown. A new room may request that code, but the server uses it
+   only while free and always creates a new room incarnation and credentials.
+2. **Browser VP8 hardware evidence.** Measure supported Chrome/Edge platforms
    under real game load using actual codec, encoder implementation, encode time,
    frame rate, and CPU/GPU attribution. Do not add another codec, custom encoder,
    GPU selector, or Native helper without a new decision.
-2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+3. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
    survival or controller recovery. Web does not promise background video or
    relay execution after OS suspension.
-3. **Finish real-network route and media acceptance.** Exercise direct peer,
+4. **Finish real-network route and media acceptance.** Exercise direct peer,
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,
@@ -27,36 +31,33 @@ later topic is not implementation authority by itself.
 
 ## Accepted Later Roadmap
 
-1. **Preferred room reacquisition.** Keep the last assigned four-digit code and
-   its 24-hour preference window in the Host browser. When prior ownership is
-   no longer valid, the next explicit share requests that code only if the
-   preference is still current; the server grants it only while free and
-   otherwise uses normal random allocation. This does not reserve a dormant
-   code or restore the old room incarnation, Host token, Viewer grant, password
-   verifier, lease, participants, or routes.
-2. **Quality-based topology research.** After the real-network baseline, decide
+1. **Quality-based topology research.** After the real-network baseline, decide
    whether measured user-visible quality justifies any active parent-selection
    mechanism. Current evidence cannot compare an active route with an
    unconnected alternative, so no quality score, all-pairs probing, periodic
    rebalancing, relay abdication threshold, or active parent switch is accepted.
    Prefer mature algorithms and one general model if this boundary is reopened.
-3. **Platform output only when real.** Revisit AirPlay/Cast only when a target
+2. **Platform output only when real.** Revisit AirPlay/Cast only when a target
    browser and physical receiver prove the live `MediaStream` contract. System
    mirroring remains external.
-4. **Public-server one-click package.** After functional and real-network work,
+3. **Public-server one-click package.** After functional and real-network work,
    package the exact application, STUN/SFU, reverse proxy, secrets, and health
    checks for a user-owned public server. Do not call a partial installer ready.
-5. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
+4. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
    application server, and local state without requiring source or Node. Report
    public-origin, TLS, gateway, NAT, and firewall limits honestly.
-6. **Native Host and shared encode, Windows first.** Productize only after real
+5. **Native Host and shared encode, Windows first.** Productize only after real
    capture, hardware-only encode, audio, identity, RTP/RTCP feedback, resource,
    packaging, and licensing gates pass. Browser Host/relay keeps standard
    per-`RTCPeerConnection` encoding.
-7. **Whole-product UI and bilingual decision.** Once media and route behavior
+6. **Whole-product UI and bilingual decision.** Once media and route behavior
    stabilizes, review copy, responsive hierarchy, visual consistency, restrained
    motion, bundle/rendering cost, and Chinese/English scope once as a whole.
    Ordinary screen-specific edits do not create parallel documentation.
+7. **Client-input security review.** Inventory HTTP and WebSocket inputs once as
+   a whole: strict schemas, authentication, authorization, rate and body bounds,
+   resource effects, error disclosure, logging, and secret handling. Begin
+   read-only and add no parallel security framework without a proven gap.
 8. **Repository simplification audit.** After the Browser, route, room, and
    physical-media checkpoints settle, inventory components, configuration,
    migrations, timers, compatibility paths, tests, and truth duplication using

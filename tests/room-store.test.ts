@@ -71,6 +71,20 @@ describe("RoomStore", () => {
     expect((await roomStore.createRoom()).roomId).toBe(released);
   });
 
+  it("uses a free preferred code and falls back when it is occupied", async () => {
+    const { store: roomStore } = store({ maxRooms: 3 });
+
+    const preferred = await roomStore.createRoom("open", null, "4321");
+    const fallback = await roomStore.createRoom("open", null, "4321");
+
+    expect(preferred.roomId).toBe("4321");
+    expect(fallback.roomId).not.toBe("4321");
+    expect(roomStore.abandonRoom("4321")?.roomId).toBe("4321");
+    expect((await roomStore.createRoom("open", null, "4321")).roomId).toBe(
+      "4321",
+    );
+  });
+
   it("rejects room limits beyond the four-digit code space", () => {
     expect(() => store({ maxRooms: 9_001 }).store).toThrow(
       "Room limit must be an integer between 1 and 9000",

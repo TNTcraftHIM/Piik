@@ -446,6 +446,7 @@ async function handleRequest(
       const room = await roomStore.createRoom(
         parsedRequest.data.codeEntryPolicy,
         parsedRequest.data.roomPassword ?? null,
+        parsedRequest.data.preferredRoomId,
       );
       const inviteUrl = new URL(`/r/${room.roomId}`, config.publicBaseUrl);
       if (room.viewerGrant) {
@@ -457,6 +458,7 @@ async function handleRequest(
         inviteUrl: inviteUrl.toString(),
         codeEntryPolicy: room.codeEntryPolicy,
         expiresAt: room.expiresAt,
+        roomLeaseSeconds: config.roomLeaseMs / 1_000,
       };
       sendJson(response, 201, responseBody);
     } catch (error) {
