@@ -1,56 +1,104 @@
-# Current Verification Status
+# Verification Status
 
 Last updated: 2026-08-25
 
-## Purpose
+This ledger records evidence that still changes how current source or production
+may be interpreted. Git and pull requests own routine completed checks.
 
-This is the demand-loaded ledger for cross-cutting validation evidence and open proof boundaries that do not fit one requirement, ADR, research note, or deployment guide. It is current state, not a release diary: replace superseded facts in place, move durable specialist conclusions to their owning documents, and let Git history retain completed timelines.
+## Current Production Identity
 
-Capacity and routing entries below describe the exact tested source or release only. Product direction and executable work are owned by [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
+- Production runs exact application/runtime revision
+  `af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, wire
+  `screener-v12`, from `/opt/screener/releases/af348ee`.
+- Runtime tar SHA-256:
+  `4922cc31d7caaad7c5412b1f2fe1d73f788d16d92386efad6eac358a97b8a78e`.
+  The 39-file manifest SHA-256 is
+  `5b397809b664b9a55885ac603df615b537bf51276e7274416820870956242d7d`.
+- Public Browser asset `assets/index-BvuZY6Hc.js` is 488473 bytes with SHA-256
+  `e8fc0500496ee101031a9cfebfcc22d3b69e66d2cac5e875448b56620dbb21c5`.
+  Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
+  coturn, and nginx active with zero restarts.
 
-## Deployment Evidence
+## Completed Product Evidence
 
-- Production runs exact deployed application/runtime revision `be53c4d5794d38d5d406c876309958d7117ee601`, release `be53c4d`, wire `screener-v12`, from `/opt/screener/releases/be53c4d`; that revision is integrated in canonical `main`. The immutable runtime tar SHA-256 is `5c174c30ffacd98738a364b825b915b84432823c261272684937361be2451144`; its 39-file manifest SHA-256 is `c34dba43a25c6b8447e1153a5be3191bf82cff94117ed31edc325d3f7cf8541f`.
-- Postflight found `screener`, LiveKit, coturn, and nginx active with zero restarts and no warning-level Screener/LiveKit journal entries. Local/public health and the served main Browser asset matched the release; `assets/index-BKEVI7Ux.js` has SHA-256 `22114fc8a26b3f03f37973555433d1e73d52d1c7b76fa3c7cc597500823bd62d`, while the prior main asset returns 404.
-- Production uses endpoint capacity `2`, room admission `20`, random free four-digit memory rooms, `ROOM_LEASE_SECONDS=86400`, a dedicated LiveKit instance with `room.auto_create: false` and `max_participants: 21`, and global SFU admission `1` ingress / `20` egress. Room authority is process-memory-only. Coturn is `stun-only`, `no-tcp`, and `no-tls`; only UDP 3478 listens, and nft exposes only UDP 3478/7882 for Screener media.
-- The production service orders Screener after LiveKit and boundedly waits for its control listener. Media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882 with no 5349, coturn TCP/TLS, relay range, ICE/TCP, or media TCP listener. The stable `inet bonfire_filter` table stayed unchanged through cutover at SHA-256 `afaf9d066e9f292d8bd19032b38c0978ccf60dd01c2fe7f210968ff751f90534`; the whole ruleset is not used as an identity because fail2ban owns a dynamic address set.
-- This application-only postflight proves archive identity, atomic application/assets, process health, and listener/firewall continuity. It did not re-exercise access, stale-wire rejection, direct, browser-relay, SFU, audio, codec, mobile, quality, or endurance behavior; those retained results remain revision-bounded below. Routine application-only releases do not maintain a full rollback/configuration backup; any future infrastructure or irreversible-state change requires recovery scoped to what it changes.
+- Strict `screener-v12` rejects stale Browser/executable wires before room
+  authority. Process-memory rooms, 24-hour dormant leases, restart loss,
+  room-lived Viewer grants, `open | private` code entry, invitation-only private
+  rooms, password entry, grant rotate/revoke, and `ROOM_NOT_FOUND` have passed
+  source and production gates.
+- Endpoint capacity `1/2/3`, default `2`, one active upstream, acyclicity,
+  source reachability, deterministic parent order, exact candidate identity,
+  first-decoded-frame commit, strictly newer rollback, bounded-gap resource
+  accounting, SFU admission, and delete-plus-absence release have focused unit
+  and controller coverage.
+- Controlled Chrome routing proved direct prepare failure, rollback, SFU
+  prepare, exact first-frame ready, SFU commit, and continuing UDP media without
+  external ICE servers on Browser LiveKit PCs. This does not replace public
+  heterogeneous-network recovery evidence.
+- Chrome direct and Browser-relay VP8 measurements reached about 60 fps after
+  stock bandwidth-estimation warm-up. Pinned LiveKit client `2.22.0` and server
+  `1.13.5` separately proved native lower/higher screen-share representation
+  selection with Dynacast and server send-side BWE.
+- Direct, Browser-relay, and SFU paths advanced video plus screen audio at
+  64/128/256 kbps ceilings and after source replacement. The old constant
+  active-audio `1 kbps` display is closed. Exact SFU weak-network behavior after
+  RED was disabled remains open.
+- Browser SFU publisher/subscriber PCs use empty external ICE-server lists while
+  ordinary peers retain deployment STUN. The reported Host/Viewer TUN conflict
+  was closed by that isolation without adding TURN or TCP media.
 
-## Retained Functional Evidence
+## Current Source Evidence
 
-- Exact deployed source `be53c4d` passed repository hygiene, TypeScript typecheck, all 613 Web tests in 44 files, client and server production builds, two independent reviews, pinned LiveKit encoding calculation, and production artifact/service postflight. Exact predecessor `b68c471` separately passed the 261-test SFU admission gate and explicit-Chrome access/privacy gate. Retained Chrome 20-Viewer and responsive visual checks apply only to their recorded predecessor revisions.
-- Chrome 151 on exact production `1d87615` used real dynamic-tab `getDisplayMedia()` at 1822x1080 and made only the ordinary STUN peer attempt unusable so the existing route operation reached its SFU suffix. Publisher and subscriber LiveKit PCs retained empty external ICE-server lists and selected UDP. The publisher exposed one video sender encoding and one outbound video stats object, both without RID; over six seconds it encoded 180 frames while the subscriber decoded and rendered 182 frames, with bytes advancing at both ends. This closes the single-representation implementation/deployment gate without claiming public SFU 60 fps, real-game quality, heterogeneous-network behavior, or endurance.
-- Chrome 151 on exact production `1d87615` used one continuously changing synthetic Browser stream while test-side policy made only ordinary STUN peer PCs unusable and left LiveKit unchanged. The Viewer observed direct prepare revision `1`, explicit rollback active revision `2`, SFU prepare revision `3`, exact-revision first-frame ready, then SFU active revision `3`; no ready was sent for the failed direct candidate. The final Host snapshot had no operation, parent/final route `sfu`, rejection `none`, and first-frame/final timing `10703/10703` ms within the unchanged 20-second total deadline. Host and Viewer LiveKit PCs had zero external ICE URLs, selected UDP, and advanced `58/57` frames plus bytes over the next two seconds. This closes the exact deployed controlled candidate rollback/SFU commit transaction, not physical capture, heterogeneous-network reachability, all-UDP-blocked failure, quality, or endurance.
-- Chrome 151 on exact production `1d87615` formed `Host -> SFU -> relay -> child` plus a separate direct Viewer, passed Pause/Resume, and then locally closed the relay's subscriber PC. After 45,234 ms the relay remained assigned to SFU and sent no `route-media-unavailable`, `refresh-sfu`, or `route-failed`; its downstream child independently reported its own decoded stall and recovered through the other Viewer. Receiver-stats calls had stopped about 28.9 seconds before the final sample. Source inspection confirms that no video track stops SFU sampling while an empty merged report or failed stats read produces no deadline sample. This bounded fault injection exposes an active-cadence implementation gap; local `RTCPeerConnection.close()` does not reproduce physical UDP loss or prove LiveKit's real reconnect path, so relay-ingress recovery remains open.
-- Chrome 151 on exact production `bf32859` captured a continuously changing tab with generated audio through real `getDisplayMedia()`. Two Host-direct children plus one browser-relay child and one forced-SFU Viewer all advanced decoded audio energy and video frames at 64/128/256 kbps sender ceilings and after live source replacement. Ordinary paths selected direct UDP; the SFU publisher/subscriber selected LiveKit UDP with empty external ICE-server lists. The UI never reported the faulty constant `1 kbps` with active audio. Direct/browser-relay actual traffic tracked each selected ceiling; SFU 64/128 traffic was higher because the accepted LiveKit default retains RED, so sender ceiling/readback and wire traffic remain distinct. After RTCP mapping became available, direct/browser-relay audio-minus-video playout timestamps ranged from -101 to +4 ms; Chrome exposed no corresponding value on the SFU subscription, so real-game SFU A/V synchronization remains open rather than inferred.
-- Chrome 151 on exact production `bf32859` used real `getDisplayMedia()`, a continuously changing source, separate Browser processes, VP8/libvpx, and no video hint. Direct stabilized near 59.5 encoded/received/decoded/rendered fps at 1904x928; a Browser relay kept every stage near 59.4--59.7 fps, adapting its outbound to 1428x696 under bandwidth pressure. Both converged after about 25--30 seconds of stock BWE ramp-up. On the exact public SFU path, the then-current `q,h` publication held `h` near 9.2 fps/1.37 Mbps; making `q` inactive from the first sender-parameter application raised the same 1904x928 `h` to about 23.3 fps/3.32 Mbps with source/capture near 60, 4.46 ms encode time per frame, zero loss/retransmission, and about 4.81 Mbps available outgoing bitrate. That gate closed an intrinsic VP8/no-hint direct/relay shortfall and rejected always-active `LOW`; it did not prove a deployed single-representation SFU path, public SFU 60 fps, or real-game performance.
-- Exact Browser SFU ICE-server-isolation implementation `ae09c760adec76fd26da611d4928486d105c6d3b` passed repository hygiene, TypeScript typecheck, all 605 Web tests in 45 files, client and server production builds, three independent code reviews, focused 95-test publisher/subscriber and ordinary-peer isolation coverage, deployment postflight, and owner physical SFU fallback media proof. This establishes the reported production connection fix without turning candidate type/count into an invariant; full route/network acceptance remains open.
-- A fresh canonical `main@c4962f5` background gate passed repository hygiene, all 605 Web tests, both production builds, the 254-test SFU admission suite, and the Chrome 151 20-Viewer 720p30/30-second local route gate. All 20 Viewers advanced decoded frames, Host and relays stayed within endpoint cap `2`, no orphan SFU publication appeared, and all four current-child timing distributions contained 20 values. The browser gate uses deterministic canvas and does not start LiveKit, so it proves local direct/browser-relay control and media behavior only; it is not physical capture or SFU evidence.
-- Exact v10 runtime source `fdd5a4a529ff297f41c05ea3388bf484d76afe8f` passed repository hygiene, TypeScript typecheck, client and server production builds, all 610 Web tests in 45 files, the 257-test SFU admission gate, the access/privacy Browser gate, and the production-dependency audit with zero vulnerabilities. Its one-Host/20-Viewer Chrome 151 direct-loopback report passed all seven assertions: all Viewers decoded, the selected VP8 settings reached every participant, Host and relay media edges stayed within cap `2`, no orphan SFU publication appeared, and all four current-child timing distributions contained 20 values. The report SHA-256 is `802CBB7632E9AEA3C39FE831A7F7880D24140B2E83942CE0DFDA05DE4B408EED`. This validates the v10 source boundary, not H.264 quality, hardware attribution, physical capture, public-network behavior, or SFU packet flow.
-- Chrome 151 synthetic `1/3/5/8` and 720p30 runs preserved bounded fanout and decoding. A `9461e20`-era three-Viewer rerun kept Host2/Browser Viewer1, decoded every Viewer, and recovered a hard first-level relay departure in 5,380 ms; it did not exercise quality-triggered MBB. Sixteen-Viewer cap2/cap3 loopbacks decoded all Viewers and a ten-second follow-up recorded guarded sender and aggregate Chromium CPU evidence, but resolution/FPS remained low and the ordinary-PC data cannot rank caps, select product policy, or prove sustainable heterogeneous-network quality. See [peer-assisted media](./research/peer-assisted-media.md).
-- Chrome 151 with local LiveKit 1.13.5/client 2.22.0 proved one SFU/UDP root after `q,f` -> `q,h`: decoded frames advanced 3 -> 23, rendered frames reached 26, Host used one edge, and leaves were clean. This is functional evidence only. See [low-server media routes](./research/low-server-media-routes.md).
-- Chrome 151 on the current Windows TUN path reproduced intermittent production LiveKit initial ICE before publication: server counters observed both ingress and egress while Browser ICE received no responses. Eight isolated Host attempts using the LiveKit-provided STUN endpoint succeeded `2/8`; explicitly empty Browser SFU `iceServers` succeeded `8/8`, observed a peer-reflexive-to-host UDP pair within 0.5--1.7 seconds, and published 75--89 ms later. This selects Browser SFU ICE-server isolation; the observed candidate type is diagnostic, not a gate, and the run does not close exact deployed Host/Viewer first-frame, mobile, quality, or endurance evidence. See [low-server media routes](./research/low-server-media-routes.md).
-- Host A+B and authenticated P2P Viewer C evidence is sanitized, generation-bound, diagnostic-only, and closed for stale or ambiguous reports. Production exposes one Host-local current SFU sender snapshot and clears it on publisher identity changes; raw media metadata is not retained. See [realtime quality adaptation](./research/realtime-quality-adaptation.md).
-- Fresh Chrome 151 tab-capture probes identified two separate Browser boundaries. Removing video `contentHint = "motion"` changed VP8 from 14.93 fps at 428x208 to 29.73 fps at 1904x928 under the same 5 Mbps balanced setup. No-hint AMD H.264 remained about 14--16 fps with hundreds of outer rate-limiter drops, while the same MFT reached 29.93 fps under diagnostic Desktop SW BRC; OpenH264 was slower. The page cannot enable that Chromium field trial or select an adapter/MFT. No-hint VP8 used libvpx software and held about 30 fps in one- and two-sender loopback on the test machine, but the process CPU totals include capture and local decode and are not real-game or weaker-device evidence. This evidence selects fixed VP8 for the Browser contract; current source and production implement that decision, and exact-production gates verify VP8 on direct, Browser-relay, and single-representation SFU paths. See [realtime quality adaptation](./research/realtime-quality-adaptation.md), [Native H.264](./research/native-h264-hardware-decision.md), and [Native shared encode](./research/native-shared-encode-sender.md).
-- One bounded Chrome 151/Windows 25H2 current-browser screening used real `getDisplayMedia()` window capture, VP8/libvpx with no video hint, a continuously changing WPF source, and one same-machine loopback receiver. Focused, hidden-tab, and minimized 15-second windows measured about 29.4--29.6 capture/encoded/decoded fps and 1.35--1.50 ms encode time per frame; each boundary sample read an enabled, unmuted, live 1186x712 track and each end sample reported `qualityLimitationReason=none`. All rates used monotonic counter deltas over the outbound-RTP RTCStats timestamp interval; source/inbound timestamps and raw stats identities were not retained independently. The sample did not observe an immediate Host-document background drop; it does not cover exact production code, a real game, physical Viewer, CPU/GPU contention, audio, repetition, a hold beyond five minutes, or public routing. See [Browser background capture](./research/browser-background-capture.md).
-- Native Windows 11 process audio is source-only and default-off. A retained run isolated the target by about 4018x and delivered 495 Opus packets to one Viewer; package download, game sync, Windows 10, and other routes remain open. See [ADR-0008](./adr/0008-window-scoped-audio-capture.md).
+- `af348ee` fixes Browser VP8 with `contentHint = "motion"`, reapplies the
+  selected video profile after answer negotiation, leaves SFU representation
+  construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
+  AdaptiveStream, and disables SFU audio RED.
+- The accepted `fix/viewer-page-lifecycle` candidate has focused coverage for
+  page-resume decoded-stall rebaselining, current-frame presentation authority,
+  and same-parent P2P manual rebuild. TypeScript and the client production build
+  pass. It is not current source or production until its release is integrated.
 
-## Open Proof Boundaries
+## Open Physical Gates
 
-- Routing: exact v10 local direct loopback remains historical evidence for admission-20 initial ingress. Exact v12 production closes one controlled ordinary-direct exhaustion, explicit rollback, and exact SFU first-frame commit transaction; the later subscriber-PC closure injection found the active-SFU cadence gap without proving physical loss recovery. Current source corrects that cadence while physical recovery remains open. Representative real-network direct/peer/SFU behavior, relay-ingress reparent with subtree retention, disconnect/effective-capacity drain, pause/resume, and bounded all-UDP-blocked failure remain open. Silent control partitions may wait 30 to 60 seconds for heartbeat detection before the default five-second grace; a non-paused decoded-frame stall may invalidate only that exact child edge.
-- Quality: exact-production direct and Browser-relay VP8/no-hint cadence plus the historical single-encoding SFU baseline are closed. ADR-0007's pinned gate separately proved LiveKit-owned selection between full- and half-resolution representations with server send-side BWE, and production now caps the half-actual-resolution lower representation at 30 fps with proportional bitrate. Its mixed-route HIGH recovery, constrained LOW delivery on this release, public SFU 60 fps, real-game quality, heterogeneous devices, and endurance remain open. Startup ramp is stock BWE behavior and does not authorize an SDP or application bitrate workaround.
-- Host background: deferred until the report reproduces on exact production with a continuously changing real game or replay, a separate direct wired Viewer, synchronized capture/outbound/inbound plus CPU/GPU evidence, and repeated focused/unfocused/hidden/minimized windows. The current-Chrome Browser `getDisplayMedia()` WPF-window screening did not observe an immediate Host-page media drop, and the old harmful `contentHint = "motion"` release remains a plausible confound rather than a proven background cause. Current evidence authorizes no keepalive, Wake Lock, timer, codec switch, route change, or Native fallback.
-- Relay resources: current source and production expose the authenticated `1/2/3` endpoint-cap boundary, and retained v10 local loopback evidence covers 20 Viewers at cap `2` only for that source. CPU/GPU/upload and heterogeneous-network measurements remain diagnostics, not authority to change the contract.
-- Room scale: current source and production admit 20 Viewers plus one Host, and the retained v10 local Browser convergence gate covers that bound on direct loopback. A real public-network 1:20 session, quality, and sustained resource matrix remain open.
-- SFU: current source and production use one half-actual-resolution lower representation capped at 30 fps plus the original representation, Dynacast, and the tracked server send-side-BWE setting without an application layer selector. Both use exact Viewer subscriptions and no fixed root-count or room-wide lease rule. Chrome 151 physically closed the empty-external-ICE-server connection hold and historical single-representation gate, while the separate pinned-stack gate proved native representation selection. The lighter lower representation's production quality effect, real LiveKit lifecycle/JWT replay, resource use, SFU-fed first-child behavior, and broader heterogeneous-network acceptance remain open.
-- Audio: current v12 source and production select the exact active ordinary Host or SFU publisher audio sender, reset samples across track changes or absence, keep relay children synchronized with persistent-stream audio changes, and reacquire exact SFU publications/senders after reconnect. Chrome 151 on exact production `bf32859` physically closed the reported active-source `1 kbps` observation and all three live ceilings across direct, browser-relay and SFU. Audible game quality, heterogeneous-network changes and real-game A/V synchronization remain part of route acceptance; a muted/idle Opus track may still legitimately remain near 1 kbps.
-- Observability: current v12 source and production keep local connection details but no Host/Viewer diagnostic downloads or Browser file-export plumbing. The Host-only bounded snapshot stays for automatic acceptance. Chrome 151 supplied selected candidate endpoints and ordinary-route A/V playout timestamps in the current gate, but omitted the SFU A/V timestamp. Target-browser availability and actual values remain open for codec/fmtp and encoder implementation/power efficiency, media-source and encoded FPS, and broader jitter/concealment cases. All retained fields diagnose and have no recovery authority; they do not by themselves prove hardware encode, synchronization quality, or route quality.
-- Mobile: Android/iOS remain Viewer-only. Autoplay, rotation, iOS lock-screen/page reclamation, background reconnection, and network changes need device evidence. AirPlay/system mirroring is Viewer-local output, not a portable in-app WebRTC output contract.
-- Native: ADR-0006 has one-Viewer evidence only. Viewer2/FIFO, hardware diversity, endurance, downloaded-package/public-host, game A/V, and browser diversity remain open.
-- Access and operations: exact predecessor `b68c471` passed the access/privacy gate with explicit Chrome and production cutover/postflight, including stale-v11 rejection before authority, room-lived grant/code orthogonality, private entry with and without a password, rotate/revoke, missing-room typing, and memory-only runtime. Headful same-browser preference replay and the isolated VM/IP clean-port matrix remain open; shared-IP smoke cannot approve them.
+### Route And Network
 
-## Evidence Rules
+- Repeat direct, peer-relay, SFU, relay-ingress recovery with subtree retention,
+  disconnect/capacity drain, and Pause/Resume on representative IPv4/IPv6,
+  Wi-Fi/cellular, and Host/Viewer TUN/VPN networks.
+- Verify all-UDP-blocked networks reach bounded explicit failure. No TURN,
+  ICE/TCP, media TCP, TLS relay, NAT classification, port prediction, or TCP
+  probe is authorized.
+- Run the 20-Viewer public-network capacity/resource/endurance gate. Local or
+  synthetic 1:20 control evidence does not establish target-network quality.
 
-- Target-device and production measurements drive performance decisions. Ordinary-PC synthetic runs prove only correctness or interoperability.
-- Record expensive evidence with exact source, environment, result, and applicability. When a relevant media path changes, replace or invalidate the corresponding entry; unrelated documentation changes do not require rerunning it.
-- Keep architecture-splitting candidates out of this ledger unless a proven consumer boundary makes them active work; file length alone is not evidence.
+### Media Quality
+
+- Measure real games at 720p30, 1080p30, and 1080p60 across weaker Hosts and
+  actual Browser encoder implementations. Correlate capture, outbound, inbound,
+  decode, CPU/GPU, and A/V timing.
+- Verify pinned LiveKit default representation behavior on exact production
+  under constrained and unconstrained subscribers without adding an application
+  layer selector.
+- Verify weak-network screen audio and A/V synchronization after RED was
+  disabled, including concealment/FEC evidence where exposed.
+
+### Lifecycle
+
+- Desktop Host background/minimized capture remains unconfirmed. A short
+  current-Chrome window-capture screening did not reproduce an immediate drop;
+  a current-production real-game reproduction must separate Host page, captured
+  surface, capture, encoder, path, and Viewer behavior.
+- Android Chrome and iOS Safari still need autoplay, background audio,
+  foreground video recovery, page reclamation, rotation, network migration, and
+  assigned-relay survival tests. Web does not promise background video or relay
+  execution after OS suspension.
+
+## Interpretation Rules
+
+- Configuration and loopback prove neither target-network quality nor hardware
+  acceleration.
+- Missing RTCStats fields are unknown, not zero.
+- Current-path quality is diagnostic and cannot authorize active parent change.
+- A Browser page lifecycle correction is recovery logic, not keepalive.
+- Native, packaging, and broad UI work remain outside these gates until their
+  TODO decisions are opened.

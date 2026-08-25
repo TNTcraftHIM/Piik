@@ -2,47 +2,78 @@
 
 Last updated: 2026-08-25
 
-This is the current execution index. Git history owns completed timelines; [verification status](./verification-status.md) owns evidence boundaries.
+This is the current execution index. Git history owns completed timelines;
+[verification status](./verification-status.md) owns evidence boundaries.
 
 ## Production
 
-- `https://share.bonfire.icu` runs exact deployed application/runtime revision `be53c4d5794d38d5d406c876309958d7117ee601`, release `be53c4d`, wire `screener-v12`, from `/opt/screener/releases/be53c4d`; that revision is integrated in canonical `main`. Its immutable runtime tar SHA-256 is `5c174c30ffacd98738a364b825b915b84432823c261272684937361be2451144`, and its 39-file manifest SHA-256 is `c34dba43a25c6b8447e1153a5be3191bf82cff94117ed31edc325d3f7cf8541f`.
-- `screener`, LiveKit, coturn, and nginx are active/running; local/public `/healthz` and the served Browser asset match the immutable release, and all four services report `NRestarts=0`. The main Browser asset is `assets/index-BKEVI7Ux.js` with SHA-256 `22114fc8a26b3f03f37973555433d1e73d52d1c7b76fa3c7cc597500823bd62d`; predecessor asset `assets/index-Bjcb0_oa.js` returns 404.
-- The service process resolves its working directory to exact release `be53c4d`; it has no writable room `StateDirectory` or SQLite runtime.
-- Production admits one Host plus 20 Viewers, applies endpoint capacity `2`, rejects stale Browser and executable-sender wires before room authority, and runs the one-controller exact-candidate route model with one staged total deadline. Rooms use random free four-digit codes, a 24-hour dormant lease, restart loss, local Host creation preferences, a room-lived 22-character Viewer grant, and exactly `open | private` code entry. Private rooms without a password are invitation-only; configuring one additionally permits matching code-and-password entry. LiveKit remains dedicated with `room.auto_create: false`, `max_participants: 21`, and global admission `1` publication ingress / `20` subscription egress.
-- Production media ports remain STUN-only UDP 3478 and LiveKit UDP 7882; coturn TCP/TLS, port 5349, media TCP, and relay ranges are disabled. The public Web ingress remains TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are internal-only. The stable `inet bonfire_filter` table SHA-256 is `afaf9d066e9f292d8bd19032b38c0978ccf60dd01c2fe7f210968ff751f90534`; the dynamic fail2ban table is excluded from that identity.
-- SFU subscribers reconcile Host screen publications across connect, activation, participant arrival, track publication, and reconnect. LiveKit runs at `warn`/Pion `error`, and the Screener unit waits boundedly for the same-host LiveKit control listener before startup. The decoded-progress cadence correction is deployed; the earlier subscriber-PC closure remains only the reproduction, so a controlled recovery transaction and physical network-loss evidence remain open.
-- Production Browser SFU publisher and subscriber PCs explicitly use empty external ICE-server lists while retaining LiveKit-signaled UDP candidates. The owner verified that the deployed isolation fixes the reported SFU connection failure; the prior P1 core-route hold is closed.
-- Production leaves video `contentHint` unset, keeps audio `contentHint = "music"`, and fixes Browser direct, browser-relay, and SFU video to VP8 without codec UI, quality state, wire fields, or fallback media codecs. Its SFU publisher supplies LiveKit one half-actual-resolution lower preset capped at 30 fps with proportional bitrate beside the original representation, enables Dynacast and server send-side BWE, keeps AdaptiveStream disabled, and adds no Screener layer selector.
+- `https://share.bonfire.icu` runs exact application/runtime revision
+  `af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, wire
+  `screener-v12`, from `/opt/screener/releases/af348ee`. The immutable runtime
+  tar SHA-256 is
+  `4922cc31d7caaad7c5412b1f2fe1d73f788d16d92386efad6eac358a97b8a78e`;
+  its 39-file manifest SHA-256 is
+  `5b397809b664b9a55885ac603df615b537bf51276e7274416820870956242d7d`.
+- The served Browser entry references `assets/index-BvuZY6Hc.js`; the public
+  asset is 488473 bytes with SHA-256
+  `e8fc0500496ee101031a9cfebfcc22d3b69e66d2cac5e875448b56620dbb21c5`.
+  Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
+  coturn, and nginx active with zero restarts.
+- Production uses process-memory four-digit rooms, a 24-hour dormant lease,
+  room-lived 22-character grants, `open | private` code entry, one Host plus 20
+  Viewers, endpoint copy cap `2`, and no SQLite runtime.
+- Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. Web
+  ingress is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are
+  private. TURN, ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are
+  disabled.
+- Browser video is fixed VP8 with `contentHint = "motion"`; audio uses `music`.
+  The SFU publisher leaves representation construction to pinned LiveKit,
+  enables Dynacast, uses server send-side BWE, keeps AdaptiveStream disabled,
+  and configures no external ICE servers on Browser SFU PCs.
+- Screen audio provides live 64/128/256 kbps ceilings with 128 default. SFU
+  publication uses stereo, DTX off, and RED off. Early autoplay presentation is
+  gated by current media connection state.
 
 ## Current Source
 
-- Canonical root `main` is the integration truth; auxiliary branches and older worktrees do not supersede it. Current source and production use the single strict Browser `screener-v12` wire and reject every other wire before room authority.
-- Current source implements one Host plus up to `20` Viewers, one steady outbound media-copy cap for every non-server endpoint (default `2`, static `1/2/3`), and the process-memory room model with random four-digit codes, a default 24-hour dormant lease, exact-Host resume, restart loss, local Host preference replay, exactly `open | private` code entry, and no SQLite runtime. Every room defaults to `open` without a room password and independently receives a Viewer grant: one 22-character opaque value bound to that room incarnation. Private rooms without a password are invitation-only; configuring a password additionally permits matching code-only entry. Unallocated/reclaimed/expired code-only entry returns `ROOM_NOT_FOUND` without a password prompt.
-- One event-driven controller owns the committed graph and at most one room-serial child operation. It uses one deterministic candidate list/cursor and one total direct-then-SFU deadline; exact admission and physical resources remain charged through drain, and the pending candidate commits only after an exact-generation decoded-frame proof. A short-lived 100 ms stats observer proves only that candidate inside the existing deadline. The active-path 2-second sampler now keeps its existing 15-second decoded-progress cadence when an SFU subscriber has no video track, no merged report, or a failed stats read, without adding a timer or fabricating metrics. Healthy edges remain sticky and current-path quality does not authorize reparenting.
-- Ordinary peer ICE is STUN-only and the only application fallback is the dedicated LiveKit SFU over UDP. SFU generations use explicit no-default ingress/egress capacities, exact `reserved | committed | draining` accounting, delete-plus-absence release, one Host publication, and exact Viewer subscription handles. No Screener TURN, ICE/TCP, media TCP, or TLS-relayed media route exists.
-- Current Browser SFU publisher and subscriber connects supply fresh `autoSubscribe: false` plus `rtcConfig: { iceServers: [] }` options. Ordinary peers retain deployment STUN; LiveKit signaling candidates, server-side public-IP discovery, route deadlines, ports, and retry behavior are unchanged.
-- Current source leaves video `contentHint` unset and keeps audio `contentHint = "music"`. Browser direct and browser-relay offers contain VP8 as their only media codec. SFU publication fixes VP8 with no backup codec and supplies LiveKit one half-actual-resolution lower preset capped at 30 fps with proportional bitrate beside the original representation; Dynacast, the default maximum subscriber ceiling, server send-side BWE, and disabled AdaptiveStream remain unchanged. Codec UI, quality state, wire fields, fallback media codecs, and share-lifetime codec branches are absent. Live 64/128/256 kbps audio-ceiling mutation remains unchanged; ordinary Host and SFU publisher metrics select the exact current sender, relays reconcile audio-track additions and removals on the persistent stream, and an SFU reconnect reacquires the exact current publication/sender, avoids unchanged parameter/stat resets, or fails the route closed.
-- Current source implements typed first-frame Viewer presentation and recovery, Chinese user-facing route/access failures, local connection details without a diagnostic-file export, authenticated Host-only on-demand route snapshots for automatic acceptance, explicit missing-room presentation, and responsive entry controls. Host invitation controls remain independent from two-state room-code entry.
-- Recommended quality remains exactly `1080p60`, `1080p30`, and `720p30`; current source defaults to `1080p30`. Advanced resolution adds `480p` as `854x480` without adding a fourth preset, and advanced FPS and bitrate remain independent.
-- The deployed application tree passed repository hygiene, TypeScript, all 613 Web tests in 44 files, both production builds, two independent reviews, and immutable artifact/postflight checks. Earlier exact-production gates exercised direct, browser-relay, SFU audio continuity and all three audio ceilings, and sustained about 59.5 fps on direct and browser-relay paths; the pinned-stack gate proved native two-representation selection. The new lower representation's mixed-route quality effect still needs production media evidence. Exact applicability remains in [verification status](./verification-status.md).
+- Canonical root `main` is clean at the same exact `af348ee` revision as
+  production. Auxiliary branches and worktrees do not supersede it.
+- One event-driven controller owns the committed graph and one room-serial child
+  operation. It uses exact candidate identity, first-decoded-frame commit,
+  strict rollback revisions, direct-then-SFU total deadline, and typed endpoint
+  plus SFU resource accounting. Healthy decoded edges remain sticky.
+- WebRTC/LiveKit own media adaptation. Screener has no custom SFU layer list,
+  quality score, layer selector, periodic rebalancing, or quality-driven parent
+  change. P2P and SFU recover their current route before actual failure enters
+  normal reassignment.
+- The staged `fix/viewer-page-lifecycle` candidate is based on exact `af348ee`.
+  It rebaselines Viewer decoded-stall timing after page resume, makes a new
+  current-generation frame clear stale media recovery state, uses native Viewer
+  video controls, removes Host preview controls, and makes manual P2P reconnect
+  rebuild the same parent. It is accepted but not yet committed, merged, or
+  deployed.
 
 ## Current Milestone
 
-1. Verify ADR-0007's deployed lightweight half-resolution representation in a mixed P2P/SFU room, then repeat the controlled active-SFU recovery transaction on exact production and finish representative ICE/STUN/SFU acceptance including screen-audio continuity and real-game A/V sync on mobile and heterogeneous networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
+1. Integrate, validate, deploy, and postflight `fix/viewer-page-lifecycle`.
+2. Finish representative public-network direct, peer-relay, SFU, recovery,
+   Pause/Resume, screen-audio, real-game A/V, mobile lifecycle, and all-UDP-
+   blocked acceptance without adding another transport or quality controller.
 
 ## Active Boundaries
 
-- `fix/configurable-relay-cap` is an old, incomplete draft and must not be merged as-is.
-- The desktop Host background/minimized report is deferred until a current-production real-game reproduction supplies synchronized media and CPU/GPU evidence. Mobile Viewer background playback and relay survival remain a separate Accepted Later lifecycle gate.
-- Open PR #192 and the Native stack are evidence/research, not pending product releases. Native senders, capture helpers, shared-encode executables, and their test binaries are outside the current Browser milestone and are not built or run.
-- Deployed surfaces and retained candidates that still need product decisions are indexed only in [the TODO ledger](./todo.md); do not extend or roll them back automatically.
-- Room lifetime, authorization/storage semantics, restart loss, and routing are aligned on strict v12 in current source and production. The application-only cutover reused unchanged infrastructure and configuration and does not maintain a full rollback/configuration backup; any future infrastructure or irreversible-state change requires recovery scoped to the surfaces it actually changes.
-- Real SFU recovery, heterogeneous networks, mobile lifecycle, audio/A-V device behavior, and endurance/resource measurements remain external acceptance evidence, not blockers for unrelated reversible work.
+- Desktop Host background capture remains unconfirmed. The current-browser
+  screening did not reproduce a Host-page drop; accepted Viewer lifecycle work
+  prevents frozen JavaScript wall time from becoming an immediate route failure
+  but is not capture keepalive.
+- Current-path quality is diagnostic. High loss, RTT, jitter, low bitrate,
+  resolution, FPS, or freeze counters do not trigger relay abdication or parent
+  switching.
+- Native/executable senders, shared encode, distribution packages, broad UI
+  polish, bilingual support, and repository-wide simplification are outside the
+  current release.
 
 ## Current Hold
 
-The active-SFU cadence correction is deployed, but the controlled recovery
-transaction has not yet been repeated on this release. That exact proof remains
-the P1 hold for route acceptance. Native/executable work and broad repository
-cleanup remain outside the current evidence boundary.
+No source or deployment P0 is open. Representative real-network and mobile
+physical evidence remains required before route acceptance is complete.

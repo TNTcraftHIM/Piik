@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: The route model is accepted and deployed in exact release `1d87615`
+- Status: The route model is accepted and deployed in exact release `af348ee`
   on strict v12, including Browser SFU ICE-server isolation, no product
   diagnostic-download UI, and the retained Host-only acceptance snapshot.
 - Date: 2026-08-20
@@ -271,6 +271,14 @@ second mutable graph.
   state sampler is separate from the pending candidate's short-lived first-frame
   observer and does not treat bitrate, FPS, track availability, or SFU layer
   choice as route authority.
+- Browser page resume/visibility recovery rebaselines this same deadline before
+  another no-progress sample can invalidate an edge. Frozen JavaScript wall time
+  is not media-failure proof. A newly composited current-generation frame clears
+  stale local recovery presentation but does not create route authority.
+- Manual media reconnect remains on the current exact route: a peer rebuild uses
+  the same parent, and an SFU reconnect reconstructs the same subscription.
+  Neither action performs quality selection or active reparenting. Only actual
+  recovery exhaustion reports route failure and enters normal reconciliation.
 - Authoritative pause aborts the pending child operation, including its current
   candidate and reservations, keeps the active graph, suppresses decoded-frame-
   stall decisions, and leaves new participants waiting. Resume always wakes a
@@ -365,18 +373,14 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Production runs exact deployed application/runtime revision
-`1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical `main`
-contains newer source pending deployment, including the active-SFU cadence correction
-and exact Browser SFU ICE-server-isolation implementation
-`ae09c760adec76fd26da611d4928486d105c6d3b`. Both run strict `screener-v12` and
-the direct/STUN peer plus LiveKit SFU/UDP route model. Browser SFU PCs use empty
-external ICE-server lists. Chrome 151 on that exact production verified one
-publisher and one subscriber advancing frames over LiveKit UDP; the controlled
-exact-candidate rollback/SFU commit gate is also closed. The operation owner
-remains only `route`. Exact evidence is owned by the
-[verification ledger](../verification-status.md); broader heterogeneous-network
-and SFU lifecycle validation remains open.
+Production and canonical `main` run exact application/runtime revision
+`af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, on strict
+`screener-v12` with the direct/STUN peer plus LiveKit SFU/UDP route model.
+Browser SFU PCs use empty external ICE-server lists. The controlled exact-
+candidate rollback/SFU commit and active-SFU cadence gates are closed. The
+operation owner remains only `route`; broader heterogeneous-network and SFU
+lifecycle validation remains open in the
+[verification ledger](../verification-status.md).
 
 ## Acceptance Boundary
 

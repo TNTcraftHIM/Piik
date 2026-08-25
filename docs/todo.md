@@ -2,45 +2,87 @@
 
 Last reviewed: 2026-08-25
 
-Only items in **Now** are executable after their stated decision gate. A branch name, unchecked requirement, experiment, review suggestion, or deployed behavior is not a TODO by itself.
+Only **Now** is executable. A branch, old experiment, observation, or accepted
+later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Verify deployed constrained SFU publication quality.** Production keeps the two LiveKit-owned VP8 spatial representations, Dynacast, send-side BWE, and no AdaptiveStream. It derives the half-actual-resolution lower publication preset at no more than 30 fps with proportional bitrate and retains that option for LiveKit-owned source replacement or republish; it does not mutate LOW behind the SDK's Dynacast lock. In the same mixed P2P/SFU dynamic-source gate, verify that HIGH recovers materially, P2P does not regress, and a constrained SFU downlink still selects and decodes LOW. Do not restore global `motion`, add more simulcast encodings, return to single HIGH, or add a Screener layer selector.
-2. **Finish real-network route acceptance.** Repeat the controlled active-SFU recovery transaction on exact production. Then measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync across representative IPv4/IPv6 NATs and mobile networks. Include Host and Viewer TUN/VPN cases and an all-UDP-blocked case to distinguish an application ICE-option defect from operating-system interception and establish bounded explicit failure. Do not add another watchdog, port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
+1. **Close the Viewer lifecycle/native-control release.** Integrate the staged
+   `fix/viewer-page-lifecycle` candidate from the accepted truth checkpoint,
+   run the full repository check, review the exact diff, merge through PR,
+   deploy one immutable application artifact, and perform scoped production
+   postflight. Verify native Viewer controls plus current-route P2P and SFU
+   reconnect without adding route reselection.
+2. **Finish real-network route and media acceptance.** Exercise direct peer,
+   Browser relay, SFU, relay-ingress recovery with subtree retention,
+   disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
+   continuity, and real-game A/V sync across representative IPv4/IPv6,
+   Wi-Fi/cellular, and Host/Viewer TUN/VPN cases. Include an all-UDP-blocked case
+   and weak-network audio after SFU RED was disabled. Every exhausted path must
+   end in bounded wait/failure without TURN, TCP probing, NAT classification,
+   guessed candidates, or another watchdog.
 
 ## Accepted Later Roadmap
 
-These items are real product work, ordered after the current physical-media, real-network, and product-decision gates; they are not permission to resume an old branch wholesale.
+1. **Browser VP8 hardware evidence.** Measure supported Chrome/Edge platforms
+   under real game load using actual codec, encoder implementation, encode time,
+   frame rate, and CPU/GPU attribution. Do not add another codec, custom encoder,
+   GPU selector, or Native helper without a new decision.
+2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+   autoplay gesture, foreground/background audio, foreground video recovery,
+   lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
+   survival or controller recovery. Web does not promise background video or
+   relay execution after OS suspension.
+3. **Quality-based topology research.** After the real-network baseline, decide
+   whether measured user-visible quality justifies any active parent-selection
+   mechanism. Current evidence cannot compare an active route with an
+   unconnected alternative, so no quality score, all-pairs probing, periodic
+   rebalancing, relay abdication threshold, or active parent switch is accepted.
+   Prefer mature algorithms and one general model if this boundary is reopened.
+4. **Platform output only when real.** Revisit AirPlay/Cast only when a target
+   browser and physical receiver prove the live `MediaStream` contract. System
+   mirroring remains external.
+5. **Public-server one-click package.** After functional and real-network work,
+   package the exact application, STUN/SFU, reverse proxy, secrets, and health
+   checks for a user-owned public server. Do not call a partial installer ready.
+6. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
+   application server, and local state without requiring source or Node. Report
+   public-origin, TLS, gateway, NAT, and firewall limits honestly.
+7. **Native Host and shared encode, Windows first.** Productize only after real
+   capture, hardware-only encode, audio, identity, RTP/RTCP feedback, resource,
+   packaging, and licensing gates pass. Browser Host/relay keeps standard
+   per-`RTCPeerConnection` encoding.
+8. **Whole-product UI and bilingual decision.** Once media and route behavior
+   stabilizes, review copy, responsive hierarchy, visual consistency, restrained
+   motion, bundle/rendering cost, and Chinese/English scope once as a whole.
+   Ordinary screen-specific edits do not create parallel documentation.
+9. **Repository simplification audit.** After the Browser, route, room, and
+   physical-media checkpoints settle, inventory components, configuration,
+   migrations, timers, compatibility paths, tests, and truth duplication using
+   the [maintenance review](./maintenance.md#机制减负审查). Begin read-only and do
+   not turn it into a broad refactor.
 
-1. **Browser VP8 hardware-acceleration evidence.** After the current physical codec gate, measure supported Chrome/Edge platform combinations under real game load using actual negotiated codec, encoder implementation, power-efficient status, encode time, frame rate, and CPU/GPU attribution. Capability advertisement alone is not proof. Do not add another codec, a custom encoder, GPU-selection workaround, codec ladder, or Native helper without a new accepted decision.
-2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari device matrices for autoplay gesture, foreground/background audio, foreground video recovery, lock/page reclamation, rotation, Wi-Fi/cellular migration, and an assigned relay's outbound-media survival or controller failover across those transitions. Preserve the same media element and current reconnect path; do not promise background video composition, background relay continuity, or unsupported lock-screen behavior.
-3. **Platform output only when real.** Revisit AirPlay/Cast only when a target browser and physical receiver prove the live `MediaStream` contract. System mirroring remains external; no placeholder button, custom receiver, or server transcode is scheduled.
-4. **Public-server one-click deployment package.** After every current functional and real-network item is settled, package the exact application, STUN/SFU, reverse proxy, secrets, and health checks for a user-owned public server. Require real domain/TLS/firewall/capacity inputs and recovery scoped to any infrastructure or irreversible state the installer actually changes; routine application-only immutable updates do not create or maintain a full configuration backup. Never ship credentials or call a partial deployment ready.
-5. **Fully local one-click Host-server package.** Package Windows/macOS/Linux Host capture, the exact application server and local state without requiring source, Node or any external Screener/STUN/SFU/tunnel/relay service. Preserve usable direct P2P and use the completed NAT/network evidence to maximize reachability, while reporting public-origin, gateway, NAT and firewall limits truthfully; loopback/LAN success is not universal Internet success.
-6. **Native Host capture backend.** At lowest priority, productize a proven Windows native capture path before expanding capture/audio backends to macOS and Linux. Its capture, hardware encode, audio, identity and lifecycle evidence becomes an input to later packages; a source checkout, helper executable, or evaluation ZIP is not a distributable product.
-7. **Native shared encode, Windows first.** At lowest priority, prove one hardware encoder output can serve two independent Viewer transports and the Host-SFU publication while each connection retains its own RTP/RTCP, pacing, encryption, feedback, and upload accounting. Productize only after actual access-unit identity, Viewer2/FIFO, heterogeneous feedback, game-resource, browser/hardware, A/V, packaging, and licensing gates pass. Web Host/relay remains standard per-`RTCPeerConnection` encoding because no portable shared-encoder contract exists.
-8. **Whole-product UI polish and bilingual-scope decision.** After current functional, physical-media, and real-network work stabilizes, review the product UI once as a whole: simplify and align copy, refine responsive hierarchy and visual consistency, add restrained motion, and measure rendering and bundle cost. Connection presentation uses the two user-facing media labels `P2P` and `SFU` without naming SFU as fallback. A completed reconnect must clear stale “正在重连” stage copy, while retained notices gain an explicit close action. The compact Host roster shows each Viewer's IP for duplicate-name disambiguation without waiting for expanded details; its exact source and data boundary remain part of that task. Decide Chinese/English scope, default/fallback and switching persistence before introducing one shared text catalog; do not add duplicate screen-specific translations or let presentation redefine room and route semantics.
-9. **Repository simplification audit.** After the current Browser, physical-media, route, and room checkpoints settle, inventory components, configuration, migrations, gates, timers, compatibility paths, tests, and truth-document duplication using the [maintenance review](./maintenance.md#机制减负审查). Begin read-only: identify the behavior or decision each surface preserves and compare that value with its whole-system cost. Any accepted feature tradeoff updates its single owning contract before complete unused surfaces are removed. This later audit must not become a broad refactor or block current product work.
+## Product Decision Needed
 
-## Product Decisions Needed
-
-| Deployed or retained item | Decision |
+| Item | Decision |
 | --- | --- |
-| Project license and closed-commercial boundary | Decide the repository and distribution license before any public release or package distribution. GPL/AGPL implementations remain research-only until then. |
+| Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
 
-These decisions are not permission to continue old branches, and current deployment remains unchanged until a scoped decision is made.
+## Evidence Boundaries
 
-## Evidence And Later Work
-
-- The desktop Host background/minimized report is deferred after a bounded current-Chrome screening found no immediate Host-page lifecycle drop and the old `contentHint = "motion"` release remained a plausible confound. Reopen it only with a reproducible current-production real-game case and synchronized capture/send/receive/decode plus CPU/GPU evidence. This does not close or advance the separate Mobile Viewer lifecycle item, whose background playback and assigned-relay survival depend on mobile browser and OS lifecycle behavior.
-- Open PR #192 measures synthetic flash/tone timing; it is not an A/V correction feature.
-- The Native PR stack #16/#18/#22/#23/#25/#28 and related fanout branches are one research program, not six product TODOs.
-- Cap3, resource, route-recovery, Viewer-MBB, signaling-blackhole, Host-generation, SFU-shaping, NAT, mobile, and endurance artifacts remain bounded evidence. Merge or retain them only when a current decision consumes them. Raw-IP ranking, port prediction, NAT classification, AirPlay/Cast receivers, and mobile background guarantees are not implied by the current implementation batch.
-- Real heterogeneous-network SFU, mobile lifecycle, audio/A-V device, and endurance/resource acceptance remain owned by the corresponding Now or Later evidence gate.
+- Desktop Host background/minimized capture remains diagnostic until a current-
+  production real-game reproduction correlates capture, outbound, inbound,
+  decode, and CPU/GPU. Viewer resume correction is not a keepalive guarantee.
+- Synthetic and loopback tests validate invariants, not target-network quality,
+  latency, capacity, mobile lifecycle, or endurance.
+- Open Native and packaging branches are retained evidence/candidates, not
+  current releases.
 
 ## Candidate Handling
 
-- Preserve the dirty `fix/configurable-relay-cap` worktree only for user-change audit. Current `main` already implements the accepted uniform `1/2/3` endpoint cap; do not merge the worktree's old route implementation or treat it as unfinished cap work.
-- Preserve dirty or unique worktrees and open stacked branches until reviewed. Never resolve their conflicts by importing old truth into `main`.
-- Sample worktree, branch, PR, artifact, and reparse-point state immediately before cleanup; do not maintain a permanent workspace inventory here.
+- Preserve dirty or unique worktrees and open stacks until reviewed. Never
+  import old truth wholesale.
+- `fix/media-followup` is clean and tree-equivalent to current `main`; it may be
+  removed only after merged-head, reference, and reparse checks.
+- Sample worktree and branch state immediately before cleanup rather than
+  maintaining a permanent inventory here.
