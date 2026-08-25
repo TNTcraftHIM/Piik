@@ -1241,6 +1241,7 @@ function audioPublishOptions(
     audioPreset,
     forceStereo: true,
     dtx: false,
+    red: false,
   };
 }
 
