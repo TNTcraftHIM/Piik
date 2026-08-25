@@ -134,7 +134,6 @@ export interface ViewerPresentation {
   message: string;
   notice: string | null;
   overlay: "none" | "status" | "blocking";
-  showPlay: boolean;
   retryAvailable: boolean;
   hasCurrentFrame: boolean;
   hasRetainedFrame: boolean;
@@ -310,6 +309,7 @@ export function reduceViewerPresentation(
       }
       return {
         ...state,
+        connection: "connected",
         media: { ...state.media, framePresented: true },
         retainedFrame: false,
         failure:
@@ -486,10 +486,7 @@ export function deriveViewerPresentation(
     state.autoplayBlockedGeneration === state.media.generation &&
     state.connection === "connected"
   ) {
-    return {
-      ...presentation("needs-play", "需要点击播放", "blocking", state),
-      showPlay: true,
-    };
+    return presentation("needs-play", "点击播放", "status", state);
   }
 
   if (currentFrame) {
@@ -505,7 +502,7 @@ export function deriveViewerPresentation(
         state,
       ),
       notice: state.host === "offline"
-        ? "分享者连接已中断，画面仍然可用"
+        ? "分享者连接已中断，画面可能冻结"
         : signalRecovering
         ? "服务器连接正在恢复，画面仍在播放"
         : mediaRecovering
@@ -666,7 +663,6 @@ function presentation(
     message,
     notice: null,
     overlay,
-    showPlay: false,
     retryAvailable:
       state.access === "ready" && state.host !== "paused" && state.retryAvailable,
     hasCurrentFrame: hasCurrentFrame(state),

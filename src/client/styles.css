@@ -314,14 +314,6 @@ h3 {
   background: #050706;
 }
 
-.local-preview-action {
-  position: absolute;
-  z-index: 2;
-  top: 10px;
-  right: 10px;
-  background: rgba(5, 7, 6, 0.78);
-}
-
 .stage-placeholder,
 .stage-overlay {
   position: absolute;
@@ -337,6 +329,7 @@ h3 {
 .stage-overlay {
   color: var(--text);
   background: rgba(5, 7, 6, 0.72);
+  pointer-events: none;
 }
 
 .stage-entry {
@@ -710,8 +703,7 @@ h3 {
 }
 
 .button,
-.icon-button,
-.play-overlay {
+.icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1282,27 +1274,14 @@ h3 {
   margin: 0 auto;
 }
 
-.play-overlay {
-  position: absolute;
-  inset: 50% auto auto 50%;
+.viewer-status-row {
+  display: grid;
+  width: 100%;
   min-height: 44px;
+  grid-template-columns: minmax(0, 1fr) 84px;
   gap: 8px;
-  padding: 0 18px;
-  color: #06140c;
-  background: var(--green);
-  border-color: var(--green-strong);
-  font-weight: 700;
-  transform: translate(-50%, -50%);
-}
-
-.viewer-toolbar {
-  display: flex;
-  min-height: 58px;
-  gap: 16px;
   align-items: center;
-  justify-content: space-between;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
 }
 
 .viewer-roster {
@@ -1371,33 +1350,27 @@ h3 {
   white-space: nowrap;
 }
 
-.toolbar-actions {
-  display: flex;
-  min-width: 0;
-  flex: 0 0 auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.viewer-volume-control {
+.viewer-status-actions {
   display: grid;
-  min-width: 0;
-  grid-template-columns: 40px minmax(76px, 120px) 42px;
-  gap: 8px;
-  align-items: center;
+  grid-template-columns: 40px 40px;
+  gap: 4px;
 }
 
-.viewer-volume-control input {
-  width: 100%;
-  min-width: 0;
-  accent-color: var(--green);
+.viewer-status-action,
+.viewer-status-action-placeholder {
+  width: 40px;
+  height: 40px;
 }
 
-.viewer-volume-control output {
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+.viewer-status-action {
+  border-color: transparent;
+  color: var(--faint);
+  background: transparent;
+}
+
+.viewer-status-action:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface);
 }
 
 .viewer-stats {
@@ -1502,24 +1475,6 @@ h3 {
 
   .viewer-name-control {
     width: 100%;
-  }
-
-  .viewer-toolbar {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .toolbar-status {
-    flex: 1 1 100%;
-  }
-
-  .toolbar-actions {
-    width: 100%;
-  }
-
-  .viewer-volume-control {
-    flex: 1 1 auto;
-    grid-template-columns: 40px minmax(58px, 1fr) 38px;
   }
 
   .segmented-control {

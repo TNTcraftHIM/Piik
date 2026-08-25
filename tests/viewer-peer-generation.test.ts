@@ -619,6 +619,13 @@ describe("ViewerPeer connection generations", () => {
         rebuild: false,
       },
     ]);
+
+    expect(peer.requestRecovery(true)).toBe(true);
+    expect(restartRequests.at(-1)).toEqual({
+      peerId: "parent-new",
+      connectionId: "connection-new",
+      rebuild: true,
+    });
   });
 
   it("does not send an old answer or candidate after replacing the connection", async () => {

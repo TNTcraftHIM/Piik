@@ -112,20 +112,20 @@ export class ViewerPeer {
     }
   }
 
-  requestRecovery(): boolean {
+  requestRecovery(rebuild = false): boolean {
     if (!this.connectionId || !this.parentPeerId) {
       return false;
     }
     const sent = this.events.sendRestartRequest(
       this.parentPeerId,
       this.connectionId,
-      false,
+      rebuild,
     );
     if (sent) {
       this.clearInitialConnectionTimer();
       this.automaticRecoveryRequests = Math.max(
         this.automaticRecoveryRequests,
-        1,
+        rebuild ? MAX_AUTOMATIC_RECOVERY_REQUESTS : 1,
       );
       this.scheduleRecoveryDeadline();
     }

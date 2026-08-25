@@ -29,7 +29,6 @@ describe("Viewer presentation reducer", () => {
       stage: "preparing-p2p",
       message: "正在建立 P2P",
       overlay: "blocking",
-      showPlay: false,
     });
 
     const receiving = reduceViewerPresentation(preparing, {
@@ -51,7 +50,7 @@ describe("Viewer presentation reducer", () => {
     });
   });
 
-  it("shows Play only for the exact media generation rejected by autoplay", () => {
+  it("reports native playback blocking only for the exact media generation", () => {
     const blocked = apply(
       { type: "access", access: "ready" },
       { type: "host", host: "online" },
@@ -62,7 +61,8 @@ describe("Viewer presentation reducer", () => {
     );
     expect(deriveViewerPresentation(blocked)).toMatchObject({
       stage: "needs-play",
-      showPlay: true,
+      message: "点击播放",
+      overlay: "status",
       failureCode: "AUTOPLAY_BLOCKED",
     });
 
@@ -70,7 +70,7 @@ describe("Viewer presentation reducer", () => {
       type: "autoplay-cleared",
       generation: 3,
     });
-    expect(deriveViewerPresentation(staleClear).showPlay).toBe(true);
+    expect(deriveViewerPresentation(staleClear).stage).toBe("needs-play");
 
     const cleared = reduceViewerPresentation(blocked, {
       type: "autoplay-cleared",
@@ -78,11 +78,10 @@ describe("Viewer presentation reducer", () => {
     });
     expect(deriveViewerPresentation(cleared)).toMatchObject({
       stage: "receiving",
-      showPlay: false,
     });
   });
 
-  it("waits for the current media connection before showing Play", () => {
+  it("waits for the current media connection before reporting playback blocking", () => {
     const blockedWhileConnecting = apply(
       { type: "access", access: "ready" },
       { type: "host", host: "online" },
@@ -92,7 +91,6 @@ describe("Viewer presentation reducer", () => {
     );
     expect(deriveViewerPresentation(blockedWhileConnecting)).toMatchObject({
       stage: "receiving",
-      showPlay: false,
     });
 
     const connected = reduceViewerPresentation(blockedWhileConnecting, {
@@ -102,7 +100,7 @@ describe("Viewer presentation reducer", () => {
     });
     expect(deriveViewerPresentation(connected)).toMatchObject({
       stage: "needs-play",
-      showPlay: true,
+      overlay: "status",
     });
   });
 
@@ -170,7 +168,6 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(preparing)).toMatchObject({
       stage: "preparing-sfu",
       overlay: "status",
-      showPlay: false,
     });
   });
 
@@ -193,7 +190,6 @@ describe("Viewer presentation reducer", () => {
     expect(preparing.failure).toBeNull();
     expect(deriveViewerPresentation(preparing)).toMatchObject({
       stage: "preparing-sfu",
-      showPlay: false,
     });
   });
 
@@ -259,6 +255,29 @@ describe("Viewer presentation reducer", () => {
     });
   });
 
+  it("treats a new current-generation frame as connected media", () => {
+    const recovering = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 3, phase: "active", kind: "sfu" },
+      { type: "media-bound", generation: 2, revision: 3 },
+      { type: "connection", revision: 3, connection: "reconnecting" },
+    );
+
+    const resumed = reduceViewerPresentation(recovering, {
+      type: "frame-presented",
+      generation: 2,
+      revision: 3,
+    });
+    expect(resumed.connection).toBe("connected");
+    expect(deriveViewerPresentation(resumed)).toMatchObject({
+      stage: "playing",
+      message: "正在播放",
+      notice: null,
+    });
+  });
+
   it("keeps a healthy Host-offline frame but invalidates it on upstream failure", () => {
     const offlineWithMedia = apply(
       { type: "access", access: "ready" },
@@ -273,7 +292,7 @@ describe("Viewer presentation reducer", () => {
       stage: "playing",
       overlay: "none",
       hasCurrentFrame: true,
-      notice: "分享者连接已中断，画面仍然可用",
+      notice: "分享者连接已中断，画面可能冻结",
     });
     expect(
       reduceViewerPresentation(offlineWithMedia, {
@@ -330,7 +349,6 @@ describe("Viewer presentation reducer", () => {
     );
     expect(deriveViewerPresentation(paused)).toMatchObject({
       stage: "host-paused",
-      showPlay: false,
     });
 
     const waiting = apply(

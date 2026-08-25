@@ -1,15 +1,11 @@
 import {
   KeyRound,
   LoaderCircle,
-  Maximize2,
   Network,
   Pencil,
-  Play,
   RefreshCw,
   Save,
   VideoOff,
-  Volume2,
-  VolumeX,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -68,12 +64,6 @@ import {
 } from "../media/video-frame-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
-import {
-  applyViewerVolume,
-  DEFAULT_VIEWER_VOLUME_STATE,
-  setViewerVolume,
-  toggleViewerMuted,
-} from "../media/viewer-volume";
 import type {
   ConnectionMetrics,
   PeerSnapshot,
@@ -130,7 +120,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [remoteMedia, setRemoteMedia] = useState<RemoteMediaBinding | null>(
     null,
   );
-  const remoteStream = remoteMedia?.stream ?? null;
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
   const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
   const [assignedRoute, setAssignedRoute] = useState<{
@@ -141,9 +130,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [relayChildEvidence, setRelayChildEvidence] =
     useState<ViewerQualityEvidencePresentation | null>(null);
-  const [playbackVolume, setPlaybackVolume] = useState(
-    DEFAULT_VIEWER_VOLUME_STATE,
-  );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [displayName, setDisplayName] = useState(() => readDisplayName());
@@ -162,9 +148,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     sequence: number;
   } | null>(null);
   const [viewerPasswordExpanded, setViewerPasswordExpanded] = useState(false);
-  const [localNotice, setLocalNotice] = useState<
-    "fullscreen-unavailable" | null
-  >(null);
+  const [frameProofEpoch, setFrameProofEpoch] = useState(0);
 
   const qualityLimitation = useMemo(
     () =>
@@ -206,7 +190,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const displayNameRef = useRef(displayName);
   const remoteMediaRef = useRef<RemoteMediaBinding | null>(null);
   const mediaGenerationRef = useRef(0);
-  const { muted, volumePercent } = playbackVolume;
+  const hostPlaybackPauseRef = useRef({ active: false, resume: false });
   const routePresentation = viewerRouteEvidence(
     assignedRoute?.upstream ?? null,
     peerSnapshot,
@@ -250,6 +234,34 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     remoteMediaRef.current = null;
     setRemoteMedia(null);
     dispatchPresentation({ type: "media-cleared" });
+  }
+
+  function attemptPlayback(
+    video: HTMLVideoElement,
+    binding: RemoteMediaBinding,
+  ): void {
+    void video.play().then(
+      () =>
+        dispatchPresentation({
+          type: "autoplay-cleared",
+          generation: binding.generation,
+        }),
+      (error: unknown) => {
+        if (isAutoplayPolicyRejection(error)) {
+          dispatchPresentation({
+            type: "autoplay-blocked",
+            generation: binding.generation,
+            revision: binding.revision,
+          });
+        } else {
+          dispatchPresentation({
+            type: "playback-failed",
+            generation: binding.generation,
+            revision: binding.revision,
+          });
+        }
+      },
+    );
   }
 
   function acceptAssignedRoute(
@@ -305,6 +317,22 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let relayChildEvidenceCurrent: ViewerQualityEvidencePresentation | null =
       null;
     let relayChildEvidenceTimer: number | null = null;
+
+    const rebaselineAfterResume = (): void => {
+      decodedFrameStall.rebaseline();
+    };
+    const rebaselineAfterVisibilityChange = (): void => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      decodedFrameStall.rebaseline();
+      setFrameProofEpoch((current) => current + 1);
+    };
+    document.addEventListener("resume", rebaselineAfterResume);
+    document.addEventListener(
+      "visibilitychange",
+      rebaselineAfterVisibilityChange,
+    );
 
     function setSfuStandbyUrl(url: string | null | undefined): void {
       if (!url) {
@@ -1428,6 +1456,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     signal.start();
     return () => {
       active = false;
+      document.removeEventListener("resume", rebaselineAfterResume);
+      document.removeEventListener(
+        "visibilitychange",
+        rebaselineAfterVisibilityChange,
+      );
       currentPeerId = null;
       qualityEvidenceReporter.reset();
       clearRelayChildEvidence();
@@ -1457,141 +1490,69 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       return;
     }
     video.srcObject = remoteMedia.stream;
-    const stopObserving = observeCompositedVideoFrame(
-      video,
-      remoteMedia.stream,
-      () =>
-        dispatchPresentation({
-          type: "frame-presented",
-          generation: remoteMedia.generation,
-          revision: remoteMedia.revision,
-        }),
-    );
-    void video.play().then(
-      () =>
-        dispatchPresentation({
-          type: "autoplay-cleared",
-          generation: remoteMedia.generation,
-        }),
-      (error: unknown) => {
-        if (isAutoplayPolicyRejection(error)) {
-          dispatchPresentation({
-            type: "autoplay-blocked",
-            generation: remoteMedia.generation,
-            revision: remoteMedia.revision,
-          });
-        } else {
-          dispatchPresentation({
-            type: "playback-failed",
-            generation: remoteMedia.generation,
-            revision: remoteMedia.revision,
-          });
-        }
-      },
-    );
-    return stopObserving;
+    if (presentationState.host === "paused") {
+      video.pause();
+      return;
+    }
+    attemptPlayback(video, remoteMedia);
   }, [remoteMedia]);
 
   useEffect(() => {
+    const paused = presentationState.host === "paused";
+    const pauseState = hostPlaybackPauseRef.current;
     const video = videoRef.current;
-    if (!video) {
+    if (paused) {
+      if (!pauseState.active) {
+        pauseState.active = true;
+        pauseState.resume = video && remoteMedia ? !video.paused : true;
+      }
+      video?.pause();
       return;
     }
-    applyViewerVolume(video, playbackVolume);
-  }, [muted, remoteMedia, volumePercent]);
+    if (!pauseState.active) {
+      return;
+    }
+    pauseState.active = false;
+    const shouldResume = pauseState.resume;
+    pauseState.resume = false;
+    if (shouldResume && video && remoteMedia) {
+      attemptPlayback(video, remoteMedia);
+    }
+  }, [presentationState.host, remoteMedia]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !remoteMedia) {
+      return;
+    }
+    return observeCompositedVideoFrame(video, remoteMedia.stream, () =>
+      dispatchPresentation({
+        type: "frame-presented",
+        generation: remoteMedia.generation,
+        revision: remoteMedia.revision,
+      }),
+    );
+  }, [frameProofEpoch, presentationState.connection, remoteMedia]);
 
   useEffect(() => {
     dispatchPresentation({
       type: "retry-available",
       available: Boolean(
-        peerSnapshot ||
-          (assignedRoute?.phase === "active" &&
-            assignedRoute.upstream.kind === "sfu"),
+        signalStatus === "connected" &&
+          (peerSnapshot ||
+            (assignedRoute?.phase === "active" &&
+              assignedRoute.upstream.kind === "sfu")),
       ),
     });
-  }, [assignedRoute, peerSnapshot]);
-
-  async function playVideo(): Promise<void> {
-    const binding = remoteMediaRef.current;
-    if (!videoRef.current || !binding) {
-      return;
-    }
-    try {
-      await videoRef.current.play();
-      dispatchPresentation({
-        type: "autoplay-cleared",
-        generation: binding.generation,
-      });
-    } catch (error) {
-      if (isAutoplayPolicyRejection(error)) {
-        dispatchPresentation({
-          type: "autoplay-blocked",
-          generation: binding.generation,
-          revision: binding.revision,
-        });
-      } else {
-        dispatchPresentation({
-          type: "playback-failed",
-          generation: binding.generation,
-          revision: binding.revision,
-        });
-      }
-    }
-  }
-
-  function toggleMuted(): void {
-    const next = toggleViewerMuted(playbackVolume);
-    setPlaybackVolume(next);
-    if (videoRef.current) {
-      applyViewerVolume(videoRef.current, next);
-    }
-    if (!next.muted) {
-      void playVideo();
-    }
-  }
-
-  function changeVolume(nextPercent: number): void {
-    const next = setViewerVolume(playbackVolume, nextPercent);
-    setPlaybackVolume(next);
-    if (videoRef.current) {
-      applyViewerVolume(videoRef.current, next);
-    }
-    if (!next.muted) {
-      void playVideo();
-    }
-  }
-
-  async function enterFullscreen(): Promise<void> {
-    const video = videoRef.current as
-      | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
-      | null;
-    if (!video) {
-      return;
-    }
-    try {
-      if (video.requestFullscreen) {
-        await video.requestFullscreen();
-      } else {
-        video.webkitEnterFullscreen?.();
-      }
-    } catch {
-      setLocalNotice("fullscreen-unavailable");
-    }
-  }
+  }, [assignedRoute, peerSnapshot, signalStatus]);
 
   function retryConnection(): void {
     const requested =
       assignedRoute?.phase === "active" &&
       assignedRoute.upstream.kind === "sfu"
         ? signalRef.current?.reconnect() === true
-        : peerRef.current?.requestRecovery() === true;
-    if (!requested) {
-      dispatchPresentation({
-        type: "connection",
-        revision: assignedRoute?.revision ?? 0,
-        connection: hostOnline ? "connecting" : "idle",
-      });
-    } else {
+        : peerRef.current?.requestRecovery(true) === true;
+    if (requested) {
       dispatchPresentation({
         type: "connection",
         revision: assignedRoute?.revision ?? 0,
@@ -1841,80 +1802,63 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           <video
             ref={videoRef}
             autoPlay
+            controls={
+              presentation.overlay === "none" ||
+              presentation.stage === "needs-play"
+            }
             playsInline
-            muted={muted}
+            onPlay={() => {
+              const binding = remoteMediaRef.current;
+              if (binding) {
+                dispatchPresentation({
+                  type: "autoplay-cleared",
+                  generation: binding.generation,
+                });
+              }
+            }}
           />
-          {presentation.overlay === "blocking" && !presentation.showPlay && (
+          {presentation.overlay === "blocking" && (
             <div className="stage-placeholder" role="status">
               <VideoOff size={36} strokeWidth={1.5} aria-hidden="true" />
               <span>{presentation.message}</span>
             </div>
           )}
-          {presentation.showPlay && (
-            <button
-              type="button"
-              className="play-overlay"
-              onClick={() => void playVideo()}
-            >
-              <Play size={22} fill="currentColor" aria-hidden="true" />
-              播放
-            </button>
-          )}
-          {presentation.overlay === "status" && !presentation.showPlay && (
+          {presentation.overlay === "status" && (
             <div className="stage-overlay" role="status">
               {presentation.message}
             </div>
           )}
         </section>
 
-        <div className="viewer-toolbar">
+        <div className="viewer-status-row">
           <div className="toolbar-status" role="status" aria-live="polite">
             {presentation.message}
           </div>
-          <div className="toolbar-actions">
-            <div className="viewer-volume-control">
+          <div className="viewer-status-actions">
+            {labeledHostPresence ? (
               <button
+                className="icon-button viewer-status-action"
                 type="button"
-                className="icon-button"
-                title={muted ? "打开声音" : "静音"}
-                aria-label={muted ? "打开声音" : "静音"}
-                onClick={toggleMuted}
+                title={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
+                aria-label={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
+                aria-controls="room-topology"
+                aria-expanded={showTopology}
+                onClick={() => setShowTopology((current) => !current)}
               >
-                {muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+                <Network size={18} aria-hidden="true" />
               </button>
-              <input
-                id="viewer-volume"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={volumePercent}
-                title="播放音量"
-                aria-label="播放音量"
-                aria-valuetext={`${volumePercent}%${muted ? "，已静音" : ""}`}
-                onChange={(event) => changeVolume(Number(event.target.value))}
-              />
-              <output htmlFor="viewer-volume">{volumePercent}%</output>
-            </div>
+            ) : (
+              <span className="viewer-status-action-placeholder" aria-hidden="true" />
+            )}
             <button
               type="button"
-              className="icon-button"
-              title="恢复连接"
-              aria-label="恢复连接"
+              className="icon-button viewer-status-action"
+              title="重新连接媒体"
+              aria-label="重新连接媒体"
               disabled={!presentation.retryAvailable}
               onClick={retryConnection}
             >
-              <RefreshCw size={19} />
-            </button>
-            <button
-              type="button"
-              className="icon-button"
-              title="全屏"
-              aria-label="全屏"
-              disabled={!remoteStream}
-              onClick={() => void enterFullscreen()}
-            >
-              <Maximize2 size={19} />
+              <RefreshCw size={18} />
             </button>
           </div>
         </div>
@@ -1924,12 +1868,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             {presentation.notice}
           </div>
         )}
-        {localNotice === "fullscreen-unavailable" && (
-          <div className="notice notice-error" role="status">
-            当前浏览器无法进入全屏
-          </div>
-        )}
-
         {participantPresence && (
           <section
             className="viewer-roster"
@@ -1940,19 +1878,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 <h2 id="viewer-roster-heading">观看者</h2>
                 <span>在线 {viewers.length}</span>
               </div>
-              {labeledHostPresence && (
-                <button
-                  className="icon-button"
-                  type="button"
-                  title={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
-                  aria-label={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
-                  aria-controls="room-topology"
-                  aria-expanded={showTopology}
-                  onClick={() => setShowTopology((current) => !current)}
-                >
-                  <Network size={17} aria-hidden="true" />
-                </button>
-              )}
             </div>
             {showTopology && labeledHostPresence && (
               <TopologyView
