@@ -12,7 +12,7 @@ game UI, maps, subtitles, and text become unreadable; `maintain-resolution`
 may instead lower frame rate. Neither preference overrides congestion control.
 
 Production runs exact deployed application/runtime revision
-`e14eb0e3e62731a43dca8ff92fa6d5165c8267a3`, release `e14eb0e`. Current Browser source and production use
+`be53c4d5794d38d5d406c876309958d7117ee601`, release `be53c4d`. Current Browser source and production use
 strict `screener-v12`, fixed VP8, no video `contentHint`, and no codec UI,
 quality state, or wire field. They use `balanced` as the recommended profile
 and advanced default;
@@ -340,8 +340,7 @@ SFU publication explicitly uses VP8 with no backup codec. The UI and quality
 wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
 Production runs exact deployed application/runtime revision
-`1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
-`main` contains newer SFU source pending deployment. Current source and production implement
+`be53c4d5794d38d5d406c876309958d7117ee601`, release `be53c4d`. Current source and production implement
 this strict `screener-v12` contract.
 
 Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
