@@ -1,6 +1,6 @@
 # ADR-0007: LiveKit-Owned SFU Representation Adaptation
 
-- Status: Framework adaptation deployed; lightweight lower representation accepted and pending
+- Status: Lightweight lower representation implemented in current source; not deployed
 - Date: 2026-08-19
 - Last reviewed: 2026-08-25
 
@@ -63,6 +63,12 @@ The two encodings remain RIDs `q,h`; LiveKit's protocol labels them `LOW,MEDIUM`
 while a subscriber's default `HIGH` ceiling still selects the highest available
 encoding. Dynacast, server send-side BWE, and disabled AdaptiveStream remain
 unchanged.
+
+Current source derives the lower preset from the actual capture dimensions and
+passes it through LiveKit's public publication options. Retained publication
+options give LiveKit the same preset on its own source-replacement or republish
+boundary; Screener does not mutate the active lower encoding behind LiveKit's
+Dynacast sender lock.
 
 ## Pinned Physical Result
 
