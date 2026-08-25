@@ -61,7 +61,6 @@ const livekit = vi.hoisted(() => {
     currentTrack: MediaStreamTrack;
     sender: FakeSender;
     publishOptions?: Record<string, unknown>;
-    readonly replaceTrackOptions: Array<Record<string, unknown> | undefined> = [];
     savedDegradationPreference: RTCDegradationPreference | null = null;
 
     constructor(track: MediaStreamTrack) {
@@ -75,7 +74,6 @@ const livekit = vi.hoisted(() => {
 
     readonly replaceTrack = vi.fn(
       async (nextTrack: MediaStreamTrack): Promise<void> => {
-        this.replaceTrackOptions.push(this.publishOptions);
         this.currentTrack = nextTrack;
         this.sender.track = nextTrack;
       },
@@ -90,19 +88,6 @@ const livekit = vi.hoisted(() => {
     replaceSenderForTest(): FakeSender {
       this.sender = new FakeSender(this.currentTrack);
       return this.sender;
-    }
-  }
-
-  class FakeVideoPreset {
-    readonly encoding: { maxBitrate: number; maxFramerate: number };
-
-    constructor(
-      readonly width: number,
-      readonly height: number,
-      maxBitrate: number,
-      maxFramerate: number,
-    ) {
-      this.encoding = { maxBitrate, maxFramerate };
     }
   }
 
@@ -135,30 +120,20 @@ const livekit = vi.hoisted(() => {
           ];
         }
         const screenShareEncoding = options.screenShareEncoding;
-        const layers = options.screenShareSimulcastLayers;
         if (
           rawTrack.kind === "video" &&
+          options.simulcast === false &&
           typeof screenShareEncoding === "object" &&
-          screenShareEncoding !== null &&
-          Array.isArray(layers) &&
-          layers.length === 1
+          screenShareEncoding !== null
         ) {
-          const high = screenShareEncoding as {
+          const encoding = screenShareEncoding as {
             maxBitrate?: number;
             maxFramerate?: number;
           };
-          const lower = layers[0] as FakeVideoPreset;
           localTrack.sender.parameters.encodings = [
             {
-              rid: "q",
-              maxBitrate: lower.encoding.maxBitrate,
-              maxFramerate: lower.encoding.maxFramerate,
-              scaleResolutionDownBy: 2,
-            },
-            {
-              rid: "h",
-              maxBitrate: high.maxBitrate,
-              maxFramerate: high.maxFramerate,
+              maxBitrate: encoding.maxBitrate,
+              maxFramerate: encoding.maxFramerate,
               scaleResolutionDownBy: 1,
             },
           ];
@@ -281,7 +256,6 @@ const livekit = vi.hoisted(() => {
     FakeRemoteParticipant,
     FakeRemotePublication,
     FakeRoom,
-    FakeVideoPreset,
     state,
   };
 });
@@ -311,7 +285,6 @@ vi.mock("livekit-client", () => ({
   Room: livekit.FakeRoom,
   RoomEvent,
   Track,
-  VideoPreset: livekit.FakeVideoPreset,
 }));
 
 class FakeMediaStream {
@@ -351,15 +324,11 @@ const qualityProfile = {
   degradationPreference: "maintain-resolution",
 } as const;
 
-function track(
-  kind: "video" | "audio",
-  id: string,
-  settings: MediaTrackSettings = {},
-): MediaStreamTrack {
+function track(kind: "video" | "audio", id: string): MediaStreamTrack {
   return Object.assign(new EventTarget(), {
     id,
     kind,
-    getSettings: () => settings,
+    getSettings: () => ({}),
   }) as MediaStreamTrack;
 }
 
@@ -572,21 +541,6 @@ describe("SfuPublisher", () => {
     });
     await expect(publisher.replaceStream(stream(nextVideo))).resolves.toBe(true);
     expect(updates.at(-1)).toBeNull();
-    const currentPublication = livekit.state.rooms[0].localParticipant.publications[0];
-    expect(currentPublication.options).toMatchObject({
-      screenShareSimulcastLayers: [
-        {
-          width: 640,
-          height: 360,
-          encoding: { maxBitrate: 1_000_000, maxFramerate: 30 },
-        },
-      ],
-    });
-    expect(currentPublication.track.replaceTrackOptions[0]).toMatchObject({
-      screenShareSimulcastLayers: [
-        expect.objectContaining({ width: 640, height: 360 }),
-      ],
-    });
     resolveOld(senderReport(previousVideo.id, 5_000, 500_000, 300));
     await Promise.resolve();
     expect(updates.at(-1)).toBeNull();
@@ -693,7 +647,7 @@ describe("SfuPublisher", () => {
     expect(livekit.state.rooms[0]?.disconnect).toHaveBeenCalledWith(false);
   });
 
-  it("publishes a lightweight half-resolution VP8 representation", async () => {
+  it("leaves VP8 screen-share simulcast layers to LiveKit defaults", async () => {
     const publisher = new SfuPublisher();
     const video = track("video", "video-1");
     const audio = track("audio", "audio-1");
@@ -713,13 +667,6 @@ describe("SfuPublisher", () => {
         maxBitrate: 8_000_000,
         maxFramerate: 60,
       },
-      screenShareSimulcastLayers: [
-        {
-          width: 960,
-          height: 540,
-          encoding: { maxBitrate: 1_000_000, maxFramerate: 30 },
-        },
-      ],
       degradationPreference: "maintain-resolution",
     });
     expect(
@@ -734,18 +681,12 @@ describe("SfuPublisher", () => {
     expect(sender.setParameters).toHaveBeenCalledOnce();
     expect(sender.parameters.encodings).toEqual([
       {
-        rid: "q",
-        maxBitrate: 1_000_000,
-        maxFramerate: 30,
-        scaleResolutionDownBy: 2,
-      },
-      {
-        rid: "h",
         maxBitrate: 8_000_000,
         maxFramerate: 60,
         scaleResolutionDownBy: 1,
       },
     ]);
+    expect(sender.parameters.encodings[0]).not.toHaveProperty("rid");
     expect(publisher.getSenderParameters()).toEqual({
       requested: {
         maxBitrate: 8_000_000,
@@ -767,37 +708,6 @@ describe("SfuPublisher", () => {
     await expect(publisher.deactivate()).resolves.toBe(true);
     expect(room.localParticipant.unpublishTrack).toHaveBeenCalledTimes(2);
     expect(room.disconnect).not.toHaveBeenCalled();
-  });
-
-  it("derives the lower representation from the actual capture dimensions", async () => {
-    const publisher = new SfuPublisher();
-    const video = track("video", "video-1", { width: 1904, height: 928 });
-    await publisher.connect(connection);
-
-    await expect(publisher.activate(stream(video), qualityProfile)).resolves.toBe(
-      true,
-    );
-
-    const publication = livekit.state.rooms[0].localParticipant.publications[0];
-    expect(publication.options).toMatchObject({
-      screenShareSimulcastLayers: [
-        {
-          width: 952,
-          height: 464,
-          encoding: { maxBitrate: 1_000_000, maxFramerate: 30 },
-        },
-      ],
-    });
-    expect(publication.track.sender.parameters.encodings).toEqual([
-      expect.objectContaining({
-        rid: "q",
-        scaleResolutionDownBy: 2,
-      }),
-      expect.objectContaining({
-        rid: "h",
-        scaleResolutionDownBy: 1,
-      }),
-    ]);
   });
 
   it.each([
@@ -876,13 +786,6 @@ describe("SfuPublisher", () => {
         degradationPreference: "balanced",
         encodings: [
           expect.objectContaining({
-            rid: "q",
-            maxBitrate: 1_000_000,
-            maxFramerate: 30,
-            scaleResolutionDownBy: 2,
-          }),
-          expect.objectContaining({
-            rid: "h",
             maxBitrate: 3_000_000,
             maxFramerate: 30,
             scaleResolutionDownBy: 1,
@@ -1235,13 +1138,6 @@ describe("SfuPublisher", () => {
       degradationPreference: "maintain-framerate",
       encodings: [
         {
-          rid: "q",
-          maxBitrate: 1_000_000,
-          maxFramerate: 30,
-          scaleResolutionDownBy: 2,
-        },
-        {
-          rid: "h",
           maxBitrate: 3_000_000,
           maxFramerate: 30,
           scaleResolutionDownBy: 1,
@@ -1256,13 +1152,6 @@ describe("SfuPublisher", () => {
         maxBitrate: 3_000_000,
         maxFramerate: 30,
       },
-      screenShareSimulcastLayers: [
-        {
-          width: 640,
-          height: 360,
-          encoding: { maxBitrate: 750_000, maxFramerate: 30 },
-        },
-      ],
       degradationPreference: "maintain-framerate",
     });
 
@@ -1419,12 +1308,6 @@ describe("SfuPublisher", () => {
       degradationPreference: "maintain-resolution",
       encodings: [
         expect.objectContaining({
-          rid: "q",
-          maxBitrate: 1_000_000,
-          maxFramerate: 30,
-        }),
-        expect.objectContaining({
-          rid: "h",
           maxBitrate: 8_000_000,
           maxFramerate: 60,
         }),
@@ -1472,20 +1355,13 @@ describe("SfuPublisher", () => {
   });
 
   it("restores the previous video after a partially applied replacement fails", async () => {
-    const previousVideo = track("video", "video-1", {
-      width: 1904,
-      height: 928,
-    });
-    const nextVideo = track("video", "video-2", {
-      width: 1280,
-      height: 720,
-    });
+    const previousVideo = track("video", "video-1");
+    const nextVideo = track("video", "video-2");
     const publisher = new SfuPublisher();
     await publisher.connect(connection);
     await publisher.activate(stream(previousVideo), qualityProfile);
     const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
     localTrack.replaceTrack.mockImplementationOnce(async (replacement) => {
-      localTrack.replaceTrackOptions.push(localTrack.publishOptions);
       localTrack.currentTrack = replacement;
       throw new Error("sender swap failed after applying");
     });
@@ -1495,25 +1371,6 @@ describe("SfuPublisher", () => {
     expect(localTrack.replaceTrack).toHaveBeenNthCalledWith(1, nextVideo);
     expect(localTrack.replaceTrack).toHaveBeenNthCalledWith(2, previousVideo);
     expect(localTrack.currentTrack).toBe(previousVideo);
-    expect(localTrack.publishOptions).toMatchObject({
-      screenShareSimulcastLayers: [
-        expect.objectContaining({ width: 952, height: 464 }),
-      ],
-    });
-    expect(localTrack.sender.parameters.encodings).toEqual([
-      expect.objectContaining({ rid: "q", scaleResolutionDownBy: 2 }),
-      expect.objectContaining({ rid: "h", scaleResolutionDownBy: 1 }),
-    ]);
-    expect(localTrack.replaceTrackOptions[0]).toMatchObject({
-      screenShareSimulcastLayers: [
-        expect.objectContaining({ width: 640, height: 360 }),
-      ],
-    });
-    expect(localTrack.replaceTrackOptions[1]).toMatchObject({
-      screenShareSimulcastLayers: [
-        expect.objectContaining({ width: 952, height: 464 }),
-      ],
-    });
   });
 
   it("uses the screen audio preset when a replacement adds audio", async () => {

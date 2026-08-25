@@ -419,6 +419,19 @@ export class HostPeer {
         return;
       }
       await this.flushCandidates();
+      await this.enqueueSenderMutation(async () => {
+        const videoSender = this.videoSender;
+        const audioSender = this.audioSender;
+        if (this.disposed || !videoSender || !audioSender) {
+          return false;
+        }
+        return this.configureSender(videoSender, audioSender, {
+          profile: this.desiredProfile,
+          profileRevision: this.profileRevision,
+          video: true,
+          audio: false,
+        });
+      });
       if (this.ownsAnswer(epoch)) {
         this.ordinaryAnswerEpoch = null;
       }

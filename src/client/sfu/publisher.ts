@@ -9,13 +9,9 @@ import {
   audioSenderParameterWarning,
   configureScreenAudioSender,
   configureVideoSender,
-  QUALITY_RESOLUTIONS,
   resolveScreenAudioQuality,
   screenAudioQualityEqual,
   screenAudioBitrate,
-  screenShareLowBitrate,
-  screenShareLowFramerate,
-  SCREEN_SHARE_LOW_SCALE,
   senderParameterWarning,
   videoQualitySettingsEqual,
   type AudioSenderParameterReadback,
@@ -54,11 +50,6 @@ export type SfuPublisherFailureStage =
 interface PublishedTrack {
   publication: LocalTrackPublication;
   rawTrack: MediaStreamTrack;
-}
-
-interface PublishedVideoOptionsState {
-  publication: TrackPublishOptions | undefined;
-  track: TrackPublishOptions | undefined;
 }
 
 interface PublishedVideoConfiguration {
@@ -197,7 +188,7 @@ export class SfuPublisher {
           room,
           videoTrack,
           sdk.Track.Source.ScreenShare,
-          videoPublishOptions(sdk, profile, videoTrack),
+          videoPublishOptions(profile),
         );
         if (!this.owns(room, generation)) {
           return false;
@@ -206,7 +197,6 @@ export class SfuPublisher {
         const videoConfiguration = await configurePublishedVideo(
           video,
           profile,
-          sdk,
           () => this.owns(room, generation),
         );
         if (!videoConfiguration || !this.owns(room, generation)) {
@@ -340,18 +330,11 @@ export class SfuPublisher {
       const previousAudio = this.audio;
       let videoReplaceAttempted = false;
       let audioReplaceAttempted = false;
-      let previousVideoOptions: PublishedVideoOptionsState | null = null;
       let audioConfiguration: PublishedAudioConfiguration | null = null;
       let audioWarning: string | null = null;
       this.stopStats();
 
       try {
-        previousVideoOptions = retainPublishedVideoOptions(
-          previousVideo,
-          profile,
-          sdk,
-          nextVideoTrack,
-        );
         videoReplaceAttempted = true;
         await replacePublishedTrack(previousVideo, nextVideoTrack);
         if (!this.owns(room, generation)) {
@@ -409,7 +392,6 @@ export class SfuPublisher {
         const videoConfiguration = await configurePublishedVideo(
           previousVideo,
           profile,
-          sdk,
           () => this.owns(room, generation),
         );
         if (!videoConfiguration || !this.owns(room, generation)) {
@@ -435,9 +417,6 @@ export class SfuPublisher {
       } catch (error) {
         if (!this.owns(room, generation)) {
           return false;
-        }
-        if (previousVideoOptions) {
-          restorePublishedVideoOptions(previousVideo, previousVideoOptions);
         }
         const failureWarning = "切换 SFU 分享来源失败";
 
@@ -466,7 +445,6 @@ export class SfuPublisher {
             const videoConfiguration = await configurePublishedVideo(
               previousVideo,
               previousVideoProfile,
-              sdk,
               () => this.owns(room, generation),
             );
             if (!videoConfiguration || !this.owns(room, generation)) {
@@ -553,7 +531,6 @@ export class SfuPublisher {
           const configured = await configurePublishedVideo(
             video,
             profile,
-            sdk,
             () =>
               this.owns(room, generation) &&
               requestedRevision === this.profileRevision &&
@@ -585,7 +562,6 @@ export class SfuPublisher {
             const rolledBack = await configurePublishedVideo(
               video,
               previousVideoProfile,
-              sdk,
               () =>
                 this.owns(room, generation) &&
                 requestedRevision === this.profileRevision &&
@@ -1130,7 +1106,6 @@ async function unpublishTrack(room: Room, published: PublishedTrack): Promise<vo
 async function configurePublishedVideo(
   published: PublishedTrack,
   profile: QualityProfile,
-  sdk: LiveKit,
   ownsPublication: () => boolean,
 ): Promise<PublishedVideoConfiguration | null> {
   const videoTrack = published.publication.videoTrack;
@@ -1153,52 +1128,17 @@ async function configurePublishedVideo(
     }
     return null;
   }
-  retainPublishedVideoOptions(
-    published,
-    profile,
-    sdk,
-    videoTrack.mediaStreamTrack,
-  );
+  const retainedPublishOptions = {
+    ...published.publication.options,
+    ...videoTrack.publishOptions,
+    ...videoPublishOptions(profile),
+  };
+  published.publication.options = retainedPublishOptions;
+  videoTrack.publishOptions = retainedPublishOptions;
   return {
     readback,
     warning: senderParameterWarning(readback),
   };
-}
-
-function retainPublishedVideoOptions(
-  published: PublishedTrack,
-  profile: QualityProfile,
-  sdk: LiveKit,
-  track: MediaStreamTrack,
-): PublishedVideoOptionsState {
-  const videoTrack = published.publication.videoTrack;
-  if (!videoTrack) {
-    throw new Error("SFU publication has no local video track");
-  }
-  const previous = {
-    publication: published.publication.options,
-    track: videoTrack.publishOptions,
-  };
-  const retained = {
-    ...published.publication.options,
-    ...videoTrack.publishOptions,
-    ...videoPublishOptions(sdk, profile, track),
-  };
-  published.publication.options = retained;
-  videoTrack.publishOptions = retained;
-  return previous;
-}
-
-function restorePublishedVideoOptions(
-  published: PublishedTrack,
-  previous: PublishedVideoOptionsState,
-): void {
-  const videoTrack = published.publication.videoTrack;
-  if (!videoTrack) {
-    throw new Error("SFU publication has no local video track");
-  }
-  published.publication.options = previous.publication;
-  videoTrack.publishOptions = previous.track;
 }
 
 async function configurePublishedAudio(
@@ -1274,15 +1214,7 @@ function mergeQualityWarnings(...warnings: Array<string | null>): string | null 
   return present.length > 0 ? present.join("；") : null;
 }
 
-function videoPublishOptions(
-  sdk: LiveKit,
-  profile: QualityProfile,
-  track: MediaStreamTrack,
-): TrackPublishOptions {
-  const requestedResolution = QUALITY_RESOLUTIONS[profile.resolution];
-  const settings = track.getSettings();
-  const sourceWidth = settings.width ?? requestedResolution.width;
-  const sourceHeight = settings.height ?? requestedResolution.height;
+function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
   return {
     backupCodec: false,
     videoCodec: "vp8",
@@ -1290,14 +1222,6 @@ function videoPublishOptions(
       maxBitrate: profile.maxBitrate,
       maxFramerate: profile.maxFramerate,
     },
-    screenShareSimulcastLayers: [
-      new sdk.VideoPreset(
-        Math.floor(sourceWidth / SCREEN_SHARE_LOW_SCALE),
-        Math.floor(sourceHeight / SCREEN_SHARE_LOW_SCALE),
-        screenShareLowBitrate(profile),
-        screenShareLowFramerate(profile),
-      ),
-    ],
     degradationPreference: profile.degradationPreference,
   };
 }

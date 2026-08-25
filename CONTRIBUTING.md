@@ -1,17 +1,27 @@
 # Contributing
 
-## Normal Workflow
+## Lean Workflow
 
-1. Start from the canonical repository root on an up-to-date `main` with a clean working tree. Do not keep `main` checked out in an auxiliary worktree; preserve any overlapping user changes explicitly before restoring the canonical root.
-2. Create one short-lived branch for one coherent change. Use `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `spike/` followed by a short description.
-3. For non-trivial design, implementation, or bug fixing, inspect the repository and research current primary sources before changing code. Record durable findings under `docs/research/`.
-4. Reconcile the requested outcome against the whole current product model and conflicting evidence. Before implementation, update every affected owning requirement/design/ADR/research document and current memory/status, replace stale current text, and checkpoint that nonvolatile truth in Git. If semantics remain disputed, record a hold and stop dependent implementation.
-5. Implement from that checkpoint under the repo-tracked [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md). Add tests in proportion to risk, and keep operational/current-truth updates in the same coherent pull request when implementation changes source facts.
-6. Run `sh scripts/check-project-state.sh` on macOS/Linux/Git Bash or `./scripts/check-project-state.ps1` on PowerShell, plus `npm run check` and any relevant manual browser/network checks. Record this local evidence in the pull request; feature branches and pull requests use local gates, while GitHub Actions are reserved for `main` integration, releases, and explicit manual runs. Do not retry zero-step or infrastructure failures.
-7. Merge an accepted truth checkpoint before dependent candidates. Rebase or rebuild a retained candidate from that main once, keeping main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts. Make focused commits using `type(scope): summary` where practical, then push the branch.
-   Create any new implementation branch or parallel worktree from that exact canonical `main` commit, never from an older candidate or auxiliary worktree.
-8. Open a pull request using the repository template. Resolve review comments and required local checks before merging.
-9. Prefer squash merge for a single coherent change; preserve separate commits when they carry independently useful history. Delete the merged branch.
+This is the default for an ordinary scoped implementation or bug fix.
+
+1. Start from the canonical repository root on a clean, current `main`; preserve unrelated user work.
+2. Inspect the affected code, current owner, and reachable evidence. Research primary sources only when the issue is non-trivial or component behavior is uncertain.
+3. Make the smallest coherent change under the repo-tracked [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md).
+4. Run the focused tests or checks that exercise the changed behavior, inspect the pending diff, stage requested files, and report the result and evidence.
+
+Do not automatically create a truth checkpoint, edit status/memory, run `npm run check`, request independent reviews, open or merge a pull request, deploy, or clean branches/worktrees for every small change. Do not record ordinary UI details, self-evident implementation, one-off fixes, routine test output, or completed history in long-lived truth documents.
+
+## Full Integration And Release Workflow
+
+Use this path only when the owner explicitly requests it or when closing a major phase or changing a public contract, route/security model, infrastructure, persistent/irreversible state, or release boundary.
+
+1. Create one short-lived branch/worktree from exact canonical `main`; use `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `spike/` followed by a short description.
+2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
+3. Implement and run repository hygiene, `npm run check`, the relevant browser/network gates, and review in proportion to the whole acceptance boundary.
+4. Merge an accepted truth checkpoint before dependent candidates. Rebase or rebuild a retained candidate from that exact `main` once, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
+5. Open the pull request, resolve required review/checks, merge, deploy when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
+
+Prefer squash merge for one coherent change and preserve separate commits only when they carry independently useful history.
 
 Direct commits to `main` are reserved for an explicit user-approved exception. Never force-push shared branches or rewrite shared history without explicit approval.
 
@@ -31,7 +41,7 @@ Clean up worktrees and branches only after semantic review and integration are c
 
 A pull request should explain the problem, the chosen design, verification performed, user-visible or operational effects, and remaining risks.
 
-Changes are not complete when only code is updated. Durable changes must update the relevant documentation and current-memory snapshot in the same pull request.
+Durable semantic or current-snapshot changes must update their single owner in the same integration boundary. Ordinary implementation and bug fixes may be complete with code plus focused evidence.
 
 ## Local Hooks
 

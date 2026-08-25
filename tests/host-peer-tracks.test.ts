@@ -746,7 +746,7 @@ describe("HostPeer source replacement", () => {
     );
   });
 
-  it("accepts an answer without reapplying the selected profile", async () => {
+  it("reapplies the selected video profile after accepting an answer", async () => {
     const video = createTrack("video", "video");
     const peer = createPeer(createStream(video, createTrack("audio", "audio")));
 
@@ -768,7 +768,13 @@ describe("HostPeer source replacement", () => {
     expect(connection.remoteDescription?.type).toBe("answer");
     expect(connection.addedIceCandidates).toEqual([pendingCandidate]);
     expect(connection.senders[0]?.track).toBe(video);
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(
+      connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      degradationPreference: "balanced",
+      encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+    });
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
   });
 
