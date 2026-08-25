@@ -388,6 +388,14 @@ function createPeer(
   );
 }
 
+async function acceptPeerAnswer(peer: HostPeer): Promise<void> {
+  await peer.acceptSignal({
+    kind: "description",
+    connectionId: peer.connectionId,
+    description: { type: "answer", sdp: "test-answer" },
+  });
+}
+
 beforeEach(() => {
   FakePeerConnection.latest = null;
   FakePeerConnection.instances = [];
@@ -572,6 +580,7 @@ describe("HostPeer source replacement", () => {
     );
 
     await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
     const connection = FakePeerConnection.latest!;
     expect(connection.transceiverInputs).toHaveLength(2);
     expect(connection.transceiverInputs.map(({ init }) => init?.direction)).toEqual([
@@ -642,6 +651,7 @@ describe("HostPeer source replacement", () => {
     const peer = createPeer(createStream(video, audio));
 
     await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
     const connection = FakePeerConnection.latest!;
     await expect(
       peer.updateProfile(QUALITY_PROFILES["1080p60"]),
@@ -746,12 +756,13 @@ describe("HostPeer source replacement", () => {
     );
   });
 
-  it("reapplies the selected video profile after accepting an answer", async () => {
+  it("applies the selected video profile only after accepting an answer", async () => {
     const video = createTrack("video", "video");
     const peer = createPeer(createStream(video, createTrack("audio", "audio")));
 
     await expect(peer.start()).resolves.toBe(true);
     const connection = FakePeerConnection.latest!;
+    expect(connection.senders[0]?.setParameters).not.toHaveBeenCalled();
     const pendingCandidate = { candidate: "candidate-before-answer" };
     await peer.acceptSignal({
       kind: "candidate",
@@ -768,7 +779,7 @@ describe("HostPeer source replacement", () => {
     expect(connection.remoteDescription?.type).toBe("answer");
     expect(connection.addedIceCandidates).toEqual([pendingCandidate]);
     expect(connection.senders[0]?.track).toBe(video);
-    expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(2);
+    expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
     expect(
       connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
     ).toMatchObject({
@@ -778,7 +789,7 @@ describe("HostPeer source replacement", () => {
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
   });
 
-  it("serializes initial sender configuration with a live profile update", async () => {
+  it("applies the latest pre-answer profile once negotiation completes", async () => {
     const peer = createPeer(
       createStream(
         createTrack("video", "video"),
@@ -786,21 +797,17 @@ describe("HostPeer source replacement", () => {
       ),
     );
 
-    const starting = peer.start();
+    await expect(peer.start()).resolves.toBe(true);
     const videoSender = FakePeerConnection.latest!.senders[0]!;
-    videoSender.deferNextSetParameters = true;
-    await vi.waitFor(() =>
-      expect(videoSender.setParameters).toHaveBeenCalledTimes(1),
-    );
+    expect(videoSender.setParameters).not.toHaveBeenCalled();
 
-    const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
-    await Promise.resolve();
-    expect(videoSender.setParameters).toHaveBeenCalledTimes(1);
+    await expect(
+      peer.updateProfile(QUALITY_PROFILES["1080p60"]),
+    ).resolves.toBe(true);
+    expect(videoSender.setParameters).not.toHaveBeenCalled();
 
-    videoSender.releaseDeferredSetParameters();
-    await expect(starting).resolves.toBe(true);
-    await expect(updating).resolves.toBe(true);
-    expect(videoSender.appliedMaxBitrates).toEqual([3_000_000, 8_000_000]);
+    await acceptPeerAnswer(peer);
+    expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
   });
 
   it("continues queued profile updates after initial configuration rejects", async () => {
@@ -813,18 +820,19 @@ describe("HostPeer source replacement", () => {
       (snapshot) => updates.push(snapshot),
     );
 
-    const starting = peer.start();
+    await expect(peer.start()).resolves.toBe(true);
     const videoSender = FakePeerConnection.latest!.senders[0]!;
     videoSender.failNextSetParameters = true;
-    const updating = peer.updateProfile(QUALITY_PROFILES["1080p60"]);
+    await acceptPeerAnswer(peer);
 
-    await expect(starting).resolves.toBe(true);
     const failureWarning = updates.find((snapshot) =>
       snapshot.qualityWarning?.startsWith("应用发送参数失败"),
     )?.qualityWarning;
     expect(failureWarning).toBe("应用发送参数失败");
     expect(failureWarning).not.toContain("setParameters failed");
-    await expect(updating).resolves.toBe(true);
+    await expect(
+      peer.updateProfile(QUALITY_PROFILES["1080p60"]),
+    ).resolves.toBe(true);
     expect(videoSender.setParameters).toHaveBeenCalledTimes(2);
     expect(videoSender.appliedMaxBitrates).toEqual([8_000_000]);
   });
@@ -838,6 +846,7 @@ describe("HostPeer source replacement", () => {
     );
 
     await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
     const videoSender = FakePeerConnection.latest!.senders[0]!;
     videoSender.failNextSetParameters = true;
 
@@ -867,6 +876,7 @@ describe("HostPeer source replacement", () => {
     );
 
     await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
     const connection = FakePeerConnection.latest!;
     connection.statsReports.push(oldStats);
     statsCallbacks[0]!();
@@ -1181,6 +1191,7 @@ describe("HostPeer source replacement", () => {
       (snapshot) => updates.push(snapshot),
     );
     await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
     const connection = FakePeerConnection.latest!;
     const sender = connection.senders[0]!;
     connection.statsReports.push(
@@ -1930,6 +1941,21 @@ describe("ViewerRelay downstream ownership", () => {
     relay.setChildren(["first-profile-child"]);
     relay.setStream(createStream(createTrack("video", "profile-video"), null));
     await vi.waitFor(() =>
+      expect(relay.getSnapshot("first-profile-child")).not.toBeNull(),
+    );
+    const firstConnectionId = relay.getSnapshot("first-profile-child")!.connectionId;
+    await expect(
+      relay.acceptSignal(
+        "first-profile-child",
+        {
+          kind: "description",
+          connectionId: firstConnectionId,
+          description: { type: "answer", sdp: "first-answer" },
+        },
+        0,
+      ),
+    ).resolves.toBe(true);
+    await vi.waitFor(() =>
       expect(
         FakePeerConnection.latest?.senders[0]?.setParameters,
       ).toHaveBeenCalled(),
@@ -1951,6 +1977,24 @@ describe("ViewerRelay downstream ownership", () => {
       expect(FakePeerConnection.latest).not.toBe(firstConnection),
     );
     const secondConnection = FakePeerConnection.latest!;
+    await vi.waitFor(() =>
+      expect(secondConnection.localDescription?.type).toBe("offer"),
+    );
+    await vi.waitFor(() =>
+      expect(relay.getSnapshot("second-profile-child")).not.toBeNull(),
+    );
+    const secondConnectionId = relay.getSnapshot("second-profile-child")!.connectionId;
+    await expect(
+      relay.acceptSignal(
+        "second-profile-child",
+        {
+          kind: "description",
+          connectionId: secondConnectionId,
+          description: { type: "answer", sdp: "second-answer" },
+        },
+        0,
+      ),
+    ).resolves.toBe(true);
     await vi.waitFor(() =>
       expect(secondConnection.senders[0]?.setParameters).toHaveBeenCalled(),
     );

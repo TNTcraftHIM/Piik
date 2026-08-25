@@ -113,7 +113,12 @@ export class HostPeer {
       if (this.disposed || !this.videoSender || !this.audioSender) {
         return false;
       }
-      return this.configureSender(this.videoSender, this.audioSender);
+      return this.configureSender(this.videoSender, this.audioSender, {
+        profile: this.desiredProfile,
+        profileRevision: this.profileRevision,
+        video: false,
+        audio: true,
+      });
     });
     if (!(await this.createOffer(false)) || this.disposed) {
       return false;
@@ -164,7 +169,12 @@ export class HostPeer {
         this.limitationReason = null;
         this.limitationSamples = 0;
         this.snapshot = { ...this.snapshot, metrics: { ...EMPTY_METRICS } };
-        await this.configureSender(videoSender, audioSender);
+        await this.configureSender(videoSender, audioSender, {
+          profile: this.desiredProfile,
+          profileRevision: this.profileRevision,
+          video: this.connection.remoteDescription?.type === "answer",
+          audio: true,
+        });
         this.snapshot = { ...this.snapshot, error: null };
         this.emit();
         return true;
@@ -201,9 +211,10 @@ export class HostPeer {
         return false;
       }
       const updateVideo =
-        requestedVideo ||
-        this.appliedVideoProfile === null ||
-        !videoQualitySettingsEqual(this.appliedVideoProfile, profile);
+        this.connection.remoteDescription?.type === "answer" &&
+        (requestedVideo ||
+          this.appliedVideoProfile === null ||
+          !videoQualitySettingsEqual(this.appliedVideoProfile, profile));
       const updateAudio =
         requestedAudio ||
         this.appliedAudioQuality !==

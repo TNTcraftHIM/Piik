@@ -1040,7 +1040,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               dispatchPresentation({
                 type: "connection",
                 revision: currentRouteRevision,
-                connection: connectionFact(snapshot.connectionState),
+                connection: peer.isRecovering()
+                  ? "reconnecting"
+                  : connectionFact(snapshot.connectionState),
               });
             }
           },
@@ -1581,17 +1583,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }, [presentation.overlay]);
 
   function retryConnection(): void {
-    const requested =
-      reconnectRoute === "sfu"
-        ? viewerSfuRouteRef.current?.reconnectActive() === true
-        : reconnectRoute === "p2p" &&
-          peerRef.current?.requestRecovery() === true;
-    if (requested) {
-      dispatchPresentation({
-        type: "connection",
-        revision: presentationState.revision ?? assignedRoute?.revision ?? 0,
-        connection: "reconnecting",
-      });
+    if (reconnectRoute === "sfu") {
+      viewerSfuRouteRef.current?.reconnectActive();
+    } else if (reconnectRoute === "p2p") {
+      if (peerRef.current?.requestRecovery()) {
+        dispatchPresentation({
+          type: "connection",
+          revision: presentationState.revision ?? assignedRoute?.revision ?? 0,
+          connection: "reconnecting",
+        });
+      }
     }
   }
 

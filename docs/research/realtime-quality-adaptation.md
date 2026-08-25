@@ -39,10 +39,10 @@ quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
 
-The Host configures a sender before the first offer and reapplies the current
-video profile after accepting an answer. The latter is necessary because
-negotiation may replace or rewrite encoding parameters; it is not a periodic
-controller and does not reset bandwidth estimation on a timer.
+The Host carries the desired profile through offer creation and applies it to
+the video sender from fresh parameters after each accepted answer. It does not
+preconfigure video encoding parameters before the first offer, run a periodic
+controller, or reset bandwidth estimation on a timer.
 
 ## LiveKit SFU Evidence
 

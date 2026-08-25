@@ -582,7 +582,7 @@ describe("ViewerPeer connection generations", () => {
     expect([...timeoutDelays.values()]).toEqual([3_000]);
   });
 
-  it("targets answers and recovery requests at the current parent", async () => {
+  it("serializes recovery requests at the current parent", async () => {
     const signals: SignalPayload[] = [];
     const signalPeers: string[] = [];
     const restartRequests: Array<{
@@ -612,6 +612,7 @@ describe("ViewerPeer connection generations", () => {
     expect(signalPeers).toEqual(["parent-old", "parent-new"]);
 
     expect(peer.requestRecovery()).toBe(true);
+    expect(peer.requestRecovery()).toBe(false);
     expect(restartRequests).toEqual([
       {
         peerId: "parent-new",
@@ -620,12 +621,12 @@ describe("ViewerPeer connection generations", () => {
       },
     ]);
 
-    expect(peer.requestRecovery(true)).toBe(true);
-    expect(restartRequests.at(-1)).toEqual({
-      peerId: "parent-new",
-      connectionId: "connection-new",
-      rebuild: true,
-    });
+    const connection = FakePeerConnection.instances.at(-1)!;
+    connection.connectionState = "connected";
+    [...timeoutCallbacks.values()].at(-1)!();
+    expect(peer.requestRecovery()).toBe(true);
+    expect(restartRequests).toHaveLength(2);
+    peer.dispose();
   });
 
   it("does not send an old answer or candidate after replacing the connection", async () => {

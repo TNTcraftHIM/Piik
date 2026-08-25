@@ -113,7 +113,12 @@ export class ViewerPeer {
   }
 
   requestRecovery(rebuild = false): boolean {
-    if (!this.connectionId || !this.parentPeerId) {
+    if (
+      this.recoveryTimer !== null ||
+      !this.connection ||
+      !this.connectionId ||
+      !this.parentPeerId
+    ) {
       return false;
     }
     const sent = this.events.sendRestartRequest(
@@ -130,6 +135,10 @@ export class ViewerPeer {
       this.scheduleRecoveryDeadline();
     }
     return sent;
+  }
+
+  isRecovering(): boolean {
+    return this.recoveryTimer !== null;
   }
 
   hasConnection(): boolean {
@@ -429,6 +438,7 @@ export class ViewerPeer {
       if (this.connection?.connectionState !== "connected") {
         this.attemptAutomaticRecovery();
       }
+      this.emit();
     }, AUTOMATIC_RECOVERY_TIMEOUT_MS);
   }
 
