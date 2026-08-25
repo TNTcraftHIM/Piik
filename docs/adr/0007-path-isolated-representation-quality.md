@@ -1,6 +1,6 @@
 # ADR-0007: LiveKit-Owned SFU Representation Adaptation
 
-- Status: Accepted and implemented in current source; not deployed
+- Status: Framework adaptation deployed; lightweight lower representation accepted and pending
 - Date: 2026-08-19
 - Last reviewed: 2026-08-25
 
@@ -32,10 +32,11 @@ removing the representation required by constrained Viewers.
 
 1. Direct and peer paths retain independent stock WebRTC congestion control.
    Viewer feedback is never aggregated into a room-wide target.
-2. The Browser Host SFU publication provides the pinned SDK's bounded VP8
-   screen-share representations: one half-resolution encoding and the original
-   full-resolution encoding. The representation count is fixed and does not
-   grow with Viewer count.
+2. The Browser Host SFU publication provides two bounded VP8 screen-share
+   representations: one half-resolution encoding and the original full-resolution
+   encoding. The lower representation keeps at most 30 fps and derives its
+   bitrate from the pinned SDK's pixel-and-frame-rate formula; the representation
+   count is fixed and does not grow with Viewer count.
 3. LiveKit Dynacast and its per-subscriber stream allocator/BWE own publication
    layer activation and the actual layer forwarded to each SFU subscriber.
    Screener does not implement a quality score, bandwidth estimator, periodic
@@ -51,13 +52,17 @@ removing the representation required by constrained Viewers.
 6. ADR-0005 remains the only route owner. Layer choice does not change topology,
    endpoint capacity, SFU admission, or decoded-stall recovery authority.
 
-Current source leaves the screen-share simulcast layers unset so pinned client
-`2.22.0` supplies its default half-resolution plus original-resolution pair,
-enables Dynacast, and tracks the required server send-side-BWE configuration.
-Those two encodings use RIDs `q,h`; LiveKit's protocol labels them `LOW,MEDIUM`,
+Production release `e14eb0e` leaves the screen-share layer list unset, so pinned
+client `2.22.0` supplies a same-FPS half-resolution representation beside the
+original. A live mixed P2P/SFU observation confirmed that the 60 fps lower
+representation can consume enough Host-to-SFU budget to starve the highest
+representation. The accepted correction keeps LiveKit's two-layer ownership but
+supplies one half-resolution lower preset with
+`lowFps = min(30, highFps)` and the SDK's existing proportional bitrate formula.
+The two encodings remain RIDs `q,h`; LiveKit's protocol labels them `LOW,MEDIUM`,
 while a subscriber's default `HIGH` ceiling still selects the highest available
-encoding. Production remains the deployed single-encoding implementation until
-cutover.
+encoding. Dynacast, server send-side BWE, and disabled AdaptiveStream remain
+unchanged.
 
 ## Pinned Physical Result
 
@@ -83,9 +88,10 @@ bounded cost, not eliminated by Dynacast. AdaptiveStream selected the full
 representation for a large attached element, the lower representation for a
 small element, paused a hidden element, and recovered when visible. With no
 attached element it received only the lower representation, confirming that it
-cannot own relay ingress. The accepted product combination is pinned-default
+cannot own relay ingress. This gate established the framework combination of
 VP8 screen-share simulcast, Dynacast, server send-side BWE, and
-`adaptiveStream: false` for Screener subscribers.
+`adaptiveStream: false`; the later production observation amends only the lower
+representation's FPS and proportional bitrate.
 
 ## Evidence Boundary
 
