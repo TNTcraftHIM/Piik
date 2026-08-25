@@ -208,7 +208,7 @@ export const DEFAULT_QUALITY_SETTINGS = {
   resolution: "1080p",
   maxFramerate: 30,
   maxBitrate: 5_000_000,
-  degradationPreference: "balanced",
+  degradationPreference: "maintain-resolution",
   screenAudioQuality: "music",
 } as const satisfies QualitySettings;
 

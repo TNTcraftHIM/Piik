@@ -34,7 +34,6 @@ export interface ViewerQualityEvidencePresentation {
   evidence: ViewerQualityEvidence;
   fresh: boolean;
   receivedAtMs: number;
-  observedAtMs: Partial<Record<ViewerQualityEvidenceMetric, number>>;
 }
 
 type ViewerQualityEvidenceWindow = Pick<
@@ -317,20 +316,14 @@ export function presentViewerQualityEvidence(
     ? refreshViewerQualityEvidencePresentation(previous, nowMs)
     : null;
   const metrics = { ...evidence.metrics };
-  const observedAtMs: Partial<
-    Record<ViewerQualityEvidenceMetric, number>
-  > = {};
 
   for (const metric of viewerQualityEvidenceMetricKeys(evidence.metrics)) {
-    if (evidence.metrics[metric] !== null) {
-      observedAtMs[metric] = nowMs;
-    } else if (
+    if (
+      evidence.metrics[metric] === null &&
       current !== null &&
-      current.evidence.metrics[metric] !== null &&
-      current.observedAtMs[metric] !== undefined
+      current.evidence.metrics[metric] !== null
     ) {
       metrics[metric] = current.evidence.metrics[metric] as never;
-      observedAtMs[metric] = current.observedAtMs[metric];
     }
   }
 
@@ -338,7 +331,6 @@ export function presentViewerQualityEvidence(
     evidence: { ...evidence, metrics },
     fresh: true,
     receivedAtMs: nowMs,
-    observedAtMs,
   };
 }
 
@@ -346,67 +338,23 @@ export function refreshViewerQualityEvidencePresentation(
   presentation: ViewerQualityEvidencePresentation,
   nowMs: number = Date.now(),
 ): ViewerQualityEvidencePresentation {
-  let metrics = presentation.evidence.metrics;
-  let observedAtMs = presentation.observedAtMs;
-  let changed = false;
-
-  for (const metric of viewerQualityEvidenceMetricKeys(metrics)) {
-    const observedAt = observedAtMs[metric];
-    if (
-      metrics[metric] !== null &&
-      observedAt !== undefined &&
-      nowMs >= observedAt + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
-    ) {
-      if (!changed) {
-        metrics = { ...metrics };
-        observedAtMs = { ...observedAtMs };
-        changed = true;
-      }
-      metrics[metric] = null as never;
-      delete observedAtMs[metric];
-    }
-  }
-
   const fresh =
     nowMs < presentation.receivedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
-  if (!changed && fresh === presentation.fresh) {
+  if (fresh === presentation.fresh) {
     return presentation;
   }
-  return {
-    ...presentation,
-    evidence: changed
-      ? { ...presentation.evidence, metrics }
-      : presentation.evidence,
-    fresh,
-    observedAtMs,
-  };
+  return { ...presentation, fresh };
 }
 
 export function nextViewerQualityEvidencePresentationExpiryAt(
   presentation: ViewerQualityEvidencePresentation,
   nowMs: number = Date.now(),
 ): number | null {
-  let nextExpiryAt = presentation.fresh
-    ? presentation.receivedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
-    : Number.POSITIVE_INFINITY;
-
-  for (const metric of viewerQualityEvidenceMetricKeys(
-    presentation.evidence.metrics,
-  )) {
-    const observedAt = presentation.observedAtMs[metric];
-    if (
-      presentation.evidence.metrics[metric] !== null &&
-      observedAt !== undefined
-    ) {
-      nextExpiryAt = Math.min(
-        nextExpiryAt,
-        observedAt + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
-      );
-    }
-  }
-
-  return Number.isFinite(nextExpiryAt)
-    ? Math.max(nowMs, nextExpiryAt)
+  return presentation.fresh
+    ? Math.max(
+        nowMs,
+        presentation.receivedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
+      )
     : null;
 }
 

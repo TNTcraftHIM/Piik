@@ -88,7 +88,6 @@ export interface ViewerPresentationState {
   retainedFrame: boolean;
   autoplayBlockedGeneration: number | null;
   failure: ViewerFailureCode | null;
-  retryAvailable: boolean;
 }
 
 export type ViewerPresentationAction =
@@ -122,19 +121,18 @@ export type ViewerPresentationAction =
   | { type: "playback-failed"; generation: number; revision: number }
   | { type: "media-invalidated"; revision: number }
   | { type: "media-cleared" }
+  | { type: "sharing-stopped" }
   | {
       type: "failure";
       failure: ViewerFailureCode | null;
       revision?: number;
-    }
-  | { type: "retry-available"; available: boolean };
+    };
 
 export interface ViewerPresentation {
   stage: ViewerStage;
   message: string;
   notice: string | null;
   overlay: "none" | "status" | "blocking";
-  retryAvailable: boolean;
   hasCurrentFrame: boolean;
   hasRetainedFrame: boolean;
   failureCode: ViewerFailureCode | null;
@@ -152,7 +150,6 @@ export const INITIAL_VIEWER_PRESENTATION_STATE: ViewerPresentationState = {
   retainedFrame: false,
   autoplayBlockedGeneration: null,
   failure: null,
-  retryAvailable: false,
 };
 
 export function reduceViewerPresentation(
@@ -366,6 +363,19 @@ export function reduceViewerPresentation(
         retainedFrame: false,
         autoplayBlockedGeneration: null,
       };
+    case "sharing-stopped":
+      return {
+        ...state,
+        host: "stopped",
+        revision: null,
+        route: null,
+        routeStatus: null,
+        connection: "idle",
+        media: null,
+        retainedFrame: false,
+        autoplayBlockedGeneration: null,
+        failure: "HOST_STOPPED",
+      };
     case "failure":
       if (
         action.revision !== undefined &&
@@ -389,8 +399,6 @@ export function reduceViewerPresentation(
           : state.autoplayBlockedGeneration,
         failure: action.failure,
       };
-    case "retry-available":
-      return { ...state, retryAvailable: action.available };
   }
 }
 
@@ -663,8 +671,6 @@ function presentation(
     message,
     notice: null,
     overlay,
-    retryAvailable:
-      state.access === "ready" && state.host !== "paused" && state.retryAvailable,
     hasCurrentFrame: hasCurrentFrame(state),
     hasRetainedFrame: state.retainedFrame,
     failureCode: state.failure,

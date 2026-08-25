@@ -11,10 +11,14 @@ import {
 function apply(
   ...actions: readonly ViewerPresentationAction[]
 ): ViewerPresentationState {
-  return actions.reduce(
-    reduceViewerPresentation,
-    INITIAL_VIEWER_PRESENTATION_STATE,
-  );
+  return applyFrom(INITIAL_VIEWER_PRESENTATION_STATE, ...actions);
+}
+
+function applyFrom(
+  state: ViewerPresentationState,
+  ...actions: readonly ViewerPresentationAction[]
+): ViewerPresentationState {
+  return actions.reduce(reduceViewerPresentation, state);
 }
 
 describe("Viewer presentation reducer", () => {
@@ -376,7 +380,6 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(denied)).toMatchObject({
       stage: "access-denied",
       message: "当前无法通过房间号加入",
-      retryAvailable: false,
     });
 
     const notFound = reduceViewerPresentation(failed, {
@@ -387,7 +390,40 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(notFound)).toMatchObject({
       stage: "room-not-found",
       message: "房间不存在或已过期",
-      retryAvailable: false,
+    });
+  });
+
+  it("starts a fresh route revision namespace after sharing stops", () => {
+    const previousShare = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 8, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 2, revision: 8 },
+      { type: "frame-presented", generation: 2, revision: 8 },
+    );
+    const stopped = reduceViewerPresentation(previousShare, {
+      type: "sharing-stopped",
+    });
+    expect(stopped).toMatchObject({
+      host: "stopped",
+      revision: null,
+      route: null,
+      connection: "idle",
+      media: null,
+      retainedFrame: false,
+      failure: "HOST_STOPPED",
+    });
+
+    const restarted = applyFrom(stopped,
+      { type: "host", host: "online" },
+      { type: "route", revision: 1, phase: "prepare", kind: "p2p" },
+      { type: "media-bound", generation: 3, revision: 1 },
+      { type: "frame-presented", generation: 3, revision: 1 },
+    );
+    expect(deriveViewerPresentation(restarted)).toMatchObject({
+      stage: "playing",
+      message: "正在播放",
+      overlay: "none",
     });
   });
 });

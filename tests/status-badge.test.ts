@@ -4,6 +4,7 @@ import {
   hasPeerRouteEvidence,
   MEDIA_ROUTE_PRESENTATION,
   ROUTING_STATUS_PRESENTATION,
+  viewerReconnectRoute,
   viewerRouteEvidence,
 } from "../src/client/components/status-badge-model.ts";
 import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
@@ -86,6 +87,39 @@ describe("route status badges", () => {
         null,
       ).route,
     ).toBe("p2p");
+  });
+
+  it("reconnects only the exact transport with current media evidence", () => {
+    const identity = {
+      parentPeerId: peerSnapshot.peerId,
+      connectionId: peerSnapshot.connectionId,
+    };
+    expect(
+      viewerReconnectRoute(
+        { kind: "peer", peerId: peerSnapshot.peerId },
+        peerSnapshot,
+        null,
+        identity,
+      ),
+    ).toBe("p2p");
+    expect(
+      viewerReconnectRoute(
+        { kind: "peer", peerId: peerSnapshot.peerId },
+        peerSnapshot,
+        null,
+        { ...identity, connectionId: "connection-replaced" },
+      ),
+    ).toBeNull();
+
+    const sfu = { connectionState: "connected" as const, metrics: null };
+    expect(
+      viewerReconnectRoute(
+        { kind: "peer", peerId: "pending-parent" },
+        peerSnapshot,
+        sfu,
+        null,
+      ),
+    ).toBe("sfu");
   });
 
 });

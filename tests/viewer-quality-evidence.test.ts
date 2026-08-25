@@ -417,7 +417,7 @@ describe("viewer quality evidence", () => {
     });
   });
 
-  it("expires retained fields independently at their exact observation deadline", () => {
+  it("keeps last observed fields when freshness expires", () => {
     const first = presentViewerQualityEvidence(
       null,
       serverEvidence({ sequence: 4 }),
@@ -440,42 +440,23 @@ describe("viewer quality evidence", () => {
     expect(second.evidence.metrics.codec).toBe("video/H264");
     expect(second.evidence.metrics.bitrateKbps).toBe(6_000);
     expect(nextViewerQualityEvidencePresentationExpiryAt(second, 2_000)).toBe(
-      5_000,
+      7_000,
     );
     expect(
       refreshViewerQualityEvidencePresentation(second, 4_999).evidence.metrics
         .codec,
     ).toBe("video/H264");
 
-    const atFirstDeadline = refreshViewerQualityEvidencePresentation(
-      second,
-      5_000,
-    );
-    expect(atFirstDeadline).toMatchObject({ fresh: true });
-    expect(atFirstDeadline.evidence.metrics).toMatchObject({
-      codec: null,
-      codecProfile: null,
-      codecParameters: null,
-      bitrateKbps: 6_000,
-    });
-    expect(
-      nextViewerQualityEvidencePresentationExpiryAt(atFirstDeadline, 5_000),
-    ).toBe(7_000);
-
     const expired = refreshViewerQualityEvidencePresentation(second, 7_000);
     expect(expired.fresh).toBe(false);
-    expect(Object.values(expired.evidence.metrics)).toEqual(
-      expect.arrayContaining([null]),
-    );
-    expect(
-      Object.values(expired.evidence.metrics).every((value) => value === null),
-    ).toBe(true);
+    expect(expired.evidence.metrics.codec).toBe("video/H264");
+    expect(expired.evidence.metrics.bitrateKbps).toBe(6_000);
     expect(
       nextViewerQualityEvidencePresentationExpiryAt(expired, 7_000),
     ).toBeNull();
   });
 
-  it("does not extend a retained field when later samples still omit it", () => {
+  it("retains omitted fields while the evidence identity continues", () => {
     const first = presentViewerQualityEvidence(
       null,
       serverEvidence({ sequence: 1 }),
@@ -508,12 +489,12 @@ describe("viewer quality evidence", () => {
 
     expect(third.evidence.metrics.codec).toBe("video/H264");
     expect(nextViewerQualityEvidencePresentationExpiryAt(third, 4_000)).toBe(
-      5_000,
+      9_000,
     );
     expect(
-      refreshViewerQualityEvidencePresentation(third, 5_000).evidence.metrics
+      refreshViewerQualityEvidencePresentation(third, 9_000).evidence.metrics
         .codec,
-    ).toBeNull();
+    ).toBe("video/H264");
   });
 
   it("resets retained fields on identity or non-monotonic sequence changes", () => {
