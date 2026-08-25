@@ -56,8 +56,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Measure Browser VP8 hardware use and the current game-load performance
-   bottleneck on supported Chrome/Edge platforms.
+1. Measure the current VP8 game-load performance bottleneck on supported Browser
+   Hosts; the exact Windows Chrome 151 boundary is indexed by realtime-quality
+   research.
 2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
 3. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance
