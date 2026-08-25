@@ -17,6 +17,10 @@ export class DecodedFrameStallDetector {
     this.reported = false;
   }
 
+  allowReportRetry(): void {
+    this.reported = false;
+  }
+
   observe(
     identity: string,
     framesDecodedDelta: number | null,

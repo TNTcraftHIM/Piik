@@ -1526,6 +1526,7 @@ describe("SfuSubscriber", () => {
     });
     await subscriber.connect(connection);
     const room = livekit.state.rooms[0];
+    expect(room.options).toEqual({ disconnectOnPageLeave: false });
     const host = new livekit.FakeRemoteParticipant("host");
     const publication = new livekit.FakeRemotePublication(
       "host-video",

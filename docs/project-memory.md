@@ -101,6 +101,10 @@ Last updated: 2026-08-26
 - Viewer local play/pause, volume, mute, and fullscreen are owned by native video
   controls on one persistent media element. Host preview is a muted, control-free
   view of the capture stream; only explicit Host actions pause or stop sharing.
+- Viewer hidden/freeze/pagehide suppress application decoded-stall authority;
+  visible/resume/pageshow rebaseline and rearm current-frame proof. SFU pagehide
+  does not make LiveKit actively disconnect, while SDK freeze behavior, playback,
+  background audio, page reclamation, and relay survival remain physical gates.
 - Hiding or unfocusing the Host page pauses only the local preview element.
   Browser/OS capture and background behavior remain platform capabilities; no
   fake keepalive, silent media, Wake Lock, or timer loop is a product mechanism.

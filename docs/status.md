@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `d8307a36b69a11a9264657363966c175d6d36c0d`, release `d8307a3`, wire
-  `screener-v12`, from `/opt/screener/releases/d8307a3`. The immutable runtime
+  `b6a8a5fa7fe622dd1a61a2455f7151dcfc27ad55`, release `b6a8a5f`, wire
+  `screener-v12`, from `/opt/screener/releases/b6a8a5f`. The immutable runtime
   tar SHA-256 is
-  `dd9f3e919663c71294976a18b8bbd2f02f15c999849ba168564bcf52d6de0eef`;
+  `cb5b91b46e9b213e9228bb5b6319df8f3f8865c5b5b39e8b1460830892fdc8e0`;
   its 39-file manifest SHA-256 is
-  `f20005e50376e5cd8caea79acfba0c7e2733fa52e9fa5324c450efa4cf3a4592`.
-- The served Browser entry references `assets/index-rzD5Vq8B.js`; the public
-  asset is 492366 bytes with SHA-256
-  `5a2beb0ef73abfd0dae15903532e47723bc401f2a58a75f33317240f9a0f6a07`.
+  `810f0dac7fcbe9d762da0502594d49b9ce7475a3b9f780eb602cee83ca609b06`.
+- The served Browser entry references `assets/index-vyrTbru-.js`; the public
+  asset is 492898 bytes with SHA-256
+  `96755b2bdfdc46f68be3c74d27eb9b310593cb472fb473f4406b4461f9107ee1`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production uses process-memory four-digit rooms, a 24-hour dormant lease,
@@ -37,7 +37,7 @@ This is the current execution index. Git history owns completed timelines;
 ## Current Source
 
 - Canonical root `main` is clean and its application/runtime tree matches exact
-  production revision `d8307a3`. Auxiliary branches and worktrees do not
+  production revision `b6a8a5f`. Auxiliary branches and worktrees do not
   supersede it.
 - One event-driven controller owns the committed graph and one room-serial child
   operation. Initial direct acquisition uses a five-second foreground window;
@@ -49,10 +49,10 @@ This is the current execution index. Git history owns completed timelines;
   quality score, layer selector, periodic rebalancing, or quality-driven parent
   change. P2P and SFU recover their current route before actual failure enters
   normal reassignment.
-- Viewer page resume rebaselines decoded-stall timing, a new current-generation
-  frame clears stale media recovery state, native Viewer video controls own local
-  playback, Host preview is control-free, and manual reconnect stays on the
-  current P2P parent or SFU subscription.
+- Viewer hidden/freeze/pagehide suppress decoded-stall routing authority;
+  visible/resume/pageshow rebaseline and rearm current-frame proof. SFU
+  pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
+  controls still own playback, and manual reconnect stays on the current route.
 
 ## Current Milestone
 

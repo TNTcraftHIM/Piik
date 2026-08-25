@@ -95,7 +95,7 @@ export class SfuSubscriber {
         return false;
       }
 
-      const room = new sdk.Room();
+      const room = new sdk.Room({ disconnectOnPageLeave: false });
       this.room = room;
       this.sdk = sdk;
       this.bindRoomEvents(room, sdk, generation);

@@ -198,11 +198,13 @@ relay capacity 与其他普通 Web Viewer 相同。
 
 ### Viewer 后台播放边界
 
-当前 Viewer 使用一个持续存在、可听的 `<video autoplay playsinline>`，播放被浏览器拦截时保留显式用户手势入口；信令心跳由服务端 WebSocket ping 和浏览器原生 pong 完成。Chrome 把可听媒体、WebRTC 和 WebSocket 视为后台保留连接的活动，并允许隐藏页节流视觉更新；页面若被系统冻结或回收，Web 应用本身不能继续执行。WebKit 也会在页面可听时保留 iOS Web 进程。产品契约覆盖已经开始的音频和连接；隐藏页面的视频合成只代表呈现层。
+当前 Viewer 使用一个持续存在、可听的 `<video autoplay playsinline controls>`，播放被浏览器拦截时保留显式用户手势入口。Android Chrome 与 iOS Safari 对已经开始的可听 WebRTC 音频都有继续后台播放的现实能力，但音频焦点、OEM/系统策略、锁屏中断、页面 freeze/discard 和 WebContent 回收都不受网页保证。隐藏页面的视频帧交付、合成、JavaScript 路由控制与 relay 存活同样不是后台合同。
 
-一轮保留的 Chrome 151 双 Viewer 结果与该边界一致：后台标签页的 inbound、decoded 和 Opus RTP 计数继续增长，`requestVideoFrameCallback` 保持不变；前台 Viewer 的逐帧回调正常增长。这只证明该受控桌面样本的接收、解码和音频包连续性，不是可听性或手机生命周期证明。iOS 锁屏、页面回收，以及后台期间换父或重连后出现的新媒体仍进入真机矩阵；LiveKit 的 Safari issue 也区分了持续播放的既有音轨与后台新建音频元素。
+应用因此在 hidden、freeze 与 pagehide 期间暂停 decoded-stall 路由失败权威，在 visible、resume 与 pageshow 后先 rebaseline 并重建当前 frame proof；信令换代会释放未确认的 stall report 以允许 exact route 重试。SFU subscriber 使用 pinned LiveKit 的 `disconnectOnPageLeave=false`，避免 SDK 仅因 BFCache pagehide/beforeunload 主动拆除 Room；SDK 2.22.0 无条件注册的 `freeze -> disconnect` 保持未修改并进入真机 gate。应用不猜测系统 pause 与用户通过原生 controls 主动 pause 的区别，返回前台后的播放状态也由真机和既有显式播放入口验收。
 
-来源（访问于 2026-08-21）：[Chrome background tabs](https://developer.chrome.com/blog/background_tabs)、[Chrome Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)、[WebKit audible-page process assertion](https://bugs.webkit.org/show_bug.cgi?id=173932)、[WHATWG media elements](https://html.spec.whatwg.org/multipage/media.html)、[LiveKit Safari background audio issue #1751](https://github.com/livekit/client-sdk-js/issues/1751)。
+一轮保留的 Chrome 151 双 Viewer 结果与该边界一致：后台标签页的 inbound、decoded 和 Opus RTP 计数继续增长，`requestVideoFrameCallback` 保持不变；前台 Viewer 的逐帧回调正常增长。这只证明该受控桌面样本的接收、解码和音频包连续性，不是可听性或手机生命周期证明。真机矩阵仍须分别覆盖 Android/iOS 的首次播放、切应用、锁屏、页面回收、后台期间换轨、Wi-Fi/蜂窝迁移、原生 controls 与被分配 relay child 后的生存/重分配。
+
+来源（复核于 2026-08-26）：[Page Visibility](https://www.w3.org/TR/page-visibility-2/)、[Chrome Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)、[Chromium MediaStream hidden behavior](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/modules/mediastream/web_media_player_ms.cc)、[Android process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle)、[WebKit background WebRTC audio](https://bugs.webkit.org/show_bug.cgi?id=283297)、[LiveKit Safari background audio issue #1751](https://github.com/livekit/client-sdk-js/issues/1751)、[LiveKit page-freeze issue #1968](https://github.com/livekit/client-sdk-js/issues/1968)、[WHATWG media elements](https://html.spec.whatwg.org/multipage/media.html)。
 
 ### Viewer 向电视输出边界
 

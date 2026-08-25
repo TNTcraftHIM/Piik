@@ -386,21 +386,34 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       null;
     let relayChildEvidenceTimer: number | null = null;
 
-    const rebaselineAfterResume = (): void => {
-      decodedFrameStall.rebaseline();
+    let pageSuspended = document.visibilityState !== "visible";
+    const syncDecodedFrameStallPause = (): void => {
+      decodedFrameStall.setPaused(currentHostPaused || pageSuspended);
     };
-    const rebaselineAfterVisibilityChange = (): void => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
+    const suspendForPageLifecycle = (): void => {
+      pageSuspended = true;
+      syncDecodedFrameStallPause();
+    };
+    const recoverFromPageLifecycle = (): void => {
+      pageSuspended = document.visibilityState !== "visible";
+      syncDecodedFrameStallPause();
+      if (pageSuspended) return;
       decodedFrameStall.rebaseline();
       setFrameProofEpoch((current) => current + 1);
     };
-    document.addEventListener("resume", rebaselineAfterResume);
-    document.addEventListener(
-      "visibilitychange",
-      rebaselineAfterVisibilityChange,
-    );
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === "visible") {
+        recoverFromPageLifecycle();
+      } else {
+        suspendForPageLifecycle();
+      }
+    };
+    syncDecodedFrameStallPause();
+    document.addEventListener("freeze", suspendForPageLifecycle);
+    document.addEventListener("resume", recoverFromPageLifecycle);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", suspendForPageLifecycle);
+    window.addEventListener("pageshow", recoverFromPageLifecycle);
 
     function setSfuStandbyUrl(url: string | null | undefined): void {
       if (!url) {
@@ -426,6 +439,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       {
         onStatus: (status) => {
           if (active) {
+            if (status !== "connected") decodedFrameStall.allowReportRetry();
             dispatchPresentation({ type: "signal", signal: status });
           }
         },
@@ -630,19 +644,21 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       ) {
         return;
       }
+      let sent = false;
       if (route === "peer" && connectionId) {
-        signal.send({
+        sent = signal.send({
           type: "route-failed",
           revision: currentRouteRevision,
           phase: "active",
           connectionId,
         });
       } else if (route === "sfu") {
-        signal.send({
+        sent = signal.send({
           type: "route-media-unavailable",
           revision: currentRouteRevision,
         });
       }
+      if (!sent) decodedFrameStall.allowReportRetry();
     }
 
     function pendingPeerHasDecodedFrame(
@@ -1196,7 +1212,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setHostOnline(message.hostOnline);
         const sharingPaused = message.hostPaused ?? false;
         currentHostPaused = sharingPaused;
-        decodedFrameStall.setPaused(sharingPaused);
+        syncDecodedFrameStallPause();
         dispatchPresentation({
           type: "host",
           host: sharingPaused
@@ -1438,7 +1454,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (message.type === "host-status") {
         currentHostOnline = message.online;
         currentHostPaused = message.paused;
-        decodedFrameStall.setPaused(message.paused);
+        syncDecodedFrameStallPause();
         setHostOnline(message.online);
         dispatchPresentation({
           type: "host",
@@ -1464,6 +1480,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentHostOnline = false;
         currentHostPaused = false;
         decodedFrameStall.reset();
+        syncDecodedFrameStallPause();
         clearViewerSfuRoute();
         clearPeerState(true);
         clearHostPresence();
@@ -1569,11 +1586,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     signal.start();
     return () => {
       active = false;
-      document.removeEventListener("resume", rebaselineAfterResume);
-      document.removeEventListener(
-        "visibilitychange",
-        rebaselineAfterVisibilityChange,
-      );
+      document.removeEventListener("freeze", suspendForPageLifecycle);
+      document.removeEventListener("resume", recoverFromPageLifecycle);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", suspendForPageLifecycle);
+      window.removeEventListener("pageshow", recoverFromPageLifecycle);
       currentPeerId = null;
       qualityEvidenceReporter.reset();
       clearRelayChildEvidence();

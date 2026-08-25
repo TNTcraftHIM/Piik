@@ -62,4 +62,16 @@ describe("DecodedFrameStallDetector", () => {
       ),
     ).toBe(true);
   });
+
+  it("retries an exact stall when its failure message was not sent", () => {
+    const detector = new DecodedFrameStallDetector();
+    expect(detector.observe("peer:1:a", 0, 0)).toBe(false);
+    expect(
+      detector.observe("peer:1:a", 0, ROUTE_DECODED_FRAME_STALL_MS),
+    ).toBe(true);
+    detector.allowReportRetry();
+    expect(
+      detector.observe("peer:1:a", 0, ROUTE_DECODED_FRAME_STALL_MS + 1),
+    ).toBe(true);
+  });
 });

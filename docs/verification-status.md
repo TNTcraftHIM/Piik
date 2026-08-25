@@ -8,14 +8,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `d8307a36b69a11a9264657363966c175d6d36c0d`, release `d8307a3`, wire
-  `screener-v12`, from `/opt/screener/releases/d8307a3`.
+  `b6a8a5fa7fe622dd1a61a2455f7151dcfc27ad55`, release `b6a8a5f`, wire
+  `screener-v12`, from `/opt/screener/releases/b6a8a5f`.
 - Runtime tar SHA-256:
-  `dd9f3e919663c71294976a18b8bbd2f02f15c999849ba168564bcf52d6de0eef`.
+  `cb5b91b46e9b213e9228bb5b6319df8f3f8865c5b5b39e8b1460830892fdc8e0`.
   The 39-file manifest SHA-256 is
-  `f20005e50376e5cd8caea79acfba0c7e2733fa52e9fa5324c450efa4cf3a4592`.
-- Public Browser asset `assets/index-rzD5Vq8B.js` is 492366 bytes with SHA-256
-  `5a2beb0ef73abfd0dae15903532e47723bc401f2a58a75f33317240f9a0f6a07`.
+  `810f0dac7fcbe9d762da0502594d49b9ce7475a3b9f780eb602cee83ca609b06`.
+- Public Browser asset `assets/index-vyrTbru-.js` is 492898 bytes with SHA-256
+  `96755b2bdfdc46f68be3c74d27eb9b310593cb472fb473f4406b4461f9107ee1`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
@@ -53,13 +53,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- Current `d8307a3` uses Browser VP8 with `contentHint = "motion"`, reapplies the
+- Current `b6a8a5f` uses Browser VP8 with `contentHint = "motion"`, reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
 - Viewer page-resume decoded-stall rebaselining, current-frame presentation
-  authority, native controls, and same-route manual reconnect are current source
-  and production behavior.
+  authority, hidden-page stall suppression, retryable failure reporting, native
+  controls, and same-route manual reconnect are current source behavior. Mobile
+  physical evidence remains open.
 
 ## Open Physical Gates
 
