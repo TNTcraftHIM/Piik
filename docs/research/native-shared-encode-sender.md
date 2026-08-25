@@ -254,10 +254,12 @@ conservative feedback-derived reconfiguration while feeding two transports. It
 does not establish heterogeneous feedback behavior and must not evolve into a
 room-wide minimum controller.
 
-ADR-0007 keeps stock WebRTC GCC per direct/peer path and accepts one Browser SFU
-`HIGH` representation. The exact-production gate rejected an always-active
-`LOW` because it reduced `HIGH` on the shared Host-to-SFU congestion budget.
-Application evidence remains diagnostic and does not select routes or layers.
+ADR-0007 keeps stock WebRTC GCC per direct/peer path and accepts bounded Browser
+SFU `HIGH+LOW` simulcast with Dynacast and LiveKit server send-side BWE. The
+exact-production gate proved its dual-encode cost; the later pinned gate proved
+native LOW selection for a constrained subscriber, so the product does not
+remove LOW to protect Host capacity. Application evidence remains diagnostic
+and does not select routes or layers.
 The Host still follows the configured non-server outbound media-copy capacity;
 the two-edge result in this experiment is a historical configuration, not a
 fixed policy.
@@ -269,12 +271,13 @@ and do not form a composite score. UA and device identity do not participate.
 A native relay forwards the selected encoded packets and must not decode or
 re-encode them. An ordinary non-scalable representation cannot be forwarded
 into a second quality; doing so would require another encode, scalable layers,
-or transcoding. ADR-0007 closes current Web P2P simulcast, Browser dual
-representation, and Web/LiveKit SVC. A future native decision may reopen a
-second representation only with an explicit hardware contract, bounded layer
-count, one encoded output reused across accepted transports, independent path
-selection, and the real game/power matrix. Media Capabilities and RTCStats
-power-efficiency fields remain diagnostics, not hardware proof.
+or transcoding. ADR-0007 closes current Web P2P shared simulcast and Web/LiveKit
+SVC, while accepting Browser SFU `HIGH+LOW` through LiveKit. A future native
+decision may implement those representations only with an explicit hardware
+contract, bounded layer count, one encoded output reused across accepted
+transports, independent path selection, and the real game/power matrix. Media
+Capabilities and RTCStats power-efficiency fields remain diagnostics, not
+hardware proof.
 
 Simulcast does not change this native proof boundary: one sender may negotiate
 multiple representations, but separate direct PeerConnections have no portable

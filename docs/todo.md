@@ -6,7 +6,8 @@ Only items in **Now** are executable after their stated decision gate. A branch 
 
 ## Now
 
-1. **Finish real-network route acceptance.** First restore the existing active-SFU decoded-progress cadence when its track or stats report disappears, deploy it, and repeat the controlled recovery transaction. Then measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish bounded explicit failure. Do not add another watchdog, port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
+1. **Deploy native SFU representation adaptation.** Current source publishes the pinned-default VP8 half-resolution plus original-resolution screen-share representations, enables Dynacast, and tracks LiveKit server send-side BWE while keeping AdaptiveStream disabled because any Viewer may become a relay. Deploy and verify that exact combination without adding a Screener quality controller or falling back to one encoding for Host resource protection.
+2. **Finish real-network route acceptance.** Deploy the current-source active-SFU decoded-progress cadence correction and repeat the controlled recovery transaction. Then measure standard ICE/STUN direct paths, peer relay, SFU ingress/subscription, relay-ingress repair with subtree retention, disconnect/capacity drain, Pause/Resume, screen-audio continuity and real-game A/V sync across representative IPv4/IPv6 NATs and mobile networks. Include an all-UDP-blocked case to establish bounded explicit failure. Do not add another watchdog, port prediction, NAT classification, TCP probes, guessed candidates, route scores, or quality-driven reparenting.
 
 ## Accepted Later Roadmap
 

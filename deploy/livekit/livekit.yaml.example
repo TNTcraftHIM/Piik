@@ -19,6 +19,9 @@ rtc:
   stun_servers:
     - stun.example.com:3478
   use_external_ip: true
+  congestion_control:
+    # Let LiveKit select the forwarded layer from subscriber bandwidth.
+    use_send_side_bwe: true
 
 room:
   # Screener creates exact-generation rooms through the private RoomService API.

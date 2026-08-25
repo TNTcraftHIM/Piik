@@ -68,6 +68,10 @@ interface ViewerSfuRouteEvents {
   ) => void;
   onSfuVideoAvailability?: (available: boolean, revision: number) => void;
   onSfuUpdate?: (metrics: ConnectionMetrics | null, revision: number) => void;
+  onSfuDecodedFrameSample?: (
+    framesDecodedDelta: number | null,
+    revision: number,
+  ) => void;
   onSfuState?: (
     state: "connected" | "reconnecting",
     revision: number,
@@ -78,6 +82,7 @@ interface ViewerSfuRouteEvents {
       onStream: (stream: MediaStream | null) => void;
       onVideoAvailability: (available: boolean) => void;
       onStats: (metrics: ConnectionMetrics) => void;
+      onDecodedFrameSample: (framesDecodedDelta: number | null) => void;
       onFirstDecodedFrame: () => boolean;
       onState: (state: "connected" | "reconnecting") => void;
       onDisconnected: () => void;
@@ -331,6 +336,14 @@ export class ViewerSfuRoute {
       onStats: (metrics: ConnectionMetrics) => {
         if (this.active === slot && !slot.failed) {
           this.events.onSfuUpdate?.(metrics, slot.revision);
+        }
+      },
+      onDecodedFrameSample: (framesDecodedDelta: number | null) => {
+        if (this.active === slot && !slot.failed) {
+          this.events.onSfuDecodedFrameSample?.(
+            framesDecodedDelta,
+            slot.revision,
+          );
         }
       },
       onFirstDecodedFrame: () => this.handlePendingDecodedFrame(slot),

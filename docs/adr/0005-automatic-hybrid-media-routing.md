@@ -367,8 +367,8 @@ deployment-wide.
 
 Production runs exact deployed application/runtime revision
 `1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical `main`
-contains the same application/runtime tree plus the current truth checkpoint, including exact
-Browser SFU ICE-server-isolation implementation
+contains newer source pending deployment, including the active-SFU cadence correction
+and exact Browser SFU ICE-server-isolation implementation
 `ae09c760adec76fd26da611d4928486d105c6d3b`. Both run strict `screener-v12` and
 the direct/STUN peer plus LiveKit SFU/UDP route model. Browser SFU PCs use empty
 external ICE-server lists. Chrome 151 on that exact production verified one

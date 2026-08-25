@@ -13,7 +13,7 @@ may instead lower frame rate. Neither preference overrides congestion control.
 
 Production runs exact deployed application/runtime revision
 `1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
-`main` contains the same runtime code. Current Browser source and production use
+`main` contains newer SFU publication source pending deployment. Current Browser source and production use
 strict `screener-v12`, fixed VP8, no video `contentHint`, and no codec UI,
 quality state, or wire field. They use `balanced` as the recommended profile
 and advanced default;
@@ -57,9 +57,10 @@ near 60 fps, encode cost was about 4.46 ms per frame, packet loss and
 retransmission were zero, and the selected pair reported about 4.81 Mbps
 available outgoing bitrate. The always-active lower representation therefore
 consumed the same Host-to-SFU congestion budget and materially reduced `HIGH`.
-ADR-0007 rejects that candidate and accepts one Browser SFU `HIGH`
-representation. The public SFU ingress remained constrained, so this gate does
-not claim SFU 60 fps or real-game performance.
+This establishes a real dual-encode cost but does not justify removing the lower
+representation needed by constrained subscribers. The public SFU ingress
+remained constrained, so this gate does not claim SFU 60 fps or real-game
+performance.
 
 ## 2026-08-25 Exact-Production Single-Representation Gate
 
@@ -70,8 +71,42 @@ PCs retained empty external ICE-server lists and selected UDP. The publisher
 reported one video sender encoding and one outbound video stats object, both
 without RID. Over six seconds it encoded 180 frames and the subscriber decoded
 and rendered 182 frames at 1822x1080, with byte counters advancing on both ends.
-This closes ADR-0007's implementation/deployment gate. It does not establish
-public SFU 60 fps, real-game quality, heterogeneous networks, or endurance.
+This verifies the deployed single-representation baseline. It does not prove
+that the baseline serves constrained subscribers and does not close the later
+native-adaptation decision. It also does not establish public SFU 60 fps,
+real-game quality, heterogeneous networks, or endurance.
+
+## 2026-08-25 Pinned Native-Adaptation Gate
+
+LiveKit server `1.13.5`, JS client `2.22.0`, and Chrome 151 exercised a changing
+VP8 screen-share publication with full- and half-resolution representations.
+Manual maximum/lower subscriber selection delivered `1280x720` and `640x360`
+at about 30 fps, and the same connection returned from the lower to the full
+representation. AdaptiveStream selected full resolution for a large attached
+element, half resolution for a small one, paused when hidden, and recovered when
+visible. Without an attached element it received only the lower representation,
+so it cannot govern a Viewer that may forward the stream to peer children.
+
+Dynacast stopped representations with no subscribers after about five seconds.
+Lower-only demand stopped the full representation, but maximum demand kept both
+encodings active. It therefore avoids unused work but cannot remove VP8's
+dual-encode cost while a healthy maximum-quality subscriber exists.
+
+With LiveKit's default receiver-side BWE, an approximately 0.96 Mbps subscriber
+remained on HIGH for about 21 seconds and ended at zero decoded fps. With
+`congestion_control.use_send_side_bwe: true`, LiveKit's native stream allocator
+selected LOW and by the third steady window delivered `640x360` at about 29 fps
+and 88 KB/s. A fresh unshaped subscriber immediately received HIGH. Network
+unshaping on the same PeerConnection was not isolated because the Chrome DevTools
+condition was bound when that connection was created; manual and AdaptiveStream
+same-connection upward transitions independently proved layer recovery.
+
+The result accepts pinned-default VP8 dual-representation simulcast, Dynacast,
+and server send-side BWE.
+Screener does not add a bandwidth estimator or layer controller. AdaptiveStream
+stays disabled for current subscribers because every Viewer may become a relay.
+The earlier dual-encode cost is handled through explicit Host share profiles,
+not by silently abandoning low-bandwidth Viewers.
 
 ## Route Quality Authority
 
@@ -268,7 +303,7 @@ wire expose no codec choice. Codec/profile/encoder stats remain diagnostic and
 do not authorize automatic switching, route changes, or another controller.
 Production runs exact deployed application/runtime revision
 `1d8761528d0dba43fb6d818df3934483ba2f5340`, release `1d87615`; canonical
-`main` contains the same runtime code. Current source and production implement
+`main` contains newer SFU source pending deployment. Current source and production implement
 this strict `screener-v12` contract.
 
 Chromium maps video `contentHint = "motion"` to libwebrtc `kFluid`, and
@@ -456,9 +491,9 @@ the requested value remains null and a browser-reported default is not called
 a mismatch; multiple encodings remain unknown. Inbound stats provide no current
 standard `scalabilityMode` source, so C does not carry a null-only placeholder.
 The earlier exact-production gate rejected its ordered `q,h` publication because
-the active lower representation reduced `HIGH`. Current source and production
-now implement ADR-0007's one Browser SFU `HIGH`; the exact deployment gate above
-proved one no-RID encoding with progressing publisher/subscriber frames.
+the active lower representation reduced `HIGH`. Current source implements the
+later accepted LiveKit-owned two-representation target; production remains the
+exact no-RID single-`HIGH` baseline until cutover.
 
 Official W3C text checked 2026-08-19 defines names ending in `Id` as stats-object
 references. In particular, outbound [`mediaSourceId`](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-mediasourceid)
@@ -483,22 +518,25 @@ default. Chromium currently maps its configured per-stream mode into the
 outbound stats field; other browser implementations may omit any optional
 member, which remains null rather than a capability conclusion.
 
-## Superseded Two-Layer Candidate Analysis (2026-08-22)
+## LiveKit Native Representation Boundary
 
-This retained analysis explains the candidate that the 2026-08-25 physical gate
-rejected. It does not define current product truth, implementation scope, or a
-next gate; ADR-0007 owns the accepted single-`HIGH` decision.
+ADR-0007 owns the accepted target: the pinned client's default VP8 screen-share
+simulcast pair with representation activation and per-subscriber selection
+delegated to LiveKit. The pinned gate passed with explicit server send-side BWE.
+Current source implements the target; production remains the not-yet-migrated
+single-encoding baseline.
 
-The candidate assumed one shared `HIGH+LOW` SFU publication could preserve
-healthy `HIGH` while LiveKit selected a lower representation per constrained
-subscriber. Static review established two limits before the runtime gate:
+The candidate assumed one shared dual-representation SFU publication could
+preserve full resolution while LiveKit selected a lower representation per
+constrained subscriber. Static review established two limits before the runtime gate:
 ordinary WebRTC receivers have no portable per-RID selection API across
-separate PeerConnections, and LiveKit 1.13.5 Dynacast cumulatively enables every
-quality below the highest requested quality. A `HIGH` subscriber therefore
-keeps `LOW` active. The 2026-08-25 exact-production A/B then proved that this
-always-active lower representation materially reduced `HIGH`, so ADR-0007
-rejected the candidate. Sender/viewer evidence remains diagnostic and does not
-change topology or command a representation.
+separate PeerConnections. Runtime evidence confirmed that LiveKit 1.13.5
+Dynacast cumulatively enables qualities below the highest requested quality, so
+a `HIGH` subscriber keeps `LOW` active. The earlier exact-production A/B proved
+that this has a material cost; the later constrained-subscriber gate proved that
+the lower representation is necessary and that LiveKit's send-side BWE selects
+it without a Screener controller. Sender/viewer evidence remains diagnostic and
+does not change topology or command a representation.
 
 ### Historical SFU Source Gate
 
@@ -547,8 +585,8 @@ the high layer, so the application does not own the actual layer choice.
 For this screen-share product the pin has an additional hard mismatch. Client
 2.22.0 overwrites SVC screen-share publication to `L1T3`, even when another
 mode was supplied: one spatial resolution and three temporal layers. It
-therefore supplies no low-resolution base and exceeds the accepted
-one-representation contract. LiveKit also documents that Dynacast can pause only an entire SVC
+therefore supplies no low-resolution spatial base and does not satisfy the
+accepted LOW/HIGH contract. LiveKit also documents that Dynacast can pause only an entire SVC
 stream, not individual SVC layers. Changing those contracts would require a
 different dependency/native design decision, not a runtime proof of the pinned
 path. No SVC harness was written and no Chrome run was performed. None of the

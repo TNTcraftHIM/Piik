@@ -124,7 +124,7 @@ export class SfuPublisher {
         return false;
       }
 
-      const room = new sdk.Room({ dynacast: false });
+      const room = new sdk.Room({ dynacast: true });
       this.room = room;
       this.sdk = sdk;
       room.on(sdk.RoomEvent.Disconnected, () => {
@@ -713,43 +713,52 @@ export class SfuPublisher {
       const previousAudio = this.audio;
       const previousVideoSender =
         previousVideo?.publication.videoTrack?.sender ?? null;
-      const video = previousVideo
+      const previousAudioSender =
+        previousAudio?.publication.audioTrack?.sender ?? null;
+      const currentVideo = previousVideo
         ? currentPublishedTrack(
             room,
             sdk.Track.Source.ScreenShare,
             previousVideo.rawTrack,
           )
         : null;
-      const videoSender = video?.publication.videoTrack?.sender ?? null;
-      if (!video || !videoSender) {
+      const videoSender = currentVideo?.publication.videoTrack?.sender ?? null;
+      if (!currentVideo || !videoSender) {
         this.failureStage = "transport";
         await this.failClosed(room, generation);
         return false;
       }
-      const audio = previousAudio
+      const currentAudio = previousAudio
         ? currentPublishedTrack(
             room,
             sdk.Track.Source.ScreenShareAudio,
             previousAudio.rawTrack,
           )
         : null;
-      const audioSender = audio?.publication.audioTrack?.sender ?? null;
-      if (previousAudio && (!audio || !audioSender)) {
+      const audioSender = currentAudio?.publication.audioTrack?.sender ?? null;
+      if (previousAudio && (!currentAudio || !audioSender)) {
         this.failureStage = "transport";
         await this.failClosed(room, generation);
         return false;
       }
-      this.stopStats();
+      const videoChanged =
+        currentVideo.publication !== previousVideo?.publication ||
+        videoSender !== previousVideoSender;
+      const audioChanged =
+        currentAudio?.publication !== previousAudio?.publication ||
+        audioSender !== previousAudioSender;
+      const video = videoChanged ? currentVideo : previousVideo;
+      const audio = audioChanged ? currentAudio : previousAudio;
+      if (videoChanged) {
+        this.stopStats();
+      }
       this.video = video;
       this.audio = audio;
-      if (
-        video.publication !== previousVideo?.publication ||
-        videoSender !== previousVideoSender
-      ) {
+      if (videoChanged) {
         this.senderParameters = null;
         this.videoQualityWarning = null;
+        this.startStats(video);
       }
-      this.startStats(video);
 
       const profile = this.desiredProfile;
       const profileRevision = this.profileRevision;
@@ -776,6 +785,21 @@ export class SfuPublisher {
       }
       try {
         const ownedAudioSender = audioSender;
+        const requestedMaxBitrate = screenAudioBitrate(
+          profile.screenAudioQuality,
+        );
+        const appliedMaxBitrate =
+          ownedAudioSender.getParameters().encodings[0]?.maxBitrate ?? null;
+        if (appliedMaxBitrate === requestedMaxBitrate) {
+          this.audioSenderParameters = {
+            requestedMaxBitrate,
+            appliedMaxBitrate,
+            mismatch: false,
+          };
+          this.audioParametersSender = ownedAudioSender;
+          this.audioQualityWarning = null;
+          return true;
+        }
         const configured = await configurePublishedAudio(
           audio,
           ownedAudioSender,
@@ -1194,7 +1218,6 @@ function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
   return {
     backupCodec: false,
     videoCodec: "vp8",
-    simulcast: false,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,
       maxFramerate: profile.maxFramerate,

@@ -174,6 +174,56 @@ describe("realtime quality controls", () => {
     expect(setParameters).toHaveBeenCalledOnce();
   });
 
+  it("applies a profile to the highest-resolution simulcast encoding", async () => {
+    let applied = {
+      encodings: [
+        {
+          rid: "q",
+          maxBitrate: 1_250_000,
+          maxFramerate: 30,
+          scaleResolutionDownBy: 2,
+        },
+        {
+          rid: "h",
+          maxBitrate: 5_000_000,
+          maxFramerate: 30,
+          scaleResolutionDownBy: 1,
+        },
+      ],
+    } as unknown as RTCRtpSendParameters;
+    const sender = {
+      track: {
+        getSettings: () => ({ width: 1920, height: 1080 }),
+      },
+      getParameters: () => applied,
+      setParameters: vi.fn(async (parameters: RTCRtpSendParameters) => {
+        applied = parameters;
+      }),
+    } as unknown as RTCRtpSender;
+
+    await expect(
+      configureVideoSender(sender, QUALITY_PROFILES["1080p60"]),
+    ).resolves.toMatchObject({
+      requested: { maxBitrate: 8_000_000, maxFramerate: 60 },
+      applied: { maxBitrate: 8_000_000, maxFramerate: 60 },
+      mismatches: [],
+    });
+    expect(applied.encodings).toEqual([
+      {
+        rid: "q",
+        maxBitrate: 1_250_000,
+        maxFramerate: 30,
+        scaleResolutionDownBy: 2,
+      },
+      {
+        rid: "h",
+        maxBitrate: 8_000_000,
+        maxFramerate: 60,
+        scaleResolutionDownBy: 1,
+      },
+    ]);
+  });
+
   it.each([
     ["saver", 64_000],
     ["music", 128_000],

@@ -58,9 +58,12 @@ Current high-signal boundary:
   physically verified direct/browser-relay/SFU screen-audio continuity and all
   three sender ceilings. An exact-production VP8 gate sustained about 59.5 fps
   on direct and Browser-relay paths and rejected the then-deployed `bf32859`
-  SFU `q,h` publication because active `LOW` reduced `HIGH`. ADR-0007 accepts one Browser
-  SFU `HIGH`; current source and production implement it. Chrome 151 verified
-  one no-RID encoding and progressing publisher/subscriber frames over LiveKit UDP.
+  SFU `q,h` publication because active `LOW` reduced `HIGH`. ADR-0007 accepts
+  LiveKit-owned half-resolution plus original-resolution simulcast, Dynacast,
+  and server send-side BWE. Current source implements that combination while
+  production remains single-encoding; Chrome
+  151 verified the production no-RID baseline and separately proved the accepted
+  native adaptation on the pinned stack.
 - Ordinary browser ICE owns direct reachability. Do not build port prediction,
   guessed candidates, NAT classification, TCP probes, quality scores, or
   quality-driven reparenting. Current-path quality is diagnostic; a healthy
