@@ -3,9 +3,8 @@
 - Research date: 2026-08-24
 - Scope: desktop Chrome/Edge Web Host capture while the Host page is
   unfocused, occluded, backgrounded, or minimized
-- Status: deferred until a current-production real-game reproduction exists;
-  one bounded current-browser screening did not observe an immediate Host-page
-  background drop, and no new fix is accepted, implemented, or deployed
+- Status: Host capture report remains unconfirmed; Viewer resume/state lifecycle
+  correction is accepted pending integration and does not claim capture keepalive
 
 ## Current Conclusion
 
@@ -53,34 +52,29 @@ configuration. Encoder implementation is a diagnostic variable only after a
 stable baseline exists; neither codec nor encoder choice is a page-keepalive
 mechanism.
 
-The 2026-08-19 report came from exact release `769de201f7cc`, which still set
-video `contentHint = "motion"`. Current source and production leave the video
-hint unset; a separate controlled VP8 probe changed from 14.93 fps at 428x208
-with `motion` to 29.73 fps at 1904x928 without it. That known old-source defect
-is fixed in the current contract, but it does not prove that the state-dependent
-background report had the same cause. The physical baseline must therefore
-start from current production rather than carrying the old report forward as a
-current regression.
+The accepted Browser path uses VP8 and `contentHint = "motion"`. A controlled
+probe showed that this standard game-motion hint can spatially downscale to
+preserve cadence; that quality tradeoff is independent from page lifecycle and
+does not explain a state-dependent background report. The physical baseline
+must start from current production rather than carrying an old report forward
+as a current regression.
 
-This investigation is deferred. It reopens only if the report
-reproduces on current production with a continuously changing real game and
-synchronized capture, send, receive, decode, CPU, and GPU evidence. Removing the
-old harmful `motion` hint may have removed a confounding quality defect, but it
-is not established as a background-lifecycle fix. Mobile Viewer background
-playback and assigned-relay survival remain a separate browser/OS lifecycle
-gate and do not inherit this desktop Host result.
+The Host investigation reopens only if the report reproduces on current
+production with a continuously changing real game and synchronized capture,
+send, receive, decode, CPU, and GPU evidence. Mobile Viewer background playback
+and assigned-relay survival remain a separate browser/OS lifecycle gate and do
+not inherit this desktop Host result.
 
 ## Current Source Boundary
 
-The no-video-hint review baseline is
-`a26eb39dc677003110787b0ed1581c208f894fd7`. Current source and production use
-fixed VP8, no video hint, and no codec UI, quality state, or wire field; their
-exact identity is owned by [status](../status.md).
+Current source and production use fixed VP8, video `contentHint = "motion"`,
+audio `contentHint = "music"`, and no codec UI, quality state, or wire field;
+their exact identity is owned by [status](../status.md).
 The current path does not claim or implement a page-keepalive mechanism, and
 deployment health supplies no physical background-capture evidence.
 
 - Current `src/client/media/quality.ts` obtains one `getDisplayMedia()` stream,
-  applies ideal/max capture constraints, leaves the video hint unset, and
+  applies ideal/max capture constraints, sets standard game-motion intent, and
   applies sender bitrate, frame-rate, and degradation ceilings. Explicit
   sharing pause and authoritative reconnect re-pause change capture tracks'
   `enabled` state; neither manufactures foreground activity. Audio
@@ -102,6 +96,10 @@ deployment health supplies no physical background-capture evidence.
 - The short-lived pending-candidate decoded-frame observer reads cumulative RTP
   progress only for the exact pending route. It neither drives capture nor proves
   document activity, and it stops when that operation settles.
+- Viewer resume/visibility recovery rebaselines the existing decoded-stall wall
+  clock and rearms current-frame presentation. It prevents frozen JavaScript
+  time from becoming an immediate route failure; it does not keep a page,
+  capture source, encoder, or network process alive.
 - `scripts/peer-assisted-benchmark.ts` is not evidence for this issue: its
   synthetic canvas source is timer-driven and its browser launch explicitly
   disables background timer, occluded-window, and renderer backgrounding.
@@ -187,7 +185,8 @@ All sources were checked on 2026-08-24.
 
 ## Bounded Current-Browser Screening
 
-On 2026-08-24, Chrome `151.0.7922.174` on Windows 25H2 build `26200.9168`
+On 2026-08-24, before the current motion-hint decision, Chrome
+`151.0.7922.174` on Windows 25H2 build `26200.9168`
 captured a continuously changing native WPF window through real
 `getDisplayMedia()`. The source remained visible and changing; capture returned
 1186x712 at a 30 fps setting. One VP8/libvpx sender used no video hint, a 5 Mbps
@@ -250,8 +249,8 @@ them directly.
 Open `chrome://webrtc-internals` on Host and Viewer before sharing and keep its
 overhead constant across every run. Leave audio-debug recording, event-log
 recording, packet capture, and media recording disabled. The current Screener
-diagnostic download may be taken at state boundaries as a latest-sample
-cross-check; it is not used as a time series. If a stable reproduction suggests
+connection-details view may be used as a latest-sample cross-check; it is not a
+time series and has no diagnostic download. If a stable reproduction suggests
 freezing or discard, inspect the Host tab from a pre-opened separate control
 window in `chrome://discards` or `edge://discards` outside the timed measurement
 window. That page may expose URLs and therefore remains local evidence.

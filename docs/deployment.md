@@ -3,7 +3,7 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`be53c4d5794d38d5d406c876309958d7117ee601`, release `be53c4d`, and the single
+`af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -13,9 +13,8 @@ Caddy or nginx; ordinary peer ICE advertises only STUN, while Browser LiveKit
 PCs configure no external ICE server and retain LiveKit-signaled UDP candidates.
 LiveKit supplies bounded SFU capacity. Normal media remains distributed
 through direct or peer edges whenever those paths work. Production includes
-the Browser SFU ICE isolation and two-representation model. Chrome 151 physically
-verified UDP publication/subscription and native full/lower selection; the
-deployed lower-representation cost correction still needs mixed-route media evidence.
+Browser SFU ICE isolation and leaves representation construction and selection
+to pinned LiveKit with Dynacast and server send-side BWE.
 
 A deployment may additionally provide one dedicated single-node LiveKit process
 as the current controller's automatic final media fallback. This capacity is
@@ -26,21 +25,21 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `be53c4d5794d38d5d406c876309958d7117ee601`, release
-`be53c4d`, from `/opt/screener/releases/be53c4d`. The immutable runtime tar
+Production runs exact `af348ee1d508a3af02b18a7f46c461953798e19d`, release
+`af348ee`, from `/opt/screener/releases/af348ee`. The immutable runtime tar
 SHA-256 is
-`5c174c30ffacd98738a364b825b915b84432823c261272684937361be2451144`.
+`4922cc31d7caaad7c5412b1f2fe1d73f788d16d92386efad6eac358a97b8a78e`.
 Its 39-file path/size/hash manifest SHA-256 is
-`c34dba43a25c6b8447e1153a5be3191bf82cff94117ed31edc325d3f7cf8541f`.
+`5b397809b664b9a55885ac603df615b537bf51276e7274416820870956242d7d`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-BKEVI7Ux.js` with SHA-256
-`22114fc8a26b3f03f37973555433d1e73d52d1c7b76fa3c7cc597500823bd62d`.
+`assets/index-BvuZY6Hc.js` with SHA-256
+`e8fc0500496ee101031a9cfebfcc22d3b69e66d2cac5e875448b56620dbb21c5`.
 
 The release deploys the single Browser `screener-v12` wire, fixed VP8 for Browser
-direct, browser-relay, and SFU video, one original plus one half-actual-resolution
-SFU encoding capped at 30 fps with proportional bitrate, Dynacast and server
-send-side BWE without an application layer selector, no video `contentHint`, no
+direct, browser-relay, and SFU video, pinned LiveKit default screen-share
+representations, Dynacast and server send-side BWE without an application layer
+selector, video `contentHint = "motion"`, no
 codec UI/state/wire, random four-digit memory rooms with a 24-hour dormant lease,
 a room-lived 22-character grant,
 orthogonal `open | private` grant/code admission,
@@ -284,7 +283,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `be53c4d` accepts 1 through 20 and explicitly selects 20. This is an
+Production `af348ee` accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -297,7 +296,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `be53c4d` runs the deployed server and Browser assets
+Production release `af348ee` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 

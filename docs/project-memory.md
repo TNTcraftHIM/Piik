@@ -4,56 +4,127 @@ Last updated: 2026-08-25
 
 ## Current Product Truth
 
-- Build private, low-latency game screen sharing for one broadcaster and a small group of trusted friends. Public or large broadcasts belong on OBS/Twitch-class services.
-- A room supports one Host and up to `20` authenticated Viewers. Admission is independent of endpoint fanout and SFU capacity; the event-driven route controller must remain efficient at that bound without all-pairs probing.
-- Authenticated Hosts and shipped clients are trusted media participants in these private rooms; route authority, generation fencing, and server admission remain fail-closed.
-- Rooms use one bounded, process-memory model: a random free code from `1000..9999`, default 24-hour configurable dormant lease, and no database or cross-restart recovery. Active sharing never expires; stop/disconnect starts the lease, the exact Host token may resume before expiry, Viewer activity does not renew it, and expiry releases the code. Process restart invalidates every room, token, invitation, password verifier, and participant.
-- Viewer grants and code entry are orthogonal. Each room has one random 128-bit/22-character grant digest bound to that exact in-memory incarnation; it has no independent expiry and ends on reclamation, restart, rotate, or revoke. Every new room creates that invitation and defaults code entry to public `open` with no password; the only other code-entry state is `private`. A private room with no password is invitation-only, while setting a password also permits matching code-only entry. An unallocated/reclaimed/expired code returns `ROOM_NOT_FOUND` without a password prompt, while other existing-room denials remain `ROOM_ACCESS_DENIED`. The Host browser retains its creation preferences and raw ownership token; exact-token invitation/policy/password management remains available while dormant without starting media or renewing the lease. The server keeps only current-process digests/verifiers and uses no fingerprint. Recreation reapplies preferences but creates a new code and credentials.
-- Web is the current delivery target. The route release covers Browser Host, Viewer, and relay endpoints; packaged/native senders, capture helpers, shared-encode executables, and their acceptance runs are lowest-priority later work outside this milestone.
-- Keep routing automatic and media distributed. Direct/peer UDP is preferred; the dedicated LiveKit SFU/UDP path is the only application fallback and is not the default topology. Screener configures no TURN, ICE/TCP, media TCP, or TLS-relayed media path.
-- Every non-server endpoint uses one server-authoritative steady outbound media-copy capacity: default `2`, statically configurable as `1`, `2`, or `3`. A peer child or the Host publication consumes one slot; upstream receive is free, and SFU subscriber egress is accounted at the server. Browser role/UA/visibility does not create a separate tier, and clients cannot raise the deployment value.
-- The stable routing invariants are one authoritative upstream per Viewer, an acyclic source-reachable active graph, exact authenticated route attempts, endpoint and server admission, one room-serial child operation, and bounded success, wait, or failure.
-- One room controller reconciles allocation, child reparenting, and relay drain through the same operation. It finds one waiting Viewer or invalid edge and builds one deterministic tuple list. The operation owns its cursor, current candidate and reservations, fact version, plus one total deadline; only its current candidate may produce media. A prepare names that exact child, selected transport, and server-issued candidate connection ID. A usable old edge remains until the exact candidate child decodes its first new video frame. `settleReady` synchronously commits admission before graph promotion; success commits prepare revision `P`, while failure releases resources, broadcasts rollback `R > P` from one monotonic allocator, and advances the cursor without resetting the deadline. Exhaustion retires hard-invalid, departed-parent, or overflow edges into explicit waiting but retains a healthy bootstrap edge. Bounded-gap preflights server resources, replans the untried suffix after retirement, and appends one ordinary restore candidate when it cut healthy media. A relay with a bad ingress reparents itself as a child and retains its subtree. A disconnected endpoint, or one whose effective downstream capacity falls below its current child count, accepts no excess children; its direct or overflow children enter the same operation and a disconnected endpoint is removed when childless. Authoritative pause aborts the operation, suppresses decoded-progress stall decisions, and resumes from a fresh reconciliation.
-- One Host publication may serve all SFU subscriptions. Its exact generation owns one ingress handle and exact Viewer subscription handles own egress; later SFU children reuse the publication, while reserved, committed, and draining handles remain charged until the managed room is deleted and proven absent. Actual SFU usage release wakes only rooms that previously lost a candidate to global admission, and SFU-fed and peer-fed endpoints use the same provisional-child transaction. Parent choice hard-filters authority, reachability, cycles, effective capacity, and producer transition, then orders by shallowest result, remaining steady sender capacity, stable join order, and peer identity; server admission is checked at the current cursor. Acyclicity and room admission bound maximum depth; depth is observed but has no separate hard cap. Healthy committed edges remain sticky: the controller repairs waiting, invalid, departed-parent, and overflow children but does not periodically rebalance the graph. Raw IP, claimed NAT type, UA, geography, all-pairs probes, weighted scores, and periodic room rebalancing are not route inputs.
-- Ordinary peer ICE is STUN-only. Browser LiveKit publisher and subscriber PCs use no external ICE server, retain LiveKit-signaled UDP candidates, and let standard ICE nominate a non-relay pair; deployment STUN remains available to ordinary peers and LiveKit server-side public-IP discovery. This Browser SFU ICE-server isolation avoids the reproduced external-STUN/SFU association conflict without constraining candidate type or count and without adding TURN, another route, a port, or a timeout. Credentials, room secrets, candidate details, and diagnostic data remain private and narrowly scoped. A future strict-firewall transport requires separate evidence and must remain inside LiveKit rather than becoming another Screener route candidate.
-- Browser peers use existing periodic WebRTC/LiveKit sampling to maintain one exact-route decoded-progress timestamp. New frames or route/connection changes reset it; a non-paused deadline reports once. An active SFU cadence treats an absent track/report or stats failure as no progress without fabricating metrics and stops only on deactivation/teardown. Other current-path stats remain diagnostic and cannot prove another parent better.
-- ADR-0007's two VP8 SFU representations, Dynacast, server send-side BWE, and disabled AdaptiveStream for potential relays are deployed. The lower representation is half the actual capture dimensions, capped at 30 fps, and uses proportionally derived bitrate. Screener adds no media-layer selector.
-- Browser capture requests available share audio by default on initial capture and source switch, with an explicit video-only warning when no audio track is returned. Its screen-audio control offers live-switchable 64/128/256 kbps sender ceilings and defaults to 128. The last-wins quality wire owns desired state; each endpoint serially applies and reads back current Host/relay/SFU audio senders, exposes local failures, and gives future senders the latest desired value. Opus remains fixed, and without an applied-ack wire the Host does not claim room-wide atomic convergence. These are configuration ceilings, not fidelity claims.
-- Browser display video leaves `contentHint` unset so Chromium retains its screen-capture classification; returned audio tracks keep `contentHint = "music"`. Browser video is fixed to VP8 across direct, browser-relay, and SFU paths; codec selection, fallback to another media codec, quality-state/wire fields, and share-lifetime codec branches are not product features. Actual codec/profile/encoder stats remain diagnostic only.
-- Recommended quality remains exactly `1080p60`, `1080p30`, and `720p30`, with the middle `1080p30` as the accepted default. `480p` means only an advanced `854x480` resolution choice whose FPS and bitrate remain independently selected; it is not a fourth recommended profile.
-- Two distribution artifacts are accepted only after the current feature, NAT, and real-network ledger is complete. A public-server one-click deployment package installs the current application plus STUN/SFU and proxy components on a user-owned server. A Windows/macOS/Linux local package runs the Host, application server, and local state on the broadcaster's machine without source, Node, or any external Screener/network service; it keeps workable direct P2P but reports the reachability loss imposed by public ingress, TLS, gateway, NAT, or firewall limits rather than promising universal connectivity.
-- Current UI, presence, route labels, and diagnostics describe observed state only; they do not create route authority.
-- Before an explicit public-release decision, the private deployment and repository keep only the current product contract. Incompatible wire, configuration, parser, and API changes ship atomically; stale clients fail before authority, replaced compatibility surfaces are deleted, and Git history owns rollback.
-- A routine application-only deployment verifies one new immutable artifact and switches to it atomically while reusing unchanged environment, service, LiveKit, coturn, reverse-proxy, and firewall configuration. The pre-cutover application release is guaranteed only through bounded health and postflight checks; it has no retention contract afterward and is not a maintained backup. A future change to infrastructure, secrets, persistent data, or irreversible state must define recovery only for the surfaces it actually changes.
-- Viewer presentation stays on stage until current-generation frame proof, distinguishes typed access/Host/route/media/autoplay/recovery phases, and reserves `Play` for autoplay rejection. Pages expose local connection details but no diagnostic download; the bounded Host-only route snapshot remains for acceptance tooling. Route/quality facts are diagnostic only. Browser ICE owns direct reachability; Screener does not predict ports, classify NATs, probe TCP, synthesize candidates, or reparent healthy edges speculatively.
+- Screener is private, low-latency game screen sharing for one Host and up to
+  `20` authenticated Viewers, not a public broadcast service.
+- Web Host, Viewer, and Browser relay are the current delivery surface. Native
+  capture, shared encoding, and distributable server/local packages remain
+  later work.
+- Rooms are bounded process memory: random free `1000..9999` code, default
+  24-hour dormant lease, active sharing never expires, exact Host token resume,
+  Viewer activity does not renew, and process restart loses every room and
+  credential. There is no database or migration path.
+- Every room has one 128-bit/22-character Viewer grant bound to that exact room
+  incarnation and independent `open | private` code entry. Private without a
+  password is invitation-only; adding a password also permits matching code
+  entry. Reclamation, restart, rotate, or revoke ends the grant. Missing codes
+  return `ROOM_NOT_FOUND` without a password prompt.
+- Host creation preferences and raw ownership token stay local to the Host
+  browser. Server authority stores only current-process digests/verifiers and
+  never uses IP, UA, device, or browser fingerprint as identity.
+
+## Media And Routing
+
+- Media stays automatic and distributed. Ordinary peer ICE is STUN-only and
+  direct/peer UDP is preferred. The only application fallback is the dedicated
+  LiveKit SFU over UDP; Screener configures no TURN, ICE/TCP, media TCP, or
+  TLS-relayed media.
+- Browser LiveKit publisher/subscriber PCs use no external ICE server and retain
+  LiveKit-signaled UDP candidates. Deployment STUN remains available to ordinary
+  peers and LiveKit server-side public-IP discovery.
+- Every non-server endpoint uses one server-authoritative steady outbound copy
+  cap: default `2`, configurable only as `1`, `2`, or `3`. A peer child or the
+  Host publication consumes one slot; upstream receive is free; SFU subscriber
+  egress uses separate server admission.
+- One room controller owns one committed acyclic source-reachable graph, one
+  event-driven reconciliation loop, and at most one room-serial child operation.
+  The operation owns one deterministic candidate list/cursor, one current
+  candidate and reservations, one fact version, and one total direct-then-SFU
+  deadline.
+- Candidate filtering enforces current authority, reachability, acyclicity,
+  capacity, transition slots, and server admission. Eligible P2P parents are
+  ordered by resulting depth, remaining capacity, stable join order, and peer
+  identity before SFU.
+- A candidate commits only after the exact child decodes its first new video
+  frame. Failure releases resources, broadcasts a strictly newer rollback
+  revision, advances the cursor without resetting the deadline, and preserves
+  unaffected healthy branches. A relay with bad ingress reparents itself while
+  retaining its subtree.
+- Healthy decoded routes remain sticky. There is no periodic rebalancing,
+  quality score, all-pairs probing, parent blacklist, NAT classification, port
+  prediction, or independent depth cap. Quality evidence cannot prove an
+  unconnected parent would be better.
+- P2P and SFU first use their framework reconnect behavior. P2P recovery tries
+  the same parent, and SFU recovery rebuilds the same publication/subscription.
+  Manual media reconnect also stays on the current exact route. Only actual
+  recovery exhaustion, hard failure, non-paused decoded-frame stall, parent
+  departure, or capacity invalidation enters route reassignment.
+- Active-path WebRTC/LiveKit sampling owns one exact-route decoded-progress
+  deadline. Route/connection change or new progress resets it; authoritative
+  pause suppresses it. Page resume rebaselines frozen wall-clock time before
+  another no-progress sample can fail a route.
+
+## Media Quality
+
+- Browser video is VP8 only. Display video uses `contentHint = "motion"` and
+  display audio uses `contentHint = "music"`. Codec UI/state/wire, backup media
+  codecs, and runtime codec switching do not exist.
+- Recommended profiles remain exactly `1080p60`, `1080p30`, and `720p30`, with
+  `1080p30` default. `480p` is only an advanced `854x480` resolution choice;
+  advanced FPS and bitrate remain independent.
+- WebRTC owns direct/peer media adaptation. The Host reapplies the selected video
+  profile after answer negotiation; no periodic application controller exists.
+- The SFU publisher sets VP8 and the selected ceiling but no custom simulcast
+  layers. Pinned LiveKit defaults own representations, Dynacast owns aggregate
+  demand, and server send-side BWE owns subscriber forwarding. AdaptiveStream
+  stays disabled because any Viewer may relay its received track.
+- Screen audio requests capture by default and offers live 64/128/256 kbps
+  sender ceilings with 128 default. Peer answers request Opus stereo with a
+  256 kbps receive maximum. SFU publication uses stereo, DTX off, and RED off;
+  disabling RED accepts reduced burst-loss resilience in exchange for bounded
+  publisher traffic.
+- Configured resolution, FPS, bitrate, preference, codec, and audio ceiling are
+  requests or ceilings. Sender readback and RTCStats are the observable truth.
+
+## Presentation And Lifecycle
+
+- Viewer presentation is revision/generation-fenced and keeps the stage stable
+  until a current-generation composited frame. A new current frame clears stale
+  media `connecting/reconnecting` presentation; old callbacks cannot prove a
+  new route.
+- Viewer local play/pause, volume, mute, and fullscreen are owned by native video
+  controls on one persistent media element. Host preview is a muted, control-free
+  view of the capture stream; only explicit Host actions pause or stop sharing.
+- Hiding or unfocusing the Host page pauses only the local preview element.
+  Browser/OS capture and background behavior remain platform capabilities; no
+  fake keepalive, silent media, Wake Lock, or timer loop is a product mechanism.
 
 ## Current Source And Production
 
-- Production runs exact application/runtime revision `be53c4d5794d38d5d406c876309958d7117ee601`, release `be53c4d`, on strict `screener-v12`; canonical `main` contains that deployed application tree plus current truth.
-- Current source and production admit up to `20` Viewers and implement the uniform `1/2/3` endpoint cap, exact prepare candidate, first-decoded-frame commit, strict rollback revision, decoded-progress stall, one direct/SFU operation deadline, and one event-driven controller. Active-SFU sampling remains live through an absent track/report or stats failure. Ordinary peer ICE is STUN-only and the sole application fallback is SFU/UDP. Exact SFU admission and empty Browser SFU ICE-server options remain unchanged.
-- Source and production use random four-digit memory rooms, dormant leases, exact-Host resume, restart loss, local preference replay, orthogonal grants/code entry, and no SQLite runtime. V12 uses a 22-character room-incarnation grant, `ROOM_NOT_FOUND`, no diagnostic-file export, and a compact UI showing the complete shorter URL.
-- Exact production artifacts, services, ports, and any change-scoped infrastructure recovery boundary are owned by [deployment](./deployment.md) and indexed by [status](./status.md).
-- Source and production require v12, fixed VP8, and no video hint, and derive a half-actual-resolution SFU lower preset capped at 30 fps with proportional bitrate. Both retain Dynacast, server send-side BWE, and disabled AdaptiveStream. Other current media and UI behavior matches the truths above.
-- Browser SFU subscribers reconcile eligible Host screen publications across connect/activate event ordering, participant/track arrival, and reconnect. Production LiveKit logs only warn/error, and the application service has a bounded same-host LiveKit readiness preflight.
-- The deployed application tree passed TypeScript, 613 Web tests, both builds, hygiene, two independent reviews, immutable artifact verification, and production postflight. Earlier exact-production gates closed direct/browser-relay VP8 cadence, active-audio ceilings, a single-representation SFU baseline, and one controlled exact-candidate SFU commit; the pinned-stack gate proved native representation selection. The lighter representation's mixed-route quality effect, controlled recovery on this release, representative networks, all-UDP-blocked failure, public SFU 60 fps, and real-game synchronization remain unproven. Exact metrics live in [verification status](./verification-status.md).
-- Chrome loopback, cap2/cap3, short resource, recovery, MBB, and A/V fixtures are bounded evidence only. They do not establish quality, resource limits, or product policy.
+- Canonical `main` and production run exact application/runtime revision
+  `af348ee1d508a3af02b18a7f46c461953798e19d`, release `af348ee`, on strict
+  `screener-v12`.
+- Production uses random memory rooms, 20-Viewer admission, endpoint cap `2`,
+  dedicated LiveKit admission `1` ingress / `20` egress, STUN UDP 3478, LiveKit
+  media UDP 7882, and Web TCP 80/443. Node 8787 and LiveKit 7880 remain private.
+- Exact artifact and service state are owned by [deployment](./deployment.md)
+  and indexed by [status](./status.md). Physical evidence boundaries are owned
+  by [verification status](./verification-status.md).
 
 ## Current Priority
 
-1. Verify the deployed lower-representation quality effect on a mixed P2P/SFU room, then repeat controlled active-SFU recovery and finish real-network route, screen-audio, and real-game A/V acceptance. VP8 acceleration, mobile lifecycle, Native, distribution, and repository simplification remain later.
+1. Integrate and deploy the accepted Viewer lifecycle/native-control/current-
+   route reconnect candidate, then finish representative real-network route,
+   screen-audio, real-game A/V, and mobile lifecycle acceptance.
 
-The desktop Host background/minimized report is deferred until it reproduces on current production with a real game and synchronized media plus CPU/GPU evidence. The bounded current-Chrome screening found no immediate Host-page lifecycle drop, and removal of the old harmful `contentHint = "motion"` remains a plausible confound rather than a proven background fix. Mobile Viewer playback and assigned-relay survival remain a separate lifecycle gate.
+Quality-driven parent selection, VP8 hardware evidence, Native sender work,
+distribution packages, whole-product UI/bilingual polish, and repository-wide
+simplification remain later decisions in [the TODO ledger](./todo.md).
 
 ## Working Rules
 
-- Generic task authority, scope, smallest-correct implementation, and current-result delivery are owned by the repo-tracked [`stop-that-shit` skill](../.agents/skills/stop-that-shit/SKILL.md); repository-specific truth and execution rules remain in `AGENTS.md` and `CONTRIBUTING.md`.
-- Old branches may contribute scoped code or evidence only after reconciliation. Their memory, requirements, ADRs, status, and deployment snapshots never overwrite newer mainline truth.
-- Preserve dirty, unique, open-stack, and evidence worktrees until their disposition is explicitly decided. Workspace counts are sampled on demand rather than stored here.
-
-## Source Map
-
-- Current execution: [status](./status.md)
-- Executable and held work: [TODO ledger](./todo.md)
-- Requirements and design: [requirements](./%E9%9C%80%E6%B1%82%E7%90%86%E8%A7%A3.md), [design](./%E6%96%B9%E6%A1%88%E8%AE%BE%E8%AE%A1.md), and [ADRs](./adr/)
-- Evidence and limits: [research](./research/) and [verification status](./verification-status.md)
-- Operations: [deployment](./deployment.md), [maintenance](./maintenance.md), and [contributing](../CONTRIBUTING.md)
+- Generic authority and scope follow the repo-tracked
+  [`stop-that-shit` skill](../.agents/skills/stop-that-shit/SKILL.md).
+- Canonical `main` and the current truth owners override old branches,
+  worktrees, handoff text, and chat summaries.
+- Preserve unique or dirty candidates until integration and reference/reparse
+  audits prove cleanup is safe.

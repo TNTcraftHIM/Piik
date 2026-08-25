@@ -1,4 +1,4 @@
-# ADR-0007: LiveKit-Owned SFU Representation Adaptation
+# ADR-0007: Framework-Owned Media Quality Adaptation
 
 - Status: Accepted, implemented, and deployed
 - Date: 2026-08-19
@@ -6,146 +6,101 @@
 
 ## Context
 
-Direct and peer paths already have independent `RTCPeerConnection` congestion
-controllers. The SFU path is different: one Host publication serves several
-subscribers, so a weak subscriber needs a lower encoded representation without
-lowering every healthy subscriber or creating one encoder per Viewer.
+Screener sends one realtime game-screen source through independent P2P
+connections and, when needed, one shared LiveKit publication. WebRTC and
+LiveKit already own congestion control, encoder adaptation, retransmission,
+simulcast construction, subscriber bandwidth estimation, and layer selection.
 
-A single non-scalable full-resolution representation cannot provide that spatial
-downshift because an SFU forwards encoded packets and does not transcode them.
-The earlier production A/B compared an always-active two-encoding publication
-against its lower representation disabled. It showed that the always-active
-lower representation competed with the full representation on that constrained
-Host-to-SFU path; it did not test
-LiveKit-owned demand-driven layer control and does not justify a permanent
-single-encoding contract.
+Earlier experiments added a Screener-defined lower SFU encoding and treated
+quality preference as an application policy. Production evidence showed that
+an always-active lower encoding can compete with the highest encoding on a
+constrained Host-to-SFU path. It did not justify replacing LiveKit's native
+adaptation with a single HIGH representation or another application controller.
 
-The earlier application-layer controller discussion started from the false
-premise that LiveKit/WebRTC did not already own per-subscriber bandwidth
-estimation and layer selection. Built-in media control is the default owner.
-Screener supplies the bounded representations and product ceilings but does not
-reimplement that controller. A resource-constrained Host can explicitly choose
-a lower existing share profile; the product does not protect it by silently
-removing the representation required by constrained Viewers.
+The product needs standard game-motion intent and user-selected ceilings, but
+it does not need a second bitrate, resolution, FPS, or layer-control system.
 
 ## Decision
 
-1. Direct and peer paths retain independent stock WebRTC congestion control.
-   Viewer feedback is never aggregated into a room-wide target.
-2. The Browser Host SFU publication provides two bounded VP8 screen-share
-   representations: one half-resolution encoding and the original full-resolution
-   encoding. The lower representation keeps at most 30 fps and derives its
-   bitrate from the pinned SDK's pixel-and-frame-rate formula; the representation
-   count is fixed and does not grow with Viewer count.
-3. LiveKit Dynacast and its per-subscriber stream allocator/BWE own publication
-   layer activation and the actual layer forwarded to each SFU subscriber.
-   Screener does not implement a quality score, bandwidth estimator, periodic
-   layer controller, or per-Viewer encoder.
-4. A subscriber's `HIGH` request is a ceiling, not a forced delivery layer. A
-   weak downlink may receive the lower representation while another subscriber
-   receives the highest available representation when the pinned LiveKit stack
-   can sustain that contract.
-5. AdaptiveStream is a display-demand input, not a network detector. Current
-   Screener subscribers keep it disabled because any Viewer may become a relay
-   and LiveKit cannot see that Viewer's peer children. Network adaptation uses
-   the server stream allocator/BWE instead.
-6. ADR-0005 remains the only route owner. Layer choice does not change topology,
-   endpoint capacity, SFU admission, or decoded-stall recovery authority.
-
-Production release `e14eb0e` left the screen-share layer list unset, so pinned
-client `2.22.0` supplies a same-FPS half-resolution representation beside the
-original. A live mixed P2P/SFU observation confirmed that the 60 fps lower
-representation can consume enough Host-to-SFU budget to starve the highest
-representation. The accepted correction keeps LiveKit's two-layer ownership but
-supplies one half-resolution lower preset with
-`lowFps = min(30, highFps)` and the SDK's existing proportional bitrate formula.
-The two encodings remain RIDs `q,h`; LiveKit's protocol labels them `LOW,MEDIUM`,
-while a subscriber's default `HIGH` ceiling still selects the highest available
-encoding. Dynacast, server send-side BWE, and disabled AdaptiveStream remain
-unchanged. Production release `be53c4d` deploys that correction.
-
-Current source derives the lower preset from the actual capture dimensions and
-passes it through LiveKit's public publication options. Retained publication
-options give LiveKit the same preset on its own source-replacement or republish
-boundary; Screener does not mutate the active lower encoding behind LiveKit's
-Dynacast sender lock.
-
-## Pinned Physical Result
-
-The 2026-08-25 gate used LiveKit server `1.13.5`, client `2.22.0`, Chrome 151,
-a continuously changing VP8 source, and one full-resolution plus half-resolution
-screen-share publication. Manual maximum/lower selection delivered `1280x720`
-and `640x360` at about 30 fps, and the same connection recovered from the lower
-to the full-resolution representation.
-
-With the server default receiver-side BWE, an approximately 0.96 Mbps subscriber
-remained on HIGH for about 21 seconds and ended at zero decoded fps. Enabling
-LiveKit `congestion_control.use_send_side_bwe` made the native stream allocator
-select LOW; by the third steady window it delivered `640x360` at about 29 fps and
-88 KB/s. A fresh unshaped subscriber immediately received HIGH. The constrained
-connection's automatic upgrade after removing shaping was not isolated because
-Chrome bound that test condition when creating the PeerConnection; manual and
-AdaptiveStream same-connection LOW-to-HIGH recovery were independently proven.
-
-Dynacast paused layers with no subscribers after about five seconds. Lower-only
-demand disabled the full-resolution encoding, while maximum demand kept both
-encodings active; the second VP8 simulcast encode is therefore an accepted
-bounded cost, not eliminated by Dynacast. AdaptiveStream selected the full
-representation for a large attached element, the lower representation for a
-small element, paused a hidden element, and recovered when visible. With no
-attached element it received only the lower representation, confirming that it
-cannot own relay ingress. This gate established the framework combination of
-VP8 screen-share simulcast, Dynacast, server send-side BWE, and
-`adaptiveStream: false`; the later production observation amends only the lower
-representation's FPS and proportional bitrate.
+1. Browser video uses VP8 across direct, browser-relay, and SFU paths. Codec
+   selection, backup codecs, runtime codec switching, and codec state in the
+   room wire are not product features.
+2. Display video uses the standard `contentHint = "motion"`; display audio uses
+   `contentHint = "music"`. The hint expresses content intent and does not
+   promise a resolution, frame rate, bitrate, encoder, or hardware path.
+3. The three recommended profiles and advanced controls supply capture and
+   sender ceilings plus `degradationPreference`. Every sender reads back the
+   parameters that the browser actually accepted.
+4. Direct and peer paths leave media adaptation to each `RTCPeerConnection`.
+   After accepting an answer, the Host reapplies the current video profile to
+   the negotiated sender because the browser may replace or rewrite encoding
+   parameters during negotiation.
+5. The SFU publisher sets VP8, the selected HIGH ceiling, and degradation
+   preference, but does not set `screenShareSimulcastLayers`, mutate lower
+   encodings, or select a subscriber layer. Pinned LiveKit defaults own the
+   representation set and source-replacement/republish behavior.
+6. LiveKit Dynacast and server send-side BWE remain enabled. AdaptiveStream
+   remains disabled because a Viewer may relay its received track to peer
+   children; local DOM size or visibility cannot represent that downstream
+   demand.
+7. Quality measurements are diagnostic. Bitrate, resolution, FPS, RTT, jitter,
+   loss, freeze counters, codec, and limitation reason do not trigger parent
+   selection, relay abdication, periodic rebalancing, or route changes. Only
+   hard connection failure, the existing non-paused decoded-frame stall, parent
+   departure, or capacity invalidation can make an active edge unusable.
+8. A healthy decoded route remains sticky. Manual media reconnect rebuilds the
+   current exact P2P parent or current SFU subscription; it does not search for
+   a better parent. If current-route recovery genuinely exhausts, ADR-0005's
+   existing controller tries other eligible P2P parents before SFU.
 
 ## Evidence Boundary
 
-The retained exact-production A/B used Chrome 151 with an always-active ordered
-`q,h` publication. The 1904x928 `h` stream was about 9.2 fps / 1.37 Mbps with
-both encodings active and about 23.3 fps / 3.32 Mbps with `q` inactive. Capture
-remained near 60 fps, encode cost was about 4.46 ms per frame, loss and
-retransmission were zero, and available outgoing bitrate was about 4.81 Mbps.
-This rejects always-on `LOW` for that path. It does not establish Dynacast,
-AdaptiveStream, heterogeneous subscriber behavior, or real-game performance.
+Chrome 151 production measurements established three durable facts:
 
-Quality evidence remains diagnostic. Track availability, bitrate, resolution,
-FPS, RTT, jitter, loss, codec and current LiveKit layer cannot authorize route
-mutation or predict another parent.
+- direct and browser-relay VP8 can sustain about 60 fps after stock bandwidth
+  estimation warms up; sender ceilings are not startup guarantees;
+- forcing an always-active lower SFU encoding can reduce the highest encoding
+  on the same Host-to-SFU congestion budget; and
+- pinned LiveKit `2.22.0` plus server `1.13.5` can select lower and higher VP8
+  screen-share representations per subscriber when server send-side BWE is
+  enabled.
+
+Separate content-hint probes showed that `motion` changes Chromium's adaptation
+tradeoff and may spatially downscale to preserve motion. That is the standard
+behavior requested for games, not a quality floor. Real-game readability,
+weaker Hosts, heterogeneous devices, and public-network SFU quality still
+require physical evidence.
 
 ## Consequences
 
-- A weak SFU Viewer can receive a real lower spatial representation when the
-  framework selects it; the SFU does not transcode.
-- The Host publishes at most two SFU representations regardless of Viewer
-  count. Dynacast pauses representations above aggregate demand and all
-  representations when no subscriber remains; maximum demand keeps both VP8
-  simulcast encodings active.
-- Host encode capacity is handled through the existing explicit share profiles,
-  not by falling back to one encoding and abandoning constrained subscribers.
-- An SFU-fed relay keeps a subscription ceiling sufficient for its subtree;
-  local DOM visibility alone cannot pause that ingress.
-- A configured 60 fps or bitrate remains a ceiling, not a delivery guarantee.
+- Screener owns fewer media mechanisms and follows the pinned frameworks'
+  supported control surfaces.
+- A constrained Viewer may receive a lower LiveKit representation without
+  lowering every subscriber, subject to the publisher and network actually
+  sustaining the framework contract.
+- A Host may need to lower its explicit share profile when encoder or uplink
+  capacity is insufficient; Screener does not silently remove constrained
+  Viewer support.
+- Quality-based topology optimization remains unimplemented. Accepting it later
+  requires evidence for alternative-path measurement and a separate route-model
+  decision.
 
 ## Stop Lines
 
-- Do not create one encoder or representation per Viewer.
-- Do not add application quality scoring, periodic polling, manual layer
-  switching, or quality-driven reparenting.
-- Do not use AdaptiveStream without the LiveKit track attachment contract.
-- Do not infer Dynacast success from configuration or source inspection alone.
-- Do not apply SFU layer policy to ordinary direct or peer paths.
+- No Screener resolution/FPS/bitrate ladder or representation formula.
+- No manual SFU layer selector, forced single HIGH publication, or per-Viewer
+  encoder.
+- No quality score, all-pairs probing, periodic rebalancing, or speculative
+  parent switching.
+- No AdaptiveStream while a subscriber can relay the track.
+- No quality or hardware claim from configured options alone.
 
 ## References
 
-Primary sources checked through 2026-08-25:
-
+- [MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
+- [WebRTC](https://www.w3.org/TR/webrtc/)
+- [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
-- [LiveKit client 2.22.0 room options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/options.ts)
-- [LiveKit client 2.22.0 AdaptiveStream track attachment](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/RemoteVideoTrack.ts)
-- [LiveKit client 2.22.0 subscriber quality ceiling](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/RemoteTrackPublication.ts)
-- [LiveKit client 2.22.0 Dynacast handling](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/LocalParticipant.ts)
-- [LiveKit server 1.13.5 per-subscriber layer application](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/subscribedtrack.go)
-- [LiveKit server 1.13.5 Dynacast quality aggregation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastqualityvideo.go)
-- [LiveKit server 1.13.5 enabled-quality generation](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
+- [LiveKit client 2.22.0 encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
+- [LiveKit server 1.13.5 layer forwarding](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
