@@ -72,6 +72,9 @@ Last updated: 2026-08-26
 - Browser video is VP8 only. Display video uses `contentHint = "motion"` and
   display audio uses `contentHint = "music"`. Codec UI/state/wire, backup media
   codecs, and runtime codec switching do not exist.
+- Windows Chrome 151 uses software VP8 and exposes no Web control for selecting
+  NVENC, AMF, QSV, a GPU, or an MFT. Edge, non-Windows paths, and real-game CPU
+  contention remain evidence-specific.
 - Recommended profiles remain exactly `720p30`, `1080p30`, and `1080p60`, with
   `1080p30` default. `480p` is only an advanced `854x480` resolution choice;
   advanced FPS and bitrate remain independent.
@@ -116,9 +119,8 @@ Last updated: 2026-08-26
 
 ## Current Priority
 
-1. Measure Browser VP8 hardware use and game-load performance, then complete the
-   mobile Viewer lifecycle matrix and representative real-network route/media
-   acceptance.
+1. Measure Browser VP8 real-game cost, then complete the mobile Viewer lifecycle
+   matrix and representative real-network route/media acceptance.
 
 Quality-driven parent selection, Native sender work, distribution packages,
 whole-product UI/bilingual polish, and repository-wide simplification remain

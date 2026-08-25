@@ -39,6 +39,10 @@ may be interpreted. Git and pull requests own routine completed checks.
   stock bandwidth-estimation warm-up. Pinned LiveKit client `2.22.0` and server
   `1.13.5` separately proved native lower/higher screen-share representation
   selection with Dynacast and server send-side BWE.
+- Chromium 151's Windows backends and exact Chrome fake-monitor getDisplayMedia
+  evidence close the measured Chrome VP8 path as software. Short local controls
+  held 1080p30, while 1080p60 was primarily bandwidth-limited and spatially
+  adapted. Edge and real-game contention remain open in realtime-quality research.
 - Direct, Browser-relay, and SFU paths advanced video plus screen audio at
   64/128/256 kbps ceilings and after source replacement. The old constant
   active-audio `1 kbps` display is closed. Exact SFU weak-network behavior after

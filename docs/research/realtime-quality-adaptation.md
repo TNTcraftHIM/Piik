@@ -1,6 +1,6 @@
 # Realtime Screen-Share Quality Adaptation
 
-- Research date: 2026-08-25
+- Research date: 2026-08-26
 - Scope: Browser game-screen capture, encoding, P2P forwarding, and LiveKit SFU
 - Status: current Browser policy accepted; real-game, weak-device, and
   heterogeneous-network quality remain open
@@ -12,6 +12,13 @@ display audio uses `contentHint = "music"`. The three recommended profiles and
 advanced settings are ceilings, not delivery guarantees. WebRTC owns direct and
 peer congestion control; LiveKit owns SFU representations, Dynacast, subscriber
 bandwidth estimation, and layer forwarding.
+
+On current Windows Chrome, Browser WebRTC VP8 is a software path. Chromium 151's
+Windows hardware encoder backends do not enumerate VP8, and the measured Edge
+151 binary likewise showed no VideoEncode activity. The Web page cannot select a
+GPU encoder or vendor API. This is a platform boundary, not a missing Screener
+setting. Real-game contention remains open because software encoding competes
+with the game for CPU even when encode time is below the frame budget.
 
 Screener does not define a resolution/FPS/bitrate ladder, custom SFU lower
 representation, scene detector, quality score, parent probe, periodic
@@ -38,6 +45,62 @@ hint unset can preserve screen-classified resolution while shifting pressure to
 quantization or frame delivery, so the earlier no-hint improvement was not free
 adaptation. Current policy follows the standard game-motion intent and leaves
 the resulting tradeoff to the browser.
+
+### Windows Browser Hardware Boundary
+
+Chromium `151.0.7922.174` constructs a hardware WebRTC encoder only when the
+platform Video Encode Accelerator advertises the negotiated profile. Its
+Windows Media Foundation backend enumerates H.264, VP9, AV1, and optional HEVC,
+but not VP8; the Windows D3D12 backend likewise has no VP8 encoder. Libwebrtc's
+VP8 implementation is `libvpx` and reports `is_hardware_accelerated = false`.
+`setCodecPreferences()` can select VP8 but cannot choose NVENC, AMF, QSV, a GPU,
+or an MFT. Media Capabilities is only a capability query and cannot prove the
+encoder actually used by an exact PeerConnection.
+
+Headful, isolated Chromium loopbacks on the current Ryzen 7 9700X / RTX 4070
+SUPER machine used the accepted VP8 profiles and one deterministic 1080p canvas
+source. Each 30-second measurement followed only a five-second settle window,
+so the 1080p60 results include the known bandwidth-estimator ramp and are
+screening data rather than steady-state game-cost baselines. Browser CPU covers
+the entire isolated instance; `100%` means one logical core and includes source
+rendering, local decode, and Browser services.
+
+All runs used repository commit `74c959aa629f66db20439c98d0ea37bdfe8e2d63`,
+benchmark schema 3, `BENCHMARK_HEADLESS=false`, `BENCHMARK_DURATION_SECONDS=30`,
+`BENCHMARK_SETTLE_SECONDS=5`, endpoint cap `2`, and no canary or recovery arm.
+`BENCHMARK_PROFILE` selected the table's profile, `BENCHMARK_VIEWERS` selected
+one or two Viewers, and the sender count is the observed Host result under cap
+`2`; `CHROME_PATH` selected the exact Browser version shown. The reproducible
+entry point is `npx tsx scripts/peer-assisted-benchmark.ts`.
+
+| Run | Browser | Profile | Senders | FPS mean (range) | Resolution(s) | Encode ms/frame | Limitation samples | Browser CPU (valid intervals) |
+| --- | --- | --- | ---: | --- | --- | ---: | --- | --- |
+| C30 | Chrome 151.0.7922.174 | 1080p30 | 1 | 30.0 (29-31) | 1920x1080 | 4.06 | `none` 16/16 | 96.6% (13/15) |
+| C60-A | Chrome 151.0.7922.174 | 1080p60 | 1 | 55.2 (45-58) | 1920x1080, 1280x720 | 4.86 | `bandwidth` 10/16, `none` 6/16 | 136.4% (13/15) |
+| C60-B | Chrome 151.0.7922.174 | 1080p60 | 1 | 55.6 (54-57) | 1920x1080, 1280x720 | 3.91 | `bandwidth` 10/16, `none` 6/16 | 122.6% (13/15) |
+| C60-2 | Chrome 151.0.7922.174 | 1080p60 | 2 | 56.8 (55-59) | 1920x1080, 1280x720 | 5.03 | `bandwidth` 20/32, `none` 12/32 | 233.4% (13/15) |
+| E60-A | Edge 151.0.4129.101 | 1080p60 | 1 | 48.6 (45-53) | 1920x1080, 1280x720 | 4.53 | `bandwidth` 12/16, `none` 4/16 | 137.9% (7/15) |
+| E60-B | Edge 151.0.4129.101 | 1080p60 | 1 | 43.9 (28-53) | 1920x1080, 1280x720, 960x540 | 3.15 | `bandwidth` 12/16, `none` 4/16 | 104.2% (6/15) |
+
+The 60 fps arms stayed below the configured ceiling and changed spatial
+resolution while encode work remained well below 16.7 ms/frame. In these short
+runs the local symptom coincided with stock bandwidth adaptation, not an encode
+time overrun. The Chrome 1080p30 control held full resolution and cadence without
+a quality limitation. Process-set changes made uncovered CPU intervals unknown;
+the table does not fill them with zero.
+
+Dynamic Windows GPU Engine sampling followed the isolated Browser descendant
+PID sets in runs C60-B and E60-B. Ten valid samples in each run showed zero
+`VideoEncode` and `VideoDecode` activity across the enumerated counters. Chrome
+showed about 35.5% 3D and 1.6% Copy; Edge showed about 8.0% 3D and negligible
+Copy. That activity is consistent with source rendering and texture movement but
+does not prove per-engine attribution. The collector did not retain adapter-LUID
+mapping, and the synthetic source exposed neither `encoderImplementation` nor
+`powerEfficientEncoder`; these GPU counters are supporting observations only.
+An existing fake `getDisplayMedia` Chrome sample did expose VP8 `libvpx` and
+`powerEfficientEncoder = false`. The exact Chromium backend inventory, rather
+than the GPU counters alone, closes Chrome's Windows VP8 hardware encode as
+unavailable; E60-B provides no contrary Edge evidence.
 
 ### Chrome 151 Startup Matrix
 
@@ -119,8 +182,10 @@ or fork remains outside the current product.
 
 VP8 is the only Browser media codec because it has the broadest current Browser
 interoperability and produced stable software-encoding behavior in the measured
-Chrome path. The page does not select a particular VP8 hardware or software
-encoder.
+Chrome path. Windows Chrome uses software VP8, and the measured Edge binary gave
+no contrary hardware evidence; the page has no hardware encoder selection
+surface. Other operating systems remain evidence-specific and must not be
+inferred from the Windows backend.
 
 Controlled Windows Chrome evidence localized the poor H.264 result to Chromium's
 rate-control path around some Media Foundation encoders rather than a portable
@@ -141,6 +206,13 @@ process totals included capture, WebRTC, source rendering, and local decode, so
 they are not a weak-device or real-game capacity claim. Browser peers retain one
 independent sender and congestion controller per `RTCPeerConnection`; shared
 encoding is not guaranteed.
+
+The current 1080p60 synthetic samples measured roughly 1.23 to 1.36 logical
+cores for the whole isolated Browser with one sender and about 2.33 with two.
+The second arm also added another Viewer, decode, render, and connection, so the
+difference cannot be attributed to encoder count. The architectural boundary of
+one ordinary sender per PeerConnection comes from WebRTC behavior, not this CPU
+comparison; the measurement does not justify a shared Browser encoder.
 
 The accepted way to handle a constrained Host is the existing explicit share
 profile. Screener does not silently remove a representation needed by a weak
@@ -169,8 +241,10 @@ reclamation, and relay survival remain physical-device acceptance work.
 
 Current parent selection hard-filters authorization, source reachability,
 acyclicity, capacity, and resource admission, then orders eligible P2P parents
-by resulting depth, remaining sender capacity, stable join order, and peer
-identity before SFU. It has no network-quality score.
+by resulting depth, remaining sender capacity, a stable child-parent hash, join
+order, and peer identity. Initial acquisition gives one direct candidate a
+bounded foreground window, then uses SFU for availability while finite direct
+candidates converge behind working media. It has no network-quality score.
 
 A manual media reconnect stays on the current exact route: P2P rebuilds the
 same parent connection, and SFU reconstructs the same subscription. Browser
@@ -185,7 +259,8 @@ ADR-0005 decision. It is not implemented or authorized by current diagnostics.
 ## Current Verification Gaps
 
 - Real games under competing CPU/GPU load at 720p30, 1080p30, and 1080p60.
-- Weaker Windows/macOS/Linux Hosts and actual VP8 encoder implementation data.
+- Real-game CPU contention on Windows and actual encoder paths on
+  macOS/Linux/weaker Hosts.
 - Mixed P2P/SFU sessions on heterogeneous public networks, including recovery.
 - Mobile foreground/background playback, page reclamation, and relay survival.
 - Long-running encode/decode cost, thermals, A/V synchronization, and resource
@@ -212,3 +287,8 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
 - [LiveKit server forwarding](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
 - [Chromium WebRTC encoder factory](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder_factory.cc)
+- [Chromium 151 WebRTC video codec factory](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/third_party/blink/renderer/platform/peerconnection/video_codec_factory.cc)
+- [Chromium 151 Windows Media Foundation encoder profiles](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/mf_video_encoder_shared_state.cc)
+- [Chromium D3D12 video encoder profiles](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/gpu/windows/d3d12_video_encode_accelerator.cc)
+- [libwebrtc VP8 encoder](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc)
+- [Media Capabilities](https://www.w3.org/TR/media-capabilities/)

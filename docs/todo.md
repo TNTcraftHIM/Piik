@@ -7,10 +7,11 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Browser VP8 hardware evidence.** Measure supported Chrome/Edge platforms
-   under real game load using actual codec, encoder implementation, encode time,
-   frame rate, and CPU/GPU attribution. Do not add another codec, custom encoder,
-   GPU selector, or Native helper without a new decision.
+1. **Browser VP8 real-game cost.** Windows Chrome 151 has no WebRTC VP8 hardware
+   encoder backend. Measure Edge and other supported Browser Hosts under real
+   game load using actual codec, encoder implementation when exposed, encode
+   time, frame rate, and CPU/GPU attribution. Do not add another codec, custom
+   encoder, GPU selector, or Native helper without a new decision.
 2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
