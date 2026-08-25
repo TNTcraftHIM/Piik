@@ -29,7 +29,7 @@ This is the current execution index. Git history owns completed timelines; [veri
 
 ## Current Milestone
 
-1. Correct and deploy the active-SFU decoded-progress cadence, repeat the controlled recovery transaction, then finish representative ICE/STUN/SFU acceptance including screen-audio continuity and real-game A/V sync on mobile and heterogeneous networks. Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
+1. Run ADR-0007's pinned LiveKit native `HIGH+LOW`/Dynacast/AdaptiveStream gate and settle the framework-owned representation decision. Then correct and deploy the active-SFU decoded-progress cadence, repeat the controlled recovery transaction, and finish representative ICE/STUN/SFU acceptance including screen-audio continuity and real-game A/V sync on mobile and heterogeneous networks. Application layer control, Browser port prediction, NAT classification, TCP probing, fake page keepalive, and quality-driven reparenting remain outside the accepted model.
 
 ## Active Boundaries
 

@@ -483,22 +483,25 @@ default. Chromium currently maps its configured per-stream mode into the
 outbound stats field; other browser implementations may omit any optional
 member, which remains null rather than a capability conclusion.
 
-## Superseded Two-Layer Candidate Analysis (2026-08-22)
+## LiveKit Native Representation Boundary
 
-This retained analysis explains the candidate that the 2026-08-25 physical gate
-rejected. It does not define current product truth, implementation scope, or a
-next gate; ADR-0007 owns the accepted single-`HIGH` decision.
+ADR-0007 owns the accepted target: fixed `HIGH+LOW` VP8 simulcast with layer
+activation and per-subscriber selection delegated to LiveKit. Current source and
+production remain single-`HIGH` until the pinned physical gate measures actual
+RID activity and subscriber output.
 
 The candidate assumed one shared `HIGH+LOW` SFU publication could preserve
 healthy `HIGH` while LiveKit selected a lower representation per constrained
 subscriber. Static review established two limits before the runtime gate:
 ordinary WebRTC receivers have no portable per-RID selection API across
-separate PeerConnections, and LiveKit 1.13.5 Dynacast cumulatively enables every
-quality below the highest requested quality. A `HIGH` subscriber therefore
-keeps `LOW` active. The 2026-08-25 exact-production A/B then proved that this
-always-active lower representation materially reduced `HIGH`, so ADR-0007
-rejected the candidate. Sender/viewer evidence remains diagnostic and does not
-change topology or command a representation.
+separate PeerConnections. Source inspection also indicates that LiveKit 1.13.5
+Dynacast cumulatively enables qualities below the highest requested quality, so
+a `HIGH` subscriber may keep `LOW` active; this is a gate hypothesis, not a
+runtime verdict. The 2026-08-25 exact-production A/B proved only that the prior
+always-active lower representation materially reduced `HIGH`. It did not enable
+Dynacast or AdaptiveStream and therefore cannot reject native demand-driven
+adaptation. Sender/viewer evidence remains diagnostic and does not change
+topology or command a representation.
 
 ### Historical SFU Source Gate
 
