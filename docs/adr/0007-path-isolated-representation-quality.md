@@ -1,6 +1,6 @@
 # ADR-0007: LiveKit-Owned SFU Representation Adaptation
 
-- Status: Lightweight lower representation implemented in current source; not deployed
+- Status: Accepted, implemented, and deployed
 - Date: 2026-08-19
 - Last reviewed: 2026-08-25
 
@@ -52,7 +52,7 @@ removing the representation required by constrained Viewers.
 6. ADR-0005 remains the only route owner. Layer choice does not change topology,
    endpoint capacity, SFU admission, or decoded-stall recovery authority.
 
-Production release `e14eb0e` leaves the screen-share layer list unset, so pinned
+Production release `e14eb0e` left the screen-share layer list unset, so pinned
 client `2.22.0` supplies a same-FPS half-resolution representation beside the
 original. A live mixed P2P/SFU observation confirmed that the 60 fps lower
 representation can consume enough Host-to-SFU budget to starve the highest
@@ -62,7 +62,7 @@ supplies one half-resolution lower preset with
 The two encodings remain RIDs `q,h`; LiveKit's protocol labels them `LOW,MEDIUM`,
 while a subscriber's default `HIGH` ceiling still selects the highest available
 encoding. Dynacast, server send-side BWE, and disabled AdaptiveStream remain
-unchanged.
+unchanged. Production release `be53c4d` deploys that correction.
 
 Current source derives the lower preset from the actual capture dimensions and
 passes it through LiveKit's public publication options. Retained publication
