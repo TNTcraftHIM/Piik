@@ -8,7 +8,7 @@ import {
 describe("DecodedFrameStallDetector", () => {
   it("reports one exact active stall and resets on progress or identity change", () => {
     const detector = new DecodedFrameStallDetector();
-    expect(detector.observe("peer:1:a", 0, 0)).toBe(false);
+    expect(detector.observe("peer:1:a", null, 0)).toBe(false);
     expect(
       detector.observe("peer:1:a", 0, ROUTE_DECODED_FRAME_STALL_MS),
     ).toBe(true);

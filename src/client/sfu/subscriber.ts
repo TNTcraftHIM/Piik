@@ -22,6 +22,7 @@ interface SubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
   onVideoAvailability?: (available: boolean) => void;
   onStats?: (metrics: ConnectionMetrics) => void;
+  onDecodedFrameSample?: (framesDecodedDelta: number | null) => void;
   onFirstDecodedFrame?: () => boolean;
   onState?: (state: "connected" | "reconnecting") => void;
   onDisconnected?: () => void;
@@ -32,6 +33,11 @@ interface SubscribedTrack {
   track: RemoteTrack;
   mediaStreamTrack: MediaStreamTrack;
   onEnded: () => void;
+}
+
+interface AudioStatsSample {
+  track: SubscribedTrack;
+  report: RTCStatsReport | null;
 }
 
 interface KnownHostPublication {
@@ -67,6 +73,7 @@ export class SfuSubscriber {
   private statsAccumulator: StatsAccumulator = createStatsAccumulator();
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private statsInFlight: StatsAccumulator | null = null;
+  private audioStatsInFlight: SubscribedTrack | null = null;
   private decodedFrameProofMode: "fresh" | "progress" | null = null;
   private stopDecodedFrameObserver: (() => void) | null = null;
   private generation = 0;
@@ -125,6 +132,7 @@ export class SfuSubscriber {
     const generation = this.generation;
     this.state = "active";
     try {
+      this.startStats();
       this.reconcileHostSubscriptions(room, this.sdk, generation);
       return true;
     } catch (error) {
@@ -414,8 +422,10 @@ export class SfuSubscriber {
     this.stream.addTrack(mediaStreamTrack);
     if (isVideo) {
       this.video = subscribed;
+      this.resetStatsAccumulator();
     } else {
       this.audio = subscribed;
+      this.resetAudioStats();
     }
     this.emitStream();
     if (!hadVideo && this.video) {
@@ -440,16 +450,15 @@ export class SfuSubscriber {
     if (this.audio?.sid === sid && (!track || this.audio.mediaStreamTrack === track)) {
       this.detachTrack(this.audio);
       this.audio = null;
+      this.resetAudioStats();
     }
     if (this.video === previousVideo && this.audio === previousAudio) {
       return;
     }
     this.emitStream();
-    if (!this.video) {
-      this.stopStats();
-      if (previousVideo) {
-        this.events.onVideoAvailability?.(false);
-      }
+    if (!this.video && previousVideo) {
+      this.resetStatsAccumulator();
+      this.events.onVideoAvailability?.(false);
     }
   }
 
@@ -518,44 +527,83 @@ export class SfuSubscriber {
     const video = this.video;
     const generation = this.generation;
     const accumulator = this.statsAccumulator;
-    if (
-      !room ||
-      !video ||
-      this.state !== "active" ||
-      this.statsInFlight === accumulator
-    ) {
+    if (!room || this.state !== "active") {
       return;
+    }
+    if (this.statsInFlight === accumulator || !video) {
+      this.events.onDecodedFrameSample?.(null);
+      return;
+    }
+    const ownsSample = (): boolean =>
+      this.owns(room, generation) &&
+      this.state === "active" &&
+      this.video === video &&
+      this.statsAccumulator === accumulator;
+    const audioStatsSample: AudioStatsSample | null = this.audio
+      ? { track: this.audio, report: null }
+      : null;
+    if (audioStatsSample) {
+      void this.updateAudioStats(room, generation, audioStatsSample);
     }
     this.statsInFlight = accumulator;
     try {
-      const reports = await Promise.all([
-        video.track.getRTCStatsReport(),
-        this.audio?.track.getRTCStatsReport(),
+      const videoReport = await video.track.getRTCStatsReport();
+      if (!ownsSample()) {
+        return;
+      }
+      const report = mergeStatsReports([
+        videoReport,
+        audioStatsSample?.track === this.audio
+          ? (audioStatsSample.report ?? undefined)
+          : undefined,
       ]);
-      if (
-        !this.owns(room, generation) ||
-        this.state !== "active" ||
-        this.video !== video ||
-        this.statsAccumulator !== accumulator
-      ) {
-        return;
-      }
-      const report = mergeStatsReports(reports);
       if (!report) {
+        this.events.onDecodedFrameSample?.(null);
         return;
       }
-      this.events.onStats?.(
-        collectConnectionMetricsFromReport(
-          report,
-          "receive",
-          accumulator,
-        ),
+      const metrics = collectConnectionMetricsFromReport(
+        report,
+        "receive",
+        accumulator,
       );
+      this.events.onDecodedFrameSample?.(metrics.intervalFramesDecoded);
+      this.events.onStats?.(metrics);
     } catch {
-      // Stats are observational and must never disrupt active SFU media.
+      if (ownsSample()) {
+        this.events.onDecodedFrameSample?.(null);
+      }
     } finally {
       if (this.statsInFlight === accumulator) {
         this.statsInFlight = null;
+      }
+    }
+  }
+
+  private async updateAudioStats(
+    room: Room,
+    generation: number,
+    sample: AudioStatsSample,
+  ): Promise<void> {
+    const audio = sample.track;
+    if (this.audioStatsInFlight === audio) {
+      return;
+    }
+    this.audioStatsInFlight = audio;
+    try {
+      const report = await audio.track.getRTCStatsReport();
+      if (
+        report &&
+        this.owns(room, generation) &&
+        this.state === "active" &&
+        this.audio === audio
+      ) {
+        sample.report = report;
+      }
+    } catch {
+      // Audio diagnostics must not affect video liveness.
+    } finally {
+      if (this.audioStatsInFlight === audio) {
+        this.audioStatsInFlight = null;
       }
     }
   }
@@ -565,15 +613,25 @@ export class SfuSubscriber {
       clearInterval(this.statsTimer);
       this.statsTimer = null;
     }
+    this.resetStatsAccumulator();
+  }
+
+  private resetStatsAccumulator(): void {
     this.statsInFlight = null;
     this.statsAccumulator = createStatsAccumulator();
+  }
+
+  private resetAudioStats(): void {
+    this.audioStatsInFlight = null;
   }
 
   private clearMedia(notify: boolean): void {
     const hadStream = this.streamEmitted;
     const hadVideo = this.video !== null;
     this.stopDecodedFrameProof();
-    this.stopStats();
+    if (this.state !== "active") {
+      this.stopStats();
+    }
     if (this.video) {
       this.detachTrack(this.video);
     }
@@ -582,6 +640,10 @@ export class SfuSubscriber {
     }
     this.video = null;
     this.audio = null;
+    this.resetAudioStats();
+    if (this.state === "active") {
+      this.resetStatsAccumulator();
+    }
     this.streamEmitted = false;
     if (hadVideo) {
       this.events.onVideoAvailability?.(false);

@@ -423,11 +423,17 @@ describe("minimal route transition contracts", () => {
     const log: string[] = [];
     const messages: ClientMessage[] = [];
     const streams: MediaStream[] = [];
+    const decodedSamples: Array<{
+      framesDecodedDelta: number | null;
+      revision: number;
+    }> = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     const route = new ViewerSfuRoute("viewer_12345678", {
       activatePeer: () => true,
       reconcileSfuChildren: () => undefined,
       onSfuStream: (stream) => streams.push(stream),
+      onSfuDecodedFrameSample: (framesDecodedDelta, revision) =>
+        decodedSamples.push({ framesDecodedDelta, revision }),
       send: (message) => {
         messages.push(message);
         return true;
@@ -453,6 +459,8 @@ describe("minimal route transition contracts", () => {
     subscribers[0]?.events.onStream(firstStream);
     subscribers[0]?.events.onFirstDecodedFrame();
     await vi.waitFor(() => expect(streams).toEqual([firstStream]));
+    subscribers[0]?.events.onDecodedFrameSample(3);
+    expect(decodedSamples).toEqual([{ framesDecodedDelta: 3, revision: 1 }]);
 
     route.accept({
       revision: 2,
@@ -466,7 +474,9 @@ describe("minimal route transition contracts", () => {
     subscribers[1]?.events.onStats?.({
       intervalFramesDecoded: 2,
     } as ConnectionMetrics);
+    subscribers[1]?.events.onDecodedFrameSample(null);
     expect(messages.filter((message) => message.type === "route-ready")).toEqual([]);
+    expect(decodedSamples).toEqual([{ framesDecodedDelta: 3, revision: 1 }]);
 
     subscribers[1]?.events.onFirstDecodedFrame();
     subscribers[1]?.events.onFirstDecodedFrame();
@@ -481,6 +491,12 @@ describe("minimal route transition contracts", () => {
       assignment: viewerSfuAssignment([], "publication-generation-2"),
     });
     await vi.waitFor(() => expect(streams).toEqual([firstStream, pendingStream]));
+    subscribers[1]?.events.onDecodedFrameSample(null);
+    subscribers[0]?.events.onDecodedFrameSample(9);
+    expect(decodedSamples).toEqual([
+      { framesDecodedDelta: 3, revision: 1 },
+      { framesDecodedDelta: null, revision: 2 },
+    ]);
     expect(subscribers[0]?.deactivate).toHaveBeenCalledOnce();
     expect(subscribers[0]?.disconnect).toHaveBeenCalledOnce();
   });

@@ -694,14 +694,18 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           );
           reconcileRelayChildren(previousChildPeerIds, revision);
         },
+        onSfuDecodedFrameSample: (framesDecodedDelta, revision) => {
+          if (active && viewerSfuRoute === route) {
+            observeActiveDecodedFrames(
+              "sfu",
+              String(revision),
+              framesDecodedDelta,
+            );
+          }
+        },
         onSfuUpdate: (metrics, revision) => {
           if (active && viewerSfuRoute === route) {
             if (metrics) {
-              observeActiveDecodedFrames(
-                "sfu",
-                String(revision),
-                metrics.intervalFramesDecoded,
-              );
               if (
                 currentRouteAssignment?.upstream.kind === "sfu" &&
                 currentRouteConnectionId &&

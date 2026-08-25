@@ -1687,12 +1687,266 @@ describe("SfuSubscriber", () => {
     },
   );
 
+  it("keeps active decoded-frame sampling through unavailable receiver stats", async () => {
+    vi.useFakeTimers();
+    const samples: Array<number | null> = [];
+    const updates: ConnectionMetrics[] = [];
+    const subscriber = new SfuSubscriber({
+      onStream: vi.fn(),
+      onStats: (metrics) => updates.push(metrics),
+      onDecodedFrameSample: (framesDecodedDelta) =>
+        samples.push(framesDecodedDelta),
+    });
+    await subscriber.connect(connection);
+    const room = livekit.state.rooms[0];
+    const host = new livekit.FakeRemoteParticipant("host");
+    const publication = new livekit.FakeRemotePublication(
+      "host-video",
+      Track.Source.ScreenShare,
+    );
+    host.add(publication);
+    room.remoteParticipants.set("host", host);
+
+    expect(subscriber.activate()).toBe(true);
+    expect(samples).toEqual([null]);
+
+    let receiverStats: RTCStatsReport | Promise<RTCStatsReport> | Error =
+      statsReport([]);
+    const video = track("video", "video-1");
+    const remoteVideo = remoteTrack(video, () => {
+      if (receiverStats instanceof Error) throw receiverStats;
+      return receiverStats;
+    });
+    room.emit(RoomEvent.TrackSubscribed, remoteVideo, publication, host);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(samples).toEqual([null, null]);
+    expect(updates).toEqual([]);
+
+    receiverStats = new Error("stats unavailable");
+    const samplesBeforeStatsError = samples.length;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples).toHaveLength(samplesBeforeStatsError + 1);
+    expect(samples.at(-1)).toBeNull();
+    expect(updates).toEqual([]);
+
+    receiverStats = statsReport([
+      {
+        id: "video-in",
+        type: "inbound-rtp",
+        timestamp: 1_000,
+        kind: "video",
+        trackIdentifier: video.id,
+        framesDecoded: 1,
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples.at(-1)).toBeNull();
+    expect(updates).toHaveLength(1);
+
+    receiverStats = statsReport([
+      {
+        id: "video-in",
+        type: "inbound-rtp",
+        timestamp: 3_000,
+        kind: "video",
+        trackIdentifier: video.id,
+        framesDecoded: 5,
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples.at(-1)).toBe(4);
+    expect(updates).toHaveLength(2);
+
+    let releasePendingStats!: (report: RTCStatsReport) => void;
+    receiverStats = new Promise<RTCStatsReport>((resolve) => {
+      releasePendingStats = resolve;
+    });
+    const statsCallsBeforePending = remoteVideo.getRTCStatsReport.mock.calls.length;
+    const samplesBeforePending = samples.length;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(
+      statsCallsBeforePending + 1,
+    );
+    expect(samples).toHaveLength(samplesBeforePending);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(
+      statsCallsBeforePending + 1,
+    );
+    expect(samples).toHaveLength(samplesBeforePending + 1);
+    expect(samples.at(-1)).toBeNull();
+
+    const replacementVideo = track("video", "video-2");
+    let replacementStats = statsReport([
+      {
+        id: "replacement-video-in",
+        type: "inbound-rtp",
+        timestamp: 1_000,
+        kind: "video",
+        trackIdentifier: replacementVideo.id,
+        framesDecoded: 2,
+      },
+    ]);
+    const replacementRemoteVideo = remoteTrack(
+      replacementVideo,
+      () => replacementStats,
+    );
+    room.emit(
+      RoomEvent.TrackSubscribed,
+      replacementRemoteVideo,
+      publication,
+      host,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(updates.at(-1)?.trackIdentifier).toBe(replacementVideo.id);
+    const samplesAfterReplacement = samples.length;
+    const updatesAfterReplacement = updates.length;
+    releasePendingStats(
+      statsReport([
+        {
+          id: "video-in",
+          type: "inbound-rtp",
+          timestamp: 5_000,
+          kind: "video",
+          trackIdentifier: video.id,
+          framesDecoded: 9,
+        },
+      ]),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(samples).toHaveLength(samplesAfterReplacement);
+    expect(updates).toHaveLength(updatesAfterReplacement);
+
+    replacementStats = statsReport([
+      {
+        id: "replacement-video-in",
+        type: "inbound-rtp",
+        timestamp: 3_000,
+        kind: "video",
+        trackIdentifier: replacementVideo.id,
+        framesDecoded: 7,
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples.at(-1)).toBe(5);
+
+    room.emit(
+      RoomEvent.TrackUnsubscribed,
+      replacementRemoteVideo,
+      publication,
+      host,
+    );
+    const samplesBeforeMissingTrack = samples.length;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples).toHaveLength(samplesBeforeMissingTrack + 1);
+    expect(samples.at(-1)).toBeNull();
+
+    expect(subscriber.deactivate()).toBe(true);
+    const samplesAfterDeactivate = samples.length;
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(samples).toHaveLength(samplesAfterDeactivate);
+  });
+
+  it("keeps video liveness independent from optional audio stats", async () => {
+    vi.useFakeTimers();
+    const samples: Array<number | null> = [];
+    const updates: ConnectionMetrics[] = [];
+    const subscriber = new SfuSubscriber({
+      onStream: vi.fn(),
+      onStats: (metrics) => updates.push(metrics),
+      onDecodedFrameSample: (framesDecodedDelta) =>
+        samples.push(framesDecodedDelta),
+    });
+    await subscriber.connect(connection);
+    const room = livekit.state.rooms[0];
+    const host = new livekit.FakeRemoteParticipant("host");
+    const hostVideo = new livekit.FakeRemotePublication(
+      "host-video",
+      Track.Source.ScreenShare,
+    );
+    const hostAudio = new livekit.FakeRemotePublication(
+      "host-audio",
+      Track.Source.ScreenShareAudio,
+    );
+    host.add(hostVideo).add(hostAudio);
+    room.remoteParticipants.set("host", host);
+    expect(subscriber.activate()).toBe(true);
+
+    const video = track("video", "video-1");
+    let videoTimestamp = 1_000;
+    let videoFrames = 1;
+    const remoteVideo = remoteTrack(video, () =>
+      statsReport([
+        {
+          id: "video-in",
+          type: "inbound-rtp",
+          timestamp: videoTimestamp,
+          kind: "video",
+          trackIdentifier: video.id,
+          framesDecoded: videoFrames,
+          estimatedPlayoutTimestamp: 10_000,
+        },
+      ]),
+    );
+    const audio = track("audio", "audio-1");
+    let audioStats: RTCStatsReport | Promise<RTCStatsReport> | Error =
+      new Error("audio stats unavailable");
+    const remoteAudio = remoteTrack(audio, () => {
+      if (audioStats instanceof Error) throw audioStats;
+      return audioStats;
+    });
+    room.emit(RoomEvent.TrackSubscribed, remoteAudio, hostAudio, host);
+    room.emit(RoomEvent.TrackSubscribed, remoteVideo, hostVideo, host);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(samples.at(-1)).toBeNull();
+    expect(updates).toHaveLength(1);
+
+    videoTimestamp = 3_000;
+    videoFrames = 5;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples.at(-1)).toBe(4);
+    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(2);
+
+    audioStats = receiverReport("audio");
+    videoTimestamp = 5_000;
+    videoFrames = 9;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples.at(-1)).toBe(4);
+    expect(updates.at(-1)?.audioVideoPlayoutDeltaMs).toBe(12);
+    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(3);
+
+    audioStats = new Promise<RTCStatsReport>(() => undefined);
+    videoTimestamp = 7_000;
+    videoFrames = 13;
+    const samplesBeforePendingAudio = samples.length;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples).toHaveLength(samplesBeforePendingAudio + 1);
+    expect(samples.at(-1)).toBe(4);
+    expect(updates.at(-1)?.audioVideoPlayoutDeltaMs).toBeNull();
+    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(4);
+
+    videoTimestamp = 9_000;
+    videoFrames = 17;
+    const samplesBeforeSecondPendingAudioTick = samples.length;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(samples).toHaveLength(samplesBeforeSecondPendingAudioTick + 1);
+    expect(samples.at(-1)).toBe(4);
+    expect(updates.at(-1)?.audioVideoPlayoutDeltaMs).toBeNull();
+    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(4);
+    expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(5);
+
+    expect(subscriber.deactivate()).toBe(true);
+  });
+
   it("reports merged receiver stats and drops a stale sample", async () => {
     const updates: ConnectionMetrics[] = [];
+    const samples: Array<number | null> = [];
     const states: string[] = [];
     const subscriber = new SfuSubscriber({
       onStream: vi.fn(),
       onStats: (metrics) => updates.push(metrics),
+      onDecodedFrameSample: (framesDecodedDelta) =>
+        samples.push(framesDecodedDelta),
       onState: (state) => states.push(state),
     });
     await subscriber.connect(connection);
@@ -1734,6 +1988,7 @@ describe("SfuSubscriber", () => {
       host,
     );
     await vi.waitFor(() => expect(updates).toHaveLength(1));
+    expect(samples).toEqual([null, null]);
 
     expect(updates.at(-1)).toMatchObject({
       rtpStatsId: "video-in",
@@ -1753,10 +2008,12 @@ describe("SfuSubscriber", () => {
     );
 
     expect(subscriber.deactivate()).toBe(true);
+    const samplesAfterDeactivate = samples.length;
     releaseStats();
     await Promise.resolve();
     await Promise.resolve();
     expect(updates).toHaveLength(1);
+    expect(samples).toHaveLength(samplesAfterDeactivate);
   });
 
   it("notifies the controller after a terminal room disconnect", async () => {
