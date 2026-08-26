@@ -1,3 +1,8 @@
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,10 +22,23 @@ import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 const allowedOrigin = "http://allowed.test";
 const siteAccessPassword = "instance-access-password";
 let runningServer: ScreenerServer | undefined;
+const temporaryDirectories: string[] = [];
 afterEach(async () => {
-  await runningServer?.close();
-  runningServer = undefined;
+  try {
+    await runningServer?.close();
+    runningServer = undefined;
+  } finally {
+    for (const directory of temporaryDirectories.splice(0).reverse()) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
 });
+
+function temporaryRoomDatabasePath(): string {
+  const directory = mkdtempSync(join(tmpdir(), "screener-server-room-db-"));
+  temporaryDirectories.push(directory);
+  return join(directory, "rooms.sqlite");
+}
 
 function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
@@ -579,6 +597,54 @@ describe("room HTTP API", () => {
 });
 
 describe("server HTTP listener and health", () => {
+  it("restores stable room authority across an application restart", async () => {
+    const roomDatabasePath = temporaryRoomDatabasePath();
+    let nowMs = 100;
+    const config = testConfig({
+      siteAccessPassword: undefined,
+      roomDatabasePath,
+      roomLeaseMs: 1_000,
+    });
+    const first = await createScreenerServer({
+      config,
+      serveFrontend: false,
+      now: () => nowMs,
+    });
+    let second: ScreenerServer | undefined;
+    try {
+      const firstPort = await first.listen(0, "127.0.0.1");
+      const created = createRoomResponseSchema.parse(
+        await (
+          await createRoom(`http://127.0.0.1:${firstPort}`, undefined, "private")
+        ).json(),
+      );
+      await first.close();
+
+      nowMs = 200;
+      second = await createScreenerServer({
+        config,
+        serveFrontend: false,
+        now: () => nowMs,
+      });
+      const secondPort = await second.listen(0, "127.0.0.1");
+      expect(second.roomStore.size).toBe(1);
+      const update = await updateRoomAccess(
+        `http://127.0.0.1:${secondPort}`,
+        created.roomId,
+        created.hostToken,
+        { action: "set-code-entry-policy", policy: "open" },
+      );
+      expect(update.status).toBe(200);
+      expect(await update.json()).toMatchObject({
+        type: "code-entry-policy-updated",
+        codeEntryPolicy: "open",
+      });
+    } finally {
+      await second?.close();
+      await first.close();
+    }
+  });
+
   it("starts with an injected optional SFU token issuer", async () => {
     const baseUrl = await start(
       testConfig({
@@ -684,9 +750,15 @@ describe("server HTTP listener and health", () => {
       serveFrontend: false,
     });
     const ownerPort = await owner.listen(0, "127.0.0.1");
+    const unavailableDatabasePath = join(
+      temporaryRoomDatabasePath(),
+      "missing-parent",
+      "rooms.sqlite",
+    );
     const roomControl = new FakeSfuRoomControl();
     const contender = await createScreenerServer({
       config: testConfig({
+        roomDatabasePath: unavailableDatabasePath,
         peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
@@ -707,10 +779,114 @@ describe("server HTTP listener and health", () => {
         code: "EADDRINUSE",
       });
       expect(roomControl.initializeCalls).toBe(0);
+      expect(existsSync(unavailableDatabasePath)).toBe(false);
     } finally {
       await contender.close();
       await owner.close();
     }
+  });
+
+  it("rejects a second database owner before LiveKit reconciliation", async () => {
+    const roomDatabasePath = temporaryRoomDatabasePath();
+    const owner = await createScreenerServer({
+      config: testConfig({ roomDatabasePath }),
+      serveFrontend: false,
+    });
+    await owner.listen(0, "127.0.0.1");
+    const roomControl = new FakeSfuRoomControl();
+    const contender = await createScreenerServer({
+      config: testConfig({
+        roomDatabasePath,
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+        },
+      }),
+      serveFrontend: false,
+      sfuRoomControl: roomControl,
+      sfuTokenIssuer: {
+        issueToken: async () => "unused-test-token",
+      },
+    });
+
+    try {
+      await expect(contender.listen(0, "127.0.0.1")).rejects.toThrow(
+        /locked/i,
+      );
+      expect(roomControl.initializeCalls).toBe(0);
+      expect(contender.httpServer.listening).toBe(false);
+      expect(contender.httpServer.listenerCount("upgrade")).toBe(0);
+    } finally {
+      await contender.close();
+      await owner.close();
+    }
+  });
+
+  it("rejects a mismatched database before LiveKit reconciliation", async () => {
+    const roomDatabasePath = temporaryRoomDatabasePath();
+    const raw = new DatabaseSync(roomDatabasePath);
+    raw.exec("CREATE TABLE unrelated(value TEXT) STRICT");
+    raw.close();
+    const roomControl = new FakeSfuRoomControl();
+    runningServer = await createScreenerServer({
+      config: testConfig({
+        roomDatabasePath,
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+        },
+      }),
+      serveFrontend: false,
+      sfuRoomControl: roomControl,
+      sfuTokenIssuer: {
+        issueToken: async () => "unused-test-token",
+      },
+    });
+
+    await expect(runningServer.listen(0, "127.0.0.1")).rejects.toThrow(
+      "Room database application identity does not match",
+    );
+    expect(roomControl.initializeCalls).toBe(0);
+    expect(runningServer.httpServer.listening).toBe(false);
+    expect(runningServer.httpServer.listenerCount("upgrade")).toBe(0);
+  });
+
+  it("rejects an inaccessible database path before LiveKit reconciliation", async () => {
+    const roomDatabasePath = join(
+      temporaryRoomDatabasePath(),
+      "missing-parent",
+      "rooms.sqlite",
+    );
+    const roomControl = new FakeSfuRoomControl();
+    runningServer = await createScreenerServer({
+      config: testConfig({
+        roomDatabasePath,
+        peerAssistedMedia: true,
+        livekitFallback: {
+          url: "ws://livekit.test:7880",
+          apiUrl: "http://127.0.0.1:7880",
+          apiKey: "test-key",
+          apiSecret: "s".repeat(32),
+        },
+      }),
+      serveFrontend: false,
+      sfuRoomControl: roomControl,
+      sfuTokenIssuer: {
+        issueToken: async () => "unused-test-token",
+      },
+    });
+
+    await expect(runningServer.listen(0, "127.0.0.1")).rejects.toThrow();
+    expect(roomControl.initializeCalls).toBe(0);
+    expect(existsSync(roomDatabasePath)).toBe(false);
+    expect(runningServer.httpServer.listening).toBe(false);
+    expect(runningServer.httpServer.listenerCount("upgrade")).toBe(0);
   });
 
   it("holds listener ownership until an in-flight startup reconciliation settles", async () => {

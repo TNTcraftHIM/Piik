@@ -15,6 +15,7 @@ import type { SfuFallbackOptions } from "./hybrid-media-router.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SfuRoomControl } from "./sfu-room-control.js";
 import { SfuResourceAdmission } from "./sfu-resource-admission.js";
+import { RoomDatabase } from "./room-database.js";
 import { ROOM_CAPACITY, RoomStore, RoomStoreError } from "./room-store.js";
 import { SignalingServer, type SignalingOptions } from "./signaling.js";
 
@@ -83,6 +84,9 @@ export async function createScreenerServer(
       leaseMs: config.roomLeaseMs,
       maxRooms: ROOM_CAPACITY,
       maxViewersPerRoom: config.maxViewersPerRoom,
+      database: config.roomDatabasePath
+        ? new RoomDatabase(config.roomDatabasePath)
+        : undefined,
       now,
     });
   const siteAccess = new SiteAccess({
@@ -206,6 +210,7 @@ export async function createScreenerServer(
       startupOperation = (async () => {
         const boundPort = await bindHttpServer(httpServer, port, host);
         try {
+          roomStore.initialize();
           await sfuRoomControl?.initialize();
           if (!closing) {
             signaling = new SignalingServer(signalingOptions);
@@ -213,11 +218,20 @@ export async function createScreenerServer(
           }
           return boundPort;
         } catch (error) {
+          const cleanupErrors: unknown[] = [];
+          try {
+            roomStore.close();
+          } catch (closeError) {
+            cleanupErrors.push(closeError);
+          }
           try {
             await closeHttpServer(httpServer);
           } catch (closeError) {
+            cleanupErrors.push(closeError);
+          }
+          if (cleanupErrors.length > 0) {
             throw new AggregateError(
-              [error, closeError],
+              [error, ...cleanupErrors],
               "Screener startup reconciliation failed",
             );
           }
