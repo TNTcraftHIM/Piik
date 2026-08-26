@@ -41,10 +41,10 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical `main` and production both run exact `3037c0a`. Optional SQLite
-  stable authority, non-expiring local preferred code, atomic room replacement,
-  graceful service-restart presentation and the Host codec selector are
-  implemented; production selects stable storage.
+- Canonical `main` contains the same application tree deployed from `3037c0a`.
+  Optional SQLite stable authority, non-expiring local preferred code, atomic
+  room replacement, graceful service-restart presentation and the Host codec
+  selector are implemented; production selects stable storage.
 - One event-driven controller owns the committed graph and one room-serial child
   operation. Initial direct acquisition uses a five-second foreground window;
   exact transport-connected progress may retain that candidate through the

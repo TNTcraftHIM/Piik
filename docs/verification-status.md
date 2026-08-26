@@ -59,8 +59,8 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- Canonical and production application tree `3037c0a` uses the adaptive
-  H.264/VP8 sender decision with `contentHint = "motion"`, reapplies the
+- Canonical source contains the same application tree deployed from `3037c0a`:
+  the adaptive H.264/VP8 sender decision with `contentHint = "motion"` reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
