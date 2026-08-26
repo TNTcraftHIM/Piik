@@ -7,11 +7,15 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Browser VP8 real-game cost.** Windows Chrome 151 has no WebRTC VP8 hardware
-   encoder backend. Measure Edge and other supported Browser Hosts under real
-   game load using actual codec, encoder implementation when exposed, encode
-   time, frame rate, and CPU/GPU attribution. Do not add another codec, custom
-   encoder, GPU selector, or Native helper without a new decision.
+1. **Browser codec preflight.** Keep the product on VP8 while an isolated Chrome
+   153 experiment compares VP8 with H.264 constrained baseline under the current
+   `motion` capture semantics. Measure Host send, Viewer decode, Browser relay,
+   one/two outbound senders, and a VP8-first background transition using actual
+   codec/profile, implementation and power-efficiency evidence when exposed,
+   cadence, encode/decode time, and CPU/GPU attribution. The default browser path
+   is product evidence; an AMD forced-SW-BRC arm is diagnostic only. Do not add
+   product codec selection, VP9/AV1/H.265 probing, a custom encoder, or deploy a
+   codec change before this gate is accepted.
 2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
@@ -29,36 +33,29 @@ later topic is not implementation authority by itself.
 
 ## Accepted Later Roadmap
 
-1. **Quality-based topology research.** After the real-network baseline, decide
-   whether measured user-visible quality justifies any active parent-selection
-   mechanism. A weak-Host production session showed a usable P2P Viewer with
-   worse playback than SFU Viewers, so reachability alone is not the eventual
-   optimization target. Current evidence still cannot compare an active route with an
-   unconnected alternative, so no quality score, all-pairs probing, periodic
-   rebalancing, relay abdication threshold, or active parent switch is accepted.
-   Prefer mature algorithms and one general model if this boundary is reopened.
-2. **Platform output only when real.** Revisit AirPlay/Cast only when a target
+1. **Platform output only when real.** Revisit AirPlay/Cast only when a target
    browser and physical receiver prove the live `MediaStream` contract. System
    mirroring remains external.
-3. **Public-server one-click package.** After functional and real-network work,
+2. **Public-server one-click package.** After functional and real-network work,
    package the exact application, STUN/SFU, reverse proxy, secrets, and health
    checks for a user-owned public server. Do not call a partial installer ready.
-4. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
+3. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
    application server, and local state without requiring source or Node. Report
    public-origin, TLS, gateway, NAT, and firewall limits honestly.
-5. **Native Host and shared encode, Windows first.** Productize only after real
+4. **Native Host and shared encode, Windows first.** Productize only after real
    capture, hardware-only encode, audio, identity, RTP/RTCP feedback, resource,
    packaging, and licensing gates pass. Browser Host/relay keeps standard
    per-`RTCPeerConnection` encoding.
-6. **Whole-product UI and bilingual decision.** Once media and route behavior
+5. **Whole-product UI and bilingual decision.** Once media and route behavior
    stabilizes, review copy, responsive hierarchy, visual consistency, restrained
    motion, bundle/rendering cost, and Chinese/English scope once as a whole.
-   Ordinary screen-specific edits do not create parallel documentation.
-7. **Client-input security review.** Inventory HTTP and WebSocket inputs once as
+   Terminal and error views should retain the global header and an obvious way
+   back home. Ordinary screen-specific edits do not create parallel documentation.
+6. **Client-input security review.** Inventory HTTP and WebSocket inputs once as
    a whole: strict schemas, authentication, authorization, rate and body bounds,
    resource effects, error disclosure, logging, and secret handling. Begin
    read-only and add no parallel security framework without a proven gap.
-8. **Repository simplification audit.** After the Browser, route, room, and
+7. **Repository simplification audit.** After the Browser, route, room, and
    physical-media checkpoints settle, inventory components, configuration,
    migrations, timers, compatibility paths, tests, and truth duplication using
    the [maintenance review](./maintenance.md#机制减负审查). Begin read-only and do
@@ -70,6 +67,7 @@ later topic is not implementation authority by itself.
 | --- | --- |
 | Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
 | Cross-restart room identity and media continuity | Decide whether stable invitations and uninterrupted control justify durable or signed room lineage plus exact route/resource recovery. Preferred code/password replay alone remains a new room incarnation. |
+| Quality-driven route exploration | Confirm the trigger SLO, whether one post-commit trial plus one restore may temporarily worsen playback, how inconclusive probation settles, and whether quality work may prioritize an existing SFU publication or create a new one. No active route change is authorized until then. |
 
 ## Evidence Boundaries
 

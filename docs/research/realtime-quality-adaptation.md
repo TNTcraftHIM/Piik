@@ -187,12 +187,81 @@ no contrary hardware evidence; the page has no hardware encoder selection
 surface. Other operating systems remain evidence-specific and must not be
 inferred from the Windows backend.
 
-Controlled Windows Chrome evidence localized the poor H.264 result to Chromium's
-rate-control path around some Media Foundation encoders rather than a portable
-page setting. The same AMD MFT reached the requested cadence only under a
-diagnostic browser field trial that a Web application cannot enable. OpenH264
-software was not a superior fallback. H.264 remains research evidence for a
-later native sender, not a Browser option.
+Chromium's `has_trusted_rate_controller` is a libwebrtc coordination fact, not
+Windows trust or security classification. Media Foundation video encoding
+initially reports it false. When Chromium's H.264 software bitrate controller
+owns frame dropping, MFVEA reports it true so libwebrtc disables its independent
+media-optimization frame dropper and avoids double-dropping.
+
+A controlled Chrome 151 loopback isolated this interaction on one AMD Media
+Foundation encoder with the same dynamic 1904x928@30 source. The ordinary 8 Mbps
+path emitted 14.18 fps at 14.24 ms encode time per frame. Forcing Chromium's
+desktop H.264 software BRC on the same MFT emitted 29.93 fps at 8.17 ms per frame
+and about 3.65 Mbps. Disabling hardware encode selected OpenH264 and emitted
+10.47 fps. Raising the ordinary MFT ceiling or changing degradation preference
+did not restore cadence. This proves that the observed AMD result was an outer
+rate-control/frame-drop interaction, not a fixed MFT throughput limit; it is no
+physical result for Intel or another AMD driver cohort.
+
+Chrome 151 and 152 leave `MediaFoundationUseSWBRCForH264Desktop` disabled by
+default. Chromium commit `24e0453977d38` enables it by default, caps desktop
+quality at QP 35, caps HRD fullness, and uses predictive buffer headroom for
+delta-frame dropping; exact Chrome 153 beta source contains that change, and
+Chrome 153 stable is scheduled for 2026-09-08. AMD remains separately covered
+by the vendor-wide `disable_h264_accelerator_sw_brc` workaround for Chromium
+issue `417752242`, while `MediaFoundationSWBRCForH264ForceAMDGPU` remains
+disabled in Chrome 153 and 154. Current source therefore implies that a selected
+Intel MFT can receive the new default controller, but does not establish that
+physical result. The accepted `motion` hint also maps the WebRTC encoder to the
+realtime/camera content type whose H.264 SW BRC was already default-enabled; it
+does not bypass the AMD workaround.
+
+A Browser page cannot enable these process features, override the GPU workaround,
+set `has_trusted_rate_controller`, or select a particular MFT. The two feature
+names can reproduce the AMD bypass only in an explicitly launched diagnostic
+browser. They are not a product workaround. OpenH264 was not a superior fallback,
+so Browser H.264 remains closed until a future decision accepts exact Chrome 153+
+Intel-default and AMD-default/forced real-game evidence. The separately proved
+Native hardware-MFT path does not alter the Browser decision.
+
+Screego `v1.12.4` does not supply another encoder path. Its settings list the
+browser's RTP codec/profile capabilities, map `Best Quality` to VP9 profile 2,
+and reorder all capabilities before each per-Viewer offer. Other codecs remain
+negotiation fallback; no actual encoder, power-efficiency, frame-rate, or
+runtime fallback evidence participates. Screego changed its default back to the
+browser order after VP9 materially reduced frame rate, and its maintained P2P
+fanout still creates one PeerConnection per Viewer.
+
+The Browser candidates therefore have narrower potential than their names imply:
+
+| Candidate | Potential advantage over VP8 | Current Browser stop line |
+| --- | --- | --- |
+| H.264 | Hardware encode can reduce Host CPU while retaining broad decode support. | Chrome cannot select a specific MFT; AMD remains outside SW-BRC by default, and the exact Intel/Chrome 153 result is unmeasured. |
+| VP9 | Profile 0 may use a Windows Media Foundation encoder and can improve rate-distortion efficiency. | Screego's profile-2 preset is not the Windows hardware profile; software VP9 can cost more CPU and already caused a visible frame-rate regression. |
+| AV1 | Modern hardware can provide the strongest compression candidate. | Chrome 151 and 153 keep Windows WebRTC AV1 hardware encode disabled by default, so codec support does not provide a usable hardware contract. |
+| H.265 | Supported hardware can provide efficient H.264-class low-CPU encode at lower bitrate. | It is an advanced codec not supported by every Browser client; LiveKit compatibility requires regression or a backup publication, and the current cross-Browser relay matrix is absent. |
+
+No candidate currently provides a product-wide Browser improvement with VP8's
+coverage. Browser media therefore remains VP8 while one bounded preflight is
+open. It reproduces the accepted `motion` capture semantics and compares VP8
+with H.264 constrained baseline on exact Chrome 153. The default browser path is
+the product evidence; forcing AMD software BRC is a diagnostic arm only.
+
+The gate covers Host-to-Viewer and Browser-relay-to-child paths with one and two
+outbound senders. Codec capability is insufficient: each endpoint must prove the
+negotiated codec/profile, encoder and decoder implementation when exposed,
+power-efficiency evidence, encoded and decoded cadence, bitrate, resolution,
+encode/decode time, quality-limitation reason, and process CPU/GPU video-engine
+attribution. This determines whether a P2P connection can select H.264 for an
+efficient sender and receiver and otherwise retain VP8, including the relay's
+fresh encode cost.
+
+A single SFU publication cannot supply subscriber-specific H.264 and VP8 without
+another encoded publication. A VP8-first viewing path followed by background
+H.264 confirmation must therefore separately prove its transition behavior and
+the temporary dual-encode or republish cost before it can be accepted as
+seamless fallback. The spike adds no VP9, AV1, or H.265 runtime probing, codec
+selector, product integration, or deployment.
 
 HEVC, AV1, custom WebCodecs pipelines, and application packetization do not
 replace the browser WebRTC sender without a new capture, RTP/RTCP, feedback,
@@ -256,6 +325,33 @@ Quality-driven relay abdication or active parent switching would require
 counterfactual alternative-path evidence, bounded probing, and a separate
 ADR-0005 decision. It is not implemented or authorized by current diagnostics.
 
+The reopened quality-selection research retains that information boundary.
+Current-route WebRTC stats can prove user-visible degradation but cannot prove
+that an unconnected parent is better. Mature overlay systems such as ALMI and
+Overcast measure alternatives and require a meaningful improvement before
+moving; their periodic all-neighbor probes and published example thresholds do
+not fit Screener's Browser, capacity, or latency contract.
+
+The smallest compatible model is one `QualityEpisode` owned by the existing
+room controller. It creates no parent score, second graph, all-pairs probe, or
+periodic rebalancer. Phase one uses only visible, locally playing, non-paused,
+identity-stable freeze duration with continuing decoded progress. Loss, RTT,
+jitter, bitrate, resolution, FPS, and decode time remain attribution; treating a
+quality ceiling as a delivered floor requires a separate product SLO. Relay
+ingress degradation reparents that relay while retaining its subtree; one
+child's degradation moves only that child.
+
+Research recommends shadow evaluation before active migration, followed by an
+existing-SFU-only canary if the measured trigger has acceptable false-positive
+rate. An active episode would keep the existing first-frame commit rule, allow
+one low-priority trial and at most one restore, and yield immediately to join,
+hard recovery, departure, capacity, pause, or SFU drain work. This post-commit
+probation measures the actual presented path without holding two long-running
+media routes whose competing bandwidth and non-rendered candidate metrics would
+distort comparison. It necessarily permits a temporarily worse candidate and a
+second transition on restore; that behavior, the freeze SLO, inconclusive result,
+and permission to create or prioritize SFU resources remain product decisions.
+
 ## Current Verification Gaps
 
 - Real games under competing CPU/GPU load at 720p30, 1080p30, and 1080p60.
@@ -291,4 +387,20 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [Chromium 151 Windows Media Foundation encoder profiles](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.174/media/gpu/windows/mf_video_encoder_shared_state.cc)
 - [Chromium D3D12 video encoder profiles](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/gpu/windows/d3d12_video_encode_accelerator.cc)
 - [libwebrtc VP8 encoder](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc)
+- [libwebrtc trusted-rate-controller contract](https://webrtc.googlesource.com/src/+/refs/heads/main/api/video_codecs/video_encoder.h)
+- [libwebrtc outer frame dropper](https://webrtc.googlesource.com/src/+/refs/heads/main/video/video_stream_encoder.cc)
+- [Chromium Media Foundation encoder rate-control integration](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc)
+- [Chromium desktop H.264 SW BRC change](https://chromium.googlesource.com/chromium/src/media/+/24e0453977d38aada35c5e78fcec3d11d6cdea6e)
+- [Chrome 153 H.264 MF feature defaults](https://chromium.googlesource.com/chromium/src/+/refs/tags/153.0.8010.5/media/gpu/windows/mf_video_encoder_switches.cc)
+- [Chromium AMD H.264 SW BRC workaround](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/gpu/config/gpu_driver_bug_list.json)
+- [Chromium AMD SW BRC issue 417752242](https://issues.chromium.org/issues/417752242)
+- [Chrome 153 release schedule](https://developer.chrome.com/blog/chrome-two-week-release)
+- [Screego codec preference implementation](https://github.com/screego/server/blob/v1.12.4/ui/src/useRoom.ts)
+- [Screego VP9 quality experiment](https://github.com/screego/server/pull/132)
+- [Screego per-Viewer encode cost](https://github.com/screego/server/issues/160)
+- [Chromium Windows WebRTC hardware codec mapping](https://chromium.googlesource.com/chromium/src/+/refs/tags/153.0.8010.5/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder_factory.cc)
+- [Chromium WebRTC AV1 and H.265 feature gates](https://chromium.googlesource.com/chromium/src/+/refs/tags/153.0.8010.5/media/webrtc/webrtc_features.cc)
+- [LiveKit advanced and backup codec contract](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
+- [Overcast parent measurement and hysteresis](https://pdos.csail.mit.edu/~jj/jannotti.com/papers/overcast-osdi00/)
+- [ALMI application-level multicast](https://www.usenix.org/legacy/event/usits01/full_papers/shi/shi_html/)
 - [Media Capabilities](https://www.w3.org/TR/media-capabilities/)
