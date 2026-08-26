@@ -46,7 +46,7 @@ does not say that minimizing the separate capturing page must reduce capture.
 Capture constraints are post-selection preferences and allow frame decimation,
 so requested `maxFramerate` is not proof of actual source or encoded frame rate.
 
-Production candidate `5551177` may select H.264 or VP8 through its bounded sender
+Current production may select H.264 or VP8 through its bounded sender
 gate. Every run still records the actual negotiated codec and encoder rather than
 inferring either from configuration. Encoder implementation is a diagnostic
 variable only after a stable baseline exists; neither codec nor encoder choice
@@ -67,10 +67,10 @@ not inherit this desktop Host result.
 
 ## Current Source Boundary
 
-Canonical source remains fixed VP8 while production candidate `5551177` uses the
-content-independent H.264 gate with VP8 fallback. Both use video
-`contentHint = "motion"`, audio `contentHint = "music"`, and no codec selector or
-wire field; their exact identity is owned by [status](../status.md).
+Canonical source and production use the content-independent H.264 gate with VP8
+fallback, video `contentHint = "motion"`, audio `contentHint = "music"`, and the
+local share-locked Host codec selector without a codec wire field. Their exact
+identity is owned by [status](../status.md).
 The current path does not claim or implement a page-keepalive mechanism, and
 deployment health supplies no physical background-capture evidence.
 

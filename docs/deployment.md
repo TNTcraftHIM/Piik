@@ -1,9 +1,9 @@
 # Minimal Deployment
 
-Last verified against upstream documentation: 2026-08-24.
+Last verified: 2026-08-26.
 
 This page records production running exact deployed application/runtime revision
-`55511773b2f9118802440fdec90ad06080b19772`, release `5551177`, and the single
+`3037c0a8f0d16e0df791eb8e64003a7a6660d521`, release `3037c0a`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,32 +25,31 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `55511773b2f9118802440fdec90ad06080b19772`, release
-`5551177`, from `/opt/screener/releases/5551177`. The immutable runtime tar
+Production runs exact `3037c0a8f0d16e0df791eb8e64003a7a6660d521`, release
+`3037c0a`, from `/opt/screener/releases/3037c0a`. The immutable runtime tar
 SHA-256 is
-`3688b348fd8757e19fc1acb5523d2ecc90aa3553a30cd3a640e0a9a011e696e3`.
-Its 39-file path/size/hash manifest SHA-256 is
-`279fb808ccff21c0fa07d0ff7f7afddc1d33de09446ca8446489e4970ee6d8d5`.
+`f84cb7f7acbfbd950ecfdac13da9a0d6e99a4c10eb221c6948ce81b47ce2b5f6`.
+Its 41-file path/size/hash manifest SHA-256 is
+`e2fc8115c9cb7d6455027dc2af6f29229834774ed12de334832a8d53d6fc6262`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-uQk7n3NE.js` with SHA-256
-`14012100209475b3fc8851774a1985b3fb17de18a1f80e6fb0c0cf773dcfe0ff`.
+`assets/index-Y4pFjW_S.js` with SHA-256
+`a3df27613dfb10fb45297197afdf2500e2953c2b5330b13e5bb49eafdc3e1447`.
 
 The release deploys the single Browser `screener-v12` wire and one internal,
 content-independent H.264 sender gate with VP8 fallback across Browser direct,
 browser-relay, and SFU video. It retains pinned LiveKit default screen-share
 representations, Dynacast and server send-side BWE without an application layer
-selector, video `contentHint = "motion"`, no
-codec selector/state/wire, random four-digit memory rooms with a 24-hour dormant lease,
-a room-lived 22-character grant,
+selector, video `contentHint = "motion"`, and a local share-locked
+`VP8 | Auto | H264` Host selector without codec wire state. Random four-digit
+rooms use a 24-hour dormant lease, one room-lived 22-character grant,
 orthogonal `open | private` grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
-one-controller exact-candidate route runtime. Exact predecessor release
-`b68c471` production postflight verified open code entry, private invitation-only
-and password entry, grant rotation/revocation, typed missing-room failure, and
-stale `screener-v11` rejection with
-`INVALID_MESSAGE` and WebSocket close 1008 before room authority. The service unit
-has no writable room StateDirectory; all room authority is process-memory-only.
+one-controller exact-candidate route runtime. Production configures
+`ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite`; systemd owns that single
+`0700` StateDirectory and the database is `0600`. Only room authority survives
+an application restart; participants, routes and media rebuild from fresh
+process state.
 LiveKit is dedicated, has `room.auto_create: false` and
 `max_participants: 21`, and the application derives deployment admission as
 9,000 publication ingress plus `9000 * MAX_VIEWERS_PER_ROOM` subscription
@@ -82,9 +81,9 @@ browser <---------- DTLS-SRTP/UDP ----------> LiveKit :7882
 The minimum runtime is Node.js 24 LTS and coturn 4.17.2 or a newer patched
 release. Provision a valid TLS certificate for the Web name. Enable operating system time
 synchronization and keep the Node application port reachable only from its
-reverse proxy. A single Node process is intentional. Rooms, participants, and
-signaling remain in process memory; a restart intentionally invalidates every
-room and does not restore live WebRTC connections.
+reverse proxy. A single Node process is intentional. Participants, signaling,
+routes and media remain in process memory; optional SQLite preserves only room
+authority and does not restore live WebRTC connections.
 
 Build and validate the exact revision on a build host before starting it:
 
@@ -240,6 +239,7 @@ PUBLIC_BASE_URL=https://share.example.com
 ALLOWED_ORIGINS=https://share.example.com
 SITE_ACCESS_PASSWORD=<INDEPENDENT_8_TO_128_BYTE_ACCESS_KEY>
 ROOM_LEASE_SECONDS=86400
+ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 MAX_VIEWERS_PER_ROOM=20
 ENDPOINT_MEDIA_COPY_CAPACITY=2
 
@@ -296,7 +296,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `5551177` runs the deployed server and Browser assets
+Production release `3037c0a` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 
@@ -391,8 +391,9 @@ optional room passwords. In stable mode those room-authority values, policy,
 authorization generation and lease use one exact SQLite schema; live members,
 routes and SFU state remain memory-only. The same browser keeps its raw Host token,
 creation profile and non-expiring preferred code locally. Production stable-mode
-activation requires a separately verified writable directory, configuration and
-database backup/restore boundary before setting `ROOM_DATABASE_PATH`.
+uses the service-owned `/var/lib/screener` StateDirectory. Any new activation or
+path change requires a separately verified writable directory plus configuration
+and database backup/restore boundaries before changing `ROOM_DATABASE_PATH`.
 
 Production startup requires one to eight syntactically valid `stun:` URLs
 before the server listens. This validates shape only; it does not prove DNS,

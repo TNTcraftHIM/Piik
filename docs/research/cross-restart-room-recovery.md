@@ -1,7 +1,7 @@
 # Cross-Restart Room Recovery
 
 - Research date: 2026-08-26
-- Status: SQLite stable room-authority mode accepted; implementation pending
+- Status: SQLite stable room-authority mode implemented; production enabled
 
 ## Current Conclusion
 
@@ -12,8 +12,8 @@ code-entry policy, password verifier and dormant lease. It is not a generic
 store for future features.
 
 `ROOM_DATABASE_PATH` absent remains the default lightweight mode. Configuring an
-exact file enables stable mode over the same RoomStore contract. Production will
-use stable mode after persistent-state deployment and recovery acceptance.
+exact file enables stable mode over the same RoomStore contract. Production uses
+stable mode after passing its persistent-state and restart-recovery gate.
 
 ## Stored Authority
 

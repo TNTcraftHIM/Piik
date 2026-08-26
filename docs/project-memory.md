@@ -14,7 +14,7 @@ Last updated: 2026-08-26
   and Viewer activity never renews. `ROOM_DATABASE_PATH` absent is the default
   lightweight process-memory mode; configured is the optional SQLite stable
   mode that persists only room authority across application restart. Production
-  will enable stable mode after its state/recovery gate passes.
+  enables stable mode; live participants, routes and media remain process-only.
 - Every room has one 128-bit/22-character Viewer grant bound to that exact room
   incarnation and independent `open | private` code entry. Private without a
   password is invitation-only; adding a password also permits matching code
@@ -75,10 +75,9 @@ Last updated: 2026-08-26
   with a deterministic moving probe track sized to the current share target, so
   captured-content motion cannot decide encoder capability. Proved senders prefer
   H.264 with native VP8 fallback, while failed/inconclusive senders remain
-  VP8-only. The accepted next Host UI adds a local pre-share
-  `VP8 | Auto | H264` selector with Auto default; it locks while sharing, is not
-  persisted, and creates no codec wire/state or active-edge switching. Viewer
-  relays remain Auto. Current production does not yet include that selector.
+  VP8-only. The Host UI provides a local pre-share `VP8 | Auto | H264` selector
+  with Auto default; it locks while sharing, is not persisted, and creates no
+  codec wire/state or active-edge switching. Viewer relays remain Auto.
   Display video uses `contentHint = "motion"` and display audio uses
   `contentHint = "music"`.
 - Windows Chrome 151 uses software VP8 and exposes no Web control for selecting
@@ -121,11 +120,11 @@ Last updated: 2026-08-26
 
 ## Current Source And Production
 
-- Production and canonical source use strict `screener-v12`, but the pending
-  application candidate adds the internal H.264/VP8 decision while production
-  remains on its prior fixed-VP8 artifact. Exact identities are indexed by
+- Production and canonical source use the same strict `screener-v12`
+  application with adaptive H.264/VP8 selection, local Host codec override and
+  optional SQLite room authority. Exact identities are indexed by
   [status](./status.md).
-- Production uses random memory rooms, 20-Viewer admission, endpoint cap `2`,
+- Production uses SQLite-backed random rooms, 20-Viewer admission, endpoint cap `2`,
   fixed 9,000-publication ingress and `9000 * 20` subscription egress admission,
   STUN UDP 3478, LiveKit media UDP 7882, and Web TCP 80/443. Node 8787 and
   LiveKit 7880 remain private.
@@ -135,11 +134,7 @@ Last updated: 2026-08-26
 
 ## Current Priority
 
-1. Implement optional SQLite stable room authority, remove the client preferred-
-   room expiry/timer, and add exact Host room replacement.
-2. Add the locked pre-share Host codec selector and resolved Host codec display
-   without codec wire state.
-3. Complete the mobile Viewer lifecycle matrix and representative real-network
+1. Complete the mobile Viewer lifecycle matrix and representative real-network
    route/media acceptance.
 
 Quality-driven parent selection, Native sender work, distribution packages,

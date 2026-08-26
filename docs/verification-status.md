@@ -8,24 +8,26 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `55511773b2f9118802440fdec90ad06080b19772`, release `5551177`, wire
-  `screener-v12`, from `/opt/screener/releases/5551177`.
+  `3037c0a8f0d16e0df791eb8e64003a7a6660d521`, release `3037c0a`, wire
+  `screener-v12`, from `/opt/screener/releases/3037c0a`.
 - Runtime tar SHA-256:
-  `3688b348fd8757e19fc1acb5523d2ecc90aa3553a30cd3a640e0a9a011e696e3`.
-  The 39-file manifest SHA-256 is
-  `279fb808ccff21c0fa07d0ff7f7afddc1d33de09446ca8446489e4970ee6d8d5`.
-- Public Browser asset `assets/index-uQk7n3NE.js` is 500228 bytes with SHA-256
-  `14012100209475b3fc8851774a1985b3fb17de18a1f80e6fb0c0cf773dcfe0ff`.
+  `f84cb7f7acbfbd950ecfdac13da9a0d6e99a4c10eb221c6948ce81b47ce2b5f6`.
+  The 41-file manifest SHA-256 is
+  `e2fc8115c9cb7d6455027dc2af6f29229834774ed12de334832a8d53d6fc6262`.
+- Public Browser asset `assets/index-Y4pFjW_S.js` has SHA-256
+  `a3df27613dfb10fb45297197afdf2500e2953c2b5330b13e5bb49eafdc3e1447`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
 ## Completed Product Evidence
 
 - Strict `screener-v12` rejects stale Browser/executable wires before room
-  authority. Process-memory rooms, 24-hour dormant leases, restart loss,
+  authority. Lightweight and SQLite-stable rooms, 24-hour dormant leases,
   room-lived Viewer grants, `open | private` code entry, invitation-only private
-  rooms, password entry, grant rotate/revoke, and `ROOM_NOT_FOUND` have passed
-  source and production gates.
+  rooms, password entry, grant rotate/revoke, atomic room replacement and
+  `ROOM_NOT_FOUND` have passed source gates. Production stable mode retained an
+  exact Host authority across a controlled restart and then deleted the test
+  room through the normal lifecycle.
 - Endpoint capacity `1/2/3`, default `2`, one active upstream, acyclicity,
   source reachability, deterministic parent order, exact candidate identity,
   transport-connected wake extension, first-decoded-frame commit, strictly newer
@@ -55,16 +57,16 @@ may be interpreted. Git and pull requests own routine completed checks.
   ordinary peers retain deployment STUN. The reported Host/Viewer TUN conflict
   was closed by that isolation without adding TURN or TCP media.
 
-## Current Source And Candidate Evidence
+## Current Source Evidence
 
-- Canonical application tree `b6a8a5f` uses Browser VP8 with
-  `contentHint = "motion"`, reapplies the
+- Canonical and production application tree `3037c0a` uses the adaptive
+  H.264/VP8 sender decision with `contentHint = "motion"`, reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
-- Production candidate `5551177` adds the content-independent H.264 sender gate,
-  VP8 fallback and actual negotiated codec details without codec wire state,
-  cache, parallel media or active-edge switching.
+- The local `VP8 | Auto | H264` Host selector is locked to a share generation;
+  Viewer relays remain Auto and no codec wire state, cache, parallel media or
+  active-edge switching exists.
 - Viewer page-resume decoded-stall rebaselining, current-frame presentation
   authority, hidden-page stall suppression, retryable failure reporting, native
   controls, and same-route manual reconnect are current source behavior. Mobile
