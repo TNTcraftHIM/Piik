@@ -112,6 +112,13 @@ export type ActiveViewerMediaEdge =
       upstream: { kind: "sfu" };
     };
 
+export interface ActiveSfuViewerMediaState {
+  viewerPeerId: string;
+  viewerSessionId: string;
+  revision: number;
+  sfuPublicationGeneration: string;
+}
+
 export interface SfuFallbackOptions {
   url: string;
   tokenIssuer: SfuTokenIssuer;
@@ -131,14 +138,9 @@ export interface HybridMediaRouterOptions {
   setConnectionId: (roomId: string, viewerPeerId: string, connectionId: string) => void;
   deleteConnectionId: (roomId: string, viewerPeerId: string) => void;
   getShareGeneration: (roomId: string) => string | undefined;
-  onActiveRouteChanged?: (roomId: string) => void;
-  onViewerMediaState?: (
+  onViewerMediaSnapshot?: (
     roomId: string,
-    viewerPeerId: string,
-    viewerSessionId: string,
-    revision: number,
-    sfuPublicationGeneration: string,
-    ready: boolean,
+    viewers: readonly ActiveSfuViewerMediaState[],
   ) => void;
   now?: () => number;
 }
@@ -689,7 +691,7 @@ export class HybridMediaRouter {
       ...(edge.kind === "peer" ? { parentSessionId: edge.parentSessionId } : {}),
     }, this.now());
     if (invalidated && edge.usable && snapshot.paused) {
-      this.options.onActiveRouteChanged?.(participant.roomId);
+      this.publishViewerMediaState(participant.roomId, controller.snapshot());
     }
     this.requestPump(participant.roomId);
   }
@@ -1349,7 +1351,14 @@ export class HybridMediaRouter {
         }
       }
     }
-    this.options.onActiveRouteChanged?.(roomId);
+    this.publishViewerMediaState(roomId, snapshot);
+  }
+
+  private publishViewerMediaState(
+    roomId: string,
+    snapshot: RouteSnapshot<RouteResource>,
+  ): void {
+    const viewers: ActiveSfuViewerMediaState[] = [];
     for (const viewer of this.options.roomStore.getConnectedViewers(roomId)) {
       const edge = snapshot.upstreamByViewer.get(viewer.peerId);
       if (
@@ -1357,16 +1366,15 @@ export class HybridMediaRouter {
         edge.physicalActive &&
         this.pathIsPhysical(roomId, snapshot, viewer.peerId)
       ) {
-        this.options.onViewerMediaState?.(
-          roomId,
-          viewer.peerId,
-          viewer.sessionId,
-          snapshot.revision,
-          edge.publicationGeneration,
-          true,
-        );
+        viewers.push({
+          viewerPeerId: viewer.peerId,
+          viewerSessionId: viewer.sessionId,
+          revision: snapshot.revision,
+          sfuPublicationGeneration: edge.publicationGeneration,
+        });
       }
     }
+    this.options.onViewerMediaSnapshot?.(roomId, viewers);
   }
 
   private pathIsPhysical(

@@ -34,6 +34,7 @@ import {
 } from "./room-store.js";
 import {
   HybridMediaRouter,
+  type ActiveSfuViewerMediaState,
   type SfuFallbackOptions,
 } from "./hybrid-media-router.js";
 import { createIceConfig, type IceConfigOptions } from "./ice.js";
@@ -179,26 +180,8 @@ export class SignalingServer {
         deleteConnectionId: (roomId, viewerPeerId) =>
           this.deleteViewerConnectionId(roomId, viewerPeerId),
         getShareGeneration: (roomId) => this.shareGenerationsByRoom.get(roomId),
-        onActiveRouteChanged: (roomId) => {
-          this.viewerMediaReadyByRoom.delete(roomId);
-          this.sendViewerPresence(roomId);
-        },
-        onViewerMediaState: (
-          roomId,
-          viewerPeerId,
-          viewerSessionId,
-          revision,
-          sfuPublicationGeneration,
-          ready,
-        ) =>
-          this.updateViewerMediaState(
-            roomId,
-            viewerPeerId,
-            viewerSessionId,
-            revision,
-            sfuPublicationGeneration,
-            ready,
-          ),
+        onViewerMediaSnapshot: (roomId, viewers) =>
+          this.replaceViewerMediaState(roomId, viewers),
         now: this.now,
       });
     }
@@ -1852,40 +1835,22 @@ export class SignalingServer {
     recipients.forEach((socket) => this.send(socket, message));
   }
 
-  private updateViewerMediaState(
+  private replaceViewerMediaState(
     roomId: string,
-    viewerPeerId: string,
-    viewerSessionId: string,
-    revision: number,
-    sfuPublicationGeneration: string,
-    ready: boolean,
+    viewers: readonly ActiveSfuViewerMediaState[],
   ): void {
-    let readyByViewer = this.viewerMediaReadyByRoom.get(roomId);
-    if (ready) {
-      readyByViewer ??= new Map<string, ViewerMediaReadyState>();
-      readyByViewer.set(viewerPeerId, {
-        sessionId: viewerSessionId,
-        revision,
-        sfuPublicationGeneration,
-      });
+    if (viewers.length > 0) {
+      const readyByViewer = new Map<string, ViewerMediaReadyState>();
+      for (const viewer of viewers) {
+        readyByViewer.set(viewer.viewerPeerId, {
+          sessionId: viewer.viewerSessionId,
+          revision: viewer.revision,
+          sfuPublicationGeneration: viewer.sfuPublicationGeneration,
+        });
+      }
       this.viewerMediaReadyByRoom.set(roomId, readyByViewer);
     } else {
-      if (!readyByViewer) {
-        return;
-      }
-      const current = readyByViewer.get(viewerPeerId);
-      if (
-        !current ||
-        current.sessionId !== viewerSessionId ||
-        current.revision !== revision ||
-        current.sfuPublicationGeneration !== sfuPublicationGeneration
-      ) {
-        return;
-      }
-      readyByViewer.delete(viewerPeerId);
-      if (readyByViewer.size === 0) {
-        this.viewerMediaReadyByRoom.delete(roomId);
-      }
+      this.viewerMediaReadyByRoom.delete(roomId);
     }
     this.sendViewerPresence(roomId);
   }
