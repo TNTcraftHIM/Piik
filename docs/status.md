@@ -56,11 +56,14 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Measure the current VP8 game-load performance bottleneck on supported Browser
-   Hosts; the exact Windows Chrome 151 boundary is indexed by realtime-quality
-   research.
-2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
-3. Finish representative public-network direct, peer-relay, SFU, recovery,
+1. Implement the accepted source-scoped Browser H.264 preflight and VP8 fallback
+   across direct, Browser relay, and the Host's single SFU publication. Current
+   source and production remain fixed VP8 until that candidate is integrated and
+   separately released.
+2. Remove the client-side preferred-room expiry/renewal timer while keeping the
+   server dormant lease; the explicit replace-room UI follows the codec work.
+3. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
+4. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance
    without adding another transport or quality controller.
 

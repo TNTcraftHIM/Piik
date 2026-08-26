@@ -68,15 +68,15 @@ raw token in same-origin `localStorage`; the server keeps only its digest in the
 current room. Clearing local data or changing browser/device loses ownership.
 
 The Host browser also keeps one local creation profile containing its display
-name, code-entry policy, and optional room password, plus an independent
-non-secret preferred room code with a deadline equal to that room's configured
-lease duration (24 hours by default). Host sharing renews it every half lease;
-normal stop renews it once more. When old ownership no longer works, the next explicit
-share requests the still-current preferred code and atomically reapplies the
-creation profile. A free code may therefore be reused, but the result always has
-a new Host token, Viewer grant, password material, lease, and room incarnation;
-an occupied or expired preference falls back to random allocation. The site-access
-password is never part of this profile. A Host room password may be stored locally
+name, code-entry policy, and optional room password, plus one independent
+non-secret preferred room code. The preference has no client-side lease, timer,
+or expiry authority. When old ownership no longer works, the next explicit
+share always requests that code and atomically reapplies the creation profile.
+The server remains the only owner of room expiry and allocates the requested code
+only when free; otherwise it selects another free code and the browser remembers
+that result. Every allocation creates a new Host token, Viewer grant, password
+material, server lease, and room incarnation. The site-access password is never
+part of this profile. A Host room password may be stored locally
 as a convenience for this private product; the server receives it only over the
 authenticated creation or update path, derives the verifier, and never stores or
 logs the plaintext.
@@ -143,9 +143,8 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   invitations. Active media already disconnects at that boundary; the additional
   cost is a new room code and invitation. Same-browser Host preferences are
   reapplied automatically on the next explicit share.
-- A room unused beyond the lease is released. The local code preference is
-  renewed while sharing and once on normal stop, then expires after the same
-  configured lease duration.
+- A room unused beyond the server lease is released. The local preferred code
+  remains only a future allocation hint and never extends or proves that lease.
 - Recycled code-only bookmarks may eventually identify a different room. A stale
   grant remains unusable because the new room has a different digest.
 - Multi-process room coordination, seamless restart, and horizontal scaling are
@@ -167,10 +166,10 @@ the generic `SERVER_ERROR`. None of those paths is folded into
   valid for exactly the current room incarnation and has no independent expiry.
   `open` and `private` code entry, including private rooms with and without a
   password, are covered independently from grant rotate/revoke.
-- Same-browser recreation reapplies the Host profile and requests a current
-  preferred code only while it is free; another browser, cleared storage, an
-  expired preference, or an occupied code uses random allocation. No fingerprint
-  or server user record participates.
+- Same-browser recreation reapplies the Host profile and always requests its
+  preferred code; an occupied code uses random allocation and replaces the local
+  preference. Another browser or cleared storage has no preference. No
+  fingerprint, client clock, or server user record participates.
 - Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
   of application/proxy logs and server durable storage.
 - On the accepted `screener-v12` Browser wire, a well-formed, site-authorized

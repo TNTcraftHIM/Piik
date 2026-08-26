@@ -272,14 +272,15 @@ deficit still require multi-device and real-game calibration before product use.
 
 For direct peers, native SDP negotiation can order H.264 before VP8 in one offer
 and choose the first codec supported by both endpoints; it does not require a
-VP8 connection and a parallel H.264 connection. A research candidate is one
-share-scoped Host sender preflight and one received-source-scoped Browser-relay
-preflight: a proved sender prefers H.264 for future edges, otherwise it retains
-VP8, and already active edges are not churned. A single SFU publication still
-cannot provide per-subscriber H.264 and VP8 without a second encoded publication.
-LiveKit backup codec is therefore not accepted, and an H.264 SFU publication
-requires a separate decision on the supported Browser decode floor. No VP9,
-AV1, H.265, product codec selector, or deployment is accepted by this evidence.
+VP8 connection and a parallel H.264 connection. The accepted Browser design is
+one share-scoped Host sender preflight and one received-source-scoped
+Browser-relay preflight: a proved sender prefers H.264 for future edges,
+otherwise it retains VP8, and already active edges are not churned. A single SFU
+publication still cannot provide per-subscriber H.264 and VP8 without a second
+encoded publication.
+LiveKit backup codec is therefore not accepted. The Host source decision owns
+that single publication: proved H.264 or VP8 fallback. No VP9, AV1, H.265,
+product codec selector, or deployment is accepted by this evidence.
 
 HEVC, AV1, custom WebCodecs pipelines, and application packetization do not
 replace the browser WebRTC sender without a new capture, RTP/RTCP, feedback,

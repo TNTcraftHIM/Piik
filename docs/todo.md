@@ -7,12 +7,23 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+1. **Adaptive Browser H.264.** Implement the accepted source-scoped actual-sender
+   preflight. Proved Host/relay sources prefer H.264 with native VP8 fallback;
+   failed or inconclusive sources use VP8. The Host decision owns its one SFU
+   publication with backup codec disabled. Add no codec UI, wire state,
+   persistent cache, parallel codec route, or active-edge churn.
+2. **Preferred room simplification and replacement.** Keep the server dormant
+   lease unchanged, but store the latest preferred code without a client expiry
+   or renewal timer. After H.264, add the Host refresh-icon action immediately
+   left of copy: retire the old room through the normal lifecycle so its
+   credentials, password, invitation and routes become invalid, then allocate a
+   new room and update the local preference.
+3. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
    survival or controller recovery. Web does not promise background video or
    relay execution after OS suspension.
-2. **Finish real-network route and media acceptance.** Exercise direct peer,
+4. **Finish real-network route and media acceptance.** Exercise direct peer,
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,
@@ -57,9 +68,8 @@ later topic is not implementation authority by itself.
 | Item | Decision |
 | --- | --- |
 | Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
-| Adaptive Browser codec gate | Decide whether to accept one share/source-scoped H.264 sender preflight plus native H.264-to-VP8 negotiation. Chrome 153 passed direct, dual-sender, Browser-relay, and LiveKit paths on the measured NVIDIA/AMD machine while Chrome 151's selected AMD MFT failed. Probe calibration, real-game/60 fps, heterogeneous endpoints, and the single-SFU-publication codec policy remain unaccepted. |
-| Cross-restart room identity and media continuity | Decide whether the target stops at Host lineage/control recovery with a fresh authority epoch or also preserves old invitations. A signed Host capsule can restore lineage but cannot combine stable old grants with strong cross-restart rotate/revoke without a small durable latest-generation truth. Media can be rebuilt with a bounded gap, not promised uninterrupted. |
-| Quality-driven route exploration | First repair rendered/pause evidence, long recovered-freeze deltas, and presentation eligibility. Then confirm the freeze SLO, whether one post-commit trial plus one best-effort restore may temporarily worsen playback, how inconclusive probation settles, and whether quality work may prioritize an existing SFU publication. No active route change or relay-wide quality abdication is authorized. |
+| Optional SQLite persistence | Default memory rooms remain accepted. Define the complete opt-in durable authority, stored fields, inactive retention, credential/grant rotation and recovery before implementation. It may restore rooms and authorization across restart, but media still reconnects and recommits; unspecified future data is not scope. |
+| Quality-driven route exploration | The intended model includes exact-child active reparenting, relay ingress reparent with subtree retention, relay egress abdication/drain, and Host egress convergence onto one SFU publication while SFU-fed Viewers may still relay. Research must first unify their evidence, reservations, probation/restore and recovery under the existing single graph/operation; no active quality route change is authorized yet. |
 
 ## Evidence Boundaries
 

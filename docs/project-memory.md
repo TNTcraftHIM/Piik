@@ -69,9 +69,12 @@ Last updated: 2026-08-26
 
 ## Media Quality
 
-- Browser video is VP8 only. Display video uses `contentHint = "motion"` and
-  display audio uses `contentHint = "music"`. Codec UI/state/wire, backup media
-  codecs, and runtime codec switching do not exist.
+- Current source and production still use VP8 only. The accepted next Browser
+  contract runs one source-scoped actual-sender preflight: proved sources prefer
+  H.264 with native VP8 fallback, while failed/inconclusive sources remain
+  VP8-only. Codec UI/state/wire, persistent codec cache, parallel codec media,
+  backup publication, and active-edge codec switching remain absent. Display
+  video uses `contentHint = "motion"` and display audio uses `contentHint = "music"`.
 - Windows Chrome 151 uses software VP8 and exposes no Web control for selecting
   NVENC, AMF, QSV, a GPU, or an MFT. Edge, non-Windows paths, and real-game CPU
   contention remain evidence-specific.
@@ -123,8 +126,11 @@ Last updated: 2026-08-26
 
 ## Current Priority
 
-1. Measure Browser VP8 real-game cost, then complete the mobile Viewer lifecycle
-   matrix and representative real-network route/media acceptance.
+1. Implement and verify the accepted adaptive Browser H.264 sender gate without
+   changing the deployed VP8 release, then simplify the local preferred-room
+   record while retaining the server lease.
+2. Complete the mobile Viewer lifecycle matrix and representative real-network
+   route/media acceptance.
 
 Quality-driven parent selection, Native sender work, distribution packages,
 whole-product UI/bilingual polish, and repository-wide simplification remain

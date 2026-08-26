@@ -1,8 +1,9 @@
 # Cross-Restart Room Recovery
 
-Status: Research evidence for an unresolved product decision. ADR-0002 continues
-to own the accepted behavior: application restart loses every room, credential,
-lease, invitation, route, and media authority.
+Status: Later optional persistence research. ADR-0002 continues to own the
+default behavior: application restart loses every room, credential, lease,
+invitation, route, and media authority. The owner accepts that default and does
+not reopen persistence merely to preserve a preferred room code.
 
 ## Current Boundary
 
@@ -86,6 +87,15 @@ not a consequence of Host lineage recovery.
 4. Is a same-browser bearer recovery capsule an acceptable ownership boundary?
 5. Are application and LiveKit restart targets both bounded rebuild, or is
    LiveKit high availability a separately funded requirement?
+
+An optional SQLite mode may reopen this decision only as one complete durable
+room-authority contract, disabled by default. It would own room lineage, code,
+credential digests, authorization generation, policy/password verifier and a
+bounded inactive-retention fact atomically; live participants, routes, stats and
+SFU resources still rebuild. Unknown future data is not justification for a
+generic database. SQLite can make room identity and authorization robust across
+an application restart, but it cannot preserve WebSocket, WebRTC or LiveKit
+process state without client reconnect and media recommit.
 
 ## Primary Sources
 

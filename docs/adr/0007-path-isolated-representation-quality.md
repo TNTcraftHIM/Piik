@@ -1,8 +1,8 @@
 # ADR-0007: Framework-Owned Media Quality Adaptation
 
-- Status: Accepted, implemented, and deployed
+- Status: Accepted; adaptive Browser codec implementation pending
 - Date: 2026-08-19
-- Last reviewed: 2026-08-25
+- Last reviewed: 2026-08-26
 
 ## Context
 
@@ -22,9 +22,13 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
 
 ## Decision
 
-1. Browser video uses VP8 across direct, browser-relay, and SFU paths. Codec
-   selection, backup codecs, runtime codec switching, and codec state in the
-   room wire are not product features.
+1. Browser video makes one internal, source-scoped codec decision. A bounded
+   actual-`RTCPeerConnection` preflight measures H.264 encoded progress against
+   the same source progress. A proved source prefers H.264 and retains VP8 as
+   the native negotiation fallback; an unsupported, inconclusive, slow, or
+   failed preflight uses VP8 only. The result is not persisted or inferred from
+   UA, GPU, capability advertisement, or `powerEfficientEncoder` alone.
+   Codec UI/state/wire and active-edge codec switching are not product features.
 2. Display video uses the standard `contentHint = "motion"`; display audio uses
    `contentHint = "music"`. The hint expresses content intent and does not
    promise a resolution, frame rate, bitrate, encoder, or hardware path.
@@ -35,20 +39,26 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    After accepting an answer, the Host reapplies the current video profile to
    the negotiated sender because the browser may replace or rewrite encoding
    parameters during negotiation.
-5. The SFU publisher sets VP8, the selected HIGH ceiling, and degradation
+5. Direct and Browser-relay offers with a proved source order H.264 before VP8
+   in one standard codec-preference list; both endpoints select their first
+   common codec without a parallel media connection. A failed source gate
+   offers VP8 only. Existing edges are not renegotiated when a later relay gate
+   completes; its result applies to future children.
+6. The SFU publisher uses the Host source decision for its one publication,
+   disables backup codec, sets the selected HIGH ceiling and degradation
    preference, but does not set `screenShareSimulcastLayers`, mutate lower
    encodings, or select a subscriber layer. Pinned LiveKit defaults own the
-   representation set and source-replacement/republish behavior.
-6. LiveKit Dynacast and server send-side BWE remain enabled. AdaptiveStream
+   selected codec's representation set and source-replacement/republish behavior.
+7. LiveKit Dynacast and server send-side BWE remain enabled. AdaptiveStream
    remains disabled because a Viewer may relay its received track to peer
    children; local DOM size or visibility cannot represent that downstream
    demand.
-7. Quality measurements are diagnostic. Bitrate, resolution, FPS, RTT, jitter,
+8. Quality measurements are diagnostic. Bitrate, resolution, FPS, RTT, jitter,
    loss, freeze counters, codec, and limitation reason do not trigger parent
    selection, relay abdication, periodic rebalancing, or route changes. Only
    hard connection failure, the existing non-paused decoded-frame stall, parent
    departure, or capacity invalidation can make an active edge unusable.
-8. A healthy decoded route remains sticky. Manual media reconnect rebuilds the
+9. A healthy decoded route remains sticky. Manual media reconnect rebuilds the
    current exact P2P parent or current SFU subscription; it does not search for
    a better parent. If current-route recovery genuinely exhausts, ADR-0005's
    existing controller tries other eligible P2P parents before SFU.
@@ -71,10 +81,19 @@ behavior requested for games, not a quality floor. Real-game readability,
 weaker Hosts, heterogeneous devices, and public-network SFU quality still
 require physical evidence.
 
+The exact Chrome 151/153 comparison in realtime-quality research established
+why this decision is runtime-evidence driven: the cadence-failing AMD H.264 MFT
+and the full-cadence NVIDIA H.264 MFT both reported hardware efficiency. Source
+versus encoded-frame progress separated them. Chrome 153 then sustained the
+same H.264 path with two senders, Browser relay re-encoding, and one pinned
+LiveKit HIGH+LOW publication without backup codec.
+
 ## Consequences
 
 - Screener owns fewer media mechanisms and follows the pinned frameworks'
   supported control surfaces.
+- A capable Browser Host or relay can use H.264 hardware encoding while another
+  source remains on VP8 without a user setting or room-protocol branch.
 - A constrained Viewer may receive a lower LiveKit representation without
   lowering every subscriber, subject to the publisher and network actually
   sustaining the framework contract.
@@ -88,6 +107,8 @@ require physical evidence.
 ## Stop Lines
 
 - No Screener resolution/FPS/bitrate ladder or representation formula.
+- No codec selector, GPU/MFT allowlist, persistent codec cache, parallel
+  VP8/H.264 route, active-edge codec churn, or LiveKit backup publication.
 - No manual SFU layer selector, forced single HIGH publication, or per-Viewer
   encoder.
 - No quality score, all-pairs probing, periodic rebalancing, or speculative
