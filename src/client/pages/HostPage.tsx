@@ -281,7 +281,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     "access" | "replacement" | null
   >(null);
   const roomMutating = roomMutation !== null;
-  const replacingRoom = roomMutation === "replacement";
   const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(
     creationProfile.roomPassword !== null,
   );
@@ -666,13 +665,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     if (!activeRoom || roomMutationRef.current || phase === "starting") {
       return;
     }
-    if (
-      !window.confirm(
-        "更换房间号将结束当前分享，并使旧邀请和房间密码失效。继续吗？",
-      )
-    ) {
-      return;
-    }
     const mutation = beginRoomMutation("replacement");
     if (!mutation) {
       return;
@@ -699,7 +691,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordEnabled(profile.roomPassword !== null);
       setViewerPasswordDraft(profile.roomPassword ?? "");
       setViewerPasswordVisible(false);
-      setNotice("房间号已更换");
+      setNotice(null);
       setPhase(wasSharing ? "ended" : "idle");
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
@@ -2159,8 +2151,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 {room && (
                   <RoomCode
                     roomId={room.roomId}
-                    onReplace={() => void replaceCurrentRoom()}
-                    replacing={replacingRoom}
+                    onReplace={replaceCurrentRoom}
                     replaceDisabled={phase === "starting" || roomMutating}
                   />
                 )}

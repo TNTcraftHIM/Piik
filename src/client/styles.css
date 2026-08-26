@@ -221,6 +221,12 @@ button:disabled {
   white-space: nowrap;
 }
 
+.room-code-actions {
+  display: inline-flex;
+  height: 30px;
+  flex: 0 0 auto;
+}
+
 .room-code-copy {
   display: grid;
   width: 31px;
