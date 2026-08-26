@@ -80,6 +80,9 @@ function secondaryMetrics(
   };
 
   addNumber("RTT", metrics.rttMs, "ms", 0, "网络往返时间");
+  if (metrics.codec) {
+    values.push({ label: "视频编码", value: codecName(metrics.codec) });
+  }
 
   if (direction === "send") {
     addNumber("可用上行", metrics.availableOutgoingKbps, "kbps");
