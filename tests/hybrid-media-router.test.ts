@@ -383,6 +383,107 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
+  it("reports a late final SFU bootstrap ready only to the waiting demand", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { store, sent, router } = harness(2, true, 300);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+
+      const firstRoot = connectViewer(store, room, "late-ready-first-root");
+      complete(router, firstRoot);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, firstRoot.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const firstPrepare = preparedFor(sent, firstRoot.sessionId)!;
+      router.handleRouteReady(firstRoot, {
+        type: "route-ready",
+        revision: firstPrepare.revision,
+        phase: "prepare",
+      });
+      router.setViewerRelayCapacity(firstRoot, 2);
+
+      const secondRoot = connectViewer(store, room, "late-ready-second-root");
+      complete(router, secondRoot);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, secondRoot.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const secondPrepare = preparedFor(sent, secondRoot.sessionId)!;
+      router.handleRouteReady(secondRoot, {
+        type: "route-ready",
+        revision: secondPrepare.revision,
+        phase: "prepare",
+      });
+
+      const waiting = connectViewer(store, room, "late-ready-waiting");
+      complete(router, waiting);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, waiting.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, secondRoot.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      const firstCarrier = preparedFor(sent, secondRoot.sessionId)!;
+      router.handleRouteFailed(secondRoot, {
+        type: "route-failed",
+        revision: firstCarrier.revision,
+        phase: "prepare",
+        connectionId: firstCarrier.candidate.connectionId,
+      });
+
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, firstRoot.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      const finalCarrier = preparedFor(sent, firstRoot.sessionId)!;
+      vi.setSystemTime(451);
+      router.handleRouteReady(firstRoot, {
+        type: "route-ready",
+        revision: finalCarrier.revision,
+        phase: "prepare",
+      });
+
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(waiting.sessionId)
+            ?.filter(
+              (message) =>
+                message.type === "route-status" &&
+                message.state === "failed" &&
+                message.reason === "route-exhausted",
+            ),
+        ).toHaveLength(1),
+      );
+      for (const carrier of [firstRoot, secondRoot]) {
+        expect(
+          sent
+            .get(carrier.sessionId)
+            ?.some(
+              (message) =>
+                message.type === "route-status" && message.state === "failed",
+            ),
+        ).toBe(false);
+      }
+    } finally {
+      await router.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("reports bounded route exhaustion without raw error text", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

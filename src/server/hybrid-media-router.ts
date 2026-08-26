@@ -486,7 +486,7 @@ export class HybridMediaRouter {
       participant: this.debugPeer(participant.roomId, participant.peerId),
       revision: message.revision,
       accepted: settled.accepted,
-      exhausted: settled.exhausted === true,
+      exhausted: settled.failedPeerIds.length > 0,
     });
     this.releaseResources(settled.released);
     if (settled.accepted) {
@@ -498,14 +498,11 @@ export class HybridMediaRouter {
       );
     }
     if (controller.snapshot().revision !== before) this.broadcastActive(participant.roomId, room);
-    if (settled.exhausted) {
-      this.sendViewerRouteStatus(participant.roomId, participant.peerId, {
-        type: "route-status",
-        revision: controller.snapshot().revision,
-        state: "failed",
-        reason: "route-exhausted",
-      });
-    }
+    this.sendRouteFailures(
+      participant.roomId,
+      settled.failedPeerIds,
+      controller.snapshot().revision,
+    );
     this.requestPump(participant.roomId);
   }
 
@@ -545,14 +542,11 @@ export class HybridMediaRouter {
     if (controller.snapshot().revision !== before) {
       this.broadcastActive(participant.roomId, room);
     }
-    if (progressed.exhausted) {
-      this.sendViewerRouteStatus(participant.roomId, operation.demandPeerId, {
-        type: "route-status",
-        revision: controller.snapshot().revision,
-        state: "failed",
-        reason: "route-exhausted",
-      });
-    }
+    this.sendRouteFailures(
+      participant.roomId,
+      progressed.failedPeerIds,
+      controller.snapshot().revision,
+    );
     const after = controller.snapshot().operation;
     if (!progressed.accepted || after?.wakeAtMs !== operation.wakeAtMs) {
       this.requestPump(participant.roomId);
@@ -640,18 +634,11 @@ export class HybridMediaRouter {
       );
       this.releaseResources(settled.released);
       if (controller.snapshot().revision !== before) this.broadcastActive(participant.roomId, room);
-      if (settled.exhausted) {
-        this.sendViewerRouteStatus(
-          participant.roomId,
-          operation.demandPeerId,
-          {
-            type: "route-status",
-            revision: controller.snapshot().revision,
-            state: "failed",
-            reason: "route-exhausted",
-          },
-        );
-      }
+      this.sendRouteFailures(
+        participant.roomId,
+        settled.failedPeerIds,
+        controller.snapshot().revision,
+      );
       this.requestPump(participant.roomId);
       return;
     }
@@ -815,14 +802,11 @@ export class HybridMediaRouter {
       const reconciled = controller.reconcile(this.now());
       this.releaseResources(reconciled.released);
       if (controller.snapshot().revision !== beforeRevision) this.broadcastActive(roomId, room);
-      for (const peerId of reconciled.failedPeerIds) {
-        this.sendViewerRouteStatus(roomId, peerId, {
-          type: "route-status",
-          revision: controller.snapshot().revision,
-          state: "failed",
-          reason: "route-exhausted",
-        });
-      }
+      this.sendRouteFailures(
+        roomId,
+        reconciled.failedPeerIds,
+        controller.snapshot().revision,
+      );
       const operation = reconciled.operation ?? controller.snapshot().operation;
       if (!operation) {
         this.clearDeadline(room);
@@ -884,14 +868,11 @@ export class HybridMediaRouter {
           preparation.rejectionBucket,
         );
         this.releaseResources(skipped.released);
-        if (skipped.exhausted) {
-          this.sendViewerRouteStatus(roomId, operation.demandPeerId, {
-            type: "route-status",
-            revision: controller.snapshot().revision,
-            state: "failed",
-            reason: "route-exhausted",
-          });
-        }
+        this.sendRouteFailures(
+          roomId,
+          skipped.failedPeerIds,
+          controller.snapshot().revision,
+        );
         continue;
       }
       this.resourceWaiters.delete(roomId);
@@ -905,14 +886,11 @@ export class HybridMediaRouter {
         const beforeGap = controller.snapshot().revision;
         const gap = controller.retireCurrentCandidateProducer(guard, this.now());
         this.releaseResources(gap.released);
-        if (gap.exhausted) {
-          this.sendViewerRouteStatus(roomId, operation.demandPeerId, {
-            type: "route-status",
-            revision: controller.snapshot().revision,
-            state: "failed",
-            reason: "route-exhausted",
-          });
-        }
+        this.sendRouteFailures(
+          roomId,
+          gap.failedPeerIds,
+          controller.snapshot().revision,
+        );
         if (!gap.accepted) {
           this.releaseReservation(preparation.prepared.reservation);
           continue;
@@ -938,18 +916,15 @@ export class HybridMediaRouter {
         child: this.debugPeer(roomId, operation.childPeerId),
         route: this.debugTuple(roomId, plan.tuple),
         accepted: begun.accepted,
-        exhausted: begun.exhausted === true,
+        exhausted: begun.failedPeerIds.length > 0,
       });
       this.releaseResources(begun.released);
       if (!begun.accepted || !begun.operation?.current) {
-        if (begun.exhausted) {
-          this.sendViewerRouteStatus(roomId, operation.demandPeerId, {
-            type: "route-status",
-            revision: controller.snapshot().revision,
-            state: "failed",
-            reason: "route-exhausted",
-          });
-        }
+        this.sendRouteFailures(
+          roomId,
+          begun.failedPeerIds,
+          controller.snapshot().revision,
+        );
         continue;
       }
       this.sendPrepareMessages(
@@ -1508,18 +1483,15 @@ export class HybridMediaRouter {
       this.debug(roomId, "deadline-fired", {
         child: this.debugPeer(roomId, operation.childPeerId),
         accepted: expired.accepted,
-        exhausted: expired.exhausted === true,
+        exhausted: expired.failedPeerIds.length > 0,
       });
       this.releaseResources(expired.released);
       if (room.controller.snapshot().revision !== before) this.broadcastActive(roomId, room);
-      if (expired.exhausted) {
-        this.sendViewerRouteStatus(roomId, operation.demandPeerId, {
-          type: "route-status",
-          revision: room.controller.snapshot().revision,
-          state: "failed",
-          reason: "route-exhausted",
-        });
-      }
+      this.sendRouteFailures(
+        roomId,
+        expired.failedPeerIds,
+        room.controller.snapshot().revision,
+      );
       this.requestPump(roomId);
     }, Math.max(0, operation.wakeAtMs - this.now()));
     timer.unref();
@@ -1738,6 +1710,21 @@ export class HybridMediaRouter {
   ): void {
     const viewer = this.options.roomStore.getConnectedViewer(roomId, viewerPeerId);
     if (viewer) this.options.sendToSession(viewer.sessionId, message);
+  }
+
+  private sendRouteFailures(
+    roomId: string,
+    failedPeerIds: readonly string[],
+    revision: number,
+  ): void {
+    for (const peerId of new Set(failedPeerIds)) {
+      this.sendViewerRouteStatus(roomId, peerId, {
+        type: "route-status",
+        revision,
+        state: "failed",
+        reason: "route-exhausted",
+      });
+    }
   }
 }
 
