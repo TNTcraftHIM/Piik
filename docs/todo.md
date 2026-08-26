@@ -7,21 +7,12 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Browser codec preflight.** Keep the product on VP8 while an isolated Chrome
-   153 experiment compares VP8 with H.264 constrained baseline under the current
-   `motion` capture semantics. Measure Host send, Viewer decode, Browser relay,
-   one/two outbound senders, and a VP8-first background transition using actual
-   codec/profile, implementation and power-efficiency evidence when exposed,
-   cadence, encode/decode time, and CPU/GPU attribution. The default browser path
-   is product evidence; an AMD forced-SW-BRC arm is diagnostic only. Do not add
-   product codec selection, VP9/AV1/H.265 probing, a custom encoder, or deploy a
-   codec change before this gate is accepted.
-2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+1. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
    survival or controller recovery. Web does not promise background video or
    relay execution after OS suspension.
-3. **Finish real-network route and media acceptance.** Exercise direct peer,
+2. **Finish real-network route and media acceptance.** Exercise direct peer,
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,
@@ -66,8 +57,9 @@ later topic is not implementation authority by itself.
 | Item | Decision |
 | --- | --- |
 | Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
-| Cross-restart room identity and media continuity | Decide whether stable invitations and uninterrupted control justify durable or signed room lineage plus exact route/resource recovery. Preferred code/password replay alone remains a new room incarnation. |
-| Quality-driven route exploration | Confirm the trigger SLO, whether one post-commit trial plus one restore may temporarily worsen playback, how inconclusive probation settles, and whether quality work may prioritize an existing SFU publication or create a new one. No active route change is authorized until then. |
+| Adaptive Browser codec gate | Decide whether to accept one share/source-scoped H.264 sender preflight plus native H.264-to-VP8 negotiation. Chrome 153 passed direct, dual-sender, Browser-relay, and LiveKit paths on the measured NVIDIA/AMD machine while Chrome 151's selected AMD MFT failed. Probe calibration, real-game/60 fps, heterogeneous endpoints, and the single-SFU-publication codec policy remain unaccepted. |
+| Cross-restart room identity and media continuity | Decide whether the target stops at Host lineage/control recovery with a fresh authority epoch or also preserves old invitations. A signed Host capsule can restore lineage but cannot combine stable old grants with strong cross-restart rotate/revoke without a small durable latest-generation truth. Media can be rebuilt with a bounded gap, not promised uninterrupted. |
+| Quality-driven route exploration | First repair rendered/pause evidence, long recovered-freeze deltas, and presentation eligibility. Then confirm the freeze SLO, whether one post-commit trial plus one best-effort restore may temporarily worsen playback, how inconclusive probation settles, and whether quality work may prioritize an existing SFU publication. No active route change or relay-wide quality abdication is authorized. |
 
 ## Evidence Boundaries
 

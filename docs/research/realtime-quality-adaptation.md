@@ -241,27 +241,45 @@ The Browser candidates therefore have narrower potential than their names imply:
 | AV1 | Modern hardware can provide the strongest compression candidate. | Chrome 151 and 153 keep Windows WebRTC AV1 hardware encode disabled by default, so codec support does not provide a usable hardware contract. |
 | H.265 | Supported hardware can provide efficient H.264-class low-CPU encode at lower bitrate. | It is an advanced codec not supported by every Browser client; LiveKit compatibility requires regression or a backup publication, and the current cross-Browser relay matrix is absent. |
 
-No candidate currently provides a product-wide Browser improvement with VP8's
-coverage. Browser media therefore remains VP8 while one bounded preflight is
-open. It reproduces the accepted `motion` capture semantics and compares VP8
-with H.264 constrained baseline on exact Chrome 153. The default browser path is
-the product evidence; forcing AMD software BRC is a diagnostic arm only.
+No candidate yet provides a product-wide Browser improvement with VP8's
+coverage, so Browser media remains VP8. A bounded preflight nevertheless proved
+that an actual sender can distinguish the previously bad and a newly good H.264
+path without naming a GPU or trusting capability advertisement. All samples used
+one real tab `getDisplayMedia()` source at 1904x928@30, `contentHint = "motion"`,
+a 5 Mbps ceiling, five seconds of settling, and a ten-second measurement window.
 
-The gate covers Host-to-Viewer and Browser-relay-to-child paths with one and two
-outbound senders. Codec capability is insufficient: each endpoint must prove the
-negotiated codec/profile, encoder and decoder implementation when exposed,
-power-efficiency evidence, encoded and decoded cadence, bitrate, resolution,
-encode/decode time, quality-limitation reason, and process CPU/GPU video-engine
-attribution. This determines whether a P2P connection can select H.264 for an
-efficient sender and receiver and otherwise retain VP8, including the relay's
-fresh encode cost.
+| Browser and path | Actual implementation | Source / encoded / decoded cadence | Result |
+| --- | --- | --- | --- |
+| Chrome 151 direct H.264 | AMD Media Foundation hardware encoder; D3D11 decoder | 30.0 / 12.5 / 12.4 fps | Failed despite `powerEfficientEncoder = true`; encoded/source ratio 0.42. |
+| Chrome 153 direct VP8 | `libvpx` software encoder and decoder | about 29.9 / 29.9 / 29.9 fps | Control sustained source cadence. |
+| Chrome 153 direct H.264 | NVIDIA Media Foundation hardware encoder; D3D11 decoder | 29.9 / 29.9 / 30.0 fps | Full-cadence constrained baseline, ratio 1.00. |
+| Chrome 153 LiveKit 1.13.5 H.264 | Simulcast adapter with two NVIDIA MFT encoders; D3D11 decoder | 29.5 / 29.1 / 29.1 fps | One `backupCodec: false` HIGH+LOW publication delivered the HIGH stream, ratio 0.99. |
 
-A single SFU publication cannot supply subscriber-specific H.264 and VP8 without
-another encoded publication. A VP8-first viewing path followed by background
-H.264 confirmation must therefore separately prove its transition behavior and
-the temporary dual-encode or republish cost before it can be accepted as
-seamless fallback. The spike adds no VP9, AV1, or H.265 runtime probing, codec
-selector, product integration, or deployment.
+Exact Chrome 153 also sustained about 30 fps on two simultaneous direct H.264
+senders. A Host-to-Browser-relay-to-child chain sustained 29.6-29.7 fps at full
+source resolution, and both encode stages remained NVIDIA MFT while both decode
+stages remained D3D11. The dual-direct sample was still inside native bandwidth
+ramp-up and therefore proves encoder cadence, not steady resolution quality.
+Process identities changed during startup, so those whole-browser CPU deltas are
+not retained as a codec cost claim.
+
+`powerEfficientEncoder` alone cannot be the gate because the cadence-failing AMD
+path also reported true. The portable evidence is the actual negotiated H.264
+profile and implementation, plus identity-stable source-frame and encoded-frame
+progress; the successful cohorts kept their encoded/source deficit bounded while
+the bad path dropped frames continuously. The measurement window and acceptable
+deficit still require multi-device and real-game calibration before product use.
+
+For direct peers, native SDP negotiation can order H.264 before VP8 in one offer
+and choose the first codec supported by both endpoints; it does not require a
+VP8 connection and a parallel H.264 connection. A research candidate is one
+share-scoped Host sender preflight and one received-source-scoped Browser-relay
+preflight: a proved sender prefers H.264 for future edges, otherwise it retains
+VP8, and already active edges are not churned. A single SFU publication still
+cannot provide per-subscriber H.264 and VP8 without a second encoded publication.
+LiveKit backup codec is therefore not accepted, and an H.264 SFU publication
+requires a separate decision on the supported Browser decode floor. No VP9,
+AV1, H.265, product codec selector, or deployment is accepted by this evidence.
 
 HEVC, AV1, custom WebCodecs pipelines, and application packetization do not
 replace the browser WebRTC sender without a new capture, RTP/RTCP, feedback,
@@ -351,6 +369,25 @@ media routes whose competing bandwidth and non-rendered candidate metrics would
 distort comparison. It necessarily permits a temporarily worse candidate and a
 second transition on restore; that behavior, the freeze SLO, inconclusive result,
 and permission to create or prioritize SFU resources remain product decisions.
+
+The current quality-evidence wire is not yet eligible for that shadow authority.
+WebRTC defines freeze and pause from rendered frames, while the current payload
+has decoded progress but no rendered-frame or standard pause evidence. It also
+caps one recovered `freezeDuration` delta to one report window even though the
+cumulative counter can legitimately jump by several windows after rendering
+resumes. Presentation eligibility must bind visibility, page lifecycle, local
+playback/autoplay, Host pause, current frame proof, and an identity epoch; the
+first sample after any epoch change establishes a baseline only.
+
+The minimal active state machine remains `observe -> qualified -> queued ->
+trial prepare -> first-frame commit -> probation -> keep | restore once ->
+cooldown`. It uses the existing reservation and room-serial child operation,
+permits no bounded-gap quality trial, and yields to availability work. Relay
+ingress evidence may reparent that relay while retaining its subtree, but one or
+several child reports cannot infer that the relay is globally bad. Phase one has
+no quality-driven relay-wide abdication. Freeze entry/exit, probation evidence,
+improvement margin, cooldown, and room disruption budget must be calibrated from
+real annotated sessions; paper and library defaults are not Screener thresholds.
 
 ## Current Verification Gaps
 
