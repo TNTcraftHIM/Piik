@@ -108,7 +108,7 @@ function harness(
       })
     : undefined;
   const roomControl = withSfu ? new FakeSfuRoomControl() : undefined;
-  const onActiveRouteChanged = vi.fn();
+  const onViewerMediaSnapshot = vi.fn();
   let nextTokenIssueError: Error | null = null;
   const router = new HybridMediaRouter({
     roomStore: store,
@@ -148,14 +148,14 @@ function harness(
       connections.delete(`${roomId}:${viewerPeerId}`);
     },
     getShareGeneration: () => SHARE_GENERATION,
-    onActiveRouteChanged,
+    onViewerMediaSnapshot,
   });
   return {
     store,
     sent,
     admission,
     roomControl,
-    onActiveRouteChanged,
+    onViewerMediaSnapshot,
     failNextTokenIssue() {
       nextTokenIssueError = new Error("token issue failed");
     },
@@ -204,6 +204,41 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
+  it("reports active SFU viewers as one authoritative snapshot", async () => {
+    const { store, sent, router, onViewerMediaSnapshot } = harness(1, true);
+    try {
+      const room = await store.createRoom();
+      const { first, second } = await establishSfuRoom(
+        store,
+        sent,
+        router,
+        room,
+      );
+
+      await vi.waitFor(() => {
+        const [reportedRoomId, viewers] =
+          onViewerMediaSnapshot.mock.calls.at(-1) ?? [];
+        expect(reportedRoomId).toBe(room.roomId);
+        expect(
+          new Set(
+            (viewers ?? []).map(
+              (viewer: { viewerPeerId: string }) => viewer.viewerPeerId,
+            ),
+          ),
+        ).toEqual(new Set([first.peerId, second.peerId]));
+        expect(
+          new Set(
+            (viewers ?? []).map(
+              (viewer: { revision: number }) => viewer.revision,
+            ),
+          ).size,
+        ).toBe(1);
+      });
+    } finally {
+      await router.close();
+    }
+  });
+
   it("wakes at the derived direct boundary and prepares SFU automatically", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

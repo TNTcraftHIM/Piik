@@ -1665,30 +1665,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     );
   }, [frameProofEpoch, presentationState.connection, remoteMedia]);
 
-  useEffect(() => {
-    if (presentation.overlay === "none") {
-      return;
-    }
-    const video = videoRef.current as
-      | (HTMLVideoElement & {
-          webkitDisplayingFullscreen?: boolean;
-          webkitExitFullscreen?: () => void;
-        })
-      | null;
-    if (!video) {
-      return;
-    }
-    if (document.fullscreenElement === video) {
-      void document.exitFullscreen().catch(() => undefined);
-      return;
-    }
-    if (video.webkitDisplayingFullscreen) {
-      try {
-        video.webkitExitFullscreen?.();
-      } catch {}
-    }
-  }, [presentation.overlay]);
-
   function retryConnection(): void {
     if (reconnectRoute === "sfu") {
       viewerSfuRouteRef.current?.reconnectActive();

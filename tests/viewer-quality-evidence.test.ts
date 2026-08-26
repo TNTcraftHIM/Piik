@@ -497,7 +497,7 @@ describe("viewer quality evidence", () => {
     ).toBe("video/H264");
   });
 
-  it("resets retained fields on identity or non-monotonic sequence changes", () => {
+  it("retains fields across room revisions and resets changed media identities", () => {
     const first = presentViewerQualityEvidence(
       null,
       serverEvidence({ sequence: 9 }),
@@ -523,7 +523,7 @@ describe("viewer quality evidence", () => {
       }),
       2_000,
     );
-    expect(changedRoute.evidence.metrics.codec).toBeNull();
+    expect(changedRoute.evidence.metrics.codec).toBe("video/H264");
 
     const changedConnection = presentViewerQualityEvidence(
       first,

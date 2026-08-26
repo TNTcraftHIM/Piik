@@ -286,8 +286,7 @@ function sameViewerQualityEvidenceIdentity(
   return (
     previous.viewerPeerId === next.viewerPeerId &&
     qualityEvidenceUpstreamMatches(previous, next.upstream) &&
-    previous.guard.connectionId === next.guard.connectionId &&
-    previous.guard.routeRevision === next.guard.routeRevision
+    previous.guard.connectionId === next.guard.connectionId
   );
 }
 

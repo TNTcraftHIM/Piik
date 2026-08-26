@@ -1417,7 +1417,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           message.revision !== activeRouteRevisionRef.current
         ) {
           activeRouteRevisionRef.current = message.revision;
-          clearAllViewerQualityEvidence();
         }
         showHostSfuQualityWarning(route, generation);
       }
