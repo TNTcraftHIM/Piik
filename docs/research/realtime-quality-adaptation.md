@@ -425,6 +425,77 @@ no quality-driven relay-wide abdication. Freeze entry/exit, probation evidence,
 improvement margin, cooldown, and room disruption budget must be calibrated from
 real annotated sessions; paper and library defaults are not Screener thresholds.
 
+The candidate active model has one `QualityEpisode` inside the existing room
+controller, not a second optimizer. It keeps only the exact subject, prior
+route or capacity, trigger-evidence revision, trial revision, probation
+baseline, one restore flag, and a cooldown `notBefore`. Cooldown expiry does not
+wake the room; the next real room or evidence event may reconsider it. Join,
+hard recovery, departure, pause, capacity, and SFU drain work always preempt and
+clear lower-priority quality work.
+
+One episode asks the existing deterministic filters and ordering for only the
+first eligible candidate. It prepares that single route through the existing
+capacity and server-resource reservations, retains the old route until first-
+frame commit, then measures the new presented path sequentially in probation.
+Failure is inconclusive and enters cooldown; it does not enumerate more parents.
+Probation may restore the old tuple once through the same child operation. A
+quality-only trial is skipped when make-before-break overlap is unavailable;
+bounded-gap cutover remains reserved for availability recovery.
+
+The same episode model covers every transport without a P2P/SFU state matrix:
+
+- one degraded child is the subject of an ordinary reparent operation;
+- a relay with degraded ingress is itself the child, so its subtree remains;
+- healthy ingress plus corroborated degradation across multiple exact child
+  sender/receiver pairs may reduce that parent's effective capacity by one,
+  letting existing overflow reconciliation move one child at a time;
+- a Host-wide egress problem with a healthy source may trial the existing SFU
+  publication as one candidate, but only with normal Host overlap, publication,
+  subscription, and admission reservations; and
+- an SFU-fed Viewer remains an ordinary peer parent candidate and never creates
+  a second publication.
+
+Capacity recovery is event-driven half-open: after cooldown, a later real demand
+may use one provisional slot, and that child supplies probation evidence. No
+demand means no probe or rebalance. At `C=3`, a full Host has no fourth-copy
+overlap; it must first move one child make-before-break through an already
+eligible peer or skip the Host-to-SFU quality trial. SFU admission rejection
+keeps the healthy route and ends the episode without joining the availability
+resource-wait queue.
+
+Current-path evidence cannot prove an unconnected path is better. FPS,
+resolution, and bitrate require a same-window source baseline; configured
+ceilings are not delivered floors. Loss, RTT, jitter, NACK/PLI, encode/decode
+time, and `qualityLimitationReason` remain attribution unless corroborated by
+presented-path evidence. Parent-wide abdication additionally needs evidence from
+multiple distinct current children plus their exact sender constraints while
+the parent ingress remains healthy; `C=1` therefore cannot infer parent-wide
+quality from one child.
+
+Production shadow data must determine every policy number: entry/exit floor,
+minimum eligible windows and duration, aligned-window tolerance, probation,
+meaningful improvement margin, cooldown, per-room disruption budget, `C=3`
+quorum, Host-to-SFU gate, inconclusive rate, and browser/mobile missing-field
+rate. Overcast's percentage, End System Multicast's hold-down/probe cadence,
+QUIC path timers, circuit-breaker defaults, and paper test payloads are evidence
+about structure only and are not accepted thresholds.
+
+Overcast and ALMI support measured gain versus disruption before switching.
+RFC 8326 supports drain-before-removal; RFC 9000 supports validating a new path
+while the old path remains usable and not inheriting old congestion state. RFC
+7196's documented damping false positives support shadow-first observation, but
+its penalty score is not adopted. A half-open concept is useful without adding
+a circuit-breaker dependency or sliding failure-rate controller. SplitStream,
+CoolStreaming/DONet, and SAAR require multi-tree striping, mesh/block pull, or a
+second active control overlay and remain explicit no-go references for this
+single-graph product.
+
+This research adds no dependency and copies no implementation. LiveKit is
+Apache-2.0, libwebrtc uses its BSD-style license, and Resilience4j is
+Apache-2.0; papers, RFCs, and W3C documents are referenced only for design
+evidence. GPL/AGPL reference implementations remain study-only under the
+repository license boundary.
+
 ## Current Verification Gaps
 
 - Real games under competing CPU/GPU load at 720p30, 1080p30, and 1080p60.
@@ -477,4 +548,13 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [LiveKit advanced and backup codec contract](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
 - [Overcast parent measurement and hysteresis](https://pdos.csail.mit.edu/~jj/jannotti.com/papers/overcast-osdi00/)
 - [ALMI application-level multicast](https://www.usenix.org/legacy/event/usits01/full_papers/shi/shi_html/)
+- [End System Multicast](https://static.usenix.org/events/usenix04/tech/general/full_papers/chu/chu_html/index.html)
+- [RFC 8326 graceful routing shutdown](https://www.rfc-editor.org/rfc/rfc8326.html)
+- [RFC 9000 path validation and migration](https://www.rfc-editor.org/rfc/rfc9000.html)
+- [RFC 7196 route-flap damping](https://www.rfc-editor.org/rfc/rfc7196.html)
+- [RFC 8836 WebRTC congestion-control interactions](https://www.rfc-editor.org/rfc/rfc8836.html)
+- [Resilience4j circuit-breaker states](https://resilience4j.readme.io/docs/circuitbreaker)
+- [SplitStream](https://www.microsoft.com/en-us/research/wp-content/uploads/2003/02/castro03splitstream.pdf)
+- [CoolStreaming/DONet](https://researchportal.hkust.edu.hk/en/publications/coolstreamingdonet-a-data-driven-overlay-network-for-peer-to-peer/)
+- [SAAR](https://static.usenix.org/event/nsdi07/tech/full_papers/nandi/nandi_html/index.html)
 - [Media Capabilities](https://www.w3.org/TR/media-capabilities/)
