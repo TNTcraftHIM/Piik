@@ -21,7 +21,6 @@ const hostRoomStorageSchema = createRoomResponseSchema.pick({
 const hostRoomPreferenceSchema = z
   .object({
     roomId: roomCodeSchema,
-    preferenceExpiresAt: z.string().datetime(),
   })
   .strict();
 
@@ -119,7 +118,7 @@ export function readHostRoom(): HostRoomIdentity | null {
   }
 }
 
-export function readPreferredRoomId(nowMs = Date.now()): string | null {
+export function readPreferredRoomId(): string | null {
   let stored: string | null;
   try {
     stored = window.localStorage.getItem(HOST_ROOM_PREFERENCE_STORAGE_KEY);
@@ -131,10 +130,7 @@ export function readPreferredRoomId(nowMs = Date.now()): string | null {
   }
   try {
     const parsed = hostRoomPreferenceSchema.safeParse(JSON.parse(stored));
-    if (
-      !parsed.success ||
-      Date.parse(parsed.data.preferenceExpiresAt) <= nowMs
-    ) {
+    if (!parsed.success) {
       clearPreferredRoom();
       return null;
     }
@@ -145,29 +141,14 @@ export function readPreferredRoomId(nowMs = Date.now()): string | null {
   }
 }
 
-export function writePreferredRoom(
-  roomId: string,
-  roomLeaseSeconds: number,
-  nowMs = Date.now(),
-): void {
-  if (
-    !roomCodeSchema.safeParse(roomId).success ||
-    !Number.isSafeInteger(roomLeaseSeconds) ||
-    roomLeaseSeconds <= 0
-  ) {
-    return;
-  }
-  const expiresAtMs = nowMs + roomLeaseSeconds * 1_000;
-  if (!Number.isFinite(expiresAtMs)) {
+export function writePreferredRoom(roomId: string): void {
+  if (!roomCodeSchema.safeParse(roomId).success) {
     return;
   }
   try {
     window.localStorage.setItem(
       HOST_ROOM_PREFERENCE_STORAGE_KEY,
-      JSON.stringify({
-        roomId,
-        preferenceExpiresAt: new Date(expiresAtMs).toISOString(),
-      }),
+      JSON.stringify({ roomId }),
     );
   } catch {
     // A storage failure only disables best-effort code reuse.

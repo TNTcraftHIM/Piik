@@ -8,6 +8,7 @@ export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
 export const SIGNALING_PROTOCOL = "screener-v12";
 export const SIGNAL_CLOSE_CODES = {
+  serviceRestart: 1012,
   sessionReplaced: 4001,
   clientReconnect: 4002,
   authenticationFailed: 4003,
@@ -1011,6 +1012,14 @@ export const createRoomRequestSchema = z
     preferredRoomId: roomCodeSchema.optional(),
   })
   .strict();
+
+export const replaceRoomRequestSchema = z
+  .object({
+    codeEntryPolicy: codeEntryPolicySchema,
+    roomPassword: viewerPasswordSchema.nullable().optional(),
+  })
+  .strict();
+export type ReplaceRoomRequest = z.infer<typeof replaceRoomRequestSchema>;
 
 export const roomAccessUpdateRequestSchema = z.discriminatedUnion("action", [
   z

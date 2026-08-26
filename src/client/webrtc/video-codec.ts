@@ -1,4 +1,27 @@
 export type BrowserVideoCodec = "h264" | "vp8";
+export type BrowserVideoCodecMode = "vp8" | "auto" | "h264";
+
+export interface BrowserVideoCodecPreference {
+  primary: BrowserVideoCodec;
+  vp8Fallback: boolean;
+}
+
+export const VP8_ONLY_VIDEO_CODEC: BrowserVideoCodecPreference = {
+  primary: "vp8",
+  vp8Fallback: false,
+};
+
+export function automaticVideoCodecPreference(
+  codec: BrowserVideoCodec,
+): BrowserVideoCodecPreference {
+  return { primary: codec, vp8Fallback: codec === "h264" };
+}
+
+export function manualVideoCodecPreference(
+  codec: BrowserVideoCodec,
+): BrowserVideoCodecPreference {
+  return { primary: codec, vp8Fallback: false };
+}
 
 const REPAIR_CODEC_MIME_TYPES = new Set([
   "video/rtx",
@@ -52,20 +75,27 @@ function applyCodecs(
 
 export function applyVideoCodecPreference(
   transceiver: RTCRtpTransceiver,
-  preference: BrowserVideoCodec,
+  preference: BrowserVideoCodecPreference,
 ): boolean {
   if (typeof RTCRtpSender === "undefined") {
     return false;
   }
   const codecs = videoCapabilities();
   const vp8 = vp8Codecs(codecs);
-  if (vp8.length === 0) {
+  if (
+    (preference.primary === "vp8" || preference.vp8Fallback) &&
+    vp8.length === 0
+  ) {
     return false;
   }
-  const h264 = preference === "h264" ? h264ModeOneCodecs(codecs) : [];
+  const h264 =
+    preference.primary === "h264" ? h264ModeOneCodecs(codecs) : [];
+  if (preference.primary === "h264" && h264.length === 0) {
+    return false;
+  }
   return applyCodecs(transceiver, [
     ...h264,
-    ...vp8,
+    ...(preference.primary === "vp8" || preference.vp8Fallback ? vp8 : []),
     ...repairCodecs(codecs),
   ]);
 }

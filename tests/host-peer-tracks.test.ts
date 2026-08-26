@@ -7,7 +7,12 @@ import {
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer } from "../src/client/webrtc/host-peer.ts";
-import type { BrowserVideoCodec } from "../src/client/webrtc/video-codec.ts";
+import {
+  automaticVideoCodecPreference,
+  manualVideoCodecPreference,
+  type BrowserVideoCodecPreference,
+  VP8_ONLY_VIDEO_CODEC,
+} from "../src/client/webrtc/video-codec.ts";
 import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
 import type {
   IceConfig,
@@ -396,7 +401,7 @@ function createPeer(
   onUpdate: (snapshot: PeerSnapshot) => void = () => undefined,
   iceConfig: IceConfig = { iceServers: [] },
   profile: QualityProfile = QUALITY_PROFILES["720p30"],
-  videoCodec: BrowserVideoCodec = "vp8",
+  videoCodec: BrowserVideoCodecPreference = VP8_ONLY_VIDEO_CODEC,
 ): HostPeer {
   return new HostPeer(
     "viewer-peer",
@@ -558,7 +563,7 @@ describe("HostPeer source replacement", () => {
       () => undefined,
       { iceServers: [] },
       QUALITY_PROFILES["720p30"],
-      "h264",
+      automaticVideoCodecPreference("h264"),
     );
 
     await expect(peer.start()).resolves.toBe(true);
@@ -574,6 +579,38 @@ describe("HostPeer source replacement", () => {
       ["video/rtx", null],
       ["video/red", null],
     ]);
+  });
+
+  it("keeps a manual H264 selection strict", async () => {
+    vi.stubGlobal("RTCRtpSender", {
+      getCapabilities: () => ({
+        codecs: [
+          {
+            mimeType: "video/H264",
+            clockRate: 90_000,
+            sdpFmtpLine: "packetization-mode=1;profile-level-id=42001f",
+          },
+          { mimeType: "video/VP8", clockRate: 90_000 },
+          { mimeType: "video/rtx", clockRate: 90_000 },
+        ],
+        headerExtensions: [],
+      }),
+    });
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      () => undefined,
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      manualVideoCodecPreference("h264"),
+    );
+
+    await expect(peer.start()).resolves.toBe(true);
+
+    expect(
+      FakePeerConnection.latest!.codecPreferenceCalls[0]?.map(({ mimeType }) =>
+        mimeType.toLowerCase(),
+      ),
+    ).toEqual(["video/h264", "video/rtx"]);
   });
 
   it("fails before creating an offer when codec preferences are unavailable", async () => {
@@ -1441,7 +1478,7 @@ function hostProvisionalInput(
     iceConfig: { iceServers: [] },
     stream,
     profile: QUALITY_PROFILES["720p30"],
-    videoCodec: "vp8" as const,
+    videoCodec: VP8_ONLY_VIDEO_CODEC,
   };
 }
 
@@ -1574,7 +1611,7 @@ describe("ViewerRelay downstream ownership", () => {
     transport: "direct" as const,
   });
 
-  it("uses a completed H264 probe only for a future child", async () => {
+  it("keeps a completed H264 decision across source replacement", async () => {
     codecPreflight.probe.mockResolvedValueOnce("h264");
     const relay = new ViewerRelay(
       { iceServers: [] },
@@ -1584,6 +1621,10 @@ describe("ViewerRelay downstream ownership", () => {
     relay.setStream(createStream(createTrack("video", "h264-source"), null));
     await vi.waitFor(() => expect(codecPreflight.probe).toHaveBeenCalledOnce());
     await Promise.resolve();
+    relay.setStream(
+      createStream(createTrack("video", "replacement-source"), null),
+    );
+    expect(codecPreflight.probe).toHaveBeenCalledOnce();
     relay.setChildren(["h264-child"]);
     await vi.waitFor(() =>
       expect(FakePeerConnection.latest?.codecPreferenceCalls).toHaveLength(1),

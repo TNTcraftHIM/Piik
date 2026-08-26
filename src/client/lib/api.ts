@@ -121,6 +121,40 @@ export async function createRoom(
   return parsed.data;
 }
 
+export async function replaceOwnedRoom(
+  roomId: string,
+  hostToken: string,
+  codeEntryPolicy: CodeEntryPolicy,
+  roomPassword: string | null,
+): Promise<CreateRoomResponse> {
+  const response = await fetch(`/api/rooms/${roomId}/replacement`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${hostToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      codeEntryPolicy,
+      ...(roomPassword === null ? {} : { roomPassword }),
+    }),
+  });
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw new ApiError(
+      response.status === 404
+        ? "房间不存在或已过期"
+        : `当前无法更换房间 (${response.status})`,
+      response.status,
+    );
+  }
+  const parsed = createRoomResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new ApiError("换房服务返回的数据格式不正确", 502);
+  }
+  return parsed.data;
+}
+
 export async function updateRoomAccess(
   roomId: string,
   hostToken: string,

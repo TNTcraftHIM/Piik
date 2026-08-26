@@ -6,7 +6,7 @@ import type {
 } from "../../shared/protocol";
 import { countEndpointMediaCopies } from "../../shared/media-copy-accounting";
 import { HostPeer } from "../webrtc/host-peer";
-import type { BrowserVideoCodec } from "../webrtc/video-codec";
+import type { BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { PeerSnapshot } from "../types";
 import type { QualityProfile } from "./quality";
 
@@ -22,7 +22,7 @@ interface HostProvisionalPrepareInput extends HostProvisionalInput {
   iceConfig: IceConfig;
   stream: MediaStream;
   profile: QualityProfile;
-  videoCodec: BrowserVideoCodec;
+  videoCodec: BrowserVideoCodecPreference;
 }
 
 interface HostProvisionalChildEvents {

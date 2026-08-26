@@ -350,6 +350,25 @@ describe("Viewer presentation reducer", () => {
     });
   });
 
+  it("identifies a service restart while retaining the current frame", () => {
+    const restarting = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 3, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 2, revision: 3 },
+      { type: "frame-presented", generation: 2, revision: 3 },
+      { type: "signal", signal: "restarting" },
+    );
+
+    expect(deriveViewerPresentation(restarting)).toMatchObject({
+      stage: "recovering",
+      message: "服务已重启，正在恢复",
+      overlay: "none",
+      notice: "服务已重启，正在恢复媒体",
+    });
+  });
+
   it("demotes the current frame when an exact route terminally fails", () => {
     const playing = apply(
       { type: "access", access: "ready" },

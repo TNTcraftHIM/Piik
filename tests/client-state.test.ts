@@ -5,6 +5,7 @@ import {
   authenticateSiteAccess,
   createRoom,
   getSiteAccess,
+  replaceOwnedRoom,
 } from "../src/client/lib/api.ts";
 import {
   readDisplayName,
@@ -475,7 +476,7 @@ describe("client session identity", () => {
     ).toBeNull();
   });
 
-  it("keeps a preferred room for the server-configured lease window", () => {
+  it("keeps the latest preferred room without a client expiry", () => {
     const values = new Map<string, string>();
     vi.stubGlobal("window", {
       localStorage: {
@@ -485,12 +486,13 @@ describe("client session identity", () => {
       },
     });
 
-    writePreferredRoom("4321", 90, 1_000);
+    writePreferredRoom("4321");
 
     clearHostRoom();
-    expect(readPreferredRoomId(90_999)).toBe("4321");
-    expect(readPreferredRoomId(91_000)).toBeNull();
-    expect(values.has("screener:host-room-preference:v1")).toBe(false);
+    expect(readPreferredRoomId()).toBe("4321");
+    expect(values.get("screener:host-room-preference:v1")).toBe(
+      JSON.stringify({ roomId: "4321" }),
+    );
   });
 
   it("removes a legacy Viewer grant from room-scoped session storage", () => {
@@ -620,6 +622,30 @@ describe("site access API", () => {
     );
   });
 
+  it("sends exact Host authority and no preferred code for room replacement", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ error: "test response" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      replaceOwnedRoom("4321", "host-token", "private", "room-password"),
+    ).rejects.toBeInstanceOf(ApiError);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/rooms/4321/replacement");
+    const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer host-token");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        codeEntryPolicy: "private",
+        roomPassword: "room-password",
+      }),
+    );
+  });
+
   it("accepts an active room with a lease deadline", async () => {
     const room = {
       roomId: "1234",
@@ -711,8 +737,55 @@ describe("client signaling recovery policy", () => {
     expect(shouldReconnectSignaling(4003)).toBe(false);
     expect(shouldReconnectSignaling(4004)).toBe(false);
     expect(shouldReconnectSignaling(1008)).toBe(false);
+    expect(shouldReconnectSignaling(1012)).toBe(true);
     expect(shouldReconnectSignaling(4002)).toBe(true);
     expect(shouldReconnectSignaling(1006)).toBe(true);
+  });
+
+  it("reports a service restart while scheduling reconnect", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/1234"),
+      setTimeout,
+      clearTimeout,
+    });
+    const statuses: string[] = [];
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "viewer",
+        clientId: "viewer-client",
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: (status) => statuses.push(status),
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    const closed = new Event("close");
+    Object.defineProperty(closed, "code", { value: 1012 });
+    sockets[0]!.dispatchEvent(closed);
+
+    expect(statuses.at(-1)).toBe("restarting");
+    signal.stop();
   });
 
   it("classifies a close-only authentication failure without claiming replacement", () => {

@@ -123,28 +123,7 @@ export class RoomDatabase {
   insertRoom(room: StoredRoomAuthority): void {
     assertStoredRoom(room);
     this.transaction((database) => {
-      const changes = database
-        .prepare(
-          `INSERT INTO rooms (
-             room_id,
-             host_token_digest,
-             viewer_grant_digest,
-             viewer_authorization_generation,
-             code_entry_policy,
-             viewer_password_material,
-             lease_expires_at_ms
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          room.roomId,
-          room.hostTokenDigest,
-          room.viewerGrantDigest,
-          room.viewerAuthorizationGeneration,
-          room.codeEntryPolicy,
-          room.viewerPasswordMaterial,
-          room.leaseExpiresAtMs,
-        ).changes;
-      assertSingleChange(changes, "insert");
+      assertSingleChange(insertStoredRoom(database, room), "insert");
     });
   }
 
@@ -248,6 +227,30 @@ export class RoomDatabase {
     });
   }
 
+  replaceRoom(
+    oldRoomId: string,
+    oldHostTokenDigest: Buffer,
+    replacement: StoredRoomAuthority,
+  ): void {
+    assertRoomIdentity(oldRoomId, oldHostTokenDigest);
+    assertStoredRoom(replacement);
+    if (replacement.roomId === oldRoomId) {
+      throw new Error("Replacement room ID must be different");
+    }
+    this.transaction((database) => {
+      assertSingleChange(
+        insertStoredRoom(database, replacement),
+        "replacement insert",
+      );
+      const deleted = database
+        .prepare(
+          "DELETE FROM rooms WHERE room_id = ? AND host_token_digest = ?",
+        )
+        .run(oldRoomId, oldHostTokenDigest).changes;
+      assertSingleChange(deleted, "replacement delete");
+    });
+  }
+
   close(): void {
     const database = this.database;
     this.database = undefined;
@@ -337,6 +340,33 @@ export class RoomDatabase {
       throw error;
     }
   }
+}
+
+function insertStoredRoom(
+  database: DatabaseSync,
+  room: StoredRoomAuthority,
+): number | bigint {
+  return database
+    .prepare(
+      `INSERT INTO rooms (
+         room_id,
+         host_token_digest,
+         viewer_grant_digest,
+         viewer_authorization_generation,
+         code_entry_policy,
+         viewer_password_material,
+         lease_expires_at_ms
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      room.roomId,
+      room.hostTokenDigest,
+      room.viewerGrantDigest,
+      room.viewerAuthorizationGeneration,
+      room.codeEntryPolicy,
+      room.viewerPasswordMaterial,
+      room.leaseExpiresAtMs,
+    ).changes;
 }
 
 function readStoredRooms(database: DatabaseSync): StoredRoomAuthority[] {
