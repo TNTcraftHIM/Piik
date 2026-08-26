@@ -14,6 +14,7 @@ import {
   SIGNALING_PROTOCOL,
   VIEWER_QUALITY_EVIDENCE_INTERVAL_MS,
   decodeClientMessage,
+  type CodeEntryPolicy,
   type ClientMessage,
   type QualitySettings,
   type RoomAccessUpdateRequest,
@@ -26,7 +27,9 @@ import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting
 import {
   RoomStore,
   RoomStoreError,
+  type ClosedRoom,
   type ConnectedPeer,
+  type CreatedRoom,
   type ViewerGrantUpdate,
 } from "./room-store.js";
 import {
@@ -336,6 +339,22 @@ export class SignalingServer {
         };
       }
     }
+  }
+
+  async replaceRoom(
+    roomId: string,
+    hostToken: string,
+    codeEntryPolicy: CodeEntryPolicy,
+    roomPassword: string | null,
+  ): Promise<CreatedRoom> {
+    const replacement = await this.options.roomStore.replaceRoom(
+      roomId,
+      hostToken,
+      codeEntryPolicy,
+      roomPassword,
+    );
+    this.closeRoom(replacement.closed);
+    return replacement.created;
   }
 
   private accept(socket: WebSocket, siteAccessAuthenticated: boolean): void {
@@ -1554,16 +1573,20 @@ export class SignalingServer {
     if (!abandoned) {
       return;
     }
-    this.clearRoomGraceTimers(roomId);
-    this.clearRoomConnectionIds(roomId);
-    this.ordinaryActiveHostChildrenByRoom.delete(roomId);
+    this.closeRoom(abandoned);
+  }
+
+  private closeRoom(closed: ClosedRoom): void {
+    this.clearRoomGraceTimers(closed.roomId);
+    this.clearRoomConnectionIds(closed.roomId);
+    this.ordinaryActiveHostChildrenByRoom.delete(closed.roomId);
     if (this.isHybridMediaEnabled()) {
-      this.hybridMediaRouter!.deleteRoom(roomId);
+      this.hybridMediaRouter!.deleteRoom(closed.roomId);
     }
-    this.qualitySettingsByRoom.delete(roomId);
-    this.shareGenerationsByRoom.delete(roomId);
-    this.pausedShareGenerationsByRoom.delete(roomId);
-    for (const sessionId of abandoned.sessionIds) {
+    this.qualitySettingsByRoom.delete(closed.roomId);
+    this.shareGenerationsByRoom.delete(closed.roomId);
+    this.pausedShareGenerationsByRoom.delete(closed.roomId);
+    for (const sessionId of closed.sessionIds) {
       const socket = this.socketsBySessionId.get(sessionId);
       if (!socket) {
         continue;

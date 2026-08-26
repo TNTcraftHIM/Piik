@@ -1013,6 +1013,14 @@ export const createRoomRequestSchema = z
   })
   .strict();
 
+export const replaceRoomRequestSchema = z
+  .object({
+    codeEntryPolicy: codeEntryPolicySchema,
+    roomPassword: viewerPasswordSchema.nullable().optional(),
+  })
+  .strict();
+export type ReplaceRoomRequest = z.infer<typeof replaceRoomRequestSchema>;
+
 export const roomAccessUpdateRequestSchema = z.discriminatedUnion("action", [
   z
     .object({

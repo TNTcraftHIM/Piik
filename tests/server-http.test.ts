@@ -16,7 +16,11 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
-import { RoomStore } from "../src/server/room-store.ts";
+import {
+  ROOM_CAPACITY,
+  RoomStore,
+  RoomStoreError,
+} from "../src/server/room-store.ts";
 import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const allowedOrigin = "http://allowed.test";
@@ -140,6 +144,25 @@ async function updateRoomAccess(
       (options.method ?? "POST") === "POST"
         ? JSON.stringify(body)
         : undefined,
+  });
+}
+
+async function replaceRoom(
+  baseUrl: string,
+  roomId: string,
+  hostToken: string,
+  body: unknown,
+  cookie?: string,
+): Promise<Response> {
+  return fetch(`${baseUrl}/api/rooms/${roomId}/replacement`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: allowedOrigin,
+      Authorization: `Bearer ${hostToken}`,
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+    body: JSON.stringify(body),
   });
 }
 
@@ -403,6 +426,100 @@ describe("room HTTP API", () => {
     expect(preferred.roomLeaseSeconds).toBe(90);
     expect(fallback.roomId).not.toBe("4321");
     expect(fallback.hostToken).not.toBe(preferred.hostToken);
+  });
+
+  it("replaces a room with a different authority and closes old membership", async () => {
+    const baseUrl = await start();
+    const authenticated = await login(baseUrl);
+    const cookie = cookiePair(authenticated);
+    const original = createRoomResponseSchema.parse(
+      await (
+        await createRoom(baseUrl, cookie, "private", "old-password", "4321")
+      ).json(),
+    );
+    const host = runningServer!.roomStore.connectParticipant({
+      roomId: original.roomId,
+      role: "host",
+      token: original.hostToken,
+      clientId: "host-client",
+      sessionId: "host-session",
+    });
+    runningServer!.roomStore.connectParticipant({
+      roomId: original.roomId,
+      role: "viewer",
+      viewerGrant: new URL(original.inviteUrl).hash.slice(3),
+      clientId: "viewer-client",
+      sessionId: "viewer-session",
+    });
+
+    expect(
+      (
+        await replaceRoom(
+          baseUrl,
+          original.roomId,
+          original.hostToken,
+          { codeEntryPolicy: "open" },
+        )
+      ).status,
+    ).toBe(401);
+    const response = await replaceRoom(
+      baseUrl,
+      original.roomId,
+      original.hostToken,
+      { codeEntryPolicy: "private", roomPassword: "new-password" },
+      cookie,
+    );
+    expect(response.status).toBe(201);
+    const replacement = createRoomResponseSchema.parse(await response.json());
+
+    expect(replacement.roomId).not.toBe(original.roomId);
+    expect(replacement.codeEntryPolicy).toBe("private");
+    expect(runningServer!.roomStore.getConnectedHost(original.roomId)).toBeUndefined();
+    expect(runningServer!.roomStore.getConnectedViewers(original.roomId)).toEqual([]);
+    expect(() =>
+      runningServer!.roomStore.connectParticipant({
+        roomId: original.roomId,
+        role: "host",
+        token: original.hostToken,
+        clientId: "old-host",
+        sessionId: "old-session",
+      }),
+    ).toThrow(new RoomStoreError("INVALID_TOKEN"));
+    expect(host.peerId).toBeTruthy();
+  });
+
+  it("keeps valid Host authority on a transient replacement rejection", async () => {
+    const config = testConfig();
+    const roomStore = new RoomStore({
+      leaseMs: config.roomLeaseMs,
+      maxRooms: ROOM_CAPACITY,
+      maxViewersPerRoom: config.maxViewersPerRoom,
+    });
+    const original = await roomStore.createRoom("private", "room-password");
+    vi.spyOn(roomStore, "replaceRoom").mockRejectedValueOnce(
+      new RoomStoreError("ROOM_ACCESS_DENIED"),
+    );
+    const baseUrl = await start(config, { roomStore });
+    const cookie = cookiePair(await login(baseUrl));
+
+    const response = await replaceRoom(
+      baseUrl,
+      original.roomId,
+      original.hostToken,
+      { codeEntryPolicy: "private", roomPassword: "room-password" },
+      cookie,
+    );
+
+    expect(response.status).toBe(503);
+    expect(
+      roomStore.connectParticipant({
+        roomId: original.roomId,
+        role: "host",
+        token: original.hostToken,
+        clientId: "retained-host",
+        sessionId: "retained-host-session",
+      }).roomId,
+    ).toBe(original.roomId);
   });
 
   it("manages dormant room access without starting sharing or renewing", async () => {

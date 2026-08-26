@@ -5,6 +5,7 @@ import {
   authenticateSiteAccess,
   createRoom,
   getSiteAccess,
+  replaceOwnedRoom,
 } from "../src/client/lib/api.ts";
 import {
   readDisplayName,
@@ -618,6 +619,30 @@ describe("site access API", () => {
 
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({ codeEntryPolicy: "open", preferredRoomId: "4321" }),
+    );
+  });
+
+  it("sends exact Host authority and no preferred code for room replacement", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ error: "test response" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      replaceOwnedRoom("4321", "host-token", "private", "room-password"),
+    ).rejects.toBeInstanceOf(ApiError);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/rooms/4321/replacement");
+    const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer host-token");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        codeEntryPolicy: "private",
+        roomPassword: "room-password",
+      }),
     );
   });
 

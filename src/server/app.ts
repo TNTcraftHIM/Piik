@@ -6,6 +6,7 @@ import type { ViteDevServer } from "vite";
 
 import {
   createRoomRequestSchema,
+  replaceRoomRequestSchema,
   roomAccessUpdateRequestSchema,
   type CreateRoomResponse,
 } from "../shared/protocol.js";
@@ -16,7 +17,12 @@ import type { SfuTokenIssuer } from "./livekit-token.js";
 import type { SfuRoomControl } from "./sfu-room-control.js";
 import { SfuResourceAdmission } from "./sfu-resource-admission.js";
 import { RoomDatabase } from "./room-database.js";
-import { ROOM_CAPACITY, RoomStore, RoomStoreError } from "./room-store.js";
+import {
+  ROOM_CAPACITY,
+  RoomStore,
+  RoomStoreError,
+  type CreatedRoom,
+} from "./room-store.js";
 import { SignalingServer, type SignalingOptions } from "./signaling.js";
 
 export interface CreateServerOptions {
@@ -339,6 +345,77 @@ async function handleRequest(
     return;
   }
 
+  const roomReplacementMatch =
+    /^\/api\/rooms\/([1-9]\d{3})\/replacement$/.exec(url.pathname);
+  if (roomReplacementMatch) {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    if (request.method !== "POST") {
+      response.setHeader("Allow", "POST");
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    const hostToken = authorizedRoomHostToken(
+      request,
+      response,
+      config,
+      siteAccess,
+    );
+    if (!hostToken) {
+      return;
+    }
+    let parsedRequest;
+    try {
+      parsedRequest = replaceRoomRequestSchema.safeParse(
+        await readJsonBody(request, 1_024),
+      );
+    } catch {
+      sendJson(response, 400, { error: "Invalid room replacement request" });
+      return;
+    }
+    if (!parsedRequest.success) {
+      sendJson(response, 400, { error: "Invalid room replacement request" });
+      return;
+    }
+    const signaling = getSignaling();
+    if (!signaling) {
+      sendJson(response, 503, { error: "Service unavailable" });
+      return;
+    }
+    try {
+      const room = await signaling.replaceRoom(
+        roomReplacementMatch[1]!,
+        hostToken,
+        parsedRequest.data.codeEntryPolicy,
+        parsedRequest.data.roomPassword ?? null,
+      );
+      sendJson(response, 201, createRoomResponse(room, config));
+    } catch (error) {
+      if (error instanceof RoomStoreError && error.code === "ROOM_LIMIT") {
+        sendJson(response, 503, { error: "Room capacity reached" });
+        return;
+      }
+      if (
+        error instanceof RoomStoreError &&
+        error.code === "ROOM_ACCESS_DENIED"
+      ) {
+        sendJson(response, 503, { error: "Room replacement unavailable" });
+        return;
+      }
+      if (
+        error instanceof RoomStoreError &&
+        (error.code === "INVALID_TOKEN" ||
+          error.code === "ROOM_NOT_FOUND" ||
+          error.code === "ROOM_EXPIRED")
+      ) {
+        sendJson(response, 404, { error: "Room not found" });
+        return;
+      }
+      throw error;
+    }
+    return;
+  }
+
   const roomAccessMatch = /^\/api\/rooms\/([1-9]\d{3})\/access$/.exec(
     url.pathname,
   );
@@ -350,22 +427,13 @@ async function handleRequest(
       sendJson(response, 405, { error: "Method not allowed" });
       return;
     }
-    if (
-      !isStrictlyAllowedRequestOrigin(
-        request.headers.origin,
-        config.allowedOrigins,
-      )
-    ) {
-      sendJson(response, 403, { error: "Forbidden" });
-      return;
-    }
-    if (!isRoomCreationAuthorized(request, siteAccess)) {
-      sendJson(response, 401, { error: "Unauthorized" });
-      return;
-    }
-    const hostToken = readBearerToken(request);
+    const hostToken = authorizedRoomHostToken(
+      request,
+      response,
+      config,
+      siteAccess,
+    );
     if (!hostToken) {
-      sendJson(response, 404, { error: "Room not found" });
       return;
     }
 
@@ -462,19 +530,7 @@ async function handleRequest(
         parsedRequest.data.roomPassword ?? null,
         parsedRequest.data.preferredRoomId,
       );
-      const inviteUrl = new URL(`/r/${room.roomId}`, config.publicBaseUrl);
-      if (room.viewerGrant) {
-        inviteUrl.hash = `v=${room.viewerGrant}`;
-      }
-      const responseBody: CreateRoomResponse = {
-        roomId: room.roomId,
-        hostToken: room.hostToken,
-        inviteUrl: inviteUrl.toString(),
-        codeEntryPolicy: room.codeEntryPolicy,
-        expiresAt: room.expiresAt,
-        roomLeaseSeconds: config.roomLeaseMs / 1_000,
-      };
-      sendJson(response, 201, responseBody);
+      sendJson(response, 201, createRoomResponse(room, config));
     } catch (error) {
       if (error instanceof RoomStoreError && error.code === "ROOM_LIMIT") {
         sendJson(response, 503, { error: "Room capacity reached" });
@@ -501,6 +557,51 @@ async function handleRequest(
     return;
   }
   sendJson(response, 404, { error: "Not found" });
+}
+
+function authorizedRoomHostToken(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: ServerConfig,
+  siteAccess: SiteAccess,
+): string | null {
+  if (
+    !isStrictlyAllowedRequestOrigin(
+      request.headers.origin,
+      config.allowedOrigins,
+    )
+  ) {
+    sendJson(response, 403, { error: "Forbidden" });
+    return null;
+  }
+  if (!isRoomCreationAuthorized(request, siteAccess)) {
+    sendJson(response, 401, { error: "Unauthorized" });
+    return null;
+  }
+  const hostToken = readBearerToken(request);
+  if (!hostToken) {
+    sendJson(response, 404, { error: "Room not found" });
+    return null;
+  }
+  return hostToken;
+}
+
+function createRoomResponse(
+  room: CreatedRoom,
+  config: ServerConfig,
+): CreateRoomResponse {
+  const inviteUrl = new URL(`/r/${room.roomId}`, config.publicBaseUrl);
+  if (room.viewerGrant) {
+    inviteUrl.hash = `v=${room.viewerGrant}`;
+  }
+  return {
+    roomId: room.roomId,
+    hostToken: room.hostToken,
+    inviteUrl: inviteUrl.toString(),
+    codeEntryPolicy: room.codeEntryPolicy,
+    expiresAt: room.expiresAt,
+    roomLeaseSeconds: config.roomLeaseMs / 1_000,
+  };
 }
 
 function handleSiteAccessRequest(

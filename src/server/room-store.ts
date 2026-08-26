@@ -131,6 +131,11 @@ export interface ClosedRoom {
   sessionIds: readonly string[];
 }
 
+export interface ReplacedRoom {
+  created: CreatedRoom;
+  closed: ClosedRoom;
+}
+
 export interface RevokedViewer {
   peerId: string;
   sessionId?: string;
@@ -263,37 +268,67 @@ export class RoomStore {
     }
     const roomId = this.takeRoomCode(preferredRoomId);
     try {
-      const hostTokenBytes = this.random(32);
-      if (hostTokenBytes.byteLength !== 32) {
-        throw new Error("Host token random source must return 32 bytes");
-      }
-      const hostToken = hostTokenBytes.toString("base64url");
-      const viewerGrant = this.createViewerGrant();
-      const viewerAuthorizationGeneration = this.newAuthorizationGeneration();
-
-      const room: Room = {
+      const { room, created } = this.newRoom(
         roomId,
-        hostTokenDigest: digest(hostToken),
-        viewerGrantDigest: digest(viewerGrant),
-        viewerPasswordMaterial,
-        viewerAuthorizationGeneration,
         codeEntryPolicy,
-        sharingActive: false,
+        viewerPasswordMaterial,
         leaseExpiresAtMs,
-        viewers: new Map(),
-      };
+      );
       this.options.database?.insertRoom(storedRoomAuthority(room));
       this.rooms.set(roomId, room);
-
-      return {
-        roomId,
-        hostToken,
-        codeEntryPolicy,
-        viewerGrant,
-        expiresAt: formatExpiresAt(leaseExpiresAtMs),
-      };
+      return created;
     } catch (error) {
       this.releaseRoomCode(roomId);
+      throw error;
+    }
+  }
+
+  async replaceRoom(
+    roomId: string,
+    hostToken: string,
+    codeEntryPolicy: CodeEntryPolicy,
+    roomPassword?: string | null,
+  ): Promise<ReplacedRoom> {
+    this.ensureInitialized();
+    const current = this.getHostManagedRoom(roomId, hostToken);
+    const viewerPasswordMaterial = roomPassword
+      ? await this.createViewerPasswordMaterial(roomPassword, () => {
+          const room = this.rooms.get(roomId);
+          return (
+            room === current &&
+            verifyDigest(hostToken, room.hostTokenDigest)
+          );
+        })
+      : null;
+    const owned = this.getHostManagedRoom(roomId, hostToken);
+    if (owned !== current || (roomPassword && !viewerPasswordMaterial)) {
+      throw new RoomStoreError("ROOM_ACCESS_DENIED");
+    }
+
+    const replacementRoomId = this.takeRoomCode();
+    try {
+      const leaseExpiresAtMs = this.leaseDeadline(this.now());
+      const replacement = this.newRoom(
+        replacementRoomId,
+        codeEntryPolicy,
+        viewerPasswordMaterial,
+        leaseExpiresAtMs,
+      );
+      this.options.database?.replaceRoom(
+        roomId,
+        current.hostTokenDigest,
+        storedRoomAuthority(replacement.room),
+      );
+      const closed = {
+        roomId,
+        sessionIds: connectedSessionIds(current),
+      } satisfies ClosedRoom;
+      this.rooms.delete(roomId);
+      this.rooms.set(replacementRoomId, replacement.room);
+      this.releaseRoomCode(roomId);
+      return { created: replacement.created, closed };
+    } catch (error) {
+      this.releaseRoomCode(replacementRoomId);
       throw error;
     }
   }
@@ -803,6 +838,41 @@ export class RoomStore {
       throw new Error("Viewer grant random source must return 16 bytes");
     }
     return secret.toString("base64url");
+  }
+
+  private newRoom(
+    roomId: string,
+    codeEntryPolicy: CodeEntryPolicy,
+    viewerPasswordMaterial: Buffer | null,
+    leaseExpiresAtMs: number,
+  ): { room: Room; created: CreatedRoom } {
+    const hostTokenBytes = this.random(32);
+    if (hostTokenBytes.byteLength !== 32) {
+      throw new Error("Host token random source must return 32 bytes");
+    }
+    const hostToken = hostTokenBytes.toString("base64url");
+    const viewerGrant = this.createViewerGrant();
+    const room: Room = {
+      roomId,
+      hostTokenDigest: digest(hostToken),
+      viewerGrantDigest: digest(viewerGrant),
+      viewerPasswordMaterial,
+      viewerAuthorizationGeneration: this.newAuthorizationGeneration(),
+      codeEntryPolicy,
+      sharingActive: false,
+      leaseExpiresAtMs,
+      viewers: new Map(),
+    };
+    return {
+      room,
+      created: {
+        roomId,
+        hostToken,
+        codeEntryPolicy,
+        viewerGrant,
+        expiresAt: formatExpiresAt(leaseExpiresAtMs),
+      },
+    };
   }
 
   private async createViewerPasswordMaterial(

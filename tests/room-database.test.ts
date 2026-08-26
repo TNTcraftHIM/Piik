@@ -260,6 +260,45 @@ describe("SQLite stable room authority", () => {
     expect(replacement.viewerGrant).not.toBe(room.viewerGrant);
   });
 
+  it("persists room replacement as one authority transition", async () => {
+    const path = databasePath();
+    const clock = { nowMs: 10 };
+    const first = stableStore(path, clock);
+    const original = await first.createRoom("open", null, "4321");
+    const replacement = await first.replaceRoom(
+      original.roomId,
+      original.hostToken,
+      "private",
+      "new-password",
+    );
+    closeStore(first);
+
+    const second = stableStore(path, clock);
+    expect(second.size).toBe(1);
+    expect(() =>
+      second.connectParticipant(
+        hostInput(original.roomId, original.hostToken),
+      ),
+    ).toThrow(new RoomStoreError("INVALID_TOKEN"));
+    expect(
+      second.connectParticipant(
+        viewerInput(
+          replacement.created.roomId,
+          "replacement-viewer",
+          replacement.created.viewerGrant!,
+        ),
+      ).roomId,
+    ).toBe(replacement.created.roomId);
+    await expect(
+      second.connectViewerWithPassword({
+        roomId: replacement.created.roomId,
+        password: "new-password",
+        clientId: "password-viewer",
+        sessionId: "password-session",
+      }),
+    ).resolves.toMatchObject({ roomId: replacement.created.roomId });
+  });
+
   it("rejects another owner of the same database", () => {
     const path = databasePath();
     const first = new RoomDatabase(path);

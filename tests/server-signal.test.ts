@@ -444,6 +444,27 @@ async function closeClient(client: TestClient): Promise<void> {
 }
 
 describe("WebSocket signaling", () => {
+  it("identifies a graceful service restart to connected clients", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "restart-host");
+    const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+      host.socket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString() }),
+      ),
+    );
+    const server = runningServer!;
+    runningServer = undefined;
+
+    const shutdown = server.close();
+
+    await expect(closed).resolves.toEqual({
+      code: 1012,
+      reason: "Service restart",
+    });
+    await shutdown;
+  });
+
   it("answers only opted-in current sockets and rate-limits each socket", async () => {
     let now = Date.now();
     const harness = await startHarness({ now: () => now });

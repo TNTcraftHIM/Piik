@@ -18,6 +18,7 @@ import {
   decodeClientMessage,
   normalizeDisplayName,
   participantRouteAssignmentSchema,
+  replaceRoomRequestSchema,
   roomAccessUpdateRequestSchema,
   roomAccessUpdateResponseSchema,
   serverMessageSchema,
@@ -241,6 +242,24 @@ describe("client signaling protocol", () => {
         }).success,
       ).toBe(false);
     }
+  });
+
+  it("accepts only a replacement creation profile", () => {
+    expect(
+      replaceRoomRequestSchema.parse({
+        codeEntryPolicy: "private",
+        roomPassword: "room-password",
+      }),
+    ).toEqual({
+      codeEntryPolicy: "private",
+      roomPassword: "room-password",
+    });
+    expect(
+      replaceRoomRequestSchema.safeParse({
+        codeEntryPolicy: "open",
+        preferredRoomId: "4321",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects the removed all-room ICE refresh request", () => {

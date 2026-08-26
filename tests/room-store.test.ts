@@ -89,6 +89,74 @@ describe("RoomStore", () => {
     );
   });
 
+  it("atomically replaces a room with different authority", async () => {
+    const { store: roomStore } = store();
+    const original = await roomStore.createRoom(
+      "private",
+      "old-password",
+      "4321",
+    );
+    const host = roomStore.connectParticipant(
+      hostInput(original.roomId, original.hostToken),
+    );
+    roomStore.connectParticipant(
+      viewerInput(
+        original.roomId,
+        "viewer-session",
+        original.viewerGrant!,
+      ),
+    );
+
+    await expect(
+      roomStore.replaceRoom(
+        original.roomId,
+        original.hostToken,
+        "private",
+        "bad password",
+      ),
+    ).rejects.toEqual(new RoomStoreError("INVALID_TOKEN"));
+    expect(roomStore.getConnectedHost(original.roomId)?.peerId).toBe(
+      host.peerId,
+    );
+
+    const replacement = await roomStore.replaceRoom(
+      original.roomId,
+      original.hostToken,
+      "private",
+      "new-password",
+    );
+
+    expect(replacement.created.roomId).not.toBe(original.roomId);
+    expect(replacement.closed).toEqual({
+      roomId: original.roomId,
+      sessionIds: expect.arrayContaining(["host-session", "viewer-session"]),
+    });
+    expectRoomError(
+      () =>
+        roomStore.connectParticipant(
+          hostInput(original.roomId, original.hostToken),
+        ),
+      "INVALID_TOKEN",
+    );
+    expect(
+      roomStore.connectParticipant(
+        viewerInput(
+          replacement.created.roomId,
+          "new-viewer-session",
+          replacement.created.viewerGrant!,
+        ),
+      ).roomId,
+    ).toBe(replacement.created.roomId);
+    await expect(
+      roomStore.connectViewerWithPassword({
+        roomId: replacement.created.roomId,
+        password: "new-password",
+        clientId: "password-viewer",
+        sessionId: "password-session",
+      }),
+    ).resolves.toMatchObject({ roomId: replacement.created.roomId });
+  });
+
   it("rejects room limits beyond the four-digit code space", () => {
     expect(() => store({ maxRooms: ROOM_CAPACITY + 1 }).store).toThrow(
       `Room limit must be an integer between 1 and ${ROOM_CAPACITY}`,
