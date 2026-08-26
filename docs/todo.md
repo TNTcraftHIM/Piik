@@ -7,12 +7,19 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+1. **Quality-route evidence and shadow calibration.** Make current Viewer
+   quality evidence presentation-authoritative with standard rendered freeze and
+   pause deltas, exact presentation epochs and baseline fencing. Keep one bounded
+   current-epoch aggregate per exact child in the existing room controller and
+   expose it only through the Host acceptance snapshot. It must not alter facts,
+   capacity, routes or SFU usage. Collect annotated production samples before
+   accepting an active trigger, probation, restore or cooldown policy.
+2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
    survival or controller recovery. Web does not promise background video or
    relay execution after OS suspension.
-2. **Finish real-network route and media acceptance.** Exercise direct peer,
+3. **Finish real-network route and media acceptance.** Exercise direct peer,
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,
@@ -57,7 +64,7 @@ later topic is not implementation authority by itself.
 | Item | Decision |
 | --- | --- |
 | Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
-| Quality-driven route exploration | The intended model includes exact-child active reparenting, relay ingress reparent with subtree retention, relay egress abdication/drain, and Host egress convergence onto one SFU publication while SFU-fed Viewers may still relay. Research must first unify their evidence, reservations, probation/restore and recovery under the existing single graph/operation; no active quality route change is authorized yet. |
+| Active quality-route action | Shadow evidence is authorized, but active changes are not. Production samples must first settle the trigger, probation, one-restore and cooldown boundaries. Any accepted exact-child reparent, relay abdication/drain or Host convergence onto one SFU publication must reuse the existing single graph/operation and preserve SFU-fed Viewer relay; no second optimizer or periodic rebalancer is allowed. |
 
 ## Evidence Boundaries
 

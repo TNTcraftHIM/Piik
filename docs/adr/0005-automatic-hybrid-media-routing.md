@@ -283,6 +283,23 @@ second mutable graph.
   the counterfactual quality of another parent, so Screener creates no weighted
   route score, alternative-parent probe, hysteresis loop, or periodic
   quality-driven reparenting.
+- Quality selection begins with one evidence-only shadow phase inside this same
+  controller. A Viewer reports standard rendered-frame, freeze and pause deltas
+  only while its exact current route is connected, the page is visible and not
+  suspended, the Host is not paused, the native video is playing, and a current
+  composited frame has already been proved. A strictly monotonic presentation
+  epoch fences every eligibility change; its first stats sample establishes a
+  baseline and is not evidence. The server then revalidates the authenticated
+  Viewer session, exact committed upstream and connection before the controller
+  keeps one bounded current-epoch aggregate per child. Missing stats remain
+  unknown, recovered freeze/pause duration may exceed one report window, and a
+  stale aggregate disappears from the on-demand Host diagnostic snapshot.
+  Shadow observation never changes facts, capacity, graph, revision, candidate
+  order, SFU admission or reconciliation. Active trials remain unaccepted until
+  annotated production evidence establishes a usable trigger and disruption
+  boundary; any accepted trial must reuse this controller's single child
+  operation, reservations, first-frame commit and rollback rather than create a
+  second optimizer.
 - Web clients derive active decoded progress from their existing periodic
   WebRTC/LiveKit stats sampling. One route-keyed last-progress deadline reports
   the exact edge once; it resets on route/connection change or decoded progress
