@@ -702,8 +702,31 @@ export class HybridMediaRouter {
     if (room.sfuRefreshesInFlight.has(key)) return;
     room.sfuRefreshesInFlight.add(key);
     void this.sendFreshSfuConfig(participant)
-      .catch(() => undefined)
+      .catch(() => this.failCurrentSfuRoute(participant, revision))
       .finally(() => room.sfuRefreshesInFlight.delete(key));
+  }
+
+  private failCurrentSfuRoute(
+    participant: AuthenticatedRouteParticipant,
+    revision: number,
+  ): void {
+    const room = this.rooms.get(participant.roomId);
+    const snapshot = room?.controller?.snapshot();
+    if (!room || !snapshot || snapshot.revision !== revision) return;
+    const edge = snapshot.upstreamByViewer.get(participant.peerId);
+    const connectionId =
+      participant.peerId === room.hostPeerId
+        ? snapshot.hostPublication?.connectionId
+        : edge?.kind === "sfu"
+          ? edge.connectionId
+          : undefined;
+    if (!connectionId) return;
+    this.handleRouteFailed(participant, {
+      type: "route-failed",
+      revision,
+      phase: "active",
+      connectionId,
+    });
   }
 
   disconnectParticipant(roomId: string, peerId: string, sessionId: string): void {
