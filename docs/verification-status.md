@@ -81,6 +81,11 @@ may be interpreted. Git and pull requests own routine completed checks.
   windows with decoded progress, keeps one bounded fresh aggregate per current
   child, and exposes it through the Host-only anonymous route snapshot. It does
   not change route facts, capacity, candidate order, SFU admission or reconcile.
+- An isolated current-production direct-P2P control proved the strict-v13
+  aggregate across bounded CDP loss pulses. Freeze response was non-linear and
+  the longest all-drop cell crossed into route recovery, so the result validates
+  collection but supplies no active threshold; exact evidence is recorded in
+  [realtime quality research](./research/realtime-quality-adaptation.md#strict-v13-production-shadow-control).
 
 ## Open Physical Gates
 

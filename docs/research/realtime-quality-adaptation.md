@@ -404,6 +404,39 @@ aggregate under the child's temporary ordinal; it exposes no epoch, session,
 connection, raw metric or timeline. Observation does not touch controller facts
 or trigger route work.
 
+### Strict-v13 Production Shadow Control
+
+On 2026-08-27, production release `73ed920` and Chrome
+`151.0.7922.174` ran isolated one-Host/one-Viewer direct-P2P controls with a
+deterministic 1280x720@30 canvas source. Runner commit `802781878701` is retained
+on `dev/retained-candidates`; it creates and abandons its own room and exports
+only the anonymous Host diagnostic snapshot. A global CDP network rule was
+installed at zero before the Viewer PeerConnection was created, then changed
+for one bounded pulse and restored to zero. The rule returned a non-empty ID;
+the final snapshot was comparable only when route revision, connection
+generation, presentation epoch, Viewer session generation, parent and route all
+remained unchanged.
+
+| Packet loss | Pulse | Eligible windows / duration | Recovered freezes | Freeze duration | Result |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 0% | 2 s | 2 / 4,001 ms | 0 | 0 ms | comparable |
+| 10% | 2 s | 3 / 6,000 ms | 0 | 0 ms | comparable |
+| 10% | 6 s | 3 / 6,000 ms | 1 | 282 ms | comparable |
+| 30% | 2 s | 2 / 4,000 ms | 2 | 701 ms | comparable |
+| 30% | 6 s | 5 / 10,002 ms | 11 | 3,585 ms | comparable |
+| 100% | 2 s | 4 / 8,000 ms | 1 | 2,011 ms | comparable |
+| 100% | 6 s | n/a | n/a | n/a | route identity changed |
+
+All comparable cells reported zero recovered pauses. The controls establish
+that the strict-v13 collection path accepts renderer-settled freeze duration
+across report windows and leaves the route unchanged. They also reject a loss
+percentage, one freeze, or one pulse duration as a product trigger: the same
+loss level produced different presentation results, and the longest all-drop
+cell crossed into availability recovery instead of remaining a quality sample.
+This synthetic direct cohort does not calibrate an active threshold or predict
+another parent; real games, natural public-network sessions, relay subtrees,
+SFU cohorts and mobile lifecycle evidence remain required.
+
 Active migration follows only after annotated production samples establish an
 acceptable false-positive and disruption boundary. An active episode would keep
 the existing first-frame commit rule, allow one low-priority trial and at most
@@ -557,3 +590,4 @@ interval. Missing counters and identity changes remain unknown, not zero.
 - [CoolStreaming/DONet](https://researchportal.hkust.edu.hk/en/publications/coolstreamingdonet-a-data-driven-overlay-network-for-peer-to-peer/)
 - [SAAR](https://static.usenix.org/event/nsdi07/tech/full_papers/nandi/nandi_html/index.html)
 - [Media Capabilities](https://www.w3.org/TR/media-capabilities/)
+- [Chrome DevTools Protocol Network domain](https://chromedevtools.github.io/devtools-protocol/tot/Network/)
