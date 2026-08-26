@@ -1,22 +1,18 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-08-26
+Last reviewed: 2026-08-27
 
 Only **Now** is executable. A branch, old experiment, observation, or accepted
 later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Quality-route evidence and shadow calibration.** Make current Viewer
-   quality evidence presentation-authoritative with standard freeze/pause
-   deltas, continuing decoded progress, exact presentation epochs and baseline
-   fencing. Keep one bounded
-   current-epoch aggregate per exact child in the existing room controller and
-   expose it only through the Host acceptance snapshot. It must not alter facts,
-   capacity, routes or SFU usage. Collect annotated production samples before
-   accepting an active trigger, probation, restore or cooldown policy. Ship it
-   only as the atomic strict `screener-v13` Browser/server contract; v12 gets no
-   compatibility path.
+1. **Quality-route evidence and shadow calibration.** Atomically deploy the
+   implemented strict `screener-v13` Browser/server quality shadow; v12 gets no
+   compatibility path. Collect annotated production samples from its bounded
+   current-edge freeze/pause aggregates before accepting an active trigger,
+   probation, restore or cooldown policy. Shadow evidence must not alter facts,
+   capacity, routes or SFU usage.
 2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay

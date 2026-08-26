@@ -26,6 +26,8 @@ export interface StatsAccumulator {
   previousFramesDropped: number | null;
   previousFreezeCount: number | null;
   previousTotalFreezesDuration: number | null;
+  previousPauseCount: number | null;
+  previousTotalPausesDuration: number | null;
   previousRetransmittedPackets: number | null;
   previousRetransmittedBytes: number | null;
   previousVideoJitterBufferDelay: number | null;
@@ -92,6 +94,8 @@ export function createStatsAccumulator(): StatsAccumulator {
     previousFramesDropped: null,
     previousFreezeCount: null,
     previousTotalFreezesDuration: null,
+    previousPauseCount: null,
+    previousTotalPausesDuration: null,
     previousRetransmittedPackets: null,
     previousRetransmittedBytes: null,
     previousVideoJitterBufferDelay: null,
@@ -493,6 +497,8 @@ export function collectConnectionMetricsFromReport(
   const framesDropped = numberValue(media, "framesDropped");
   const freezeCount = numberValue(media, "freezeCount");
   const totalFreezesDuration = numberValue(media, "totalFreezesDuration");
+  const pauseCount = numberValue(media, "pauseCount");
+  const totalPausesDuration = numberValue(media, "totalPausesDuration");
   const retransmittedPackets = numberValue(
     media,
     direction === "send"
@@ -609,6 +615,22 @@ export function collectConnectionMetricsFromReport(
     previous.previousTotalFreezesDuration,
     sampleWindowMs !== null,
   );
+  const intervalPauseCount =
+    direction === "receive"
+      ? intervalDelta(
+          pauseCount,
+          previous.previousPauseCount,
+          sampleWindowMs !== null,
+        )
+      : null;
+  const pauseDurationDelta =
+    direction === "receive"
+      ? intervalDelta(
+          totalPausesDuration,
+          previous.previousTotalPausesDuration,
+          sampleWindowMs !== null,
+        )
+      : null;
   const intervalRetransmittedPackets = intervalDelta(
     retransmittedPackets,
     previous.previousRetransmittedPackets,
@@ -643,6 +665,8 @@ export function collectConnectionMetricsFromReport(
   previous.previousFramesDropped = framesDropped;
   previous.previousFreezeCount = freezeCount;
   previous.previousTotalFreezesDuration = totalFreezesDuration;
+  previous.previousPauseCount = pauseCount;
+  previous.previousTotalPausesDuration = totalPausesDuration;
   previous.previousRetransmittedPackets = retransmittedPackets;
   previous.previousRetransmittedBytes = retransmittedBytes;
   previous.previousVideoJitterBufferDelay = videoJitterBufferDelay;
@@ -840,6 +864,9 @@ export function collectConnectionMetricsFromReport(
     intervalFreezeCount,
     intervalFreezeDurationMs:
       freezeDurationDelta === null ? null : freezeDurationDelta * 1_000,
+    intervalPauseCount,
+    intervalPauseDurationMs:
+      pauseDurationDelta === null ? null : pauseDurationDelta * 1_000,
     intervalRetransmittedPackets,
     intervalRetransmittedBytes,
     codec: codecEvidence.codec,

@@ -63,6 +63,7 @@ import {
   deriveViewerPresentation,
   reduceViewerPresentation,
   viewerFailureFromServerCode,
+  type ViewerPresentationAction,
   type ViewerRouteKind,
   type ViewerStage,
 } from "../media/viewer-presentation";
@@ -155,7 +156,7 @@ function StageOverlayIcon({ stage }: { stage: ViewerStage }) {
 }
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
-  const [presentationState, dispatchPresentation] = useReducer(
+  const [presentationState, dispatchPresentationState] = useReducer(
     reduceViewerPresentation,
     INITIAL_VIEWER_PRESENTATION_STATE,
   );
@@ -234,6 +235,18 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const peerRef = useRef<ViewerPeer | null>(null);
   const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
+  const presentationStateRef = useRef(presentationState);
+  presentationStateRef.current = presentationState;
+  function dispatchPresentation(action: ViewerPresentationAction): void {
+    presentationStateRef.current = reduceViewerPresentation(
+      presentationStateRef.current,
+      action,
+    );
+    dispatchPresentationState(action);
+  }
+  const qualityEvidenceReporterRef =
+    useRef<ViewerQualityEvidenceReporter | null>(null);
+  const qualityFrameProofGenerationRef = useRef<number | null>(null);
   const displayNameRef = useRef(displayName);
   const remoteMediaRef = useRef<RemoteMediaBinding | null>(null);
   const mediaGenerationRef = useRef(0);
@@ -279,6 +292,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       videoTrackKey,
       generation: ++mediaGenerationRef.current,
     };
+    invalidateQualityPresentation();
     remoteMediaRef.current = next;
     setRemoteMedia(next);
     dispatchPresentation({
@@ -289,9 +303,41 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }
 
   function clearRemoteMedia(): void {
+    invalidateQualityPresentation();
     remoteMediaRef.current = null;
     setRemoteMedia(null);
     dispatchPresentation({ type: "media-cleared" });
+  }
+
+  function resetCurrentFrameProof(): void {
+    const binding = remoteMediaRef.current;
+    if (!binding) {
+      return;
+    }
+    dispatchPresentation({
+      type: "frame-proof-reset",
+      generation: binding.generation,
+      revision: binding.revision,
+    });
+  }
+
+  function invalidateQualityPresentation(): void {
+    qualityEvidenceReporterRef.current?.invalidatePresentation();
+    qualityFrameProofGenerationRef.current = null;
+  }
+
+  function invalidatePresentedMedia(): void {
+    invalidateQualityPresentation();
+    resetCurrentFrameProof();
+  }
+
+  function mediaBindingIsCurrent(binding: RemoteMediaBinding): boolean {
+    const current = remoteMediaRef.current;
+    return (
+      current?.generation === binding.generation &&
+      current.revision === binding.revision &&
+      current.stream === binding.stream
+    );
   }
 
   function attemptPlayback(
@@ -299,12 +345,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     binding: RemoteMediaBinding,
   ): void {
     void video.play().then(
-      () =>
+      () => {
+        if (!mediaBindingIsCurrent(binding)) {
+          return;
+        }
         dispatchPresentation({
           type: "autoplay-cleared",
           generation: binding.generation,
-        }),
+        });
+      },
       (error: unknown) => {
+        if (!mediaBindingIsCurrent(binding)) {
+          return;
+        }
+        invalidatePresentedMedia();
         if (isAutoplayPolicyRejection(error)) {
           dispatchPresentation({
             type: "autoplay-blocked",
@@ -384,16 +438,19 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let relayChildEvidenceCurrent: ViewerQualityEvidencePresentation | null =
       null;
     let relayChildEvidenceTimer: number | null = null;
+    let sfuTransportConnected = false;
 
     let pageSuspended = document.visibilityState !== "visible";
     const syncDecodedFrameStallPause = (): void => {
       decodedFrameStall.setPaused(currentHostPaused || pageSuspended);
     };
     const suspendForPageLifecycle = (): void => {
+      invalidatePresentedMedia();
       pageSuspended = true;
       syncDecodedFrameStallPause();
     };
     const recoverFromPageLifecycle = (): void => {
+      invalidatePresentedMedia();
       pageSuspended = document.visibilityState !== "visible";
       syncDecodedFrameStallPause();
       if (pageSuspended) return;
@@ -485,6 +542,50 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
       (message) => active && signal.send(message),
     );
+    qualityEvidenceReporterRef.current = qualityEvidenceReporter;
+    function qualityPresentationEligible(
+      connectionConnected: boolean,
+    ): boolean {
+      const state = presentationStateRef.current;
+      const binding = remoteMediaRef.current;
+      const video = videoRef.current;
+      return Boolean(
+        connectionConnected &&
+          !pageSuspended &&
+          document.visibilityState === "visible" &&
+          !currentHostPaused &&
+          currentRouteAssignment !== null &&
+          currentRouteAssignment.upstream.kind !== "none" &&
+          currentRouteConnectionId !== null &&
+          binding &&
+          binding.revision === currentRouteRevision &&
+          qualityFrameProofGenerationRef.current === binding.generation &&
+          state.routeStatus?.state !== "failed" &&
+          state.failure !== "ROUTE_EXHAUSTED" &&
+          video &&
+          !video.paused &&
+          !video.ended,
+      );
+    }
+    function offerPeerQualityEvidence(
+      snapshot: PeerSnapshot,
+      peer: ViewerPeer,
+    ): void {
+      const connectionHealthy =
+        snapshot.connectionState === "connected" && !peer.isRecovering();
+      const qualityEligible =
+        qualityPresentationEligible(connectionHealthy);
+      if (!connectionHealthy) {
+        invalidatePresentedMedia();
+      } else if (!qualityEligible) {
+        invalidateQualityPresentation();
+      }
+      qualityEvidenceReporter.offer(
+        snapshot,
+        currentRouteRevision,
+        qualityEligible,
+      );
+    }
     function activateRouteIdentity(
       revision: number,
       assignment: ParticipantRouteAssignment,
@@ -799,6 +900,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return;
           }
           currentAssignment = { parentPeerId: null, childPeerIds: [] };
+          sfuTransportConnected = false;
           setSfuUpstream(null);
           clearPeerState();
           viewerRelay?.setChildren([]);
@@ -838,6 +940,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   currentRouteConnectionId,
                   metrics,
                   revision,
+                  qualityPresentationEligible(sfuTransportConnected),
                 );
               }
             }
@@ -848,6 +951,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         },
         onSfuState: (state, revision) => {
           if (active && viewerSfuRoute === route) {
+            const connected = state === "connected";
+            if (sfuTransportConnected !== connected) {
+              sfuTransportConnected = connected;
+              if (!connected) {
+                invalidatePresentedMedia();
+              }
+            }
             setSfuUpstream((current) =>
               current ? { ...current, connectionState: state } : null,
             );
@@ -862,6 +972,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           if (!active || viewerSfuRoute !== route || available) {
             return;
           }
+          invalidatePresentedMedia();
           setSfuUpstream((current) =>
             current ? { ...current, connectionState: "reconnecting" } : current,
           );
@@ -889,6 +1000,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           const relay = ensureViewerRelay();
           relay?.setStream(nextStream);
           bindRemoteStream(nextStream, revision);
+          if (initialVideoStream) {
+            sfuTransportConnected = true;
+          }
           setSfuUpstream(
             (current) =>
               current ?? { connectionState: "connected", metrics: null },
@@ -913,6 +1027,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       const route = viewerSfuRoute;
       discardPendingPeer();
       viewerSfuRoute = null;
+      sfuTransportConnected = false;
+      invalidatePresentedMedia();
       if (viewerSfuRouteRef.current === route) {
         viewerSfuRouteRef.current = null;
       }
@@ -1018,7 +1134,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 snapshot.metrics.intervalFramesDecoded,
                 snapshot.connectionId,
               );
-              qualityEvidenceReporter.offer(snapshot, currentRouteRevision);
+              offerPeerQualityEvidence(snapshot, peer);
               setPeerSnapshot(snapshot);
               dispatchPresentation({
                 type: "connection",
@@ -1104,7 +1220,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 snapshot.metrics.intervalFramesDecoded,
                 snapshot.connectionId,
               );
-              qualityEvidenceReporter.offer(snapshot, currentRouteRevision);
+              offerPeerQualityEvidence(snapshot, peer);
               if (
                 !currentHostOnline &&
                 (snapshot.connectionState === "failed" ||
@@ -1131,12 +1247,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             if (viewerSfuRoute) {
               return viewerSfuRoute.reportPeerFailure(parentPeerId, connectionId);
             }
+            invalidateQualityPresentation();
             dispatchPresentation({
               type: "failure",
               failure: "ROUTE_EXHAUSTED",
               revision: currentRouteRevision,
             });
-            setFrameProofEpoch((current) => current + 1);
             return true;
           },
         },
@@ -1209,6 +1325,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentHostOnline = message.hostOnline;
         setHostOnline(message.hostOnline);
         const sharingPaused = message.hostPaused ?? false;
+        if (currentHostPaused !== sharingPaused && sharingPaused) {
+          invalidatePresentedMedia();
+        }
         currentHostPaused = sharingPaused;
         syncDecodedFrameStallPause();
         dispatchPresentation({
@@ -1342,14 +1461,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "route-status") {
+        if (message.state === "failed") {
+          invalidateQualityPresentation();
+        }
         dispatchPresentation({
           type: "route-status",
           revision: message.revision,
           state: message.state,
         });
-        if (message.state === "failed") {
-          setFrameProofEpoch((current) => current + 1);
-        }
         return;
       }
       if (message.type === "viewer-quality-evidence") {
@@ -1452,6 +1571,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "host-status") {
         currentHostOnline = message.online;
+        if (currentHostPaused !== message.paused && message.paused) {
+          invalidatePresentedMedia();
+        }
         currentHostPaused = message.paused;
         syncDecodedFrameStallPause();
         setHostOnline(message.online);
@@ -1471,6 +1593,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "sharing-stopped") {
+        invalidatePresentedMedia();
         currentRouteAssignment = null;
         currentRouteConnectionId = null;
         pendingRouteConnection = null;
@@ -1586,6 +1709,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       window.removeEventListener("pageshow", recoverFromPageLifecycle);
       currentPeerId = null;
       qualityEvidenceReporter.reset();
+      if (qualityEvidenceReporterRef.current === qualityEvidenceReporter) {
+        qualityEvidenceReporterRef.current = null;
+      }
       clearRelayChildEvidence();
       sfuStandbyPrewarmer?.dispose();
       signal.stop();
@@ -1656,13 +1782,18 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     if (!video || !remoteMedia) {
       return;
     }
-    return observeCompositedVideoFrame(video, remoteMedia.stream, () =>
+    const binding = remoteMedia;
+    return observeCompositedVideoFrame(video, binding.stream, () => {
+      if (!mediaBindingIsCurrent(binding)) {
+        return;
+      }
+      qualityFrameProofGenerationRef.current = binding.generation;
       dispatchPresentation({
         type: "frame-presented",
-        generation: remoteMedia.generation,
-        revision: remoteMedia.revision,
-      }),
-    );
+        generation: binding.generation,
+        revision: binding.revision,
+      });
+    });
   }, [frameProofEpoch, presentationState.connection, remoteMedia]);
 
   function retryConnection(): void {
@@ -1921,10 +2052,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             autoPlay
             controls={
               presentation.overlay === "none" ||
-              presentation.stage === "needs-play"
+              presentation.stage === "needs-play" ||
+              (presentation.stage === "receiving" &&
+                presentation.hasRetainedFrame)
             }
             playsInline
             onPlay={() => {
+              invalidateQualityPresentation();
+              setFrameProofEpoch((current) => current + 1);
               const binding = remoteMediaRef.current;
               if (binding) {
                 dispatchPresentation({
@@ -1933,6 +2068,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 });
               }
             }}
+            onPause={invalidateQualityPresentation}
+            onEnded={invalidateQualityPresentation}
           />
           {presentation.overlay === "blocking" && (
             <div className="stage-placeholder" role="status">

@@ -19,6 +19,8 @@ import {
   type CandidateReservation,
   type CandidateTuple,
   type OperationSnapshot,
+  type RouteQualityEvidenceInput,
+  type RouteQualityEvidenceResult,
   type RouteSnapshot,
 } from "./room-route-controller.js";
 import type { RoomStore } from "./room-store.js";
@@ -260,6 +262,16 @@ export class HybridMediaRouter {
         children: [],
         operation: null,
       }
+    );
+  }
+
+  observeQualityEvidence(
+    input: RouteQualityEvidenceInput & { roomId: string },
+  ): RouteQualityEvidenceResult {
+    const { roomId, ...evidence } = input;
+    return (
+      this.rooms.get(roomId)?.controller?.observeQualityEvidence(evidence) ??
+      "rejected"
     );
   }
 

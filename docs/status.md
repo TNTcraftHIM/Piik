@@ -42,7 +42,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical `main` contains the same application tree deployed from `267e073`.
+- Canonical `main` uses the evidence-only strict `screener-v13` quality shadow;
+  production remains the strict-v12 application tree deployed from `267e073`.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector are implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -57,6 +58,10 @@ This is the current execution index. Git history owns completed timelines;
   quality score, layer selector, periodic rebalancing, or quality-driven parent
   change. P2P and SFU recover their current route before actual failure enters
   normal reassignment.
+- Current Viewer freeze/pause evidence requires decoded progress and exact
+  foreground presentation authority. The controller retains one bounded,
+  fresh current-edge aggregate per child for the Host-only on-demand snapshot;
+  it does not change route facts, capacity, candidates, SFU usage or reconcile.
 - Viewer hidden/freeze/pagehide suppress decoded-stall routing authority;
   visible/resume/pageshow rebaseline and rearm current-frame proof. SFU
   pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
@@ -64,10 +69,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Implement presentation-authoritative freeze/pause evidence with decoded
-   progress and the controller-owned shadow aggregate; collect production
-   samples without active route changes. This integration atomically replaces
-   current v12 with accepted strict `screener-v13`.
+1. Atomically deploy strict `screener-v13`, then collect annotated production
+   freeze/pause samples without active route changes.
 2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
 3. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance

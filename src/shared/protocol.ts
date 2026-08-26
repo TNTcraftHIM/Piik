@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v12";
+export const SIGNALING_PROTOCOL = "screener-v13";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -397,6 +397,22 @@ const routeDiagnosticParentSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ]);
+const routeDiagnosticQualityValueSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(Number.MAX_SAFE_INTEGER);
+const routeDiagnosticQualitySchema = z
+  .object({
+    eligibleWindows: routeDiagnosticQualityValueSchema,
+    eligibleDurationMs: routeDiagnosticQualityValueSchema,
+    freezeWindows: routeDiagnosticQualityValueSchema,
+    freezeCount: routeDiagnosticQualityValueSchema,
+    freezeDurationMs: routeDiagnosticQualityValueSchema,
+    pauseCount: routeDiagnosticQualityValueSchema,
+    pauseDurationMs: routeDiagnosticQualityValueSchema,
+  })
+  .strict();
 const routeDiagnosticChildSchema = z
   .object({
     ordinal: routeDiagnosticOrdinalSchema,
@@ -418,6 +434,7 @@ const routeDiagnosticChildSchema = z
     finalMs: routeDiagnosticDurationSchema,
     finalRoute: routeDiagnosticFinalRouteSchema,
     rejectionBucket: routeDiagnosticRejectionBucketSchema,
+    quality: routeDiagnosticQualitySchema.nullable(),
   })
   .strict();
 const routeDiagnosticOperationSchema = z
@@ -524,6 +541,20 @@ const nullableSignedEvidenceNumber = (absoluteMaximum: number) =>
 const nullableEvidenceInteger = (maximum: number) =>
   z.number().int().min(0).max(maximum).nullable();
 
+const nullableSafeEvidenceNumber = z
+  .number()
+  .finite()
+  .min(0)
+  .max(Number.MAX_SAFE_INTEGER)
+  .nullable();
+
+const nullableSafeEvidenceInteger = z
+  .number()
+  .int()
+  .min(0)
+  .max(Number.MAX_SAFE_INTEGER)
+  .nullable();
+
 export const viewerQualityEvidenceMetricsSchema = z
   .object({
     width: z.number().int().min(1).max(16_384).nullable(),
@@ -537,8 +568,10 @@ export const viewerQualityEvidenceMetricsSchema = z
     framesDecodedDelta: nullableEvidenceInteger(10_000),
     framesDroppedDelta: nullableEvidenceInteger(10_000),
     decodeMsPerFrame: nullableEvidenceNumber(60_000),
-    freezeCountDelta: nullableEvidenceInteger(10_000),
-    freezeDurationMsDelta: nullableEvidenceNumber(5_000),
+    freezeCountDelta: nullableSafeEvidenceInteger,
+    freezeDurationMsDelta: nullableSafeEvidenceNumber,
+    pauseCountDelta: nullableSafeEvidenceInteger,
+    pauseDurationMsDelta: nullableSafeEvidenceNumber,
     codec: z
       .string()
       .max(64)
@@ -587,6 +620,11 @@ const viewerQualityEvidenceGuardSchema = z
   .object({
     connectionId: opaqueIdSchema,
     routeRevision: mediaRouteRevisionSchema,
+    presentationEpoch: z
+      .number()
+      .int()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER),
   })
   .strict();
 
@@ -596,26 +634,13 @@ const viewerQualityEvidenceWindowShape = {
   metrics: viewerQualityEvidenceMetricsSchema,
 };
 
-function freezeFitsEvidenceWindow(value: {
-  windowMs: number;
-  metrics: ViewerQualityEvidenceMetrics;
-}): boolean {
-  return (
-    value.metrics.freezeDurationMsDelta === null ||
-    value.metrics.freezeDurationMsDelta <= value.windowMs
-  );
-}
-
 export const viewerQualityEvidenceMessageSchema = z
   .object({
     type: z.literal("viewer-quality-evidence"),
     guard: viewerQualityEvidenceGuardSchema,
     ...viewerQualityEvidenceWindowShape,
   })
-  .strict()
-  .refine(freezeFitsEvidenceWindow, {
-    message: "Viewer freeze duration exceeds its evidence window",
-  });
+  .strict();
 
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
@@ -937,10 +962,7 @@ export const serverMessageSchema = z.union([
       guard: viewerQualityEvidenceGuardSchema,
       ...viewerQualityEvidenceWindowShape,
     })
-    .strict()
-    .refine(freezeFitsEvidenceWindow, {
-      message: "Viewer freeze duration exceeds its evidence window",
-    }),
+    .strict(),
   z
     .object({
       type: z.literal("host-status"),

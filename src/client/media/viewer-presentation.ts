@@ -116,6 +116,7 @@ export type ViewerPresentationAction =
     }
   | { type: "media-bound"; generation: number; revision: number }
   | { type: "frame-presented"; generation: number; revision: number }
+  | { type: "frame-proof-reset"; generation: number; revision: number }
   | { type: "autoplay-blocked"; generation: number; revision: number }
   | { type: "autoplay-cleared"; generation: number }
   | { type: "playback-failed"; generation: number; revision: number }
@@ -210,8 +211,7 @@ export function reduceViewerPresentation(
           kind: action.kind,
         },
         routeStatus:
-          state.routeStatus?.revision === action.revision &&
-          state.routeStatus.state === "waiting"
+          state.routeStatus?.revision === action.revision
             ? state.routeStatus
             : null,
         media: preserveMedia
@@ -288,7 +288,11 @@ export function reduceViewerPresentation(
     case "media-bound": {
       if (
         (state.revision !== null && action.revision < state.revision) ||
-        (state.media && action.generation <= state.media.generation)
+        (state.media && action.generation <= state.media.generation) ||
+        (state.routeStatus?.revision === action.revision &&
+          state.routeStatus.state === "failed") ||
+        (state.revision === action.revision &&
+          state.failure === "ROUTE_EXHAUSTED")
       ) {
         return state;
       }
@@ -315,7 +319,9 @@ export function reduceViewerPresentation(
         !state.media ||
         state.media.generation !== action.generation ||
         state.media.revision !== action.revision ||
-        state.revision !== action.revision
+        state.revision !== action.revision ||
+        state.routeStatus?.state === "failed" ||
+        state.failure === "ROUTE_EXHAUSTED"
       ) {
         return state;
       }
@@ -326,10 +332,22 @@ export function reduceViewerPresentation(
         retainedFrame: false,
         routeStatus: null,
         failure:
-          state.failure === "PLAYBACK_FAILED" ||
-          state.failure === "ROUTE_EXHAUSTED"
-            ? null
-            : state.failure,
+          state.failure === "PLAYBACK_FAILED" ? null : state.failure,
+      };
+    case "frame-proof-reset":
+      if (
+        !state.media ||
+        state.media.generation !== action.generation ||
+        state.media.revision !== action.revision ||
+        state.revision !== action.revision ||
+        !state.media.framePresented
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        media: { ...state.media, framePresented: false },
+        retainedFrame: true,
       };
     case "autoplay-blocked":
       if (
@@ -540,6 +558,15 @@ export function deriveViewerPresentation(
     };
   }
 
+  if (state.routeStatus?.state === "failed") {
+    return presentation(
+      "route-failed",
+      "没有可用的媒体线路",
+      frameOverlay,
+      state,
+    );
+  }
+
   switch (state.failure) {
     case "ROUTE_EXHAUSTED":
       return presentation(
@@ -607,6 +634,18 @@ export function deriveViewerPresentation(
       state,
     );
   }
+  if (
+    state.signal === "reconnecting" ||
+    state.connection === "reconnecting" ||
+    state.connection === "failed"
+  ) {
+    return presentation(
+      "recovering",
+      "正在恢复连接",
+      frameOverlay,
+      state,
+    );
+  }
   if (state.media && state.media.revision === state.revision) {
     return presentation(
       "receiving",
@@ -619,18 +658,6 @@ export function deriveViewerPresentation(
     return presentation(
       state.route.kind === "sfu" ? "preparing-sfu" : "preparing-p2p",
       state.route.kind === "sfu" ? "正在连接备用线路" : "正在建立 P2P",
-      frameOverlay,
-      state,
-    );
-  }
-  if (
-    state.signal === "reconnecting" ||
-    state.connection === "reconnecting" ||
-    state.connection === "failed"
-  ) {
-    return presentation(
-      "recovering",
-      "正在恢复连接",
       frameOverlay,
       state,
     );

@@ -50,6 +50,7 @@ const qualityEvidence = {
   guard: {
     connectionId: "connection_12345678",
     routeRevision: 0,
+    presentationEpoch: 0,
   },
   sequence: 0,
   windowMs: 2_000,
@@ -67,6 +68,8 @@ const qualityEvidence = {
     decodeMsPerFrame: 2.4,
     freezeCountDelta: 0,
     freezeDurationMsDelta: 0,
+    pauseCountDelta: 0,
+    pauseDurationMsDelta: 0,
     codec: "video/H264",
     codecProfile: "profile-level-id=42e01f",
     codecParameters:
@@ -93,7 +96,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v12");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v13");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -755,6 +758,28 @@ describe("client signaling protocol", () => {
   it("accepts only strict, bounded viewer quality evidence", () => {
     expect(clientMessageSchema.safeParse(qualityEvidence).success).toBe(true);
     expect(
+      clientMessageSchema.safeParse({
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          freezeDurationMsDelta: 12_000,
+          pauseDurationMsDelta: 6_000,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          freezeCountDelta: null,
+          freezeDurationMsDelta: null,
+          pauseCountDelta: null,
+          pauseDurationMsDelta: null,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
       Buffer.byteLength(JSON.stringify(qualityEvidence), "utf8"),
     ).toBeLessThanOrEqual(MAX_VIEWER_QUALITY_EVIDENCE_BYTES);
 
@@ -776,7 +801,32 @@ describe("client signaling protocol", () => {
       },
       {
         ...qualityEvidence,
-        metrics: { ...qualityEvidence.metrics, freezeDurationMsDelta: 2_001 },
+        metrics: { ...qualityEvidence.metrics, freezeCountDelta: -1 },
+      },
+      {
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          freezeCountDelta: Number.MAX_SAFE_INTEGER + 1,
+        },
+      },
+      {
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          freezeDurationMsDelta: Number.MAX_SAFE_INTEGER + 1,
+        },
+      },
+      {
+        ...qualityEvidence,
+        metrics: { ...qualityEvidence.metrics, pauseCountDelta: -1 },
+      },
+      {
+        ...qualityEvidence,
+        metrics: {
+          ...qualityEvidence.metrics,
+          pauseDurationMsDelta: Number.MAX_SAFE_INTEGER + 1,
+        },
       },
       {
         ...qualityEvidence,
@@ -947,7 +997,7 @@ describe("server signaling protocol", () => {
     }
   });
 
-  it("accepts only the privacy-safe two-field route snapshot payload", () => {
+  it("accepts only the privacy-safe route snapshot payload", () => {
     const message = {
       type: "route-diagnostic-snapshot",
       snapshot: {
@@ -964,6 +1014,15 @@ describe("server signaling protocol", () => {
             finalMs: 80,
             finalRoute: "direct",
             rejectionBucket: "none",
+            quality: {
+              eligibleWindows: 3,
+              eligibleDurationMs: 6_000,
+              freezeWindows: 1,
+              freezeCount: 1,
+              freezeDurationMs: 250,
+              pauseCount: 0,
+              pauseDurationMs: 0,
+            },
           },
           {
             ordinal: 2,
@@ -977,6 +1036,7 @@ describe("server signaling protocol", () => {
             finalMs: null,
             finalRoute: "waiting",
             rejectionBucket: "sfu-admission",
+            quality: null,
           },
         ],
         operation: {
@@ -1002,6 +1062,36 @@ describe("server signaling protocol", () => {
             {
               ...message.snapshot.children[0],
               connectionId: "connection_private_12345678",
+            },
+          ],
+        },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          children: [
+            {
+              ...message.snapshot.children[0],
+              quality: {
+                ...message.snapshot.children[0].quality,
+                presentationEpoch: 1,
+              },
+            },
+          ],
+        },
+      },
+      {
+        ...message,
+        snapshot: {
+          ...message.snapshot,
+          children: [
+            {
+              ...message.snapshot.children[0],
+              quality: {
+                ...message.snapshot.children[0].quality,
+                freezeCount: -1,
+              },
             },
           ],
         },
@@ -1474,6 +1564,16 @@ describe("server signaling protocol", () => {
       upstream: { kind: "peer", peerId: "host_12345678" },
     };
     expect(serverMessageSchema.safeParse(forwarded).success).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...forwarded,
+        metrics: {
+          ...forwarded.metrics,
+          freezeDurationMsDelta: 12_000,
+          pauseDurationMsDelta: 6_000,
+        },
+      }).success,
+    ).toBe(true);
     expect(
       serverMessageSchema.safeParse({
         ...forwarded,

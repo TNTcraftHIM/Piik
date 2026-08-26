@@ -2,8 +2,8 @@
 
 - Research date: 2026-08-26
 - Scope: Browser game-screen capture, encoding, P2P forwarding, and LiveKit SFU
-- Status: current Browser policy accepted; real-game, weak-device, and
-  heterogeneous-network quality remain open
+- Status: strict-v13 evidence-only quality shadow implemented in canonical
+  source; production sampling and active policy remain open
 
 ## Current Conclusion
 
@@ -354,9 +354,8 @@ page refresh also rebinds the same stable participant and committed graph.
 Only actual recovery exhaustion enters the normal route-failure operation and
 tries other eligible P2P parents before SFU.
 
-Quality-driven relay abdication or active parent switching would require
-counterfactual alternative-path evidence, bounded probing, and a separate
-ADR-0005 decision. It is not implemented or authorized by current diagnostics.
+Quality-driven relay abdication or active parent switching requires evidence
+that current diagnostics do not yet provide. No active policy is implemented.
 
 The reopened quality-selection research retains that information boundary.
 Current-route WebRTC stats can prove user-visible degradation but cannot prove
@@ -374,7 +373,7 @@ quality ceiling as a delivered floor requires a separate product SLO. Relay
 ingress degradation reparents that relay while retaining its subtree; one
 child's degradation moves only that child.
 
-The accepted first stage is shadow evaluation only. Viewer evidence adds the
+The implemented first stage is shadow evaluation only. Viewer evidence adds the
 standard cumulative-renderer deltas `freezeCount`, `totalFreezesDuration`,
 `pauseCount` and `totalPausesDuration` and requires continuing
 `framesDecoded` progress. W3C already

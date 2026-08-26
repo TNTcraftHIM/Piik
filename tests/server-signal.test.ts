@@ -406,10 +406,11 @@ function viewerQualityEvidenceMessage(
   connectionId: string,
   routeRevision: number,
   sequence = 0,
+  presentationEpoch = 0,
 ) {
   return {
     type: "viewer-quality-evidence" as const,
-    guard: { connectionId, routeRevision },
+    guard: { connectionId, routeRevision, presentationEpoch },
     sequence,
     windowMs: 2_000,
     metrics: {
@@ -426,6 +427,8 @@ function viewerQualityEvidenceMessage(
       decodeMsPerFrame: 2.4,
       freezeCountDelta: 0,
       freezeDurationMsDelta: 0,
+      pauseCountDelta: 0,
+      pauseDurationMsDelta: 0,
       codec: "video/VP8",
       codecProfile: null,
       codecParameters: null,
@@ -896,7 +899,8 @@ describe("WebSocket signaling", () => {
   });
 
   it("forwards exact direct Viewer receive evidence to the Host", async () => {
-    const harness = await startHarness();
+    let now = 10_000;
+    const harness = await startHarness({ now: () => now });
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = await authenticate(
       host,
@@ -914,6 +918,7 @@ describe("WebSocket signaling", () => {
       "viewer",
       "evidence-direct-viewer",
     );
+    host.inbox.ignore("viewer-presence");
     await host.inbox.next("peer-joined");
     const connectionId = "evidence_direct_connection_12345678";
     host.socket.send(
@@ -937,12 +942,44 @@ describe("WebSocket signaling", () => {
       upstream: { kind: "peer", peerId: hostAuth.peerId },
       guard: { connectionId, routeRevision: 0 },
     });
+
+    viewer.socket.send(
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 0, 1)),
+    );
+    await host.inbox.expectNone(40);
+    now += 2_000;
+    viewer.socket.send(
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 7, 1)),
+    );
+    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
+      guard: { connectionId, routeRevision: 0, presentationEpoch: 1 },
+      sequence: 7,
+    });
+    now += 2_000;
+    viewer.socket.send(
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 1, 0)),
+    );
+    await host.inbox.expectNone(40);
+    viewer.socket.send(
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 0, 2)),
+    );
+    await host.inbox.expectNone(40);
+    now += 2_000;
+    viewer.socket.send(
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 9, 2)),
+    );
+    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
+      guard: { connectionId, routeRevision: 0, presentationEpoch: 2 },
+      sequence: 9,
+    });
   });
 
   it("forwards a relayed child receive report to its exact parent and Host", async () => {
+    let now = 10_000;
     const harness = await startHarness({
       peerAssistedMedia: true,
       endpointMediaCopyCapacity: 1,
+      now: () => now,
     });
     const host = await openClient(harness.webSocketUrl);
     await authenticate(
@@ -1020,6 +1057,45 @@ describe("WebSocket signaling", () => {
     expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject(
       expected,
     );
+    host.socket.send(JSON.stringify({ type: "request-route-diagnostic" }));
+    const diagnostic = await host.inbox.next("route-diagnostic-snapshot");
+    expect(
+      diagnostic.snapshot.children.find((entry) => entry.quality !== null)
+        ?.quality,
+    ).toEqual({
+      eligibleWindows: 1,
+      eligibleDurationMs: 2_000,
+      freezeWindows: 0,
+      freezeCount: 0,
+      freezeDurationMs: 0,
+      pauseCount: 0,
+      pauseDurationMs: 0,
+    });
+
+    now += 2_000;
+    const incomplete = viewerQualityEvidenceMessage(
+      childPrepare.candidate.connectionId,
+      childPrepare.revision,
+      1,
+    );
+    child.socket.send(
+      JSON.stringify({
+        ...incomplete,
+        metrics: { ...incomplete.metrics, pauseCountDelta: null },
+      }),
+    );
+    expect(await parent.inbox.next("viewer-quality-evidence")).toMatchObject({
+      metrics: { pauseCountDelta: null },
+    });
+    expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
+      metrics: { pauseCountDelta: null },
+    });
+    host.socket.send(JSON.stringify({ type: "request-route-diagnostic" }));
+    const unchanged = await host.inbox.next("route-diagnostic-snapshot");
+    expect(
+      unchanged.snapshot.children.find((entry) => entry.quality !== null)
+        ?.quality?.eligibleWindows,
+    ).toBe(1);
   });
 
   it("shares an opted-in Host name with Host and Viewer roster subscribers", async () => {
@@ -2908,7 +2984,7 @@ describe("WebSocket signaling", () => {
     expect(await closeCode).toBe(1009);
   });
 
-  it("terminates stale v10 before authentication", async () => {
+  it("terminates stale v12 before authentication", async () => {
     const harness = await startHarness();
     const invalidClient = await openClient(harness.webSocketUrl);
     const closed = new Promise<{ code: number; reason: string }>((resolve) =>
@@ -2920,7 +2996,7 @@ describe("WebSocket signaling", () => {
     invalidClient.socket.send(
       JSON.stringify({
         type: "authenticate",
-        protocol: "screener-v10",
+        protocol: "screener-v12",
         roomId: harness.room.roomId,
         role: "viewer",
         clientId: "invalid-client",

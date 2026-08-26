@@ -64,8 +64,9 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- Canonical source contains the same application tree deployed from `267e073`:
-  the adaptive H.264/VP8 sender decision with `contentHint = "motion"` reapplies the
+- Canonical source uses strict `screener-v13`; production remains the strict-v12
+  application tree deployed from `267e073`. The adaptive H.264/VP8 sender
+  decision with `contentHint = "motion"` reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
@@ -76,6 +77,10 @@ may be interpreted. Git and pull requests own routine completed checks.
   authority, hidden-page stall suppression, retryable failure reporting, native
   controls, and same-route manual reconnect are current source behavior. Mobile
   physical evidence remains open.
+- The evidence-only quality shadow accepts only exact foreground presentation
+  windows with decoded progress, keeps one bounded fresh aggregate per current
+  child, and exposes it through the Host-only anonymous route snapshot. It does
+  not change route facts, capacity, candidate order, SFU admission or reconcile.
 
 ## Open Physical Gates
 

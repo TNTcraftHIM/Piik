@@ -1,8 +1,8 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
 - Status: Base routing is deployed on strict v12. The evidence-only quality
-  shadow and atomic strict-v13 upgrade are accepted but not yet implemented or
-  deployed. Exact current identity is owned by
+  shadow is implemented in canonical source on strict v13 but not yet deployed.
+  Exact current identity is owned by
   [status](../status.md).
 - Date: 2026-08-20
 - Last updated: 2026-08-27
@@ -361,8 +361,8 @@ current-candidate-start, first-decoded-frame, and final-outcome timing. A new
 demand overwrites that child's record; authoritative share stop/replacement,
 confirmed departure, and room deletion remove it.
 
-An authenticated Host acceptance harness may request one snapshot. The accepted
-v12 product UI exposes no diagnostic download button. The response
+An authenticated Host acceptance harness may request one snapshot. The current
+product UI exposes no diagnostic download button. The response
 reads the current graph, current operation, and latest records; the server does
 not push a periodic snapshot stream, start a timer, retain an event ring, log or
 persist the result, or create a second graph. Snapshot-local ordinals express
@@ -424,10 +424,10 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Production and canonical application/runtime source currently use strict
-`screener-v12`; the accepted quality-shadow integration atomically replaces it
-with strict `screener-v13`. Exact current source
-and deployment identity is indexed by [status](../status.md).
+Canonical application/runtime source uses the evidence-only strict
+`screener-v13` quality shadow; production remains strict `screener-v12` until
+its atomic application release. Exact current source and deployment identity is
+indexed by [status](../status.md).
 Browser SFU PCs use empty external ICE-server lists. The controlled exact-
 candidate rollback/SFU commit and active-SFU cadence gates are closed. The
 operation owner remains only `route`; broader heterogeneous-network and SFU

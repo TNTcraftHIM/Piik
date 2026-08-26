@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { QualitySettings } from "../src/shared/protocol.ts";
+import {
+  SIGNALING_PROTOCOL,
+  type QualitySettings,
+} from "../src/shared/protocol.ts";
 
 import {
   ApiError,
@@ -42,6 +45,7 @@ import {
 import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import {
   collectConnectionMetrics,
+  collectConnectionMetricsFromReport,
   createStatsAccumulator,
 } from "../src/client/webrtc/stats.ts";
 
@@ -887,7 +891,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v12",
+        protocol: "screener-v13",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -923,7 +927,7 @@ describe("client signaling recovery policy", () => {
     });
     receive(sockets[1]!, {
       type: "authenticated",
-      protocol: "screener-v12",
+      protocol: "screener-v13",
       role: "host",
       peerId: "host_12345678",
       roomExpiresAt: null,
@@ -1035,7 +1039,7 @@ describe("client signaling recovery policy", () => {
       Object.defineProperty(event, "data", {
         value: JSON.stringify({
           type: "authenticated",
-          protocol: "screener-v12",
+          protocol: SIGNALING_PROTOCOL,
           role: "host",
           peerId: "host_12345678",
           roomExpiresAt: null,
@@ -1162,7 +1166,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v12",
+        protocol: "screener-v13",
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -1288,7 +1292,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v12",
+      protocol: "screener-v13",
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -1415,7 +1419,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v12",
+        protocol: "screener-v13",
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });
@@ -2120,6 +2124,8 @@ describe("WebRTC stats parsing", () => {
       framesDropped: number,
       freezeCount: number,
       totalFreezesDuration: number,
+      pauseCount: number,
+      totalPausesDuration: number,
       retransmittedPacketsReceived: number,
       retransmittedBytesReceived: number,
     ) =>
@@ -2137,18 +2143,20 @@ describe("WebRTC stats parsing", () => {
             framesDropped,
             freezeCount,
             totalFreezesDuration,
+            pauseCount,
+            totalPausesDuration,
             retransmittedPacketsReceived,
             retransmittedBytesReceived,
           },
         ],
       ]) as unknown as RTCStatsReport;
     const reports = [
-      inbound(1_000, 101, 2, 1, 0.25, 3, 300),
-      inbound(2_000, 101, 5, 2, 0.75, 7, 900),
-      inbound(3_000, 202, 20, 8, 4, 30, 4_000),
-      inbound(4_000, 202, 22, 9, 4.25, 33, 4_600),
-      inbound(5_000, 202, 1, 0, 0.25, 2, 200),
-      inbound(6_000, 202, 4, 1, 0.5, 6, 1_000),
+      inbound(1_000, 101, 2, 1, 0.25, 0, 0, 3, 300),
+      inbound(2_000, 101, 5, 2, 2.75, 1, 5.5, 7, 900),
+      inbound(3_000, 202, 20, 8, 4, 3, 16, 30, 4_000),
+      inbound(4_000, 202, 22, 9, 6.25, 4, 21.5, 33, 4_600),
+      inbound(5_000, 202, 1, 0, 0.25, 0, 0.25, 2, 200),
+      inbound(6_000, 202, 4, 1, 2.5, 1, 6.25, 6, 1_000),
     ];
     const connection = {
       getStats: async () => reports.shift()!,
@@ -2168,6 +2176,8 @@ describe("WebRTC stats parsing", () => {
       intervalFramesDropped: null,
       intervalFreezeCount: null,
       intervalFreezeDurationMs: null,
+      intervalPauseCount: null,
+      intervalPauseDurationMs: null,
       intervalRetransmittedPackets: null,
       intervalRetransmittedBytes: null,
     });
@@ -2175,7 +2185,9 @@ describe("WebRTC stats parsing", () => {
       sampleWindowMs: 1_000,
       intervalFramesDropped: 3,
       intervalFreezeCount: 1,
-      intervalFreezeDurationMs: 500,
+      intervalFreezeDurationMs: 2_500,
+      intervalPauseCount: 1,
+      intervalPauseDurationMs: 5_500,
       intervalRetransmittedPackets: 4,
       intervalRetransmittedBytes: 600,
     });
@@ -2185,6 +2197,8 @@ describe("WebRTC stats parsing", () => {
       intervalFramesDropped: null,
       intervalFreezeCount: null,
       intervalFreezeDurationMs: null,
+      intervalPauseCount: null,
+      intervalPauseDurationMs: null,
       intervalRetransmittedPackets: null,
       intervalRetransmittedBytes: null,
     });
@@ -2192,7 +2206,9 @@ describe("WebRTC stats parsing", () => {
       sampleWindowMs: 1_000,
       intervalFramesDropped: 2,
       intervalFreezeCount: 1,
-      intervalFreezeDurationMs: 250,
+      intervalFreezeDurationMs: 2_250,
+      intervalPauseCount: 1,
+      intervalPauseDurationMs: 5_500,
       intervalRetransmittedPackets: 3,
       intervalRetransmittedBytes: 600,
     });
@@ -2201,6 +2217,8 @@ describe("WebRTC stats parsing", () => {
       intervalFramesDropped: null,
       intervalFreezeCount: null,
       intervalFreezeDurationMs: null,
+      intervalPauseCount: null,
+      intervalPauseDurationMs: null,
       intervalRetransmittedPackets: null,
       intervalRetransmittedBytes: null,
     });
@@ -2208,9 +2226,70 @@ describe("WebRTC stats parsing", () => {
       sampleWindowMs: 1_000,
       intervalFramesDropped: 3,
       intervalFreezeCount: 1,
-      intervalFreezeDurationMs: 250,
+      intervalFreezeDurationMs: 2_250,
+      intervalPauseCount: 1,
+      intervalPauseDurationMs: 6_000,
       intervalRetransmittedPackets: 4,
       intervalRetransmittedBytes: 800,
+    });
+  });
+
+  it("keeps unavailable pause counters unknown and receive-only", async () => {
+    const report = (
+      type: "inbound-rtp" | "outbound-rtp",
+      timestamp: number,
+    ) =>
+      new Map<string, unknown>([
+        [
+          "video",
+          {
+            id: "video",
+            type,
+            timestamp,
+            kind: "video",
+            ssrc: 101,
+            ...(type === "inbound-rtp"
+              ? { bytesReceived: timestamp, framesDecoded: timestamp / 100 }
+              : {
+                  bytesSent: timestamp,
+                  framesEncoded: timestamp / 100,
+                  pauseCount: timestamp / 1_000,
+                  totalPausesDuration: timestamp / 1_000,
+                }),
+          },
+        ],
+      ]) as unknown as RTCStatsReport;
+
+    const receiveAccumulator = createStatsAccumulator();
+    collectConnectionMetricsFromReport(
+      report("inbound-rtp", 1_000),
+      "receive",
+      receiveAccumulator,
+    );
+    const receive = collectConnectionMetricsFromReport(
+      report("inbound-rtp", 2_000),
+      "receive",
+      receiveAccumulator,
+    );
+    expect(receive).toMatchObject({
+      intervalPauseCount: null,
+      intervalPauseDurationMs: null,
+    });
+
+    const sendAccumulator = createStatsAccumulator();
+    collectConnectionMetricsFromReport(
+      report("outbound-rtp", 1_000),
+      "send",
+      sendAccumulator,
+    );
+    const send = collectConnectionMetricsFromReport(
+      report("outbound-rtp", 2_000),
+      "send",
+      sendAccumulator,
+    );
+    expect(send).toMatchObject({
+      intervalPauseCount: null,
+      intervalPauseDurationMs: null,
     });
   });
 

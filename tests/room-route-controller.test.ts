@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { ViewerQualityEvidenceMetrics } from "../src/shared/protocol.ts";
+
 import {
   RoomRouteController,
   type CandidateGuard,
@@ -124,7 +126,194 @@ function peerEdge(
   };
 }
 
+type RouteQualityMetrics = Pick<
+  ViewerQualityEvidenceMetrics,
+  | "framesDecodedDelta"
+  | "freezeCountDelta"
+  | "freezeDurationMsDelta"
+  | "pauseCountDelta"
+  | "pauseDurationMsDelta"
+>;
+
+function qualityMetrics(
+  overrides: Partial<RouteQualityMetrics> = {},
+): RouteQualityMetrics {
+  return {
+    framesDecodedDelta: 120,
+    freezeCountDelta: 1,
+    freezeDurationMsDelta: 250,
+    pauseCountDelta: 0,
+    pauseDurationMsDelta: 0,
+    ...overrides,
+  };
+}
+
 describe("RoomRouteController", () => {
+  it("keeps only fresh exact-edge quality shadow aggregates", () => {
+    const routes = controller(2);
+    addViewer(routes, A, 1, 0);
+    routes.reconcile(10);
+    commitCurrent(routes, 20, "a_quality_connection");
+    const active = routes.snapshot();
+
+    expect(
+      routes.observeQualityEvidence({
+        childPeerId: A,
+        childSessionId: `${A}_session`,
+        routeRevision: active.revision,
+        connectionId: "a_quality_connection",
+        upstream: { kind: "peer", peerId: HOST },
+        presentationEpoch: 1,
+        windowMs: 2_000,
+        metrics: qualityMetrics(),
+        acceptedAtMs: 1_000,
+      }),
+    ).toBe("observed");
+    expect(routes.snapshot()).toMatchObject({
+      revision: active.revision,
+      factVersion: active.factVersion,
+    });
+    addViewer(routes, B, 0, 1_100);
+    routes.reconcile(1_200);
+    commitCurrent(routes, 1_210, "b_quality_connection");
+    expect(routes.routeDiagnosticSnapshot(1_300).children[0]?.quality).toEqual({
+      eligibleWindows: 1,
+      eligibleDurationMs: 2_000,
+      freezeWindows: 1,
+      freezeCount: 1,
+      freezeDurationMs: 250,
+      pauseCount: 0,
+      pauseDurationMs: 0,
+    });
+    expect(routes.routeDiagnosticSnapshot(5_999).children[0]?.quality).not.toBeNull();
+    expect(routes.routeDiagnosticSnapshot(6_000).children[0]?.quality).toBeNull();
+
+    const nextRevision = routes.snapshot().revision;
+    expect(
+      routes.observeQualityEvidence({
+        childPeerId: A,
+        childSessionId: `${A}_session`,
+        routeRevision: nextRevision,
+        connectionId: "a_quality_connection",
+        upstream: { kind: "peer", peerId: HOST },
+        presentationEpoch: 2,
+        windowMs: 2_000,
+        metrics: qualityMetrics({ framesDecodedDelta: null }),
+        acceptedAtMs: 7_000,
+      }),
+    ).toBe("accepted");
+    expect(routes.routeDiagnosticSnapshot(7_100).children[0]?.quality).toBeNull();
+    expect(
+      routes.observeQualityEvidence({
+        childPeerId: A,
+        childSessionId: `${A}_session`,
+        routeRevision: nextRevision,
+        connectionId: "a_quality_connection",
+        upstream: { kind: "peer", peerId: HOST },
+        presentationEpoch: 2,
+        windowMs: 2_000,
+        metrics: qualityMetrics(),
+        acceptedAtMs: 7_100,
+      }),
+    ).toBe("observed");
+    expect(
+      routes.observeQualityEvidence({
+        childPeerId: A,
+        childSessionId: `${A}_session`,
+        routeRevision: nextRevision,
+        connectionId: "a_quality_connection",
+        upstream: { kind: "peer", peerId: HOST },
+        presentationEpoch: 1,
+        windowMs: 2_000,
+        metrics: qualityMetrics(),
+        acceptedAtMs: 7_200,
+      }),
+    ).toBe("rejected");
+
+    routes.setPaused(true, 7_300);
+    expect(routes.routeDiagnosticSnapshot(7_301).children[0]?.quality).toBeNull();
+  });
+
+  it("clears quality shadow for a relay subtree when its source changes", () => {
+    const routes = controller(2);
+    addViewer(routes, A, 2);
+    addViewer(routes, B, 2);
+    addViewer(routes, C, 0);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
+    routes.hydrateEdge(B, peerEdge(A, "b_from_a"));
+    routes.hydrateEdge(C, peerEdge(B, "c_from_b"));
+    const revision = routes.snapshot().revision;
+
+    for (const [childPeerId, parentPeerId, connectionId] of [
+      [B, A, "b_from_a"],
+      [C, B, "c_from_b"],
+    ] as const) {
+      expect(
+        routes.observeQualityEvidence({
+          childPeerId,
+          childSessionId: `${childPeerId}_session`,
+          routeRevision: revision,
+          connectionId,
+          upstream: { kind: "peer", peerId: parentPeerId },
+          presentationEpoch: 1,
+          windowMs: 2_000,
+          metrics: qualityMetrics(),
+          acceptedAtMs: 1_000,
+        }),
+      ).toBe("observed");
+    }
+    expect(
+      routes
+        .routeDiagnosticSnapshot(1_001)
+        .children.filter((child) => child.quality !== null),
+    ).toHaveLength(2);
+
+    expect(
+      routes.adoptDirectConnection({
+        childPeerId: A,
+        childSessionId: `${A}_session`,
+        parentSessionId: "host_session",
+        routeRevision: revision,
+        connectionId: "a_from_host",
+        newConnectionId: "a_from_host_recovered",
+      }),
+    ).toBe(true);
+    expect(
+      routes
+        .routeDiagnosticSnapshot(1_002)
+        .children.every((child) => child.quality === null),
+    ).toBe(true);
+
+    for (const [acceptedAtMs, expected] of [
+      [1_100, "accepted"],
+      [3_100, "observed"],
+    ] as const) {
+      for (const [childPeerId, parentPeerId, connectionId] of [
+        [B, A, "b_from_a"],
+        [C, B, "c_from_b"],
+      ] as const) {
+        expect(
+          routes.observeQualityEvidence({
+            childPeerId,
+            childSessionId: `${childPeerId}_session`,
+            routeRevision: revision,
+            connectionId,
+            upstream: { kind: "peer", peerId: parentPeerId },
+            presentationEpoch: 1,
+            windowMs: 2_000,
+            metrics: qualityMetrics(),
+            acceptedAtMs,
+          }),
+        ).toBe(expected);
+      }
+    }
+    expect(
+      routes
+        .routeDiagnosticSnapshot(3_101)
+        .children.filter((child) => child.quality !== null),
+    ).toHaveLength(2);
+  });
+
   it("retains one latest timing sample for a 20-Viewer burst", () => {
     const routes = controller(2);
     const viewerPeerIds = Array.from(
@@ -172,6 +361,7 @@ describe("RoomRouteController", () => {
           finalMs: null,
           finalRoute: "waiting",
           rejectionBucket: "none",
+          quality: null,
         },
       ],
       operation: null,

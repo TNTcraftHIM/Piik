@@ -370,6 +370,50 @@ describe("Viewer presentation reducer", () => {
     });
   });
 
+  it("requires a new composited frame after presentation proof resets", () => {
+    const playing = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 3, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 2, revision: 3 },
+      { type: "frame-presented", generation: 2, revision: 3 },
+    );
+    const reset = reduceViewerPresentation(playing, {
+      type: "frame-proof-reset",
+      generation: 2,
+      revision: 3,
+    });
+
+    expect(deriveViewerPresentation(reset)).toMatchObject({
+      hasCurrentFrame: false,
+      hasRetainedFrame: true,
+    });
+    expect(
+      deriveViewerPresentation(
+        reduceViewerPresentation(reset, {
+          type: "connection",
+          revision: 3,
+          connection: "reconnecting",
+        }),
+      ).stage,
+    ).toBe("recovering");
+    expect(
+      reduceViewerPresentation(reset, {
+        type: "frame-proof-reset",
+        generation: 1,
+        revision: 3,
+      }),
+    ).toBe(reset);
+    expect(
+      reduceViewerPresentation(reset, {
+        type: "frame-presented",
+        generation: 2,
+        revision: 3,
+      }).media?.framePresented,
+    ).toBe(true);
+  });
+
   it("demotes the current frame when an exact route terminally fails", () => {
     const playing = apply(
       { type: "access", access: "ready" },
@@ -394,18 +438,40 @@ describe("Viewer presentation reducer", () => {
       failureCode: "ROUTE_EXHAUSTED",
     });
 
-    const stillPlaying = reduceViewerPresentation(failed, {
+    const lateFrame = reduceViewerPresentation(failed, {
       type: "frame-presented",
       generation: 3,
       revision: 4,
     });
-    expect(deriveViewerPresentation(stillPlaying)).toMatchObject({
-      stage: "playing",
-      overlay: "none",
-      hasCurrentFrame: true,
-      hasRetainedFrame: false,
-      failureCode: null,
+    expect(lateFrame).toBe(failed);
+    expect(
+      reduceViewerPresentation(failed, {
+        type: "media-bound",
+        generation: 4,
+        revision: 4,
+      }),
+    ).toBe(failed);
+    expect(
+      reduceViewerPresentation(failed, {
+        type: "route",
+        revision: 4,
+        phase: "active",
+        kind: "sfu",
+      }).routeStatus,
+    ).toEqual({ revision: 4, state: "failed" });
+
+    const localFailure = reduceViewerPresentation(playing, {
+      type: "failure",
+      failure: "ROUTE_EXHAUSTED",
+      revision: 4,
     });
+    expect(
+      reduceViewerPresentation(localFailure, {
+        type: "media-bound",
+        generation: 4,
+        revision: 4,
+      }),
+    ).toBe(localFailure);
   });
 
   it("honors terminal access, Host pause, and typed route status priority", () => {
