@@ -267,8 +267,18 @@ not retained as a codec cost claim.
 path also reported true. The portable evidence is the actual negotiated H.264
 profile and implementation, plus identity-stable source-frame and encoded-frame
 progress; the successful cohorts kept their encoded/source deficit bounded while
-the bad path dropped frames continuously. The measurement window and acceptable
-deficit still require multi-device and real-game calibration before product use.
+the bad path dropped frames continuously. The accepted gate uses a deterministic
+moving Canvas track at the current share's effective target dimensions and frame
+rate so static captured content cannot make encoder evidence inconclusive. It
+warms the sender for 500 ms, measures for at least one second, and derives its
+allowed frame lag from one 100 ms stats polling interval at the selected target
+FPS; both source and encoded progress must reach that target. The four-second
+deadline bounds local negotiation and evidence collection rather than defining
+the performance threshold. With the real shared source held static through the
+decision, exact Chrome 151 selected VP8 while exact Chrome 153 selected H.264;
+the same moving-source runs selected VP8 and H.264 respectively. These two local
+cohorts validate the mechanism but do not replace broader device and game-load
+acceptance.
 
 For direct peers, native SDP negotiation can order H.264 before VP8 in one offer
 and choose the first codec supported by both endpoints; it does not require a
@@ -407,6 +417,7 @@ interval. Missing counters and identity changes remain unknown, not zero.
 
 - [MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [Screen Capture](https://www.w3.org/TR/screen-capture/)
+- [Media Capture from DOM Elements](https://www.w3.org/TR/mediacapture-fromelement/)
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [libwebrtc adaptation overview](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
