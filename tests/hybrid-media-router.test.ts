@@ -109,6 +109,7 @@ function harness(
     : undefined;
   const roomControl = withSfu ? new FakeSfuRoomControl() : undefined;
   const onActiveRouteChanged = vi.fn();
+  let nextTokenIssueError: Error | null = null;
   const router = new HybridMediaRouter({
     roomStore: store,
     endpointMediaCopyCapacity,
@@ -121,6 +122,11 @@ function harness(
             ...(prepareTimeoutMs ? { prepareTimeoutMs } : {}),
             tokenIssuer: {
               async issueToken({ peerId }) {
+                if (nextTokenIssueError) {
+                  const error = nextTokenIssueError;
+                  nextTokenIssueError = null;
+                  throw error;
+                }
                 return `token-${peerId}`;
               },
             },
@@ -150,6 +156,9 @@ function harness(
     admission,
     roomControl,
     onActiveRouteChanged,
+    failNextTokenIssue() {
+      nextTokenIssueError = new Error("token issue failed");
+    },
     router,
   };
 }
@@ -979,6 +988,30 @@ describe("HybridMediaRouter v9 runtime", () => {
       await vi.waitFor(() => expect(configCount()).toBe(initialCount + 1));
       router.refreshSfu(first, active!.revision);
       await vi.waitFor(() => expect(configCount()).toBe(initialCount + 2));
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("fails the exact active SFU route when fresh configuration cannot be issued", async () => {
+    const { store, sent, router, failNextTokenIssue } = harness(1, true);
+    try {
+      const room = await store.createRoom();
+      const { first } = await establishSfuRoom(store, sent, router, room);
+      const active = router.resolveActiveViewerMediaEdge(
+        room.roomId,
+        first.peerId,
+      )!;
+      expect(active.upstream).toEqual({ kind: "sfu" });
+
+      failNextTokenIssue();
+      router.refreshSfu(first, active.revision);
+
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, first.peerId),
+        ).not.toEqual(active),
+      );
     } finally {
       await router.close();
     }

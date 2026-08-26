@@ -501,7 +501,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           isCurrentGeneration(generation) &&
           hostSfuRouteRef.current === route
         ) {
-          reconcilePeerAssistedChildren(childPeerIds, generation);
+          reconcileHostChildren(childPeerIds, generation);
         }
       },
       send: (message) =>
@@ -1051,6 +1051,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     });
   }
 
+  function hostChildIsAssigned(peerId: string): boolean {
+    return activeHostChildPeerIdsRef.current.includes(peerId);
+  }
+
   function discardPreparedHostChild(): void {
     const provisional = hostProvisionalChildRef.current;
     hostProvisionalChildRef.current = null;
@@ -1117,7 +1121,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     assignment: HostRouteAssignment,
   ): void {
     const activeChildPeerIds = activeHostChildPeerIdsRef.current;
-    const childPeerIds = [...new Set(assignment.childPeerIds)];
     const provisional = hostProvisionalChildRef.current;
     const activation = provisional?.activate({
       revision,
@@ -1134,7 +1137,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     } else {
       discardPreparedHostChild();
     }
-    activeHostChildPeerIdsRef.current = childPeerIds;
   }
 
   async function startPeer(
@@ -1142,7 +1144,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     generation: number,
     attempt = 0,
   ): Promise<void> {
-    if (!isCurrentGeneration(generation)) {
+    if (!isCurrentGeneration(generation) || !hostChildIsAssigned(peerId)) {
       return;
     }
     // Preserve healthy media across control reconnects, but replace a stalled
@@ -1169,7 +1171,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       qualitySettingsRef.current,
       {
         sendSignal: (targetPeerId, payload) =>
-          isCurrentGeneration(generation) && signalRef.current === signal
+          targetPeerId === peerId &&
+          isCurrentGeneration(generation) &&
+          hostChildIsAssigned(peerId) &&
+          peersRef.current.get(peerId) === peer &&
+          signalRef.current === signal
             ? signal.send({ type: "signal", targetPeerId, payload })
             : false,
         onUpdate: (snapshot) => {
@@ -1198,17 +1204,22 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
 
     removePeer(peerId);
-    if (!isCurrentGeneration(generation) || attempt >= 1) {
+    if (peerAssistedRef.current || attempt >= 1) {
       return;
     }
     window.setTimeout(() => {
       if (
         isCurrentGeneration(generation) &&
+        !peerAssistedRef.current &&
+        hostChildIsAssigned(peerId) &&
         !peersRef.current.has(peerId)
       ) {
         void startPeer(peerId, generation, attempt + 1).catch(
           (error: unknown) => {
-            if (isCurrentGeneration(generation)) {
+            if (
+              isCurrentGeneration(generation) &&
+              hostChildIsAssigned(peerId)
+            ) {
               setNotice(readableError(error, "connection"));
             }
           },
@@ -1223,6 +1234,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     rebuild: boolean,
     generation: number,
   ): Promise<void> {
+    if (!hostChildIsAssigned(peerId)) {
+      return;
+    }
     const peer = peersRef.current.get(peerId);
     if (rebuild) {
       if (peer && peer.connectionId !== connectionId) {
@@ -1254,13 +1268,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     await startPeer(peerId, generation);
   }
 
-  function reconcilePeerAssistedChildren(
+  function reconcileHostChildren(
     childPeerIds: string[],
     generation: number,
   ): void {
+    activeHostChildPeerIdsRef.current = [
+      ...new Set(childPeerIds),
+    ].slice(0, endpointMediaCopyCapacityRef.current);
     reconcileBoundedMediaChildren(
       peersRef.current.keys(),
-      childPeerIds,
+      activeHostChildPeerIdsRef.current,
       endpointMediaCopyCapacityRef.current,
       removePeer,
       (peerId) => {
@@ -1319,9 +1336,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         const currentQualitySettings =
           pendingQualitySettings ?? message.qualitySettings;
         activeRouteRevisionRef.current = message.routeRevision;
-        activeHostChildPeerIdsRef.current = [
-          ...message.routeAssignment.childPeerIds,
-        ];
         peerAssistedRef.current = true;
         if (reauthenticated) {
           commitQuality(currentQualitySettings);
@@ -1355,15 +1369,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         return;
       }
       activeRouteRevisionRef.current = 0;
-      activeHostChildPeerIdsRef.current = [];
       peerAssistedRef.current = false;
       clearHostSfuRoute();
-      const currentViewerIds = new Set(message.viewerPeerIds);
-      for (const peerId of peersRef.current.keys()) {
-        if (!currentViewerIds.has(peerId)) {
-          removePeer(peerId);
-        }
-      }
+      reconcileHostChildren(message.viewerPeerIds, generation);
       return;
     }
     if (message.type === "viewer-presence") {
@@ -1428,13 +1436,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       return;
     }
-      if (message.type === "media-assignment") {
+    if (message.type === "media-assignment") {
       if (peerAssistedRef.current && !hostSfuRouteRef.current) {
         discardPreparedHostChild();
-        activeHostChildPeerIdsRef.current = [
-          ...message.mediaAssignment.childPeerIds,
-        ];
-        reconcilePeerAssistedChildren(
+        reconcileHostChildren(
           message.mediaAssignment.childPeerIds,
           generation,
         );
@@ -1445,16 +1450,20 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       if (peerAssistedRef.current) {
         return;
       }
-      void startPeer(message.peerId, generation).catch((error: unknown) => {
-        if (isCurrentGeneration(generation)) {
-          setNotice(readableError(error, "connection"));
-        }
-      });
+      reconcileHostChildren(
+        [...activeHostChildPeerIdsRef.current, message.peerId],
+        generation,
+      );
       return;
     }
     if (message.type === "peer-waiting") {
       if (!peerAssistedRef.current) {
-        removePeer(message.peerId);
+        reconcileHostChildren(
+          activeHostChildPeerIdsRef.current.filter(
+            (peerId) => peerId !== message.peerId,
+          ),
+          generation,
+        );
       }
       return;
     }
@@ -1462,7 +1471,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       if (peerAssistedRef.current) {
         return;
       }
-      removePeer(message.peerId);
+      reconcileHostChildren(
+        activeHostChildPeerIdsRef.current.filter(
+          (peerId) => peerId !== message.peerId,
+        ),
+        generation,
+      );
       return;
     }
     if (message.type === "signal") {
