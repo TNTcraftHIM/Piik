@@ -7,10 +7,9 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Quality-route evidence and shadow calibration.** Atomically deploy the
-   implemented strict `screener-v13` Browser/server quality shadow; v12 gets no
-   compatibility path. Collect annotated production samples from its bounded
-   current-edge freeze/pause aggregates before accepting an active trigger,
+1. **Quality-route evidence and shadow calibration.** Collect annotated
+   production samples from the deployed strict `screener-v13` Browser/server
+   quality shadow before accepting an active trigger,
    probation, restore or cooldown policy. Shadow evidence must not alter facts,
    capacity, routes or SFU usage.
 2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for

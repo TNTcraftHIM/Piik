@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `267e07340ba9ec85c1082d58da89b289b12c3726`, release `267e073`, wire
-  `screener-v12`, from `/opt/screener/releases/267e073`. The immutable runtime
+  `73ed920a229bfc64c89b97045c00d6cd75216f3a`, release `73ed920`, wire
+  `screener-v13`, from `/opt/screener/releases/73ed920`. The immutable runtime
   tar SHA-256 is
-  `6a04af6390fa44e0667e3d1a730c665c6a2401f51872f3168044d70133515481`;
+  `351053e497e8eee17956f4cec86305b05d805c80deb40b2cf4cd2668eaf08583`;
   its 41-file manifest SHA-256 is
-  `14e0b509397f822394a53110f17993dc625e80df4eca654dfa2bc817854928c8`.
-- The served Browser entry references `assets/index-lKEEgpx8.js`; the public
+  `bb993950a30a0b99b9b6185aa13777edcccbdcdaebdfb1b05b3c3499a1e78479`.
+- The served Browser entry references `assets/index-CaM3Pn5_.js`; the public
   asset SHA-256 is
-  `5f9ec937138d66220e727c01913cff85a9e82b9a8a1816c5a4dbd3d508e37369`.
+  `3c64cd75a7d67716f7600465a1742b1c02f3b00e71a1039649604aaf6d08f816`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -42,8 +42,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical `main` uses the evidence-only strict `screener-v13` quality shadow;
-  production remains the strict-v12 application tree deployed from `267e073`.
+- Canonical `main` and production use the same evidence-only strict
+  `screener-v13` quality-shadow application tree deployed from `73ed920`.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector are implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -69,8 +69,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Atomically deploy strict `screener-v13`, then collect annotated production
-   freeze/pause samples without active route changes.
+1. Collect annotated production freeze/pause samples from strict
+   `screener-v13` without active route changes.
 2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
 3. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance
