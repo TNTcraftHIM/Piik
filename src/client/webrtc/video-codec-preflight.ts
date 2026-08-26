@@ -261,16 +261,12 @@ export async function preferredVideoCodecForTrack(
   profile: QualityProfile,
   signal?: AbortSignal,
 ): Promise<BrowserVideoCodec> {
-  let codec: BrowserVideoCodec = "vp8";
   if (track.kind !== "video" || track.readyState === "ended") {
-    console.debug("[Screener] video codec preflight", codec);
-    return codec;
+    return "vp8";
   }
   try {
-    codec = (await runH264Probe(track, profile, signal)) ? "h264" : "vp8";
-  } catch {}
-  if (!signal?.aborted) {
-    console.debug("[Screener] video codec preflight", codec);
+    return (await runH264Probe(track, profile, signal)) ? "h264" : "vp8";
+  } catch {
+    return "vp8";
   }
-  return codec;
 }
