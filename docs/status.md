@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `ceb38e1b0ddd7ea7ca4e2d330c1b64a4d97b98ba`, release `ceb38e1`, wire
-  `screener-v12`, from `/opt/screener/releases/ceb38e1`. The immutable runtime
+  `267e07340ba9ec85c1082d58da89b289b12c3726`, release `267e073`, wire
+  `screener-v12`, from `/opt/screener/releases/267e073`. The immutable runtime
   tar SHA-256 is
-  `d1f8b9c5982c66163220d74efd87e076e13f5270282028bd173eaecd545ab1b0`;
+  `6a04af6390fa44e0667e3d1a730c665c6a2401f51872f3168044d70133515481`;
   its 41-file manifest SHA-256 is
-  `85f05a98e712eb74a03261c022d902cf1b3ab5c6f73ad5f365a537edd2973763`.
-- The served Browser entry references `assets/index-BLqbpOcC.js`; the public
+  `14e0b509397f822394a53110f17993dc625e80df4eca654dfa2bc817854928c8`.
+- The served Browser entry references `assets/index-lKEEgpx8.js`; the public
   asset SHA-256 is
-  `8e1c3a77a61e5c10f34a801428516379d40809c60bcd0b5b6db461e4e4f1797e`.
+  `5f9ec937138d66220e727c01913cff85a9e82b9a8a1816c5a4dbd3d508e37369`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -42,7 +42,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical `main` contains the same application tree deployed from `ceb38e1`.
+- Canonical `main` contains the same application tree deployed from `267e073`.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector are implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use

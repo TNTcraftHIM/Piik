@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 This ledger records evidence that still changes how current source or production
 may be interpreted. Git and pull requests own routine completed checks.
@@ -8,14 +8,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `ceb38e1b0ddd7ea7ca4e2d330c1b64a4d97b98ba`, release `ceb38e1`, wire
-  `screener-v12`, from `/opt/screener/releases/ceb38e1`.
+  `267e07340ba9ec85c1082d58da89b289b12c3726`, release `267e073`, wire
+  `screener-v12`, from `/opt/screener/releases/267e073`.
 - Runtime tar SHA-256:
-  `d1f8b9c5982c66163220d74efd87e076e13f5270282028bd173eaecd545ab1b0`.
+  `6a04af6390fa44e0667e3d1a730c665c6a2401f51872f3168044d70133515481`.
   The 41-file manifest SHA-256 is
-  `85f05a98e712eb74a03261c022d902cf1b3ab5c6f73ad5f365a537edd2973763`.
-- Public Browser asset `assets/index-BLqbpOcC.js` has SHA-256
-  `8e1c3a77a61e5c10f34a801428516379d40809c60bcd0b5b6db461e4e4f1797e`.
+  `14e0b509397f822394a53110f17993dc625e80df4eca654dfa2bc817854928c8`.
+- Public Browser asset `assets/index-lKEEgpx8.js` has SHA-256
+  `5f9ec937138d66220e727c01913cff85a9e82b9a8a1816c5a4dbd3d508e37369`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
@@ -64,7 +64,7 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- Canonical source contains the same application tree deployed from `ceb38e1`:
+- Canonical source contains the same application tree deployed from `267e073`:
   the adaptive H.264/VP8 sender decision with `contentHint = "motion"` reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables

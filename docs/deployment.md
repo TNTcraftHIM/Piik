@@ -1,9 +1,9 @@
 # Minimal Deployment
 
-Last verified: 2026-08-26.
+Last verified: 2026-08-27.
 
 This page records production running exact deployed application/runtime revision
-`ceb38e1b0ddd7ea7ca4e2d330c1b64a4d97b98ba`, release `ceb38e1`, and the single
+`267e07340ba9ec85c1082d58da89b289b12c3726`, release `267e073`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,16 +25,16 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `ceb38e1b0ddd7ea7ca4e2d330c1b64a4d97b98ba`, release
-`ceb38e1`, from `/opt/screener/releases/ceb38e1`. The immutable runtime tar
+Production runs exact `267e07340ba9ec85c1082d58da89b289b12c3726`, release
+`267e073`, from `/opt/screener/releases/267e073`. The immutable runtime tar
 SHA-256 is
-`d1f8b9c5982c66163220d74efd87e076e13f5270282028bd173eaecd545ab1b0`.
+`6a04af6390fa44e0667e3d1a730c665c6a2401f51872f3168044d70133515481`.
 Its 41-file path/size/hash manifest SHA-256 is
-`85f05a98e712eb74a03261c022d902cf1b3ab5c6f73ad5f365a537edd2973763`.
+`14e0b509397f822394a53110f17993dc625e80df4eca654dfa2bc817854928c8`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-BLqbpOcC.js` with SHA-256
-`8e1c3a77a61e5c10f34a801428516379d40809c60bcd0b5b6db461e4e4f1797e`.
+`assets/index-lKEEgpx8.js` with SHA-256
+`5f9ec937138d66220e727c01913cff85a9e82b9a8a1816c5a4dbd3d508e37369`.
 
 The release deploys the single Browser `screener-v12` wire and one internal,
 content-independent H.264 sender gate with VP8 fallback across Browser direct,
@@ -296,7 +296,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `ceb38e1` runs the deployed server and Browser assets
+Production release `267e073` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 
