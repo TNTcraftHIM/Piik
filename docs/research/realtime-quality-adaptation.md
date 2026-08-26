@@ -7,9 +7,9 @@
 
 ## Current Conclusion
 
-Production `5551177` and canonical source use a content-independent H.264 sender
-gate with VP8 fallback. A local pre-share Host `VP8 | Auto | H264` selector is
-accepted but not yet implemented; Viewer relays remain automatic.
+Current production and canonical source use a content-independent H.264 sender
+gate with VP8 fallback. The local pre-share Host `VP8 | Auto | H264` selector is
+implemented and Viewer relays remain automatic.
 Display video uses `contentHint = "motion"`, and display audio uses
 `contentHint = "music"`. The three recommended profiles and advanced settings
 are ceilings, not delivery guarantees. WebRTC owns direct and peer congestion

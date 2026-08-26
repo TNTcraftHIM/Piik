@@ -1,6 +1,6 @@
 # ADR-0007: Framework-Owned Media Quality Adaptation
 
-- Status: Accepted; adaptive gate deployed, local selector implementation pending
+- Status: Accepted; adaptive gate and local selector deployed
 - Date: 2026-08-19
 - Last reviewed: 2026-08-26
 

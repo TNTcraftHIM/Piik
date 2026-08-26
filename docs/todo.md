@@ -7,26 +7,12 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Stable room authority and room controls.** Add optional
-   `ROOM_DATABASE_PATH` SQLite stable mode over the existing RoomStore aggregate;
-   production will enable it through a separate persistent-state cutover after
-   restart/recovery acceptance. Keep lightweight mode default when unset. Remove
-   the client preferred-code expiry and renewal timer. Add the Host refresh action
-   immediately before Copy: atomically allocate a different room, retire all old
-   authority/media state, end an active share, and remember the new code.
-2. **Host codec selector.** In advanced settings, add the local
-   `VP8 | Auto | H264` selector with Auto centered/default. It is editable only
-   before sharing and locked for the whole share generation. Manual modes are
-   strict, Auto runs the current gate, Viewer relays remain Auto, and no codec
-   wire/cache/parallel publication or active-edge switching is added. Two-line
-   subtitles are `兼容优先 | 自动选择/实际 codec | 硬件优先`; connection details
-   show the resolved Host codec and each edge's actual negotiated codec.
-3. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+1. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
    survival or controller recovery. Web does not promise background video or
    relay execution after OS suspension.
-4. **Finish real-network route and media acceptance.** Exercise direct peer,
+2. **Finish real-network route and media acceptance.** Exercise direct peer,
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,

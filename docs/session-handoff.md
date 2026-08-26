@@ -17,10 +17,11 @@ staged diff, and worktrees. Canonical main and repo truth override old branches,
 worktrees, handoffs, agent memory, and chat summaries.
 
 Current production and main identity is owned by docs/status.md. ADR-0002 owns
-memory rooms; ADR-0005 owns automatic direct/peer-to-LiveKit routing; ADR-0007
+lightweight/stable room authority; ADR-0005 owns automatic direct/peer-to-LiveKit routing; ADR-0007
 owns framework media adaptation. Current routes are sticky and quality evidence
-is diagnostic only. Browser video is VP8 with contentHint=motion; LiveKit owns
-SFU representations; Screener configures no TURN or media TCP.
+is diagnostic only. Browser video uses the share-scoped H.264/VP8 decision with
+contentHint=motion; LiveKit owns SFU representations; Screener configures no TURN
+or media TCP.
 
 Follow docs/todo.md in order. Do not run Native/executable work, broad repository
 cleanup, quality-driven reparenting, or another transport unless its decision

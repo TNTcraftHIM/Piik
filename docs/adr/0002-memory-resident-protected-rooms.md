@@ -1,6 +1,6 @@
 # ADR-0002: Optional Durable Room Authority And Scoped Viewer Access
 
-- Status: Accepted; implementation pending
+- Status: Accepted; implemented; stable mode deployed
 - Date: 2026-08-26
 
 ## Context
