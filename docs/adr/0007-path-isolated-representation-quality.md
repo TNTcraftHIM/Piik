@@ -23,7 +23,8 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
 
 ## Decision
 
-1. Browser video makes one internal, sender-scoped codec decision. A bounded
+1. Browser video makes one internal, share-generation-scoped codec decision per
+   sending endpoint. A bounded
    actual-`RTCPeerConnection` preflight measures H.264 encoded progress against
    a deterministic moving probe track at the current share's effective target
    dimensions and frame rate. The real capture supplies those target settings,
@@ -43,7 +44,7 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    After accepting an answer, the Host reapplies the current video profile to
    the negotiated sender because the browser may replace or rewrite encoding
    parameters during negotiation.
-5. Direct and Browser-relay offers with a proved source order H.264 before VP8
+5. Direct and Browser-relay offers with a proved share source order H.264 before VP8
    in one standard codec-preference list; both endpoints select their first
    common codec without a parallel media connection. A failed source gate
    offers VP8 only. Existing edges are not renegotiated when a later relay gate

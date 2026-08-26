@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
 import { SfuPublisher } from "../src/client/sfu/publisher.ts";
 import { SfuSubscriber } from "../src/client/sfu/subscriber.ts";
 import type { ConnectionMetrics } from "../src/client/types.ts";
@@ -876,6 +877,27 @@ describe("SfuPublisher", () => {
       dtx: false,
       red: false,
     });
+  });
+
+  it("publishes one H264 source without a backup codec", async () => {
+    const publisher = new SfuPublisher();
+    const video = track("video", "video-h264");
+    await publisher.connect(connection);
+
+    await expect(
+      publisher.activate(stream(video), qualityProfile, "h264"),
+    ).resolves.toBe(true);
+
+    const publication = livekit.state.rooms[0].localParticipant.publications[0];
+    expect(publication.options).toMatchObject({
+      source: Track.Source.ScreenShare,
+      backupCodec: false,
+      videoCodec: "h264",
+    });
+    await expect(
+      publisher.updateProfile(QUALITY_PROFILES["720p30"]),
+    ).resolves.toBe(true);
+    expect(publication.options.videoCodec).toBe("h264");
   });
 
   it("keeps media and prior audio readback when a live update fails", async () => {

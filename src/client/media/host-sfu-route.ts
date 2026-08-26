@@ -10,6 +10,7 @@ import {
   type SfuPublisherFailureStage,
 } from "../sfu/publisher";
 import type { ConnectionMetrics } from "../types";
+import type { BrowserVideoCodec } from "../webrtc/video-codec";
 import type {
   AudioSenderParameterReadback,
   QualityProfile,
@@ -25,7 +26,11 @@ import {
 
 interface HostPublisherTransport {
   connect(config: SfuConnectionConfig): Promise<boolean>;
-  activate(stream: MediaStream, profile: QualityProfile): Promise<boolean>;
+  activate(
+    stream: MediaStream,
+    profile: QualityProfile,
+    videoCodec?: BrowserVideoCodec,
+  ): Promise<boolean>;
   deactivate(): Promise<boolean>;
   replaceStream(stream: MediaStream): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
@@ -54,6 +59,7 @@ export interface HostSfuPublisherSnapshot {
 interface HostSfuRouteEvents {
   getStream: () => MediaStream | null;
   getProfile: () => QualityProfile;
+  getVideoCodec: () => BrowserVideoCodec;
   reconcileChildren: (childPeerIds: string[]) => void;
   send: (message: ClientMessage) => boolean;
   onPublisherUpdate?: (snapshot: HostSfuPublisherSnapshot | null) => void;
@@ -481,12 +487,13 @@ export class HostSfuRoute {
   private async preparePublisher(slot: HostPublisherSlot): Promise<boolean> {
     const stream = this.events.getStream();
     const profile = this.events.getProfile();
+    const videoCodec = this.events.getVideoCodec();
     if (!stream) {
       this.handleFailure(slot);
       return false;
     }
     try {
-      if (!(await slot.publisher.activate(stream, profile))) {
+      if (!(await slot.publisher.activate(stream, profile, videoCodec))) {
         this.handleFailure(slot);
         await disconnectPublisher(slot.publisher);
         return false;

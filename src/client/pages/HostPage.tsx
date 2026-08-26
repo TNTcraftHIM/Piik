@@ -120,6 +120,8 @@ import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
 } from "../webrtc/media-assignment";
+import type { BrowserVideoCodec } from "../webrtc/video-codec";
+import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import {
   hostActionErrorNotice,
   hostServerErrorNotice,
@@ -321,6 +323,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
+  const videoCodecRef = useRef<BrowserVideoCodec>("vp8");
+  const codecProbeAbortRef = useRef<AbortController | null>(null);
   const sharingPausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
@@ -398,6 +402,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       sourceSwitchRef.current = null;
       qualityChangeRef.current = null;
       pendingQualityChangeRef.current = null;
+      codecProbeAbortRef.current?.abort();
+      codecProbeAbortRef.current = null;
       stopPreferredRoomRenewal();
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
@@ -430,6 +436,28 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       generationRef.current === generation &&
       activeGenerationRef.current === generation
     );
+  }
+
+  async function probeStreamVideoCodec(
+    stream: MediaStream,
+  ): Promise<BrowserVideoCodec> {
+    codecProbeAbortRef.current?.abort();
+    const controller = new AbortController();
+    codecProbeAbortRef.current = controller;
+    const track = stream.getVideoTracks()[0];
+    try {
+      return track
+        ? await preferredVideoCodecForTrack(
+            track,
+            qualitySettingsRef.current,
+            controller.signal,
+          )
+        : "vp8";
+    } finally {
+      if (codecProbeAbortRef.current === controller) {
+        codecProbeAbortRef.current = null;
+      }
+    }
   }
 
   function stopPreferredRoomRenewal(): void {
@@ -469,6 +497,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     route = new HostSfuRoute({
       getStream: () => streamRef.current,
       getProfile: () => qualitySettingsRef.current,
+      getVideoCodec: () => videoCodecRef.current,
       reconcileChildren: (childPeerIds) => {
         if (
           isCurrentGeneration(generation) &&
@@ -522,6 +551,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
+    codecProbeAbortRef.current?.abort();
+    codecProbeAbortRef.current = null;
+    videoCodecRef.current = "vp8";
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
@@ -1002,6 +1034,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       iceConfig,
       stream,
       profile: qualitySettingsRef.current,
+      videoCodec: videoCodecRef.current,
     });
   }
 
@@ -1074,6 +1107,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           }
         },
       },
+      videoCodecRef.current,
     );
     peersRef.current.set(peerId, peer);
     let started: boolean;
@@ -1447,6 +1481,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setStream(captured);
     setDetails(captureDetails(captured));
     watchCaptureEnd(captured, generation);
+
+    videoCodecRef.current = await probeStreamVideoCodec(captured);
+    if (!isCurrentGeneration(generation)) {
+      captured.getTracks().forEach((track) => track.stop());
+      return;
+    }
 
     let createdRoom: HostRoomState | null = null;
     let claimedRoom = false;

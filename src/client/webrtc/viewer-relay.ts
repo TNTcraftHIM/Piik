@@ -7,6 +7,8 @@ import type { QualityProfile } from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
 import { MAX_ENDPOINT_MEDIA_CHILDREN } from "./media-assignment";
+import type { BrowserVideoCodec } from "./video-codec";
+import { preferredVideoCodecForTrack } from "./video-codec-preflight";
 
 interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
@@ -31,6 +33,11 @@ export class ViewerRelay {
   private preparedCandidate: PreparedRouteCandidate | null = null;
   private plannedChildPeerIds: string[] = [];
   private syncQueue = Promise.resolve();
+  private videoCodec: BrowserVideoCodec = "vp8";
+  private codecProbeTrack: MediaStreamTrack | null = null;
+  private codecProbeAbort: AbortController | null = null;
+  private codecProbePromise: Promise<void> | null = null;
+  private codecProbeSettled = false;
   private disposed = false;
 
   constructor(
@@ -84,7 +91,14 @@ export class ViewerRelay {
     this.preparedCandidate = { ...candidate };
     this.plannedChildPeerIds = planned;
     if (candidate.transport === "direct") {
-      this.startPreparedChild(revision, candidate, stream);
+      const pendingProbe = this.codecProbePromise;
+      if (pendingProbe) {
+        void pendingProbe.then(() => {
+          this.startPreparedChildIfCurrent(revision, candidate, stream);
+        });
+      } else {
+        this.startPreparedChildIfCurrent(revision, candidate, stream);
+      }
     }
     return true;
   }
@@ -126,6 +140,7 @@ export class ViewerRelay {
     this.preparedCandidate = null;
     this.plannedChildPeerIds = [];
     this.discardPreparedPeer();
+    this.startCodecProbe();
   }
 
   private discardPreparedPeer(): void {
@@ -155,6 +170,9 @@ export class ViewerRelay {
       }
     }
     this.childPeerIds = nextChildPeerIds;
+    if (this.childPeerIds.length > 0) {
+      this.cancelCodecProbe();
+    }
     for (const childPeerId of this.childPeerIds) {
       const peer = this.peers.get(childPeerId);
       if (
@@ -166,17 +184,27 @@ export class ViewerRelay {
         this.startPeer(childPeerId, this.stream);
       }
     }
+    this.startCodecProbe();
   }
 
   setStream(stream: MediaStream): void {
     if (this.disposed) {
       return;
     }
+    const nextVideoTrack = stream.getVideoTracks()[0] ?? null;
+    if (nextVideoTrack !== this.codecProbeTrack) {
+      this.cancelCodecProbe();
+      this.codecProbeTrack = nextVideoTrack;
+      if (!this.codecProbeSettled) {
+        this.videoCodec = "vp8";
+      }
+    }
     const preparedPeer = this.preparedChild?.peer ?? null;
     this.stream = stream;
     this.syncQueue = this.syncQueue
       .then(() => this.syncStream(stream, preparedPeer))
       .catch(() => undefined);
+    this.startCodecProbe();
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
@@ -271,6 +299,10 @@ export class ViewerRelay {
   }
 
   stop(): void {
+    this.cancelCodecProbe();
+    this.codecProbeTrack = null;
+    this.codecProbeSettled = false;
+    this.videoCodec = "vp8";
     this.stream = null;
     this.discardPreparedChild();
     this.disposePeers();
@@ -281,6 +313,8 @@ export class ViewerRelay {
       return;
     }
     this.disposed = true;
+    this.cancelCodecProbe();
+    this.codecProbeTrack = null;
     this.stream = null;
     this.discardPreparedChild();
     this.childPeerIds = [];
@@ -314,6 +348,23 @@ export class ViewerRelay {
           this.failPreparedChild(peer);
         }
       });
+  }
+
+  private startPreparedChildIfCurrent(
+    revision: number,
+    candidate: PreparedRouteCandidate,
+    stream: MediaStream,
+  ): void {
+    if (
+      this.disposed ||
+      this.stream !== stream ||
+      this.preparedChild ||
+      this.preparedRevision !== revision ||
+      !sameCandidate(this.preparedCandidate, candidate)
+    ) {
+      return;
+    }
+    this.startPreparedChild(revision, candidate, stream);
   }
 
   private async syncStream(
@@ -475,9 +526,59 @@ export class ViewerRelay {
           }
         },
       },
+      this.videoCodec,
       connectionId,
     );
     return peer;
+  }
+
+  private startCodecProbe(): void {
+    const track = this.codecProbeTrack;
+    if (
+      this.disposed ||
+      this.codecProbeSettled ||
+      this.codecProbeAbort ||
+      this.codecProbePromise ||
+      !track ||
+      track.readyState === "ended" ||
+      this.childPeerIds.length > 0 ||
+      this.preparedChild
+    ) {
+      return;
+    }
+    const controller = new AbortController();
+    this.codecProbeAbort = controller;
+    const promise = preferredVideoCodecForTrack(
+      track,
+      this.desiredProfile,
+      controller.signal,
+    )
+      .then((codec) => {
+        if (
+          this.codecProbeAbort !== controller ||
+          controller.signal.aborted ||
+          this.codecProbeTrack !== track ||
+          this.disposed
+        ) {
+          return;
+        }
+        this.videoCodec = codec;
+        this.codecProbeSettled = true;
+        this.codecProbeAbort = null;
+      })
+      .finally(() => {
+        if (this.codecProbePromise === promise) {
+          this.codecProbePromise = null;
+          this.startCodecProbe();
+        }
+      });
+    this.codecProbePromise = promise;
+  }
+
+  private cancelCodecProbe(): void {
+    const controller = this.codecProbeAbort;
+    this.codecProbeAbort = null;
+    controller?.abort();
   }
 
   private failPreparedChild(peer: HostPeer): void {

@@ -107,14 +107,14 @@ describe("StatsGrid progressive disclosure", () => {
       createElement(StatsGrid, {
         metrics: {
           ...metrics,
-          codec: "video/H264",
+          codec: "video/VP9",
           audioCodec: "audio/PCMU",
         },
         direction: "receive",
       }),
     );
 
-    expect(html).toContain("视频编码为 H264，预期 VP8");
+    expect(html).toContain("视频编码为 VP9，预期 H264 或 VP8");
     expect(html).toContain("音频编码为 PCMU，预期 Opus");
     expect(html).not.toContain("视频 Codec");
     expect(html).not.toContain("音频 Codec");

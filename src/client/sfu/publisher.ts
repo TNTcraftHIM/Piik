@@ -23,6 +23,7 @@ import {
   type VideoSenderParameterReadback,
 } from "../media/quality";
 import type { ConnectionMetrics } from "../types";
+import type { BrowserVideoCodec } from "../webrtc/video-codec";
 import {
   captureMetrics,
   collectConnectionMetricsFromReport,
@@ -169,7 +170,11 @@ export class SfuPublisher {
     }
   }
 
-  activate(stream: MediaStream, profile: QualityProfile): Promise<boolean> {
+  activate(
+    stream: MediaStream,
+    profile: QualityProfile,
+    videoCodec: BrowserVideoCodec = "vp8",
+  ): Promise<boolean> {
     this.desiredProfile = profile;
     this.startupVideoProfilePending = needsStartupVideoProfile(profile);
     const effectiveVideoProfile = startupVideoProfile(profile);
@@ -195,7 +200,7 @@ export class SfuPublisher {
           room,
           videoTrack,
           sdk.Track.Source.ScreenShare,
-          videoPublishOptions(effectiveVideoProfile),
+          videoPublishOptions(effectiveVideoProfile, videoCodec),
         );
         if (!this.owns(room, generation)) {
           return false;
@@ -1165,7 +1170,7 @@ async function configurePublishedVideo(
   const retainedPublishOptions = {
     ...published.publication.options,
     ...videoTrack.publishOptions,
-    ...videoPublishOptions(profile),
+    ...videoPublishOptions(profile, publishedVideoCodec(published)),
   };
   published.publication.options = retainedPublishOptions;
   videoTrack.publishOptions = retainedPublishOptions;
@@ -1248,10 +1253,19 @@ function mergeQualityWarnings(...warnings: Array<string | null>): string | null 
   return present.length > 0 ? present.join("；") : null;
 }
 
-function videoPublishOptions(profile: QualityProfile): TrackPublishOptions {
+function publishedVideoCodec(published: PublishedTrack): BrowserVideoCodec {
+  return published.publication.options?.videoCodec === "h264"
+    ? "h264"
+    : "vp8";
+}
+
+function videoPublishOptions(
+  profile: QualityProfile,
+  videoCodec: BrowserVideoCodec,
+): TrackPublishOptions {
   return {
     backupCodec: false,
-    videoCodec: "vp8",
+    videoCodec,
     screenShareEncoding: {
       maxBitrate: profile.maxBitrate,
       maxFramerate: profile.maxFramerate,
