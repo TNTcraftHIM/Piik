@@ -8,20 +8,20 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `267e07340ba9ec85c1082d58da89b289b12c3726`, release `267e073`, wire
-  `screener-v12`, from `/opt/screener/releases/267e073`.
+  `73ed920a229bfc64c89b97045c00d6cd75216f3a`, release `73ed920`, wire
+  `screener-v13`, from `/opt/screener/releases/73ed920`.
 - Runtime tar SHA-256:
-  `6a04af6390fa44e0667e3d1a730c665c6a2401f51872f3168044d70133515481`.
+  `351053e497e8eee17956f4cec86305b05d805c80deb40b2cf4cd2668eaf08583`.
   The 41-file manifest SHA-256 is
-  `14e0b509397f822394a53110f17993dc625e80df4eca654dfa2bc817854928c8`.
-- Public Browser asset `assets/index-lKEEgpx8.js` has SHA-256
-  `5f9ec937138d66220e727c01913cff85a9e82b9a8a1816c5a4dbd3d508e37369`.
+  `bb993950a30a0b99b9b6185aa13777edcccbdcdaebdfb1b05b3c3499a1e78479`.
+- Public Browser asset `assets/index-CaM3Pn5_.js` has SHA-256
+  `3c64cd75a7d67716f7600465a1742b1c02f3b00e71a1039649604aaf6d08f816`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
 ## Completed Product Evidence
 
-- Strict `screener-v12` rejects stale Browser/executable wires before room
+- Strict `screener-v13` rejects stale Browser/executable wires before room
   authority. Lightweight and SQLite-stable rooms, 24-hour dormant leases,
   room-lived Viewer grants, `open | private` code entry, invitation-only private
   rooms, password entry, grant rotate/revoke, atomic room replacement and
@@ -64,8 +64,8 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- Canonical source uses strict `screener-v13`; production remains the strict-v12
-  application tree deployed from `267e073`. The adaptive H.264/VP8 sender
+- Canonical source and production use the strict-v13 application tree deployed
+  from `73ed920`. The adaptive H.264/VP8 sender
   decision with `contentHint = "motion"` reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables

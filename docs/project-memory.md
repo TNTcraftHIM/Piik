@@ -120,11 +120,10 @@ Last updated: 2026-08-27
 
 ## Current Source And Production
 
-- Canonical source uses the evidence-only strict `screener-v13` quality shadow;
-  production remains strict `screener-v12` until the atomic application release.
-  Both retain adaptive H.264/VP8 selection, the local Host codec override and
-  optional SQLite room authority. Exact identities are indexed by
-  [status](./status.md).
+- Canonical source and production use the same evidence-only strict
+  `screener-v13` quality shadow with adaptive H.264/VP8 selection, the local
+  Host codec override, and optional SQLite room authority. Exact identities are
+  indexed by [status](./status.md).
 - Strict v13 rejects old Browser pages before room authority. Its bounded
   current-edge aggregate adds no active route decision until annotated
   production shadow evidence establishes an accepted policy.
@@ -138,8 +137,8 @@ Last updated: 2026-08-27
 
 ## Current Priority
 
-1. Deploy the evidence-only strict `screener-v13` quality shadow and collect
-   annotated production samples.
+1. Collect annotated production samples from the evidence-only strict
+   `screener-v13` quality shadow.
 2. Complete the mobile Viewer lifecycle matrix and representative real-network
    route/media acceptance.
 

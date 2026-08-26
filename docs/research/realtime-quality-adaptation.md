@@ -2,8 +2,8 @@
 
 - Research date: 2026-08-26
 - Scope: Browser game-screen capture, encoding, P2P forwarding, and LiveKit SFU
-- Status: strict-v13 evidence-only quality shadow implemented in canonical
-  source; production sampling and active policy remain open
+- Status: strict-v13 evidence-only quality shadow deployed; production sampling
+  and active policy remain open
 
 ## Current Conclusion
 

@@ -1,8 +1,7 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Base routing is deployed on strict v12. The evidence-only quality
-  shadow is implemented in canonical source on strict v13 but not yet deployed.
-  Exact current identity is owned by
+- Status: Base routing and the evidence-only quality shadow are deployed on
+  strict v13. Exact current identity is owned by
   [status](../status.md).
 - Date: 2026-08-20
 - Last updated: 2026-08-27
@@ -424,10 +423,9 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Canonical application/runtime source uses the evidence-only strict
-`screener-v13` quality shadow; production remains strict `screener-v12` until
-its atomic application release. Exact current source and deployment identity is
-indexed by [status](../status.md).
+Canonical application/runtime source and production use the evidence-only
+strict `screener-v13` quality shadow. Exact current source and deployment
+identity is indexed by [status](../status.md).
 Browser SFU PCs use empty external ICE-server lists. The controlled exact-
 candidate rollback/SFU commit and active-SFU cadence gates are closed. The
 operation owner remains only `route`; broader heterogeneous-network and SFU

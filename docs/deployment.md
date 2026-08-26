@@ -3,8 +3,8 @@
 Last verified: 2026-08-27.
 
 This page records production running exact deployed application/runtime revision
-`267e07340ba9ec85c1082d58da89b289b12c3726`, release `267e073`, and the single
-Browser `screener-v12` contract. Product direction and pending work are owned by
+`73ed920a229bfc64c89b97045c00d6cd75216f3a`, release `73ed920`, and the single
+Browser `screener-v13` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
 This section documents the accepted UDP-only deployment contract: one Node.js
@@ -25,18 +25,18 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `267e07340ba9ec85c1082d58da89b289b12c3726`, release
-`267e073`, from `/opt/screener/releases/267e073`. The immutable runtime tar
+Production runs exact `73ed920a229bfc64c89b97045c00d6cd75216f3a`, release
+`73ed920`, from `/opt/screener/releases/73ed920`. The immutable runtime tar
 SHA-256 is
-`6a04af6390fa44e0667e3d1a730c665c6a2401f51872f3168044d70133515481`.
+`351053e497e8eee17956f4cec86305b05d805c80deb40b2cf4cd2668eaf08583`.
 Its 41-file path/size/hash manifest SHA-256 is
-`14e0b509397f822394a53110f17993dc625e80df4eca654dfa2bc817854928c8`.
+`bb993950a30a0b99b9b6185aa13777edcccbdcdaebdfb1b05b3c3499a1e78479`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-lKEEgpx8.js` with SHA-256
-`5f9ec937138d66220e727c01913cff85a9e82b9a8a1816c5a4dbd3d508e37369`.
+`assets/index-CaM3Pn5_.js` with SHA-256
+`3c64cd75a7d67716f7600465a1742b1c02f3b00e71a1039649604aaf6d08f816`.
 
-The release deploys the single Browser `screener-v12` wire and one internal,
+The release deploys the single Browser `screener-v13` wire and one internal,
 content-independent H.264 sender gate with VP8 fallback across Browser direct,
 browser-relay, and SFU video. It retains pinned LiveKit default screen-share
 representations, Dynacast and server send-side BWE without an application layer
@@ -296,8 +296,8 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `267e073` runs the deployed server and Browser assets
-atomically on `screener-v12`; every stale Browser or executable-sender wire fails
+Production release `73ed920` runs the deployed server and Browser assets
+atomically on `screener-v13`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 
 The four `LIVEKIT_*` values must either all be absent or all be present, and a
