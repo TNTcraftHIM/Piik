@@ -6,6 +6,7 @@ import {
   Globe2,
   KeyRound,
   Link2Off,
+  LoaderCircle,
   LockKeyhole,
   MonitorUp,
   Network,
@@ -2202,13 +2203,34 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               sharingPaused ||
               (stream !== null && localPreviewPaused)) && (
               <div className="stage-overlay" role="status">
-                {switchingSource
-                  ? "正在切换来源"
-                  : sharingPaused
-                    ? "音视频分享已暂停"
-                    : phase === "starting"
-                      ? "正在连接"
-                      : "本地预览已暂停，分享仍在继续"}
+                {switchingSource ? (
+                  <RefreshCw
+                    size={36}
+                    strokeWidth={1.5}
+                    className="spin"
+                    aria-hidden="true"
+                  />
+                ) : sharingPaused ? (
+                  <Pause size={36} strokeWidth={1.5} aria-hidden="true" />
+                ) : phase === "starting" ? (
+                  <LoaderCircle
+                    size={36}
+                    strokeWidth={1.5}
+                    className="spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <EyeOff size={36} strokeWidth={1.5} aria-hidden="true" />
+                )}
+                <span>
+                  {switchingSource
+                    ? "正在切换来源"
+                    : sharingPaused
+                      ? "音视频分享已暂停"
+                      : phase === "starting"
+                        ? "正在连接"
+                        : "本地预览已暂停，分享仍在继续"}
+                </span>
               </div>
             )}
           </div>
