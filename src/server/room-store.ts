@@ -12,6 +12,10 @@ import {
   type CodeEntryPolicy,
   type Role,
 } from "../shared/protocol.js";
+import {
+  type RoomDatabase,
+  type StoredRoomAuthority,
+} from "./room-database.js";
 
 export type RoomStoreErrorCode =
   | "INVALID_TOKEN"
@@ -148,6 +152,7 @@ export interface RoomStoreOptions {
   leaseMs: number;
   maxRooms: number;
   maxViewersPerRoom: number;
+  database?: RoomDatabase;
   now?: () => number;
   random?: (size: number) => Buffer;
 }
@@ -160,6 +165,7 @@ export class RoomStore {
   );
   private readonly now: () => number;
   private readonly random: (size: number) => Buffer;
+  private initialized: boolean;
   readonly maxViewersPerRoom: number;
 
   constructor(private readonly options: RoomStoreOptions) {
@@ -186,7 +192,56 @@ export class RoomStore {
     }
     this.now = options.now ?? Date.now;
     this.random = options.random ?? randomBytes;
+    this.initialized = options.database === undefined;
     this.maxViewersPerRoom = options.maxViewersPerRoom;
+  }
+
+  initialize(): void {
+    if (this.initialized) {
+      return;
+    }
+    const database = this.options.database;
+    if (!database) {
+      this.initialized = true;
+      return;
+    }
+
+    const startupNowMs = this.now();
+    try {
+      const storedRooms = database.initialize(
+        startupNowMs,
+        this.leaseDeadline(startupNowMs),
+      );
+      if (storedRooms.length > this.options.maxRooms) {
+        throw new Error("Room database exceeds the configured room limit");
+      }
+      const roomIds = new Set(storedRooms.map((room) => room.roomId));
+      if (roomIds.size !== storedRooms.length) {
+        throw new Error("Room database contains duplicate room IDs");
+      }
+      for (const stored of storedRooms) {
+        this.rooms.set(stored.roomId, {
+          ...stored,
+          hostTokenDigest: Buffer.from(stored.hostTokenDigest),
+          viewerGrantDigest: Buffer.from(stored.viewerGrantDigest),
+          viewerPasswordMaterial:
+            stored.viewerPasswordMaterial === null
+              ? null
+              : Buffer.from(stored.viewerPasswordMaterial),
+          sharingActive: false,
+          viewers: new Map(),
+        });
+      }
+      const availableCodes = this.freeRoomCodes.filter(
+        (roomId) => !roomIds.has(roomId),
+      );
+      this.freeRoomCodes.splice(0, this.freeRoomCodes.length, ...availableCodes);
+      this.initialized = true;
+    } catch (error) {
+      this.rooms.clear();
+      database.close();
+      throw error;
+    }
   }
 
   async createRoom(
@@ -194,10 +249,12 @@ export class RoomStore {
     roomPassword?: string | null,
     preferredRoomId?: string,
   ): Promise<CreatedRoom> {
+    this.ensureInitialized();
     if (this.rooms.size >= this.options.maxRooms) {
       throw new RoomStoreError("ROOM_LIMIT");
     }
     const createdAtMs = this.now();
+    const leaseExpiresAtMs = this.leaseDeadline(createdAtMs);
     const viewerPasswordMaterial = roomPassword
       ? await this.createViewerPasswordMaterial(roomPassword)
       : null;
@@ -214,7 +271,7 @@ export class RoomStore {
       const viewerGrant = this.createViewerGrant();
       const viewerAuthorizationGeneration = this.newAuthorizationGeneration();
 
-      this.rooms.set(roomId, {
+      const room: Room = {
         roomId,
         hostTokenDigest: digest(hostToken),
         viewerGrantDigest: digest(viewerGrant),
@@ -222,16 +279,18 @@ export class RoomStore {
         viewerAuthorizationGeneration,
         codeEntryPolicy,
         sharingActive: false,
-        leaseExpiresAtMs: createdAtMs + this.options.leaseMs,
+        leaseExpiresAtMs,
         viewers: new Map(),
-      });
+      };
+      this.options.database?.insertRoom(storedRoomAuthority(room));
+      this.rooms.set(roomId, room);
 
       return {
         roomId,
         hostToken,
         codeEntryPolicy,
         viewerGrant,
-        expiresAt: formatExpiresAt(createdAtMs + this.options.leaseMs),
+        expiresAt: formatExpiresAt(leaseExpiresAtMs),
       };
     } catch (error) {
       this.releaseRoomCode(roomId);
@@ -240,6 +299,7 @@ export class RoomStore {
   }
 
   connectParticipant(input: ConnectParticipantInput): ConnectedParticipant {
+    this.ensureInitialized();
     let room: Room;
     try {
       room = this.getAvailableRoom(input.roomId);
@@ -274,6 +334,7 @@ export class RoomStore {
   }
 
   viewerGrantMayEnter(roomId: string, grant: string | undefined): boolean {
+    this.ensureInitialized();
     try {
       return this.viewerGrantIsValid(this.getAvailableRoom(roomId), grant);
     } catch (error) {
@@ -288,6 +349,7 @@ export class RoomStore {
     input: ConnectViewerWithPasswordInput,
     mayConnect: () => boolean = () => true,
   ): Promise<ConnectedParticipant> {
+    this.ensureInitialized();
     if (!viewerPasswordSchema.safeParse(input.password).success) {
       throw new RoomStoreError("INVALID_TOKEN");
     }
@@ -351,6 +413,7 @@ export class RoomStore {
     password: string | null,
     hostToken: string,
   ): Promise<boolean> {
+    this.ensureInitialized();
     const room = this.getHostManagedRoom(roomId, hostToken);
 
     const nextPasswordMaterial = password
@@ -370,6 +433,11 @@ export class RoomStore {
     ) {
       throw new RoomStoreError("ROOM_ACCESS_DENIED");
     }
+    this.options.database?.setViewerPassword(
+      roomId,
+      currentRoom.hostTokenDigest,
+      nextPasswordMaterial,
+    );
     currentRoom.viewerPasswordMaterial = nextPasswordMaterial;
     return nextPasswordMaterial !== null;
   }
@@ -379,7 +447,13 @@ export class RoomStore {
     policy: CodeEntryPolicy,
     hostToken: string,
   ): CodeEntryUpdate {
+    this.ensureInitialized();
     const room = this.getHostManagedRoom(roomId, hostToken);
+    this.options.database?.setCodeEntryPolicy(
+      roomId,
+      room.hostTokenDigest,
+      policy,
+    );
     room.codeEntryPolicy = policy;
     return {
       codeEntryPolicy: policy,
@@ -392,6 +466,7 @@ export class RoomStore {
     action: "rotate" | "revoke",
     hostToken: string,
   ): ViewerGrantUpdate {
+    this.ensureInitialized();
     const room = this.getHostManagedRoom(roomId, hostToken);
     const previousViewerAuthorizationGeneration =
       room.viewerAuthorizationGeneration;
@@ -407,6 +482,12 @@ export class RoomStore {
       ? digest(viewerGrant)
       : this.randomDigest();
     const viewerAuthorizationGeneration = this.newAuthorizationGeneration();
+    this.options.database?.setViewerGrant(
+      roomId,
+      room.hostTokenDigest,
+      viewerGrantDigest,
+      viewerAuthorizationGeneration,
+    );
     room.viewerGrantDigest = viewerGrantDigest;
     room.viewerAuthorizationGeneration = viewerAuthorizationGeneration;
     for (const [clientId, viewer] of room.viewers) {
@@ -427,6 +508,7 @@ export class RoomStore {
     peerId: string,
     sessionId: string,
   ): DisconnectedParticipant | undefined {
+    this.ensureInitialized();
     const room = this.rooms.get(roomId);
     if (!room) {
       return undefined;
@@ -436,9 +518,15 @@ export class RoomStore {
       if (room.host.sessionId !== sessionId) {
         return undefined;
       }
+      const leaseExpiresAtMs = this.leaseDeadline(this.now());
+      this.options.database?.setLeaseDeadline(
+        roomId,
+        room.hostTokenDigest,
+        leaseExpiresAtMs,
+      );
       room.host.sessionId = undefined;
       room.sharingActive = false;
-      room.leaseExpiresAtMs = this.now() + this.options.leaseMs;
+      room.leaseExpiresAtMs = leaseExpiresAtMs;
       return { roomId, role: "host", peerId };
     }
 
@@ -493,22 +581,26 @@ export class RoomStore {
   }
 
   abandonRoom(roomId: string): ClosedRoom | undefined {
+    this.ensureInitialized();
     const room = this.rooms.get(roomId);
     if (!room) {
       return undefined;
     }
     const sessionIds = connectedSessionIds(room);
+    this.options.database?.deleteRoom(roomId, room.hostTokenDigest);
     this.rooms.delete(roomId);
     this.releaseRoomCode(roomId);
     return { roomId, sessionIds };
   }
 
   expireRooms(nowMs = this.now()): ClosedRoom[] {
+    this.ensureInitialized();
     const expired: ClosedRoom[] = [];
     for (const [roomId, room] of this.rooms) {
       if (!roomIsExpired(room, nowMs)) {
         continue;
       }
+      this.options.database?.deleteRoom(roomId, room.hostTokenDigest);
       expired.push({ roomId, sessionIds: connectedSessionIds(room) });
       this.rooms.delete(roomId);
       this.releaseRoomCode(roomId);
@@ -521,7 +613,7 @@ export class RoomStore {
   }
 
   close(): void {
-    // Room state is process-memory only and disappears with the process.
+    this.options.database?.close();
   }
 
   private connectHost(
@@ -542,6 +634,11 @@ export class RoomStore {
         }
       : current;
     const replacedSessionId = participant.sessionId;
+    this.options.database?.setLeaseDeadline(
+      room.roomId,
+      room.hostTokenDigest,
+      null,
+    );
     participant.sessionId = input.sessionId;
     room.host = participant;
     room.sharingActive = true;
@@ -740,6 +837,32 @@ export class RoomStore {
     }
     return value.toString("base64url");
   }
+
+  private leaseDeadline(nowMs: number): number {
+    const deadline = nowMs + this.options.leaseMs;
+    if (!Number.isSafeInteger(deadline) || deadline <= nowMs) {
+      throw new Error("Room lease deadline exceeds the supported time range");
+    }
+    return deadline;
+  }
+
+  private ensureInitialized(): void {
+    if (!this.initialized) {
+      throw new Error("RoomStore stable authority is not initialized");
+    }
+  }
+}
+
+function storedRoomAuthority(room: Room): StoredRoomAuthority {
+  return {
+    roomId: room.roomId,
+    hostTokenDigest: room.hostTokenDigest,
+    viewerGrantDigest: room.viewerGrantDigest,
+    viewerAuthorizationGeneration: room.viewerAuthorizationGeneration,
+    codeEntryPolicy: room.codeEntryPolicy,
+    viewerPasswordMaterial: room.viewerPasswordMaterial,
+    leaseExpiresAtMs: room.leaseExpiresAtMs,
+  };
 }
 
 function roomIsExpired(room: Room, nowMs: number): boolean {

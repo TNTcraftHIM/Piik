@@ -30,7 +30,6 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
   "PEER_ASSISTED_ROOM_IDS",
   "HOST_ADMISSION_PASSWORD",
   "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
-  "ROOM_DATABASE_PATH",
   "ROOM_TTL_SECONDS",
 ] as const;
 
@@ -48,6 +47,7 @@ export interface ServerConfig {
   publicBaseUrl: URL;
   allowedOrigins: ReadonlySet<string>;
   siteAccessPassword?: string;
+  roomDatabasePath?: string;
   roomLeaseMs: number;
   maxViewersPerRoom: number;
   peerAssistedMedia: boolean;
@@ -109,6 +109,17 @@ function parseEnvironment(value: string | undefined): RuntimeEnvironment {
     throw new Error("NODE_ENV must be development, test, or production");
   }
   return environment;
+}
+
+function parseRoomDatabasePath(value: string | undefined): string | undefined {
+  const path = value?.trim();
+  if (!path) {
+    return undefined;
+  }
+  if (path === ":memory:" || path.includes("\0")) {
+    throw new Error("ROOM_DATABASE_PATH must identify a file");
+  }
+  return path;
 }
 
 function parseLiveKitFallback(
@@ -254,6 +265,8 @@ export function loadConfig(
           ? `${name} is no longer supported; use SITE_ACCESS_PASSWORD`
           : name === "PEER_ASSISTED_ROOM_IDS"
           ? `${name} is no longer supported; peer-assisted media applies to every room when enabled`
+          : name === "ROOM_TTL_SECONDS"
+          ? `${name} is no longer supported; use ROOM_LEASE_SECONDS`
           : `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
       );
     }
@@ -299,6 +312,9 @@ export function loadConfig(
     environment.SITE_ACCESS_PASSWORD === ""
       ? undefined
       : environment.SITE_ACCESS_PASSWORD;
+  const roomDatabasePath = parseRoomDatabasePath(
+    environment.ROOM_DATABASE_PATH,
+  );
   const stunUrls = parseStunUrlList(environment.STUN_URLS);
   const maxViewersPerRoom = parseBoundedInteger(
     environment.MAX_VIEWERS_PER_ROOM,
@@ -362,6 +378,7 @@ export function loadConfig(
       publicBaseUrl.origin,
     ),
     siteAccessPassword,
+    roomDatabasePath,
     roomLeaseMs:
       parsePositiveInteger(
         environment.ROOM_LEASE_SECONDS,

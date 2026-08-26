@@ -14,6 +14,7 @@ describe("server configuration", () => {
     expect(config.listenHost).toBe("0.0.0.0");
     expect(config.publicBaseUrl.href).toBe("http://localhost:9123/");
     expect(config.allowedOrigins).toEqual(new Set(["http://localhost:9123"]));
+    expect(config.roomDatabasePath).toBeUndefined();
     expect(config.stunUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
@@ -401,14 +402,37 @@ describe("server configuration", () => {
     );
   });
 
-  it.each(["ROOM_DATABASE_PATH", "ROOM_TTL_SECONDS"] as const)(
-    "rejects removed room persistence configuration even when %s is blank",
-    (name) => {
-      expect(() => loadConfig({ [name]: "" })).toThrow(
-        `${name} is no longer supported`,
-      );
+  it("accepts optional file-backed room authority in development and production", () => {
+    expect(
+      loadConfig({ ROOM_DATABASE_PATH: " ./state/rooms.sqlite " })
+        .roomDatabasePath,
+    ).toBe("./state/rooms.sqlite");
+    expect(loadConfig({ ROOM_DATABASE_PATH: "" }).roomDatabasePath).toBeUndefined();
+    expect(
+      loadConfig({
+        NODE_ENV: "production",
+        PUBLIC_BASE_URL: "https://share.test",
+        SITE_ACCESS_PASSWORD: "host-password-12",
+        STUN_URLS: "stun:stun.test:3478",
+        ROOM_DATABASE_PATH: "/var/lib/screener/rooms.sqlite",
+      }).roomDatabasePath,
+    ).toBe("/var/lib/screener/rooms.sqlite");
+  });
+
+  it.each([":memory:", "rooms\0.sqlite"])(
+    "rejects a non-file room database path",
+    (roomDatabasePath) => {
+      expect(() =>
+        loadConfig({ ROOM_DATABASE_PATH: roomDatabasePath }),
+      ).toThrow("ROOM_DATABASE_PATH must identify a file");
     },
   );
+
+  it("rejects the removed room TTL configuration", () => {
+    expect(() => loadConfig({ ROOM_TTL_SECONDS: "" })).toThrow(
+      "ROOM_TTL_SECONDS is no longer supported; use ROOM_LEASE_SECONDS",
+    );
+  });
 
   it.each(["x".repeat(7), "密码密码密码密码", "contains spaces", "x".repeat(129)])(
     "rejects a site access password outside the visible ASCII boundary",
