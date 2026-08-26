@@ -1,11 +1,11 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Accepted and deployed on strict v12, including Browser SFU ICE-server
-  isolation, no product diagnostic-download UI, and the retained Host-only
-  acceptance snapshot. Exact current identity is owned by
+- Status: Base routing is deployed on strict v12. The evidence-only quality
+  shadow and atomic strict-v13 upgrade are accepted but not yet implemented or
+  deployed. Exact current identity is owned by
   [status](../status.md).
 - Date: 2026-08-20
-- Last updated: 2026-08-25
+- Last updated: 2026-08-27
 
 ## Context
 
@@ -177,7 +177,7 @@ prepare the same connection; neither endpoint infers candidate authority from
 an assignment-list difference. The candidate child may report one exact
 transport-connected progress event fenced by the same revision and connection;
 only its later decoded-frame ready event can commit.
-The current Browser runtime contract uses the single `screener-v12` wire. On each WebSocket, the
+The accepted Browser runtime contract uses the single `screener-v13` wire. On each WebSocket, the
 server sends the exact prepare before its SFU configuration; the candidate child
 is queued before a peer parent is allowed to start its offer. WebSocket ordering
 is the companion-delivery contract, so clients keep no reordering inbox.
@@ -420,8 +420,9 @@ deployment-wide.
 
 ## Current Source And Deployment Boundary
 
-Production and canonical application/runtime source use strict `screener-v12`
-with the direct/STUN peer plus LiveKit SFU/UDP route model. Exact current source
+Production and canonical application/runtime source currently use strict
+`screener-v12`; the accepted quality-shadow integration atomically replaces it
+with strict `screener-v13`. Exact current source
 and deployment identity is indexed by [status](../status.md).
 Browser SFU PCs use empty external ICE-server lists. The controlled exact-
 candidate rollback/SFU commit and active-SFU cadence gates are closed. The
