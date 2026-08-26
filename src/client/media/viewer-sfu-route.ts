@@ -253,7 +253,7 @@ export class ViewerSfuRoute {
 
   async resyncAuthoritative(
     update: RouteUpdateInput,
-    viewerPeerId = this.viewerPeerId,
+    viewerPeerId: string,
   ): Promise<RouteUpdateResult> {
     if (this.closed) {
       return "stale";
