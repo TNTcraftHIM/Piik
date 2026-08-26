@@ -742,7 +742,7 @@ describe("client signaling recovery policy", () => {
     expect(shouldReconnectSignaling(1006)).toBe(true);
   });
 
-  it("reports a service restart while scheduling reconnect", () => {
+  it("uses the common reconnect state for a recoverable close", () => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
     class FakeWebSocket extends EventTarget {
@@ -784,7 +784,7 @@ describe("client signaling recovery policy", () => {
     Object.defineProperty(closed, "code", { value: 1012 });
     sockets[0]!.dispatchEvent(closed);
 
-    expect(statuses.at(-1)).toBe("restarting");
+    expect(statuses.at(-1)).toBe("reconnecting");
     signal.stop();
   });
 

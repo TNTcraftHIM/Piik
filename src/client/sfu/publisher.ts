@@ -130,7 +130,10 @@ export class SfuPublisher {
         return false;
       }
 
-      const room = new sdk.Room({ dynacast: true });
+      const room = new sdk.Room({
+        dynacast: true,
+        stopLocalTrackOnUnpublish: false,
+      });
       this.room = room;
       this.sdk = sdk;
       room.on(sdk.RoomEvent.Disconnected, () => {

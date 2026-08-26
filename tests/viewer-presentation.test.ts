@@ -350,22 +350,22 @@ describe("Viewer presentation reducer", () => {
     });
   });
 
-  it("identifies a service restart while retaining the current frame", () => {
-    const restarting = apply(
+  it("retains the current frame while signaling reconnects", () => {
+    const reconnecting = apply(
       { type: "access", access: "ready" },
       { type: "signal", signal: "connected" },
       { type: "host", host: "online" },
       { type: "route", revision: 3, phase: "active", kind: "p2p" },
       { type: "media-bound", generation: 2, revision: 3 },
       { type: "frame-presented", generation: 2, revision: 3 },
-      { type: "signal", signal: "restarting" },
+      { type: "signal", signal: "reconnecting" },
     );
 
-    expect(deriveViewerPresentation(restarting)).toMatchObject({
+    expect(deriveViewerPresentation(reconnecting)).toMatchObject({
       stage: "recovering",
-      message: "服务已重启，正在恢复",
+      message: "正在恢复连接",
       overlay: "none",
-      notice: "服务已重启，正在恢复媒体",
+      notice: "服务器连接正在恢复，画面仍在播放",
     });
   });
 
