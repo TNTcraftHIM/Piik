@@ -26,7 +26,8 @@ import {
 } from "./stats";
 import {
   applyVideoCodecPreference,
-  type BrowserVideoCodec,
+  type BrowserVideoCodecPreference,
+  VP8_ONLY_VIDEO_CODEC,
 } from "./video-codec";
 
 const MAX_PENDING_CANDIDATES = 64;
@@ -76,7 +77,8 @@ export class HostPeer {
     private stream: MediaStream,
     private desiredProfile: QualityProfile,
     private readonly events: HostPeerEvents,
-    private readonly videoCodec: BrowserVideoCodec = "vp8",
+    private readonly videoCodec: BrowserVideoCodecPreference =
+      VP8_ONLY_VIDEO_CODEC,
     connectionId = createOpaqueId(),
   ) {
     this.connectionId = connectionId;

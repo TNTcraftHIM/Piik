@@ -475,7 +475,7 @@ describe("client session identity", () => {
     ).toBeNull();
   });
 
-  it("keeps a preferred room for the server-configured lease window", () => {
+  it("keeps the latest preferred room without a client expiry", () => {
     const values = new Map<string, string>();
     vi.stubGlobal("window", {
       localStorage: {
@@ -485,12 +485,13 @@ describe("client session identity", () => {
       },
     });
 
-    writePreferredRoom("4321", 90, 1_000);
+    writePreferredRoom("4321");
 
     clearHostRoom();
-    expect(readPreferredRoomId(90_999)).toBe("4321");
-    expect(readPreferredRoomId(91_000)).toBeNull();
-    expect(values.has("screener:host-room-preference:v1")).toBe(false);
+    expect(readPreferredRoomId()).toBe("4321");
+    expect(values.get("screener:host-room-preference:v1")).toBe(
+      JSON.stringify({ roomId: "4321" }),
+    );
   });
 
   it("removes a legacy Viewer grant from room-scoped session storage", () => {

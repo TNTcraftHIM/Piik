@@ -7,7 +7,11 @@ import type { QualityProfile } from "../media/quality";
 import type { PeerSnapshot } from "../types";
 import { HostPeer } from "./host-peer";
 import { MAX_ENDPOINT_MEDIA_CHILDREN } from "./media-assignment";
-import type { BrowserVideoCodec } from "./video-codec";
+import {
+  automaticVideoCodecPreference,
+  type BrowserVideoCodecPreference,
+  VP8_ONLY_VIDEO_CODEC,
+} from "./video-codec";
 import { preferredVideoCodecForTrack } from "./video-codec-preflight";
 
 interface ViewerRelayEvents {
@@ -33,7 +37,7 @@ export class ViewerRelay {
   private preparedCandidate: PreparedRouteCandidate | null = null;
   private plannedChildPeerIds: string[] = [];
   private syncQueue = Promise.resolve();
-  private videoCodec: BrowserVideoCodec = "vp8";
+  private videoCodec: BrowserVideoCodecPreference = VP8_ONLY_VIDEO_CODEC;
   private codecProbeTrack: MediaStreamTrack | null = null;
   private codecProbeAbort: AbortController | null = null;
   private codecProbePromise: Promise<void> | null = null;
@@ -196,7 +200,7 @@ export class ViewerRelay {
       this.cancelCodecProbe();
       this.codecProbeTrack = nextVideoTrack;
       if (!this.codecProbeSettled) {
-        this.videoCodec = "vp8";
+        this.videoCodec = VP8_ONLY_VIDEO_CODEC;
       }
     }
     const preparedPeer = this.preparedChild?.peer ?? null;
@@ -302,7 +306,7 @@ export class ViewerRelay {
     this.cancelCodecProbe();
     this.codecProbeTrack = null;
     this.codecProbeSettled = false;
-    this.videoCodec = "vp8";
+    this.videoCodec = VP8_ONLY_VIDEO_CODEC;
     this.stream = null;
     this.discardPreparedChild();
     this.disposePeers();
@@ -562,7 +566,7 @@ export class ViewerRelay {
         ) {
           return;
         }
-        this.videoCodec = codec;
+        this.videoCodec = automaticVideoCodecPreference(codec);
         this.codecProbeSettled = true;
         this.codecProbeAbort = null;
       })

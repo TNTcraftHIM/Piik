@@ -121,7 +121,14 @@ import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
 } from "../webrtc/media-assignment";
-import type { BrowserVideoCodec } from "../webrtc/video-codec";
+import {
+  automaticVideoCodecPreference,
+  manualVideoCodecPreference,
+  type BrowserVideoCodec,
+  type BrowserVideoCodecMode,
+  type BrowserVideoCodecPreference,
+  VP8_ONLY_VIDEO_CODEC,
+} from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import {
   hostActionErrorNotice,
@@ -237,8 +244,6 @@ interface HostPageProps {
   onAuthorizationRequired?: () => void;
 }
 
-const MAX_BROWSER_TIMER_DELAY_MS = 2_147_000_000;
-
 export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
@@ -246,6 +251,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [advancedQuality, setAdvancedQuality] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
   );
+  const [videoCodecMode, setVideoCodecMode] =
+    useState<BrowserVideoCodecMode>("auto");
+  const [resolvedVideoCodec, setResolvedVideoCodec] =
+    useState<BrowserVideoCodec | null>(null);
   const shareGenerationRef = useRef<string | null>(null);
   const [phase, setPhase] = useState<HostPhase>("idle");
   const [signalStatus, setSignalStatus] =
@@ -324,13 +333,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
-  const videoCodecRef = useRef<BrowserVideoCodec>("vp8");
+  const videoCodecModeRef = useRef<BrowserVideoCodecMode>(videoCodecMode);
+  const videoCodecRef = useRef<BrowserVideoCodecPreference>(
+    VP8_ONLY_VIDEO_CODEC,
+  );
   const codecProbeAbortRef = useRef<AbortController | null>(null);
   const sharingPausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
-  const preferredRoomRenewalTimerRef = useRef<number | null>(null);
 
   const mediaViewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -405,7 +416,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       pendingQualityChangeRef.current = null;
       codecProbeAbortRef.current?.abort();
       codecProbeAbortRef.current = null;
-      stopPreferredRoomRenewal();
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
@@ -439,54 +449,32 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     );
   }
 
-  async function probeStreamVideoCodec(
+  async function resolveStreamVideoCodec(
     stream: MediaStream,
-  ): Promise<BrowserVideoCodec> {
+  ): Promise<BrowserVideoCodecPreference> {
     codecProbeAbortRef.current?.abort();
+    const mode = videoCodecModeRef.current;
+    if (mode !== "auto") {
+      codecProbeAbortRef.current = null;
+      return manualVideoCodecPreference(mode);
+    }
     const controller = new AbortController();
     codecProbeAbortRef.current = controller;
     const track = stream.getVideoTracks()[0];
     try {
-      return track
+      const codec = track
         ? await preferredVideoCodecForTrack(
             track,
             qualitySettingsRef.current,
             controller.signal,
           )
         : "vp8";
+      return automaticVideoCodecPreference(codec);
     } finally {
       if (codecProbeAbortRef.current === controller) {
         codecProbeAbortRef.current = null;
       }
     }
-  }
-
-  function stopPreferredRoomRenewal(): void {
-    if (preferredRoomRenewalTimerRef.current !== null) {
-      window.clearInterval(preferredRoomRenewalTimerRef.current);
-      preferredRoomRenewalTimerRef.current = null;
-    }
-  }
-
-  function startPreferredRoomRenewal(activeRoom: HostRoomState): void {
-    stopPreferredRoomRenewal();
-    const renew = () =>
-      writePreferredRoom(
-        activeRoom.roomId,
-        activeRoom.roomLeaseSeconds,
-      );
-    renew();
-    const intervalMs = Math.max(
-      1_000,
-      Math.min(
-        Math.floor((activeRoom.roomLeaseSeconds * 1_000) / 2),
-        MAX_BROWSER_TIMER_DELAY_MS,
-      ),
-    );
-    preferredRoomRenewalTimerRef.current = window.setInterval(
-      renew,
-      intervalMs,
-    );
   }
 
   function ensureHostSfuRoute(generation: number): HostSfuRoute {
@@ -498,7 +486,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     route = new HostSfuRoute({
       getStream: () => streamRef.current,
       getProfile: () => qualitySettingsRef.current,
-      getVideoCodec: () => videoCodecRef.current,
+      getVideoCodec: () => videoCodecRef.current.primary,
       reconcileChildren: (childPeerIds) => {
         if (
           isCurrentGeneration(generation) &&
@@ -548,13 +536,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function disposeResources(notifyServer: boolean): void {
-    stopPreferredRoomRenewal();
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
     codecProbeAbortRef.current?.abort();
     codecProbeAbortRef.current = null;
-    videoCodecRef.current = "vp8";
+    videoCodecRef.current = VP8_ONLY_VIDEO_CODEC;
+    setResolvedVideoCodec(null);
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
@@ -622,10 +610,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     generationRef.current += 1;
     const currentRoom = roomRef.current;
     if (notifyServer && currentRoom) {
-      writePreferredRoom(
-        currentRoom.roomId,
-        currentRoom.roomLeaseSeconds,
-      );
+      writePreferredRoom(currentRoom.roomId);
     }
     disposeResources(notifyServer);
     setNotice(message);
@@ -777,6 +762,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     const next = { ...advancedQualityRef.current, screenAudioQuality };
     void changeQuality(next);
+  }
+
+  function changeVideoCodecMode(mode: BrowserVideoCodecMode): void {
+    if (phase === "starting" || phase === "live") {
+      return;
+    }
+    videoCodecModeRef.current = mode;
+    setVideoCodecMode(mode);
+    setResolvedVideoCodec(null);
   }
 
   function changeAdvancedQuality(
@@ -1483,7 +1477,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDetails(captureDetails(captured));
     watchCaptureEnd(captured, generation);
 
-    videoCodecRef.current = await probeStreamVideoCodec(captured);
+    videoCodecRef.current = await resolveStreamVideoCodec(captured);
+    setResolvedVideoCodec(videoCodecRef.current.primary);
     if (!isCurrentGeneration(generation)) {
       captured.getTracks().forEach((track) => track.stop());
       return;
@@ -1599,7 +1594,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   ...activeRoom,
                   expiresAt: message.roomExpiresAt,
                 });
-                startPreferredRoomRenewal(activeRoom);
+                writePreferredRoom(activeRoom.roomId);
                 setPhase("live");
               }
               handleSignalMessage(
@@ -2239,6 +2234,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             <div className="capture-strip" aria-label="实际捕获参数">
               <span>{details.resolution}</span>
               <span>{details.frameRate ? `${details.frameRate.toFixed(0)} fps` : "帧率未知"}</span>
+              <span>{resolvedVideoCodec?.toUpperCase() ?? "编码待定"}</span>
               <span>{details.hasAudio ? "含音频" : "无音频"}</span>
             </div>
           )}
@@ -2361,6 +2357,34 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       </output>
                     </div>
                   </label>
+                  <fieldset className="control-group quality-priority">
+                    <legend>视频编码</legend>
+                    <div className="segmented-control">
+                      {(["vp8", "auto", "h264"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={
+                            videoCodecMode === mode ? "is-selected" : undefined
+                          }
+                          aria-pressed={videoCodecMode === mode}
+                          disabled={phase === "starting" || phase === "live"}
+                          onClick={() => changeVideoCodecMode(mode)}
+                        >
+                          <span>{mode === "auto" ? "自动" : mode.toUpperCase()}</span>
+                          <small>
+                            {mode === "vp8"
+                              ? "兼容优先"
+                              : mode === "h264"
+                                ? "硬件优先"
+                                : resolvedVideoCodec
+                                  ? resolvedVideoCodec.toUpperCase()
+                                  : "自动选择"}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
                   <fieldset className="control-group quality-priority">
                     <legend>画面偏好</legend>
                     <div className="segmented-control">
