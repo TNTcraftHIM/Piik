@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `8164102af8083d55632cf5de10197b5823b3d140`, release `8164102`, wire
-  `screener-v12`, from `/opt/screener/releases/8164102`. The immutable runtime
+  `ceb38e1b0ddd7ea7ca4e2d330c1b64a4d97b98ba`, release `ceb38e1`, wire
+  `screener-v12`, from `/opt/screener/releases/ceb38e1`. The immutable runtime
   tar SHA-256 is
-  `1f61395702afaabfda8c178a08c7896af77e1c4750dcc9f29ffaafbd56bba80f`;
+  `d1f8b9c5982c66163220d74efd87e076e13f5270282028bd173eaecd545ab1b0`;
   its 41-file manifest SHA-256 is
-  `55b9779fdaf4fe2ba98d5612b16e398fbf2ad6b9ebcfeeeef6e0ce5c3595ac8d`.
-- The served Browser entry references `assets/index-CPECbwjN.js`; the public
+  `85f05a98e712eb74a03261c022d902cf1b3ab5c6f73ad5f365a537edd2973763`.
+- The served Browser entry references `assets/index-BLqbpOcC.js`; the public
   asset SHA-256 is
-  `dfcbed5d4178afbd7f6713f1ae348a70921b936199fa56d87fa05c785564559e`.
+  `8e1c3a77a61e5c10f34a801428516379d40809c60bcd0b5b6db461e4e4f1797e`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -42,7 +42,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical `main` contains the same application tree deployed from `8164102`.
+- Canonical `main` contains the same application tree deployed from `ceb38e1`.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector are implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -64,15 +64,11 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Close the confirmed authority/recovery P1s: typed KDF gate outcomes, exact
-   route-terminal ownership, assignment-fenced child creation, bounded SFU
-   refresh, exact Viewer authentication outcomes, and reconnect-safe Host
-   quality intent.
-2. Implement presentation-authoritative freeze/pause evidence with decoded
+1. Implement presentation-authoritative freeze/pause evidence with decoded
    progress and the controller-owned shadow aggregate; collect production
    samples without active route changes.
-3. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
-4. Finish representative public-network direct, peer-relay, SFU, recovery,
+2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
+3. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance
    without adding another transport or quality controller.
 
@@ -91,6 +87,5 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Hold
 
-No source or deployment P0 is open. The recovery/authority P1 milestone blocks
-active quality-route behavior; representative real-network and mobile physical
-evidence remains required before route acceptance is complete.
+No source or deployment P0/P1 is open. Representative real-network and mobile
+physical evidence remains required before route acceptance is complete.

@@ -8,14 +8,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `8164102af8083d55632cf5de10197b5823b3d140`, release `8164102`, wire
-  `screener-v12`, from `/opt/screener/releases/8164102`.
+  `ceb38e1b0ddd7ea7ca4e2d330c1b64a4d97b98ba`, release `ceb38e1`, wire
+  `screener-v12`, from `/opt/screener/releases/ceb38e1`.
 - Runtime tar SHA-256:
-  `1f61395702afaabfda8c178a08c7896af77e1c4750dcc9f29ffaafbd56bba80f`.
+  `d1f8b9c5982c66163220d74efd87e076e13f5270282028bd173eaecd545ab1b0`.
   The 41-file manifest SHA-256 is
-  `55b9779fdaf4fe2ba98d5612b16e398fbf2ad6b9ebcfeeeef6e0ce5c3595ac8d`.
-- Public Browser asset `assets/index-CPECbwjN.js` has SHA-256
-  `dfcbed5d4178afbd7f6713f1ae348a70921b936199fa56d87fa05c785564559e`.
+  `85f05a98e712eb74a03261c022d902cf1b3ab5c6f73ad5f365a537edd2973763`.
+- Public Browser asset `assets/index-BLqbpOcC.js` has SHA-256
+  `8e1c3a77a61e5c10f34a801428516379d40809c60bcd0b5b6db461e4e4f1797e`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
@@ -57,10 +57,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 - Browser SFU publisher/subscriber PCs use empty external ICE-server lists while
   ordinary peers retain deployment STUN. The reported Host/Viewer TUN conflict
   was closed by that isolation without adding TURN or TCP media.
+- Password-KDF capacity now fails before room or SQLite mutation; route terminal
+  identity comes from the controller; Host child creation is assignment-fenced;
+  explicit SFU refresh has a typed failure path; Viewer access outcomes remain
+  exact; and Host quality intent survives signaling interruption.
 
 ## Current Source Evidence
 
-- Canonical source contains the same application tree deployed from `8164102`:
+- Canonical source contains the same application tree deployed from `ceb38e1`:
   the adaptive H.264/VP8 sender decision with `contentHint = "motion"` reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
