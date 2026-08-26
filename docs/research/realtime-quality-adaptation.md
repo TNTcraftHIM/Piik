@@ -374,27 +374,44 @@ quality ceiling as a delivered floor requires a separate product SLO. Relay
 ingress degradation reparents that relay while retaining its subtree; one
 child's degradation moves only that child.
 
-Research recommends shadow evaluation before active migration, followed by an
-existing-SFU-only canary if the measured trigger has acceptable false-positive
-rate. An active episode would keep the existing first-frame commit rule, allow
-one low-priority trial and at most one restore, and yield immediately to join,
-hard recovery, departure, capacity, pause, or SFU drain work. This post-commit
-probation measures the actual presented path without holding two long-running
-media routes whose competing bandwidth and non-rendered candidate metrics would
-distort comparison. It necessarily permits a temporarily worse candidate and a
-second transition on restore; that behavior, the freeze SLO, inconclusive result,
-and permission to create or prioritize SFU resources remain product decisions.
+The accepted first stage is shadow evaluation only. Viewer evidence adds the
+standard cumulative-renderer deltas `framesRendered`, `freezeCount`,
+`totalFreezesDuration`, `pauseCount` and `totalPausesDuration`. W3C already
+defines a freeze relative to the last 30 rendered frames, so this phase invents
+no FPS, bitrate, loss or latency threshold. A recovered freeze or pause updates
+its duration only after a later frame is rendered, so a valid delta may exceed
+the adjacent report window and must not be clipped. A missing member is unknown;
+only windows containing all five rendered metrics enter the aggregate.
 
-The current quality-evidence wire is not yet eligible for that shadow authority.
-WebRTC defines freeze and pause from rendered frames, while the current payload
-has decoded progress but no rendered-frame or standard pause evidence. It also
-caps one recovered `freezeDuration` delta to one report window even though the
-cumulative counter can legitimately jump by several windows after rendering
-resumes. Presentation eligibility must bind visibility, page lifecycle, local
-playback/autoplay, Host pause, current frame proof, and an identity epoch; the
-first sample after any epoch change establishes a baseline only.
+Presentation eligibility binds visible/not-suspended page state, non-paused
+Host authority, native video play state, current composited-frame proof and the
+exact connected route. Every eligibility change advances a strictly monotonic
+presentation epoch. The first completed stats sample in an epoch is only a
+baseline; an async sample may be emitted only if the epoch is still current.
+Rate limiting remains per Viewer connection across epoch changes.
 
-The minimal active state machine remains `observe -> qualified -> queued ->
+After the signaling layer revalidates the authenticated Viewer, current upstream,
+connection and room revision, the existing room controller independently checks
+its exact committed edge. It retains no samples or event ring, only one safe-
+integer aggregate for the latest accepted epoch of each current child:
+eligible windows/duration, recovered-freeze windows/count/duration, pause
+count/duration, and the last accepted time used by the existing five-second
+freshness rule. The Host-only on-demand route snapshot exposes that closed
+aggregate under the child's temporary ordinal; it exposes no epoch, session,
+connection, raw metric or timeline. Observation does not touch controller facts
+or trigger route work.
+
+Active migration follows only after annotated production samples establish an
+acceptable false-positive and disruption boundary. An active episode would keep
+the existing first-frame commit rule, allow one low-priority trial and at most
+one restore, and yield immediately to join, hard recovery, departure, capacity,
+pause, or SFU drain work. Post-commit probation measures the actual presented
+path without holding two long-running media routes whose competing bandwidth
+and non-rendered candidate metrics would distort comparison. The trigger,
+probation, cooldown, inconclusive result and permission to create or prioritize
+SFU resources remain the next product decision.
+
+The possible active state machine remains `observe -> qualified -> queued ->
 trial prepare -> first-frame commit -> probation -> keep | restore once ->
 cooldown`. It uses the existing reservation and room-serial child operation,
 permits no bounded-gap quality trial, and yields to availability work. Relay

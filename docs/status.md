@@ -62,8 +62,11 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
-2. Finish representative public-network direct, peer-relay, SFU, recovery,
+1. Implement presentation-authoritative rendered freeze/pause evidence and the
+   controller-owned shadow aggregate; collect production samples without active
+   route changes.
+2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
+3. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance
    without adding another transport or quality controller.
 
