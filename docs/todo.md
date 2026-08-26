@@ -7,9 +7,10 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Adaptive Browser H.264.** Implement the accepted source-scoped actual-sender
-   preflight. Proved Host/relay sources prefer H.264 with native VP8 fallback;
-   failed or inconclusive sources use VP8. The Host decision owns its one SFU
+1. **Adaptive Browser H.264.** Implement the accepted sender-scoped actual-sender
+   preflight with a deterministic moving probe track at the current share target.
+   Proved Host/relay senders prefer H.264 with native VP8 fallback;
+   failed or inconclusive senders use VP8. The Host decision owns its one SFU
    publication with backup codec disabled. Add no codec UI, wire state,
    persistent cache, parallel codec route, or active-edge churn.
 2. **Preferred room simplification and replacement.** Keep the server dormant

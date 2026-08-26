@@ -22,9 +22,12 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
 
 ## Decision
 
-1. Browser video makes one internal, source-scoped codec decision. A bounded
+1. Browser video makes one internal, sender-scoped codec decision. A bounded
    actual-`RTCPeerConnection` preflight measures H.264 encoded progress against
-   the same source progress. A proved source prefers H.264 and retains VP8 as
+   a deterministic moving probe track at the current share's effective target
+   dimensions and frame rate. The real capture supplies those target settings,
+   but its current motion does not decide encoder capability. A proved sender
+   prefers H.264 and retains VP8 as
    the native negotiation fallback; an unsupported, inconclusive, slow, or
    failed preflight uses VP8 only. The result is not persisted or inferred from
    UA, GPU, capability advertisement, or `powerEfficientEncoder` alone.

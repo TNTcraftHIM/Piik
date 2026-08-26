@@ -56,8 +56,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Implement the accepted source-scoped Browser H.264 preflight and VP8 fallback
-   across direct, Browser relay, and the Host's single SFU publication. Current
+1. Implement the accepted content-independent Browser H.264 sender preflight
+   and VP8 fallback across direct, Browser relay, and the Host's single SFU publication. Current
    source and production remain fixed VP8 until that candidate is integrated and
    separately released.
 2. Remove the client-side preferred-room expiry/renewal timer while keeping the

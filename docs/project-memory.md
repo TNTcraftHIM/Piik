@@ -70,8 +70,10 @@ Last updated: 2026-08-26
 ## Media Quality
 
 - Current source and production still use VP8 only. The accepted next Browser
-  contract runs one source-scoped actual-sender preflight: proved sources prefer
-  H.264 with native VP8 fallback, while failed/inconclusive sources remain
+  contract runs one sender-scoped actual-sender preflight with a deterministic
+  moving probe track sized to the current share target, so captured-content
+  motion cannot decide encoder capability. Proved senders prefer
+  H.264 with native VP8 fallback, while failed/inconclusive senders remain
   VP8-only. Codec UI/state/wire, persistent codec cache, parallel codec media,
   backup publication, and active-edge codec switching remain absent. Display
   video uses `contentHint = "motion"` and display audio uses `contentHint = "music"`.
