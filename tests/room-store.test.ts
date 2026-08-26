@@ -53,6 +53,28 @@ function expectRoomError(run: () => unknown, code: string) {
   expect(run).toThrow(new RoomStoreError(code as never));
 }
 
+async function withSaturatedPasswordGate<Result>(
+  roomStore: RoomStore,
+  operation: () => Promise<Result>,
+): Promise<Result> {
+  const attempts = Array.from({ length: 18 }, (_, index) =>
+    roomStore.connectViewerWithPassword(
+      {
+        roomId: "9999",
+        password: "gate-password",
+        clientId: `gate-client-${index}`,
+        sessionId: `gate-session-${index}`,
+      },
+      () => index < 2,
+    ),
+  );
+  try {
+    return await operation();
+  } finally {
+    await Promise.allSettled(attempts);
+  }
+}
+
 describe("RoomStore", () => {
   it("allocates every free four-digit room code and recycles releases", async () => {
     const { store: roomStore } = store({
@@ -314,6 +336,69 @@ describe("RoomStore", () => {
     ).toMatchObject({ role: "viewer" });
   });
 
+  it("does not create a passwordless room when the password gate is busy", async () => {
+    const { store: roomStore } = store({ maxRooms: 1 });
+
+    await expect(
+      withSaturatedPasswordGate(roomStore, () =>
+        roomStore.createRoom("private", "room-password", "4321"),
+      ),
+    ).rejects.toEqual(new RoomStoreError("ROOM_BUSY"));
+    expect(roomStore.size).toBe(0);
+    expect((await roomStore.createRoom("private", null, "4321")).roomId).toBe(
+      "4321",
+    );
+  });
+
+  it("keeps room replacement and password updates unchanged when busy", async () => {
+    const { store: roomStore } = store({
+      maxRooms: 3,
+    });
+    const room = await roomStore.createRoom(
+      "private",
+      "old-password",
+      "4321",
+    );
+
+    await expect(
+      withSaturatedPasswordGate(roomStore, () =>
+        roomStore.replaceRoom(
+          room.roomId,
+          room.hostToken,
+          "private",
+          "replacement-password",
+        ),
+      ),
+    ).rejects.toEqual(new RoomStoreError("ROOM_BUSY"));
+    expect(roomStore.size).toBe(1);
+    await expect(
+      roomStore.connectViewerWithPassword({
+        roomId: room.roomId,
+        password: "old-password",
+        clientId: "after-replacement-client",
+        sessionId: "after-replacement-session",
+      }),
+    ).resolves.toMatchObject({ roomId: room.roomId });
+
+    await expect(
+      withSaturatedPasswordGate(roomStore, () =>
+        roomStore.setViewerPassword(
+          room.roomId,
+          "updated-password",
+          room.hostToken,
+        ),
+      ),
+    ).rejects.toEqual(new RoomStoreError("ROOM_BUSY"));
+    await expect(
+      roomStore.connectViewerWithPassword({
+        roomId: room.roomId,
+        password: "old-password",
+        clientId: "after-update-client",
+        sessionId: "after-update-session",
+      }),
+    ).resolves.toMatchObject({ roomId: room.roomId });
+  });
+
   it("bounds password derivations and uses the same path for unknown rooms", async () => {
     const { store: roomStore } = store();
     let mayStartCalls = 0;
@@ -348,6 +433,13 @@ describe("RoomStore", () => {
           result.reason.code === "ROOM_NOT_FOUND",
       ),
     ).toHaveLength(2);
+    expect(
+      results.filter(
+        (result) =>
+          result.status === "rejected" &&
+          result.reason.code === "INVALID_TOKEN",
+      ),
+    ).toHaveLength(38);
   });
 
   it("rotates and revokes Viewer grants without changing code entry", async () => {

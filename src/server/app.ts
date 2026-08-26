@@ -397,7 +397,7 @@ async function handleRequest(
       }
       if (
         error instanceof RoomStoreError &&
-        error.code === "ROOM_ACCESS_DENIED"
+        (error.code === "ROOM_ACCESS_DENIED" || error.code === "ROOM_BUSY")
       ) {
         sendJson(response, 503, { error: "Room replacement unavailable" });
         return;
@@ -467,6 +467,10 @@ async function handleRequest(
         ),
       );
     } catch (error) {
+      if (error instanceof RoomStoreError && error.code === "ROOM_BUSY") {
+        sendJson(response, 503, { error: "Room access update unavailable" });
+        return;
+      }
       if (
         error instanceof RoomStoreError &&
         error.code === "ROOM_ACCESS_DENIED"
@@ -534,6 +538,10 @@ async function handleRequest(
     } catch (error) {
       if (error instanceof RoomStoreError && error.code === "ROOM_LIMIT") {
         sendJson(response, 503, { error: "Room capacity reached" });
+        return;
+      }
+      if (error instanceof RoomStoreError && error.code === "ROOM_BUSY") {
+        sendJson(response, 503, { error: "Room creation unavailable" });
         return;
       }
       if (error instanceof RoomStoreError && error.code === "INVALID_TOKEN") {

@@ -85,6 +85,38 @@ function closeStore(store: RoomStore): void {
 }
 
 describe("SQLite stable room authority", () => {
+  it("does not persist a room when password derivation is busy", async () => {
+    const path = databasePath();
+    const clock = { nowMs: 1_000 };
+    const first = stableStore(path, clock, { maxRooms: 1 });
+    const attempts = Array.from({ length: 18 }, (_, index) =>
+      first.connectViewerWithPassword(
+        {
+          roomId: "9999",
+          password: "gate-password",
+          clientId: `gate-client-${index}`,
+          sessionId: `gate-session-${index}`,
+        },
+        () => index < 2,
+      ),
+    );
+    try {
+      await expect(
+        first.createRoom("private", "room-password", "4321"),
+      ).rejects.toEqual(new RoomStoreError("ROOM_BUSY"));
+    } finally {
+      await Promise.allSettled(attempts);
+    }
+    expect(first.size).toBe(0);
+    closeStore(first);
+
+    const second = stableStore(path, clock, { maxRooms: 1 });
+    expect(second.size).toBe(0);
+    expect((await second.createRoom("private", null, "4321")).roomId).toBe(
+      "4321",
+    );
+  });
+
   it("restores the exact authority aggregate without participants", async () => {
     const path = databasePath();
     const clock = { nowMs: 1_000 };

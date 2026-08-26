@@ -20,6 +20,7 @@ import {
 export type RoomStoreErrorCode =
   | "INVALID_TOKEN"
   | "ROOM_ACCESS_DENIED"
+  | "ROOM_BUSY"
   | "ROOM_NOT_FOUND"
   | "ROOM_EXPIRED"
   | "ROOM_FULL"
@@ -43,6 +44,11 @@ const VIEWER_PASSWORD_SCRYPT_OPTIONS = {
 const DUMMY_VIEWER_PASSWORD_MATERIAL = Buffer.alloc(
   VIEWER_PASSWORD_MATERIAL_BYTES,
 );
+
+type AsyncGateOutcome<T> =
+  | { kind: "value"; value: T }
+  | { kind: "busy" }
+  | { kind: "cancelled" };
 
 export class RoomStoreError extends Error {
   constructor(public readonly code: RoomStoreErrorCode) {
@@ -260,12 +266,20 @@ export class RoomStore {
     }
     const createdAtMs = this.now();
     const leaseExpiresAtMs = this.leaseDeadline(createdAtMs);
-    const viewerPasswordMaterial = roomPassword
+    const passwordOutcome = roomPassword
       ? await this.createViewerPasswordMaterial(roomPassword)
       : null;
     if (this.rooms.size >= this.options.maxRooms) {
       throw new RoomStoreError("ROOM_LIMIT");
     }
+    if (passwordOutcome?.kind === "busy") {
+      throw new RoomStoreError("ROOM_BUSY");
+    }
+    if (passwordOutcome?.kind === "cancelled") {
+      throw new Error("Room creation password derivation was cancelled");
+    }
+    const viewerPasswordMaterial =
+      passwordOutcome?.kind === "value" ? passwordOutcome.value : null;
     const roomId = this.takeRoomCode(preferredRoomId);
     try {
       const { room, created } = this.newRoom(
@@ -291,7 +305,7 @@ export class RoomStore {
   ): Promise<ReplacedRoom> {
     this.ensureInitialized();
     const current = this.getHostManagedRoom(roomId, hostToken);
-    const viewerPasswordMaterial = roomPassword
+    const passwordOutcome = roomPassword
       ? await this.createViewerPasswordMaterial(roomPassword, () => {
           const room = this.rooms.get(roomId);
           return (
@@ -301,9 +315,14 @@ export class RoomStore {
         })
       : null;
     const owned = this.getHostManagedRoom(roomId, hostToken);
-    if (owned !== current || (roomPassword && !viewerPasswordMaterial)) {
+    if (owned !== current || passwordOutcome?.kind === "cancelled") {
       throw new RoomStoreError("ROOM_ACCESS_DENIED");
     }
+    if (passwordOutcome?.kind === "busy") {
+      throw new RoomStoreError("ROOM_BUSY");
+    }
+    const viewerPasswordMaterial =
+      passwordOutcome?.kind === "value" ? passwordOutcome.value : null;
 
     const replacementRoomId = this.takeRoomCode();
     try {
@@ -408,10 +427,10 @@ export class RoomStore {
       expectedSalt,
       mayConnect,
     );
-    if (derived === null) {
+    if (derived.kind !== "value") {
       throw new RoomStoreError("INVALID_TOKEN");
     }
-    const matches = timingSafeEqual(derived, expectedVerifier);
+    const matches = timingSafeEqual(derived.value, expectedVerifier);
 
     let currentRoom: Room;
     try {
@@ -451,7 +470,7 @@ export class RoomStore {
     this.ensureInitialized();
     const room = this.getHostManagedRoom(roomId, hostToken);
 
-    const nextPasswordMaterial = password
+    const passwordOutcome = password
       ? await this.createViewerPasswordMaterial(password, () => {
           const currentRoom = this.rooms.get(roomId);
           return (
@@ -462,12 +481,14 @@ export class RoomStore {
       : null;
 
     const currentRoom = this.getHostManagedRoom(roomId, hostToken);
-    if (
-      currentRoom !== room ||
-      (password !== null && nextPasswordMaterial === null)
-    ) {
+    if (currentRoom !== room || passwordOutcome?.kind === "cancelled") {
       throw new RoomStoreError("ROOM_ACCESS_DENIED");
     }
+    if (passwordOutcome?.kind === "busy") {
+      throw new RoomStoreError("ROOM_BUSY");
+    }
+    const nextPasswordMaterial =
+      passwordOutcome?.kind === "value" ? passwordOutcome.value : null;
     this.options.database?.setViewerPassword(
       roomId,
       currentRoom.hostTokenDigest,
@@ -878,7 +899,7 @@ export class RoomStore {
   private async createViewerPasswordMaterial(
     password: string,
     mayStart: () => boolean = () => true,
-  ): Promise<Buffer | null> {
+  ): Promise<AsyncGateOutcome<Buffer>> {
     if (!viewerPasswordSchema.safeParse(password).success) {
       throw new RoomStoreError("INVALID_TOKEN");
     }
@@ -887,7 +908,9 @@ export class RoomStore {
       throw new Error("Viewer password salt source must return 16 bytes");
     }
     const verifier = await deriveViewerPassword(password, salt, mayStart);
-    return verifier && Buffer.concat([salt, verifier]);
+    return verifier.kind === "value"
+      ? { kind: "value", value: Buffer.concat([salt, verifier.value]) }
+      : verifier;
   }
 
   private randomDigest(): Buffer {
@@ -980,7 +1003,7 @@ function deriveViewerPassword(
   password: string,
   salt: Buffer,
   mayStart: () => boolean = () => true,
-): Promise<Buffer | null> {
+): Promise<AsyncGateOutcome<Buffer>> {
   return viewerPasswordKdfGate.run(
     () =>
       new Promise<Buffer>((resolve, reject) => {
@@ -1009,12 +1032,15 @@ class AsyncGate {
   async run<T>(
     task: () => Promise<T>,
     mayStart: () => boolean,
-  ): Promise<T | null> {
+  ): Promise<AsyncGateOutcome<T>> {
     if (!(await this.acquire())) {
-      return null;
+      return { kind: "busy" };
     }
     try {
-      return mayStart() ? await task() : null;
+      if (!mayStart()) {
+        return { kind: "cancelled" };
+      }
+      return { kind: "value", value: await task() };
     } finally {
       this.release();
     }
