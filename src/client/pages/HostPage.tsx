@@ -929,12 +929,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       if (captureChanged) {
         setDetails(captureDetails(activeStream));
       }
-      const roomSettingsSent =
-        !peerAssistedRef.current ||
-        signalRef.current?.send({
-          type: "set-quality-settings",
-          qualitySettings: nextProfile,
-        }) === true;
+      if (peerAssistedRef.current) {
+        signalRef.current?.setHostQualitySettings(nextProfile);
+      }
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
         Promise.all(
@@ -963,12 +960,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           failed > 0 || !sfuUpdated
             ? "分享设置已更新，但部分观看连接未能应用新参数"
             : null;
-        const syncWarning = roomSettingsSent
-          ? null
-          : "房间画质同步将在服务器重连后继续";
-        const warning = [sfuWarning ?? connectionWarning, syncWarning]
-          .filter((message): message is string => message !== null)
-          .join("；");
+        const warning = sfuWarning ?? connectionWarning;
         const successNotice =
           audioChanged && !videoChanged
             ? `音频质量已切换为 ${SCREEN_AUDIO_QUALITY_LABELS[resolveScreenAudioQuality(nextProfile.screenAudioQuality)]}`
@@ -1286,6 +1278,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     generation: number,
     activeRoom: HostRoomState,
     reauthenticated: boolean,
+    pendingQualitySettings: QualitySettings | null,
   ): void {
     if (!isCurrentGeneration(generation)) {
       return;
@@ -1323,21 +1316,23 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         "mediaMode" in message &&
         message.mediaMode === "peer-assisted"
       ) {
+        const currentQualitySettings =
+          pendingQualitySettings ?? message.qualitySettings;
         activeRouteRevisionRef.current = message.routeRevision;
         activeHostChildPeerIdsRef.current = [
           ...message.routeAssignment.childPeerIds,
         ];
         peerAssistedRef.current = true;
         if (reauthenticated) {
-          commitQuality(message.qualitySettings);
+          commitQuality(currentQualitySettings);
           const endpointUpdates = [
             ...[...peersRef.current.values()].map((peer) =>
-              peer.updateProfile(message.qualitySettings),
+              peer.updateProfile(currentQualitySettings),
             ),
             ...(hostProvisionalChildRef.current
               ? [
                   hostProvisionalChildRef.current.updateProfile(
-                    message.qualitySettings,
+                    currentQualitySettings,
                   ),
                 ]
               : []),
@@ -1353,7 +1348,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           })
           .then(async () => {
             if (reauthenticated && hostSfuRouteRef.current === route) {
-              await route.updateProfile(message.qualitySettings);
+              await route.updateProfile(currentQualitySettings);
             }
             showHostSfuQualityWarning(route, generation);
           });
@@ -1690,6 +1685,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 generation,
                 activeRoom,
                 reauthenticated,
+                reauthenticated
+                  ? signal.pendingHostQualitySettings(shareGeneration)
+                  : null,
               );
             },
           },
