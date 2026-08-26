@@ -59,6 +59,12 @@ later topic is not implementation authority by itself.
    coarse `mediaAssignment` wire residue, legacy SFU room-name acceptance,
    and duplicated teardown/test/browser-gate owners as the bounded starting
    set; it did not authorize unrelated cleanup.
+8. **Per-share peer-only mode.** Add one default-off Host pre-share checkbox,
+   locked while sharing. Enabled rooms retain the automatic direct/peer graph
+   but exclude SFU candidates, configuration and resources, then end in the
+   existing bounded failure when no Peer route works. This does not claim
+   cryptographic protection from the operator serving the Web application;
+   application-layer E2EE remains a separate decision.
 
 ## Product Decision Needed
 
