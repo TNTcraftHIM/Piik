@@ -287,14 +287,18 @@ second mutable graph.
   route score, alternative-parent probe, hysteresis loop, or periodic
   quality-driven reparenting.
 - Quality selection begins with one evidence-only shadow phase inside this same
-  controller. A Viewer reports standard freeze and pause deltas with continuing
-  decoded-frame progress only while its exact current route is connected, the page is visible and not
-  suspended, the Host is not paused, the native video is playing, and a current
-  composited frame has already been proved. Current target Chromium does not
+  controller. A Viewer reports standard freeze and pause deltas only for a
+  window with continuing decoded-frame progress. Presentation eligibility
+  separately requires that its exact current route is connected, the page is
+  visible and not suspended, the Host is not paused, the native video is
+  playing, and a current composited frame has already been proved. Current target Chromium does not
   expose the W3C `framesRendered` member, so it is not a wire requirement; the
   freeze/pause counters themselves remain renderer-derived. A strictly monotonic
-  presentation epoch fences every eligibility change; its first stats sample establishes a
-  baseline and is not evidence. The server then revalidates the authenticated
+  presentation epoch fences every presentation-eligibility change; its first
+  new stats sample establishes a baseline and is not evidence. A zero-decoded
+  window neither enters the aggregate nor advances that epoch or freshness; a
+  later positive-progress window may carry the renderer's newly settled
+  freeze/pause delta. The server then revalidates the authenticated
   Viewer session, exact committed upstream and connection before the controller
   keeps one bounded current-epoch aggregate per child. Missing stats remain
   unknown, recovered freeze/pause duration may exceed one report window, and a
