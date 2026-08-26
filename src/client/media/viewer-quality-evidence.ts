@@ -96,10 +96,6 @@ export function qualityEvidenceWindowFromMetrics(
     width !== null && height !== null
       ? { width, height }
       : { width: null, height: null };
-  const freezeDuration = boundedNumber(
-    metrics.intervalFreezeDurationMs,
-    windowMs,
-  );
   const candidate: ViewerQualityEvidenceMetrics = {
     ...dimensions,
     framesPerSecond: boundedNumber(metrics.framesPerSecond, 240),
@@ -120,8 +116,22 @@ export function qualityEvidenceWindowFromMetrics(
       10_000,
     ),
     decodeMsPerFrame: boundedNumber(metrics.intervalDecodeMs, 60_000),
-    freezeCountDelta: boundedInteger(metrics.intervalFreezeCount, 10_000),
-    freezeDurationMsDelta: freezeDuration,
+    freezeCountDelta: boundedInteger(
+      metrics.intervalFreezeCount,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    freezeDurationMsDelta: boundedNumber(
+      metrics.intervalFreezeDurationMs,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    pauseCountDelta: boundedInteger(
+      metrics.intervalPauseCount,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    pauseDurationMsDelta: boundedNumber(
+      metrics.intervalPauseDurationMs,
+      Number.MAX_SAFE_INTEGER,
+    ),
     codec: boundedString(
       metrics.codec,
       64,
@@ -175,7 +185,9 @@ export function qualityEvidenceWindowFromMetrics(
 
 export class ViewerQualityEvidenceReporter {
   private connectionId: string | null = null;
-  private routeRevision: number | null = null;
+  private presentationEpoch = 0;
+  private presentationEligible = false;
+  private baselinePending = true;
   private sequence = 0;
   private lastSentAtMs: number | null = null;
   private lastSampleTimestampMs: number | null = null;
@@ -185,11 +197,16 @@ export class ViewerQualityEvidenceReporter {
     private readonly now: () => number = Date.now,
   ) {}
 
-  offer(snapshot: PeerSnapshot, routeRevision: number): boolean {
+  offer(
+    snapshot: PeerSnapshot,
+    routeRevision: number,
+    presentationEligible: boolean,
+  ): boolean {
     return this.offerMetrics(
       snapshot.connectionId,
       snapshot.metrics,
       routeRevision,
+      presentationEligible,
     );
   }
 
@@ -197,6 +214,7 @@ export class ViewerQualityEvidenceReporter {
     connectionId: string,
     metrics: ConnectionMetrics,
     routeRevision: number,
+    presentationEligible: boolean,
   ): boolean {
     if (
       !Number.isSafeInteger(routeRevision) ||
@@ -205,8 +223,14 @@ export class ViewerQualityEvidenceReporter {
     ) {
       return false;
     }
-    const window = qualityEvidenceWindowFromMetrics(metrics);
     const sampleTimestampMs = metrics.sampleTimestampMs;
+    if (this.connectionId !== connectionId) {
+      this.connectionId = connectionId;
+      this.sequence = 0;
+      this.lastSampleTimestampMs = null;
+      this.baselinePending = true;
+    }
+    const window = qualityEvidenceWindowFromMetrics(metrics);
     if (
       !window ||
       sampleTimestampMs === null ||
@@ -215,25 +239,34 @@ export class ViewerQualityEvidenceReporter {
     ) {
       return false;
     }
-    if (this.connectionId !== connectionId) {
-      this.connectionId = connectionId;
-      this.routeRevision = routeRevision;
-      this.sequence = 0;
-      this.lastSentAtMs = null;
-      this.lastSampleTimestampMs = null;
-    } else if (this.routeRevision !== routeRevision) {
-      this.routeRevision = routeRevision;
-      this.lastSentAtMs = null;
-      this.lastSampleTimestampMs = null;
-    }
-    if (this.sequence > Number.MAX_SAFE_INTEGER) {
-      return false;
-    }
-
     if (
       this.lastSampleTimestampMs !== null &&
       sampleTimestampMs <= this.lastSampleTimestampMs
     ) {
+      return false;
+    }
+    this.lastSampleTimestampMs = sampleTimestampMs;
+    if (!presentationEligible) {
+      if (this.presentationEligible) {
+        this.invalidatePresentation();
+      }
+      return false;
+    }
+    if (!this.presentationEligible) {
+      this.presentationEligible = true;
+      this.baselinePending = true;
+    }
+    const decodedProgress =
+      metrics.intervalFramesDecoded !== null &&
+      metrics.intervalFramesDecoded > 0;
+    if (!decodedProgress) {
+      return false;
+    }
+    if (this.baselinePending) {
+      this.baselinePending = false;
+      return false;
+    }
+    if (this.sequence > Number.MAX_SAFE_INTEGER) {
       return false;
     }
     const now = this.now();
@@ -250,6 +283,7 @@ export class ViewerQualityEvidenceReporter {
       guard: {
         connectionId,
         routeRevision,
+        presentationEpoch: this.presentationEpoch,
       },
       sequence: this.sequence,
       ...window,
@@ -266,13 +300,26 @@ export class ViewerQualityEvidenceReporter {
 
     this.sequence += 1;
     this.lastSentAtMs = now;
-    this.lastSampleTimestampMs = sampleTimestampMs;
     return true;
+  }
+
+  invalidatePresentation(): void {
+    if (!this.presentationEligible) {
+      return;
+    }
+    if (this.presentationEpoch < Number.MAX_SAFE_INTEGER) {
+      this.presentationEpoch += 1;
+    }
+    this.presentationEligible = false;
+    this.baselinePending = true;
+    this.sequence = 0;
   }
 
   reset(): void {
     this.connectionId = null;
-    this.routeRevision = null;
+    this.presentationEpoch = 0;
+    this.presentationEligible = false;
+    this.baselinePending = true;
     this.sequence = 0;
     this.lastSentAtMs = null;
     this.lastSampleTimestampMs = null;
@@ -286,7 +333,8 @@ function sameViewerQualityEvidenceIdentity(
   return (
     previous.viewerPeerId === next.viewerPeerId &&
     qualityEvidenceUpstreamMatches(previous, next.upstream) &&
-    previous.guard.connectionId === next.guard.connectionId
+    previous.guard.connectionId === next.guard.connectionId &&
+    previous.guard.presentationEpoch === next.guard.presentationEpoch
   );
 }
 

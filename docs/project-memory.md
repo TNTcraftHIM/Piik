@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 ## Current Product Truth
 
@@ -120,13 +120,14 @@ Last updated: 2026-08-26
 
 ## Current Source And Production
 
-- Production and canonical source use the same strict `screener-v12`
-  application with adaptive H.264/VP8 selection, local Host codec override and
+- Canonical source uses the evidence-only strict `screener-v13` quality shadow;
+  production remains strict `screener-v12` until the atomic application release.
+  Both retain adaptive H.264/VP8 selection, the local Host codec override and
   optional SQLite room authority. Exact identities are indexed by
   [status](./status.md).
-- The accepted quality-shadow integration atomically replaces v12 with strict
-  `screener-v13`; old Browser pages must fail before room authority. It adds no
-  active route decision until production shadow evidence is accepted.
+- Strict v13 rejects old Browser pages before room authority. Its bounded
+  current-edge aggregate adds no active route decision until annotated
+  production shadow evidence establishes an accepted policy.
 - Production uses SQLite-backed random rooms, 20-Viewer admission, endpoint cap `2`,
   fixed 9,000-publication ingress and `9000 * 20` subscription egress admission,
   STUN UDP 3478, LiveKit media UDP 7882, and Web TCP 80/443. Node 8787 and
@@ -137,7 +138,8 @@ Last updated: 2026-08-26
 
 ## Current Priority
 
-1. Complete the evidence-only quality-route shadow on strict `screener-v13`.
+1. Deploy the evidence-only strict `screener-v13` quality shadow and collect
+   annotated production samples.
 2. Complete the mobile Viewer lifecycle matrix and representative real-network
    route/media acceptance.
 

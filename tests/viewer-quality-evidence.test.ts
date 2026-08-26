@@ -55,6 +55,8 @@ function receiveMetrics(
     intervalDecodeMs: 2.4,
     intervalFreezeCount: 0,
     intervalFreezeDurationMs: 0,
+    intervalPauseCount: 0,
+    intervalPauseDurationMs: 0,
     codec: "video/H264",
     codecProfile: "profile-level-id=42e01f",
     codecParameters:
@@ -84,6 +86,7 @@ function serverEvidence(
     upstream?: { kind: "peer"; peerId: string } | { kind: "sfu" };
     connectionId?: string;
     routeRevision?: number;
+    presentationEpoch?: number;
     sequence?: number;
     metrics?: Partial<ViewerQualityEvidenceMetrics>;
   } = {},
@@ -99,6 +102,7 @@ function serverEvidence(
     guard: {
       connectionId: overrides.connectionId ?? "connection_12345678",
       routeRevision: overrides.routeRevision ?? 0,
+      presentationEpoch: overrides.presentationEpoch ?? 0,
     },
     sequence: overrides.sequence ?? 0,
     windowMs: window.windowMs,
@@ -124,6 +128,8 @@ describe("viewer quality evidence", () => {
         decodeMsPerFrame: 2.4,
         freezeCountDelta: 0,
         freezeDurationMsDelta: 0,
+        pauseCountDelta: 0,
+        pauseDurationMsDelta: 0,
         codec: "video/H264",
         codecProfile: "profile-level-id=42e01f",
         codecParameters:
@@ -189,7 +195,7 @@ describe("viewer quality evidence", () => {
     expect(JSON.stringify(bounded)).not.toContain("203.0.113.20");
   });
 
-  it("rate-limits, deduplicates, and resets sequence per connection", () => {
+  it("baselines each presentation epoch and keeps rate limits across it", () => {
     let now = 10_000;
     const sent: ClientMessage[] = [];
     const reporter = new ViewerQualityEvidenceReporter(
@@ -201,48 +207,102 @@ describe("viewer quality evidence", () => {
     );
     const first = snapshot("connection_first_12345678");
 
-    expect(reporter.offer(first, 0)).toBe(true);
-    expect(reporter.offer(first, 0)).toBe(false);
-    now += 1_000;
+    expect(reporter.offer(first, 0, true)).toBe(false);
+    expect(reporter.offer(first, 0, true)).toBe(false);
+    now += 2_000;
     expect(
       reporter.offer(
         snapshot(
           first.connectionId,
-          receiveMetrics({ sampleTimestampMs: 11_000, bitrateKbps: 7_000 }),
+          receiveMetrics({ sampleTimestampMs: 12_000, bitrateKbps: 7_000 }),
         ),
         0,
-      ),
-    ).toBe(false);
-    now += 1_000;
-    expect(
-      reporter.offer(
-        snapshot(
-          first.connectionId,
-          receiveMetrics({ sampleTimestampMs: 12_000, bitrateKbps: 6_500 }),
-        ),
-        0,
+        true,
       ),
     ).toBe(true);
+    now += 2_000;
     expect(
       reporter.offer(
         snapshot(
           first.connectionId,
-          receiveMetrics({ sampleTimestampMs: 12_000, bitrateKbps: 6_000 }),
+          receiveMetrics({ sampleTimestampMs: 14_000, bitrateKbps: 6_500 }),
         ),
         2,
+        true,
       ),
     ).toBe(true);
     expect(
-      reporter.offer(snapshot("connection_second_12345678"), 2),
+      reporter.offer(
+        snapshot(
+          first.connectionId,
+          receiveMetrics({ sampleTimestampMs: 14_000, bitrateKbps: 6_000 }),
+        ),
+        2,
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      reporter.offer(
+        snapshot(
+          "connection_second_12345678",
+          receiveMetrics({ sampleTimestampMs: 16_000 }),
+        ),
+        2,
+        true,
+      ),
+    ).toBe(false);
+    now += 2_000;
+    expect(
+      reporter.offer(
+        snapshot(
+          "connection_second_12345678",
+          receiveMetrics({ sampleTimestampMs: 18_000 }),
+        ),
+        2,
+        true,
+      ),
     ).toBe(true);
     now += 2_000;
     expect(
       reporter.offer(
         snapshot(
           "connection_second_12345678",
-          receiveMetrics({ sampleTimestampMs: 14_000 }),
+          receiveMetrics({ sampleTimestampMs: 20_000 }),
         ),
         2,
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      reporter.offer(
+        snapshot(
+          "connection_second_12345678",
+          receiveMetrics({ sampleTimestampMs: 20_000 }),
+        ),
+        2,
+        true,
+      ),
+    ).toBe(false);
+    now += 2_000;
+    expect(
+      reporter.offer(
+        snapshot(
+          "connection_second_12345678",
+          receiveMetrics({ sampleTimestampMs: 22_000 }),
+        ),
+        2,
+        true,
+      ),
+    ).toBe(false);
+    now += 2_000;
+    expect(
+      reporter.offer(
+        snapshot(
+          "connection_second_12345678",
+          receiveMetrics({ sampleTimestampMs: 24_000 }),
+        ),
+        2,
+        true,
       ),
     ).toBe(true);
 
@@ -252,6 +312,7 @@ describe("viewer quality evidence", () => {
           ? {
               connectionId: message.guard.connectionId,
               revision: message.guard.routeRevision,
+              epoch: message.guard.presentationEpoch,
               sequence: message.sequence,
             }
           : null,
@@ -260,27 +321,26 @@ describe("viewer quality evidence", () => {
       {
         connectionId: "connection_first_12345678",
         revision: 0,
+        epoch: 0,
         sequence: 0,
       },
       {
         connectionId: "connection_first_12345678",
-        revision: 0,
-        sequence: 1,
-      },
-      {
-        connectionId: "connection_first_12345678",
         revision: 2,
-        sequence: 2,
+        epoch: 0,
+        sequence: 1,
       },
       {
         connectionId: "connection_second_12345678",
         revision: 2,
+        epoch: 0,
         sequence: 0,
       },
       {
         connectionId: "connection_second_12345678",
         revision: 2,
-        sequence: 1,
+        epoch: 1,
+        sequence: 0,
       },
     ]);
   });
@@ -297,6 +357,15 @@ describe("viewer quality evidence", () => {
         "sfu_connection_12345678",
         receiveMetrics(),
         3,
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      reporter.offerMetrics(
+        "sfu_connection_12345678",
+        receiveMetrics({ sampleTimestampMs: 12_000 }),
+        3,
+        true,
       ),
     ).toBe(true);
     expect(sent).toEqual([
@@ -305,9 +374,84 @@ describe("viewer quality evidence", () => {
         guard: {
           connectionId: "sfu_connection_12345678",
           routeRevision: 3,
+          presentationEpoch: 0,
         },
         sequence: 0,
       }),
+    ]);
+  });
+
+  it("reports a recovered freeze only after decoded-frame progress resumes", () => {
+    let now = 10_000;
+    const sent: ClientMessage[] = [];
+    const reporter = new ViewerQualityEvidenceReporter(
+      (message) => {
+        sent.push(message);
+        return true;
+      },
+      () => now,
+    );
+    const connectionId = "decoded_progress_connection_12345678";
+
+    expect(reporter.offer(snapshot(connectionId), 4, true)).toBe(false);
+    now += 2_000;
+    expect(
+      reporter.offer(
+        snapshot(
+          connectionId,
+          receiveMetrics({ sampleTimestampMs: 12_000 }),
+        ),
+        4,
+        true,
+      ),
+    ).toBe(true);
+    now += 2_000;
+    expect(
+      reporter.offer(
+        snapshot(
+          connectionId,
+          receiveMetrics({
+            sampleTimestampMs: 14_000,
+            intervalFramesDecoded: 0,
+            intervalFreezeCount: 1,
+            intervalFreezeDurationMs: 2_000,
+          }),
+        ),
+        4,
+        true,
+      ),
+    ).toBe(false);
+    now += 2_000;
+    expect(
+      reporter.offer(
+        snapshot(
+          connectionId,
+          receiveMetrics({
+            sampleTimestampMs: 16_000,
+            intervalFreezeCount: 1,
+            intervalFreezeDurationMs: 2_000,
+          }),
+        ),
+        4,
+        true,
+      ),
+    ).toBe(true);
+
+    expect(
+      sent.flatMap((message) =>
+        message.type === "viewer-quality-evidence"
+          ? [
+              {
+                epoch: message.guard.presentationEpoch,
+                sequence: message.sequence,
+                freezeDurationMs: message.metrics.freezeDurationMsDelta,
+              },
+            ]
+          : [],
+      ),
+    ).toEqual([
+      { epoch: 0, sequence: 0, freezeDurationMs: 0 },
+      { epoch: 0, sequence: 1, freezeDurationMs: 2_000 },
     ]);
   });
 
@@ -319,6 +463,7 @@ describe("viewer quality evidence", () => {
       guard: {
         connectionId: "connection_12345678",
         routeRevision: 0,
+        presentationEpoch: 0,
       },
       sequence: 3,
       ...qualityEvidenceWindowFromMetrics(receiveMetrics())!,
@@ -524,6 +669,21 @@ describe("viewer quality evidence", () => {
       2_000,
     );
     expect(changedRoute.evidence.metrics.codec).toBe("video/H264");
+
+    const changedPresentation = presentViewerQualityEvidence(
+      first,
+      serverEvidence({
+        sequence: 0,
+        presentationEpoch: 1,
+        metrics: {
+          codec: null,
+          codecProfile: null,
+          codecParameters: null,
+        },
+      }),
+      2_000,
+    );
+    expect(changedPresentation.evidence.metrics.codec).toBeNull();
 
     const changedConnection = presentViewerQualityEvidence(
       first,

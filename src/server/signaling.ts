@@ -70,13 +70,11 @@ interface SocketState {
 
 interface ViewerQualityEvidenceGate {
   viewerSessionId: string;
-  recipientSessionId: string;
   upstreamKind: "peer" | "sfu";
   upstreamPeerId: string | null;
   connectionId: string;
-  routeRevision: number;
+  presentationEpoch: number;
   sequence: number;
-  acceptedAtMs: number;
 }
 
 interface ViewerMediaReadyState {
@@ -119,6 +117,7 @@ export class SignalingServer {
     string,
     ViewerQualityEvidenceGate
   >();
+  private readonly viewerQualityEvidenceAttemptAtMs = new Map<string, number>();
   private readonly viewerMediaReadyByRoom = new Map<
     string,
     Map<string, ViewerMediaReadyState>
@@ -252,6 +251,7 @@ export class SignalingServer {
       routeCloseError = error;
     }
     this.viewerQualityEvidenceGates.clear();
+    this.viewerQualityEvidenceAttemptAtMs.clear();
     this.viewerMediaReadyByRoom.clear();
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
@@ -608,9 +608,12 @@ export class SignalingServer {
       viewerPresence: message.viewerPresence === true,
     };
     if (participant.role === "viewer") {
-      this.viewerQualityEvidenceGates.delete(
-        viewerConnectionKey(participant.roomId, participant.peerId),
+      const viewerKey = viewerConnectionKey(
+        participant.roomId,
+        participant.peerId,
       );
+      this.viewerQualityEvidenceGates.delete(viewerKey);
+      this.viewerQualityEvidenceAttemptAtMs.delete(viewerKey);
     }
     this.clearViewerGrace(participant.roomId, participant.peerId);
     const routeParticipant = {
@@ -1139,9 +1142,19 @@ export class SignalingServer {
       return;
     }
 
-    const connectionId = this.connectionIdsByViewer.get(
-      viewerConnectionKey(source.roomId, source.peerId),
-    );
+    const gateKey = viewerConnectionKey(source.roomId, source.peerId);
+    const now = this.now();
+    const previousAttemptAtMs =
+      this.viewerQualityEvidenceAttemptAtMs.get(gateKey);
+    if (
+      previousAttemptAtMs !== undefined &&
+      now - previousAttemptAtMs < VIEWER_QUALITY_EVIDENCE_INTERVAL_MS
+    ) {
+      return;
+    }
+    this.viewerQualityEvidenceAttemptAtMs.set(gateKey, now);
+
+    const connectionId = this.connectionIdsByViewer.get(gateKey);
     if (!connectionId || message.guard.connectionId !== connectionId) {
       return;
     }
@@ -1179,22 +1192,19 @@ export class SignalingServer {
       return;
     }
 
-    const gateKey = viewerConnectionKey(source.roomId, source.peerId);
     const previous = this.viewerQualityEvidenceGates.get(gateKey);
-    const sameGeneration =
+    const sameEdge =
       previous?.viewerSessionId === viewerState.sessionId &&
-      previous.recipientSessionId === recipient.sessionId &&
       previous.upstreamKind === upstream.kind &&
       previous.upstreamPeerId ===
         (upstream.kind === "peer" ? upstream.peerId : null) &&
-      previous.connectionId === connectionId &&
-      previous.routeRevision === routeRevision;
-    const now = this.now();
+      previous.connectionId === connectionId;
     if (
-      sameGeneration &&
+      sameEdge &&
       previous &&
-      (message.sequence <= previous.sequence ||
-        now - previous.acceptedAtMs < VIEWER_QUALITY_EVIDENCE_INTERVAL_MS)
+      (message.guard.presentationEpoch < previous.presentationEpoch ||
+        (message.guard.presentationEpoch === previous.presentationEpoch &&
+          message.sequence <= previous.sequence))
     ) {
       return;
     }
@@ -1209,29 +1219,42 @@ export class SignalingServer {
       guard: {
         connectionId,
         routeRevision,
+        presentationEpoch: message.guard.presentationEpoch,
       },
       sequence: message.sequence,
       windowMs: message.windowMs,
       metrics: message.metrics,
     };
     const encoded = JSON.stringify(forwarded);
-    if (
-      Buffer.byteLength(encoded, "utf8") >
-      MAX_VIEWER_QUALITY_EVIDENCE_BYTES ||
-      !this.sendEncodedToSession(recipient.sessionId, encoded)
-    ) {
+    if (Buffer.byteLength(encoded, "utf8") > MAX_VIEWER_QUALITY_EVIDENCE_BYTES) {
+      return;
+    }
+    const qualityResult = this.isHybridMediaEnabled()
+      ? (this.hybridMediaRouter?.observeQualityEvidence({
+          roomId: source.roomId,
+          childPeerId: source.peerId,
+          childSessionId: viewerState.sessionId,
+          routeRevision,
+          connectionId,
+          upstream,
+          presentationEpoch: message.guard.presentationEpoch,
+          windowMs: message.windowMs,
+          metrics: message.metrics,
+          acceptedAtMs: now,
+        }) ?? "rejected")
+      : "accepted";
+    if (qualityResult === "rejected") {
       return;
     }
     this.viewerQualityEvidenceGates.set(gateKey, {
       viewerSessionId: viewerState.sessionId,
-      recipientSessionId: recipient.sessionId,
       upstreamKind: upstream.kind,
       upstreamPeerId: upstream.kind === "peer" ? upstream.peerId : null,
       connectionId,
-      routeRevision,
+      presentationEpoch: message.guard.presentationEpoch,
       sequence: message.sequence,
-      acceptedAtMs: now,
     });
+    this.sendEncodedToSession(recipient.sessionId, encoded);
     if (!host || host.sessionId === recipient.sessionId) {
       return;
     }
@@ -1976,6 +1999,11 @@ export class SignalingServer {
         this.viewerQualityEvidenceGates.delete(key);
       }
     }
+    for (const key of this.viewerQualityEvidenceAttemptAtMs.keys()) {
+      if (key.startsWith(prefix)) {
+        this.viewerQualityEvidenceAttemptAtMs.delete(key);
+      }
+    }
   }
 
   private setViewerConnectionId(
@@ -1986,6 +2014,7 @@ export class SignalingServer {
     const key = viewerConnectionKey(roomId, viewerPeerId);
     if (this.connectionIdsByViewer.get(key) !== connectionId) {
       this.viewerQualityEvidenceGates.delete(key);
+      this.viewerQualityEvidenceAttemptAtMs.delete(key);
     }
     this.connectionIdsByViewer.set(key, connectionId);
   }
@@ -1997,6 +2026,7 @@ export class SignalingServer {
     const key = viewerConnectionKey(roomId, viewerPeerId);
     this.connectionIdsByViewer.delete(key);
     this.viewerQualityEvidenceGates.delete(key);
+    this.viewerQualityEvidenceAttemptAtMs.delete(key);
   }
 }
 

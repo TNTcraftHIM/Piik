@@ -45,6 +45,8 @@ export interface ConnectionMetrics {
   intervalFramesDropped: number | null;
   intervalFreezeCount: number | null;
   intervalFreezeDurationMs: number | null;
+  intervalPauseCount: number | null;
+  intervalPauseDurationMs: number | null;
   intervalRetransmittedPackets: number | null;
   intervalRetransmittedBytes: number | null;
   codec: string | null;
@@ -125,6 +127,8 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   intervalFramesDropped: null,
   intervalFreezeCount: null,
   intervalFreezeDurationMs: null,
+  intervalPauseCount: null,
+  intervalPauseDurationMs: null,
   intervalRetransmittedPackets: null,
   intervalRetransmittedBytes: null,
   codec: null,
