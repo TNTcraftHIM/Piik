@@ -67,37 +67,39 @@ export function RoomCode({
       <Hash size={15} aria-hidden="true" />
       <span className="room-code-label">房间号</span>
       <strong>{roomId}</strong>
-      {onReplace && (
-        <button
-          className="room-code-copy"
-          type="button"
-          title={replacing ? "正在更换房间号" : "更换房间号"}
-          aria-label={replacing ? "正在更换房间号" : "更换房间号"}
-          disabled={replacing || replaceDisabled}
-          onClick={onReplace}
-        >
-          <RefreshCw
-            size={15}
-            className={replacing ? "spin" : undefined}
-            aria-hidden="true"
-          />
-        </button>
-      )}
-      <button
-        className={`room-code-copy${copyState === "failed" ? " is-failed" : ""}`}
-        type="button"
-        title={copyLabel}
-        aria-label={copyLabel}
-        onClick={() => void copy()}
-      >
-        {copyState === "copied" ? (
-          <Check size={15} aria-hidden="true" />
-        ) : copyState === "failed" ? (
-          <CircleAlert size={15} aria-hidden="true" />
-        ) : (
-          <Copy size={15} aria-hidden="true" />
+      <span className="room-code-actions">
+        {onReplace && (
+          <button
+            className="room-code-copy"
+            type="button"
+            title={replacing ? "正在更换房间号" : "更换房间号"}
+            aria-label={replacing ? "正在更换房间号" : "更换房间号"}
+            disabled={replacing || replaceDisabled}
+            onClick={onReplace}
+          >
+            <RefreshCw
+              size={15}
+              className={replacing ? "spin" : undefined}
+              aria-hidden="true"
+            />
+          </button>
         )}
-      </button>
+        <button
+          className={`room-code-copy${copyState === "failed" ? " is-failed" : ""}`}
+          type="button"
+          title={copyLabel}
+          aria-label={copyLabel}
+          onClick={() => void copy()}
+        >
+          {copyState === "copied" ? (
+            <Check size={15} aria-hidden="true" />
+          ) : copyState === "failed" ? (
+            <CircleAlert size={15} aria-hidden="true" />
+          ) : (
+            <Copy size={15} aria-hidden="true" />
+          )}
+        </button>
+      </span>
       <span className="visually-hidden" role="status" aria-live="polite">
         {copyState === "copied"
           ? "房间号已复制"
