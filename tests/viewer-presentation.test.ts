@@ -4,6 +4,7 @@ import {
   INITIAL_VIEWER_PRESENTATION_STATE,
   deriveViewerPresentation,
   reduceViewerPresentation,
+  viewerFailureFromServerCode,
   type ViewerPresentationAction,
   type ViewerPresentationState,
 } from "../src/client/media/viewer-presentation.ts";
@@ -455,6 +456,16 @@ describe("Viewer presentation reducer", () => {
       stage: "room-not-found",
       message: "房间不存在或已过期",
     });
+  });
+
+  it("preserves exact Viewer access failures without inferring a restart", () => {
+    expect(viewerFailureFromServerCode("INVALID_TOKEN")).toBe("INVALID_TOKEN");
+    expect(viewerFailureFromServerCode("ROOM_NOT_FOUND")).toBe(
+      "ROOM_NOT_FOUND",
+    );
+    expect(viewerFailureFromServerCode("ROOM_ACCESS_DENIED")).toBe(
+      "ROOM_ACCESS_DENIED",
+    );
   });
 
   it("starts a fresh route revision namespace after sharing stops", () => {

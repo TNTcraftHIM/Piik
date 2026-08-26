@@ -1,3 +1,4 @@
+import type { ServerMessage } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
 
 export type ViewerHostState =
@@ -16,7 +17,6 @@ export type ViewerFailureCode =
   | "ROOM_CLOSED"
   | "ROOM_EXPIRED"
   | "ROOM_FULL"
-  | "ROOM_LOST"
   | "STALE_CLIENT"
   | "SERVER_ERROR"
   | "SESSION_REPLACED"
@@ -35,7 +35,6 @@ export type ViewerStage =
   | "room-closed"
   | "room-expired"
   | "room-full"
-  | "room-lost"
   | "stale-client"
   | "server-error"
   | "session-replaced"
@@ -469,13 +468,6 @@ export function deriveViewerPresentation(
         return presentation("room-closed", "房间已关闭", "blocking", state);
       case "ROOM_FULL":
         return presentation("room-full", "当前无法加入房间", "blocking", state);
-      case "ROOM_LOST":
-        return presentation(
-          "room-lost",
-          "服务器已重启，房间已失效",
-          "blocking",
-          state,
-        );
       case "STALE_CLIENT":
         return presentation(
           "stale-client",
@@ -681,6 +673,28 @@ export function deriveViewerPresentation(
     frameOverlay,
     state,
   );
+}
+
+export function viewerFailureFromServerCode(
+  code: Extract<ServerMessage, { type: "error" }>["code"],
+): ViewerFailureCode | null {
+  switch (code) {
+    case "ROOM_NOT_FOUND":
+      return "ROOM_NOT_FOUND";
+    case "ROOM_ACCESS_DENIED":
+      return "ROOM_ACCESS_DENIED";
+    case "INVALID_TOKEN":
+    case "AUTH_REQUIRED":
+      return "INVALID_TOKEN";
+    case "ROOM_EXPIRED":
+      return "ROOM_EXPIRED";
+    case "ROOM_FULL":
+      return "ROOM_FULL";
+    case "SERVER_ERROR":
+      return "SERVER_ERROR";
+    default:
+      return null;
+  }
 }
 
 function hasCurrentFrame(state: ViewerPresentationState): boolean {

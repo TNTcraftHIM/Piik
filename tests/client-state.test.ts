@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { QualitySettings } from "../src/shared/protocol.ts";
+
 import {
   ApiError,
   authenticateSiteAccess,
@@ -951,6 +953,159 @@ describe("client signaling recovery policy", () => {
       type: "authenticate",
       sharingPaused: false,
     });
+    signal.stop();
+  });
+
+  it("replays the latest exact Host quality intent after reauthentication", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn(() => {
+        this.readyState = FakeWebSocket.CLOSING;
+      });
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/"),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    const shareGeneration = "share_generation_12345678";
+    const initialQuality = {
+      resolution: "1080p",
+      maxFramerate: 30,
+      maxBitrate: 5_000_000,
+      degradationPreference: "balanced",
+      screenAudioQuality: "music",
+    } as const;
+    const firstPending = {
+      ...initialQuality,
+      resolution: "720p",
+      maxBitrate: 3_000_000,
+    } as const;
+    const latestPending = {
+      ...firstPending,
+      maxFramerate: 60,
+      maxBitrate: 8_000_000,
+    } as const;
+    let authenticatedCount = 0;
+    let pendingDuringReauthentication: typeof latestPending | null = null;
+    let signal!: SignalingClient;
+    signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "host",
+        token: "h".repeat(43),
+        clientId: "host-client",
+        shareGeneration,
+        qualitySettings: initialQuality,
+      },
+      {
+        onMessage: (message) => {
+          if (message.type !== "authenticated") {
+            return;
+          }
+          authenticatedCount += 1;
+          if (authenticatedCount === 2) {
+            pendingDuringReauthentication =
+              signal.pendingHostQualitySettings(shareGeneration) as
+                | typeof latestPending
+                | null;
+          }
+        },
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+    const receiveAuthenticated = (
+      socket: FakeWebSocket,
+      qualitySettings: QualitySettings = initialQuality,
+    ) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", {
+        value: JSON.stringify({
+          type: "authenticated",
+          protocol: "screener-v12",
+          role: "host",
+          peerId: "host_12345678",
+          roomExpiresAt: null,
+          maxViewers: 8,
+          endpointMediaCopyCapacity: 2,
+          hostOnline: true,
+          hostPaused: false,
+          connectionId: null,
+          viewerPeerIds: [],
+          iceConfig: { iceServers: [] },
+          codeEntryPolicy: "open",
+          viewerPasswordEnabled: false,
+          viewerAuthorizationGeneration: "viewer_generation_12345678",
+          mediaMode: "peer-assisted",
+          mediaAssignment: { parentPeerId: null, childPeerIds: [] },
+          routeRevision: 1,
+          routeAssignment: {
+            upstream: { kind: "none" },
+            childPeerIds: [],
+            sfuPublicationGeneration: null,
+          },
+          qualitySettings,
+        }),
+      });
+      socket.dispatchEvent(event);
+    };
+
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    receiveAuthenticated(sockets[0]!);
+    const close = new Event("close");
+    Object.defineProperties(close, {
+      code: { value: 1006 },
+      reason: { value: "network interrupted" },
+    });
+    sockets[0]!.dispatchEvent(close);
+
+    expect(signal.setHostQualitySettings(firstPending)).toBe(false);
+    expect(signal.setHostQualitySettings(latestPending)).toBe(false);
+    expect(
+      signal.pendingHostQualitySettings("other_share_generation_12345678"),
+    ).toBeNull();
+    expect(signal.pendingHostQualitySettings(shareGeneration)).toEqual(
+      latestPending,
+    );
+
+    vi.advanceTimersByTime(750);
+    sockets[1]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(String(sockets[1]!.send.mock.calls[0]![0]))).toMatchObject({
+      type: "authenticate",
+      shareGeneration,
+      qualitySettings: latestPending,
+    });
+    receiveAuthenticated(sockets[1]!);
+
+    expect(pendingDuringReauthentication).toEqual(latestPending);
+    expect(sockets[1]!.send).toHaveBeenCalledTimes(2);
+    expect(
+      JSON.parse(String(sockets[1]!.send.mock.calls[1]![0])),
+    ).toEqual({
+      type: "set-quality-settings",
+      qualitySettings: latestPending,
+    });
+    expect(signal.pendingHostQualitySettings(shareGeneration)).toEqual(
+      latestPending,
+    );
+
+    receiveAuthenticated(sockets[1]!, latestPending);
+    expect(sockets[1]!.send).toHaveBeenCalledTimes(2);
+    expect(signal.pendingHostQualitySettings(shareGeneration)).toBeNull();
     signal.stop();
   });
 

@@ -4,9 +4,11 @@ import {
   SIGNALING_PROTOCOL,
   type ClientMessage,
   type DisplayName,
+  type QualitySettings,
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
+import { qualitySettingsEqual } from "../media/quality";
 
 type WithoutProtocolEnvelope<T> = T extends {
   type: string;
@@ -51,6 +53,11 @@ interface PendingSignalingChallenge {
   confirm: boolean;
 }
 
+interface HostQualityIntent {
+  shareGeneration: string;
+  qualitySettings: QualitySettings;
+}
+
 export function shouldReconnectSignaling(code: number): boolean {
   return (
     code !== SIGNAL_CLOSE_CODES.sessionReplaced &&
@@ -83,6 +90,7 @@ export class SignalingClient {
   private watchdogDeadlineMs = 0;
   private pendingChallenge: PendingSignalingChallenge | null = null;
   private visibilityListenerAttached = false;
+  private hostQualityIntent: HostQualityIntent | null = null;
 
   constructor(
     private readonly identity: SignalingIdentity,
@@ -105,6 +113,7 @@ export class SignalingClient {
     this.clearTimers();
     this.detachVisibilityListener();
     this.terminalMessage = null;
+    this.hostQualityIntent = null;
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) {
@@ -163,6 +172,28 @@ export class SignalingClient {
     if (this.identity.role === "host") {
       this.identity.sharingPaused = true;
     }
+  }
+
+  setHostQualitySettings(qualitySettings: QualitySettings): boolean {
+    if (this.identity.role !== "host" || !this.identity.shareGeneration) {
+      return false;
+    }
+    const intent: HostQualityIntent = {
+      shareGeneration: this.identity.shareGeneration,
+      qualitySettings: { ...qualitySettings },
+    };
+    this.identity.qualitySettings = { ...qualitySettings };
+    this.hostQualityIntent = intent;
+    return this.flushHostQualityIntent();
+  }
+
+  pendingHostQualitySettings(
+    shareGeneration: string,
+  ): QualitySettings | null {
+    const intent = this.hostQualityIntent;
+    return intent?.shareGeneration === shareGeneration
+      ? { ...intent.qualitySettings }
+      : null;
   }
 
   sendThenStop(message: ClientMessage): void {
@@ -268,6 +299,9 @@ export class SignalingClient {
       }
       this.updateAuthoritativeActivity(message);
       this.events.onMessage(message);
+      if (message.type === "authenticated") {
+        this.reconcileHostQualityIntent(message);
+      }
     });
 
     socket.addEventListener("close", (event) => {
@@ -318,6 +352,53 @@ export class SignalingClient {
   private terminateForProtocolMismatch(): void {
     this.stop();
     this.events.onTerminated("STALE_CLIENT");
+  }
+
+  private flushHostQualityIntent(): boolean {
+    const intent = this.hostQualityIntent;
+    if (
+      !intent ||
+      this.identity.role !== "host" ||
+      this.identity.shareGeneration !== intent.shareGeneration
+    ) {
+      return false;
+    }
+    try {
+      if (
+        !this.send({
+          type: "set-quality-settings",
+          qualitySettings: intent.qualitySettings,
+        })
+      ) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
+  private reconcileHostQualityIntent(
+    message: Extract<ServerMessage, { type: "authenticated" }>,
+  ): void {
+    const intent = this.hostQualityIntent;
+    if (
+      !intent ||
+      this.identity.role !== "host" ||
+      this.identity.shareGeneration !== intent.shareGeneration
+    ) {
+      return;
+    }
+    if (
+      "qualitySettings" in message &&
+      qualitySettingsEqual(message.qualitySettings, intent.qualitySettings)
+    ) {
+      if (this.hostQualityIntent === intent) {
+        this.hostQualityIntent = null;
+      }
+      return;
+    }
+    this.flushHostQualityIntent();
   }
 
   private clearAuthenticationTimer(): void {

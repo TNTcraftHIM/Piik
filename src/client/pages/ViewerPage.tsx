@@ -62,7 +62,7 @@ import {
   INITIAL_VIEWER_PRESENTATION_STATE,
   deriveViewerPresentation,
   reduceViewerPresentation,
-  type ViewerFailureCode,
+  viewerFailureFromServerCode,
   type ViewerRouteKind,
   type ViewerStage,
 } from "../media/viewer-presentation";
@@ -352,7 +352,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   useEffect(() => {
     let active = true;
-    let hadAuthenticated = false;
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
     let currentHostPaused = false;
@@ -1151,7 +1150,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
-        hadAuthenticated = true;
         dispatchPresentation({ type: "access", access: "ready" });
         setViewerPasswordDraft("");
         setViewerPasswordError(null);
@@ -1548,13 +1546,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           clearViewerSfuRoute();
           clearPeerState(true);
           clearParticipantPresence();
-          const failure =
-            hadAuthenticated &&
-            (message.code === "INVALID_TOKEN" ||
-              message.code === "ROOM_NOT_FOUND" ||
-              message.code === "ROOM_ACCESS_DENIED")
-              ? "ROOM_LOST"
-              : viewerFailureFromServerCode(message.code);
+          const failure = viewerFailureFromServerCode(message.code);
           dispatchPresentation({
             type: "access",
             access: "denied",
@@ -1749,7 +1741,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const codeOnlyDenied =
       !viewerGrant && presentationState.failure === "ROOM_ACCESS_DENIED";
     const canRefresh = [
-      "ROOM_LOST",
       "STALE_CLIENT",
       "SERVER_ERROR",
       "SESSION_REPLACED",
@@ -2145,27 +2136,5 @@ function connectionFact(
     case "failed":
     case "closed":
       return "failed";
-  }
-}
-
-function viewerFailureFromServerCode(
-  code: Extract<ServerMessage, { type: "error" }>["code"],
-): ViewerFailureCode | null {
-  switch (code) {
-    case "ROOM_NOT_FOUND":
-      return "ROOM_NOT_FOUND";
-    case "ROOM_ACCESS_DENIED":
-      return "ROOM_ACCESS_DENIED";
-    case "INVALID_TOKEN":
-    case "AUTH_REQUIRED":
-      return "INVALID_TOKEN";
-    case "ROOM_EXPIRED":
-      return "ROOM_EXPIRED";
-    case "ROOM_FULL":
-      return "ROOM_FULL";
-    case "SERVER_ERROR":
-      return "SERVER_ERROR";
-    default:
-      return null;
   }
 }
