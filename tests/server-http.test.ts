@@ -522,6 +522,63 @@ describe("room HTTP API", () => {
     ).toBe(original.roomId);
   });
 
+  it("maps a busy password gate to 503 for every HTTP mutation", async () => {
+    const config = testConfig();
+    const roomStore = new RoomStore({
+      leaseMs: config.roomLeaseMs,
+      maxRooms: ROOM_CAPACITY,
+      maxViewersPerRoom: config.maxViewersPerRoom,
+    });
+    const original = await roomStore.createRoom("private", "room-password");
+    const baseUrl = await start(config, { roomStore });
+    const cookie = cookiePair(await login(baseUrl));
+
+    vi.spyOn(roomStore, "createRoom").mockRejectedValueOnce(
+      new RoomStoreError("ROOM_BUSY"),
+    );
+    const creation = await createRoom(
+      baseUrl,
+      cookie,
+      "private",
+      "room-password",
+    );
+    expect(creation.status).toBe(503);
+    expect(await creation.json()).toEqual({
+      error: "Room creation unavailable",
+    });
+
+    vi.spyOn(roomStore, "replaceRoom").mockRejectedValueOnce(
+      new RoomStoreError("ROOM_BUSY"),
+    );
+    const replacement = await replaceRoom(
+      baseUrl,
+      original.roomId,
+      original.hostToken,
+      { codeEntryPolicy: "private", roomPassword: "room-password" },
+      cookie,
+    );
+    expect(replacement.status).toBe(503);
+    expect(await replacement.json()).toEqual({
+      error: "Room replacement unavailable",
+    });
+
+    vi.spyOn(roomStore, "setViewerPassword").mockRejectedValueOnce(
+      new RoomStoreError("ROOM_BUSY"),
+    );
+    const update = await updateRoomAccess(
+      baseUrl,
+      original.roomId,
+      original.hostToken,
+      { action: "set-viewer-password", password: "room-password" },
+      { cookie },
+    );
+    expect(update.status).toBe(503);
+    expect(await update.json()).toEqual({
+      error: "Room access update unavailable",
+    });
+    expect(roomStore.size).toBe(1);
+  });
+
   it("manages dormant room access without starting sharing or renewing", async () => {
     let nowMs = 0;
     const baseUrl = await start(

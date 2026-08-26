@@ -2069,6 +2069,9 @@ function authenticationErrorCode(
   if (!(error instanceof RoomStoreError) || error.code === "ROOM_LIMIT") {
     return "SERVER_ERROR";
   }
+  if (error.code === "ROOM_BUSY") {
+    return message.role === "viewer" ? "ROOM_ACCESS_DENIED" : "SERVER_ERROR";
+  }
   if (message.role !== "viewer") {
     return error.code;
   }
