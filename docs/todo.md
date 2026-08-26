@@ -7,19 +7,20 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Adaptive Browser H.264 acceptance and integration.** Validate deployed
-   candidate `5551177` with real Host, Browser-relay and SFU paths, then integrate
-   it into canonical `main`. The content-independent sender probe prefers H.264
-   only when target cadence is proved and otherwise uses VP8. Keep codec selector,
-   wire state, persistent cache, parallel codec route, backup publication and
-   active-edge churn absent; connection details may display the actual negotiated
-   codec.
-2. **Preferred room simplification and replacement.** Keep the server dormant
-   lease unchanged, but store the latest preferred code without a client expiry
-   or renewal timer. After H.264, add the Host refresh-icon action immediately
-   left of copy: retire the old room through the normal lifecycle so its
-   credentials, password, invitation and routes become invalid, then allocate a
-   new room and update the local preference.
+1. **Stable room authority and room controls.** Add optional
+   `ROOM_DATABASE_PATH` SQLite stable mode over the existing RoomStore aggregate;
+   production will enable it through a separate persistent-state cutover after
+   restart/recovery acceptance. Keep lightweight mode default when unset. Remove
+   the client preferred-code expiry and renewal timer. Add the Host refresh action
+   immediately before Copy: atomically allocate a different room, retire all old
+   authority/media state, end an active share, and remember the new code.
+2. **Host codec selector.** In advanced settings, add the local
+   `VP8 | Auto | H264` selector with Auto centered/default. It is editable only
+   before sharing and locked for the whole share generation. Manual modes are
+   strict, Auto runs the current gate, Viewer relays remain Auto, and no codec
+   wire/cache/parallel publication or active-edge switching is added. Two-line
+   subtitles are `兼容优先 | 自动选择/实际 codec | 硬件优先`; connection details
+   show the resolved Host codec and each edge's actual negotiated codec.
 3. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
@@ -70,7 +71,6 @@ later topic is not implementation authority by itself.
 | Item | Decision |
 | --- | --- |
 | Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
-| Optional SQLite persistence | Default memory rooms remain accepted. Define the complete opt-in durable authority, stored fields, inactive retention, credential/grant rotation and recovery before implementation. It may restore rooms and authorization across restart, but media still reconnects and recommits; unspecified future data is not scope. |
 | Quality-driven route exploration | The intended model includes exact-child active reparenting, relay ingress reparent with subtree retention, relay egress abdication/drain, and Host egress convergence onto one SFU publication while SFU-fed Viewers may still relay. Research must first unify their evidence, reservations, probation/restore and recovery under the existing single graph/operation; no active quality route change is authorized yet. |
 
 ## Evidence Boundaries

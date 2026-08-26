@@ -39,7 +39,7 @@
 
 机制减负遵循 [`stop-that-shit`](../.agents/skills/stop-that-shit/SKILL.md) 的 scope 和 smallest-correct-result 规则。本仓库的审查先只读清点机制服务的用户行为，量化移除后的真实退让，并与代码、配置、迁移、测试、运行时状态、部署和故障面的整体成本比较。文档也是需要同步和审查的机制：长期真相只保留产品合同、非显然不变量、算法/模型、关键取舍和外部证据，普通 UI 与实现细节由代码、测试和 PR 持有。若 owner 接受有界退让，先更新产品合同再删除失去必要性的完整表面；否则保留合同并寻找更小实现。审查不以行数为目标，也不授权无边界重构。
 
-内存房间与应用层 TURN 分别是 [ADR-0002](./adr/0002-memory-resident-protected-rooms.md) 和 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md) 已接受的机制减负实例；TURN 的完整成本证据由 [ICE/TURN 研究](./research/built-in-peer-ice-turn.md)维护。具体取舍和当前边界不在本文件复制，也不推广为对 SQLite 或 TURN 的通用结论。
+应用层 TURN 清理是 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md) 的机制减负实例；TURN 的完整成本证据由 [ICE/TURN 研究](./research/built-in-peer-ice-turn.md)维护。内存房间曾以有限恢复收益换取更小机制，但真实开发发布已证明旧邀请、撤销高水位和房间权威连续性构成一个内聚 SQLite 消费者，因此 [ADR-0002](./adr/0002-memory-resident-protected-rooms.md) 现在保留轻量与稳定两种模式。该变化说明减负结论必须随可达需求重审，而不是把一次删除推广为永不恢复该机制。
 
 ## 检查点与恢复
 

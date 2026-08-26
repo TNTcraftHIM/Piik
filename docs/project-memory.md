@@ -9,20 +9,22 @@ Last updated: 2026-08-26
 - Web Host, Viewer, and Browser relay are the current delivery surface. Native
   capture, shared encoding, and distributable server/local packages remain
   later work.
-- Rooms are bounded process memory: random free `1000..9999` code, default
+- Rooms use one bounded authority model: random free `1000..9999` code, default
   24-hour dormant lease, active sharing never expires, exact Host token resume,
-  Viewer activity does not renew, and process restart loses every room and
-  credential. A Host may request its last locally remembered active code when
-  creating a new room; the server uses it only while free and always creates a
-  new room incarnation. There is no database or migration path.
+  and Viewer activity never renews. `ROOM_DATABASE_PATH` absent is the default
+  lightweight process-memory mode; configured is the optional SQLite stable
+  mode that persists only room authority across application restart. Production
+  will enable stable mode after its state/recovery gate passes.
 - Every room has one 128-bit/22-character Viewer grant bound to that exact room
   incarnation and independent `open | private` code entry. Private without a
   password is invitation-only; adding a password also permits matching code
-  entry. Reclamation, restart, rotate, or revoke ends the grant. Missing codes
-  return `ROOM_NOT_FOUND` without a password prompt.
-- Host creation preferences and raw ownership token stay local to the Host
-  browser. Server authority stores only current-process digests/verifiers and
-  never uses IP, UA, device, or browser fingerprint as identity.
+  entry. Reclamation, explicit replacement, lightweight restart, rotate, or
+  revoke ends the grant; stable restart retains its digest and generation.
+  Missing codes return `ROOM_NOT_FOUND` without a password prompt.
+- Host creation preferences, raw ownership token and one non-expiring preferred
+  code stay local to the Host browser. Server authority stores only
+  digests/verifiers, optionally in SQLite stable mode, and never uses IP, UA,
+  device, or browser fingerprint as identity.
 
 ## Media And Routing
 
@@ -69,15 +71,16 @@ Last updated: 2026-08-26
 
 ## Media Quality
 
-- Production candidate `5551177` runs one sender-scoped actual-sender preflight
+- Canonical source and production run one sender-scoped actual-sender preflight
   with a deterministic moving probe track sized to the current share target, so
   captured-content motion cannot decide encoder capability. Proved senders prefer
   H.264 with native VP8 fallback, while failed/inconclusive senders remain
-  VP8-only. Codec UI/state/wire, persistent codec cache, parallel codec media,
-  backup publication, and active-edge codec switching remain absent. Display
-  video uses `contentHint = "motion"` and display audio uses `contentHint = "music"`.
-  Canonical `main` has accepted this contract but its application tree remains
-  fixed VP8 until production acceptance and integration.
+  VP8-only. The accepted next Host UI adds a local pre-share
+  `VP8 | Auto | H264` selector with Auto default; it locks while sharing, is not
+  persisted, and creates no codec wire/state or active-edge switching. Viewer
+  relays remain Auto. Current production does not yet include that selector.
+  Display video uses `contentHint = "motion"` and display audio uses
+  `contentHint = "music"`.
 - Windows Chrome 151 uses software VP8 and exposes no Web control for selecting
   NVENC, AMF, QSV, a GPU, or an MFT. Edge, non-Windows paths, and real-game CPU
   contention remain evidence-specific.
@@ -132,9 +135,11 @@ Last updated: 2026-08-26
 
 ## Current Priority
 
-1. Validate and integrate production candidate `5551177`, then simplify the
-   local preferred-room record while retaining the server lease.
-2. Complete the mobile Viewer lifecycle matrix and representative real-network
+1. Implement optional SQLite stable room authority, remove the client preferred-
+   room expiry/timer, and add exact Host room replacement.
+2. Add the locked pre-share Host codec selector and resolved Host codec display
+   without codec wire state.
+3. Complete the mobile Viewer lifecycle matrix and representative real-network
    route/media acceptance.
 
 Quality-driven parent selection, Native sender work, distribution packages,

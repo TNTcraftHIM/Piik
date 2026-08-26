@@ -24,7 +24,7 @@
 - [Display name and presence boundaries](./research/display-name-presence.md): browser-local storage failure behavior, Unicode normalization, control-character policy, and the Web-only presence capability boundary.
 - [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
 - [ADR-0001](./adr/0001-p2p-first-media-topology.md): historical P2P-first baseline; later access and automatic-routing decisions supersede its stale current-state details.
-- [ADR-0002](./adr/0002-memory-resident-protected-rooms.md): four-digit leased in-memory rooms, local Host defaults, accepted room-lived short Viewer grants, explicit missing-room entry, and orthogonal code entry.
+- [ADR-0002](./adr/0002-memory-resident-protected-rooms.md): four-digit leased room authority with lightweight memory and optional SQLite stable modes, local Host defaults, scoped Viewer grants, and explicit room replacement.
 - [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): historical standard-WebRTC peer-assisted experiment and reusable evidence.
 - [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted P2P-first single-reconcile route model, including deployed Browser SFU ICE-server isolation; remaining real-network validation is tracked in verification status.
 - [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.

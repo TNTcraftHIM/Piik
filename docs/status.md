@@ -38,10 +38,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical root `main` is clean at `376be27`; its application/runtime tree still
-  matches `b6a8a5f`. Production is the separately verified rapid-iteration
-  candidate `5551177`; that candidate does not supersede canonical truth and is
-  not yet integrated.
+- Canonical `main` integrated the production-tested adaptive H.264 application at
+  merge `636e0ac`. Production remains exact runtime `5551177`; their application
+  trees match while production room storage remains process memory.
 - One event-driven controller owns the committed graph and one room-serial child
   operation. Initial direct acquisition uses a five-second foreground window;
   exact transport-connected progress may retain that candidate through the
@@ -59,11 +58,12 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Validate production candidate `5551177` across real Host, Browser relay and
-   SFU paths, then integrate the accepted content-independent H.264 gate and VP8
-   fallback into canonical `main`.
-2. Remove the client-side preferred-room expiry/renewal timer while keeping the
-   server dormant lease; the explicit replace-room UI follows the codec work.
+1. Implement and verify optional SQLite stable room authority; lightweight mode
+   remains default in config, while production activation follows as a separate
+   persistent-state deployment with recovery.
+2. Remove the client preferred-room expiry/renewal timer, add atomic room
+   replacement, and add the locked pre-share `VP8 | Auto | H264` Host selector
+   with resolved codec display.
 3. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
 4. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance

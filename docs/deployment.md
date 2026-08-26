@@ -280,8 +280,9 @@ key, even blank, fails startup.
 `ROOM_LEASE_SECONDS` defaults to 86,400 seconds and owns the dormant room
 lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
-expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
-`ROOM_TTL_SECONDS` fail startup even when blank.
+expiry. Viewer activity never renews ownership. Optional `ROOM_DATABASE_PATH`
+enables the exact-schema SQLite stable room-authority mode; unset keeps the
+lightweight memory mode. `ROOM_TTL_SECONDS` remains invalid.
 Production accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
@@ -382,14 +383,16 @@ Room allocation and lifetime use one deliberately small model:
 - only the exact Host token resumes and renews before expiry, Viewer activity
   cannot, and expiry invalidates the code, credentials, verifier, participants,
   and routes; and
-- process restart has the same fail-closed effect.
+- lightweight-mode process restart has the same fail-closed effect; stable mode
+  restores only unexpired room authority and requires fresh sessions/routes.
 
-The server keeps only process-memory digests/verifiers for Host tokens, Viewer
-grants, and optional room passwords. There is no room database, schema,
-migration, writable room directory, or backup/restore step. The same browser may
-replay its Host display-name, code-entry, and optional-password creation profile
-when it explicitly creates a replacement room; this is local convenience, not
-server-side identity or cross-restart recovery.
+The server keeps only digests/verifiers for Host tokens, Viewer grants, and
+optional room passwords. In stable mode those room-authority values, policy,
+authorization generation and lease use one exact SQLite schema; live members,
+routes and SFU state remain memory-only. The same browser keeps its raw Host token,
+creation profile and non-expiring preferred code locally. Production stable-mode
+activation requires a separately verified writable directory, configuration and
+database backup/restore boundary before setting `ROOM_DATABASE_PATH`.
 
 Production startup requires one to eight syntactically valid `stun:` URLs
 before the server listens. This validates shape only; it does not prove DNS,

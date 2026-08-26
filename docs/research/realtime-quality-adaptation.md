@@ -7,8 +7,9 @@
 
 ## Current Conclusion
 
-Production candidate `5551177` uses a content-independent H.264 sender gate with
-VP8 fallback; canonical source remains fixed VP8 until acceptance and integration.
+Production `5551177` and canonical source use a content-independent H.264 sender
+gate with VP8 fallback. A local pre-share Host `VP8 | Auto | H264` selector is
+accepted but not yet implemented; Viewer relays remain automatic.
 Display video uses `contentHint = "motion"`, and display audio uses
 `contentHint = "music"`. The three recommended profiles and advanced settings
 are ceilings, not delivery guarantees. WebRTC owns direct and peer congestion
@@ -291,8 +292,9 @@ otherwise it retains VP8, and already active edges are not churned. A single SFU
 publication still cannot provide per-subscriber H.264 and VP8 without a second
 encoded publication.
 LiveKit backup codec is therefore not accepted. The Host source decision owns
-that single publication: proved H.264 or VP8 fallback. No VP9, AV1, H.265,
-product codec selector, or deployment is accepted by this evidence.
+that single publication: resolved H.264 or VP8 with no backup codec. No VP9,
+AV1, H.265, codec wire/cache, parallel publication, or active-edge codec switch
+is accepted by this evidence.
 
 HEVC, AV1, custom WebCodecs pipelines, and application packetization do not
 replace the browser WebRTC sender without a new capture, RTP/RTCP, feedback,

@@ -1,7 +1,6 @@
 # ADR-0007: Framework-Owned Media Quality Adaptation
 
-- Status: Accepted; deployed candidate under production acceptance, canonical
-  integration pending
+- Status: Accepted; adaptive gate deployed, local selector implementation pending
 - Date: 2026-08-19
 - Last reviewed: 2026-08-26
 
@@ -31,9 +30,12 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    but its current motion does not decide encoder capability. A proved sender
    prefers H.264 and retains VP8 as
    the native negotiation fallback; an unsupported, inconclusive, slow, or
-   failed preflight uses VP8 only. The result is not persisted or inferred from
-   UA, GPU, capability advertisement, or `powerEfficientEncoder` alone.
-   Codec UI/state/wire and active-edge codec switching are not product features.
+   failed preflight uses VP8 only. The Host advanced settings expose one local
+   `VP8 | Auto | H264` selector with Auto default: it is editable only before a
+   share, strict H264/VP8 bypass the gate, and share start locks it. Viewer relay
+   senders remain Auto. The selection is not persisted or inferred from UA, GPU,
+   capability advertisement, or `powerEfficientEncoder` alone; it creates no
+   room state, wire field, or active-edge codec switching.
 2. Display video uses the standard `contentHint = "motion"`; display audio uses
    `contentHint = "music"`. The hint expresses content intent and does not
    promise a resolution, frame rate, bitrate, encoder, or hardware path.
@@ -44,11 +46,12 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    After accepting an answer, the Host reapplies the current video profile to
    the negotiated sender because the browser may replace or rewrite encoding
    parameters during negotiation.
-5. Direct and Browser-relay offers with a proved share source order H.264 before VP8
-   in one standard codec-preference list; both endpoints select their first
-   common codec without a parallel media connection. A failed source gate
-   offers VP8 only. Existing edges are not renegotiated when a later relay gate
-   completes; its result applies to future children.
+5. Auto direct and Browser-relay offers with a proved sender order H.264 before
+   VP8 in one standard codec-preference list; endpoints select their first common
+   codec without a parallel media connection. Failed Auto or manual VP8 offers
+   VP8 only; manual H264 offers H.264 mode 1 only. Existing edges are not
+   renegotiated when a later relay gate completes; its result applies to future
+   children.
 6. The SFU publisher uses the Host source decision for its one publication,
    disables backup codec, sets the selected HIGH ceiling and degradation
    preference, but does not set `screenShareSimulcastLayers`, mutate lower
@@ -98,7 +101,8 @@ LiveKit HIGH+LOW publication without backup codec.
 - Screener owns fewer media mechanisms and follows the pinned frameworks'
   supported control surfaces.
 - A capable Browser Host or relay can use H.264 hardware encoding while another
-  source remains on VP8 without a user setting or room-protocol branch.
+  sender remains on VP8 without a room-protocol branch; the Host can explicitly
+  override one future share for diagnosis or preference.
 - A constrained Viewer may receive a lower LiveKit representation without
   lowering every subscriber, subject to the publisher and network actually
   sustaining the framework contract.
@@ -112,8 +116,9 @@ LiveKit HIGH+LOW publication without backup codec.
 ## Stop Lines
 
 - No Screener resolution/FPS/bitrate ladder or representation formula.
-- No codec selector, GPU/MFT allowlist, persistent codec cache, parallel
-  VP8/H.264 route, active-edge codec churn, or LiveKit backup publication.
+- No codec wire/state, GPU/MFT allowlist, persistent codec cache, parallel
+  VP8/H.264 route, active-edge codec churn, or LiveKit backup publication. The
+  local pre-share Host selector is the only manual codec surface.
 - No manual SFU layer selector, forced single HIGH publication, or per-Viewer
   encoder.
 - No quality score, all-pairs probing, periodic rebalancing, or speculative

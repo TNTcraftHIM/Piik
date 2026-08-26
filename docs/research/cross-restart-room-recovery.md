@@ -1,110 +1,102 @@
 # Cross-Restart Room Recovery
 
-Status: Later optional persistence research. ADR-0002 continues to own the
-default behavior: application restart loses every room, credential, lease,
-invitation, route, and media authority. The owner accepts that default and does
-not reopen persistence merely to preserve a preferred room code.
+- Research date: 2026-08-26
+- Status: SQLite stable room-authority mode accepted; implementation pending
 
-## Current Boundary
+## Current Conclusion
 
-The application process owns the complete `RoomStore`, while the Host browser
-keeps its raw Host token, creation profile, and best-effort preferred room code.
-After restart the old token and Viewer grant cannot authenticate; replaying the
-preferred code and profile creates a new room incarnation. LiveKit rooms and the
-Screener SFU resource ledger are also generation-scoped and process-resident.
+SQLite has one cohesive current consumer: the room authorization aggregate. It
+is justified when application releases should retain not only a preferred code,
+but the exact Host ownership, existing Viewer invitation, revocation high-water,
+code-entry policy, password verifier and dormant lease. It is not a generic
+store for future features.
 
-LiveKit resume covers a transient signaling or network interruption while the
-same server-side session exists. A full reconnect rebuilds participants, tracks,
-publications, and subscriptions. The current deployment additionally deletes
-managed LiveKit rooms before admitting a new application generation. Neither
-WebRTC nor LiveKit can restore application authorization or route ownership from
-surviving media packets.
+`ROOM_DATABASE_PATH` absent remains the default lightweight mode. Configuring an
+exact file enables stable mode over the same RoomStore contract. Production will
+use stable mode after persistent-state deployment and recovery acceptance.
 
-## Minimal Recoverable Model
+## Stored Authority
 
-The smallest candidate is Host-led lineage recovery, not persistent room-state
-reconstruction:
+| Field | Restart value |
+| --- | --- |
+| `roomId` | Retains the exact four-digit allocation. |
+| Host-token SHA-256 | Lets a browser that still holds the raw token reclaim Host authority. |
+| Viewer-grant SHA-256 | Keeps an existing invitation usable without persisting its raw grant. |
+| Viewer authorization generation | Prevents rotate/revoke from rolling back across restart. |
+| `open | private` | Preserves code-entry policy. |
+| 48-byte scrypt material | Preserves optional password admission without plaintext. |
+| Dormant lease deadline or active marker | Retains an exact dormant deadline; crash-active becomes dormant for one configured lease from startup. |
 
-- a random stable `lineageId` identifies the Host-owned room across application
-  generations;
-- every successful creation or recovery allocates a fresh random
-  `authorityEpoch`;
-- the server signs a bounded Host recovery capsule containing the lineage,
-  Host-token digest, preferred code hint, server-owned expiry, and purpose;
-- the Host retains the capsule and raw Host token locally; a Viewer can never
-  create, recover, reserve, or renew a room;
-- recovery atomically verifies site access, capsule, Host token, expiry, code
-  availability, and replayed policy/password before publishing the new room;
-- session, share, connection, route, authorization, and SFU generations are
-  fenced by the fresh authority epoch. Old asynchronous results fail closed.
+These values form one atomic row. Create, password/policy update, rotate/revoke,
+lease transition, expiry, abandon and room replacement update the row in the same
+RoomStore mutation that changes memory authority.
 
-The room code remains a best-effort locator. If another lineage already owns it,
-recovery must not evict that Host; the recovering lineage receives another free
-code or fails according to the future accepted contract. Client clocks, local
-lease extensions, roster, graph, first-frame proof, and resource counts never
-become server truth.
+## Deliberately Ephemeral State
 
-## Invitation And Revocation Boundary
+SQLite does not store raw Host tokens, raw Viewer grants, room passwords, site
+access credentials, participants, display names, client/peer/session IDs,
+sharing generation, pause, quality settings, codec decisions, route graph,
+pending operation, connection/revision, first-frame proof, SFU token/resource or
+LiveKit room, SDP, ICE candidate/address, RTCStats, quality evidence, diagnostic
+snapshot or log event.
 
-A signature proves that the server issued a capsule; it does not prove that the
-capsule is the newest one. Restoring the old Viewer-grant digest and authorization
-generation from a still-valid capsule can replay a grant that the Host rotated or
-revoked before the crash. Rejecting that stale checkpoint requires a server-side
-latest-generation high-water mark or accepting replay until the capsule expires.
-There is no stateless third option.
+Those facts describe a current process or media generation. Restoring them would
+grant stale sockets or media false authority and could undercount physical sender
+or SFU resources.
 
-An old invitation must always bind to its lineage and authorization generation.
-It cannot fall through to code-only admission, enter a different lineage that
-reused the same four-digit code, or create a missing room. A private room whose
-local password material is unavailable must fail closed rather than become open.
+## Restart Behavior
 
-The lowest-risk first phase would recover only Host lineage, control, lease
-ceiling, and a free preferred code, then issue a new invitation. Stable old
-invitations are a separate decision that must settle revocation high-water and
-code relocation first.
+After an application restart, the database restores room authorization only.
+Surviving Host and Viewer pages reconnect with their existing raw credentials,
+receive fresh session/peer/connection/route generations, and recommit media on a
+newly decoded frame. A surviving Host capture track may therefore recover with a
+bounded interruption; a page/browser restart still requires a new capture gesture.
 
-## Media Boundary
+The application continues to clear and rebuild LiveKit rooms and the process
+resource ledger. SQLite does not make a LiveKit process restart seamless. True
+LiveKit failover remains its separate Redis/distributed/draining architecture.
 
-Control recovery can be automatic while the Host tab and capture track remain
-alive, but a page or browser restart still requires a new user gesture for screen
-capture. Every recovered route must close or fence old P2P/SFU senders, rebuild
-the graph and resource ledger, and recommit on a newly decoded frame. Media may
-briefly survive a process crash, but it has no current authority and cannot be
-advertised as uninterrupted service.
+## Why Not A Signed Recovery Capsule
 
-True multi-node LiveKit continuity requires its distributed Redis deployment and
-draining model. That is a different infrastructure and availability decision,
-not a consequence of Host lineage recovery.
+A signed Host capsule is smaller only when recovery may issue a new invitation.
+It cannot prove that an older capsule is not replaying a Viewer grant revoked by
+a newer one. Stable old invitations plus strong rotate/revoke therefore require
+a durable latest-authorization-generation high-water mark. Once that durable
+owner exists, keeping the code, credential digests, policy, verifier and lease in
+the same SQLite row is simpler than a client capsule, signing key and second
+truth path.
 
-## Decision Needed
+## Storage And Deployment Boundary
 
-1. Is Host lineage/control recovery sufficient, with new invitations and a
-   bounded media gap?
-2. If old invitations must survive, does the product accept bounded stale replay
-   or one small durable latest-authorization-generation owner?
-3. May a recovered lineage move to another room code when its hint is occupied,
-   and should a lineage-bound invitation resolve that new code?
-4. Is a same-browser bearer recovery capsule an acceptable ownership boundary?
-5. Are application and LiveKit restart targets both bounded rebuild, or is
-   LiveKit high availability a separately funded requirement?
+The accepted implementation uses built-in Node `node:sqlite`, one exact schema,
+one process connection and transactional low-frequency room writes. No ORM,
+event table, stats writer, compatibility reader or migration chain is added.
+Unknown schema, wrong application identity, corrupt row, inaccessible file or a
+second owner fails before signaling or LiveKit mutation.
 
-An optional SQLite mode may reopen this decision only as one complete durable
-room-authority contract, disabled by default. It would own room lineage, code,
-credential digests, authorization generation, policy/password verifier and a
-bounded inactive-retention fact atomically; live participants, routes, stats and
-SFU resources still rebuild. Unknown future data is not justification for a
-generic database. SQLite can make room identity and authorization robust across
-an application restart, but it cannot preserve WebSocket, WebRTC or LiveKit
-process state without client reconnect and media recommit.
+Production activation is not an app-only cutover. It requires an access-restricted
+writable directory, configuration backup, database backup/restore procedure and
+rollback that removes the new environment setting before starting a release that
+does not understand it. Old database backups can revive expired credentials, so
+restoring one later requires an explicit credential-invalidating decision.
+
+## Acceptance Matrix
+
+1. Both storage modes pass identical room behavior within one process.
+2. Stable restart preserves code, token/grant validation, password, policy,
+   generation and lease while restoring zero participants or media state.
+3. A grant revoked before restart remains revoked afterward.
+4. Active-at-crash rows become dormant once; repeated restart does not repeatedly
+   extend an already stored dormant deadline.
+5. Expired rooms are deleted and their codes become free before readiness.
+6. Corrupt/mismatched/multiply owned state fails before accepting traffic.
+7. Surviving Host/Viewer tabs reauthenticate and rebuild a fresh route; no test
+   labels that bounded rebuild as uninterrupted media.
 
 ## Primary Sources
 
-- [W3C Capability URLs](https://www.w3.org/TR/capability-urls/)
-- [RFC 6750 bearer-token threats](https://www.rfc-editor.org/rfc/rfc6750.html#section-5.2)
-- [RFC 7519 expiration and token IDs](https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1)
-- [RFC 9246 signed-URI replay boundary](https://www.rfc-editor.org/rfc/rfc9246.html)
-- [Kubernetes names and UIDs](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/)
-- [The Chubby lock service](https://storage.googleapis.com/gweb-research2023-media/pubtools/4444.pdf)
-- [WebRTC ICE restart](https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-restartice)
+- [Node.js SQLite](https://nodejs.org/docs/latest-v24.x/api/sqlite.html)
+- [SQLite transactional guarantees](https://www.sqlite.org/transactional.html)
+- [SQLite locking mode](https://sqlite.org/pragma.html#pragma_locking_mode)
 - [LiveKit reconnect behavior](https://docs.livekit.io/intro/basics/connect/#network-changes-and-reconnection)
-- [LiveKit distributed deployment and draining](https://docs.livekit.io/transport/self-hosting/distributed/)
+- [LiveKit distributed deployment](https://docs.livekit.io/transport/self-hosting/distributed/)

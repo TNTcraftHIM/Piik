@@ -1,195 +1,144 @@
-# ADR-0002: Memory-Resident Rooms And Scoped Viewer Access
+# ADR-0002: Optional Durable Room Authority And Scoped Viewer Access
 
-- Status: Accepted and deployed on strict v12
-- Date: 2026-08-23
+- Status: Accepted; implementation pending
+- Date: 2026-08-26
 
 ## Context
 
-Screener serves one Host and at most 20 trusted Viewers. The media plane stays
-distributed and P2P-first, while the application server owns the small room,
-authorization, signaling, and route-control state. An application restart already
-ends every active media session. Removing durable room storage additionally loses
-the current code, invitation, and dormant lease, while same-browser creation
-preferences can still be replayed locally. For this private, bounded product that
-is a small and accepted recovery cost.
+Screener serves one Host and at most 20 trusted Viewers. The application server
+owns a small room and authorization aggregate while WebRTC and LiveKit own live
+media sessions. Frequent application releases should not force the Host to
+create another room or redistribute invitations, but a database must not become
+a second owner for transient signaling, routes, media, or diagnostics.
 
-SQLite would preserve those identifiers across restart, but it also keeps a
-schema, migrations, path and writable-directory configuration, backup/restore
-operations, persistence tests, and cross-restart state semantics. That ongoing
-surface is not justified by the limited recovery benefit and works against the
-small, ephemeral control plane. The product therefore accepts restart-wide room
-loss and does not include cross-restart room recovery in its current contract.
+The same product therefore needs two deployment choices over one room model:
 
-The room experience needs a memorable code, a direct invitation, optional
-code-entry protection, and short-term reuse by the same browser. It does not need
-accounts, browser fingerprinting, a user database, permanent room ownership,
-schema migration, or high-availability coordination.
+- lightweight mode keeps no server-side room data after process exit;
+- stable mode keeps only room authority in one local SQLite file so surviving
+  pages can reauthenticate and rebuild fresh media after an application restart.
 
 ## Decision
 
-### One Memory-Resident Room Model
+### One Room Authority Model
 
-All room state lives in the authoritative application process:
+Every room owns:
 
-- a random four-digit room code from `1000` through `9999`;
-- the room lease and current Host/Viewer membership;
-- SHA-256 digests of the Host token and current Viewer grant;
-- the current code-entry policy and, when enabled, a salted room-password
-  verifier;
-- authorization generations and the existing signaling/route state.
+- one random free code from `1000` through `9999`;
+- a SHA-256 Host-token digest and Viewer-grant digest;
+- a monotonically increasing Viewer authorization generation;
+- `open | private` code entry and optional salted scrypt password material;
+- one absolute dormant lease deadline, or an active-Host marker.
 
-The free-code pool contains every currently unallocated four-digit code. A room
-creation request may name one locally preferred code: the store takes it only if
-it is still in the free pool, otherwise it selects uniformly from the current
-pool. Room release returns the code to that pool. The complete `1000..9999`
-space fixes active room capacity at 9,000; there is no separate room-limit
-configuration. A room code is a locator and best-effort preference, not a
-secret, reservation, or permanent identity.
+`ROOM_LEASE_SECONDS` defaults to 86,400 seconds. An authenticated Host keeps the
+room active; stop or disconnect starts the dormant lease. The exact Host token
+may resume before expiry. Viewer activity never renews the room. Expiry or
+explicit replacement invalidates every credential and releases the code.
 
-`ROOM_LEASE_SECONDS` is the single room-lifetime setting and defaults to 86,400
-seconds. An authenticated, actively sharing Host prevents expiry. When sharing
-stops or the Host is no longer connected, the room remains dormant until the
-lease deadline. The same Host token may resume sharing before that deadline and
-renew the lease. Viewer presence never renews ownership. Expiry closes the room,
-invalidates its credentials, and releases its code.
+### Lightweight And Stable Storage
 
-Process restart deliberately clears every room, lease, credential digest,
-password verifier, and participant. Old Host records and invitations then fail
-closed, and the next Host share creates a new room incarnation. There is no room database,
-`ROOM_DATABASE_PATH`, persistent-room mode, schema migration, or compatibility
-reader. The site-access secret remains deployment configuration rather than room
-state.
+`ROOM_DATABASE_PATH` is optional and absent by default:
 
-### Ownership And Local Host Defaults
+- when absent, the bounded RoomStore is process memory and restart loses every
+  room and credential;
+- when present, the same RoomStore persists its authority aggregate in one
+  SQLite file. The production target enables this stable mode after its
+  persistent-state deployment and recovery checks pass.
 
-Room ownership uses the existing random Host bearer token, not an IP address,
-user agent, hardware property, or browser fingerprint. The Host browser keeps the
-raw token in same-origin `localStorage`; the server keeps only its digest in the
-current room. Clearing local data or changing browser/device loses ownership.
+Stable mode stores only `roomId`, Host-token digest, Viewer-grant digest,
+authorization generation, code-entry policy, optional password verifier, and
+dormant lease deadline. It never stores raw tokens, grants, or passwords.
 
-The Host browser also keeps one local creation profile containing its display
-name, code-entry policy, and optional room password, plus one independent
-non-secret preferred room code. The preference has no client-side lease, timer,
-or expiry authority. When old ownership no longer works, the next explicit
-share always requests that code and atomically reapplies the creation profile.
-The server remains the only owner of room expiry and allocates the requested code
-only when free; otherwise it selects another free code and the browser remembers
-that result. Every allocation creates a new Host token, Viewer grant, password
-material, server lease, and room incarnation. The site-access password is never
-part of this profile. A Host room password may be stored locally
-as a convenience for this private product; the server receives it only over the
-authenticated creation or update path, derives the verifier, and never stores or
-logs the plaintext.
+The schema is one exact current version using built-in `node:sqlite`, one
+connection, one writer, and transactional room mutations. An unknown schema,
+wrong application identity, corrupt row, inaccessible path, or second owner
+fails startup before signaling or LiveKit mutation. This private pre-release
+contract has no legacy reader or migration chain; an incompatible database must
+be explicitly replaced from a verified recovery boundary.
 
-### Orthogonal Viewer Access
+On restart, expired rows are deleted. A saved dormant deadline remains exact. A
+row last observed with an active Host becomes dormant until
+`startup time + ROOM_LEASE_SECONDS`; restart never claims that the old Host,
+socket, share, or media route is still online. Successful Host reauthentication
+marks it active again.
 
-Every room has one room-scoped Viewer grant independent of code entry. The grant
-is 16 cryptographically random bytes encoded as 22 base64url characters; its
-SHA-256 digest is stored directly on that exact in-memory room incarnation. It
-has no separate expiry clock or embedded room metadata. It remains usable only
-while that room exists, and therefore ends on room reclamation or process
-restart as well as explicit rotation or revocation. Reusing the same four-digit
-code creates a new digest and never revives an old invitation.
+Participants, display names, client/peer/session IDs, share generation, pause,
+quality settings, codec decisions, route graph, pending operations, first-frame
+proof, SFU tokens/resources/rooms, RTCStats, diagnostics, and logs remain
+process-only. Every restart creates fresh session and route authority and media
+must reconnect and recommit on a newly decoded frame. SQLite does not make a
+LiveKit restart seamless or remove the browser gesture required after capture
+itself ends.
 
-The primary share action copies `/r/{code}#v={grant}`. A valid grant directly
-authorizes only the Viewer role in that room. The browser consumes it into
-room-scoped `sessionStorage`, immediately clears the fragment with
-`history.replaceState`, and never places it in a cookie, query, log, error, or
-`localStorage`.
+### Host Ownership And Preferred Code
 
-Code entry is a separate two-state policy:
+The Host browser keeps the raw Host token and creation profile in same-origin
+local storage. The server keeps only the token digest. Clearing browser data or
+changing device loses ownership; IP, UA, hardware and browser fingerprints are
+never identity.
 
-- `open` is the default: after site access, the four-digit code admits a Viewer
-  without a room password;
-- `private` disables passwordless code entry. Without a room password the room
-  is invitation-only; with one configured, matching code-and-password entry is
-  also admitted.
+The browser also remembers one non-secret preferred room code with no local
+expiry or renewal timer. It is only a future allocation hint. The server remains
+the sole owner of room existence, expiry and code allocation: it reuses the hint
+only when free, otherwise allocates another random free code and the browser
+replaces its preference.
 
-There is no third code-entry-disabled state; invitation access remains owned by
-the independent Viewer grant.
+### Explicit Room Replacement
 
-The Host may rotate or revoke the grant without changing code-entry policy, and
-may change code-entry policy without changing a healthy media route. Strong
-grant revocation advances the authorization generation, clears Viewer grace and
-route state, closes the old receive and send edges, and disconnects the affected
-Viewers before they can reconnect with the old grant.
+The Host room-code control includes a refresh action immediately before Copy.
+With the exact Host token, one server operation allocates a guaranteed different
+free code and retires the old room through the normal delete lifecycle. Failure
+before commit leaves the old room unchanged. Success invalidates the old Host
+token, Viewer grant, password, authorization generation, sessions, routes and
+SFU resources, ends any active share, returns fresh room credentials, and updates
+the local preferred code. No old room or media state is migrated.
 
-`SITE_ACCESS_PASSWORD` continues to protect room creation, Host admission, and
-all code-only Viewer attempts. A valid room grant may bypass that site gate only
-for the exact Viewer role and room. Neither a code, room password, nor Viewer
-grant can create a room or become Host authority.
+### Viewer Access
 
-After site access, a well-formed code-only attempt for an unallocated, reclaimed,
-or expired room returns `ROOM_NOT_FOUND`; the Viewer shows "房间不存在或已过期"
-and does not offer a room-password input. Other expected code-only admission
-failures retain `ROOM_ACCESS_DENIED` and the existing optional password retry.
-This intentionally reveals only that no current room owns the submitted code;
-it does not expose the policy or password state of an existing room. The UI does
-not request, discover, or mint an invitation through the server.
+Each room has one 128-bit, 22-character base64url Viewer grant independent of
+code entry. A valid grant authorizes only the Viewer role for that exact current
+room. The browser consumes it into room-scoped session storage and removes the
+URL fragment. Stable mode preserves only its digest so an existing invitation
+continues across application restart; rotation or revocation atomically updates
+the digest and authorization generation.
 
-Exact-room grant failures remain `INVALID_TOKEN`, Host authentication retains
-its independent role-specific outcomes, and unexpected internal faults remain
-the generic `SERVER_ERROR`. None of those paths is folded into
-`ROOM_ACCESS_DENIED`.
+`open` admits site-authorized code entry without a room password. `private`
+disables passwordless code entry; without a password it is invitation-only, and
+with a password it additionally admits a matching code-and-password attempt.
+Missing or expired codes return `ROOM_NOT_FOUND`; expected existing-room denial
+returns `ROOM_ACCESS_DENIED`.
 
 ## Consequences
 
-- Normal operation and the 24-hour renewable-room experience require only one
-  bounded in-memory room map and no writable database directory.
-- The central control plane stays small and ephemeral; media distribution and
-  bandwidth remain governed by the P2P-first route model rather than moved to the
-  application server.
-- A deployment, crash, or restart invalidates 100 percent of current rooms and
-  invitations. Active media already disconnects at that boundary; the additional
-  cost is a new room code and invitation. Same-browser Host preferences are
-  reapplied automatically on the next explicit share.
-- A room unused beyond the server lease is released. The local preferred code
-  remains only a future allocation hint and never extends or proves that lease.
-- Recycled code-only bookmarks may eventually identify a different room. A stale
-  grant remains unusable because the new room has a different digest.
-- Multi-process room coordination, seamless restart, and horizontal scaling are
-  outside the current contract. They require a new accepted storage decision if
-  they become real requirements.
+- Lightweight mode remains the smallest complete server and leaves no durable
+  room authority after process exit.
+- Stable mode preserves room code, Host ownership, invitations, revocation,
+  password policy and lease across application releases without persisting live
+  topology or media state.
+- Application restart in stable mode is a bounded reauthentication and media
+  rebuild, not uninterrupted playback. LiveKit high availability remains a
+  separate infrastructure decision.
+- Production activation changes persistent state and therefore requires a
+  verified writable directory, configuration backup, database backup/restore
+  boundary and rollback procedure; it is not an ordinary app-only cutover.
 
 ## Acceptance Gates
 
-- Allocation uses only `1000` through `9999`, never duplicates an active code,
-  admits at most the fixed 9,000-code capacity, and returns released codes to
-  the free pool.
-- An active Host is not expired. Stop/disconnect starts the configured dormant
-  lease; the exact Host token resumes before expiry; Viewer activity does not.
-- Expiry and process restart reject the old Host token, Viewer grant, room
-  password, and code-bound room state. Reusing a released code never accepts the
-  old grant.
-- Default creation atomically produces `open` code entry with no room password
-  and an independent 22-character token-bearing invitation. The grant remains
-  valid for exactly the current room incarnation and has no independent expiry.
-  `open` and `private` code entry, including private rooms with and without a
-  password, are covered independently from grant rotate/revoke.
-- Same-browser recreation reapplies the Host profile and always requests its
-  preferred code; an occupied code uses random allocation and replaces the local
-  preference. Another browser or cleared storage has no preference. No
-  fingerprint, client clock, or server user record participates.
-- Raw site passwords, Host tokens, Viewer grants, and room passwords remain out
-  of application/proxy logs and server durable storage.
-- On the accepted `screener-v12` Browser wire, a well-formed, site-authorized
-  code-only attempt for an unallocated, reclaimed, or expired room yields
-  `ROOM_NOT_FOUND` and no
-  password prompt. Existing-room policy, password, full, and bounded admission
-  failures retain `ROOM_ACCESS_DENIED`; exact-room grant, Host-authentication,
-  and unexpected-server-fault paths keep their independent typed outcomes.
-
-## Implementation Status
-
-Current source and production use the strict `screener-v12` wire and implement the
-22-character room-incarnation grant, exact digest validation, rotate/revoke,
-browser-storage privacy, `open | private` code entry, and the `ROOM_NOT_FOUND`
-split without a v11 parser.
-
-Exact release and operational evidence are owned by deployment, status, and
-verification status.
+- Both modes pass the same creation, ownership, admission, password,
+  rotate/revoke, expiry, replacement and 9,000-code-capacity behavior.
+- Stable restart preserves exact room authority and dormant deadlines, converts
+  crash-active rooms to one configured dormant lease, and restores no participant
+  or media authority.
+- A surviving Host and Viewer can reauthenticate after restart, receive fresh
+  sessions/routes, and recommit media; an old revoked grant stays revoked.
+- Replacement never returns the old code, never partially retires the old room,
+  and invalidates all old access before the new credentials are exposed.
+- Raw credentials and private media/network identifiers never enter SQLite or
+  logs. Corrupt, mismatched or multiply owned databases fail before service
+  readiness.
 
 ## Decision Sources
 
-- [Node.js `crypto.randomBytes()`](https://nodejs.org/docs/latest-v24.x/api/crypto.html#cryptorandombytessize-callback)
-- [NIST SP 800-57 Part 1 Rev. 5](https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final)
+- [Node.js SQLite](https://nodejs.org/docs/latest-v24.x/api/sqlite.html)
+- [SQLite transactional guarantees](https://www.sqlite.org/transactional.html)
+- [SQLite locking mode](https://sqlite.org/pragma.html#pragma_locking_mode)
+- [LiveKit reconnect behavior](https://docs.livekit.io/intro/basics/connect/#network-changes-and-reconnection)
