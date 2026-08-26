@@ -189,7 +189,7 @@ export interface ReconcileResult<Resource> {
 
 export interface SettleResult<Resource> {
   accepted: boolean;
-  exhausted?: boolean;
+  failedPeerIds: readonly string[];
   activeRevision: number;
   released: readonly Resource[];
 }
@@ -197,7 +197,7 @@ export interface SettleResult<Resource> {
 export interface BeginResult<Resource> {
   accepted: boolean;
   operation?: OperationSnapshot;
-  exhausted?: boolean;
+  failedPeerIds: readonly string[];
   released: readonly Resource[];
 }
 
@@ -641,9 +641,7 @@ export class RoomRouteController<Resource = unknown> {
     const released: Resource[] = [];
     const validation = this.validateOrAdvance(nowMs);
     released.push(...validation.released);
-    const failedPeerIds = validation.exhaustedChildPeerId
-      ? [validation.exhaustedChildPeerId]
-      : [];
+    const failedPeerIds = failedPeerIdsFrom(validation);
     if (
       this.operation?.reason === "direct-convergence" &&
       (this.hasSfuBootstrapWork() || this.selectNextChild())
@@ -787,7 +785,7 @@ export class RoomRouteController<Resource = unknown> {
       return {
         accepted: false,
         released: [...validation.released, ...reservationResources(input.reservation)],
-        exhausted: validation.exhausted,
+        failedPeerIds: failedPeerIdsFrom(validation),
       };
     }
     const plan = operation.candidates[operation.cursor];
@@ -795,13 +793,14 @@ export class RoomRouteController<Resource = unknown> {
       return {
         accepted: false,
         released: [...validation.released, ...reservationResources(input.reservation)],
-        exhausted: validation.exhausted,
+        failedPeerIds: failedPeerIdsFrom(validation),
       };
     }
     if (plan.endpointTransition.kind === "bounded-gap") {
       return {
         accepted: false,
         operation: this.operationSnapshot(),
+        failedPeerIds: failedPeerIdsFrom(validation),
         released: [...validation.released, ...reservationResources(input.reservation)],
       };
     }
@@ -817,6 +816,7 @@ export class RoomRouteController<Resource = unknown> {
       return {
         accepted: false,
         operation: this.operationSnapshot(),
+        failedPeerIds: failedPeerIdsFrom(validation),
         released: [
           ...validation.released,
           ...reservationResources(input.reservation),
@@ -853,7 +853,12 @@ export class RoomRouteController<Resource = unknown> {
       cursor: operation.cursor,
     });
     this.startCandidateTiming(operation.demandPeerId, input.nowMs);
-    return { accepted: true, operation: this.operationSnapshot(), released: validation.released };
+    return {
+      accepted: true,
+      operation: this.operationSnapshot(),
+      failedPeerIds: failedPeerIdsFrom(validation),
+      released: validation.released,
+    };
   }
 
   noteCurrentCandidateRejection(
@@ -880,7 +885,11 @@ export class RoomRouteController<Resource = unknown> {
     const validation = this.validateOrAdvance(nowMs);
     const operation = this.operation;
     if (!operation || operation.current || !this.cursorGuardMatches(guard, operation)) {
-      return { accepted: false, released: validation.released, exhausted: validation.exhausted };
+      return {
+        accepted: false,
+        failedPeerIds: failedPeerIdsFrom(validation),
+        released: validation.released,
+      };
     }
     if (bucket === "candidate-failed") {
       this.promoteNextDirectWithinHeadStart(operation, nowMs);
@@ -899,8 +908,8 @@ export class RoomRouteController<Resource = unknown> {
     return {
       operation: this.operationSnapshot(),
       accepted: true,
+      failedPeerIds: failedPeerIdsFrom(validation, advanced),
       released: [...validation.released, ...advanced.released],
-      exhausted: advanced.exhausted,
     };
   }
 
@@ -911,11 +920,20 @@ export class RoomRouteController<Resource = unknown> {
     const validation = this.validateOrAdvance(nowMs);
     const operation = this.operation;
     if (!operation || operation.current || !this.cursorGuardMatches(guard, operation)) {
-      return { accepted: false, released: validation.released, exhausted: validation.exhausted };
+      return {
+        accepted: false,
+        failedPeerIds: failedPeerIdsFrom(validation),
+        released: validation.released,
+      };
     }
     const plan = operation.candidates[operation.cursor];
     if (!plan || plan.endpointTransition.kind !== "bounded-gap") {
-      return { accepted: false, operation: this.operationSnapshot(), released: validation.released };
+      return {
+        accepted: false,
+        operation: this.operationSnapshot(),
+        failedPeerIds: failedPeerIdsFrom(validation),
+        released: validation.released,
+      };
     }
     const released = [...validation.released];
     const retirement = plan.endpointTransition.retire;
@@ -928,7 +946,12 @@ export class RoomRouteController<Resource = unknown> {
           edge.parentSessionId !== retirement.parentSessionId ||
           edge.transport !== retirement.transport ||
           edge.connectionId !== retirement.connectionId) {
-        return { accepted: false, operation: this.operationSnapshot(), released };
+        return {
+          accepted: false,
+          operation: this.operationSnapshot(),
+          failedPeerIds: failedPeerIdsFrom(validation),
+          released,
+        };
       }
       if (edge.usable) {
         restoreTuple = {
@@ -944,7 +967,12 @@ export class RoomRouteController<Resource = unknown> {
           publication.hostSessionId !== retirement.hostSessionId ||
           publication.generation !== retirement.generation ||
           publication.connectionId !== retirement.connectionId) {
-        return { accepted: false, operation: this.operationSnapshot(), released };
+        return {
+          accepted: false,
+          operation: this.operationSnapshot(),
+          failedPeerIds: failedPeerIdsFrom(validation),
+          released,
+        };
       }
       released.push(...this.removePublicationGeneration(retirement.generation));
     }
@@ -960,11 +988,16 @@ export class RoomRouteController<Resource = unknown> {
       return {
         accepted: true,
         operation: this.operationSnapshot(),
-        exhausted: advanced.exhausted,
+        failedPeerIds: failedPeerIdsFrom(validation, advanced),
         released: [...released, ...advanced.released],
       };
     }
-    return { accepted: true, operation: this.operationSnapshot(), released };
+    return {
+      accepted: true,
+      operation: this.operationSnapshot(),
+      failedPeerIds: failedPeerIdsFrom(validation),
+      released,
+    };
   }
 
   candidateReady(
@@ -976,7 +1009,12 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     const attempt = operation?.current;
     if (!operation || !attempt || !this.guardMatches(guard, operation, attempt)) {
-      return { accepted: false, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
+      return {
+        accepted: false,
+        failedPeerIds: failedPeerIdsFrom(validation),
+        activeRevision: this.revision,
+        released: validation.released,
+      };
     }
     if (!commitReservation(attempt.reservation)) {
       this.debug("candidate-commit-rejected", {
@@ -989,7 +1027,7 @@ export class RoomRouteController<Resource = unknown> {
       const failed = this.validateOrAdvance(nowMs, guard);
       return {
         accepted: false,
-        exhausted: failed.exhausted,
+        failedPeerIds: failedPeerIdsFrom(validation, failed),
         activeRevision: this.revision,
         released: [...validation.released, ...failed.released],
       };
@@ -1021,7 +1059,12 @@ export class RoomRouteController<Resource = unknown> {
     for (const childPeerId of displacedSfuChildren) {
       this.ensureDemand(childPeerId, nowMs, "edge-unavailable");
     }
-    return { accepted: true, activeRevision: this.revision, released };
+    return {
+      accepted: true,
+      failedPeerIds: failedPeerIdsFrom(validation),
+      activeRevision: this.revision,
+      released,
+    };
   }
 
   candidateTransportConnected(
@@ -1039,7 +1082,7 @@ export class RoomRouteController<Resource = unknown> {
     ) {
       return {
         accepted: false,
-        exhausted: validation.exhausted,
+        failedPeerIds: failedPeerIdsFrom(validation),
         activeRevision: this.revision,
         released: validation.released,
       };
@@ -1052,6 +1095,7 @@ export class RoomRouteController<Resource = unknown> {
     });
     return {
       accepted: true,
+      failedPeerIds: failedPeerIdsFrom(validation),
       activeRevision: this.revision,
       released: validation.released,
     };
@@ -1074,9 +1118,19 @@ export class RoomRouteController<Resource = unknown> {
     }
     const validation = this.validateOrAdvance(nowMs, guard);
     if (validation.consumedGuard) {
-      return { accepted: true, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
+      return {
+        accepted: true,
+        failedPeerIds: failedPeerIdsFrom(validation),
+        activeRevision: this.revision,
+        released: validation.released,
+      };
     }
-    return { accepted: false, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
+    return {
+      accepted: false,
+      failedPeerIds: failedPeerIdsFrom(validation),
+      activeRevision: this.revision,
+      released: validation.released,
+    };
   }
 
   operationExpired(nowMs: number): SettleResult<Resource> {
@@ -1092,7 +1146,12 @@ export class RoomRouteController<Resource = unknown> {
       this.consumeDirectContinuationCandidate(this.operation);
     }
     const validation = this.validateOrAdvance(nowMs);
-    return { accepted: validation.expired, exhausted: validation.exhausted, activeRevision: this.revision, released: validation.released };
+    return {
+      accepted: validation.expired,
+      failedPeerIds: failedPeerIdsFrom(validation),
+      activeRevision: this.revision,
+      released: validation.released,
+    };
   }
 
   dispose(): readonly Resource[] {
@@ -2571,6 +2630,18 @@ export class RoomRouteController<Resource = unknown> {
 
 function compareParticipant(left: Participant, right: Participant): number {
   return left.joinOrder - right.joinOrder || left.peerId.localeCompare(right.peerId);
+}
+
+function failedPeerIdsFrom(
+  ...results: ReadonlyArray<{ exhaustedChildPeerId?: string }>
+): string[] {
+  return [
+    ...new Set(
+      results.flatMap((result) =>
+        result.exhaustedChildPeerId ? [result.exhaustedChildPeerId] : [],
+      ),
+    ),
+  ];
 }
 
 function stablePairRank(childPeerId: string, parentPeerId: string): number {

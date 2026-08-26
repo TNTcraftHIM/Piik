@@ -278,7 +278,7 @@ describe("RoomRouteController", () => {
         },
         30,
       ),
-    ).toMatchObject({ accepted: true, exhausted: true });
+    ).toMatchObject({ accepted: true, failedPeerIds: [A] });
     expect(routes.routeDiagnosticSnapshot(30).children[0]).toMatchObject({
       finalMs: 30,
       finalRoute: "failed",
@@ -374,7 +374,7 @@ describe("RoomRouteController", () => {
     const deadline = routes.snapshot().operation!.deadlineAtMs;
     expect(routes.operationExpired(deadline)).toMatchObject({
       accepted: true,
-      exhausted: true,
+      failedPeerIds: [A],
     });
     expect(routes.routeDiagnosticSnapshot(deadline).children[0]).toMatchObject({
       finalMs: deadline,
@@ -593,7 +593,7 @@ describe("RoomRouteController", () => {
     }, 1_001);
     expect(failed.accepted).toBe(true);
     expect(failed.activeRevision).toBeGreaterThan(first.current!.revision);
-    expect(failed.exhausted).toBeUndefined();
+    expect(failed.failedPeerIds).toEqual([]);
     expect(failed.released).toEqual([]);
     expect(routes.snapshot().operation).toMatchObject({
       cursor: 1,
@@ -617,7 +617,7 @@ describe("RoomRouteController", () => {
       revision: second.current!.revision,
       connectionId: "candidate_2",
     }, deadline);
-    expect(lateReady).toMatchObject({ accepted: false, exhausted: true });
+    expect(lateReady).toMatchObject({ accepted: false, failedPeerIds: [A] });
     expect(lateReady.released).toEqual([
       "candidate_2_edge",
       "candidate_2_publication",
@@ -659,7 +659,7 @@ describe("RoomRouteController", () => {
     });
     const directExpired = routes.operationExpired(operation.wakeAtMs);
     expect(directExpired).toMatchObject({ accepted: true });
-    expect(directExpired.exhausted).toBeUndefined();
+    expect(directExpired.failedPeerIds).toEqual([]);
     expect(routes.snapshot().operation).toMatchObject({
       deadlineAtMs: 10_000,
       wakeAtMs: 10_000,
@@ -948,7 +948,7 @@ describe("RoomRouteController", () => {
       childSessionId: `${A}_session`,
       revision: failed.current!.revision,
       connectionId: "a_direct_followup",
-    }, acquisition.wakeAtMs + 5).exhausted).toBeUndefined();
+    }, acquisition.wakeAtMs + 5).failedPeerIds).toEqual([]);
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
       kind: "sfu",
       connectionId: "a_sfu",
@@ -1109,7 +1109,7 @@ describe("RoomRouteController", () => {
     });
     const blocked = routes.operationExpired(operation.wakeAtMs);
     expect(blocked).toMatchObject({ accepted: true });
-    expect(blocked.exhausted).toBe(false);
+    expect(blocked.failedPeerIds).toEqual([]);
     expect(blocked.released).toEqual([]);
     expect(routes.snapshot().operation).toBeUndefined();
 
@@ -1138,7 +1138,7 @@ describe("RoomRouteController", () => {
       childSessionId: `${C}_session`,
       revision: firstCarrier.current!.revision,
       connectionId: "c_bootstrap_sfu",
-    }, operation.wakeAtMs + 3).exhausted).toBe(false);
+    }, operation.wakeAtMs + 3).failedPeerIds).toEqual([]);
     expect(routes.snapshot().upstreamByViewer.get(C)).toMatchObject({
       connectionId: "c_from_host",
       usable: true,
@@ -1168,7 +1168,7 @@ describe("RoomRouteController", () => {
       childSessionId: `${B}_session`,
       revision: secondCarrier.current!.revision,
       connectionId: "b_bootstrap_sfu",
-    }, operation.wakeAtMs + 6).exhausted).toBe(true);
+    }, operation.wakeAtMs + 6).failedPeerIds).toEqual([A]);
     for (const [peerId, connectionId] of [
       [B, "b_from_host"],
       [C, "c_from_host"],
@@ -1186,7 +1186,7 @@ describe("RoomRouteController", () => {
       connectionId: "d_direct",
       reservation: { kind: "direct" },
     });
-    expect(routes.operationExpired(nextDemand.deadlineAtMs).exhausted).toBe(true);
+    expect(routes.operationExpired(nextDemand.deadlineAtMs).failedPeerIds).toEqual([D]);
     expect(routes.reconcile(nextDemand.deadlineAtMs + 1).operation).toBeUndefined();
   });
 
@@ -1868,7 +1868,7 @@ describe("RoomRouteController", () => {
       childSessionId: operation.childSessionId,
       revision: prepared.current!.revision,
       connectionId: "failed_sfu",
-    }, 2)).toMatchObject({ accepted: true, exhausted: true });
+    }, 2)).toMatchObject({ accepted: true, failedPeerIds: [A] });
     const factVersion = routes.snapshot().factVersion;
     expect(routes.reconcile(3).operation).toBeUndefined();
     expect(routes.setEffectiveCapacity(A, `${A}_session`, 0)).toBe(true);
