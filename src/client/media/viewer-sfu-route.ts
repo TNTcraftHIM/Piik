@@ -104,7 +104,7 @@ export class ViewerSfuRoute {
   private closed = false;
 
   constructor(
-    private readonly viewerPeerId: string,
+    private viewerPeerId: string,
     private readonly events: ViewerSfuRouteEvents,
   ) {}
 
@@ -253,12 +253,17 @@ export class ViewerSfuRoute {
 
   async resyncAuthoritative(
     update: RouteUpdateInput,
+    viewerPeerId: string,
   ): Promise<RouteUpdateResult> {
     if (this.closed) {
       return "stale";
     }
+    const identityChanged = viewerPeerId !== this.viewerPeerId;
+    if (identityChanged) {
+      this.viewerPeerId = viewerPeerId;
+    }
     this.pendingPeerRevision = null;
-    if (!this.active && !this.pending) {
+    if (!identityChanged && !this.active && !this.pending) {
       const result = this.accept(update, false);
       if (result !== "stale") {
         return result;

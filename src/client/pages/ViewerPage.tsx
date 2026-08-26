@@ -1232,6 +1232,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               phase: "active",
               assignment: message.routeAssignment,
             },
+            message.peerId,
           );
           if (!active || !messageAuthority.owns(authorityToken)) {
             return;
