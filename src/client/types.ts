@@ -1,7 +1,6 @@
 export type SignalConnectionState =
   | "connecting"
   | "connected"
-  | "restarting"
   | "reconnecting"
   | "offline";
 

@@ -659,7 +659,10 @@ describe("SfuPublisher", () => {
     await expect(publisher.connect(connection)).resolves.toBe(true);
 
     const room = livekit.state.rooms[0];
-    expect(room.options).toEqual({ dynacast: true });
+    expect(room.options).toEqual({
+      dynacast: true,
+      stopLocalTrackOnUnpublish: false,
+    });
     expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
       autoSubscribe: false,
       rtcConfig: { iceServers: [] },
