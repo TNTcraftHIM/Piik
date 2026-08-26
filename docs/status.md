@@ -66,7 +66,8 @@ This is the current execution index. Git history owns completed timelines;
 
 1. Implement presentation-authoritative freeze/pause evidence with decoded
    progress and the controller-owned shadow aggregate; collect production
-   samples without active route changes.
+   samples without active route changes. This integration atomically replaces
+   current v12 with accepted strict `screener-v13`.
 2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
 3. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance

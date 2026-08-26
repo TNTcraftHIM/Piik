@@ -14,7 +14,9 @@ later topic is not implementation authority by itself.
    current-epoch aggregate per exact child in the existing room controller and
    expose it only through the Host acceptance snapshot. It must not alter facts,
    capacity, routes or SFU usage. Collect annotated production samples before
-   accepting an active trigger, probation, restore or cooldown policy.
+   accepting an active trigger, probation, restore or cooldown policy. Ship it
+   only as the atomic strict `screener-v13` Browser/server contract; v12 gets no
+   compatibility path.
 2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay

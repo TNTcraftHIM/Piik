@@ -124,6 +124,9 @@ Last updated: 2026-08-26
   application with adaptive H.264/VP8 selection, local Host codec override and
   optional SQLite room authority. Exact identities are indexed by
   [status](./status.md).
+- The accepted quality-shadow integration atomically replaces v12 with strict
+  `screener-v13`; old Browser pages must fail before room authority. It adds no
+  active route decision until production shadow evidence is accepted.
 - Production uses SQLite-backed random rooms, 20-Viewer admission, endpoint cap `2`,
   fixed 9,000-publication ingress and `9000 * 20` subscription egress admission,
   STUN UDP 3478, LiveKit media UDP 7882, and Web TCP 80/443. Node 8787 and
@@ -134,7 +137,8 @@ Last updated: 2026-08-26
 
 ## Current Priority
 
-1. Complete the mobile Viewer lifecycle matrix and representative real-network
+1. Complete the evidence-only quality-route shadow on strict `screener-v13`.
+2. Complete the mobile Viewer lifecycle matrix and representative real-network
    route/media acceptance.
 
 Quality-driven parent selection, Native sender work, distribution packages,
