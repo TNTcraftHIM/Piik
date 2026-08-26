@@ -7,7 +7,15 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Quality-route evidence and shadow calibration.** Make current Viewer
+1. **Recovery and authority convergence.** Close the confirmed P1 owner gaps
+   before active quality work: return distinct KDF `busy | cancelled | value`
+   outcomes without committing a passwordless room; return the exact exhausted
+   demand identity from the route controller and emit its terminal once; fence
+   every Host child retry to the current assignment; make SFU refresh end in
+   typed config or failure; preserve exact Viewer authentication outcomes; and
+   retain one Host quality intent until the server confirms or rejects it. These
+   are existing owner corrections, not new retry loops or fallback controllers.
+2. **Quality-route evidence and shadow calibration.** Make current Viewer
    quality evidence presentation-authoritative with standard freeze/pause
    deltas, continuing decoded progress, exact presentation epochs and baseline
    fencing. Keep one bounded
@@ -15,12 +23,12 @@ later topic is not implementation authority by itself.
    expose it only through the Host acceptance snapshot. It must not alter facts,
    capacity, routes or SFU usage. Collect annotated production samples before
    accepting an active trigger, probation, restore or cooldown policy.
-2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
+3. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay gesture, foreground/background audio, foreground video recovery,
    lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
    survival or controller recovery. Web does not promise background video or
    relay execution after OS suspension.
-3. **Finish real-network route and media acceptance.** Exercise direct peer,
+4. **Finish real-network route and media acceptance.** Exercise direct peer,
    Browser relay, SFU, relay-ingress recovery with subtree retention,
    disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
    continuity, and real-game A/V sync across representative IPv4/IPv6,
@@ -58,7 +66,10 @@ later topic is not implementation authority by itself.
    physical-media checkpoints settle, inventory components, configuration,
    migrations, timers, compatibility paths, tests, and truth duplication using
    the [maintenance review](./maintenance.md#机制减负审查). Begin read-only and do
-   not turn it into a broad refactor.
+   not turn it into a broad refactor. The current read-only scan confirmed
+   coarse `mediaAssignment` wire residue, legacy SFU room-name acceptance,
+   and duplicated teardown/test/browser-gate owners as the bounded starting
+   set; it did not authorize unrelated cleanup.
 
 ## Product Decision Needed
 

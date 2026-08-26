@@ -8,14 +8,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `3037c0a8f0d16e0df791eb8e64003a7a6660d521`, release `3037c0a`, wire
-  `screener-v12`, from `/opt/screener/releases/3037c0a`.
+  `8164102af8083d55632cf5de10197b5823b3d140`, release `8164102`, wire
+  `screener-v12`, from `/opt/screener/releases/8164102`.
 - Runtime tar SHA-256:
-  `f84cb7f7acbfbd950ecfdac13da9a0d6e99a4c10eb221c6948ce81b47ce2b5f6`.
+  `1f61395702afaabfda8c178a08c7896af77e1c4750dcc9f29ffaafbd56bba80f`.
   The 41-file manifest SHA-256 is
-  `e2fc8115c9cb7d6455027dc2af6f29229834774ed12de334832a8d53d6fc6262`.
-- Public Browser asset `assets/index-Y4pFjW_S.js` has SHA-256
-  `a3df27613dfb10fb45297197afdf2500e2953c2b5330b13e5bb49eafdc3e1447`.
+  `55b9779fdaf4fe2ba98d5612b16e398fbf2ad6b9ebcfeeeef6e0ce5c3595ac8d`.
+- Public Browser asset `assets/index-CPECbwjN.js` has SHA-256
+  `dfcbed5d4178afbd7f6713f1ae348a70921b936199fa56d87fa05c785564559e`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
@@ -26,8 +26,9 @@ may be interpreted. Git and pull requests own routine completed checks.
   room-lived Viewer grants, `open | private` code entry, invitation-only private
   rooms, password entry, grant rotate/revoke, atomic room replacement and
   `ROOM_NOT_FOUND` have passed source gates. Production stable mode retained an
-  exact Host authority across a controlled restart and then deleted the test
-  room through the normal lifecycle.
+  exact Host authority across a controlled restart. A current-production
+  restart also preserved the Host-owned capture and restored Viewer media
+  without refreshing either page.
 - Endpoint capacity `1/2/3`, default `2`, one active upstream, acyclicity,
   source reachability, deterministic parent order, exact candidate identity,
   transport-connected wake extension, first-decoded-frame commit, strictly newer
@@ -59,7 +60,7 @@ may be interpreted. Git and pull requests own routine completed checks.
 
 ## Current Source Evidence
 
-- Canonical source contains the same application tree deployed from `3037c0a`:
+- Canonical source contains the same application tree deployed from `8164102`:
   the adaptive H.264/VP8 sender decision with `contentHint = "motion"` reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables

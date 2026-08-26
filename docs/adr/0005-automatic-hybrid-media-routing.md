@@ -236,6 +236,9 @@ second mutable graph.
   removed naturally.
 - The Host is the only source publisher. There is at most one authoritative Host
   publication per share generation, and every SFU-fed Viewer subscribes to it.
+  The Host page owns the canonical capture tracks. LiveKit publisher teardown,
+  remote room deletion, and transport recovery may release only their SFU
+  publication and must never stop those capture tracks.
   Any source-reachable endpoint with effective capacity may be a parent
   candidate; SFU-fed and peer-fed endpoints use the same provisional-child
   transaction and each child edge commits independently. Viewer republishing
