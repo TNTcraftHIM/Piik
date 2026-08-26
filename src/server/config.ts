@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+
 import {
   MAX_ICE_SERVER_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
@@ -116,8 +118,8 @@ function parseRoomDatabasePath(value: string | undefined): string | undefined {
   if (!path) {
     return undefined;
   }
-  if (path === ":memory:" || path.includes("\0")) {
-    throw new Error("ROOM_DATABASE_PATH must identify a file");
+  if (path === ":memory:" || path.includes("\0") || !isAbsolute(path)) {
+    throw new Error("ROOM_DATABASE_PATH must be an absolute file path");
   }
   return path;
 }

@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol.ts";
@@ -403,28 +405,30 @@ describe("server configuration", () => {
   });
 
   it("accepts optional file-backed room authority in development and production", () => {
+    const developmentPath = resolve("state", "rooms.sqlite");
     expect(
-      loadConfig({ ROOM_DATABASE_PATH: " ./state/rooms.sqlite " })
+      loadConfig({ ROOM_DATABASE_PATH: ` ${developmentPath} ` })
         .roomDatabasePath,
-    ).toBe("./state/rooms.sqlite");
+    ).toBe(developmentPath);
     expect(loadConfig({ ROOM_DATABASE_PATH: "" }).roomDatabasePath).toBeUndefined();
+    const productionPath = resolve("production-state", "rooms.sqlite");
     expect(
       loadConfig({
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
         SITE_ACCESS_PASSWORD: "host-password-12",
         STUN_URLS: "stun:stun.test:3478",
-        ROOM_DATABASE_PATH: "/var/lib/screener/rooms.sqlite",
+        ROOM_DATABASE_PATH: productionPath,
       }).roomDatabasePath,
-    ).toBe("/var/lib/screener/rooms.sqlite");
+    ).toBe(productionPath);
   });
 
-  it.each([":memory:", "rooms\0.sqlite"])(
-    "rejects a non-file room database path",
+  it.each([":memory:", "rooms\0.sqlite", "rooms.sqlite", "./state/rooms.sqlite"])(
+    "rejects a non-absolute room database path",
     (roomDatabasePath) => {
       expect(() =>
         loadConfig({ ROOM_DATABASE_PATH: roomDatabasePath }),
-      ).toThrow("ROOM_DATABASE_PATH must identify a file");
+      ).toThrow("ROOM_DATABASE_PATH must be an absolute file path");
     },
   );
 
