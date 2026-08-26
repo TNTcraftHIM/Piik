@@ -1,5 +1,6 @@
 import {
   configureVideoSender,
+  QUALITY_RESOLUTIONS,
   startupVideoProfile,
   type QualityProfile,
 } from "../media/quality";
@@ -10,9 +11,19 @@ import {
 
 const PREFLIGHT_DEADLINE_MS = 4_000;
 const PREFLIGHT_POLL_MS = 100;
-const PREFLIGHT_MIN_SOURCE_FRAMES = 15;
-const PREFLIGHT_MAX_FRAME_DEFICIT = 2;
-const PREFLIGHT_FPS_WINDOW_MS = 1_000;
+const PREFLIGHT_WARMUP_MS = 500;
+const PREFLIGHT_MEASUREMENT_MS = 1_000;
+
+export interface H264ProbeTarget {
+  width: number;
+  height: number;
+  frameRate: number;
+}
+
+interface H264ProbeTrack {
+  track: MediaStreamTrack;
+  stop: () => void;
+}
 
 export interface H264ProbeSample {
   outboundId: string;
@@ -27,6 +38,104 @@ export interface H264ProbeSample {
 }
 
 type StatsRecord = RTCStats & Record<string, unknown>;
+
+function positiveNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
+}
+
+function evenDimension(value: number, ceiling: number): number {
+  return Math.min(ceiling, Math.max(2, Math.round(value / 2) * 2));
+}
+
+export function h264ProbeTarget(
+  settings: MediaTrackSettings,
+  profile: QualityProfile,
+): H264ProbeTarget {
+  const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+  const sourceWidth = positiveNumber(settings.width, ceiling.width);
+  const sourceHeight = positiveNumber(settings.height, ceiling.height);
+  const scale = Math.max(
+    sourceWidth / ceiling.width,
+    sourceHeight / ceiling.height,
+    1,
+  );
+  return {
+    width: evenDimension(sourceWidth / scale, ceiling.width),
+    height: evenDimension(sourceHeight / scale, ceiling.height),
+    frameRate: profile.maxFramerate,
+  };
+}
+
+function drawProbeFrame(
+  context: CanvasRenderingContext2D,
+  target: H264ProbeTarget,
+  frame: number,
+): void {
+  const columns = 24;
+  const rows = 14;
+  const tileWidth = Math.ceil(target.width / columns);
+  const tileHeight = Math.ceil(target.height / rows);
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const hue = (frame * 29 + row * 71 + column * 43) % 360;
+      const lightness = 35 + ((frame + row + column) % 30);
+      context.fillStyle = `hsl(${hue} 80% ${lightness}%)`;
+      context.fillRect(
+        column * tileWidth,
+        row * tileHeight,
+        tileWidth,
+        tileHeight,
+      );
+    }
+  }
+  const sweep =
+    (frame * Math.max(8, Math.floor(target.width / 120))) % target.width;
+  context.fillStyle = "#ffffff";
+  context.fillRect(
+    sweep,
+    0,
+    Math.max(4, Math.floor(target.width / 180)),
+    target.height,
+  );
+}
+
+function createH264ProbeTrack(
+  source: MediaStreamTrack,
+  profile: QualityProfile,
+): H264ProbeTrack | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const target = h264ProbeTarget(source.getSettings(), profile);
+  const canvas = document.createElement("canvas");
+  canvas.width = target.width;
+  canvas.height = target.height;
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context || typeof canvas.captureStream !== "function") {
+    return null;
+  }
+  const stream = canvas.captureStream(target.frameRate);
+  const track = stream.getVideoTracks()[0];
+  if (!track) {
+    return null;
+  }
+  track.contentHint = "motion";
+  let frame = 1;
+  drawProbeFrame(context, target, frame);
+  const timer = window.setInterval(() => {
+    frame += 1;
+    drawProbeFrame(context, target, frame);
+  }, 1_000 / target.frameRate);
+  return {
+    track,
+    stop: () => {
+      window.clearInterval(timer);
+      track.stop();
+    },
+  };
+}
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -86,9 +195,17 @@ function readH264ProbeSample(report: RTCStatsReport): H264ProbeSample | null {
   };
 }
 
-export function h264ProbeSustainsSource(
+function allowedFrameLag(targetFrameRate: number): number {
+  return Math.max(
+    1,
+    Math.ceil((targetFrameRate * PREFLIGHT_POLL_MS) / 1_000),
+  );
+}
+
+export function h264ProbeSustainsTarget(
   baseline: H264ProbeSample,
   current: H264ProbeSample,
+  targetFrameRate: number,
 ): boolean | null {
   if (
     baseline.outboundId !== current.outboundId ||
@@ -99,6 +216,12 @@ export function h264ProbeSustainsSource(
   ) {
     return false;
   }
+  const elapsedMs = current.timestamp - baseline.timestamp;
+  if (elapsedMs < PREFLIGHT_MEASUREMENT_MS) {
+    return null;
+  }
+  const expectedFrames = (targetFrameRate * elapsedMs) / 1_000;
+  const frameLag = allowedFrameLag(targetFrameRate);
   if (
     baseline.framesEncoded !== null &&
     current.framesEncoded !== null &&
@@ -109,13 +232,13 @@ export function h264ProbeSustainsSource(
   ) {
     const encoded = current.framesEncoded - baseline.framesEncoded;
     const source = current.sourceFrames - baseline.sourceFrames;
-    if (source < PREFLIGHT_MIN_SOURCE_FRAMES) {
-      return null;
-    }
-    return encoded + PREFLIGHT_MAX_FRAME_DEFICIT >= source;
+    return (
+      source + frameLag >= expectedFrames &&
+      encoded + frameLag >= expectedFrames &&
+      encoded + frameLag >= source
+    );
   }
   if (
-    current.timestamp - baseline.timestamp < PREFLIGHT_FPS_WINDOW_MS ||
     current.encodedFramesPerSecond === null ||
     current.sourceFramesPerSecond === null ||
     current.sourceFramesPerSecond <= 0
@@ -123,8 +246,10 @@ export function h264ProbeSustainsSource(
     return null;
   }
   return (
-    current.encodedFramesPerSecond + PREFLIGHT_MAX_FRAME_DEFICIT >=
-    current.sourceFramesPerSecond
+    current.sourceFramesPerSecond + frameLag >= targetFrameRate &&
+    current.encodedFramesPerSecond + frameLag >= targetFrameRate &&
+    current.encodedFramesPerSecond + frameLag >=
+      current.sourceFramesPerSecond
   );
 }
 
@@ -139,17 +264,7 @@ function hasProbeWindow(
   ) {
     return false;
   }
-  if (
-    baseline.sourceFrames !== null &&
-    current.sourceFrames !== null &&
-    current.sourceFrames >= baseline.sourceFrames
-  ) {
-    return (
-      current.sourceFrames - baseline.sourceFrames >=
-      PREFLIGHT_MIN_SOURCE_FRAMES
-    );
-  }
-  return current.timestamp - baseline.timestamp >= PREFLIGHT_FPS_WINDOW_MS;
+  return current.timestamp - baseline.timestamp >= PREFLIGHT_WARMUP_MS;
 }
 
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -240,7 +355,11 @@ async function runH264Probe(
         ) {
           measurementBaseline = sample;
         } else if (measurementBaseline && sample !== measurementBaseline) {
-          const result = h264ProbeSustainsSource(measurementBaseline, sample);
+          const result = h264ProbeSustainsTarget(
+            measurementBaseline,
+            sample,
+            profile.maxFramerate,
+          );
           if (result !== null) {
             return result;
           }
@@ -264,9 +383,15 @@ export async function preferredVideoCodecForTrack(
   if (track.kind !== "video" || track.readyState === "ended") {
     return "vp8";
   }
+  let probe: H264ProbeTrack | null = null;
   try {
-    return (await runH264Probe(track, profile, signal)) ? "h264" : "vp8";
+    probe = createH264ProbeTrack(track, profile);
+    return probe && (await runH264Probe(probe.track, profile, signal))
+      ? "h264"
+      : "vp8";
   } catch {
     return "vp8";
+  } finally {
+    probe?.stop();
   }
 }

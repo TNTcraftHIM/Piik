@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  h264ProbeSustainsSource,
+  h264ProbeTarget,
+  h264ProbeSustainsTarget,
   type H264ProbeSample,
 } from "../src/client/webrtc/video-codec-preflight.ts";
+import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
 
 function sample(
   overrides: Partial<H264ProbeSample> = {},
@@ -23,6 +25,15 @@ function sample(
 }
 
 describe("H264 sender preflight", () => {
+  it("uses the selected target cadence instead of captured-content cadence", () => {
+    expect(
+      h264ProbeTarget(
+        { width: 2_560, height: 1_440, frameRate: 1 },
+        QUALITY_PROFILES["1080p30"],
+      ),
+    ).toEqual({ width: 1_920, height: 1_080, frameRate: 30 });
+  });
+
   it("accepts bounded pipeline lag against the same source", () => {
     const baseline = sample();
     const current = sample({
@@ -31,7 +42,7 @@ describe("H264 sender preflight", () => {
       sourceFrames: 40,
     });
 
-    expect(h264ProbeSustainsSource(baseline, current)).toBe(true);
+    expect(h264ProbeSustainsTarget(baseline, current, 30)).toBe(true);
   });
 
   it("rejects sustained encoder frame dropping", () => {
@@ -44,7 +55,7 @@ describe("H264 sender preflight", () => {
       sourceFramesPerSecond: 30,
     });
 
-    expect(h264ProbeSustainsSource(baseline, current)).toBe(false);
+    expect(h264ProbeSustainsTarget(baseline, current, 30)).toBe(false);
   });
 
   it("waits for enough source progress before deciding", () => {
@@ -55,14 +66,14 @@ describe("H264 sender preflight", () => {
       sourceFrames: 20,
     });
 
-    expect(h264ProbeSustainsSource(baseline, current)).toBeNull();
+    expect(h264ProbeSustainsTarget(baseline, current, 30)).toBeNull();
   });
 
   it("rejects CPU-limited or identity-mismatched samples", () => {
     const baseline = sample();
 
     expect(
-      h264ProbeSustainsSource(
+      h264ProbeSustainsTarget(
         baseline,
         sample({
           timestamp: 2_000,
@@ -70,10 +81,11 @@ describe("H264 sender preflight", () => {
           sourceFrames: 40,
           qualityLimitationReason: "cpu",
         }),
+        30,
       ),
     ).toBe(false);
     expect(
-      h264ProbeSustainsSource(
+      h264ProbeSustainsTarget(
         baseline,
         sample({
           outboundId: "replacement",
@@ -81,6 +93,7 @@ describe("H264 sender preflight", () => {
           framesEncoded: 40,
           sourceFrames: 40,
         }),
+        30,
       ),
     ).toBe(false);
   });
@@ -89,7 +102,7 @@ describe("H264 sender preflight", () => {
     const baseline = sample({ framesEncoded: null, sourceFrames: null });
 
     expect(
-      h264ProbeSustainsSource(
+      h264ProbeSustainsTarget(
         baseline,
         sample({
           timestamp: 2_000,
@@ -98,10 +111,11 @@ describe("H264 sender preflight", () => {
           encodedFramesPerSecond: 29,
           sourceFramesPerSecond: 30,
         }),
+        30,
       ),
     ).toBe(true);
     expect(
-      h264ProbeSustainsSource(
+      h264ProbeSustainsTarget(
         baseline,
         sample({
           timestamp: 2_000,
@@ -110,10 +124,11 @@ describe("H264 sender preflight", () => {
           encodedFramesPerSecond: 12,
           sourceFramesPerSecond: 30,
         }),
+        30,
       ),
     ).toBe(false);
     expect(
-      h264ProbeSustainsSource(
+      h264ProbeSustainsTarget(
         baseline,
         sample({
           timestamp: 1_500,
@@ -122,7 +137,24 @@ describe("H264 sender preflight", () => {
           encodedFramesPerSecond: 30,
           sourceFramesPerSecond: 30,
         }),
+        30,
       ),
     ).toBeNull();
+  });
+
+  it("rejects a probe source that does not reach the selected cadence", () => {
+    expect(
+      h264ProbeSustainsTarget(
+        sample(),
+        sample({
+          timestamp: 2_000,
+          framesEncoded: 30,
+          sourceFrames: 30,
+          encodedFramesPerSecond: 20,
+          sourceFramesPerSecond: 20,
+        }),
+        30,
+      ),
+    ).toBe(false);
   });
 });
