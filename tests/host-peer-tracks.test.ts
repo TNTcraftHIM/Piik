@@ -1611,7 +1611,7 @@ describe("ViewerRelay downstream ownership", () => {
     transport: "direct" as const,
   });
 
-  it("uses a completed H264 probe only for a future child", async () => {
+  it("keeps a completed H264 decision across source replacement", async () => {
     codecPreflight.probe.mockResolvedValueOnce("h264");
     const relay = new ViewerRelay(
       { iceServers: [] },
@@ -1621,6 +1621,10 @@ describe("ViewerRelay downstream ownership", () => {
     relay.setStream(createStream(createTrack("video", "h264-source"), null));
     await vi.waitFor(() => expect(codecPreflight.probe).toHaveBeenCalledOnce());
     await Promise.resolve();
+    relay.setStream(
+      createStream(createTrack("video", "replacement-source"), null),
+    );
+    expect(codecPreflight.probe).toHaveBeenCalledOnce();
     relay.setChildren(["h264-child"]);
     await vi.waitFor(() =>
       expect(FakePeerConnection.latest?.codecPreferenceCalls).toHaveLength(1),
