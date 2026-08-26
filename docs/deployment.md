@@ -3,7 +3,7 @@
 Last verified: 2026-08-26.
 
 This page records production running exact deployed application/runtime revision
-`3037c0a8f0d16e0df791eb8e64003a7a6660d521`, release `3037c0a`, and the single
+`8164102af8083d55632cf5de10197b5823b3d140`, release `8164102`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,16 +25,16 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `3037c0a8f0d16e0df791eb8e64003a7a6660d521`, release
-`3037c0a`, from `/opt/screener/releases/3037c0a`. The immutable runtime tar
+Production runs exact `8164102af8083d55632cf5de10197b5823b3d140`, release
+`8164102`, from `/opt/screener/releases/8164102`. The immutable runtime tar
 SHA-256 is
-`f84cb7f7acbfbd950ecfdac13da9a0d6e99a4c10eb221c6948ce81b47ce2b5f6`.
+`1f61395702afaabfda8c178a08c7896af77e1c4750dcc9f29ffaafbd56bba80f`.
 Its 41-file path/size/hash manifest SHA-256 is
-`e2fc8115c9cb7d6455027dc2af6f29229834774ed12de334832a8d53d6fc6262`.
+`55b9779fdaf4fe2ba98d5612b16e398fbf2ad6b9ebcfeeeef6e0ce5c3595ac8d`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-Y4pFjW_S.js` with SHA-256
-`a3df27613dfb10fb45297197afdf2500e2953c2b5330b13e5bb49eafdc3e1447`.
+`assets/index-CPECbwjN.js` with SHA-256
+`dfcbed5d4178afbd7f6713f1ae348a70921b936199fa56d87fa05c785564559e`.
 
 The release deploys the single Browser `screener-v12` wire and one internal,
 content-independent H.264 sender gate with VP8 fallback across Browser direct,
@@ -296,7 +296,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `3037c0a` runs the deployed server and Browser assets
+Production release `8164102` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 

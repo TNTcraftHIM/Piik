@@ -8,22 +8,23 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `3037c0a8f0d16e0df791eb8e64003a7a6660d521`, release `3037c0a`, wire
-  `screener-v12`, from `/opt/screener/releases/3037c0a`. The immutable runtime
+  `8164102af8083d55632cf5de10197b5823b3d140`, release `8164102`, wire
+  `screener-v12`, from `/opt/screener/releases/8164102`. The immutable runtime
   tar SHA-256 is
-  `f84cb7f7acbfbd950ecfdac13da9a0d6e99a4c10eb221c6948ce81b47ce2b5f6`;
+  `1f61395702afaabfda8c178a08c7896af77e1c4750dcc9f29ffaafbd56bba80f`;
   its 41-file manifest SHA-256 is
-  `e2fc8115c9cb7d6455027dc2af6f29229834774ed12de334832a8d53d6fc6262`.
-- The served Browser entry references `assets/index-Y4pFjW_S.js`; the public
+  `55b9779fdaf4fe2ba98d5612b16e398fbf2ad6b9ebcfeeeef6e0ce5c3595ac8d`.
+- The served Browser entry references `assets/index-CPECbwjN.js`; the public
   asset SHA-256 is
-  `a3df27613dfb10fb45297197afdf2500e2953c2b5330b13e5bb49eafdc3e1447`.
+  `dfcbed5d4178afbd7f6713f1ae348a70921b936199fa56d87fa05c785564559e`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
   `/var/lib/screener/rooms.sqlite`; live participants, routes and media remain
-  process-only. A controlled restart retained a temporary room's exact Host
-  authority and normal room deletion removed it afterward. Lightweight mode
-  remains available when `ROOM_DATABASE_PATH` is unset.
+  process-only. A controlled restart retained the room authority and Host-owned
+  capture while the Viewer rebuilt media without a page refresh. Lightweight
+  mode remains available when `ROOM_DATABASE_PATH` is unset and reacquires a
+  room rather than persisting the old authority.
 - Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. Web
   ingress is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are
   private. TURN, ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are
@@ -41,10 +42,11 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical `main` contains the same application tree deployed from `3037c0a`.
+- Canonical `main` contains the same application tree deployed from `8164102`.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
-  room replacement, graceful service-restart presentation and the Host codec
-  selector are implemented; production selects stable storage.
+  room replacement and the Host codec selector are implemented; production
+  selects stable storage. Graceful restart, crash, timeout and network loss use
+  one reconnect state. LiveKit room teardown cannot stop Host-owned capture.
 - One event-driven controller owns the committed graph and one room-serial child
   operation. Initial direct acquisition uses a five-second foreground window;
   exact transport-connected progress may retain that candidate through the
@@ -62,11 +64,15 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Implement presentation-authoritative freeze/pause evidence with decoded
+1. Close the confirmed authority/recovery P1s: typed KDF gate outcomes, exact
+   route-terminal ownership, assignment-fenced child creation, bounded SFU
+   refresh, exact Viewer authentication outcomes, and reconnect-safe Host
+   quality intent.
+2. Implement presentation-authoritative freeze/pause evidence with decoded
    progress and the controller-owned shadow aggregate; collect production
    samples without active route changes.
-2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
-3. Finish representative public-network direct, peer-relay, SFU, recovery,
+3. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
+4. Finish representative public-network direct, peer-relay, SFU, recovery,
    Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance
    without adding another transport or quality controller.
 
@@ -85,5 +91,6 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Hold
 
-No source or deployment P0 is open. Representative real-network and mobile
-physical evidence remains required before route acceptance is complete.
+No source or deployment P0 is open. The recovery/authority P1 milestone blocks
+active quality-route behavior; representative real-network and mobile physical
+evidence remains required before route acceptance is complete.
