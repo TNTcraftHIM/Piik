@@ -375,13 +375,17 @@ ingress degradation reparents that relay while retaining its subtree; one
 child's degradation moves only that child.
 
 The accepted first stage is shadow evaluation only. Viewer evidence adds the
-standard cumulative-renderer deltas `framesRendered`, `freezeCount`,
-`totalFreezesDuration`, `pauseCount` and `totalPausesDuration`. W3C already
+standard cumulative-renderer deltas `freezeCount`, `totalFreezesDuration`,
+`pauseCount` and `totalPausesDuration` and requires continuing
+`framesDecoded` progress. W3C already
 defines a freeze relative to the last 30 rendered frames, so this phase invents
 no FPS, bitrate, loss or latency threshold. A recovered freeze or pause updates
 its duration only after a later frame is rendered, so a valid delta may exceed
-the adjacent report window and must not be clipped. A missing member is unknown;
-only windows containing all five rendered metrics enter the aggregate.
+the adjacent report window and must not be clipped. Current target Chromium
+does not map W3C `framesRendered` into `RTCInboundRtpStreamStats`, so synthetic
+fixtures must not make it a product dependency. A missing member is unknown;
+only windows containing decoded progress and all four freeze/pause metrics enter
+the aggregate.
 
 Presentation eligibility binds visible/not-suspended page state, non-paused
 Host authority, native video play state, current composited-frame proof and the
