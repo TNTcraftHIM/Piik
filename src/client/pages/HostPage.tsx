@@ -139,6 +139,7 @@ import {
 } from "./host-page-notices";
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
+const SERVER_RESTART_NOTICE = "服务已重启，正在恢复";
 
 type ViewerQualityEvidence = Extract<
   ServerMessage,
@@ -1538,6 +1539,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 signalRef.current === signal
               ) {
                 setSignalStatus(status);
+                if (status === "restarting") {
+                  setNotice(SERVER_RESTART_NOTICE);
+                } else if (status === "connected") {
+                  setNotice((current) =>
+                    current === SERVER_RESTART_NOTICE ? null : current,
+                  );
+                }
               }
             },
             onTerminated: (reason) => {

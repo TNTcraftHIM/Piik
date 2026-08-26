@@ -41,6 +41,7 @@ const MAX_BUFFERED_SIGNAL_BYTES = 256 * 1024;
 const DEFAULT_MAX_SIGNAL_CONNECTIONS = 2_048;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS = 256;
 const MIN_SIGNALING_CHALLENGE_INTERVAL_MS = 1_000;
+const SERVICE_RESTART_CLOSE_GRACE_MS = 1_000;
 
 interface AuthenticatedSession {
   roomId: string;
@@ -269,12 +270,20 @@ export class SignalingServer {
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
     this.ordinaryActiveHostChildrenByRoom.clear();
-    for (const socket of this.webSocketServer.clients) {
-      socket.terminate();
-    }
-    await new Promise<void>((resolve) => {
+    const closed = new Promise<void>((resolve) => {
       this.webSocketServer.close(() => resolve());
     });
+    for (const socket of this.webSocketServer.clients) {
+      socket.close(SIGNAL_CLOSE_CODES.serviceRestart, "Service restart");
+    }
+    const forceCloseTimer = setTimeout(() => {
+      for (const socket of this.webSocketServer.clients) {
+        socket.terminate();
+      }
+    }, SERVICE_RESTART_CLOSE_GRACE_MS);
+    forceCloseTimer.unref();
+    await closed;
+    clearTimeout(forceCloseTimer);
     if (routeCloseError) {
       throw routeCloseError;
     }

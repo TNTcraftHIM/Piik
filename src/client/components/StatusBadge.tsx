@@ -28,6 +28,7 @@ export function SignalStatusBadge({
   const values: Record<SignalConnectionState, BadgeProps> = {
     connecting: { tone: "neutral", label: "正在连接" },
     connected: { tone: "good", label: "服务器已连接" },
+    restarting: { tone: "warning", label: "服务已重启，正在恢复" },
     reconnecting: { tone: "warning", label: "正在恢复" },
     offline: { tone: "neutral", label: "服务器未连接" },
   };

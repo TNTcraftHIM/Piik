@@ -527,20 +527,28 @@ export function deriveViewerPresentation(
 
   if (currentFrame) {
     const signalRecovering =
-      state.signal === "reconnecting" || state.signal === "connecting";
+      state.signal === "restarting" ||
+      state.signal === "reconnecting" ||
+      state.signal === "connecting";
     const mediaRecovering =
       state.connection === "reconnecting" || state.connection === "failed";
     return {
       ...presentation(
         signalRecovering || mediaRecovering ? "recovering" : "playing",
-        signalRecovering || mediaRecovering ? "正在恢复连接" : "正在播放",
+        state.signal === "restarting"
+          ? "服务已重启，正在恢复"
+          : signalRecovering || mediaRecovering
+            ? "正在恢复连接"
+            : "正在播放",
         "none",
         state,
       ),
       notice: state.host === "offline"
         ? "分享者连接已中断，画面可能冻结"
         : signalRecovering
-        ? "服务器连接正在恢复，画面仍在播放"
+        ? state.signal === "restarting"
+          ? "服务已重启，正在恢复媒体"
+          : "服务器连接正在恢复，画面仍在播放"
         : mediaRecovering
           ? "媒体连接正在恢复"
           : null,
@@ -631,13 +639,14 @@ export function deriveViewerPresentation(
     );
   }
   if (
+    state.signal === "restarting" ||
     state.signal === "reconnecting" ||
     state.connection === "reconnecting" ||
     state.connection === "failed"
   ) {
     return presentation(
       "recovering",
-      "正在恢复连接",
+      state.signal === "restarting" ? "服务已重启，正在恢复" : "正在恢复连接",
       frameOverlay,
       state,
     );

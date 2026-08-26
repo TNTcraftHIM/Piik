@@ -284,7 +284,11 @@ export class SignalingClient {
       this.clearSignalingWatchdog();
       this.clearAuthenticationTimer();
       if (!this.stopped && shouldReconnectSignaling(event.code)) {
-        this.scheduleReconnect();
+        this.scheduleReconnect(
+          event.code === SIGNAL_CLOSE_CODES.serviceRestart
+            ? "restarting"
+            : "reconnecting",
+        );
       } else if (!this.stopped) {
         this.stopped = true;
         this.clearTimers();
@@ -304,8 +308,10 @@ export class SignalingClient {
     });
   }
 
-  private scheduleReconnect(): void {
-    this.events.onStatus("reconnecting");
+  private scheduleReconnect(
+    status: "restarting" | "reconnecting" = "reconnecting",
+  ): void {
+    this.events.onStatus(status);
     const exponent = Math.min(this.reconnectAttempt, 4);
     const delay = Math.min(8_000, 500 * 2 ** exponent) + Math.random() * 250;
     this.reconnectAttempt += 1;

@@ -712,8 +712,55 @@ describe("client signaling recovery policy", () => {
     expect(shouldReconnectSignaling(4003)).toBe(false);
     expect(shouldReconnectSignaling(4004)).toBe(false);
     expect(shouldReconnectSignaling(1008)).toBe(false);
+    expect(shouldReconnectSignaling(1012)).toBe(true);
     expect(shouldReconnectSignaling(4002)).toBe(true);
     expect(shouldReconnectSignaling(1006)).toBe(true);
+  });
+
+  it("reports a service restart while scheduling reconnect", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/1234"),
+      setTimeout,
+      clearTimeout,
+    });
+    const statuses: string[] = [];
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "viewer",
+        clientId: "viewer-client",
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: (status) => statuses.push(status),
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    const closed = new Event("close");
+    Object.defineProperty(closed, "code", { value: 1012 });
+    sockets[0]!.dispatchEvent(closed);
+
+    expect(statuses.at(-1)).toBe("restarting");
+    signal.stop();
   });
 
   it("classifies a close-only authentication failure without claiming replacement", () => {
