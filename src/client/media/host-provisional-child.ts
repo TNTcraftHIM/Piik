@@ -6,6 +6,7 @@ import type {
 } from "../../shared/protocol";
 import { countEndpointMediaCopies } from "../../shared/media-copy-accounting";
 import { HostPeer } from "../webrtc/host-peer";
+import type { BrowserVideoCodec } from "../webrtc/video-codec";
 import type { PeerSnapshot } from "../types";
 import type { QualityProfile } from "./quality";
 
@@ -21,6 +22,7 @@ interface HostProvisionalPrepareInput extends HostProvisionalInput {
   iceConfig: IceConfig;
   stream: MediaStream;
   profile: QualityProfile;
+  videoCodec: BrowserVideoCodec;
 }
 
 interface HostProvisionalChildEvents {
@@ -86,7 +88,10 @@ export class HostProvisionalChild {
   private startPrepared(
     revision: number,
     candidate: PreparedRouteCandidate,
-    input: Pick<HostProvisionalPrepareInput, "iceConfig" | "stream" | "profile">,
+    input: Pick<
+      HostProvisionalPrepareInput,
+      "iceConfig" | "stream" | "profile" | "videoCodec"
+    >,
   ): void {
     let peer: HostPeer;
     peer = new HostPeer(
@@ -113,6 +118,7 @@ export class HostProvisionalChild {
           }
         },
       },
+      input.videoCodec,
       candidate.connectionId,
     );
     this.signalingPeer = peer;

@@ -87,7 +87,7 @@ Last updated: 2026-08-26
 - WebRTC owns direct/peer media adaptation. The Host reapplies the selected video
   profile after answer negotiation; no periodic application controller exists.
 - The production SFU publisher uses the Host's H.264/VP8 decision and selected
-  ceiling but no custom simulcast layers. Pinned LiveKit defaults own
+  ceiling but no backup codec or custom simulcast layers. Pinned LiveKit defaults own
   representations, Dynacast owns aggregate
   demand, and server send-side BWE owns subscriber forwarding. AdaptiveStream
   stays disabled because any Viewer may relay its received track.
@@ -118,8 +118,10 @@ Last updated: 2026-08-26
 
 ## Current Source And Production
 
-- Production and the matching canonical application/runtime tree use strict
-  `screener-v12`; exact identity is indexed by [status](./status.md).
+- Production and canonical source use strict `screener-v12`, but the pending
+  application candidate adds the internal H.264/VP8 decision while production
+  remains on its prior fixed-VP8 artifact. Exact identities are indexed by
+  [status](./status.md).
 - Production uses random memory rooms, 20-Viewer admission, endpoint cap `2`,
   fixed 9,000-publication ingress and `9000 * 20` subscription egress admission,
   STUN UDP 3478, LiveKit media UDP 7882, and Web TCP 80/443. Node 8787 and

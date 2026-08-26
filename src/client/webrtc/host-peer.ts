@@ -24,7 +24,10 @@ import {
   collectConnectionMetrics,
   createStatsAccumulator,
 } from "./stats";
-import { applyVp8Codec } from "./vp8-codec";
+import {
+  applyVideoCodecPreference,
+  type BrowserVideoCodec,
+} from "./video-codec";
 
 const MAX_PENDING_CANDIDATES = 64;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
@@ -73,6 +76,7 @@ export class HostPeer {
     private stream: MediaStream,
     private desiredProfile: QualityProfile,
     private readonly events: HostPeerEvents,
+    private readonly videoCodec: BrowserVideoCodec = "vp8",
     connectionId = createOpaqueId(),
   ) {
     this.connectionId = connectionId;
@@ -105,8 +109,8 @@ export class HostPeer {
       direction: "sendonly",
       streams: [this.stream],
     });
-    if (!applyVp8Codec(videoTransceiver)) {
-      this.setError(null, "当前浏览器无法使用 VP8 视频编码");
+    if (!applyVideoCodecPreference(videoTransceiver, this.videoCodec)) {
+      this.setError(null, "当前浏览器无法使用支持的视频编码");
       return false;
     }
     this.videoSender = videoTransceiver.sender;

@@ -64,6 +64,7 @@ describe("StatsGrid progressive disclosure", () => {
     );
     for (const label of [
       "RTT",
+      "视频编码",
       "可用上行",
       "质量状态",
       "捕获设置",
@@ -75,15 +76,16 @@ describe("StatsGrid progressive disclosure", () => {
       expect(html.indexOf(label)).toBeGreaterThan(panelStart);
     }
     expect(html).toContain("58.5 fps");
+    expect(html).toContain("VP8");
   });
 
-  it("omits fixed codecs and browser-internal transport details", () => {
+  it("shows the negotiated video codec but omits browser-internal transport details", () => {
     const html = renderToStaticMarkup(
       createElement(StatsGrid, { metrics, direction: "send" }),
     );
 
+    expect(html).toContain("<dt>视频编码</dt><dd>VP8</dd>");
     for (const omitted of [
-      "视频 Codec",
       "音频 Codec",
       "候选路径",
       "本地候选地址",
@@ -107,14 +109,14 @@ describe("StatsGrid progressive disclosure", () => {
       createElement(StatsGrid, {
         metrics: {
           ...metrics,
-          codec: "video/H264",
+          codec: "video/VP9",
           audioCodec: "audio/PCMU",
         },
         direction: "receive",
       }),
     );
 
-    expect(html).toContain("视频编码为 H264，预期 VP8");
+    expect(html).toContain("视频编码为 VP9，预期 H264 或 VP8");
     expect(html).toContain("音频编码为 PCMU，预期 Opus");
     expect(html).not.toContain("视频 Codec");
     expect(html).not.toContain("音频 Codec");

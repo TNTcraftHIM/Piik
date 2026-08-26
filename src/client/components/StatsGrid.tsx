@@ -48,8 +48,13 @@ function codecName(codec: string): string {
 
 export function codecContractWarnings(metrics: ConnectionMetrics): string[] {
   const warnings: string[] = [];
-  if (metrics.codec && metrics.codec.toLowerCase() !== "video/vp8") {
-    warnings.push(`视频编码为 ${codecName(metrics.codec)}，预期 VP8`);
+  if (
+    metrics.codec &&
+    !["video/h264", "video/vp8"].includes(metrics.codec.toLowerCase())
+  ) {
+    warnings.push(
+      `视频编码为 ${codecName(metrics.codec)}，预期 H264 或 VP8`,
+    );
   }
   if (metrics.audioCodec && metrics.audioCodec.toLowerCase() !== "audio/opus") {
     warnings.push(`音频编码为 ${codecName(metrics.audioCodec)}，预期 Opus`);
@@ -75,6 +80,9 @@ function secondaryMetrics(
   };
 
   addNumber("RTT", metrics.rttMs, "ms", 0, "网络往返时间");
+  if (metrics.codec) {
+    values.push({ label: "视频编码", value: codecName(metrics.codec) });
+  }
 
   if (direction === "send") {
     addNumber("可用上行", metrics.availableOutgoingKbps, "kbps");

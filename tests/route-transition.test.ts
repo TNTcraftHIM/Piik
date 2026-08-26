@@ -259,6 +259,7 @@ describe("minimal route transition contracts", () => {
     const route = new HostSfuRoute({
       getStream: () => ({}) as MediaStream,
       getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "h264",
       reconcileChildren: () => undefined,
       send: (message) => {
         messages.push(message);
@@ -281,6 +282,11 @@ describe("minimal route transition contracts", () => {
     });
     await route.acceptConfig(sfuConfig(1));
     expect(publishers[0]?.activate).toHaveBeenCalledOnce();
+    expect(publishers[0]?.activate).toHaveBeenCalledWith(
+      expect.anything(),
+      QUALITY_PROFILES["720p30"],
+      "h264",
+    );
 
     route.accept({
       revision: 2,
@@ -311,6 +317,7 @@ describe("minimal route transition contracts", () => {
     const route = new HostSfuRoute({
       getStream: () => ({}) as MediaStream,
       getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
       reconcileChildren: (children) => reconciledChildren.push(children),
       send: () => true,
       createPublisher: () => {
@@ -365,6 +372,7 @@ describe("minimal route transition contracts", () => {
     const route = new HostSfuRoute({
       getStream: () => ({}) as MediaStream,
       getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
       reconcileChildren: () => undefined,
       send: () => true,
       createPublisher: () => {

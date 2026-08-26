@@ -7,11 +7,20 @@ import {
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer } from "../src/client/webrtc/host-peer.ts";
+import type { BrowserVideoCodec } from "../src/client/webrtc/video-codec.ts";
 import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
 import type {
   IceConfig,
   ParticipantRouteAssignment,
 } from "../src/shared/protocol.ts";
+
+const codecPreflight = vi.hoisted(() => ({
+  probe: vi.fn(async (): Promise<"h264" | "vp8"> => "vp8"),
+}));
+
+vi.mock("../src/client/webrtc/video-codec-preflight.ts", () => ({
+  preferredVideoCodecForTrack: codecPreflight.probe,
+}));
 
 const statsCallbacks: Array<() => void> = [];
 
@@ -387,6 +396,7 @@ function createPeer(
   onUpdate: (snapshot: PeerSnapshot) => void = () => undefined,
   iceConfig: IceConfig = { iceServers: [] },
   profile: QualityProfile = QUALITY_PROFILES["720p30"],
+  videoCodec: BrowserVideoCodec = "vp8",
 ): HostPeer {
   return new HostPeer(
     "viewer-peer",
@@ -397,6 +407,7 @@ function createPeer(
       sendSignal: () => true,
       onUpdate,
     },
+    videoCodec,
   );
 }
 
@@ -434,6 +445,8 @@ async function completeVideoStartup(
 }
 
 beforeEach(() => {
+  codecPreflight.probe.mockReset();
+  codecPreflight.probe.mockResolvedValue("vp8");
   FakePeerConnection.latest = null;
   FakePeerConnection.instances = [];
   FakePeerConnection.activeCount = 0;
@@ -519,6 +532,50 @@ describe("HostPeer source replacement", () => {
     expect(connection.createOfferCallCount).toBe(1);
   });
 
+  it("prefers native H264 mode 1 and retains VP8 fallback", async () => {
+    vi.stubGlobal("RTCRtpSender", {
+      getCapabilities: () => ({
+        codecs: [
+          {
+            mimeType: "video/H264",
+            clockRate: 90_000,
+            sdpFmtpLine: "packetization-mode=0;profile-level-id=42001f",
+          },
+          {
+            mimeType: "video/H264",
+            clockRate: 90_000,
+            sdpFmtpLine: "packetization-mode=1;profile-level-id=42001f",
+          },
+          { mimeType: "video/VP8", clockRate: 90_000 },
+          { mimeType: "video/rtx", clockRate: 90_000 },
+          { mimeType: "video/RED", clockRate: 90_000 },
+        ],
+        headerExtensions: [],
+      }),
+    });
+    const peer = createPeer(
+      createStream(createTrack("video", "video"), null),
+      () => undefined,
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      "h264",
+    );
+
+    await expect(peer.start()).resolves.toBe(true);
+
+    expect(
+      FakePeerConnection.latest!.codecPreferenceCalls[0]?.map((codec) => [
+        codec.mimeType.toLowerCase(),
+        codec.sdpFmtpLine ?? null,
+      ]),
+    ).toEqual([
+      ["video/h264", "packetization-mode=1;profile-level-id=42001f"],
+      ["video/vp8", null],
+      ["video/rtx", null],
+      ["video/red", null],
+    ]);
+  });
+
   it("fails before creating an offer when codec preferences are unavailable", async () => {
     FakePeerConnection.omitCodecPreferenceSetter = true;
     const updates: PeerSnapshot[] = [];
@@ -531,7 +588,7 @@ describe("HostPeer source replacement", () => {
 
     expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
     expect(FakePeerConnection.latest!.localDescription).toBeNull();
-    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用 VP8 视频编码");
+    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用支持的视频编码");
   });
 
   it("fails before creating an offer when VP8 is unavailable", async () => {
@@ -554,7 +611,7 @@ describe("HostPeer source replacement", () => {
 
     expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
     expect(FakePeerConnection.latest!.localDescription).toBeNull();
-    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用 VP8 视频编码");
+    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用支持的视频编码");
   });
 
   it("fails before creating an offer when codec preference setup fails", async () => {
@@ -569,7 +626,7 @@ describe("HostPeer source replacement", () => {
 
     expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
     expect(FakePeerConnection.latest!.localDescription).toBeNull();
-    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用 VP8 视频编码");
+    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用支持的视频编码");
   });
 
   it("applies STUN-only ICE configuration at creation and update", () => {
@@ -1384,6 +1441,7 @@ function hostProvisionalInput(
     iceConfig: { iceServers: [] },
     stream,
     profile: QUALITY_PROFILES["720p30"],
+    videoCodec: "vp8" as const,
   };
 }
 
@@ -1516,6 +1574,29 @@ describe("ViewerRelay downstream ownership", () => {
     transport: "direct" as const,
   });
 
+  it("uses a completed H264 probe only for a future child", async () => {
+    codecPreflight.probe.mockResolvedValueOnce("h264");
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+    relay.setStream(createStream(createTrack("video", "h264-source"), null));
+    await vi.waitFor(() => expect(codecPreflight.probe).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    relay.setChildren(["h264-child"]);
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.latest?.codecPreferenceCalls).toHaveLength(1),
+    );
+
+    expect(
+      FakePeerConnection.latest!.codecPreferenceCalls[0]?.map(({ mimeType }) =>
+        mimeType.toLowerCase(),
+      ),
+    ).toEqual(["video/h264", "video/vp8"]);
+    relay.dispose();
+  });
+
   it("promotes the exact prepared child connection within the current Viewer cap", async () => {
     const signals: Array<{ peerId: string; connectionId: string }> = [];
     const relay = new ViewerRelay(
@@ -1593,6 +1674,7 @@ describe("ViewerRelay downstream ownership", () => {
     );
     relay.setStream(createStream(createTrack("video", "rollback-video"), null));
     expect(relay.prepareChild(7, routeCandidate(7, "first-probe"), ["first-probe"])).toBe(true);
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
     const firstProbe = FakePeerConnection.latest!;
     expect(relay.prepareChild(8, routeCandidate(8, "second-probe"), ["second-probe"])).toBe(true);
     const secondProbe = FakePeerConnection.latest!;
@@ -1675,6 +1757,7 @@ describe("ViewerRelay downstream ownership", () => {
         ["prepared-child"],
       ),
     ).toBe(true);
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
     const preparedConnection = FakePeerConnection.latest!;
     expect(preparedConnection.senders[1]?.track).toBeNull();
 
@@ -1701,6 +1784,7 @@ describe("ViewerRelay downstream ownership", () => {
     );
     relay.setStream(createStream(createTrack("video", "cap-video"), null));
     expect(relay.prepareChild(1, routeCandidate(1, "child-0"), ["child-0"])).toBe(true);
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
     const preparedConnection = FakePeerConnection.latest!;
     preparedConnection.connectionState = "connected";
     relay.activateChildren(1, ["child-0"]);
