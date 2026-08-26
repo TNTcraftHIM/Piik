@@ -1,4 +1,7 @@
 import { connect } from "node:net";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
@@ -18,6 +21,7 @@ import {
   type ScreenerServer,
 } from "../src/server/app.ts";
 import type { ServerConfig } from "../src/server/config.ts";
+import { RoomDatabase } from "../src/server/room-database.ts";
 import {
   ROOM_CAPACITY,
   RoomStore,
@@ -146,6 +150,8 @@ async function startHarness(
     endpointMediaCopyCapacity?: number;
     stunUrls?: readonly string[];
     now?: () => number;
+    roomStore?: RoomStore;
+    room?: CreatedRoom;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
@@ -156,13 +162,15 @@ async function startHarness(
   config.stunUrls = overrides.stunUrls ?? [];
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
-  const roomStore = new RoomStore({
-    leaseMs: config.roomLeaseMs,
-    maxRooms: ROOM_CAPACITY,
-    maxViewersPerRoom,
-    now: overrides.now,
-  });
-  const room = await roomStore.createRoom();
+  const roomStore =
+    overrides.roomStore ??
+    new RoomStore({
+      leaseMs: config.roomLeaseMs,
+      maxRooms: ROOM_CAPACITY,
+      maxViewersPerRoom,
+      now: overrides.now,
+    });
+  const room = overrides.room ?? (await roomStore.createRoom());
   runningServer = await createScreenerServer({
     config,
     roomStore,
@@ -444,6 +452,92 @@ async function closeClient(client: TestClient): Promise<void> {
 }
 
 describe("WebSocket signaling", () => {
+  it("rebuilds a route when a Viewer reconnects before the Host after restart", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "screener-route-restart-"));
+    const path = join(directory, "rooms.sqlite");
+    try {
+      const firstStore = new RoomStore({
+        leaseMs: 86_400_000,
+        maxRooms: ROOM_CAPACITY,
+        maxViewersPerRoom: 8,
+        database: new RoomDatabase(path),
+      });
+      firstStore.initialize();
+      const room = await firstStore.createRoom();
+      const first = await startHarness({
+        peerAssistedMedia: true,
+        roomStore: firstStore,
+        room,
+      });
+      const firstHost = await openClient(first.webSocketUrl);
+      await authenticate(
+        firstHost,
+        room,
+        "host",
+        "restart-route-host",
+        1,
+        "restart_share_generation_12345678",
+      );
+      const firstViewer = await openClient(first.webSocketUrl);
+      await authenticate(
+        firstViewer,
+        room,
+        "viewer",
+        "restart-route-viewer",
+        1,
+      );
+      await nextPreparedRoute(firstViewer);
+
+      const firstServer = runningServer!;
+      runningServer = undefined;
+      await firstServer.close();
+
+      const secondStore = new RoomStore({
+        leaseMs: 86_400_000,
+        maxRooms: ROOM_CAPACITY,
+        maxViewersPerRoom: 8,
+        database: new RoomDatabase(path),
+      });
+      secondStore.initialize();
+      const second = await startHarness({
+        peerAssistedMedia: true,
+        roomStore: secondStore,
+        room,
+      });
+      const secondViewer = await openClient(second.webSocketUrl);
+      const viewerAuth = peerAssisted(
+        await authenticate(
+          secondViewer,
+          room,
+          "viewer",
+          "restart-route-viewer",
+          1,
+        ),
+      );
+      expect(viewerAuth.routeAssignment.upstream).toEqual({ kind: "none" });
+
+      const secondHost = await openClient(second.webSocketUrl);
+      await authenticate(
+        secondHost,
+        room,
+        "host",
+        "restart-route-host",
+        1,
+        "restart_share_generation_12345678",
+      );
+      const viewerPrepare = await nextPreparedRoute(secondViewer);
+      const hostPrepare = await nextPreparedRoute(secondHost);
+      expect(viewerPrepare).toMatchObject({
+        revision: hostPrepare.revision,
+        candidate: hostPrepare.candidate,
+      });
+    } finally {
+      await runningServer?.close();
+      runningServer = undefined;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("identifies a graceful service restart to connected clients", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);

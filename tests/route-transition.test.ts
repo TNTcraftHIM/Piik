@@ -33,6 +33,12 @@ const viewerSfuAssignment = (
   sfuPublicationGeneration: publicationGeneration,
 });
 
+const emptyViewerAssignment = (): ParticipantRouteAssignment => ({
+  upstream: { kind: "none" },
+  childPeerIds: [],
+  sfuPublicationGeneration: null,
+});
+
 const hostAssignment = (
   publicationGeneration: string | null,
   childPeerIds: string[] = [],
@@ -116,6 +122,58 @@ function createFakeSubscriber(events: SubscriberEvents, log: string[], label: st
 }
 
 describe("minimal route transition contracts", () => {
+  it("rebinds Viewer route ownership before a post-restart prepare", async () => {
+    const prepared: Array<{ parentPeerId: string | null; revision?: number }> = [];
+    const route = new ViewerSfuRoute("viewer_old_12345678", {
+      activatePeer: () => true,
+      preparePeer: (assignment, revision) =>
+        prepared.push({
+          parentPeerId:
+            assignment?.upstream.kind === "peer"
+              ? assignment.upstream.peerId
+              : null,
+          ...(revision === undefined ? {} : { revision }),
+        }),
+      resetMedia: () => undefined,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+    route.accept({
+      revision: 9,
+      phase: "active",
+      assignment: peerAssignment("old_parent_12345678"),
+    });
+
+    const resync = route.resyncAuthoritative(
+      {
+        revision: 0,
+        phase: "active",
+        assignment: emptyViewerAssignment(),
+      },
+      "viewer_new_12345678",
+    );
+    expect(
+      route.accept({
+        revision: 1,
+        phase: "prepare",
+        assignment: peerAssignment("new_parent_12345678"),
+        candidate: candidate(
+          1,
+          "viewer_new_12345678",
+          "direct",
+          "post_restart_connection_12345678",
+        ),
+      }),
+    ).toBe("accepted");
+    await resync;
+
+    expect(prepared.at(-1)).toEqual({
+      parentPeerId: "new_parent_12345678",
+      revision: 1,
+    });
+  });
+
   it("keeps old media through prepare and commits only exact active authority", () => {
     const route = new MediaRouteTransition();
     const oldAssignment = peerAssignment("old-parent");
