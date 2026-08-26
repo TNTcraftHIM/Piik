@@ -8,8 +8,9 @@ later topic is not implementation authority by itself.
 ## Now
 
 1. **Quality-route evidence and shadow calibration.** Make current Viewer
-   quality evidence presentation-authoritative with standard rendered freeze and
-   pause deltas, exact presentation epochs and baseline fencing. Keep one bounded
+   quality evidence presentation-authoritative with standard freeze/pause
+   deltas, continuing decoded progress, exact presentation epochs and baseline
+   fencing. Keep one bounded
    current-epoch aggregate per exact child in the existing room controller and
    expose it only through the Host acceptance snapshot. It must not alter facts,
    capacity, routes or SFU usage. Collect annotated production samples before
