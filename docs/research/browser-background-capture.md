@@ -46,13 +46,13 @@ does not say that minimizing the separate capturing page must reduce capture.
 Capture constraints are post-selection preferences and allow frame decimation,
 so requested `maxFramerate` is not proof of actual source or encoded frame rate.
 
-The accepted Browser video codec is fixed VP8. Every run still records the
-actual negotiated codec and encoder rather than inferring either from
-configuration. Encoder implementation is a diagnostic variable only after a
-stable baseline exists; neither codec nor encoder choice is a page-keepalive
-mechanism.
+Production candidate `5551177` may select H.264 or VP8 through its bounded sender
+gate. Every run still records the actual negotiated codec and encoder rather than
+inferring either from configuration. Encoder implementation is a diagnostic
+variable only after a stable baseline exists; neither codec nor encoder choice
+is a page-keepalive mechanism.
 
-The accepted Browser path uses VP8 and `contentHint = "motion"`. A controlled
+The accepted Browser path uses `contentHint = "motion"`. A controlled
 probe showed that this standard game-motion hint can spatially downscale to
 preserve cadence; that quality tradeoff is independent from page lifecycle and
 does not explain a state-dependent background report. The physical baseline
@@ -67,9 +67,10 @@ not inherit this desktop Host result.
 
 ## Current Source Boundary
 
-Current source and production use fixed VP8, video `contentHint = "motion"`,
-audio `contentHint = "music"`, and no codec UI, quality state, or wire field;
-their exact identity is owned by [status](../status.md).
+Canonical source remains fixed VP8 while production candidate `5551177` uses the
+content-independent H.264 gate with VP8 fallback. Both use video
+`contentHint = "motion"`, audio `contentHint = "music"`, and no codec selector or
+wire field; their exact identity is owned by [status](../status.md).
 The current path does not claim or implement a page-keepalive mechanism, and
 deployment health supplies no physical background-capture evidence.
 

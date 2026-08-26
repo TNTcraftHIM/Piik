@@ -7,11 +7,13 @@
 
 ## Current Conclusion
 
-Browser video is fixed VP8. Display video uses `contentHint = "motion"`, and
-display audio uses `contentHint = "music"`. The three recommended profiles and
-advanced settings are ceilings, not delivery guarantees. WebRTC owns direct and
-peer congestion control; LiveKit owns SFU representations, Dynacast, subscriber
-bandwidth estimation, and layer forwarding.
+Production candidate `5551177` uses a content-independent H.264 sender gate with
+VP8 fallback; canonical source remains fixed VP8 until acceptance and integration.
+Display video uses `contentHint = "motion"`, and display audio uses
+`contentHint = "music"`. The three recommended profiles and advanced settings
+are ceilings, not delivery guarantees. WebRTC owns direct and peer congestion
+control; LiveKit owns SFU representations, Dynacast, subscriber bandwidth
+estimation, and layer forwarding.
 
 On current Windows Chrome, Browser WebRTC VP8 is a software path. Chromium 151's
 Windows hardware encoder backends do not enumerate VP8, and the measured Edge

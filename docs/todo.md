@@ -7,12 +7,13 @@ later topic is not implementation authority by itself.
 
 ## Now
 
-1. **Adaptive Browser H.264.** Implement the accepted sender-scoped actual-sender
-   preflight with a deterministic moving probe track at the current share target.
-   Proved Host/relay senders prefer H.264 with native VP8 fallback;
-   failed or inconclusive senders use VP8. The Host decision owns its one SFU
-   publication with backup codec disabled. Add no codec UI, wire state,
-   persistent cache, parallel codec route, or active-edge churn.
+1. **Adaptive Browser H.264 acceptance and integration.** Validate deployed
+   candidate `5551177` with real Host, Browser-relay and SFU paths, then integrate
+   it into canonical `main`. The content-independent sender probe prefers H.264
+   only when target cadence is proved and otherwise uses VP8. Keep codec selector,
+   wire state, persistent cache, parallel codec route, backup publication and
+   active-edge churn absent; connection details may display the actual negotiated
+   codec.
 2. **Preferred room simplification and replacement.** Keep the server dormant
    lease unchanged, but store the latest preferred code without a client expiry
    or renewal timer. After H.264, add the Host refresh-icon action immediately

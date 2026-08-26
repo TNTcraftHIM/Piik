@@ -1,6 +1,7 @@
 # ADR-0007: Framework-Owned Media Quality Adaptation
 
-- Status: Accepted; adaptive Browser codec implementation pending
+- Status: Accepted; deployed candidate under production acceptance, canonical
+  integration pending
 - Date: 2026-08-19
 - Last reviewed: 2026-08-26
 

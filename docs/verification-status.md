@@ -8,14 +8,14 @@ may be interpreted. Git and pull requests own routine completed checks.
 ## Current Production Identity
 
 - Production runs exact application/runtime revision
-  `b6a8a5fa7fe622dd1a61a2455f7151dcfc27ad55`, release `b6a8a5f`, wire
-  `screener-v12`, from `/opt/screener/releases/b6a8a5f`.
+  `55511773b2f9118802440fdec90ad06080b19772`, release `5551177`, wire
+  `screener-v12`, from `/opt/screener/releases/5551177`.
 - Runtime tar SHA-256:
-  `cb5b91b46e9b213e9228bb5b6319df8f3f8865c5b5b39e8b1460830892fdc8e0`.
+  `3688b348fd8757e19fc1acb5523d2ecc90aa3553a30cd3a640e0a9a011e696e3`.
   The 39-file manifest SHA-256 is
-  `810f0dac7fcbe9d762da0502594d49b9ce7475a3b9f780eb602cee83ca609b06`.
-- Public Browser asset `assets/index-vyrTbru-.js` is 492898 bytes with SHA-256
-  `96755b2bdfdc46f68be3c74d27eb9b310593cb472fb473f4406b4461f9107ee1`.
+  `279fb808ccff21c0fa07d0ff7f7afddc1d33de09446ca8446489e4970ee6d8d5`.
+- Public Browser asset `assets/index-uQk7n3NE.js` is 500228 bytes with SHA-256
+  `14012100209475b3fc8851774a1985b3fb17de18a1f80e6fb0c0cf773dcfe0ff`.
   Public `/healthz` returns 200. Release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 
@@ -43,20 +43,28 @@ may be interpreted. Git and pull requests own routine completed checks.
   evidence close the measured Chrome VP8 path as software. Short local controls
   held 1080p30, while 1080p60 was primarily bandwidth-limited and spatially
   adapted. Edge and real-game contention remain open in realtime-quality research.
+- The content-independent sender gate selected VP8 on the measured Chrome 151
+  AMD path and H.264 on Chrome 153 NVIDIA with both moving and static shared
+  content. Static content therefore no longer prevents a codec decision; these
+  two local cohorts do not replace broader real-game/device acceptance.
 - Direct, Browser-relay, and SFU paths advanced video plus screen audio at
-  64/128/256 kbps ceilings and after source replacement. The old constant
+  64/128/192 kbps ceilings and after source replacement. The old constant
   active-audio `1 kbps` display is closed. Exact SFU weak-network behavior after
   RED was disabled remains open.
 - Browser SFU publisher/subscriber PCs use empty external ICE-server lists while
   ordinary peers retain deployment STUN. The reported Host/Viewer TUN conflict
   was closed by that isolation without adding TURN or TCP media.
 
-## Current Source Evidence
+## Current Source And Candidate Evidence
 
-- Current `b6a8a5f` uses Browser VP8 with `contentHint = "motion"`, reapplies the
+- Canonical application tree `b6a8a5f` uses Browser VP8 with
+  `contentHint = "motion"`, reapplies the
   selected video profile after answer negotiation, leaves SFU representation
   construction to pinned LiveKit, keeps Dynacast/send-side BWE, disables
   AdaptiveStream, and disables SFU audio RED.
+- Production candidate `5551177` adds the content-independent H.264 sender gate,
+  VP8 fallback and actual negotiated codec details without codec wire state,
+  cache, parallel media or active-edge switching.
 - Viewer page-resume decoded-stall rebaselining, current-frame presentation
   authority, hidden-page stall suppression, retryable failure reporting, native
   controls, and same-route manual reconnect are current source behavior. Mobile

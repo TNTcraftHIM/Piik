@@ -3,7 +3,7 @@
 Last verified against upstream documentation: 2026-08-24.
 
 This page records production running exact deployed application/runtime revision
-`b6a8a5fa7fe622dd1a61a2455f7151dcfc27ad55`, release `b6a8a5f`, and the single
+`55511773b2f9118802440fdec90ad06080b19772`, release `5551177`, and the single
 Browser `screener-v12` contract. Product direction and pending work are owned by
 [project memory](./project-memory.md) and [the TODO ledger](./todo.md).
 
@@ -25,22 +25,23 @@ ICE/UDP only. Ordinary peer ICE remains STUN-only and production coturn uses the
 tracked STUN-only configuration with TCP/TLS disabled. The source and production
 configure no TURN, ICE/TCP, media TCP, or TLS-relayed media.
 
-Production runs exact `b6a8a5fa7fe622dd1a61a2455f7151dcfc27ad55`, release
-`b6a8a5f`, from `/opt/screener/releases/b6a8a5f`. The immutable runtime tar
+Production runs exact `55511773b2f9118802440fdec90ad06080b19772`, release
+`5551177`, from `/opt/screener/releases/5551177`. The immutable runtime tar
 SHA-256 is
-`cb5b91b46e9b213e9228bb5b6319df8f3f8865c5b5b39e8b1460830892fdc8e0`.
+`3688b348fd8757e19fc1acb5523d2ecc90aa3553a30cd3a640e0a9a011e696e3`.
 Its 39-file path/size/hash manifest SHA-256 is
-`810f0dac7fcbe9d762da0502594d49b9ce7475a3b9f780eb602cee83ca609b06`.
+`279fb808ccff21c0fa07d0ff7f7afddc1d33de09446ca8446489e4970ee6d8d5`.
 Local and public `/healthz` return 200; Screener, LiveKit, coturn, and nginx are
 active with `NRestarts=0`. The public main Browser asset is
-`assets/index-vyrTbru-.js` with SHA-256
-`96755b2bdfdc46f68be3c74d27eb9b310593cb472fb473f4406b4461f9107ee1`.
+`assets/index-uQk7n3NE.js` with SHA-256
+`14012100209475b3fc8851774a1985b3fb17de18a1f80e6fb0c0cf773dcfe0ff`.
 
-The release deploys the single Browser `screener-v12` wire, fixed VP8 for Browser
-direct, browser-relay, and SFU video, pinned LiveKit default screen-share
+The release deploys the single Browser `screener-v12` wire and one internal,
+content-independent H.264 sender gate with VP8 fallback across Browser direct,
+browser-relay, and SFU video. It retains pinned LiveKit default screen-share
 representations, Dynacast and server send-side BWE without an application layer
 selector, video `contentHint = "motion"`, no
-codec UI/state/wire, random four-digit memory rooms with a 24-hour dormant lease,
+codec selector/state/wire, random four-digit memory rooms with a 24-hour dormant lease,
 a room-lived 22-character grant,
 orthogonal `open | private` grant/code admission,
 20-Viewer room admission, the uniform endpoint media-copy cap `2`, and the
@@ -281,7 +282,7 @@ lifetime. An actively connected Host prevents expiry; explicit stop or Host
 disconnect starts the lease, and only the exact Host token renews it before
 expiry. Viewer activity never renews ownership. `ROOM_DATABASE_PATH` and
 `ROOM_TTL_SECONDS` fail startup even when blank.
-Production `b6a8a5f` accepts 1 through 20 and explicitly selects 20. This is an
+Production accepts 1 through 20 and explicitly selects 20. This is an
 admission limit, not evidence that every publisher, network, or quality profile
 can sustain that many streams.
 `ENDPOINT_MEDIA_COPY_CAPACITY` defaults to 2 and accepts only 1, 2, or 3. It is
@@ -294,7 +295,7 @@ must fail or wait before a fourth endpoint copy is issued.
 Supplying the removed `MAX_PEER_RELAY_DOWNSTREAM_EDGES`, even blank, fails
 startup.
 
-Production release `b6a8a5f` runs the deployed server and Browser assets
+Production release `5551177` runs the deployed server and Browser assets
 atomically on `screener-v12`; every stale Browser or executable-sender wire fails
 before room authority. Native senders and helpers are outside this release.
 

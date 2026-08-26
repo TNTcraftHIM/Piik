@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `b6a8a5fa7fe622dd1a61a2455f7151dcfc27ad55`, release `b6a8a5f`, wire
-  `screener-v12`, from `/opt/screener/releases/b6a8a5f`. The immutable runtime
+  `55511773b2f9118802440fdec90ad06080b19772`, release `5551177`, wire
+  `screener-v12`, from `/opt/screener/releases/5551177`. The immutable runtime
   tar SHA-256 is
-  `cb5b91b46e9b213e9228bb5b6319df8f3f8865c5b5b39e8b1460830892fdc8e0`;
+  `3688b348fd8757e19fc1acb5523d2ecc90aa3553a30cd3a640e0a9a011e696e3`;
   its 39-file manifest SHA-256 is
-  `810f0dac7fcbe9d762da0502594d49b9ce7475a3b9f780eb602cee83ca609b06`.
-- The served Browser entry references `assets/index-vyrTbru-.js`; the public
-  asset is 492898 bytes with SHA-256
-  `96755b2bdfdc46f68be3c74d27eb9b310593cb472fb473f4406b4461f9107ee1`.
+  `279fb808ccff21c0fa07d0ff7f7afddc1d33de09446ca8446489e4970ee6d8d5`.
+- The served Browser entry references `assets/index-uQk7n3NE.js`; the public
+  asset is 500228 bytes with SHA-256
+  `14012100209475b3fc8851774a1985b3fb17de18a1f80e6fb0c0cf773dcfe0ff`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production uses process-memory four-digit rooms, a 24-hour dormant lease,
@@ -26,8 +26,10 @@ This is the current execution index. Git history owns completed timelines;
   ingress is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are
   private. TURN, ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are
   disabled.
-- Browser video is fixed VP8 with `contentHint = "motion"`; audio uses `music`.
-  The SFU publisher leaves representation construction to pinned LiveKit,
+- Browser video uses the content-independent H.264 sender gate with VP8
+  fallback and retains `contentHint = "motion"`; audio uses `music`. The SFU
+  publisher uses the Host's one codec decision, leaves representation
+  construction to pinned LiveKit,
   enables Dynacast, uses server send-side BWE, keeps AdaptiveStream disabled,
   and configures no external ICE servers on Browser SFU PCs.
 - Screen audio provides live 64/128/192 kbps ceilings with 128 default. SFU
@@ -36,9 +38,10 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical root `main` is clean and its application/runtime tree matches exact
-  production revision `b6a8a5f`. Auxiliary branches and worktrees do not
-  supersede it.
+- Canonical root `main` is clean at `376be27`; its application/runtime tree still
+  matches `b6a8a5f`. Production is the separately verified rapid-iteration
+  candidate `5551177`; that candidate does not supersede canonical truth and is
+  not yet integrated.
 - One event-driven controller owns the committed graph and one room-serial child
   operation. Initial direct acquisition uses a five-second foreground window;
   exact transport-connected progress may retain that candidate through the
@@ -56,10 +59,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Implement the accepted content-independent Browser H.264 sender preflight
-   and VP8 fallback across direct, Browser relay, and the Host's single SFU publication. Current
-   source and production remain fixed VP8 until that candidate is integrated and
-   separately released.
+1. Validate production candidate `5551177` across real Host, Browser relay and
+   SFU paths, then integrate the accepted content-independent H.264 gate and VP8
+   fallback into canonical `main`.
 2. Remove the client-side preferred-room expiry/renewal timer while keeping the
    server dormant lease; the explicit replace-room UI follows the codec work.
 3. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.

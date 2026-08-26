@@ -69,14 +69,15 @@ Last updated: 2026-08-26
 
 ## Media Quality
 
-- Current source and production still use VP8 only. The accepted next Browser
-  contract runs one sender-scoped actual-sender preflight with a deterministic
-  moving probe track sized to the current share target, so captured-content
-  motion cannot decide encoder capability. Proved senders prefer
+- Production candidate `5551177` runs one sender-scoped actual-sender preflight
+  with a deterministic moving probe track sized to the current share target, so
+  captured-content motion cannot decide encoder capability. Proved senders prefer
   H.264 with native VP8 fallback, while failed/inconclusive senders remain
   VP8-only. Codec UI/state/wire, persistent codec cache, parallel codec media,
   backup publication, and active-edge codec switching remain absent. Display
   video uses `contentHint = "motion"` and display audio uses `contentHint = "music"`.
+  Canonical `main` has accepted this contract but its application tree remains
+  fixed VP8 until production acceptance and integration.
 - Windows Chrome 151 uses software VP8 and exposes no Web control for selecting
   NVENC, AMF, QSV, a GPU, or an MFT. Edge, non-Windows paths, and real-game CPU
   contention remain evidence-specific.
@@ -85,8 +86,9 @@ Last updated: 2026-08-26
   advanced FPS and bitrate remain independent.
 - WebRTC owns direct/peer media adaptation. The Host reapplies the selected video
   profile after answer negotiation; no periodic application controller exists.
-- The SFU publisher sets VP8 and the selected ceiling but no custom simulcast
-  layers. Pinned LiveKit defaults own representations, Dynacast owns aggregate
+- The production SFU publisher uses the Host's H.264/VP8 decision and selected
+  ceiling but no custom simulcast layers. Pinned LiveKit defaults own
+  representations, Dynacast owns aggregate
   demand, and server send-side BWE owns subscriber forwarding. AdaptiveStream
   stays disabled because any Viewer may relay its received track.
 - Screen audio requests capture by default and offers live 64/128/192 kbps
@@ -128,9 +130,8 @@ Last updated: 2026-08-26
 
 ## Current Priority
 
-1. Implement and verify the accepted adaptive Browser H.264 sender gate without
-   changing the deployed VP8 release, then simplify the local preferred-room
-   record while retaining the server lease.
+1. Validate and integrate production candidate `5551177`, then simplify the
+   local preferred-room record while retaining the server lease.
 2. Complete the mobile Viewer lifecycle matrix and representative real-network
    route/media acceptance.
 
