@@ -31,6 +31,10 @@ copy cap `C`: default `2`, configurable only as `1`, `2`, or `3`.
 - a client may advertise only `0..C` currently available copies, producing the
   controller's effective capacity.
 
+That advertised capacity belongs to the connected endpoint, not one sharing
+generation. Replacing the room graph retains it; Viewer departure or room
+deletion clears it.
+
 One transition-overlap reservation may temporarily raise a producer to
 `min(C + 1, 3)`. Commit or abort releases it. A fourth endpoint copy is never
 authorized. SFU ingress and subscription egress are independent server resources

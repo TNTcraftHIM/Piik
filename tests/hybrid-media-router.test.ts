@@ -1326,6 +1326,43 @@ describe("HybridMediaRouter v9 runtime", () => {
     await router.close();
   });
 
+  it("preserves connected Viewer capacity across sharing generations", async () => {
+    const { store, sent, router } = harness(1);
+    const room = await store.createRoom();
+    const host = connectHost(store, room);
+    complete(router, host);
+    const root = connectViewer(store, room, "retained-capacity-root");
+    complete(router, root);
+    await vi.waitFor(() => expect(preparedFor(sent, root.sessionId)).toBeDefined());
+    const initialRoot = preparedFor(sent, root.sessionId)!;
+    router.handleRouteReady(root, {
+      type: "route-ready",
+      revision: initialRoot.revision,
+      phase: "prepare",
+    });
+    router.setViewerRelayCapacity(root, 1);
+
+    router.stopRoom(room.roomId);
+    sent.set(root.sessionId, []);
+    complete(router, host);
+    await vi.waitFor(() => expect(preparedFor(sent, root.sessionId)).toBeDefined());
+    const restartedRoot = preparedFor(sent, root.sessionId)!;
+    router.handleRouteReady(root, {
+      type: "route-ready",
+      revision: restartedRoot.revision,
+      phase: "prepare",
+    });
+
+    const child = connectViewer(store, room, "retained-capacity-child");
+    complete(router, child);
+    await vi.waitFor(() => expect(preparedFor(sent, child.sessionId)).toBeDefined());
+    expect(preparedFor(sent, child.sessionId)?.assignment.upstream).toEqual({
+      kind: "peer",
+      peerId: root.peerId,
+    });
+    await router.close();
+  });
+
   it("emits typed exhaustion when reconciliation has no candidate", async () => {
     const { store, sent, router } = harness(1);
     const room = await store.createRoom();

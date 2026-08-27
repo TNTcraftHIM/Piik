@@ -821,15 +821,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     commitViewerQualityEvidence(peerId, null);
   }
 
-  function clearAllViewerQualityEvidence(): void {
-    viewerQualityEvidenceTimersRef.current.forEach((timer) =>
-      window.clearTimeout(timer),
-    );
-    viewerQualityEvidenceTimersRef.current.clear();
-    viewerQualityEvidenceRef.current = new Map();
-    setViewerQualityEvidence(new Map());
-  }
-
   function acceptViewerQualityEvidence(evidence: ViewerQualityEvidence): void {
     const peer = peersRef.current.get(evidence.viewerPeerId);
     const directSnapshot = peer?.getSnapshot() ?? null;
@@ -1395,7 +1386,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordEnabled(message.viewerPasswordEnabled);
       setViewerPasswordDraft(authenticatedProfile.roomPassword ?? "");
       setViewerPasswordVisible(false);
-      clearAllViewerQualityEvidence();
       setSfuStandbyUrl(
         "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
       );

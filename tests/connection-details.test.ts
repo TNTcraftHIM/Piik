@@ -23,10 +23,10 @@ describe("progressive connection details", () => {
     expect(
       qualityLimitationSummary([
         snapshot(null),
-        snapshot("此发送连接持续按带宽估计降低分辨率或帧率"),
-        snapshot("此发送连接持续因编码性能降低分辨率或帧率"),
+        snapshot("当前连接带宽受限，画质已自动降低"),
+        snapshot("编码性能受限，画质已自动降低"),
       ]),
-    ).toBe("此发送连接持续按带宽估计降低分辨率或帧率");
+    ).toBe("当前连接带宽受限，画质已自动降低");
     expect(qualityLimitationSummary([snapshot(null)])).toBeNull();
   });
 
