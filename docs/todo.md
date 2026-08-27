@@ -2,90 +2,55 @@
 
 Last reviewed: 2026-08-27
 
-Only **Now** is executable. A branch, old experiment, observation, or accepted
-later topic is not implementation authority by itself.
+Only **Now** is executable. Observations, old branches, experiments, and parked
+topics are not implementation authority.
 
 ## Now
 
-1. **Quality-route evidence and shadow calibration.** Collect annotated
-   production samples from the deployed strict `screener-v13` Browser/server
-   quality shadow before accepting an active trigger,
-   probation, restore or cooldown policy. Shadow evidence must not alter facts,
-   capacity, routes or SFU usage.
+No product or source implementation is open after the documentation checkpoint.
+Await owner direction.
+
+## Parked Repository Work
+
+1. **Bounded mechanism simplification.** Remove only the proved zero-consumer or
+   duplicate owners: coarse `mediaAssignment` wire residue, legacy SFU room-name
+   acceptance, orphan `scripts/browser-codec-preflight.ts`, and the access gate's
+   test-title scan. Keep the production
+   `src/client/webrtc/video-codec-preflight.ts`, live internal media-assignment
+   helpers, and destructive-path safety gates.
+
+## Parked Product Work
+
+1. **Quality-driven route selection.** Strict v13 evidence remains diagnostic.
+   Any future decision must use the existing graph/operation and must not add a
+   score, all-pairs probe, periodic rebalancer, or ordinary SFU preference.
 2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
-   autoplay gesture, foreground/background audio, foreground video recovery,
-   lock/page reclamation, rotation, Wi-Fi/cellular migration, and assigned-relay
-   survival or controller recovery. Web does not promise background video or
-   relay execution after OS suspension.
-3. **Finish real-network route and media acceptance.** Exercise direct peer,
-   Browser relay, SFU, relay-ingress recovery with subtree retention,
-   disconnect/capacity drain, Pause/Resume, source replacement, screen-audio
-   continuity, and real-game A/V sync across representative IPv4/IPv6,
-   Wi-Fi/cellular, and Host/Viewer TUN/VPN cases. Verify two simultaneous rooms
-   can own independent SFU publications. Include an all-UDP-blocked case and
-   weak-network audio after SFU RED was disabled. Every exhausted path must end
-   in bounded wait/failure without TURN, TCP probing, NAT classification,
-   guessed candidates, or another watchdog.
+   autoplay, background audio, foreground recovery, lock/page reclamation,
+   rotation, network migration, and relay survival.
+3. **Representative network acceptance.** Complete public-network direct,
+   Browser relay, SFU, recovery, Pause/Resume, screen-audio, real-game A/V,
+   two-room SFU, 20-Viewer endurance, and all-UDP-blocked bounded failure.
+4. **Per-share peer-only mode.** Add one default-off pre-share Host setting that
+   excludes SFU for that share and ends in the existing bounded failure.
+5. **Whole-product UI and bilingual decision.** Review copy, responsive
+   hierarchy, visual consistency, restrained motion, rendering cost, terminal
+   navigation, and Chinese/English scope once media behavior stabilizes.
+6. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
+   authorization, rate/body/resource bounds, errors, logs, and secrets without
+   adding a parallel security framework.
+7. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
+   secrets, health, and recovery contract for a user-owned server.
+8. **Fully local package.** Package Host capture, application server, and local
+   state for Windows/macOS/Linux with honest TLS, gateway, NAT, and firewall
+   limits.
+9. **Native Host and shared encode.** Revisit Windows first only after capture,
+   hardware encode, audio, RTP feedback, resources, packaging, licensing, and
+   Browser interoperability are proved.
+10. **Platform output.** Revisit AirPlay/Cast only when a target Browser and
+    physical receiver prove the live `MediaStream` contract.
 
-## Accepted Later Roadmap
+## Decision Needed
 
-1. **Platform output only when real.** Revisit AirPlay/Cast only when a target
-   browser and physical receiver prove the live `MediaStream` contract. System
-   mirroring remains external.
-2. **Public-server one-click package.** After functional and real-network work,
-   package the exact application, STUN/SFU, reverse proxy, secrets, and health
-   checks for a user-owned public server. Do not call a partial installer ready.
-3. **Fully local one-click package.** Package Windows/macOS/Linux Host capture,
-   application server, and local state without requiring source or Node. Report
-   public-origin, TLS, gateway, NAT, and firewall limits honestly.
-4. **Native Host and shared encode, Windows first.** Productize only after real
-   capture, hardware-only encode, audio, identity, RTP/RTCP feedback, resource,
-   packaging, and licensing gates pass. Browser Host/relay keeps standard
-   per-`RTCPeerConnection` encoding.
-5. **Whole-product UI and bilingual decision.** Once media and route behavior
-   stabilizes, review copy, responsive hierarchy, visual consistency, restrained
-   motion, bundle/rendering cost, and Chinese/English scope once as a whole.
-   Terminal and error views should retain the global header and an obvious way
-   back home. Ordinary screen-specific edits do not create parallel documentation.
-6. **Client-input security review.** Inventory HTTP and WebSocket inputs once as
-   a whole: strict schemas, authentication, authorization, rate and body bounds,
-   resource effects, error disclosure, logging, and secret handling. Begin
-   read-only and add no parallel security framework without a proven gap.
-7. **Repository simplification audit.** After the Browser, route, room, and
-   physical-media checkpoints settle, inventory components, configuration,
-   migrations, timers, compatibility paths, tests, and truth duplication using
-   the [maintenance review](./maintenance.md#机制减负审查). Begin read-only and do
-   not turn it into a broad refactor. The current read-only scan confirmed
-   coarse `mediaAssignment` wire residue, legacy SFU room-name acceptance,
-   and duplicated teardown/test/browser-gate owners as the bounded starting
-   set; it did not authorize unrelated cleanup.
-8. **Per-share peer-only mode.** Add one default-off Host pre-share checkbox,
-   locked while sharing. Enabled rooms retain the automatic direct/peer graph
-   but exclude SFU candidates, configuration and resources, then end in the
-   existing bounded failure when no Peer route works. This does not claim
-   cryptographic protection from the operator serving the Web application;
-   application-layer E2EE remains a separate decision.
-
-## Product Decision Needed
-
-| Item | Decision |
-| --- | --- |
-| Repository and distribution license | Decide before public release or package distribution. GPL/AGPL implementations remain research-only until then. |
-| Active quality-route action | Shadow evidence is authorized, but active changes are not. Production samples must first settle the trigger, probation, one-restore and cooldown boundaries. Any accepted exact-child reparent, relay abdication/drain or Host convergence onto one SFU publication must reuse the existing single graph/operation and preserve SFU-fed Viewer relay; no second optimizer or periodic rebalancer is allowed. |
-
-## Evidence Boundaries
-
-- Desktop Host background/minimized capture remains diagnostic until a current-
-  production real-game reproduction correlates capture, outbound, inbound,
-  decode, and CPU/GPU. Viewer resume correction is not a keepalive guarantee.
-- Synthetic and loopback tests validate invariants, not target-network quality,
-  latency, capacity, mobile lifecycle, or endurance.
-- Open Native and packaging branches are retained evidence/candidates, not
-  current releases.
-
-## Candidate Handling
-
-- Preserve dirty or unique worktrees and open stacks until reviewed. Never
-  import old truth wholesale.
-- Sample worktree and branch state immediately before cleanup rather than
-  maintaining a permanent inventory here.
+- Choose the repository and distribution license before public release or
+  package distribution. GPL/AGPL implementations remain research-only until
+  then.

@@ -1,0 +1,86 @@
+# Presentation And Lifecycle
+
+This file owns user-visible workflow, presentation authority, presence, and
+Browser lifecycle promises. Component structure, CSS, exact copy, and routine UI
+tests belong in source code.
+
+## Product Surface
+
+The first screen is the working tool, not a marketing page. Once site access is
+available, starting a share and joining a room are equally discoverable actions;
+joining expands the four-digit room form in place, while `/join` remains a direct
+entry route. Users never choose a media topology.
+
+The Host workspace centers the capture preview, room code, invitation and common
+share controls. The Viewer workspace centers one persistent 16:9 video stage,
+room identity, current state, roster, and one manual media-reconnect action.
+Controls and text must remain usable without overlap or horizontal overflow on
+desktop and mobile viewports.
+
+## Playback Ownership
+
+One native `<video>` element owns Viewer play/pause, volume, mute, and fullscreen.
+Those actions are local and never change Host capture, room state, routing, or
+other Viewers. The Host preview has no media controls; explicit Host actions own
+authoritative share pause and stop.
+
+Autoplay rejection exposes the native play action. A connection, track object,
+or `playing` event alone is not proof that the current route is visible. The
+Viewer removes its blocking presentation only after a current-generation frame
+is composited, using `requestVideoFrameCallback()` where available and a decoded-
+progress fallback otherwise.
+
+## State And Recovery
+
+Access, Host presence and pause, route prepare/active, P2P/SFU connection, media
+binding, frame proof, autoplay, and terminal failure are typed facts interpreted
+by one presentation reducer. Older route or media generations cannot overwrite
+the current result, and raw server errors are never rendered directly.
+
+Excluding time spent in the Browser's capture/play authorization UI, a Viewer
+request targets a first visible frame within three seconds. Until then, the page
+must continuously show a truthful accessible connection stage rather than a
+black screen, ICE-connected state, or unproved `playing` event.
+
+- A proved current frame remains visible behind non-terminal recovery state.
+- Host pause retains the current frame and waits for resume.
+- Host signaling loss alone does not invalidate media that is still healthy.
+- Exact media failure or terminal route failure invalidates current-frame proof
+  before showing a retained frozen background and recovery or failure state.
+- Room not found/expired is distinct from current-room access denial and does not
+  prompt for a password.
+- Manual reconnect rebuilds the same route. It does not select a new parent.
+- An actionable overlay may appear while fullscreen remains active; application
+  state never forces the user out of fullscreen.
+
+Visibility, page freeze, and pagehide suppress application decoded-stall
+authority. Returning to the page rebaselines time and proves a current frame
+again before clearing recovery. LiveKit page-leave auto-disconnect is disabled,
+but Browser or OS suspension and page reclamation remain outside Web guarantees.
+
+## Presence And Diagnostics
+
+Host and Viewer pages show the authoritative online Viewer count and roster,
+independent of the media graph. A display name is Browser-local, NFC-normalized,
+at most 24 Unicode code points, and rejects unsafe control or bidirectional
+characters. It is a label, not an account, authorization identity, or routing
+input. Duplicate names are allowed and receive a room-scoped peer suffix only
+when disambiguation is needed.
+
+Connection details are progressive and use one card shape for P2P, peer relay,
+and SFU Viewers. Summary fields prioritize actual resolution, FPS, bitrate, and
+loss; deeper fields appear only when meaningful. Topology is a separate view.
+Locally exposed selected-candidate addresses may be shown only on the Browser
+that owns that PeerConnection and are never uploaded, persisted, or used for
+identity or route selection. The product does not offer a diagnostic-download
+button or a raw stats dump.
+
+Current Browser scope includes Web Host, Web Viewer, and Browser relay. Desktop
+and mobile Browsers are Viewer targets; mobile Web capture, reliable background
+relay, native sender, and packaged capture helpers remain later platform work.
+
+## Primary References
+
+- [WHATWG Web Storage](https://html.spec.whatwg.org/multipage/webstorage.html)
+- [ECMAScript string normalization](https://tc39.es/ecma262/multipage/text-processing.html#sec-string.prototype.normalize)
+- [Unicode UAX #31](https://www.unicode.org/reports/tr31/)

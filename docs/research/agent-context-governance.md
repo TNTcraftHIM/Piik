@@ -1,66 +1,66 @@
-# Agent Context And Repository Governance
+# Agent Context And Documentation Governance
 
-- Reviewed: 2026-08-22
-- Scope: official Codex, Claude Code, Hermes Agent, and GitHub guidance
-- Status: adopted repository-maintenance evidence
+- Reviewed: 2026-08-27
+- Scope: repository context, durable memory, documentation types, and decisions
+- Status: evidence; repository policy is owned by
+  [maintenance](../maintenance.md)
 
 ## Findings
 
-### Codex
+### Repository Context
 
-OpenAI recommends giving Codex a map rather than a large instruction manual.
-Its own agent-first repository keeps a short root `AGENTS.md` that points to a
-structured documentation tree. OpenAI reports that giant instruction files
-crowd out task context, become hard to verify, and accumulate stale rules. Codex
-works best when the repository also provides reliable tests, clear documentation,
-and project-specific navigation and commands.
+OpenAI's agent-first repository treats `AGENTS.md` as a map into a structured,
+versioned knowledge base. Its reported failure mode for one large instruction
+file is the same one observed in Screener: scarce context is crowded out, every
+rule appears equally important, stale guidance accumulates, and ownership is
+hard to verify. The recommended corrective structure is progressive disclosure,
+cross-links, and mechanical freshness/structure checks.
+
+Anthropic likewise recommends concise, specific project instructions and moves
+multi-step procedures or path-specific rules to on-demand skills or scoped rule
+files. A size ceiling is not a target.
+
+Hermes distinguishes project conventions (`AGENTS.md`) from user preference,
+personality, and learned memory. Its persistent memory is deliberately bounded
+and curated; full session history remains searchable on demand rather than being
+injected into every prompt. Memory is a frozen session-start snapshot, so it
+cannot replace current repository truth. Nested context is useful only when a
+subtree has genuinely distinct rules.
 
 Sources:
 
-- [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/)
-- [Introducing Codex](https://openai.com/index/introducing-codex/)
+- [OpenAI Harness engineering](https://openai.com/index/harness-engineering/)
+- [Claude Code memory](https://code.claude.com/docs/en/memory)
+- [Hermes file ownership](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/which-file-does-what.md)
+- [Hermes persistent memory](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/memory.md)
 
-### Claude Code
+### Documentation Shape
 
-Anthropic recommends specific, concise project instructions. Facts needed for
-every session belong in the root memory file; multi-step procedures and
-path-specific rules belong in skills or scoped rule files. The official guide
-suggests keeping `CLAUDE.md` below 200 lines and periodically removing stale or
-conflicting instructions. It also supports importing an existing `AGENTS.md`
-instead of maintaining a second copy.
+Diataxis separates tutorial, how-to, reference, and explanation because mixing
+reader goals makes each form harder to use. Screener's internal product modules
+are compact reference; ADRs are explanation of a decision; deployment is a
+how-to/reference boundary; research is evidence and explanation. The framework
+does not require creating all four categories when there is no reader need.
 
-Source: [Claude Code memory](https://code.claude.com/docs/en/memory)
+An ADR should be a short record of one decision: context, decision, material
+consequences, status, and links to supporting evidence. If a decision changes,
+the old record is superseded instead of being expanded into a current manual.
 
-### Hermes Agent
+Git commits and pull requests own completed history. Current product and
+operations documents should not preserve rejected alternatives, release diaries,
+or agent process solely for chronology.
 
-Hermes separates project conventions in `AGENTS.md` from user memory,
-personality, and other persistent state. Its project instructions are discovered
-progressively, so nested files can own narrower rules without loading every
-detail at repository startup.
+Sources:
 
-Source: [Which File Does What?](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/which-file-does-what.md)
+- [Diataxis primer](https://diataxis.fr/start-here/)
+- [Martin Fowler: Architecture Decision Record](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html)
+- [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow)
 
-### GitHub
+## Applicability
 
-Git history and pull requests are the durable record for completed work. Current
-documents should not duplicate a release diary or preserve rejected alternatives
-solely for history.
-
-Source: [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow)
-
-## Adopted Shape
-
-- Root `AGENTS.md` targets roughly 50 lines and contains only cross-task hard
-  constraints, product contract, truth navigation, and essential safety rules.
-- `CONTRIBUTING.md` owns branch, research, validation, PR, merge, and cleanup
-  procedures.
-- Project memory and status are short current snapshots; `docs/todo.md` is the
-  only current work ledger; requirements, design, ADRs, and research own detail.
-- Rejected alternatives and explanations of their removal leave current truth.
-  Git owns that history.
-- Hooks verify required tracked files, links, size budgets, and deterministic
-  repository hygiene. They do not replace semantic review.
-
-This structure is intentionally below the published size ceilings. A ceiling is
-not a target: additional top-level text must be necessary on every task or move
-to its closest owner.
+Screener is small enough that a vector database, memory provider, generated code
+map, parallel agent-context format, or separate RFC repository would add more
+ownership than it removes. The useful practices are bounded always-on context,
+one owner per fact, domain-shaped reference, evidence on demand, short ADRs,
+link checks, and Git-backed history. Exact repository policy remains in
+[maintenance](../maintenance.md), not in this research note.

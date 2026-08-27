@@ -12,32 +12,13 @@ while IFS= read -r path || [ -n "$path" ]; do
   fi
 done < scripts/required-project-paths.txt
 
-agent_lines=$(wc -l < AGENTS.md | tr -d '[:space:]')
-memory_lines=$(wc -l < docs/project-memory.md | tr -d '[:space:]')
-memory_bytes=$(wc -c < docs/project-memory.md | tr -d '[:space:]')
-status_lines=$(wc -l < docs/status.md | tr -d '[:space:]')
-status_bytes=$(wc -c < docs/status.md | tr -d '[:space:]')
-
-if [ "$agent_lines" -gt 200 ]; then
-  echo "AGENTS.md exceeds the 200-line context budget: $agent_lines lines" >&2
-  exit 1
-fi
-
-if [ "$memory_lines" -gt 200 ] || [ "$memory_bytes" -gt 16000 ]; then
-  echo "docs/project-memory.md exceeds its budget: $memory_lines lines, $memory_bytes bytes" >&2
-  exit 1
-fi
-
-if [ "$status_lines" -gt 120 ] || [ "$status_bytes" -gt 12000 ]; then
-  echo "docs/status.md exceeds its 120-line/12000-byte current-index budget: $status_lines lines, $status_bytes bytes. Remove completed history or move retained detail to its owning document; do not micro-compress prose." >&2
-  exit 1
-fi
-
 git diff --check
 git diff --cached --check
 
 if [ -n "${SCREENER_BASE_SHA:-}" ]; then
   git diff --check "$SCREENER_BASE_SHA"...HEAD
 fi
+
+node scripts/check-docs.mjs
 
 echo "Repository hygiene checks passed."

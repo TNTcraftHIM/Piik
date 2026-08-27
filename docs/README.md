@@ -1,34 +1,72 @@
-# Project Documentation
+# Documentation Map
 
-- [需求理解](./需求理解.md): current product scope, priorities, constraints, and acceptance criteria.
-- [方案设计](./方案设计.md): accepted implementation design; unfinished release and validation work is tracked in the current TODO ledger.
-- [Project memory](./project-memory.md): durable current product and source snapshot to read at the start of future work.
-- [Current status](./status.md): bounded current/index snapshot of production, active milestones, decisions, blockers, and links to detail.
-- [Verification status](./verification-status.md): exact integrated/deployed gates, current production evidence, open physical proof boundaries, and expensive-test applicability.
-- [Session handoff](./session-handoff.md): temporary bootstrap prompt that points a new session back to the canonical truth owners.
-- [Current TODO](./todo.md): unresolved work, active truth holds, and decisions that still require user confirmation.
-- [Deployment](./deployment.md): exact current production, immutable release operations, scoped recovery rules, and transport evidence boundaries.
-- [Maintenance guide](./maintenance.md): Git workflow, context hygiene, document lifecycle, research policy, and automation.
-- [P2P WebRTC research](./research/webrtc-p2p-screen-sharing.md): evidence, bandwidth model, browser constraints, reference implementations, and feasibility assessment.
-- [Peer-assisted media research](./research/peer-assisted-media.md): browser shared-encode limits, standard relay re-encoding, deterministic sticky topology, exact-route implementation evidence, and remaining physical gates.
-- [Low-server-cost media routes](./research/low-server-media-routes.md): Host-publication/SFU distribution, route diagnostics, direct-to-SFU conclusion, hop-level accounting, privacy-safe ICE evidence, and bounded transport gates.
-- [Built-in peer ICE TURN candidate](./research/built-in-peer-ice-turn.md): historical evidence for the rejected participant-wide and selected-edge TURN candidates.
-- [Advanced peer distribution](./research/advanced-peer-distribution.md): generic local-reconcile evidence plus multi-tree/SVC, encoded-object relay, native RTP forwarding, FEC/network-coding, and MoQ gates.
-- [Native shared-encode sender](./research/native-shared-encode-sender.md): consolidated Draft #16/#18/#22/#23/#25/#28 ladder, unclassified product-gate failure, staged revalidation, and stop line.
-- [Native H.264 hardware decision](./research/native-h264-hardware-decision.md): bounded WebCodecs no-go, proved Media Foundation/NVIDIA hardware encode, the default-fmtp `42c01f` stop, and the retained interop boundary.
-- [Native H.264 opt-in path](./research/native-h264-opt-in-path.md): explicit H.264 sender mode, exact Pion profile registration, and one bounded Host/Viewer loopback with hardware caveats.
-- [Realtime quality adaptation](./research/realtime-quality-adaptation.md): Browser codec and `motion` evidence, manual quality ceilings, path-quality authority, and LiveKit-owned SFU representation adaptation.
-- [Cross-restart room recovery](./research/cross-restart-room-recovery.md): room-authority lineage, optional SQLite stable mode, invitation continuity, and process-fresh media rebuild evidence.
-- [Browser background capture diagnostics](./research/browser-background-capture.md): browser lifecycle evidence, a privacy-bounded capture/send/receive experiment, interpretation gates, and non-goal keepalive mechanisms.
-- [Browser screen-audio quality](./research/browser-screen-audio-quality.md): capture/source compatibility, live sender-ceiling readback, Opus negotiation boundaries, and remaining audible/device evidence.
-- [Display name and presence boundaries](./research/display-name-presence.md): browser-local storage failure behavior, Unicode normalization, control-character policy, and the Web-only presence capability boundary.
-- [Agent context governance research](./research/agent-context-governance.md): official Codex, Claude Code, Hermes Agent, and GitHub practices adopted by this repository.
-- [ADR-0001](./adr/0001-p2p-first-media-topology.md): historical P2P-first baseline; later access and automatic-routing decisions supersede its stale current-state details.
-- [ADR-0002](./adr/0002-memory-resident-protected-rooms.md): four-digit leased room authority with lightweight memory and optional SQLite stable modes, local Host defaults, scoped Viewer grants, and explicit room replacement.
-- [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): historical standard-WebRTC peer-assisted experiment and reusable evidence.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): accepted P2P-first single-reconcile route model, including deployed Browser SFU ICE-server isolation; remaining real-network validation is tracked in verification status.
-- [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): proposed fixed-`HIGH` native canary, current no-go result, and staged revalidation boundary.
-- [ADR-0007](./adr/0007-path-isolated-representation-quality.md): accepted LiveKit-owned SFU representation adaptation, pinned evidence, and application-controller/SVC boundaries.
-- [ADR-0008](./adr/0008-window-scoped-audio-capture.md): browser window-audio hint and the Windows WASAPI process-loopback boundary.
+Start with [project memory](./project-memory.md), [status](./status.md), and
+[TODO](./todo.md). Read only the product, decision, evidence, or operations file
+needed for the current task.
 
-Documentation and project memory are part of the product source of truth. Update them in the same change that alters the corresponding requirement or architecture.
+## Current Product
+
+- [Rooms and access](./product/rooms-access.md)
+- [Routing and transport](./product/routing-transport.md)
+- [Capture, audio, and media quality](./product/media-quality.md)
+- [Presentation and lifecycle](./product/presentation-lifecycle.md)
+
+These four modules own current product behavior. Source code and tests own
+ordinary implementation and UI detail.
+
+## Current Indexes And Operations
+
+- [Project memory](./project-memory.md): compact cross-domain map and invariants.
+- [Status](./status.md): exact current source, production, milestone, and holds.
+- [TODO](./todo.md): the only current work ledger.
+- [Verification](./verification-status.md): open physical evidence and expensive
+  gate applicability.
+- [Deployment](./deployment.md): immutable application release and recovery.
+- [Self-hosting](./operations/self-hosting.md): initial services, topology, and
+  operational verification.
+- [Configuration](./reference/configuration.md): environment, secrets, bounds,
+  and ports.
+- [Maintenance](./maintenance.md): truth ownership, context, and repository
+  lifecycle.
+
+## Decisions
+
+- [ADR-0001](./adr/0001-p2p-first-media-topology.md): initial P2P-first
+  baseline.
+- [ADR-0002](./adr/0002-memory-resident-protected-rooms.md): room authority and
+  optional SQLite stability.
+- [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): Browser relay
+  experiment.
+- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): current automatic
+  route and SFU resource model.
+- [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): native sender
+  canary stop line.
+- [ADR-0007](./adr/0007-path-isolated-representation-quality.md): framework-
+  owned media adaptation.
+- [ADR-0008](./adr/0008-window-scoped-audio-capture.md): Browser/native window
+  audio boundary.
+
+## Evidence
+
+Routing and transport:
+
+- [WebRTC feasibility](./research/webrtc-p2p-screen-sharing.md)
+- [Browser peer relay](./research/peer-assisted-media.md)
+- [Low-server-cost routes](./research/low-server-media-routes.md)
+- [Advanced distribution alternatives](./research/advanced-peer-distribution.md)
+
+Media and platform:
+
+- [Realtime quality and codecs](./research/realtime-quality-adaptation.md)
+- [Browser background capture](./research/browser-background-capture.md)
+- [Browser screen audio](./research/browser-screen-audio-quality.md)
+- [Native sender and shared encode](./research/native-sender.md)
+
+Rooms and repository practice:
+
+- [Cross-restart room recovery](./research/cross-restart-room-recovery.md)
+- [Agent context governance](./research/agent-context-governance.md)
+
+Research records verified facts, measurements, assumptions, licenses, and
+remaining evidence boundaries. It does not own current product behavior or work
+priority.

@@ -22,9 +22,13 @@ docs/status.md
 docs/todo.md
 docs/verification-status.md
 docs/maintenance.md
-docs/需求理解.md
-docs/方案设计.md
+docs/product/rooms-access.md
+docs/product/routing-transport.md
+docs/product/media-quality.md
+docs/product/presentation-lifecycle.md
 docs/deployment.md
+docs/operations/self-hosting.md
+docs/reference/configuration.md
 scripts/package-app-release.mjs
 deploy/release-app.sh
 docs/adr/0001-p2p-first-media-topology.md
@@ -39,6 +43,7 @@ native/window-capture-helper/process_audio.h
 scripts/required-project-paths.txt
 scripts/check-project-state.sh
 scripts/check-project-state.ps1
+scripts/check-docs.mjs
 scripts/package-native-sender.ps1
 scripts/install-hooks.sh
 scripts/install-hooks.ps1
