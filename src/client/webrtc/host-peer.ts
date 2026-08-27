@@ -682,9 +682,9 @@ export class HostPeer {
     }
     switch (this.limitationReason) {
       case "bandwidth":
-        return "此发送连接持续按带宽估计降低分辨率或帧率";
+        return "当前连接带宽受限，画质已自动降低";
       case "cpu":
-        return "此发送连接持续因编码性能降低分辨率或帧率";
+        return "编码性能受限，画质已自动降低";
       case "other":
         return "浏览器持续报告其他画质限制";
       default:

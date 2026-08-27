@@ -918,11 +918,22 @@ export class HybridMediaRouter {
     this.options.deleteConnectionId(roomId, peerId);
     if (room?.controller?.confirmDeparture(peerId, this.now())) {
       this.requestPump(roomId);
+    } else if (room && !room.controller && room.advertisedCapacityByViewer.size === 0) {
+      this.rooms.delete(roomId);
     }
   }
 
   stopRoom(roomId: string): void {
+    const capacities = new Map(
+      this.rooms.get(roomId)?.advertisedCapacityByViewer ?? [],
+    );
     this.clearRoom(roomId);
+    if (capacities.size > 0) {
+      const room = this.room(roomId);
+      for (const [peerId, capacity] of capacities) {
+        room.advertisedCapacityByViewer.set(peerId, capacity);
+      }
+    }
   }
 
   deleteRoom(roomId: string): void {
