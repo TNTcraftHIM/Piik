@@ -915,7 +915,7 @@ export class HybridMediaRouter {
         requested: false,
         sfuRefreshesInFlight: new Set(),
         debugOrdinalByPeerId: new Map(),
-        nextDebugOrdinal: 0,
+        nextDebugOrdinal: 1,
       };
       this.rooms.set(roomId, room);
     }
