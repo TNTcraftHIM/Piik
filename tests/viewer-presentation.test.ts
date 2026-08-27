@@ -52,6 +52,7 @@ describe("Viewer presentation reducer", () => {
       stage: "playing",
       overlay: "none",
       hasCurrentFrame: true,
+      connectionState: "connected",
     });
   });
 
@@ -125,7 +126,7 @@ describe("Viewer presentation reducer", () => {
     expect(nextRoute.connection).toBe("connecting");
   });
 
-  it("rebases proven media when only the room graph revision changes", () => {
+  it("keeps proven media independent of room graph revision changes", () => {
     const playing = apply(
       { type: "access", access: "ready" },
       { type: "signal", signal: "connected" },
@@ -140,12 +141,11 @@ describe("Viewer presentation reducer", () => {
       revision: 3,
       phase: "active",
       kind: "p2p",
-      preserveMedia: true,
     });
 
     expect(rebased.media).toEqual({
       generation: 4,
-      revision: 3,
+      boundAtRevision: 2,
       framePresented: true,
     });
     expect(rebased.connection).toBe("connected");
@@ -174,7 +174,7 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(staleFailure).stage).toBe("receiving");
   });
 
-  it("ignores late playback results from a retained older route revision", () => {
+  it("keeps playback authority with the bound media generation", () => {
     const oldMedia = apply(
       { type: "access", access: "ready" },
       { type: "host", host: "online" },
@@ -200,15 +200,18 @@ describe("Viewer presentation reducer", () => {
       revision: 5,
     });
 
-    expect(staleAutoplay).toBe(preparing);
-    expect(staleFailure).toBe(preparing);
+    expect(staleAutoplay).toMatchObject({
+      autoplayBlockedGeneration: 5,
+      failure: "AUTOPLAY_BLOCKED",
+    });
+    expect(staleFailure).toMatchObject({ failure: "PLAYBACK_FAILED" });
     expect(deriveViewerPresentation(preparing)).toMatchObject({
-      stage: "preparing-sfu",
-      overlay: "status",
+      stage: "playing",
+      overlay: "none",
     });
   });
 
-  it("clears autoplay authority when the route revision advances", () => {
+  it("retains autoplay authority until the media generation changes", () => {
     const blocked = apply(
       { type: "access", access: "ready" },
       { type: "host", host: "online" },
@@ -223,14 +226,14 @@ describe("Viewer presentation reducer", () => {
       kind: "sfu",
     });
 
-    expect(preparing.autoplayBlockedGeneration).toBeNull();
-    expect(preparing.failure).toBeNull();
+    expect(preparing.autoplayBlockedGeneration).toBe(5);
+    expect(preparing.failure).toBe("AUTOPLAY_BLOCKED");
     expect(deriveViewerPresentation(preparing)).toMatchObject({
-      stage: "preparing-sfu",
+      stage: "receiving",
     });
   });
 
-  it("keeps a proven old frame through recovery without accepting stale proof", () => {
+  it("keeps a proven frame until a replacement media generation binds", () => {
     const oldFrame = apply(
       { type: "access", access: "ready" },
       { type: "host", host: "online" },
@@ -245,18 +248,20 @@ describe("Viewer presentation reducer", () => {
       kind: "sfu",
     });
     expect(deriveViewerPresentation(recovering)).toMatchObject({
-      stage: "preparing-sfu",
-      overlay: "status",
-      hasCurrentFrame: false,
-      hasRetainedFrame: true,
+      stage: "playing",
+      overlay: "none",
+      hasCurrentFrame: true,
+      hasRetainedFrame: false,
     });
 
-    const staleProof = reduceViewerPresentation(recovering, {
+    const continuingProof = reduceViewerPresentation(recovering, {
       type: "frame-presented",
       generation: 5,
       revision: 5,
     });
-    expect(staleProof).toBe(recovering);
+    expect(continuingProof).toMatchObject({
+      media: { generation: 5, framePresented: true },
+    });
 
     const rebound = reduceViewerPresentation(recovering, {
       type: "media-bound",
@@ -313,6 +318,60 @@ describe("Viewer presentation reducer", () => {
       message: "正在播放",
       notice: null,
     });
+  });
+
+  it("re-arms current media when active authority returns after route failure", () => {
+    const failed = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 3, phase: "active", kind: "sfu" },
+      { type: "media-bound", generation: 2, revision: 3 },
+      { type: "frame-presented", generation: 2, revision: 3 },
+      { type: "route-status", revision: 3, state: "failed" },
+    );
+    const recovering = reduceViewerPresentation(failed, {
+      type: "route",
+      revision: 4,
+      phase: "active",
+      kind: "sfu",
+    });
+    expect(recovering).toMatchObject({
+      connection: "reconnecting",
+      routeStatus: null,
+      failure: null,
+      media: { generation: 2, framePresented: false },
+    });
+
+    const resumed = reduceViewerPresentation(recovering, {
+      type: "frame-presented",
+      generation: 2,
+      revision: 3,
+    });
+    expect(resumed.connection).toBe("connected");
+    expect(deriveViewerPresentation(resumed)).toMatchObject({
+      stage: "playing",
+      overlay: "none",
+    });
+  });
+
+  it("keeps a browser playback failure across unrelated active authority", () => {
+    const failed = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 3, phase: "active", kind: "sfu" },
+      { type: "media-bound", generation: 2, revision: 3 },
+      { type: "playback-failed", generation: 2, revision: 3 },
+    );
+    const rebased = reduceViewerPresentation(failed, {
+      type: "route",
+      revision: 4,
+      phase: "active",
+      kind: "sfu",
+    });
+
+    expect(rebased.failure).toBe("PLAYBACK_FAILED");
+    expect(deriveViewerPresentation(rebased).stage).toBe("playback-failed");
   });
 
   it("keeps a healthy Host-offline frame but invalidates it on upstream failure", () => {
@@ -436,6 +495,7 @@ describe("Viewer presentation reducer", () => {
       hasCurrentFrame: false,
       hasRetainedFrame: true,
       failureCode: "ROUTE_EXHAUSTED",
+      connectionState: "failed",
     });
 
     const lateFrame = reduceViewerPresentation(failed, {
@@ -451,14 +511,21 @@ describe("Viewer presentation reducer", () => {
         revision: 4,
       }),
     ).toBe(failed);
+    const restored = reduceViewerPresentation(failed, {
+      type: "route",
+      revision: 4,
+      phase: "active",
+      kind: "sfu",
+    });
+    expect(restored.routeStatus).toBeNull();
+    expect(restored.failure).toBeNull();
     expect(
-      reduceViewerPresentation(failed, {
-        type: "route",
+      reduceViewerPresentation(restored, {
+        type: "frame-presented",
+        generation: 3,
         revision: 4,
-        phase: "active",
-        kind: "sfu",
-      }).routeStatus,
-    ).toEqual({ revision: 4, state: "failed" });
+      }).media?.framePresented,
+    ).toBe(true);
 
     const localFailure = reduceViewerPresentation(playing, {
       type: "failure",

@@ -45,6 +45,7 @@ import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
+import { P2pQualityProbe } from "../media/candidate-quality-probe";
 import { DecodedFrameStallDetector } from "../media/decoded-frame-stall";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
@@ -115,12 +116,14 @@ interface PendingPeerRoute {
   candidateConnectionId: string;
   stream: MediaStream | null;
   snapshot: PeerSnapshot | null;
+  qualityProbe: P2pQualityProbe | null;
+  qualityApproved: boolean;
 }
 
 interface RemoteMediaBinding {
   stream: MediaStream;
   generation: number;
-  revision: number;
+  boundAtRevision: number;
   videoTrackKey: string;
 }
 
@@ -169,7 +172,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const presentation = deriveViewerPresentation(presentationState);
   const accessState = presentationState.access;
   const signalStatus = presentationState.signal;
-  const [hostOnline, setHostOnline] = useState(false);
   const [remoteMedia, setRemoteMedia] = useState<RemoteMediaBinding | null>(
     null,
   );
@@ -273,9 +275,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     signalStatus === "connected" &&
     reconnectRoute !== null &&
     presentationState.connection !== "reconnecting";
-  const routeConnectionState =
-    routePresentation.evidence?.connectionState ??
-    (hostOnline ? "routing" : "waiting");
+  const routeConnectionState = presentation.connectionState;
   const routeMetrics = routePresentation.evidence?.metrics ?? null;
 
   function bindRemoteStream(stream: MediaStream, revision: number): void {
@@ -287,14 +287,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const current = remoteMediaRef.current;
     if (
       current?.stream === stream &&
-      current.revision === revision &&
       current.videoTrackKey === videoTrackKey
     ) {
       return;
     }
     const next: RemoteMediaBinding = {
       stream,
-      revision,
+      boundAtRevision: revision,
       videoTrackKey,
       generation: ++mediaGenerationRef.current,
     };
@@ -304,7 +303,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     dispatchPresentation({
       type: "media-bound",
       generation: next.generation,
-      revision: next.revision,
+      revision: next.boundAtRevision,
     });
   }
 
@@ -323,7 +322,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     dispatchPresentation({
       type: "frame-proof-reset",
       generation: binding.generation,
-      revision: binding.revision,
+      revision: binding.boundAtRevision,
     });
   }
 
@@ -341,7 +340,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     const current = remoteMediaRef.current;
     return (
       current?.generation === binding.generation &&
-      current.revision === binding.revision &&
       current.stream === binding.stream
     );
   }
@@ -369,13 +367,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           dispatchPresentation({
             type: "autoplay-blocked",
             generation: binding.generation,
-            revision: binding.revision,
+            revision: binding.boundAtRevision,
           });
         } else {
           dispatchPresentation({
             type: "playback-failed",
             generation: binding.generation,
-            revision: binding.revision,
+            revision: binding.boundAtRevision,
           });
         }
       },
@@ -386,16 +384,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     revision: number,
     upstream: ParticipantRouteAssignment["upstream"],
     phase: "prepare" | "active" = "active",
-    preserveMedia = false,
   ): void {
-    if (preserveMedia) {
-      const current = remoteMediaRef.current;
-      if (current && current.revision !== revision) {
-        const rebased = { ...current, revision };
-        remoteMediaRef.current = rebased;
-        setRemoteMedia(rebased);
-      }
-    }
     setAssignedRoute((current) =>
       current && revision < current.revision
         ? current
@@ -406,7 +395,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       revision,
       phase,
       kind: routeKindFromAssignment(upstream),
-      preserveMedia,
     });
   }
 
@@ -458,6 +446,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       const newlySuspended = !pageSuspended;
       pageSuspended = true;
       viewerSfuRoute?.resetQualityProbe();
+      pendingPeer?.qualityProbe?.reset();
+      if (pendingPeer) pendingPeer.qualityApproved = false;
       syncDecodedFrameStallPause();
       if (newlySuspended) {
         invalidateSenderQualityEvidence();
@@ -575,7 +565,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           currentRouteAssignment.upstream.kind !== "none" &&
           currentRouteConnectionId !== null &&
           binding &&
-          binding.revision === currentRouteRevision &&
           qualityFrameProofGenerationRef.current === binding.generation &&
           state.routeStatus?.state !== "failed" &&
           state.failure !== "ROUTE_EXHAUSTED" &&
@@ -828,10 +817,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (!pendingPeerHasDecodedFrame(probe)) {
         return false;
       }
+      if (probe.qualityProbe && !probe.qualityApproved) {
+        return false;
+      }
       probe.readySent = signal.send({
         type: "route-ready",
         revision: probe.revision,
         phase: "prepare",
+        ...(probe.qualityProbe ? { qualityApproved: true as const } : {}),
       });
       return probe.readySent;
     }
@@ -913,6 +906,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               candidateConnectionId: candidate.connectionId,
               stream: null,
               snapshot: null,
+              qualityProbe: candidate.qualityProbe
+                ? new P2pQualityProbe()
+                : null,
+              qualityApproved: false,
             };
           }
           prepareParent(
@@ -1165,6 +1162,22 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             if (pendingPeer === probe) {
               if (snapshot.connectionId !== probe.candidateConnectionId) return;
               probe.snapshot = snapshot;
+              if (probe.qualityProbe) {
+                if (
+                  pageSuspended ||
+                  currentHostPaused ||
+                  !qualityPresentationEligible(
+                    peerRef.current?.isConnected() === true,
+                  )
+                ) {
+                  probe.qualityProbe.reset();
+                  probe.qualityApproved = false;
+                } else if (
+                  probe.qualityProbe.observe(activePeerMetrics, snapshot.metrics)
+                ) {
+                  probe.qualityApproved = true;
+                }
+              }
               provePendingPeer();
             } else if (active && peerRef.current === peer) {
               activePeerMetrics = snapshot.metrics;
@@ -1364,7 +1377,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
-        setHostOnline(message.hostOnline);
         const sharingPaused = message.hostPaused ?? false;
         if (currentHostPaused !== sharingPaused && sharingPaused) {
           invalidatePresentedMedia();
@@ -1464,18 +1476,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 message.assignment.upstream.kind === "sfu" &&
                 currentRouteAssignment.sfuPublicationGeneration ===
                   message.assignment.sfuPublicationGeneration;
-              const peerIdentity = peerRef.current?.getConnectionIdentity();
-              const exactPeerUpstream =
-                samePeerUpstream &&
-                currentRouteAssignment?.upstream.kind === "peer" &&
-                currentRouteConnectionId !== null &&
-                peerIdentity != null &&
-                peerIdentity.parentPeerId ===
-                  currentRouteAssignment.upstream.peerId &&
-                peerIdentity.connectionId === currentRouteConnectionId;
-              const preserveMedia =
-                remoteMediaRef.current !== null &&
-                (sameSfuUpstream || exactPeerUpstream);
               const connectionId =
                 pendingRouteConnection?.revision === message.revision
                   ? pendingRouteConnection.connectionId
@@ -1496,7 +1496,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 message.revision,
                 message.assignment.upstream,
                 "active",
-                preserveMedia,
               );
             }
           }
@@ -1631,7 +1630,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         currentHostPaused = message.paused;
         syncDecodedFrameStallPause();
-        setHostOnline(message.online);
         dispatchPresentation({
           type: "host",
           host: message.paused
@@ -1663,7 +1661,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         clearViewerSfuRoute();
         clearPeerState(true);
         clearHostPresence();
-        setHostOnline(false);
         dispatchPresentation({ type: "sharing-stopped" });
         return;
       }
@@ -1848,7 +1845,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       dispatchPresentation({
         type: "frame-presented",
         generation: binding.generation,
-        revision: binding.revision,
+        revision: binding.boundAtRevision,
       });
     });
   }, [frameProofEpoch, presentationState.connection, remoteMedia]);

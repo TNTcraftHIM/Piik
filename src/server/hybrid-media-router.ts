@@ -324,6 +324,16 @@ export class HybridMediaRouter {
         reason: message.diagnostics.reason,
         framesPerSecond: message.diagnostics.framesPerSecond,
         bitrateKbps: message.diagnostics.bitrateKbps,
+        captureFramesPerSecond:
+          message.diagnostics.captureFramesPerSecond ?? null,
+        mediaSourceFramesPerSecond:
+          message.diagnostics.mediaSourceFramesPerSecond ?? null,
+        width: message.diagnostics.width ?? null,
+        height: message.diagnostics.height ?? null,
+        availableOutgoingKbps:
+          message.diagnostics.availableOutgoingKbps ?? null,
+        rttMs: message.diagnostics.rttMs ?? null,
+        packetLossPercent: message.diagnostics.packetLossPercent ?? null,
       });
     }
     this.releaseResources(result.released);
@@ -384,6 +394,16 @@ export class HybridMediaRouter {
         reason: message.diagnostics.reason,
         framesPerSecond: message.diagnostics.framesPerSecond,
         bitrateKbps: message.diagnostics.bitrateKbps,
+        captureFramesPerSecond:
+          message.diagnostics.captureFramesPerSecond ?? null,
+        mediaSourceFramesPerSecond:
+          message.diagnostics.mediaSourceFramesPerSecond ?? null,
+        width: message.diagnostics.width ?? null,
+        height: message.diagnostics.height ?? null,
+        availableOutgoingKbps:
+          message.diagnostics.availableOutgoingKbps ?? null,
+        rttMs: message.diagnostics.rttMs ?? null,
+        packetLossPercent: message.diagnostics.packetLossPercent ?? null,
       });
     }
     this.releaseResources(result.released);
@@ -635,6 +655,7 @@ export class HybridMediaRouter {
       },
       this.now(),
       (reservation) => this.commitReservation(reservation),
+      { relativeQualityApproved: message.qualityApproved === true },
     );
     this.debug(participant.roomId, "route-ready-settled", {
       participant: this.debugPeer(participant.roomId, participant.peerId),
@@ -851,12 +872,13 @@ export class HybridMediaRouter {
   refreshSfu(participant: AuthenticatedRouteParticipant, revision: number): void {
     const room = this.rooms.get(participant.roomId);
     const snapshot = room?.controller?.snapshot();
-    if (!room || !snapshot || snapshot.revision !== revision) return;
-    const key = `${revision}\u0000${participant.peerId}\u0000${participant.sessionId}`;
+    if (!room || !snapshot || revision > snapshot.revision) return;
+    const currentRevision = snapshot.revision;
+    const key = `${currentRevision}\u0000${participant.peerId}\u0000${participant.sessionId}`;
     if (room.sfuRefreshesInFlight.has(key)) return;
     room.sfuRefreshesInFlight.add(key);
     void this.sendFreshSfuConfig(participant)
-      .catch(() => this.failCurrentSfuRoute(participant, revision))
+      .catch(() => this.failCurrentSfuRoute(participant, currentRevision))
       .finally(() => room.sfuRefreshesInFlight.delete(key));
   }
 
@@ -915,7 +937,7 @@ export class HybridMediaRouter {
         requested: false,
         sfuRefreshesInFlight: new Set(),
         debugOrdinalByPeerId: new Map(),
-        nextDebugOrdinal: 0,
+        nextDebugOrdinal: 1,
       };
       this.rooms.set(roomId, room);
     }
@@ -1949,9 +1971,7 @@ function preparedRouteCandidate(
     childPeerId: operation.childPeerId,
     connectionId,
     transport: tuple.kind === "peer" ? tuple.transport : "sfu",
-    qualityProbe:
-      operation.reason === "quality-convergence" ||
-      operation.reason === "root-convergence",
+    qualityProbe: operation.reason === "quality-convergence",
   };
 }
 

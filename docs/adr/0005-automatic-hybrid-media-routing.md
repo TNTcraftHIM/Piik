@@ -195,11 +195,12 @@ first gets every Viewer usable media; quality work runs only while no join,
 failure, pause, identity, departure, capacity, or SFU-resource work needs that
 operation. With the gate disabled, quality evidence remains observation-only.
 
-Each exact current or pending edge has one native state: `unknown`, `healthy`, or
-`degraded`. For ordinary P2P, the parent reports the exact outbound sender's
-WebRTC `qualityLimitationReason` and cumulative durations. One complete
-same-identity delta in `none` is healthy; one in `bandwidth` or `cpu` is
-degraded; `other`, missing, reset, hidden, or stale evidence is unknown. SFU
+Each exact sender has one native observation: `unknown`, `clear`, or `limited`.
+The wire retains `healthy` and `degraded` as the internal categorical names, but
+they mean only one complete same-identity `qualityLimitationReason` delta in
+`none`, or one in `bandwidth`/`cpu`. This observation can trigger one bounded
+experiment; it does not locate the physical bottleneck or prove end-to-end
+quality. `other`, missing, reset, hidden, or stale evidence is unknown. SFU
 publication and subscription state remains owned by LiveKit plus the exact
 Viewer's continuing decoded progress. Screener does not combine loss, RTT,
 jitter, bitrate, FPS, resolution, or freezes into a weighted route score.
@@ -209,17 +210,20 @@ same sender identity. Healthy, unknown, stale, reset, source change, or identity
 change clears that run. This is the same persistence semantic used by the Host
 quality warning; a single native limitation interval remains diagnostic.
 
-When the current source path remains persistently degraded, the controller
+When the current sender remains persistently limited, the controller
 considers the shallowest affected child first and uses the existing
 deterministic candidate filters, ordering, cursor, reservations, and total
-deadline. Candidate Peer parents must have a healthy source path and available
-steady capacity. Only one candidate runs at a time; the old route keeps playing.
-First decoded frame proves candidate usability, and a complete healthy native
-edge delta proves the new path has escaped the old limitation. If the old edge
-recovers, the candidate is degraded or unknown, authority changes, or the
-deadline expires, the candidate is aborted and the graph stays unchanged. A
-successful commit clears and rebaselines quality state for that edge and its
-affected subtree.
+deadline. Candidate Peer parents need a usable source path and available steady
+capacity; clear native paths are tried before the remaining deterministic Peer
+candidates but are not a hard eligibility tier. Only one candidate runs at a
+time and the old route keeps playing. The same Viewer compares fresh old and
+candidate receive windows. A P2P candidate commits only after first decoded
+frame and three consecutive windows with no freeze/pause, no lower pixel area or
+rounded FPS, and a strict improvement in at least one of those dimensions.
+Bitrate does not rank P2P candidates because codec and content phase make it
+non-monotonic. Old-edge recovery, missing/incomparable evidence, authority
+change, or deadline aborts the experiment. A successful commit clears and
+rebaselines the affected subtree.
 
 The same rule supplies both active parent change and relay abdication. A bad
 relay ingress reparents that relay while retaining its subtree. A bad exact
@@ -229,7 +233,7 @@ again; relief can cancel the remaining work without a parent score or explicit
 capacity penalty.
 
 The Host capture/source is a separate fact. A stalled source cannot be repaired
-by topology. One degraded Host-origin edge may move only to a healthy Peer. SFU
+by topology. One limited Host-origin edge may try the same measured Peer move. SFU
 becomes a quality suffix only when every current Host-origin Peer edge, with a
 minimum of two, independently remains persistently degraded. This bounded
 condition identifies possible Host fanout pressure without making SFU an
