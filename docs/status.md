@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `ea692b1849840959d71a55d094c1f12eab091409`, release `ea692b1`, wire
-  `screener-v14`, from `/opt/screener/releases/ea692b1`. The immutable runtime
+  `17bd1e46fea7d391ce5df18a2bccf7a316bde693`, release `17bd1e4`, wire
+  `screener-v15`, from `/opt/screener/releases/17bd1e4`. The immutable runtime
   tar SHA-256 is
-  `4c8213332b98ffa8ff6bb0fa6b1743c898b30c07140d012adf851dbb17646aa5`;
+  `74d75741ce25fe8989fd51f5ba217ee3f6b98cee7bffa1c703fe6d49a7d6e1b0`;
   its 41-file manifest SHA-256 is
-  `df77aae9eb31d3ecfb471c3cb5bfa09137722c7f9d38b72ccd628725359dda13`.
-- The served Browser entry references `assets/index-CiQee9Mj.js`; the public
+  `ffe118ec1d9d14baaf6fdc0d8df0abbfab2e4ce083be9c71eba5ae7eb2805461`.
+- The served Browser entry references `assets/index-DSw6oypG.js`; the public
   asset SHA-256 is
-  `bc57e63461ab728e730663e8fb9633da1289aeef20d3aea9c1c0a4a5997598ea`.
+  `fcca56647ce4c50766b0271e111a7a4ccfa8bd28b778f71865d62de9d7743515`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -73,9 +73,9 @@ This is the current execution index. Git history owns completed timelines;
 ## Current Milestone
 
 Native-edge local convergence is deployed behind its default-off per-share
-policy. Production evidence found that one limitation window could move a usable
-Host Peer edge to a worse SFU path. The active correction requires persistent
-degradation and reserves SFU quality work for multi-edge Host fanout relief.
+policy. Persistent exact sender windows drive ordinary P2P movement. SFU quality
+work is limited to multi-root Host fanout relief and requires independent
+Host-ingress and same-Viewer candidate proof before one move.
 
 ## Active Boundaries
 
@@ -92,8 +92,5 @@ degradation and reserves SFU quality work for multi-edge Host fanout relief.
 
 ## Current Hold
 
-The opt-in quality path has a P1 misrouting hold until the persistence and SFU
-eligibility correction is deployed. Availability routing remains operational;
-Hosts should leave topology optimization disabled meanwhile. Sanitized route
-event logging is enabled for the canary. Broader product evidence remains
-parked.
+No source or deployment P0/P1 is open. Sanitized route-event logging remains
+enabled for the pre-release canary. Broader product evidence remains parked.
