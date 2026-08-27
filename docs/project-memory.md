@@ -34,10 +34,13 @@ implementation and routine UI detail.
   publication; Screener configures no TURN or TCP media route.
 - Every endpoint shares one steady outbound-copy cap, default `2` and limited to
   `1..3`. One room controller owns one committed graph, one reconcile loop, and
-  one serial child operation. First decoded frame is candidate commit proof.
+  one serial child operation. First decoded frame commits availability work;
+  accepted quality work adds native edge proof before commit in that operation.
 - WebRTC and LiveKit own congestion control, media adaptation, reconnect, and SFU
-  layers. Current route quality is diagnostic; no weighted score, all-pairs
-  probe, parent-wide inference, or periodic rebalance is accepted.
+  layers. Current source keeps route quality diagnostic. The accepted next slice
+  is event-driven local topology convergence from their native edge state, with
+  bounded SFU only after healthy Peer escape fails. No weighted score, all-pairs
+  probe, parent-wide prediction, or periodic rebalance is accepted.
 - Browser video uses `motion`; each share chooses H.264 with VP8 fallback through
   an actual sender probe unless the Host explicitly selects VP8 or H264. Screen
   audio uses 64/128/192 kbps ceilings with 128 default.

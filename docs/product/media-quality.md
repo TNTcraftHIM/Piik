@@ -95,8 +95,9 @@ resolution, FPS, bitrate, loss, jitter, RTT, and encode/decode behavior when the
 Browser exposes them; missing or reset counters remain unknown.
 
 The current quality shadow accepts only current foreground presentation evidence
-and never changes routes or media settings. Quality-driven topology work is
-parked in [TODO](../todo.md).
+and never changes routes or media settings. ADR-0005 accepts native-edge local
+topology convergence that is not implemented or deployed; weighted/global
+optimization remains parked in [TODO](../todo.md).
 
 Web pages cannot guarantee Host background capture, mobile background playback,
 or relay execution after Browser/OS suspension. Those remain physical lifecycle

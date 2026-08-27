@@ -109,9 +109,8 @@ LiveKit HIGH+LOW publication without backup codec.
 - A Host may need to lower its explicit share profile when encoder or uplink
   capacity is insufficient; Screener does not silently remove constrained
   Viewer support.
-- Quality-based topology optimization remains unimplemented. Accepting it later
-  requires evidence for alternative-path measurement and a separate route-model
-  decision.
+- ADR-0005's native-edge local convergence remains unimplemented. Weighted or
+  global topology optimization still requires another route-model decision.
 
 ## Stop Lines
 
@@ -121,8 +120,8 @@ LiveKit HIGH+LOW publication without backup codec.
   local pre-share Host selector is the only manual codec surface.
 - No manual SFU layer selector, forced single HIGH publication, or per-Viewer
   encoder.
-- No quality score, all-pairs probing, periodic rebalancing, or speculative
-  parent switching.
+- No quality score, all-pairs probing, periodic rebalancing, or parent switching
+  outside ADR-0005's native-edge operation.
 - No AdaptiveStream while a subscriber can relay the track.
 - No quality or hardware claim from configured options alone.
 

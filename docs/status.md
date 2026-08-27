@@ -69,8 +69,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-The documentation truth architecture is at its acceptance boundary. Product and
-source implementation remain parked pending owner direction.
+The native-edge local-convergence design is accepted at its truth boundary.
+Current source and production remain on the evidence-only shadow;
+implementation has not started.
 
 ## Active Boundaries
 
@@ -78,9 +79,9 @@ source implementation remain parked pending owner direction.
   screening did not reproduce a Host-page drop; accepted Viewer lifecycle work
   prevents frozen JavaScript wall time from becoming an immediate route failure
   but is not capture keepalive.
-- Current-path quality is diagnostic. High loss, RTT, jitter, low bitrate,
-  resolution, FPS, or freeze counters do not trigger relay abdication or parent
-  switching.
+- Current-path quality is diagnostic in source and production. The accepted next
+  slice is ADR-0005 native-edge local convergence; weighted/global optimization
+  remains parked.
 - Repository simplification does not change or deploy product behavior beyond
   deleting proven dead private surfaces.
 - Native/executable senders, shared encode, distribution packages, broad UI
@@ -88,5 +89,5 @@ source implementation remain parked pending owner direction.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Product evidence work is parked in TODO
-while the truth and mechanism ownership is simplified.
+No source or deployment P0/P1 is open. Native-edge convergence is the next
+source task in TODO; broader product evidence remains parked.

@@ -7,8 +7,10 @@ topics are not implementation authority.
 
 ## Now
 
-No product or source implementation is open after the documentation checkpoint.
-Await owner direction.
+1. **Native-edge topology convergence.** Implement ADR-0005's categorical
+   `unknown | healthy | degraded` evidence, availability-first local moves, one
+   serial candidate, and bounded Host-to-SFU suffix. Current production remains
+   observation-only until focused route and Browser gates pass.
 
 ## Parked Repository Work
 
@@ -21,9 +23,10 @@ Await owner direction.
 
 ## Parked Product Work
 
-1. **Quality-driven route selection.** Strict v13 evidence remains diagnostic.
-   Any future decision must use the existing graph/operation and must not add a
-   score, all-pairs probe, periodic rebalancer, or ordinary SFU preference.
+1. **Broader quality optimization.** Weighted/global optimization,
+   parent-wide prediction, startup-limited inference, and alternative SFU
+   policies remain unaccepted. Reopen only from exact path evidence; do not add
+   a score, all-pairs probe, periodic rebalancer, or ordinary SFU preference.
 2. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
    autoplay, background audio, foreground recovery, lock/page reclamation,
    rotation, network migration, and relay survival.

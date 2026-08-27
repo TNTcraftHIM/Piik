@@ -189,7 +189,39 @@ A controlled production direct-P2P canvas run injected packet-loss pulses:
 All comparable arms had zero recovered pauses. The same loss rate produced
 different presentation results, and the longest all-drop pulse crossed into
 availability recovery. This proves the shadow path, not an active threshold or
-counterfactual parent quality. Quality-driven routing is parked in TODO.
+counterfactual parent quality.
+
+## Route-Selection Evidence Boundary
+
+Current Viewer evidence cannot identify whether a poor result came from source
+capture, an ancestor, the exact sender, the child decoder, or presentation. It
+also cannot prove an unconnected path is better. A route decision therefore
+needs exact sender evidence and real candidate media; combining current loss,
+RTT, bitrate, FPS, resolution, and freezes into a score would not repair either
+information gap. [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) owns
+the accepted local-convergence algorithm.
+
+W3C `qualityLimitationReason` is only the most limiting factor at one instant.
+Its cumulative `qualityLimitationDurations` can prove a same-identity interval
+spent in `none`, `bandwidth`, or `cpu`; missing or reset values remain unknown.
+This supplies a categorical native edge state rather than an application score.
+One report is still not a future guarantee, so a candidate must carry real media
+while the working route remains and prove a complete healthy delta before
+commit. Failure remains inconclusive without cutting the old route.
+
+SFU has asymmetric evidence. The Browser publication proves shared Host-to-SFU
+ingress, while exact SFU-to-Viewer sending and layer selection live inside
+LiveKit. The accepted model therefore keeps SFU as a bounded suffix: LiveKit
+owns its stream state and adaptation, and the exact Viewer proves continuing
+decoded progress. The application does not manufacture a per-Viewer SFU sender
+score or layer choice.
+
+This structure follows libwebrtc's native limitation classification instead of
+reimplementing congestion control. QUIC path validation supports retaining a
+working path until a new one is proved, but its timers and congestion state are
+not copied. Overcast and End System Multicast demonstrate gradual measured
+overlay parent changes; their periodic probes, scalar metrics, published
+percentages, and tuning loops are not adopted for this Browser product.
 
 ## Open Evidence
 
@@ -222,6 +254,9 @@ counterfactual parent quality. Quality-driven routing is parked in TODO.
 - [Screego VP9 regression](https://github.com/screego/server/pull/132)
 - [Media Capabilities](https://www.w3.org/TR/media-capabilities/)
 - [Chrome DevTools Protocol Network domain](https://chromedevtools.github.io/devtools-protocol/tot/Network/)
+- [QUIC path validation and migration](https://www.rfc-editor.org/rfc/rfc9000.html#name-path-validation)
+- [Overcast overlay parent selection](https://cs.brown.edu/~jj/papers/overcast-osdi00.pdf)
+- [End System Multicast adaptation](https://static.usenix.org/events/usenix04/tech/general/full_papers/chu/chu_html/index.html)
 
 No implementation code was copied. LiveKit is Apache-2.0, libwebrtc uses its
 BSD-style license, and Screego remains GPL research-only.
