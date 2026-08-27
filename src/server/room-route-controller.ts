@@ -123,6 +123,7 @@ interface Attempt<Resource> {
   publicationGeneration?: string;
   publicationConnectionId?: string;
   reservation: CandidateReservation<Resource>;
+  startedAtMs: number;
   transportConnected: boolean;
   mediaReady: boolean;
   senderQualityState?: "healthy" | "degraded";
@@ -316,7 +317,13 @@ export interface RouteQualityEvidenceInput {
     | "freezeDurationMsDelta"
     | "pauseCountDelta"
     | "pauseDurationMsDelta"
-  >;
+  > &
+    Partial<
+      Pick<
+        ViewerQualityEvidenceMetrics,
+        "width" | "height" | "framesPerSecond" | "bitrateKbps"
+      >
+    >;
   acceptedAtMs: number;
 }
 
@@ -350,6 +357,7 @@ export class RoomRouteController<Resource = unknown> {
   private readonly directContinuations = new Map<string, DirectContinuation>();
   private sfuBootstrapIntent?: SfuBootstrapIntent;
   private sfuBootstrapExhaustedAtFactVersion?: number;
+  private rootConvergenceRootPeerId?: string;
 
   constructor(private readonly options: ControllerOptions) {
     assertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity);
@@ -936,7 +944,7 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     const attempt = operation?.current;
     if (
-      operation?.reason === "quality-convergence" &&
+      this.operationRequiresHealthyCandidate(operation) &&
       attempt?.tuple.kind === "peer" &&
       operation.childPeerId === input.childPeerId &&
       operation.childSessionId === child.sessionId &&
@@ -1418,7 +1426,7 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     const attempt = operation?.current;
     const ownsCandidate =
-      operation?.reason === "quality-convergence" &&
+      this.operationRequiresHealthyCandidate(operation) &&
       attempt &&
       (attempt.tuple.kind === "peer"
         ? attempt.tuple.parentPeerId === parentPeerId &&
@@ -1434,19 +1442,11 @@ export class RoomRouteController<Resource = unknown> {
     released.push(...validation.released);
     const failedPeerIds = failedPeerIdsFrom(validation);
     if (
-      this.operation?.reason === "direct-convergence" &&
+      this.operation &&
+      this.isBackgroundConvergence(this.operation.reason) &&
       (this.hasSfuBootstrapWork() || this.selectNextChild())
     ) {
-      this.debug("direct-convergence-preempted", {
-        child: this.debugPeer(this.operation.childPeerId),
-      });
-      released.push(...this.abortOperation(nowMs, "aborted"));
-    }
-    if (
-      this.operation?.reason === "quality-convergence" &&
-      (this.hasSfuBootstrapWork() || this.selectNextChild())
-    ) {
-      this.debug("quality-convergence-preempted", {
+      this.debug(`${this.operation.reason}-preempted`, {
         child: this.debugPeer(this.operation.childPeerId),
       });
       released.push(...this.abortOperation(nowMs, "aborted"));
@@ -1473,11 +1473,16 @@ export class RoomRouteController<Resource = unknown> {
         routeChildPeerId || bootstrap || continuation
           ? undefined
           : this.selectQualityChild(nowMs);
+      const rootConvergence =
+        routeChildPeerId || bootstrap || continuation || qualityChildPeerId
+          ? undefined
+          : this.takeRootConvergenceIntent();
       const childPeerId =
         routeChildPeerId ??
         bootstrap?.carrierPeerId ??
         continuation?.childPeerId ??
-        qualityChildPeerId;
+        qualityChildPeerId ??
+        rootConvergence?.childPeerId;
       if (!childPeerId) return { removedPeerIds, failedPeerIds, released };
       const child = this.participants.get(childPeerId)!;
       const reason: RouteDemandReason = continuation
@@ -1486,8 +1491,10 @@ export class RoomRouteController<Resource = unknown> {
           ? "sfu-bootstrap"
           : qualityChildPeerId
             ? "quality-convergence"
-          : (this.routeTimings.get(childPeerId)?.reason ??
-            this.routeDemandReason(childPeerId));
+            : rootConvergence
+              ? "root-convergence"
+              : (this.routeTimings.get(childPeerId)?.reason ??
+                this.routeDemandReason(childPeerId));
       const demandPeerId = bootstrap?.demandPeerId ?? childPeerId;
       const demand = this.participants.get(demandPeerId)!;
       this.ensureDemand(demandPeerId, nowMs, reason);
@@ -1495,7 +1502,9 @@ export class RoomRouteController<Resource = unknown> {
         ? [continuation.plan]
         : qualityChildPeerId
           ? this.buildQualityCandidates(childPeerId, nowMs)
-          : this.buildCandidates(childPeerId, bootstrap !== undefined);
+          : rootConvergence
+            ? [rootConvergence.plan]
+            : this.buildCandidates(childPeerId, bootstrap !== undefined);
       if (!bootstrap && !continuation && demand.sfuFirstAtNextRoute) {
         const sfuIndex = candidates.findIndex(
           (candidate) => candidate.tuple.kind === "sfu",
@@ -1515,14 +1524,15 @@ export class RoomRouteController<Resource = unknown> {
           child: this.debugPeer(childPeerId),
           reason,
         });
-        if (reason === "direct-convergence") {
-          this.directContinuations.delete(childPeerId);
-          continue;
-        }
-        if (reason === "quality-convergence") {
-          const observation = this.senderQualityObservations.get(childPeerId);
-          if (observation) {
-            observation.consumedAtFactVersion = this.factVersion;
+        if (this.isBackgroundConvergence(reason)) {
+          if (reason === "direct-convergence") {
+            this.directContinuations.delete(childPeerId);
+          }
+          if (reason === "quality-convergence") {
+            const observation = this.senderQualityObservations.get(childPeerId);
+            if (observation) {
+              observation.consumedAtFactVersion = this.factVersion;
+            }
           }
           this.finishTiming(
             childPeerId,
@@ -1621,8 +1631,9 @@ export class RoomRouteController<Resource = unknown> {
       };
     }
     if (
-      operation.reason === "quality-convergence" &&
+      this.operationRequiresHealthyCandidate(operation) &&
       plan.tuple.kind === "peer" &&
+      operation.reason === "quality-convergence" &&
       !this.qualitySourcePathHealthy(plan.tuple.parentPeerId, input.nowMs)
     ) {
       this.noteRejection(operation.demandPeerId, "stale");
@@ -1688,6 +1699,7 @@ export class RoomRouteController<Resource = unknown> {
       publicationGeneration,
       publicationConnectionId: input.publicationConnectionId,
       reservation: input.reservation,
+      startedAtMs: input.nowMs,
       transportConnected: false,
       mediaReady: false,
     };
@@ -1861,16 +1873,19 @@ export class RoomRouteController<Resource = unknown> {
         released: validation.released,
       };
     }
-    if (operation.reason === "quality-convergence") {
+    if (this.operationRequiresHealthyCandidate(operation)) {
       attempt.mediaReady = true;
       const currentEdge = this.upstreamByViewer.get(operation.childPeerId);
       if (
-        !currentEdge ||
-        this.senderQualityState(
-          operation.childPeerId,
-          currentEdge,
-          nowMs,
-        ) !== "degraded"
+        (operation.reason === "quality-convergence" &&
+          (!currentEdge ||
+            this.senderQualityState(
+              operation.childPeerId,
+              currentEdge,
+              nowMs,
+            ) !== "degraded")) ||
+        (operation.reason === "root-convergence" &&
+          !this.rootConvergenceOperationStillEligible(operation))
       ) {
         return {
           accepted: true,
@@ -1912,7 +1927,8 @@ export class RoomRouteController<Resource = unknown> {
             nowMs >=
               attempt.senderQualityAcceptedAtMs +
                 VIEWER_QUALITY_EVIDENCE_EXPIRY_MS)) ||
-        (attempt.tuple.kind === "peer" &&
+        (operation.reason === "quality-convergence" &&
+          attempt.tuple.kind === "peer" &&
           !this.qualitySourcePathHealthy(
             attempt.tuple.parentPeerId,
             nowMs,
@@ -2044,10 +2060,16 @@ export class RoomRouteController<Resource = unknown> {
 
   operationExpired(nowMs: number): SettleResult<Resource> {
     if (this.operation) {
-      this.debug("operation-deadline", {
+      const current = this.operation.current;
+      const noProgress =
+        current?.tuple.kind === "peer" &&
+        !current.transportConnected &&
+        nowMs >= current.startedAtMs + this.directHeadStartMs() &&
+        nowMs < this.operation.deadlineAtMs;
+      this.debug(noProgress ? "candidate-no-progress" : "operation-deadline", {
         child: this.debugPeer(this.operation.childPeerId),
-        candidate: this.operation.current
-          ? this.debugTuple(this.operation.current.tuple)
+        candidate: current
+          ? this.debugTuple(current.tuple)
           : null,
         cursor: this.operation.cursor,
         candidateCount: this.operation.candidates.length,
@@ -2084,6 +2106,7 @@ export class RoomRouteController<Resource = unknown> {
     this.directContinuations.clear();
     this.sfuBootstrapIntent = undefined;
     this.sfuBootstrapExhaustedAtFactVersion = undefined;
+    this.rootConvergenceRootPeerId = undefined;
     this.paused = true;
     return [...resources];
   }
@@ -2127,10 +2150,20 @@ export class RoomRouteController<Resource = unknown> {
       released.push(...this.abortOperation(nowMs, "aborted"));
       return result;
     }
+    if (
+      operation.reason === "root-convergence" &&
+      !this.rootConvergenceOperationStillEligible(operation)
+    ) {
+      released.push(...this.abortOperation(nowMs, "aborted"));
+      return result;
+    }
     if (nowMs >= operation.deadlineAtMs) {
       const directConvergence = operation.reason === "direct-convergence";
       const sfuBootstrap = operation.reason === "sfu-bootstrap";
       const qualityConvergence = operation.reason === "quality-convergence";
+      const backgroundConvergence = this.isBackgroundConvergence(
+        operation.reason,
+      );
       if (directConvergence) {
         this.consumeDirectContinuationCandidate(operation);
       }
@@ -2146,15 +2179,13 @@ export class RoomRouteController<Resource = unknown> {
           )
         : undefined;
       const bootstrapAvailable =
-        !directConvergence &&
+        !backgroundConvergence &&
         !sfuBootstrap &&
-        !qualityConvergence &&
         !factsChanged &&
         this.bootstrapCandidateAvailable(operation.demandPeerId);
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
-        : !directConvergence &&
-          !qualityConvergence &&
+        : !backgroundConvergence &&
           !factsChanged &&
           !bootstrapAvailable;
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
@@ -2162,7 +2193,7 @@ export class RoomRouteController<Resource = unknown> {
         this.finishTiming(
           operation.demandPeerId,
           nowMs,
-          directConvergence || qualityConvergence
+          backgroundConvergence
             ? this.currentFinalRoute(operation.demandPeerId)
             : exhausted
               ? "failed"
@@ -2180,9 +2211,8 @@ export class RoomRouteController<Resource = unknown> {
       }
       this.blockAndClear(
         operation,
-        !directConvergence &&
+        !backgroundConvergence &&
           !sfuBootstrap &&
-          !qualityConvergence &&
           !factsChanged,
         released,
         revisionAdvanced,
@@ -2193,7 +2223,7 @@ export class RoomRouteController<Resource = unknown> {
       return {
         ...result,
         exhausted:
-          directConvergence || qualityConvergence ? undefined : exhausted,
+          backgroundConvergence ? undefined : exhausted,
         exhaustedChildPeerId: failedBootstrapDemand ??
           (exhausted ? operation.demandPeerId : undefined),
         expired: true,
@@ -2228,12 +2258,17 @@ export class RoomRouteController<Resource = unknown> {
       if (attempt) {
         const guardFailed = failedGuard && this.guardMatches(failedGuard, operation, attempt);
         const plan = operation.candidates[operation.cursor];
+        const peerNoProgressExpired =
+          attempt.tuple.kind === "peer" &&
+          !attempt.transportConnected &&
+          nowMs >= attempt.startedAtMs + this.directHeadStartMs();
         const qualityPeerSourceInvalid =
           operation.reason === "quality-convergence" &&
           attempt.tuple.kind === "peer" &&
           !this.qualitySourcePathHealthy(attempt.tuple.parentPeerId, nowMs);
         if (
           !guardFailed &&
+          !peerNoProgressExpired &&
           !qualityPeerSourceInvalid &&
           plan &&
           this.candidateValid(operation.childPeerId, plan, attempt)
@@ -2241,7 +2276,13 @@ export class RoomRouteController<Resource = unknown> {
           return result;
         }
         if (!guardFailed) {
-          this.noteRejection(operation.demandPeerId, "stale");
+          this.noteRejection(
+            operation.demandPeerId,
+            peerNoProgressExpired ? "first-frame-timeout" : "stale",
+          );
+        }
+        if (peerNoProgressExpired) {
+          result.expired = true;
         }
         if (operation.reason === "direct-convergence") {
           this.consumeDirectContinuationCandidate(operation);
@@ -2264,9 +2305,11 @@ export class RoomRouteController<Resource = unknown> {
         this.clearCandidateTiming(operation.demandPeerId);
       }
       if (operation.cursor < operation.candidates.length) return result;
-      const directConvergence = operation.reason === "direct-convergence";
       const sfuBootstrap = operation.reason === "sfu-bootstrap";
       const qualityConvergence = operation.reason === "quality-convergence";
+      const backgroundConvergence = this.isBackgroundConvergence(
+        operation.reason,
+      );
       const factsChanged = operation.builtAtFactVersion !== this.factVersion;
       const rejectionBucket = factsChanged
         ? "stale"
@@ -2283,15 +2326,13 @@ export class RoomRouteController<Resource = unknown> {
           )
         : undefined;
       const bootstrapAvailable =
-        !directConvergence &&
+        !backgroundConvergence &&
         !sfuBootstrap &&
-        !qualityConvergence &&
         !factsChanged &&
         this.bootstrapCandidateAvailable(operation.demandPeerId);
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
-        : !directConvergence &&
-          !qualityConvergence &&
+        : !backgroundConvergence &&
           !factsChanged &&
           !bootstrapAvailable;
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
@@ -2299,7 +2340,7 @@ export class RoomRouteController<Resource = unknown> {
         this.finishTiming(
           operation.demandPeerId,
           nowMs,
-          directConvergence || qualityConvergence
+          backgroundConvergence
             ? this.currentFinalRoute(operation.demandPeerId)
             : exhausted
               ? "failed"
@@ -2317,15 +2358,14 @@ export class RoomRouteController<Resource = unknown> {
       }
       this.blockAndClear(
         operation,
-        !directConvergence &&
+        !backgroundConvergence &&
           !sfuBootstrap &&
-          !qualityConvergence &&
           !factsChanged,
         released,
         this.revision !== activeRevisionAtStart,
       );
       result.exhausted =
-        directConvergence || qualityConvergence ? undefined : exhausted;
+        backgroundConvergence ? undefined : exhausted;
       if (failedBootstrapDemand) {
         result.exhaustedChildPeerId = failedBootstrapDemand;
       } else if (exhausted) {
@@ -2339,6 +2379,10 @@ export class RoomRouteController<Resource = unknown> {
   private commitAttempt(operation: ChildOperation<Resource>, attempt: Attempt<Resource>): Resource[] {
     const beforeResources = new Set(this.committedResources());
     const old = this.upstreamByViewer.get(operation.childPeerId);
+    const createsHostRoot =
+      attempt.tuple.kind === "peer" &&
+      attempt.tuple.parentPeerId === this.options.hostPeerId &&
+      !(old?.kind === "peer" && old.parentPeerId === this.options.hostPeerId);
     this.clearQualityForParticipant(operation.childPeerId);
 
     if (attempt.tuple.kind === "sfu" && attempt.tuple.publication === "replace") {
@@ -2429,6 +2473,9 @@ export class RoomRouteController<Resource = unknown> {
     this.revision = attempt.revision;
     this.operation = undefined;
     this.touchFacts();
+    if (createsHostRoot) {
+      this.stageRootConvergence(operation.childPeerId);
+    }
     const participant = this.participants.get(operation.childPeerId);
     if (participant) {
       participant.blockedAtFactVersion = undefined;
@@ -2658,6 +2705,121 @@ export class RoomRouteController<Resource = unknown> {
       )[0]?.peerId;
   }
 
+  private stageRootConvergence(rootPeerId: string): void {
+    if (this.options.qualityConvergenceEnabled !== true) return;
+    const convergence = this.rootConvergencePlan(rootPeerId);
+    if (!convergence) return;
+    this.rootConvergenceRootPeerId = rootPeerId;
+    this.debug("root-convergence-staged", {
+      root: this.debugPeer(rootPeerId),
+      donor: this.debugPeer(convergence.donorPeerId),
+      child: this.debugPeer(convergence.childPeerId),
+    });
+  }
+
+  private takeRootConvergenceIntent(): {
+    childPeerId: string;
+    plan: CandidatePlan;
+  } | undefined {
+    const rootPeerId = this.rootConvergenceRootPeerId;
+    this.rootConvergenceRootPeerId = undefined;
+    if (!rootPeerId || this.options.qualityConvergenceEnabled !== true) {
+      return undefined;
+    }
+    const convergence = this.rootConvergencePlan(rootPeerId);
+    return convergence
+      ? { childPeerId: convergence.childPeerId, plan: convergence.plan }
+      : undefined;
+  }
+
+  private rootConvergencePlan(rootPeerId: string): {
+    donorPeerId: string;
+    childPeerId: string;
+    plan: CandidatePlan;
+  } | undefined {
+    const root = this.participants.get(rootPeerId);
+    if (
+      !root?.sessionId ||
+      root.departureConfirmed ||
+      !this.isActiveHostRoot(rootPeerId) ||
+      this.activeDirectChildren(rootPeerId).length !== 0
+    ) {
+      return undefined;
+    }
+    const donorPeerId = this.childrenOf(this.options.hostPeerId)
+      .filter(
+        (peerId) =>
+          peerId !== rootPeerId &&
+          this.isActiveHostRoot(peerId) &&
+          this.activeDirectChildren(peerId).length >= 2,
+      )
+      .sort(
+        (left, right) =>
+          this.activeDirectChildren(right).length -
+            this.activeDirectChildren(left).length ||
+          compareParticipant(
+            this.participants.get(left)!,
+            this.participants.get(right)!,
+          ),
+      )[0];
+    if (!donorPeerId) return undefined;
+    const childPeerId = this.activeDirectChildren(donorPeerId).sort(
+      (left, right) =>
+        compareParticipant(
+          this.participants.get(right)!,
+          this.participants.get(left)!,
+        ),
+    )[0];
+    if (!childPeerId) return undefined;
+    const plan = this.planCandidate(childPeerId, {
+      kind: "peer",
+      parentPeerId: rootPeerId,
+      transport: "direct",
+    });
+    return plan &&
+      plan.endpointTransition.kind !== "bounded-gap" &&
+      this.candidateValid(childPeerId, plan)
+      ? { donorPeerId, childPeerId, plan }
+      : undefined;
+  }
+
+  private rootConvergenceOperationStillEligible(
+    operation: ChildOperation<Resource>,
+  ): boolean {
+    if (operation.reason !== "root-convergence") return true;
+    const tuple =
+      operation.current?.tuple ?? operation.candidates[operation.cursor]?.tuple;
+    const current = this.upstreamByViewer.get(operation.childPeerId);
+    return Boolean(
+      tuple?.kind === "peer" &&
+        current?.kind === "peer" &&
+        current.usable &&
+        current.physicalActive &&
+        current.parentPeerId !== tuple.parentPeerId &&
+        this.isActiveHostRoot(tuple.parentPeerId) &&
+        this.isActiveHostRoot(current.parentPeerId) &&
+        this.activeDirectChildren(tuple.parentPeerId).length === 0 &&
+        this.activeDirectChildren(current.parentPeerId).length >= 2,
+    );
+  }
+
+  private isActiveHostRoot(peerId: string): boolean {
+    const edge = this.upstreamByViewer.get(peerId);
+    return Boolean(
+      edge?.kind === "peer" &&
+        edge.parentPeerId === this.options.hostPeerId &&
+        edge.usable &&
+        edge.physicalActive,
+    );
+  }
+
+  private activeDirectChildren(parentPeerId: string): string[] {
+    return this.childrenOf(parentPeerId).filter((childPeerId) => {
+      const edge = this.upstreamByViewer.get(childPeerId);
+      return edge?.kind === "peer" && edge.usable && edge.physicalActive;
+    });
+  }
+
   private senderQualityPersistentlyDegraded(
     childPeerId: string,
     edge: CommittedEdge<Resource>,
@@ -2787,6 +2949,23 @@ export class RoomRouteController<Resource = unknown> {
     return Math.min(
       MAX_DIRECT_HEAD_START_MS,
       Math.max(1, Math.floor(this.options.operationTimeoutMs / 2)),
+    );
+  }
+
+  private isBackgroundConvergence(reason: RouteDemandReason): boolean {
+    return (
+      reason === "direct-convergence" ||
+      reason === "quality-convergence" ||
+      reason === "root-convergence"
+    );
+  }
+
+  private operationRequiresHealthyCandidate(
+    operation: ChildOperation<Resource> | undefined,
+  ): operation is ChildOperation<Resource> {
+    return (
+      operation?.reason === "quality-convergence" ||
+      operation?.reason === "root-convergence"
     );
   }
 
@@ -3421,6 +3600,15 @@ export class RoomRouteController<Resource = unknown> {
     ) {
       return this.directHeadStartDeadlineAt(operation);
     }
+    if (
+      operation.current?.tuple.kind === "peer" &&
+      !operation.current.transportConnected
+    ) {
+      return Math.min(
+        operation.deadlineAtMs,
+        operation.current.startedAtMs + this.directHeadStartMs(),
+      );
+    }
     return operation.deadlineAtMs;
   }
 
@@ -3434,10 +3622,7 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private foregroundSfuIndex(operation: ChildOperation<Resource>): number {
-    if (
-      operation.reason === "direct-convergence" ||
-      operation.reason === "quality-convergence"
-    ) {
+    if (this.isBackgroundConvergence(operation.reason)) {
       return -1;
     }
     const index = operation.candidates.findIndex(

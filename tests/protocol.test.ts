@@ -97,7 +97,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v15");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v16");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -872,6 +872,11 @@ describe("client signaling protocol", () => {
       sampleTimestampMs: 2_000,
       routeRevision: 3,
       state: "degraded",
+      diagnostics: {
+        reason: "bandwidth",
+        framesPerSecond: 24,
+        bitrateKbps: 1_500,
+      },
     } as const;
     expect(clientMessageSchema.safeParse(sender).success).toBe(true);
     expect(
@@ -879,6 +884,7 @@ describe("client signaling protocol", () => {
         ...sender,
         state: "healthy",
         rtpStatsId: null,
+        diagnostics: { ...sender.diagnostics, reason: "none" },
       }).success,
     ).toBe(false);
     expect(
@@ -894,6 +900,11 @@ describe("client signaling protocol", () => {
         routeRevision: 4,
         state: "healthy",
         sampleTimestampMs: 2_000,
+        diagnostics: {
+          reason: "none",
+          framesPerSecond: 30,
+          bitrateKbps: 2_000,
+        },
       }).success,
     ).toBe(true);
   });
@@ -1307,7 +1318,7 @@ describe("server signaling protocol", () => {
           {
             ...viewer,
             upstream: { kind: "sfu" },
-            sfuMediaReady: true,
+            mediaReady: true,
           },
         ],
       }).success,
@@ -1315,7 +1326,7 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({
         type: "viewer-presence",
-        viewers: [{ ...viewer, sfuMediaReady: false }],
+        viewers: [{ ...viewer, mediaReady: false }],
       }).success,
     ).toBe(false);
     expect(

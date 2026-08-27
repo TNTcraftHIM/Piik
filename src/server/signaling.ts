@@ -36,7 +36,6 @@ import {
 } from "./room-store.js";
 import {
   HybridMediaRouter,
-  type ActiveSfuViewerMediaState,
   type SfuFallbackOptions,
 } from "./hybrid-media-router.js";
 import { createIceConfig, type IceConfigOptions } from "./ice.js";
@@ -77,12 +76,6 @@ interface ViewerQualityEvidenceGate {
   connectionId: string;
   presentationEpoch: number;
   sequence: number;
-}
-
-interface ViewerMediaReadyState {
-  sessionId: string;
-  revision: number;
-  sfuPublicationGeneration: string;
 }
 
 interface SenderQualityRateWindow {
@@ -128,10 +121,6 @@ export class SignalingServer {
   private readonly senderQualityRateBySession = new Map<
     string,
     SenderQualityRateWindow
-  >();
-  private readonly viewerMediaReadyByRoom = new Map<
-    string,
-    Map<string, ViewerMediaReadyState>
   >();
   private readonly qualitySettingsByRoom = new Map<string, QualitySettings>();
   private readonly routePolicyByRoom = new Map<string, RoutePolicy>();
@@ -191,8 +180,7 @@ export class SignalingServer {
         deleteConnectionId: (roomId, viewerPeerId) =>
           this.deleteViewerConnectionId(roomId, viewerPeerId),
         getShareGeneration: (roomId) => this.shareGenerationsByRoom.get(roomId),
-        onViewerMediaSnapshot: (roomId, viewers) =>
-          this.replaceViewerMediaState(roomId, viewers),
+        onRoutesChanged: (roomId) => this.sendViewerPresence(roomId),
         now: this.now,
       });
     }
@@ -265,7 +253,6 @@ export class SignalingServer {
     this.viewerQualityEvidenceGates.clear();
     this.viewerQualityEvidenceAttemptAtMs.clear();
     this.senderQualityRateBySession.clear();
-    this.viewerMediaReadyByRoom.clear();
     this.routePolicyByRoom.clear();
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
@@ -1906,20 +1893,6 @@ export class SignalingServer {
     }
 
     const connectedViewers = this.options.roomStore.getConnectedViewers(roomId);
-    const currentSessions = new Map(
-      connectedViewers.map((viewer) => [viewer.peerId, viewer.sessionId]),
-    );
-    const readyByViewer = this.viewerMediaReadyByRoom.get(roomId);
-    if (readyByViewer) {
-      for (const [viewerPeerId, ready] of readyByViewer) {
-        if (currentSessions.get(viewerPeerId) !== ready.sessionId) {
-          readyByViewer.delete(viewerPeerId);
-        }
-      }
-      if (readyByViewer.size === 0) {
-        this.viewerMediaReadyByRoom.delete(roomId);
-      }
-    }
     const viewers: ParticipantPresenceEntry[] = [];
     const host = this.options.roomStore.getConnectedHost(roomId);
     const hostSocket = host
@@ -1962,31 +1935,27 @@ export class SignalingServer {
         : host && this.isOrdinaryHostChild(roomId, viewer.peerId)
           ? { kind: "peer" as const, peerId: host.peerId }
           : { kind: "none" as const };
-      const ready = readyByViewer?.get(viewer.peerId);
-      const sfuMediaReady =
-        upstream.kind === "sfu" &&
-        ready?.sessionId === viewer.sessionId &&
-        this.hybridMediaRouter!.viewerSfuMediaStateIsCurrent(
-          roomId,
-          viewer.peerId,
-          ready.revision,
-          ready.sfuPublicationGeneration,
-        );
-      if (ready && !sfuMediaReady) {
-        readyByViewer?.delete(viewer.peerId);
-      }
+      const activeEdge = this.isHybridMediaEnabled()
+        ? this.hybridMediaRouter!.resolveActiveViewerMediaEdge(
+            roomId,
+            viewer.peerId,
+          )
+        : undefined;
+      const mediaReady =
+        activeEdge !== undefined &&
+        upstream.kind !== "none" &&
+        (activeEdge.upstream.kind === "sfu"
+          ? upstream.kind === "sfu"
+          : upstream.kind === "peer" &&
+            activeEdge.upstream.peerId === upstream.peerId);
       viewers.push({
         role: "viewer",
         peerId: viewer.peerId,
         displayName: viewerState.displayName,
         upstream,
-        ...(sfuMediaReady ? { sfuMediaReady: true as const } : {}),
+        ...(mediaReady ? { mediaReady: true as const } : {}),
       });
     }
-    if (readyByViewer?.size === 0) {
-      this.viewerMediaReadyByRoom.delete(roomId);
-    }
-
     const message = { type: "viewer-presence" as const, viewers };
     const recipients = new Set<WebSocket>();
     if (hostSocket && hostState?.viewerPresence) {
@@ -2008,26 +1977,6 @@ export class SignalingServer {
       }
     }
     recipients.forEach((socket) => this.send(socket, message));
-  }
-
-  private replaceViewerMediaState(
-    roomId: string,
-    viewers: readonly ActiveSfuViewerMediaState[],
-  ): void {
-    if (viewers.length > 0) {
-      const readyByViewer = new Map<string, ViewerMediaReadyState>();
-      for (const viewer of viewers) {
-        readyByViewer.set(viewer.viewerPeerId, {
-          sessionId: viewer.viewerSessionId,
-          revision: viewer.revision,
-          sfuPublicationGeneration: viewer.sfuPublicationGeneration,
-        });
-      }
-      this.viewerMediaReadyByRoom.set(roomId, readyByViewer);
-    } else {
-      this.viewerMediaReadyByRoom.delete(roomId);
-    }
-    this.sendViewerPresence(roomId);
   }
 
   private sendToSession(sessionId: string, message: ServerMessage): void {
@@ -2115,12 +2064,6 @@ export class SignalingServer {
     this.clearViewerGrace(roomId, peerId);
     this.deleteViewerConnectionId(roomId, peerId);
 
-    const readyByViewer = this.viewerMediaReadyByRoom.get(roomId);
-    readyByViewer?.delete(peerId);
-    if (readyByViewer?.size === 0) {
-      this.viewerMediaReadyByRoom.delete(roomId);
-    }
-
     const ordinaryChildren = this.ordinaryActiveHostChildrenByRoom.get(roomId);
     ordinaryChildren?.delete(peerId);
     if (ordinaryChildren?.size === 0) {
@@ -2139,7 +2082,6 @@ export class SignalingServer {
   }
 
   private clearRoomConnectionIds(roomId: string): void {
-    this.viewerMediaReadyByRoom.delete(roomId);
     const prefix = `${roomId}:`;
     for (const key of this.connectionIdsByViewer.keys()) {
       if (key.startsWith(prefix)) {

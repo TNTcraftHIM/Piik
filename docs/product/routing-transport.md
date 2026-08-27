@@ -67,6 +67,18 @@ without discarding its subtree; departure and capacity changes move only affecte
 children. ADR-0005 owns filtering, ordering, cursor, revision, reservation, and
 rollback mechanics.
 
+Every unconnected Peer candidate gets the same five-second no-progress window.
+Transport-connected progress retains it through the operation deadline. This
+applies to join, recovery, direct convergence, quality convergence and structural
+convergence; candidate order never resets the total deadline.
+
+When a newly committed Host-root Viewer exposes unused downstream capacity while
+another Host root has at least two direct children, the same background operation may
+move one of those children to the new root. The candidate must prove a healthy
+native sender edge before commit. This one-shot event-driven move reduces root
+fanout skew; it is not periodic balancing and does not move a healthy branch
+without admitted overlap.
+
 Framework reconnect runs before route reassignment. Manual media reconnect also
 rebuilds only the current P2P parent or current SFU subscription; it does not
 perform quality selection or choose another route.

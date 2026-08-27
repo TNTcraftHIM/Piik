@@ -52,11 +52,11 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Canonical source and production use the strict `screener-v15` Browser/server
-contract with the corrected opt-in native-edge convergence controller, optional
-SQLite room authority, and the H.264/VP8 sender gate. [Status](./status.md) is
-the sole owner of exact source, artifact, deployment, milestone, and blocker
-identity.
+Canonical source uses the strict `screener-v16` Browser/server contract with
+committed media readiness, bounded candidate-relative progress and one-shot
+Host-root convergence. Production remains on `screener-v15` until the current
+correction release completes. Both retain optional SQLite room authority and the
+H.264/VP8 sender gate. [Status](./status.md) owns exact identity.
 
 Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
 owned by [verification status](./verification-status.md). Environment and initial
