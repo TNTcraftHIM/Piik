@@ -14,24 +14,42 @@ versioned knowledge base. Its reported failure mode for one large instruction
 file is the same one observed in Screener: scarce context is crowded out, every
 rule appears equally important, stale guidance accumulates, and ownership is
 hard to verify. The recommended corrective structure is progressive disclosure,
-cross-links, and mechanical freshness/structure checks.
+cross-links, and mechanical freshness/structure checks. Codex concatenates the
+applicable project instruction chain until `project_doc_max_bytes`, whose
+default is 32 KiB.
 
 Anthropic likewise recommends concise, specific project instructions and moves
 multi-step procedures or path-specific rules to on-demand skills or scoped rule
-files. A size ceiling is not a target.
+files. Claude Code's stated target is under 200 lines per `CLAUDE.md`; imported
+files still enter the startup context, so an import is organization rather than
+context reduction.
 
 Hermes distinguishes project conventions (`AGENTS.md`) from user preference,
 personality, and learned memory. Its persistent memory is deliberately bounded
 and curated; full session history remains searchable on demand rather than being
 injected into every prompt. Memory is a frozen session-start snapshot, so it
-cannot replace current repository truth. Nested context is useful only when a
-subtree has genuinely distinct rules.
+cannot replace current repository truth. Its context-file limit is configurable
+or dynamically derived with a 20,000-character floor, and it recommends staying
+below that value and using nested context for genuinely distinct subtrees. Its
+bounded-memory guidance starts consolidation at 80% rather than treating the
+hard limit as the normal operating target.
+
+Screener therefore warns at the published recommendation or 80% of a loader
+limit, then fails only at a real loading boundary or a small explicit buffer:
+32 KiB for the Codex chain, 20,000 characters for Hermes, and 250 effective
+Claude lines above the 200-line recommendation. The same envelope applies to the
+repo STS skill because `AGENTS.md` requires it on every task. A failure tells the
+maintainer to use nested/path-scoped context, on-demand skills or linked docs,
+remove duplication and completed history, and delete stale conclusions; raising
+the ceiling is not the default remedy.
 
 Sources:
 
 - [OpenAI Harness engineering](https://openai.com/index/harness-engineering/)
+- [OpenAI Codex `AGENTS.md`](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - [Claude Code memory](https://code.claude.com/docs/en/memory)
 - [Hermes file ownership](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/which-file-does-what.md)
+- [Hermes context files](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/context-files.md)
 - [Hermes persistent memory](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/memory.md)
 
 ### Documentation Shape

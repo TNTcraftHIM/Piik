@@ -19,11 +19,64 @@ const failures = [];
 const warnings = [];
 const anchorCache = new Map();
 
-const exactHardBudgets = new Map([
-  ["AGENTS.md", [100, 8_000]],
-  ["CLAUDE.md", [10, 1_000]],
-  [".agents/skills/stop-that-shit/SKILL.md", [140, 8_000]],
-]);
+const contextBudgetRemediation =
+  "Move directory-specific rules to nested or path-scoped context, move " +
+  "procedures and reference material to on-demand skills or linked docs, " +
+  "simplify repeated wording, and remove completed history or stale conclusions.";
+const contextWarningRatio = 0.8;
+const codexProjectDocMaxBytes = 32 * 1_024;
+const claudeRecommendedLines = 200;
+const hermesMinimumContextChars = 20_000;
+
+const agentInstructions = readFileSync(resolve(root, "AGENTS.md"), "utf8");
+const claudeWrapper = readFileSync(resolve(root, "CLAUDE.md"), "utf8").replace(
+  /^@AGENTS\.md\s*(?:\r?\n)?/u,
+  "",
+);
+const stsInstructions = readFileSync(
+  resolve(root, ".agents/skills/stop-that-shit/SKILL.md"),
+  "utf8",
+);
+const topLevelContextBudgets = [
+  {
+    name: "Codex project instruction chain",
+    text: agentInstructions,
+    recommended: {
+      bytes: Math.floor(codexProjectDocMaxBytes * contextWarningRatio),
+    },
+    hard: { bytes: codexProjectDocMaxBytes },
+  },
+  {
+    name: "Claude effective project instructions",
+    text: `${agentInstructions}\n${claudeWrapper}`,
+    recommended: { lines: claudeRecommendedLines },
+    hard: {
+      lines: Math.ceil(claudeRecommendedLines / contextWarningRatio),
+    },
+  },
+  {
+    name: "Hermes root project context",
+    text: agentInstructions,
+    recommended: {
+      chars: Math.floor(hermesMinimumContextChars * contextWarningRatio),
+    },
+    hard: { chars: hermesMinimumContextChars },
+  },
+  {
+    name: "Required stop-that-shit skill",
+    text: stsInstructions,
+    recommended: {
+      lines: claudeRecommendedLines,
+      chars: Math.floor(hermesMinimumContextChars * contextWarningRatio),
+      bytes: Math.floor(codexProjectDocMaxBytes * contextWarningRatio),
+    },
+    hard: {
+      lines: Math.ceil(claudeRecommendedLines / contextWarningRatio),
+      chars: hermesMinimumContextChars,
+      bytes: codexProjectDocMaxBytes,
+    },
+  },
+];
 const exactWarningBudgets = new Map([
   ["docs/README.md", [180, 16_000]],
   ["docs/deployment.md", [250, 20_000]],
@@ -54,6 +107,8 @@ for (const file of markdownFiles) {
   for (const raw of targets) checkLink(file, absolute, raw);
 }
 
+checkTopLevelContextBudgets();
+
 if (warnings.length > 0) {
   process.stderr.write(`${warnings.map((warning) => `warning: ${warning}`).join("\n")}\n`);
 }
@@ -74,7 +129,6 @@ function checkFormat(file, text) {
 }
 
 function checkBudget(file, text) {
-  const hardBudget = exactHardBudgets.get(file);
   const warningBudget =
     exactWarningBudgets.get(file) ??
     prefixWarningBudgets
@@ -82,15 +136,6 @@ function checkBudget(file, text) {
       .map(([, maxLines, maxBytes]) => [maxLines, maxBytes])[0];
   const lines = logicalLines(text);
   const bytes = Buffer.byteLength(text);
-  if (hardBudget) {
-    const [maxLines, maxBytes] = hardBudget;
-    if (lines > maxLines || bytes > maxBytes) {
-      failures.push(
-        `${file}: exceeds required ${maxLines}-line/${maxBytes}-byte ` +
-          `top-level context budget (${lines} lines, ${bytes} bytes)`,
-      );
-    }
-  }
   if (warningBudget) {
     const [maxLines, maxBytes] = warningBudget;
     if (lines <= maxLines && bytes <= maxBytes) return;
@@ -99,6 +144,51 @@ function checkBudget(file, text) {
         `(${lines} lines, ${bytes} bytes)`,
     );
   }
+}
+
+function checkTopLevelContextBudgets() {
+  for (const budget of topLevelContextBudgets) {
+    const measures = {
+      lines: logicalLines(budget.text),
+      chars: [...budget.text].length,
+      bytes: Buffer.byteLength(budget.text),
+    };
+    if (exceeds(measures, budget.hard)) {
+      failures.push(
+        `${budget.name}: exceeds hard context ceiling ${formatLimits(budget.hard)} ` +
+          `(${formatUsage(measures, budget.hard)}). ${contextBudgetRemediation}`,
+      );
+      continue;
+    }
+    if (exceeds(measures, budget.recommended)) {
+      warnings.push(
+        `${budget.name}: exceeds recommended working budget ` +
+          `${formatLimits(budget.recommended)} ` +
+          `(${formatUsage(measures, budget.recommended)}). ` +
+          `${contextBudgetRemediation}`,
+      );
+    }
+  }
+}
+
+function exceeds(measures, limits) {
+  return Object.entries(limits).some(([metric, limit]) => measures[metric] > limit);
+}
+
+function formatLimits(limits) {
+  return Object.entries(limits)
+    .map(([metric, limit]) => `${limit} ${metricLabel(metric)}`)
+    .join(" / ");
+}
+
+function formatUsage(measures, limits) {
+  return Object.keys(limits)
+    .map((metric) => `${measures[metric]} ${metricLabel(metric)}`)
+    .join(", ");
+}
+
+function metricLabel(metric) {
+  return metric === "bytes" ? "UTF-8 bytes" : metric;
 }
 
 function checkLink(file, sourcePath, raw) {
