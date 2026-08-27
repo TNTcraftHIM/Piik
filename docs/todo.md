@@ -7,10 +7,7 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Release native-edge topology convergence.** Integrate the accepted
-   `screener-v14` implementation, deploy the immutable application artifact, and
-   complete scoped direct/SFU postflight. Production remains observation-only
-   until cutover succeeds.
+No implementation task is currently authorized.
 
 ## Parked Repository Work
 

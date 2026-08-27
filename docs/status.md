@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `73ed920a229bfc64c89b97045c00d6cd75216f3a`, release `73ed920`, wire
-  `screener-v13`, from `/opt/screener/releases/73ed920`. The immutable runtime
+  `ea692b1849840959d71a55d094c1f12eab091409`, release `ea692b1`, wire
+  `screener-v14`, from `/opt/screener/releases/ea692b1`. The immutable runtime
   tar SHA-256 is
-  `351053e497e8eee17956f4cec86305b05d805c80deb40b2cf4cd2668eaf08583`;
+  `4c8213332b98ffa8ff6bb0fa6b1743c898b30c07140d012adf851dbb17646aa5`;
   its 41-file manifest SHA-256 is
-  `bb993950a30a0b99b9b6185aa13777edcccbdcdaebdfb1b05b3c3499a1e78479`.
-- The served Browser entry references `assets/index-CaM3Pn5_.js`; the public
+  `df77aae9eb31d3ecfb471c3cb5bfa09137722c7f9d38b72ccd628725359dda13`.
+- The served Browser entry references `assets/index-CiQee9Mj.js`; the public
   asset SHA-256 is
-  `3c64cd75a7d67716f7600465a1742b1c02f3b00e71a1039649604aaf6d08f816`.
+  `bc57e63461ab728e730663e8fb9633da1289aeef20d3aea9c1c0a4a5997598ea`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -39,6 +39,9 @@ This is the current execution index. Git history owns completed timelines;
 - Screen audio provides live 64/128/192 kbps ceilings with 128 default. SFU
   publication uses stereo, DTX off, and RED off. Early autoplay presentation is
   gated by current media connection state.
+- Native-edge local convergence is available behind the default-off pre-share
+  topology policy. The adjacent default-off peer-only policy excludes all SFU
+  paths for that share generation. Both policies lock while sharing.
 
 ## Current Source
 
@@ -69,9 +72,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-Native-edge local convergence is implemented and locally accepted in source.
-Production remains on the evidence-only `screener-v13` release until the current
-application release and scoped postflight complete.
+Native-edge local convergence is implemented and deployed behind its default-off
+per-share policy. Automated route invariants and release postflight pass;
+representative public-network benefit remains a physical evidence boundary.
 
 ## Active Boundaries
 
@@ -79,9 +82,8 @@ application release and scoped postflight complete.
   screening did not reproduce a Host-page drop; accepted Viewer lifecycle work
   prevents frozen JavaScript wall time from becoming an immediate route failure
   but is not capture keepalive.
-- Current-path quality can drive opt-in local convergence in source and remains
-  diagnostic in production until deployment. Weighted/global optimization
-  remains parked.
+- Current-path quality can drive opt-in local convergence in source and
+  production. Weighted/global optimization remains parked.
 - Repository simplification does not change or deploy product behavior beyond
   deleting proven dead private surfaces.
 - Native/executable senders, shared encode, distribution packages, broad UI
@@ -89,5 +91,4 @@ application release and scoped postflight complete.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Native-edge convergence release and
-postflight are the current task; broader product evidence remains parked.
+No source or deployment P0/P1 is open. Broader product evidence remains parked.
