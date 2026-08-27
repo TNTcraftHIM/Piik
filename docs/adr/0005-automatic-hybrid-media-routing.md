@@ -227,6 +227,12 @@ result converges gradually to a local stable topology: no current degraded edge
 has a proved healthy candidate under the current graph and resource facts. It
 does not promise a static mathematical global optimum.
 
+Two pre-share gates constrain this same controller. Peer-only policy removes
+every SFU tuple and bootstrap path before reservation, so exhaustion keeps the
+existing explicit failure. The initial topology-convergence rollout is opt-in;
+when disabled, native evidence never creates quality work. Both gates are bound
+to share generation and cannot change while sharing.
+
 ## Consequences
 
 Positive:
