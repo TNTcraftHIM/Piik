@@ -97,7 +97,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v14");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v15");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -869,6 +869,7 @@ describe("client signaling protocol", () => {
       connectionId: "connection_12345678",
       rtpStatsId: "rtp-stats-1",
       trackIdentifier: "track-1",
+      sampleTimestampMs: 2_000,
       routeRevision: 3,
       state: "degraded",
     } as const;
@@ -882,10 +883,17 @@ describe("client signaling protocol", () => {
     ).toBe(false);
     expect(
       clientMessageSchema.safeParse({
+        ...sender,
+        sampleTimestampMs: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
         type: "sfu-publisher-quality-evidence",
         publicationGeneration: "publication_generation_12345678",
         routeRevision: 4,
         state: "healthy",
+        sampleTimestampMs: 2_000,
       }).success,
     ).toBe(true);
   });
@@ -1483,6 +1491,7 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "direct",
+          qualityProbe: false,
         },
       }).success,
     ).toBe(true);
@@ -1496,6 +1505,7 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "sfu",
+          qualityProbe: true,
         },
       }).success,
     ).toBe(true);
@@ -1509,6 +1519,7 @@ describe("server signaling protocol", () => {
           childPeerId: "child_12345678",
           connectionId: "connection_12345678",
           transport: "direct",
+          qualityProbe: false,
           unexpected: null,
         },
       }).success,

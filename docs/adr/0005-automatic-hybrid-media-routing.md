@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: accepted and deployed; native-edge convergence is opt-in per share
+- Status: accepted; deployed convergence correction in progress
 - Date: 2026-08-20
 - Last updated: 2026-08-27
 
@@ -190,18 +190,24 @@ same-identity delta in `none` is healthy; one in `bandwidth` or `cpu` is
 degraded; `other`, missing, reset, hidden, or stale evidence is unknown. SFU
 publication and subscription state remains owned by LiveKit plus the exact
 Viewer's continuing decoded progress. Screener does not combine loss, RTT,
-jitter, bitrate, FPS, resolution, or freezes into another score.
+jitter, bitrate, FPS, resolution, or freezes into a weighted route score.
 
-When the current source path remains degraded, the controller considers the
-shallowest affected child first and uses the existing deterministic candidate
-filters, ordering, cursor, reservations, and total deadline. Candidate parents
-must have a healthy source path and available steady capacity. Only one
-candidate runs at a time; the old route keeps playing. First decoded frame proves
-candidate usability, and a complete healthy native edge delta proves the new
-path has escaped the old limitation. If the old edge recovers, the candidate is
-degraded or unknown, authority changes, or the deadline expires, the candidate
-is aborted and the graph stays unchanged. A successful commit clears and
-rebaselines quality state for that edge and its affected subtree.
+Routing degradation requires three consecutive complete degraded deltas for the
+same sender identity. Healthy, unknown, stale, reset, source change, or identity
+change clears that run. This is the same persistence semantic used by the Host
+quality warning; a single native limitation interval remains diagnostic.
+
+When the current source path remains persistently degraded, the controller
+considers the shallowest affected child first and uses the existing
+deterministic candidate filters, ordering, cursor, reservations, and total
+deadline. Candidate Peer parents must have a healthy source path and available
+steady capacity. Only one candidate runs at a time; the old route keeps playing.
+First decoded frame proves candidate usability, and a complete healthy native
+edge delta proves the new path has escaped the old limitation. If the old edge
+recovers, the candidate is degraded or unknown, authority changes, or the
+deadline expires, the candidate is aborted and the graph stays unchanged. A
+successful commit clears and rebaselines quality state for that edge and its
+affected subtree.
 
 The same rule supplies both active parent change and relay abdication. A bad
 relay ingress reparents that relay while retaining its subtree. A bad exact
@@ -211,13 +217,26 @@ again; relief can cancel the remaining work without a parent score or explicit
 capacity penalty.
 
 The Host capture/source is a separate fact. A stalled source cannot be repaired
-by topology. When capture is progressing but Host-origin edges remain degraded,
-healthy Peer candidates stay first. If no Peer candidate can establish a healthy
-edge, the same operation may create or reuse the one bounded SFU publication as
-the suffix. Host-to-SFU publication health and the first SFU Viewer's decoded
-progress must both hold before commit. That SFU-fed Viewer then remains an
-ordinary Peer parent, allowing `SFU -> Viewer -> Peer` distribution without
-turning every Viewer into an SFU subscription.
+by topology. One degraded Host-origin edge may move only to a healthy Peer. SFU
+becomes a quality suffix only when every current Host-origin Peer edge, with a
+minimum of two, independently remains persistently degraded. This bounded
+condition identifies possible Host fanout pressure without making SFU an
+ordinary candidate. Healthy Peer candidates still run first; if none succeeds,
+the same operation may create or reuse the single Host publication. The exact
+Host-to-SFU publication generation must supply three consecutive healthy sender
+windows before commit. The old Peer route and candidate SFU subscription overlap
+while the same Viewer gathers three complete receiver windows. Each candidate
+window must decode without a freeze or pause and must
+not regress delivered pixel area, rounded frame rate, or bitrate against a fresh
+old-route window. This strict partial order has no weights or tradeoff score; an
+unknown, incomparable, or worse candidate never commits. One Viewer moves, then
+all edge state is re-observed before another Host-relief move. SFU availability
+fallback remains independent. An SFU-fed Viewer remains an ordinary Peer parent,
+allowing `SFU -> Viewer -> Peer` distribution without turning every Viewer into
+an SFU subscription. The shared publication is only resource topology: its
+Host-to-SFU ingress proof and each exact SFU-to-Viewer subscription proof remain
+separate. A successful Viewer canary cannot authorize any other Viewer, and a
+new publication generation invalidates all prior ingress authority.
 
 After commit, the new active identity starts from unknown and must establish a
 fresh healthy delta before a later degradation can trigger another move. There

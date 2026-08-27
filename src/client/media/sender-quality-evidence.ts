@@ -11,6 +11,8 @@ const connectionGenerations = new Map<string, number>();
 const publicationGenerations = new Map<string, number>();
 const unknownConnections = new Set<string>();
 const unknownPublications = new Set<string>();
+const connectionSampleTimestamps = new Map<string, number>();
+const publicationSampleTimestamps = new Map<string, number>();
 
 export function invalidateSenderQualityEvidence(): void {
   senderEvidenceGeneration += 1;
@@ -18,6 +20,8 @@ export function invalidateSenderQualityEvidence(): void {
   publicationGenerations.clear();
   unknownConnections.clear();
   unknownPublications.clear();
+  connectionSampleTimestamps.clear();
+  publicationSampleTimestamps.clear();
 }
 
 function ownsCurrentEvidenceGeneration(
@@ -46,6 +50,7 @@ function nativeQualityState(
     (metrics.nativeEdgeQualityState !== "healthy" &&
       metrics.nativeEdgeQualityState !== "degraded") ||
     metrics.sampleWindowMs === null ||
+    metrics.sampleTimestampMs === null ||
     metrics.intervalFramesEncoded === null ||
     metrics.intervalFramesEncoded <= 0
   ) {
@@ -63,6 +68,7 @@ export function senderQualityEvidenceFromSnapshot(
   routeRevision: number,
 ): Extract<ClientMessage, { type: "sender-quality-evidence" }> | null {
   const evidence = nativeQualityState(snapshot.metrics);
+  const rawSampleTimestampMs = snapshot.metrics.sampleTimestampMs;
   const hasIdentity =
     snapshot.metrics.rtpStatsId !== null &&
     snapshot.metrics.trackIdentifier !== null;
@@ -73,6 +79,15 @@ export function senderQualityEvidenceFromSnapshot(
     ) && hasIdentity
       ? evidence
       : "unknown";
+  const sampleTimestampMs =
+    state === "unknown" ? null : snapshot.metrics.sampleTimestampMs;
+  if (
+    sampleTimestampMs !== null &&
+    (connectionSampleTimestamps.get(snapshot.connectionId) ?? -1) >=
+      sampleTimestampMs
+  ) {
+    return null;
+  }
   const parsed = senderQualityEvidenceMessageSchema.safeParse({
     type: "sender-quality-evidence",
     childPeerId: snapshot.peerId,
@@ -83,17 +98,28 @@ export function senderQualityEvidenceFromSnapshot(
       state === "unknown"
         ? null
         : snapshot.metrics.trackIdentifier,
+    sampleTimestampMs,
     routeRevision,
     state,
   });
+  if (!parsed.success) {
+    return null;
+  }
   if (state === "unknown") {
     if (!emitUnknownOnce(unknownConnections, snapshot.connectionId)) {
       return null;
     }
+    if (rawSampleTimestampMs !== null) {
+      connectionSampleTimestamps.set(
+        snapshot.connectionId,
+        rawSampleTimestampMs,
+      );
+    }
   } else {
     unknownConnections.delete(snapshot.connectionId);
+    connectionSampleTimestamps.set(snapshot.connectionId, sampleTimestampMs!);
   }
-  return parsed.success ? parsed.data : null;
+  return parsed.data;
 }
 
 export function sfuPublisherQualityEvidenceFromMetrics(
@@ -105,24 +131,45 @@ export function sfuPublisherQualityEvidenceFromMetrics(
   { type: "sfu-publisher-quality-evidence" }
 > | null {
   const evidence = nativeQualityState(metrics);
+  const rawSampleTimestampMs = metrics.sampleTimestampMs;
   const state = ownsCurrentEvidenceGeneration(
     publicationGenerations,
     publicationGeneration,
   )
     ? evidence
     : "unknown";
+  const sampleTimestampMs =
+    state === "unknown" ? null : metrics.sampleTimestampMs;
+  if (
+    sampleTimestampMs !== null &&
+    (publicationSampleTimestamps.get(publicationGeneration) ?? -1) >=
+      sampleTimestampMs
+  ) {
+    return null;
+  }
   const parsed = sfuPublisherQualityEvidenceMessageSchema.safeParse({
     type: "sfu-publisher-quality-evidence",
     routeRevision,
     publicationGeneration,
     state,
+    sampleTimestampMs,
   });
+  if (!parsed.success) {
+    return null;
+  }
   if (state === "unknown") {
     if (!emitUnknownOnce(unknownPublications, publicationGeneration)) {
       return null;
     }
+    if (rawSampleTimestampMs !== null) {
+      publicationSampleTimestamps.set(
+        publicationGeneration,
+        rawSampleTimestampMs,
+      );
+    }
   } else {
     unknownPublications.delete(publicationGeneration);
+    publicationSampleTimestamps.set(publicationGeneration, sampleTimestampMs!);
   }
-  return parsed.success ? parsed.data : null;
+  return parsed.data;
 }

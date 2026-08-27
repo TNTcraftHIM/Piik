@@ -222,6 +222,7 @@ describe("HybridMediaRouter v9 runtime", () => {
       complete(router, first);
       await vi.waitFor(() => expect(preparedFor(sent, first.sessionId)).toBeDefined());
       const firstPrepare = preparedFor(sent, first.sessionId)!;
+      expect(firstPrepare.candidate.qualityProbe).toBe(false);
       router.handleRouteReady(first, {
         type: "route-ready",
         revision: firstPrepare.revision,
@@ -249,6 +250,7 @@ describe("HybridMediaRouter v9 runtime", () => {
           connectionId: secondEdge.connectionId,
           rtpStatsId: "second-rtp",
           trackIdentifier: "track",
+          sampleTimestampMs: 100,
           routeRevision: secondEdge.revision,
           state: "healthy",
         }),
@@ -260,21 +262,25 @@ describe("HybridMediaRouter v9 runtime", () => {
           connectionId: firstEdge.connectionId,
           rtpStatsId: "first-rtp",
           trackIdentifier: "track",
+          sampleTimestampMs: 100,
           routeRevision: firstEdge.revision,
           state: "healthy",
         }),
       ).toBe(true);
-      expect(
-        router.observeSenderQualityEvidence(host, {
-          type: "sender-quality-evidence",
-          childPeerId: first.peerId,
-          connectionId: firstEdge.connectionId,
-          rtpStatsId: "first-rtp",
-          trackIdentifier: "track",
-          routeRevision: firstEdge.revision,
-          state: "degraded",
-        }),
-      ).toBe(true);
+      for (let window = 0; window < 3; window += 1) {
+        expect(
+          router.observeSenderQualityEvidence(host, {
+            type: "sender-quality-evidence",
+            childPeerId: first.peerId,
+            connectionId: firstEdge.connectionId,
+            rtpStatsId: "first-rtp",
+            trackIdentifier: "track",
+            sampleTimestampMs: 101 + window,
+            routeRevision: firstEdge.revision,
+            state: "degraded",
+          }),
+        ).toBe(true);
+      }
 
       await vi.waitFor(() =>
         expect(preparedFor(sent, first.sessionId)?.revision).toBeGreaterThan(
@@ -282,6 +288,7 @@ describe("HybridMediaRouter v9 runtime", () => {
         ),
       );
       const qualityPrepare = preparedFor(sent, first.sessionId)!;
+      expect(qualityPrepare.candidate.qualityProbe).toBe(true);
       router.handleRouteReady(first, {
         type: "route-ready",
         revision: qualityPrepare.revision,
@@ -298,6 +305,7 @@ describe("HybridMediaRouter v9 runtime", () => {
           connectionId: qualityPrepare.candidate.connectionId,
           rtpStatsId: "candidate-rtp",
           trackIdentifier: "track",
+          sampleTimestampMs: 200,
           routeRevision: qualityPrepare.revision,
           state: "healthy",
         }),
@@ -379,7 +387,9 @@ describe("HybridMediaRouter v9 runtime", () => {
         phase: "prepare",
       });
       const active = router.resolveActiveViewerMediaEdge(room.roomId, viewer.peerId)!;
-      for (const state of ["healthy", "degraded"] as const) {
+      for (const [index, state] of (
+        ["healthy", "degraded"] as const
+      ).entries()) {
         expect(
           router.observeSenderQualityEvidence(host, {
             type: "sender-quality-evidence",
@@ -387,6 +397,7 @@ describe("HybridMediaRouter v9 runtime", () => {
             connectionId: active.connectionId,
             rtpStatsId: "viewer-rtp",
             trackIdentifier: "track",
+            sampleTimestampMs: 100 + index,
             routeRevision: active.revision,
             state,
           }),

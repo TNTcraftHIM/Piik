@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
+  sfuPublisherQualityEvidenceFromMetrics,
 } from "../src/client/media/sender-quality-evidence.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
 import {
@@ -166,16 +167,61 @@ describe("native sender quality evidence", () => {
     expect(senderQualityEvidenceFromSnapshot(snapshot, 7)).toMatchObject({
       state: "unknown",
     });
-    expect(senderQualityEvidenceFromSnapshot(snapshot, 7)).toMatchObject({
+    expect(senderQualityEvidenceFromSnapshot(snapshot, 7)).toBeNull();
+    const nextSnapshot = {
+      ...snapshot,
+      metrics: {
+        ...snapshot.metrics,
+        sampleTimestampMs: 2_000,
+      },
+    };
+    expect(senderQualityEvidenceFromSnapshot(nextSnapshot, 7)).toMatchObject({
       type: "sender-quality-evidence",
       childPeerId: snapshot.peerId,
       connectionId: snapshot.connectionId,
       routeRevision: 7,
       state: "healthy",
+      sampleTimestampMs: 2_000,
     });
     invalidateSenderQualityEvidence();
-    expect(senderQualityEvidenceFromSnapshot(snapshot, 7)).toMatchObject({
+    expect(senderQualityEvidenceFromSnapshot(nextSnapshot, 7)).toMatchObject({
       state: "unknown",
     });
+    expect(senderQualityEvidenceFromSnapshot(nextSnapshot, 7)).toBeNull();
+  });
+
+  it("waits for a new SFU publisher stats window after rebaseline", () => {
+    invalidateSenderQualityEvidence();
+    const metrics = {
+      ...collectConnectionMetricsFromReport(
+        report(1_000, "none", {
+          none: 1,
+          bandwidth: 0,
+          cpu: 0,
+          other: 0,
+        }),
+        "send",
+        createStatsAccumulator(),
+      ),
+      sampleTimestampMs: 1_000,
+      sampleWindowMs: 2_000,
+      intervalFramesEncoded: 100,
+      qualityLimitationReason: "none",
+      nativeEdgeQualityState: "healthy" as const,
+    };
+    const generation = "publication_generation_12345678";
+    expect(
+      sfuPublisherQualityEvidenceFromMetrics(metrics, 3, generation),
+    ).toMatchObject({ state: "unknown" });
+    expect(
+      sfuPublisherQualityEvidenceFromMetrics(metrics, 3, generation),
+    ).toBeNull();
+    expect(
+      sfuPublisherQualityEvidenceFromMetrics(
+        { ...metrics, sampleTimestampMs: 3_000 },
+        3,
+        generation,
+      ),
+    ).toMatchObject({ state: "healthy", sampleTimestampMs: 3_000 });
   });
 });

@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v14";
+export const SIGNALING_PROTOCOL = "screener-v15";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -21,6 +21,7 @@ export const MAX_ICE_SERVER_URLS = 8;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
+export const PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS = 3;
 export const MAX_DISPLAY_NAME_CODE_POINTS = 24;
 export const DEFAULT_VIEWER_DISPLAY_NAME = "访客";
 export const DEFAULT_HOST_DISPLAY_NAME_PREFIX = "分享者";
@@ -328,6 +329,7 @@ export const preparedRouteCandidateSchema = z
     childPeerId: opaqueIdSchema,
     connectionId: opaqueIdSchema,
     transport: z.enum(["direct", "sfu"]),
+    qualityProbe: z.boolean(),
   })
   .strict();
 export type PreparedRouteCandidate = z.infer<
@@ -662,6 +664,12 @@ export const senderQualityEvidenceMessageSchema = z
     connectionId: opaqueIdSchema,
     rtpStatsId: z.string().min(1).max(256).nullable(),
     trackIdentifier: z.string().min(1).max(256).nullable(),
+    sampleTimestampMs: z
+      .number()
+      .finite()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER)
+      .nullable(),
     routeRevision: mediaRouteRevisionSchema,
     state: z.enum(["unknown", "healthy", "degraded"]),
   })
@@ -670,7 +678,8 @@ export const senderQualityEvidenceMessageSchema = z
     if (
       (message.state !== "unknown" &&
         (message.rtpStatsId === null ||
-          message.trackIdentifier === null))
+          message.trackIdentifier === null ||
+          message.sampleTimestampMs === null))
     ) {
       context.addIssue({
         code: "custom",
@@ -686,8 +695,23 @@ export const sfuPublisherQualityEvidenceMessageSchema = z
     publicationGeneration: opaqueIdSchema,
     routeRevision: mediaRouteRevisionSchema,
     state: z.enum(["unknown", "healthy", "degraded"]),
+    sampleTimestampMs: z
+      .number()
+      .finite()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER)
+      .nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((message, context) => {
+    if (message.state !== "unknown" && message.sampleTimestampMs === null) {
+      context.addIssue({
+        code: "custom",
+        message: "Known SFU publisher quality needs an exact sample",
+        path: ["sampleTimestampMs"],
+      });
+    }
+  });
 
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
