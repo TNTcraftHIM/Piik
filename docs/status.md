@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `fdc18d48cef15abd531e0066a07bc7650b4082a3`, release `fdc18d4`, wire
-  `screener-v16`, from `/opt/screener/releases/fdc18d4`. The immutable runtime
+  `0bcf0ff47556f3d3fda65bde8bfb2152812d4b41`, release `0bcf0ff`, wire
+  `screener-v16`, from `/opt/screener/releases/0bcf0ff`. The immutable runtime
   tar SHA-256 is
-  `930f6ae45fce35da54941b081138a2a9fa35ba933d543ff4ed82e93aebd70070`;
+  `4104f3f87205183e4246d75a6ad9044c8a4641072e8891050a20aebc993d7d77`;
   its 41-file manifest SHA-256 is
-  `72e3758805ff0deb28084da9d0a6eb5a131e69397ecce52c917fb02b153e881d`.
-- The served Browser entry references `assets/index-BLS925La.js`; the public
+  `df284aa2d200fa9314fcd2c2459fea7680579c7692ceac7ed1c605080ec44a92`.
+- The served Browser entry references `assets/index-DvVz3_bv.js`; the public
   asset SHA-256 is
-  `a8048291d98d21b0bab9e14599f8d5f7425d59052ff0867e62d1640411941987`.
+  `a75114ab543eb247822ac86fb4aec78ca03a6ded5032c9f9fb8b92a0c2cb271f`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -55,7 +55,9 @@ This is the current execution index. Git history owns completed timelines;
   exact transport-connected progress may retain that candidate through the
   total deadline, while first decoded frame remains the only commit proof. SFU
   provides working media before finite background direct convergence. Healthy
-  decoded edges remain sticky.
+  decoded edges remain sticky. A connected Viewer's advertised effective
+  capacity survives sharing-generation graph replacement and is cleared only
+  when that Viewer departs or the room is deleted.
 - WebRTC/LiveKit own media adaptation. With the per-share convergence gate
   enabled, one fresh degraded native edge may enter the existing serial route
   operation after availability work. A P2P candidate commits only after the same
@@ -73,9 +75,10 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-Measured route convergence and generation-owned Viewer presentation are
-deployed. A compatible `screener-v16` application restart retained the active
-6020 Host capture and rebuilt six Viewer routes without a page reload.
+Measured route convergence, generation-owned Viewer presentation and
+endpoint-owned capacity are deployed. The 6020 postflight restored four Viewer
+capacities, used P2P relays after one bounded direct miss, converged both SFU
+subscribers back to P2P, and retired the Host SFU publication.
 
 ## Active Boundaries
 
