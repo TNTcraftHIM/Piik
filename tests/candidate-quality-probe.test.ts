@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  P2pQualityProbe,
   SfuQualityProbe,
+  p2pCandidateStrictlyImproves,
   sfuCandidateDoesNotRegress,
-} from "../src/client/media/sfu-quality-probe.ts";
+} from "../src/client/media/candidate-quality-probe.ts";
 import {
   EMPTY_METRICS,
   type ConnectionMetrics,
@@ -58,6 +60,81 @@ describe("SFU quality probe", () => {
         metrics(8_000),
       ),
     ).toBeNull();
+    expect(
+      sfuCandidateDoesNotRegress(
+        current,
+        metrics(2_100, { bitrateKbps: null }),
+      ),
+    ).toBeNull();
+  });
+
+  it("requires a strict P2P receive improvement without a tradeoff", () => {
+    const current = metrics(2_000, {
+      frameWidth: 320,
+      frameHeight: 180,
+      framesPerSecond: 10,
+      bitrateKbps: 200,
+    });
+    expect(
+      p2pCandidateStrictlyImproves(
+        current,
+        metrics(2_100, {
+          frameWidth: 1_280,
+          frameHeight: 720,
+          framesPerSecond: 30,
+          bitrateKbps: 150,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      p2pCandidateStrictlyImproves(
+        { ...current, bitrateKbps: null },
+        metrics(2_100, {
+          frameWidth: 1_280,
+          frameHeight: 720,
+          framesPerSecond: 30,
+          bitrateKbps: null,
+        }),
+      ),
+    ).toBe(true);
+    expect(p2pCandidateStrictlyImproves(current, { ...current })).toBe(false);
+    expect(
+      p2pCandidateStrictlyImproves(
+        current,
+        metrics(2_100, {
+          frameWidth: 1_280,
+          frameHeight: 720,
+          framesPerSecond: 5,
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      p2pCandidateStrictlyImproves(
+        current,
+        metrics(2_100, { intervalFreezeCount: 1 }),
+      ),
+    ).toBe(false);
+  });
+
+  it("requires three consecutive strict P2P improvements", () => {
+    const probe = new P2pQualityProbe();
+    const current = (timestampMs: number) =>
+      metrics(timestampMs, {
+        frameWidth: 320,
+        frameHeight: 180,
+        framesPerSecond: 10,
+      });
+    const candidate = (timestampMs: number) =>
+      metrics(timestampMs, {
+        frameWidth: 1_280,
+        frameHeight: 720,
+        framesPerSecond: 30,
+      });
+    expect(probe.observe(current(1_000), candidate(1_100))).toBe(false);
+    expect(probe.observe(current(3_000), candidate(3_100))).toBe(false);
+    expect(probe.observe(current(5_000), candidate(5_100))).toBe(true);
+    probe.reset();
+    expect(probe.observe(current(7_000), candidate(7_100))).toBe(false);
   });
 
   it("requires three consecutive windows and resets after a regression", () => {

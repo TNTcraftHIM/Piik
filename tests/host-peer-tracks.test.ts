@@ -1379,7 +1379,7 @@ describe("HostPeer source replacement", () => {
     await sample();
     expect(updates.at(-1)?.qualityWarning).toBeNull();
     await sample();
-    expect(updates.at(-1)?.qualityWarning).toContain("持续受带宽限制");
+    expect(updates.at(-1)?.qualityWarning).toContain("按带宽估计");
     expect(sender.setParameters).toHaveBeenCalledTimes(2);
 
     await sample();

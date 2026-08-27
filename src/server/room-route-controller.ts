@@ -944,7 +944,7 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     const attempt = operation?.current;
     if (
-      this.operationRequiresHealthyCandidate(operation) &&
+      operation?.reason === "root-convergence" &&
       attempt?.tuple.kind === "peer" &&
       operation.childPeerId === input.childPeerId &&
       operation.childSessionId === child.sessionId &&
@@ -1033,16 +1033,9 @@ export class RoomRouteController<Resource = unknown> {
         previous.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
     const senderIdentityChanged =
       sameIdentity && previous?.senderIdentity !== input.senderIdentity;
-    const wasFreshHealthy =
-      sameSenderIdentity &&
-      previous?.state === "healthy" &&
-      input.acceptedAtMs <
-        previous.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
     const baselineRequired = this.senderQualityBaselines.has(
       input.childPeerId,
     );
-    const baselineSuppressesFact =
-      this.senderQualityBaselines.get(input.childPeerId) === true;
     if (input.state === "healthy") {
       this.senderQualityBaselines.delete(input.childPeerId);
     }
@@ -1084,13 +1077,6 @@ export class RoomRouteController<Resource = unknown> {
         state: input.state,
         consecutiveDegradedWindows,
       });
-    }
-    if (
-      input.state === "healthy" &&
-      !wasFreshHealthy &&
-      !baselineSuppressesFact
-    ) {
-      this.touchFacts();
     }
     if (
       input.state === "healthy" &&
@@ -1426,7 +1412,7 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     const attempt = operation?.current;
     const ownsCandidate =
-      this.operationRequiresHealthyCandidate(operation) &&
+      this.operationRequiresNativeCandidateProof(operation) &&
       attempt &&
       (attempt.tuple.kind === "peer"
         ? attempt.tuple.parentPeerId === parentPeerId &&
@@ -1628,27 +1614,6 @@ export class RoomRouteController<Resource = unknown> {
         accepted: false,
         released: [...validation.released, ...reservationResources(input.reservation)],
         failedPeerIds: failedPeerIdsFrom(validation),
-      };
-    }
-    if (
-      this.operationRequiresHealthyCandidate(operation) &&
-      plan.tuple.kind === "peer" &&
-      operation.reason === "quality-convergence" &&
-      !this.qualitySourcePathHealthy(plan.tuple.parentPeerId, input.nowMs)
-    ) {
-      this.noteRejection(operation.demandPeerId, "stale");
-      operation.cursor += 1;
-      this.clearCandidateTiming(operation.demandPeerId);
-      const advanced = this.validateOrAdvance(input.nowMs);
-      return {
-        accepted: true,
-        operation: this.operationSnapshot(),
-        released: [
-          ...validation.released,
-          ...reservationResources(input.reservation),
-          ...advanced.released,
-        ],
-        failedPeerIds: failedPeerIdsFrom(validation, advanced),
       };
     }
     if (plan.endpointTransition.kind === "bounded-gap") {
@@ -1861,6 +1826,7 @@ export class RoomRouteController<Resource = unknown> {
     guard: CandidateGuard,
     nowMs: number,
     commitReservation: (reservation: CandidateReservation<Resource>) => boolean = () => true,
+    proof: { relativeQualityApproved?: boolean } = {},
   ): SettleResult<Resource> {
     const validation = this.validateOrAdvance(nowMs);
     const operation = this.operation;
@@ -1873,7 +1839,17 @@ export class RoomRouteController<Resource = unknown> {
         released: validation.released,
       };
     }
-    if (this.operationRequiresHealthyCandidate(operation)) {
+    const relativeP2pApproved =
+      operation.reason === "quality-convergence" &&
+      attempt.tuple.kind === "peer" &&
+      proof.relativeQualityApproved === true;
+    const relativeP2pPending =
+      operation.reason === "quality-convergence" &&
+      attempt.tuple.kind === "peer" &&
+      !relativeP2pApproved;
+    const nativeCandidateProof =
+      this.operationRequiresNativeCandidateProof(operation);
+    if (relativeP2pApproved || relativeP2pPending || nativeCandidateProof) {
       attempt.mediaReady = true;
       const currentEdge = this.upstreamByViewer.get(operation.childPeerId);
       if (
@@ -1898,6 +1874,17 @@ export class RoomRouteController<Resource = unknown> {
           ],
         };
       }
+    }
+    if (relativeP2pPending) {
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: failedPeerIdsFrom(validation),
+        activeRevision: this.revision,
+        released: validation.released,
+      };
+    }
+    if (nativeCandidateProof) {
       const candidateQualityState =
         attempt.tuple.kind === "sfu" && attempt.tuple.publication === "reuse"
           ? this.sfuPublisherQualityState(
@@ -1921,18 +1908,12 @@ export class RoomRouteController<Resource = unknown> {
         };
       }
       if (
-        ((attempt.tuple.kind !== "sfu" ||
-            attempt.tuple.publication !== "reuse") &&
-          (attempt.senderQualityAcceptedAtMs === undefined ||
-            nowMs >=
-              attempt.senderQualityAcceptedAtMs +
-                VIEWER_QUALITY_EVIDENCE_EXPIRY_MS)) ||
-        (operation.reason === "quality-convergence" &&
-          attempt.tuple.kind === "peer" &&
-          !this.qualitySourcePathHealthy(
-            attempt.tuple.parentPeerId,
-            nowMs,
-          ))
+        (attempt.tuple.kind !== "sfu" ||
+          attempt.tuple.publication !== "reuse") &&
+        (attempt.senderQualityAcceptedAtMs === undefined ||
+          nowMs >=
+            attempt.senderQualityAcceptedAtMs +
+              VIEWER_QUALITY_EVIDENCE_EXPIRY_MS)
       ) {
         return this.candidateFailed(guard, nowMs);
       }
@@ -2262,14 +2243,9 @@ export class RoomRouteController<Resource = unknown> {
           attempt.tuple.kind === "peer" &&
           !attempt.transportConnected &&
           nowMs >= attempt.startedAtMs + this.directHeadStartMs();
-        const qualityPeerSourceInvalid =
-          operation.reason === "quality-convergence" &&
-          attempt.tuple.kind === "peer" &&
-          !this.qualitySourcePathHealthy(attempt.tuple.parentPeerId, nowMs);
         if (
           !guardFailed &&
           !peerNoProgressExpired &&
-          !qualityPeerSourceInvalid &&
           plan &&
           this.candidateValid(operation.childPeerId, plan, attempt)
         ) {
@@ -2662,26 +2638,33 @@ export class RoomRouteController<Resource = unknown> {
       (candidate) =>
         candidate.endpointTransition.kind !== "bounded-gap" &&
         tupleKey(candidate.tuple) !== currentKey &&
-        (candidate.tuple.kind === "peer"
-          ? this.qualitySourcePathHealthy(candidate.tuple.parentPeerId, nowMs)
-          : candidate.tuple.publication !== "reuse" ||
-            Boolean(
-              this.hostPublication &&
-                this.sfuPublisherQualityState(
-                  this.hostPublication.generation,
-                  nowMs,
-                ) === "healthy",
-            )),
+        (candidate.tuple.kind === "peer" ||
+          candidate.tuple.publication !== "reuse" ||
+          Boolean(
+            this.hostPublication &&
+              this.sfuPublisherQualityState(
+                this.hostPublication.generation,
+                nowMs,
+              ) === "healthy",
+          )),
     );
     const peers = candidates.filter(
       (candidate) => candidate.tuple.kind === "peer",
+    );
+    const clearPeers = peers.filter(
+      (candidate) =>
+        candidate.tuple.kind === "peer" &&
+        this.qualitySourcePathHealthy(candidate.tuple.parentPeerId, nowMs),
+    );
+    const remainingPeers = peers.filter(
+      (candidate) => !clearPeers.includes(candidate),
     );
     const sfu =
       current.parentPeerId === this.options.hostPeerId &&
       this.hostFanoutNeedsSfuRelief(nowMs)
         ? candidates.filter((candidate) => candidate.tuple.kind === "sfu")
         : [];
-    return [...peers, ...sfu];
+    return [...clearPeers, ...remainingPeers, ...sfu];
   }
 
   private selectQualityChild(nowMs: number): string | undefined {
@@ -2960,12 +2943,13 @@ export class RoomRouteController<Resource = unknown> {
     );
   }
 
-  private operationRequiresHealthyCandidate(
+  private operationRequiresNativeCandidateProof(
     operation: ChildOperation<Resource> | undefined,
   ): operation is ChildOperation<Resource> {
     return (
-      operation?.reason === "quality-convergence" ||
-      operation?.reason === "root-convergence"
+      operation?.reason === "root-convergence" ||
+      (operation?.reason === "quality-convergence" &&
+        operation.current?.tuple.kind === "sfu")
     );
   }
 

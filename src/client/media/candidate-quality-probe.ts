@@ -8,7 +8,7 @@ interface DeliveredVideoSample {
   timestampMs: number;
   pixels: number;
   framesPerSecond: number;
-  bitrateKbps: number;
+  bitrateKbps: number | null;
 }
 
 function deliveredVideoSample(
@@ -29,20 +29,17 @@ function deliveredVideoSample(
     frameWidth === null ||
     frameHeight === null ||
     framesPerSecond === null ||
-    bitrateKbps === null ||
     intervalFramesDecoded === null ||
     !Number.isFinite(sampleTimestampMs) ||
     !Number.isFinite(sampleWindowMs) ||
     !Number.isFinite(frameWidth) ||
     !Number.isFinite(frameHeight) ||
     !Number.isFinite(framesPerSecond) ||
-    !Number.isFinite(bitrateKbps) ||
     frameWidth <= 0 ||
     frameHeight <= 0 ||
     sampleWindowMs < 1_000 ||
     sampleWindowMs > 5_000 ||
     framesPerSecond <= 0 ||
-    bitrateKbps <= 0 ||
     intervalFramesDecoded <= 0
   ) {
     return null;
@@ -51,14 +48,19 @@ function deliveredVideoSample(
     timestampMs: sampleTimestampMs,
     pixels: frameWidth * frameHeight,
     framesPerSecond: Math.round(framesPerSecond),
-    bitrateKbps,
+    bitrateKbps:
+      typeof bitrateKbps === "number" &&
+      Number.isFinite(bitrateKbps) &&
+      bitrateKbps > 0
+        ? bitrateKbps
+        : null,
   };
 }
 
-export function sfuCandidateDoesNotRegress(
+function comparableSamples(
   current: ConnectionMetrics,
   candidate: ConnectionMetrics,
-): boolean | null {
+): [DeliveredVideoSample, DeliveredVideoSample] | null {
   const currentVideo = deliveredVideoSample(current);
   const candidateVideo = deliveredVideoSample(candidate);
   if (
@@ -73,6 +75,22 @@ export function sfuCandidateDoesNotRegress(
   ) {
     return null;
   }
+  return [currentVideo, candidateVideo];
+}
+
+export function sfuCandidateDoesNotRegress(
+  current: ConnectionMetrics,
+  candidate: ConnectionMetrics,
+): boolean | null {
+  const samples = comparableSamples(current, candidate);
+  if (!samples) return null;
+  const [currentVideo, candidateVideo] = samples;
+  if (
+    currentVideo.bitrateKbps === null ||
+    candidateVideo.bitrateKbps === null
+  ) {
+    return null;
+  }
   return (
     candidate.intervalFreezeCount === 0 &&
     candidate.intervalFreezeDurationMs === 0 &&
@@ -84,10 +102,36 @@ export function sfuCandidateDoesNotRegress(
   );
 }
 
-export class SfuQualityProbe {
+export function p2pCandidateStrictlyImproves(
+  current: ConnectionMetrics,
+  candidate: ConnectionMetrics,
+): boolean | null {
+  const samples = comparableSamples(current, candidate);
+  if (!samples) return null;
+  const [currentVideo, candidateVideo] = samples;
+  return (
+    candidate.intervalFreezeCount === 0 &&
+    candidate.intervalFreezeDurationMs === 0 &&
+    candidate.intervalPauseCount === 0 &&
+    candidate.intervalPauseDurationMs === 0 &&
+    candidateVideo.pixels >= currentVideo.pixels &&
+    candidateVideo.framesPerSecond >= currentVideo.framesPerSecond &&
+    (candidateVideo.pixels > currentVideo.pixels ||
+      candidateVideo.framesPerSecond > currentVideo.framesPerSecond)
+  );
+}
+
+class ConsecutiveCandidateQualityProbe {
   private lastCandidateTimestampMs: number | null = null;
   private lastCurrentTimestampMs: number | null = null;
-  private consecutiveNonRegressingWindows = 0;
+  private consecutiveApprovedWindows = 0;
+
+  constructor(
+    private readonly compare: (
+      current: ConnectionMetrics,
+      candidate: ConnectionMetrics,
+    ) => boolean | null,
+  ) {}
 
   observe(
     current: ConnectionMetrics | null,
@@ -106,20 +150,16 @@ export class SfuQualityProbe {
       (this.lastCurrentTimestampMs !== null &&
         current.sampleTimestampMs <= this.lastCurrentTimestampMs)
     ) {
-      this.consecutiveNonRegressingWindows = 0;
+      this.consecutiveApprovedWindows = 0;
       return false;
     }
     this.lastCurrentTimestampMs = current.sampleTimestampMs;
-    const nonRegressing = sfuCandidateDoesNotRegress(current, candidate);
-    if (nonRegressing === null) {
-      this.consecutiveNonRegressingWindows = 0;
-      return false;
-    }
-    this.consecutiveNonRegressingWindows = nonRegressing
-      ? this.consecutiveNonRegressingWindows + 1
+    const approved = this.compare(current, candidate);
+    this.consecutiveApprovedWindows = approved
+      ? this.consecutiveApprovedWindows + 1
       : 0;
     return (
-      this.consecutiveNonRegressingWindows >=
+      this.consecutiveApprovedWindows >=
       PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
     );
   }
@@ -127,6 +167,18 @@ export class SfuQualityProbe {
   reset(): void {
     this.lastCandidateTimestampMs = null;
     this.lastCurrentTimestampMs = null;
-    this.consecutiveNonRegressingWindows = 0;
+    this.consecutiveApprovedWindows = 0;
+  }
+}
+
+export class SfuQualityProbe extends ConsecutiveCandidateQualityProbe {
+  constructor() {
+    super(sfuCandidateDoesNotRegress);
+  }
+}
+
+export class P2pQualityProbe extends ConsecutiveCandidateQualityProbe {
+  constructor() {
+    super(p2pCandidateStrictlyImproves);
   }
 }

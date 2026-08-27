@@ -37,6 +37,14 @@ binding, frame proof, autoplay, and terminal failure are typed facts interpreted
 by one presentation reducer. Older route or media generations cannot overwrite
 the current result, and raw server errors are never rendered directly.
 
+The room route revision orders control messages; it is not a Viewer media
+identity. A Viewer frame belongs to its local media generation and remains
+current across unrelated graph revisions until that exact binding is replaced,
+invalidated, or terminally failed. Pending candidates never own the primary
+badge, status line, or overlay while committed media remains proved. Those
+surfaces share the presentation reducer; raw transport snapshots provide route
+labels, reconnect authority, and diagnostics only.
+
 Excluding time spent in the Browser's capture/play authorization UI, a Viewer
 request targets a first visible frame within three seconds. Until then, the page
 must continuously show a truthful accessible connection stage rather than a
@@ -73,6 +81,9 @@ when disambiguation is needed.
 Connection details are progressive and use one card shape for P2P, peer relay,
 and SFU Viewers. Summary fields prioritize actual resolution, FPS, bitrate, and
 loss; deeper fields appear only when meaningful. Topology is a separate view.
+Native bandwidth or CPU limitation warnings describe the exact outbound sender
+that reported adaptation; they do not by themselves locate the physical
+bottleneck or describe the Viewer's receive path.
 Locally exposed selected-candidate addresses may be shown only on the Browser
 that owns that PeerConnection and are never uploaded, persisted, or used for
 identity or route selection. The product does not offer a diagnostic-download

@@ -105,6 +105,13 @@ export function senderQualityEvidenceFromSnapshot(
       reason: state === "unknown" ? null : snapshot.metrics.qualityLimitationReason,
       framesPerSecond: snapshot.metrics.framesPerSecond,
       bitrateKbps: snapshot.metrics.bitrateKbps,
+      captureFramesPerSecond: snapshot.metrics.captureFramesPerSecond,
+      mediaSourceFramesPerSecond: snapshot.metrics.mediaSourceFramesPerSecond,
+      width: snapshot.metrics.frameWidth,
+      height: snapshot.metrics.frameHeight,
+      availableOutgoingKbps: snapshot.metrics.availableOutgoingKbps,
+      rttMs: snapshot.metrics.rttMs,
+      packetLossPercent: snapshot.metrics.packetLossPercent,
     },
   });
   if (!parsed.success) {
@@ -162,6 +169,13 @@ export function sfuPublisherQualityEvidenceFromMetrics(
       reason: state === "unknown" ? null : metrics.qualityLimitationReason,
       framesPerSecond: metrics.framesPerSecond,
       bitrateKbps: metrics.bitrateKbps,
+      captureFramesPerSecond: metrics.captureFramesPerSecond,
+      mediaSourceFramesPerSecond: metrics.mediaSourceFramesPerSecond,
+      width: metrics.frameWidth,
+      height: metrics.frameHeight,
+      availableOutgoingKbps: metrics.availableOutgoingKbps,
+      rttMs: metrics.rttMs,
+      packetLossPercent: metrics.packetLossPercent,
     },
   });
   if (!parsed.success) {
