@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: accepted; base route and evidence-only quality shadow deployed
+- Status: accepted; base route and quality shadow deployed; native-edge convergence not implemented
 - Date: 2026-08-20
 - Last updated: 2026-08-27
 
@@ -88,14 +88,16 @@ stale asynchronous results fail closed.
 
 The old committed route remains authoritative while the candidate prepares.
 Parent and child prepare the same server-issued connection identity. Standard
-ICE connected is progress only. The exact candidate child decoding its first new
-video frame is the sole application commit proof.
+ICE connected is progress only. For availability work, the exact candidate child
+decoding its first new video frame is the application commit proof.
 
-The media-ready call commits typed endpoint/SFU admission before graph promotion.
-Success broadcasts the candidate revision. Failure, timeout, pause, or stale
-authority destroys the candidate, releases reservations idempotently, and
-broadcasts a strictly newer rollback revision before another prepare. Clients
-never infer rollback from silence or an older revision.
+For availability work, the media-ready call commits typed endpoint/SFU
+admission before graph promotion. A quality trial treats first decoded frame as
+readiness and requires the native edge proof below. Success broadcasts
+the candidate revision. Failure, timeout, pause, or stale authority destroys
+the candidate, releases reservations idempotently, and broadcasts a strictly
+newer rollback revision before another prepare. Clients never infer rollback
+from silence or an older revision.
 
 Make-before-break is used only when all required reservations exist. Availability
 repair may use one explicitly planned bounded-gap retirement after server
@@ -175,11 +177,55 @@ the committed graph, suppresses decoded-stall authority, and leaves new Viewers
 waiting. Resume starts reconciliation from the current graph. Page-hidden wall
 time is rebaselined before it can contribute to a stall decision.
 
-Quality evidence is observation-only. Current low bitrate/FPS/resolution, loss,
-RTT, jitter, freeze, or sender limitation does not change candidates, capacity,
-SFU use, or graph authority. Screener has no weighted route score, parent-wide
-quality inference, all-pairs probe, hysteresis controller, or periodic rebalance.
-Open investigation remains in [TODO](../todo.md).
+Deployed quality evidence remains observation-only. The accepted next slice is
+continuous local convergence inside the same graph, reconcile loop, and
+room-serial child operation. Availability first gets every Viewer usable media;
+quality work runs only while no join, failure, pause, identity, departure,
+capacity, or SFU-resource work needs that operation.
+
+Each exact current or pending edge has one native state: `unknown`, `healthy`, or
+`degraded`. For ordinary P2P, the parent reports the exact outbound sender's
+WebRTC `qualityLimitationReason` and cumulative durations. One complete
+same-identity delta in `none` is healthy; one in `bandwidth` or `cpu` is
+degraded; `other`, missing, reset, hidden, or stale evidence is unknown. SFU
+publication and subscription state remains owned by LiveKit plus the exact
+Viewer's continuing decoded progress. Screener does not combine loss, RTT,
+jitter, bitrate, FPS, resolution, or freezes into another score.
+
+When the current source path remains degraded, the controller considers the
+shallowest affected child first and uses the existing deterministic candidate
+filters, ordering, cursor, reservations, and total deadline. Candidate parents
+must have a healthy source path and available steady capacity. Only one
+candidate runs at a time; the old route keeps playing. First decoded frame proves
+candidate usability, and a complete healthy native edge delta proves the new
+path has escaped the old limitation. If the old edge recovers, the candidate is
+degraded or unknown, authority changes, or the deadline expires, the candidate
+is aborted and the graph stays unchanged. A successful commit clears and
+rebaselines quality state for that edge and its affected subtree.
+
+The same rule supplies both active parent change and relay abdication. A bad
+relay ingress reparents that relay while retaining its subtree. A bad exact
+parent-to-child sender moves only that child. If several senders on one parent
+are degraded, one child moves and all remaining native states are observed
+again; relief can cancel the remaining work without a parent score or explicit
+capacity penalty.
+
+The Host capture/source is a separate fact. A stalled source cannot be repaired
+by topology. When capture is progressing but Host-origin edges remain degraded,
+healthy Peer candidates stay first. If no Peer candidate can establish a healthy
+edge, the same operation may create or reuse the one bounded SFU publication as
+the suffix. Host-to-SFU publication health and the first SFU Viewer's decoded
+progress must both hold before commit. That SFU-fed Viewer then remains an
+ordinary Peer parent, allowing `SFU -> Viewer -> Peer` distribution without
+turning every Viewer into an SFU subscription.
+
+After commit, the new active identity starts from unknown and must establish a
+fresh healthy delta before a later degradation can trigger another move. There
+is no periodic wake, weighted prediction, global optimizer, persistent parent
+blacklist, custom congestion controller, or manual SFU layer selection. The
+result converges gradually to a local stable topology: no current degraded edge
+has a proved healthy candidate under the current graph and resource facts. It
+does not promise a static mathematical global optimum.
 
 ## Consequences
 
@@ -196,6 +242,8 @@ Negative:
 - Browser relay creates per-child decode/re-encode cost;
 - make-before-break requires temporary reservations and some availability repair
   may require a bounded gap; and
+- active quality work is local and event-driven, so it does not promise a
+  globally optimal tree or react when native evidence remains unknown; and
 - UDP-only media ends in explicit failure on fully blocked networks.
 
 ## Related Decisions And Evidence
