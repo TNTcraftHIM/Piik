@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: accepted; deployed convergence correction in progress
+- Status: accepted and deployed; native-edge convergence is opt-in per share
 - Date: 2026-08-20
 - Last updated: 2026-08-27
 
