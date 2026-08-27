@@ -1,535 +1,221 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: Base routing and the evidence-only quality shadow are deployed on
-  strict v13. Exact current identity is owned by
-  [status](../status.md).
+- Status: accepted; base route and evidence-only quality shadow deployed
 - Date: 2026-08-20
 - Last updated: 2026-08-27
 
 ## Context
 
-Screener serves one broadcaster and a small group of trusted viewers. Direct
-browser WebRTC gives the desired latency and avoids central media cost, but a
-single Host cannot safely fan out to every Viewer and some networks cannot
-establish a usable peer path.
+Direct Browser WebRTC gives Screener its desired latency and distributed cost,
+but one Host cannot fan out to every Viewer and some endpoint pairs cannot
+establish usable direct media. The product needs automatic peer distribution and
+bounded server fallback without exposing topology choices to users or turning
+every room into an SFU conference.
 
-The product therefore needs one automatic route controller. Users do not choose
-or understand the topology. The controller may use peers and bounded
-server-assisted resources, but it must keep the ordinary media graph
-distributed, deterministic, authorized, and recoverable.
-
-This ADR records the accepted invariants and the complete assisted-route model.
+This decision owns the route controller and resource model. The observable
+product contract is [routing and transport](../product/routing-transport.md);
+physical evidence is in the routing research documents.
 
 ## Decision
 
-### Endpoint capacity
+### One Capacity Rule
 
-Every non-server endpoint uses the same server-authoritative downstream media
-capacity:
+Every non-server endpoint uses one server-authoritative steady outbound media-
+copy cap `C`: default `2`, configurable only as `1`, `2`, or `3`.
 
-- the deployment default is `2`;
-- the only accepted static values are `1`, `2`, and `3`;
-- an upstream receive edge does not consume this downstream budget;
-- role, browser, user agent, device class, and page visibility do not create a
-  different release tier;
-- a connected endpoint's server-authoritative effective downstream capacity is
-  the deployment value clamped by its current `0..C` availability advertisement;
-  `0` means it currently accepts no downstream child and does not create another
-  release tier; and
-- one named configuration value and one shared implementation boundary own the
-  policy. Route code must not repeat literal policy numbers.
+- one ordinary peer child consumes one copy;
+- the Host's single SFU publication consumes one copy;
+- upstream receive consumes none;
+- role, Browser, UA, device, visibility, codec, and room Viewer limit do not
+  create another tier;
+- a client may advertise only `0..C` currently available copies, producing the
+  controller's effective capacity.
 
-The server returns the final deployment value as
-`authenticated.endpointMediaCopyCapacity` on every successful signaling
-authentication. Browser Host and Viewer clients validate `1..3` and use the
-same value for authoritative child assignments and physical sender slots. Room
-`maxViewers` is a separate participant-admission limit and never supplies a
-sender budget. A missing or invalid capacity, old wire, or executable sender
-fails before route authority is accepted.
+One transition-overlap reservation may temporarily raise a producer to
+`min(C + 1, 3)`. Commit or abort releases it. A fourth endpoint copy is never
+authorized. SFU ingress and subscription egress are independent server resources
+and are not inferred from endpoint child counts.
 
-Without the peer-assisted controller, signaling still admits at most that many
-active Host children per room. Excess admitted Viewers wait without an
-authorized media edge and are promoted in stable join order when a slot is
-released; offer, answer, candidate, and restart routing is limited to the active
-set.
+### One Graph And Reconcile Loop
 
-Capacity counts active outbound media copies produced by a non-server endpoint:
-an ordinary peer child consumes one slot and the Host's single SFU publication
-consumes one Host slot. An upstream receive edge is free. A parallel
-media-producing candidate requires a separately reserved transition slot. SFU
-subscriptions consume server egress, not endpoint capacity.
+One room controller owns:
 
-### Active topology
+- one committed, versioned, acyclic, source-reachable graph;
+- one event-driven reconcile loop;
+- at most one room-serial child operation; and
+- participant sessions, effective capacity, current failure facts, and the
+  Host's optional SFU publication.
 
-The server owns one versioned route assignment per room. At every committed
-revision:
+The Host has no upstream. Each Viewer has zero or one active upstream. Healthy
+unaffected edges remain sticky. Join/waiting, failed-edge repair, relay-ingress
+repair with subtree retention, confirmed departure, and capacity reduction are
+inputs to the same loop rather than separate routing systems.
 
-- the Host has no upstream;
-- each Viewer has exactly zero or one active upstream;
-- the active media graph is acyclic;
-- every non-server endpoint stays within its steady sender capacity or one
-  explicitly reserved transition-overlap slot;
-- every active Viewer is source-reachable through peer edges or the current
-  authoritative Host publication;
-- healthy unaffected branches remain sticky; and
-- admission or recovery ends in a valid assignment, an explicit wait, or a
-  bounded failure.
+Disconnected childless participants are removed naturally. A disconnected
+relay or a relay with reduced capacity accepts no new children; only its
+deterministic overflow children are reassigned. A relay whose ingress fails is
+itself reparented while its descendants remain attached.
 
-Direct or peer UDP remains the first media choice. Ordinary peer
-`RTCPeerConnection` instances receive STUN candidates only. The sole
-application fallback is the dedicated LiveKit SFU over UDP; Screener configures
-no TURN, ICE/TCP, media TCP, or TLS-relayed media. HTTPS and WSS continue to use
-TLS/TCP independently of media transport.
+### Deterministic Candidates
 
-Routing is event-driven. Join, capacity release or reduction, endpoint departure,
-current-edge hard failure, and a non-paused decoded-frame stall wake the same
-reconciliation loop. The controller otherwise leaves the room unchanged.
+Each child operation owns one candidate list and cursor, one current candidate
+and reservations, one route-demand owner, one fact version, and one total
+deadline. Candidate creation first rejects stale sessions, unreachable sources,
+cycles, insufficient steady/overlap capacity, tuples already consumed by that
+operation, and unavailable SFU resources.
 
-Parent selection is deterministic and local. The controller first filters on
-current authority, source reachability, acyclicity, effective downstream
-capacity, sender reservations, candidate tuples already tried by the current
-operation, and server admission.
-It then
-orders eligible parents lexicographically by the shallowest resulting depth,
-the greatest remaining steady sender capacity, a stable child-parent hash,
-join order, and peer identity. The pairwise hash distributes otherwise equal
-first choices without weakening capacity authority. It prepares one candidate at a time. The candidate's standard ICE
-checklist proves transport connectivity; the exact candidate child's first new
-decoded video frame is the application media-ready event. Raw addresses, a
-claimed NAT class, geography, user agent, or a
-weighted room-wide score never choose a parent. A failed candidate releases its
-reservation before the next candidate is attempted. The first candidate that
-reaches the media-usable floor commits; otherwise the loop reaches the next
-candidate, an explicit wait, or bounded failure. A failed edge seeds its tuple
-only into the operation opened by that fact version; a later external fact may
-make the tuple eligible again. Exhaustion retires an edge that is hard-invalid,
-attached to a confirmed-departed parent, or outside current effective capacity,
-so blocked state never hides a physical copy or server resource. A healthy edge
-used only for SFU bootstrap remains committed if bootstrap cannot start.
+Eligible Peer parents are ordered by:
 
-There is no independent maximum-depth policy. Acyclicity and room admission
-bound the graph, while shallowest-first ordering minimizes depth. If a departed
-Host root releases a Host slot, a new or orphaned child therefore prefers that
-shallower Host result over another root's deeper slot. Healthy committed edges
-remain sticky; the controller does not periodically rebalance the graph. Depth
-remains an observed acceptance metric.
+1. shallowest resulting depth;
+2. greatest remaining steady capacity;
+3. a stable child-parent rank;
+4. join order; and
+5. peer identity.
 
-A candidate identity is one logical upstream path. An operation opened by a
-failed edge seeds that exact current candidate as already tried, so the same
-parent cannot immediately repeat. A new external fact may make the old
-candidate eligible again; failure does not globally exclude that parent.
+There is no independent depth cap. Room admission and acyclicity bound the graph;
+shallowest-first is a preference, not a periodic balancing mandate. IP address,
+geography, NAT guess, UA, and scalar quality score do not select a parent.
 
-Foreground availability and direct convergence have separate priorities but
-use the same controller and candidate transaction. Route acquisition gives the
-best eligible direct parent one five-second head start before SFU. An exact hard
-failure may advance another direct candidate inside that same window, but the
-window never resets. If that exact direct candidate reports standard WebRTC
-transport `connected`, the controller keeps it until the operation deadline;
-this is progress only and cannot commit a route. Reaching the foreground
-boundary without that progress defers the unresolved direct candidate rather
-than declaring it failed, then starts SFU. A Viewer that
-committed SFU retains that healthy route while the controller later tries its
-remaining direct parents, one exact candidate at a time and round-robin across
-SFU Viewers after each consumed candidate. Newly unrouted or repairing Viewers
-always preempt this background direct work. The first direct
-candidate that proves a decoded frame replaces SFU make-before-break; exhausting
-the finite parent list simply keeps SFU. A candidate that would require a
-bounded-gap cutover is skipped because background convergence may not interrupt
-current media. This is event-driven route convergence, not periodic rebalancing
-or quality-based switching.
+A failed exact tuple is consumed only for its current operation. A later external
+fact may make it eligible again; there is no persistent parent blacklist.
 
-If an SFU subscription is needed while the Host has no publication and all Host
-slots are occupied, the controller retains one bounded bootstrap intent: the
-original demand and session, plus the finite Host direct children already tried
-as carriers. Each carrier uses the ordinary child
-operation and must fit in the existing overlap allowance; a transition that
-would first cut a healthy carrier is ineligible. Carrier failure leaves that
-carrier's committed route intact and advances the intent. Exhausting all safe
-carriers fails the waiting demands for that fact, never the healthy carriers.
-On success, the original demand tries the new publication before its eligible
-direct candidates; after its first decoded SFU frame those direct candidates
-resume as background convergence. A new external fact may rebuild the finite carrier
-list. This intent is part of the same controller and owns no second graph,
-concurrent route operation, or independent timer.
+### Prepare, Commit, And Rollback
 
-### Authorization and transition
+Every operation is fenced by room and endpoint sessions, share generation, base
+and pending route revisions, and one candidate connection identity. SFU routes
+also carry a publication generation. Duplicate current messages are idempotent;
+stale asynchronous results fail closed.
 
-Every prepare, signal, recovery, commit, and rollback is bound to the
-authenticated room and endpoint sessions, current share generation, base route
-revision, and unique pending revision. Connection identity fences the candidate
-PeerConnection, and publication generation remains owned by the SFU resource
-lifecycle.
-A single pending child-operation object aggregates these bindings, its exact
-media child and route-demand owner, the deterministic candidate list and cursor,
-its current candidate and reservations, and one deadline. Candidate failure
-advances only that exact cursor entry.
-Initial availability keeps one bounded direct window before SFU. Background
-direct convergence uses the operation's full deadline for each remaining exact parent;
-its finite tried set survives between attempts, rotates to the next SFU Viewer
-after a consumed candidate, and a higher-priority route demand aborts the
-current attempt without marking the parent failed. These
-fields do not create another graph, concurrent pending route revision, periodic
-timer, assignment generation, or all-pairs probe.
-A `prepare` route update names that operation's exact child, route kind, and
-server-issued candidate connection identity. Parent and child therefore
-prepare the same connection; neither endpoint infers candidate authority from
-an assignment-list difference. The candidate child may report one exact
-transport-connected progress event fenced by the same revision and connection;
-only its later decoded-frame ready event can commit.
-The accepted Browser runtime contract uses the single `screener-v13` wire. On each WebSocket, the
-server sends the exact prepare before its SFU configuration; the candidate child
-is queued before a peer parent is allowed to start its offer. WebSocket ordering
-is the companion-delivery contract, so clients keep no reordering inbox.
-Duplicate current companions are idempotent and stale ones are ignored. Every
-other wire and executable sender fails the protocol boundary before room
-authority rather than receiving a compatibility path.
-A stale or mismatched asynchronous result fails closed and cannot revive an old
-edge.
-Successful candidate `P` is broadcast as active revision `P`. Failure, timeout,
-or authoritative abort keeps the previous committed graph content but advances
-and broadcasts one active rollback revision `R > P` before any later prepare;
-clients never infer rollback from silence or from an older revision.
-One room-wide monotonic allocator owns active, prepare, rollback, retirement,
-and prune revisions. A direct peer transport may adopt a fresh WebRTC connection
-identity during its framework-owned rebuild only for the exact current
-parent/child sessions; that identity update does not change topology.
+The old committed route remains authoritative while the candidate prepares.
+Parent and child prepare the same server-issued connection identity. Standard
+ICE connected is progress only. The exact candidate child decoding its first new
+video frame is the sole application commit proof.
 
-A route replacement uses make-before-break only when the typed endpoint and
-server-resource ledger atomically admits the required reservations. The old
-route remains authoritative until the exact candidate child decodes its first
-new video frame. ICE `connected` alone is insufficient. Commit promotes that
-exact candidate
-atomically; timeout, failure, stale identity, or revoked authority destroys it,
-releases reservations idempotently, and keeps or restores the previous valid
-route. The exact media-ready call synchronously commits typed admission before
-graph promotion; a failed admission commit follows the ordinary candidate
-failure path. Commit releases the resource-set difference plus the overlap
-slot, and room stop/delete returns every current and committed resource through
-one dispose operation. When a full sender has no overlap slot, server resources
-are preflighted before one explicit bounded-gap cutover. Retirement keeps the
-same total deadline, replans the untried tuple suffix against the new graph, and
-appends one ordinary restore candidate when it cut a healthy logical edge.
-There is no fourth endpoint copy and no separate restore state machine.
+The media-ready call commits typed endpoint/SFU admission before graph promotion.
+Success broadcasts the candidate revision. Failure, timeout, pause, or stale
+authority destroys the candidate, releases reservations idempotently, and
+broadcasts a strictly newer rollback revision before another prepare. Clients
+never infer rollback from silence or an older revision.
 
-Recovery attempts are finite, generation-bound, and stop after success. The
-controller must not turn a rare failure into an unbounded retry loop, unaccounted
-server fanout, or an untracked parallel route.
+Make-before-break is used only when all required reservations exist. Availability
+repair may use one explicitly planned bounded-gap retirement after server
+resources are preflighted; it keeps the same deadline, replans the untried suffix,
+and retains one restore tuple. Background convergence never interrupts healthy
+media for a bounded-gap candidate.
 
-## Accepted Assisted-Route Model
+### Availability Order
 
-One room controller owns the committed graph, one pending child operation, and one
-event-driven reconciliation loop. Allocate/distribute, child reparent, and relay
-abdicate/drain are inputs to that loop rather than separate state machines.
-Topology helpers retain participant metadata and choose candidates without a
-second mutable graph.
+Initial acquisition gives direct Peer candidates one bounded foreground window.
+Hard failure may advance a different direct candidate inside that same window,
+but the window and total operation deadline never reset. Exact transport-
+connected progress may retain the current direct candidate until the deadline;
+it still cannot commit without decoded media.
 
-- The loop first removes disconnected childless participants, then selects one
-  connected waiting Viewer or one child whose parent is disconnected,
-  lacks effective capacity for that child, or owns the exact failed edge. It
-  prepares one upstream change and wakes again after commit, abort, or another
-  room event.
-- A relay whose ingress fails is itself the child being reparented; its subtree
-  remains attached. A disconnected endpoint, or one with effective downstream
-  capacity `0`, accepts no new children. Direct or deterministic overflow children
-  are reparented one at a time by the same loop, and disconnected leaves are
-  removed naturally.
-- The Host is the only source publisher. There is at most one authoritative Host
-  publication per share generation, and every SFU-fed Viewer subscribes to it.
-  The Host page owns the canonical capture tracks. LiveKit publisher teardown,
-  remote room deletion, and transport recovery may release only their SFU
-  publication and must never stop those capture tracks.
-  Any source-reachable endpoint with effective capacity may be a parent
-  candidate; SFU-fed and peer-fed endpoints use the same provisional-child
-  transaction and each child edge commits independently. Viewer republishing
-  into a second SFU publication is outside the current product.
-- The only server-assisted route is an SFU subscription backed by the Host's
-  one direct-ingress publication. Screener configures no TURN or media TCP
-  transport. An all-UDP-blocked network reaches a clear bounded failure; any
-  future strict-firewall transport requires its own evidence and belongs inside
-  LiveKit rather than becoming another application candidate.
-- Browser SFU publisher and subscriber PCs explicitly use an empty ICE-server
-  list, retain LiveKit-signaled UDP candidates, and let standard ICE nominate a
-  non-relay pair. Candidate type, address family, count, and Browser socket
-  allocation are not application invariants. Ordinary peers still use
-  deployment STUN, and LiveKit server-side public-IP discovery may use that same
-  STUN service. This isolates SFU PCs from unnecessary external STUN/TURN
-  destinations without adding a route, transport, port, retry stage, or timeout.
-- Browser ICE connectivity checks are the authority for direct UDP reachability.
-  Screener does not synthesize remote candidates, predict ports, classify NAT
-  behavior, or use TCP reachability as a media-path probe. Direct exhaustion
-  advances to the SFU stage inside the same operation deadline.
-- Endpoint sender capacity is accounted independently from server ingress/egress, SFU
-  subscriptions, and one bounded transition-overlap slot.
-  Steady capacity is `1`, `2`, or `3` (default `2`); a transition may use
-  `min(steadyCap + 1, 3)` only for one fenced, deadline-bound handoff and must
-  return to steady bounds at commit. There is no fixed SFU-root count or
-  room-wide selected-lease count.
-- Candidate-list creation, reserve, prepare, the child's first decoded frame,
-  atomic commit, abort, and idempotent release are one bounded child operation.
-  Its one total deadline cleans abandoned reservations and never revokes a
-  healthy committed edge. While that one exact candidate is pending, its
-  receive-transport owner runs one short-lived, generation-fenced
-  `framesDecoded` observer and stops it on proof, promotion, pause, replacement,
-  or teardown. A fresh peer connection or fresh SFU activation proves a
-  positive cumulative count; a paused prepared SFU route first records a
-  Resume-time baseline and requires later progress. This observer adds no
-  success/failure deadline and cannot select, reject, or reorder candidates.
-- A child invalidates only its own exact edge after PeerConnection hard failure
-  or a named non-paused interval without a newly decoded frame. Bitrate, FPS,
-  resolution, blur, and sender statistics remain diagnostics or stock
-  WebRTC/LiveKit adaptation inputs; they do not change
-  parent eligibility. Multiple bad child edges recover independently through the
-  same loop and naturally empty an unusable relay.
-- A currently decoding exact edge remains sticky. Current-path loss, RTT,
-  jitter, bitrate, resolution, FPS, freeze, and limitation evidence cannot prove
-  the counterfactual quality of another parent, so Screener creates no weighted
-  route score, alternative-parent probe, hysteresis loop, or periodic
-  quality-driven reparenting.
-- Quality selection begins with one evidence-only shadow phase inside this same
-  controller. A Viewer reports standard freeze and pause deltas only for a
-  window with continuing decoded-frame progress. Presentation eligibility
-  separately requires that its exact current route is connected, the page is
-  visible and not suspended, the Host is not paused, the native video is
-  playing, and a current composited frame has already been proved. Current target Chromium does not
-  expose the W3C `framesRendered` member, so it is not a wire requirement; the
-  freeze/pause counters themselves remain renderer-derived. A strictly monotonic
-  presentation epoch fences every presentation-eligibility change; its first
-  new stats sample establishes a baseline and is not evidence. A zero-decoded
-  window neither enters the aggregate nor advances that epoch or freshness; a
-  later positive-progress window may carry the renderer's newly settled
-  freeze/pause delta. The server then revalidates the authenticated
-  Viewer session, exact committed upstream and connection before the controller
-  keeps one bounded current-epoch aggregate per child. Missing stats remain
-  unknown, recovered freeze/pause duration may exceed one report window, and a
-  stale aggregate disappears from the on-demand Host diagnostic snapshot.
-  Shadow observation never changes facts, capacity, graph, revision, candidate
-  order, SFU admission or reconciliation. Active trials remain unaccepted until
-  annotated production evidence establishes a usable trigger and disruption
-  boundary; any accepted trial must reuse this controller's single child
-  operation, reservations, first-frame commit and rollback rather than create a
-  second optimizer.
-- Web clients derive active decoded progress from their existing periodic
-  WebRTC/LiveKit stats sampling. One route-keyed last-progress deadline reports
-  the exact edge once; it resets on route/connection change or decoded progress
-  and is suppressed while authoritatively paused. An active SFU route keeps that
-  same cadence when its video track is absent, its merged report is empty, or a
-  stats read fails; each such sample means no decoded progress, not a fabricated
-  metric or an immediate failure. Only route deactivation or teardown stops the
-  cadence, and stale asynchronous samples are generation-fenced. This steady-
-  state sampler is separate from the pending candidate's short-lived first-frame
-  observer and does not treat bitrate, FPS, track availability, or SFU layer
-  choice as route authority.
-- Browser page resume/visibility recovery rebaselines this same deadline before
-  another no-progress sample can invalidate an edge. Frozen JavaScript wall time
-  is not media-failure proof. A newly composited current-generation frame clears
-  stale local recovery presentation but does not create route authority.
-- Manual media reconnect remains on the current exact route. P2P directly
-  rebuilds the connection to the existing parent; SFU
-  disconnects and reconnects only the current LiveKit subscriber with fresh
-  scoped configuration. Neither action restarts Screener signaling, changes the
-  route revision, performs quality selection, or reparents. Only actual recovery
-  exhaustion reports route failure and enters normal reconciliation.
-- Authoritative pause aborts the pending child operation, including its current
-  candidate and reservations, keeps the active graph, suppresses decoded-frame-
-  stall decisions, and leaves new participants waiting. Resume always wakes a
-  fresh reconciliation from the committed graph. Healthy unaffected edges remain
-  sticky.
+When the direct foreground window ends, a usable SFU candidate may provide media
+before unresolved direct candidates. After an SFU route commits, finite remaining
+Peer candidates converge behind working media, one at a time and round-robin
+across SFU Viewers. New join or repair work preempts this background convergence.
+Exhausting direct candidates simply keeps the working SFU route.
 
-SFU remains a bounded fallback resource with independent deployment-wide
-admission. Resource exhaustion produces an explicit wait or failure; it never
-creates unbounded central fanout.
-Rooms that actually lose a candidate to deployment-wide admission register in
-one waiter set. An actual SFU usage decrease drains that set once, advances
-each waiting controller's external fact, and schedules normal reconciliation;
-there is no periodic capacity poll or resource-specific route controller.
+If the Host is full and no publication exists, one bounded SFU-bootstrap intent
+owns the original waiting demand and a finite cursor of eligible Host-direct
+children. A carrier must create the publication through a normal overlap; it may
+not cut a healthy branch first. Carrier failure keeps that branch and advances
+the cursor. Success lets the original demand try the publication before its
+remaining direct candidates. The intent owns no second graph, concurrent child
+operation, or timer.
 
-The accepted Viewer wire includes one strict, revision-fenced `route-status`
-union only for states that the existing prepare/active `route-update` cannot
-express: `{ state: "waiting", reason: "sfu-admission" }` while this Viewer is
-waiting on central admission, or `{ state: "failed", reason:
-"route-exhausted" }` after the controller reaches its bounded terminal. It is
-sent only server-to-authenticated-Viewer and carries no text, identity,
-candidate, retry hint, or other topology data. Access, Host presence, signaling,
-media, and autoplay remain independent presentation inputs.
+### SFU Resource Ownership
 
-The room-serial operation does not divide its per-child deadline by Viewer
-count, but simultaneous joins may form a linear queue. The current Browser
-diagnostic owner observes existing route events without changing the controller:
-for each current child it keeps only the latest route-demand, operation-start,
-current-candidate-start, first-decoded-frame, and final-outcome timing. A new
-demand overwrites that child's record; authoritative share stop/replacement,
-confirmed departure, and room deletion remove it.
+There is at most one Host publication per room/share generation. Every SFU
+Viewer owns one subscription to it; Viewers never publish a second SFU stream.
+The Host page owns capture tracks, so SFU teardown or recovery must not stop
+capture.
 
-An authenticated Host acceptance harness may request one snapshot. The current
-product UI exposes no diagnostic download button. The response
-reads the current graph, current operation, and latest records; the server does
-not push a periodic snapshot stream, start a timer, retain an event ring, log or
-persist the result, or create a second graph. Snapshot-local ordinals express
-parent/SFU relations but are not participant identities and must not be treated
-as stable across snapshots. Queue wait is the interval from the same route
-demand to operation start and remains `null` when either event is absent.
+The single-process server has one injected SFU admission owner. Its ingress
+ceiling derives from the fixed room-code space, and egress derives from that
+space times the per-room Viewer limit; neither has an independent tuning key.
+Exact publication and subscription handles remain charged while reserved,
+committed, or draining. Reactivating the same handle does not double-charge it.
 
-The response uses only `direct | sfu | waiting | failed` final-route values and
-the closed rejection buckets `none`, `stale`, `endpoint-capacity`,
-`sfu-admission`, `candidate-failed`, `first-frame-timeout`,
-`operation-deadline`, and `aborted`. It never carries real peer, parent, session,
-connection or generation identity, SDP, candidates, addresses, credentials, or
-raw error text, and it has no route authority. A 20-Viewer burst reports the
-sample count and nearest-rank p50/p95/max without a pass threshold before any
-different concurrency model or deadline is accepted. Protocol tests reject
-extra/private fields, deny the request to Viewers, and prove departure and
-room-deletion cleanup.
+The application explicitly creates a managed LiveKit room before issuing media
+tokens. Replacement, abort, timeout, confirmed media-participant loss, share
+rollover, stop, and room deletion transfer the resources they own into the same typed drain path.
+Only successful room deletion plus an absence readback releases that generation,
+so a stale token cannot recreate off-ledger media. The deployment must dedicate
+the LiveKit namespace to Screener and complete startup ownership/cleanup before
+accepting traffic; [self-hosting operations](../operations/self-hosting.md) owns
+that procedure.
 
-For the single-process deployment, SFU admission is one injected authority with
-deployment-wide ingress and egress counters. The fixed 9,000-room code space is
-also the ingress ceiling because each room owns at most one Host publication;
-egress is the same room capacity multiplied by per-room Viewer admission.
-Neither has an independent setting. One exact room/share/publication entry owns
-the Host publication ingress, while an exact Viewer subscription handle under
-that entry owns one egress unit. The current publication is reused as
-Viewers enter or leave the SFU path; each child candidate reserves and commits
-only its own subscription handle. Reserved, committed, and draining handles,
-concurrent publication generations, and generations still draining from
-LiveKit all remain charged. A subscription that leaves the route remains
-charged as draining until its publication room is deleted and proven absent;
-reactivating that same Viewer handle does not charge it twice.
+Only confirmed LiveKit media-participant absence retires an abandoned Host
+publication. A Host signaling disconnect keeps the generation charged while the
+exact LiveKit Host participant remains; one bounded control-plane check releases
+it only after that participant disappears.
 
-The accepted self-hosted deployment contract dedicates one LiveKit instance to Screener,
-sets `room.auto_create: false`, and gives the application an explicit private
-`LIVEKIT_API_URL`. The controller reserves the exact publication and first
-subscription, creates that managed LiveKit room through `RoomService`, and only
-then issues tokens. Later SFU-fed children reserve an exact subscription under
-the same generation without republishing the Host. Publication replacement
-moves the old generation and all of its subscription handles to `draining`;
-abort, timeout, participant loss, share rollover, room stop, and room deletion
-apply the same typed lifecycle to the resources they own.
-`RoomService.DeleteRoom` must complete and a follow-up lookup must prove the
-room absent before that generation's ingress or egress units are released.
-Because joining cannot recreate a deleted room, a stale self-hosted token
-cannot produce an off-ledger participant.
+A room denied by deployment-wide SFU admission enters one bounded waiter set.
+Actual SFU usage decrease drains that set once, advances each surviving room's
+external fact, and schedules ordinary reconciliation. There is no periodic
+capacity poll or second resource-specific controller.
 
-The single owner first binds the configured application listener exclusively;
-a competing process that cannot bind makes no LiveKit control-plane call. While
-bound but not initialized, HTTP returns `503` and no signaling upgrade handler
-is installed. The owner then lists its dedicated LiveKit instance, rejects
-foreign room names, deletes every stale Screener room, confirms the owned
-namespace empty, and only then accepts application traffic. Graceful shutdown
-drains the same namespace before forgetting counters. A Host signaling
-disconnect keeps a committed generation charged while its exact LiveKit Host participant exists;
-an interval-bounded control-plane check retires it after that participant
-disappears. A multi-process application deployment requires a shared atomic
-admission and lifecycle owner before it may claim these values are
-deployment-wide.
+Ordinary Peers use deployment STUN only. Browser SFU PeerConnections use an
+empty external ICE-server list while retaining LiveKit-signaled UDP candidates.
+Screener configures no TURN, ICE/TCP, media TCP, or TLS-relayed media. A future
+strict-firewall transport must be accepted as a LiveKit-internal capability, not
+as another application route candidate.
 
-## Current Source And Deployment Boundary
+### Recovery, Pause, And Quality
 
-Canonical application/runtime source and production use the evidence-only
-strict `screener-v13` quality shadow. Exact current source and deployment
-identity is indexed by [status](../status.md).
-Browser SFU PCs use empty external ICE-server lists. The controlled exact-
-candidate rollback/SFU commit and active-SFU cadence gates are closed. The
-operation owner remains only `route`; broader heterogeneous-network and SFU
-lifecycle validation remains open in the
-[verification ledger](../verification-status.md).
+WebRTC and LiveKit first own ICE/consent and transient reconnect on the current
+route. Only framework recovery exhaustion, hard failure, a non-paused decoded-
+frame stall, confirmed departure, or capacity invalidation enters route
+reconciliation. Manual reconnect remains on the exact current route.
 
-## Acceptance Boundary
+Authoritative Host pause aborts the pending operation and reservations, preserves
+the committed graph, suppresses decoded-stall authority, and leaves new Viewers
+waiting. Resume starts reconciliation from the current graph. Page-hidden wall
+time is rebaselined before it can contribute to a stall decision.
 
-The deployed core's completed source and deployment evidence is indexed in
-`docs/verification-status.md`. Any revised controller must re-pass these source
-and deployment gates:
-
-- property tests cover capacity `1`, `2`, and `3`, one active upstream,
-  acyclic and source-reachable assignments, stale generations, duplicate
-  signals, departure, rollback, and admission exhaustion;
-- route changes preserve unaffected branches and never commit before the exact
-  candidate child's first decoded-frame ready;
-- SFU lifecycle tests keep reserved, committed, and draining generations charged
-  until deletion plus absence proof, reject stale-token room recreation, prove a
-  competing listener owner makes no LiveKit call, fence startup against stale or
-  foreign rooms, reclaim an abandoned Host generation
-  without cutting a live Host participant, and keep two rooms under one global
-  capacity owner;
-- candidate lists are deterministic under input permutation, preserve a healthy
-  current edge, prefer the shallowest least-loaded parent with capacity, and
-  advance one cursor after exact failure and idempotent cleanup without resetting
-  the total operation deadline;
-- focused controller tests cover first-frame commit, candidate failure and stale
-  ready, relay-ingress reparent with its subtree intact, disconnected relay and
-  nested-disconnect convergence, effective capacity `0..C` and overflow drain,
-  SFU-fed first-child use and pause/resume;
-- deployment preflight proves the LiveKit instance is dedicated, uses
-  `room.auto_create: false`, exposes `RoomService` only on its accepted private
-  control origin, and can drain its managed namespace before traffic or
-  rollback.
-
-The following external acceptance remains open without changing the deployed
-core's status:
-
-- representative-network real-browser tests cover direct peer media, peer
-  relay, SFU media, bounded failure, and recovery beyond the completed
-  controlled direct-to-SFU transaction;
-- measured endpoint upload and server ingress/egress prove the accepted
-  accounting under normal and migration overlap; and
-- every exhausted path reaches a clear bounded wait or failure without leaking
-  credentials, candidates, addresses, or raw errors.
-
-Loopback timing and synthetic signaling tests may validate invariants, but they
-do not prove target-network latency, quality, capacity, or interoperability.
-
-## Security and privacy
-
-Route and signaling authority is room-, role-, session-, share-, revision-, and
-connection-bound. LiveKit media credentials are short-lived and bound to the
-room, role, share, and publication generation so healthy media may survive a
-signaling reconnect. Server-assisted credentials remain memory-only and never
-appear in application page URLs, browser persistence, or durable server storage. LiveKit places
-its short-lived JWT in the WebSocket transport request target, which must not be
-logged; no credential may enter application or proxy logs.
-Ordinary SFU transport terminates DTLS-SRTP at the SFU; the product must not
-claim application E2EE unless key distribution and real media evidence exist.
-Authenticated Hosts and shipped clients are trusted media participants in the
-current private-room threat model. Stale route-control sessions remain
-unauthorized; a retired media generation remains charged during bounded drain
-until deletion of its exact room prevents re-entry.
+Quality evidence is observation-only. Current low bitrate/FPS/resolution, loss,
+RTT, jitter, freeze, or sender limitation does not change candidates, capacity,
+SFU use, or graph authority. Screener has no weighted route score, parent-wide
+quality inference, all-pairs probe, hysteresis controller, or periodic rebalance.
+Open investigation remains in [TODO](../todo.md).
 
 ## Consequences
 
 Positive:
 
-- one capacity rule replaces role and browser policy forks;
-- route safety is expressed through graph, identity, and media invariants;
-- server-assisted paths remain bounded and explicit without turning the room
-  into an always-SFU topology.
+- one capacity rule replaces role- and Browser-specific tiers;
+- one graph and operation make route, identity, and resource ownership explicit;
+- media stays distributed while SFU cost and stale-token behavior remain bounded;
+- unrelated healthy branches survive local join, failure, and repair.
 
 Negative:
 
-- one room-serial operation may create measurable queue-tail latency during a
-  burst;
-- make-before-break consumes explicit endpoint and server reservations and may
-  require a bounded-gap cutover when no overlap slot exists; and
-- real SFU and target-network evidence is still required; diagnostics remain
-  observational and do not grant route authority or close physical evidence.
+- the serial operation can create queue-tail latency during bursts;
+- Browser relay creates per-child decode/re-encode cost;
+- make-before-break requires temporary reservations and some availability repair
+  may require a bounded gap; and
+- UDP-only media ends in explicit failure on fully blocked networks.
 
-## Relationship to other ADRs
+## Related Decisions And Evidence
 
-- ADR-0001 owns the original browser P2P baseline.
-- ADR-0004 is historical evidence about browser peer relay and re-encoding; it
-  does not set current capacity or server-assisted policy.
-- ADR-0007 owns diagnostic path-quality evidence and representation behavior;
-  it does not create route eligibility.
+- [ADR-0001](./0001-p2p-first-media-topology.md): initial P2P baseline.
+- [ADR-0004](./0004-peer-assisted-media-experiment.md): Browser relay evidence.
+- [ADR-0007](./0007-path-isolated-representation-quality.md): framework-owned
+  representation adaptation.
+- [Low-server-cost routes](../research/low-server-media-routes.md) and
+  [peer-assisted media](../research/peer-assisted-media.md): measurements and
+  rejected alternatives.
+- [Verification status](../verification-status.md): current open physical gates.
 
-## References
+## Primary References
 
 - [WebRTC](https://w3c.github.io/webrtc-pc/)
 - [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/)
-- [WebRTC transports, RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html)
+- [ICE, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html)
 - [RTP topologies, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667.html)
-- [PIM-SM Join/Prune behavior, RFC 7761](https://www.rfc-editor.org/rfc/rfc7761.html)
-- [ICE connectivity checks and candidate checklists, RFC 8445](https://www.rfc-editor.org/rfc/rfc8445.html)
-- [NICE degree-bounded application-layer multicast](https://conferences.sigcomm.org/sigcomm/2002/papers/appmulti.pdf)
-- [Overcast adaptive single-source distribution trees](https://www.usenix.org/conference/osdi-2000/overcast-reliable-multicasting-overlay-network)
-- [Kubernetes cordon and drain](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands)
-- [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/#selective-subscription)
-- [LiveKit track subscription permissions](https://docs.livekit.io/transport/media/publish/#track-permissions)
-- [Kubernetes controllers](https://kubernetes.io/docs/concepts/architecture/controller/)
-- [Consistent updates for software-defined networks](https://reitblatt.com/downloads/consistent-updates-hotnets11.pdf)
+- [NICE degree-bounded multicast](https://conferences.sigcomm.org/sigcomm/2002/papers/appmulti.pdf)
+- [Overcast](https://www.usenix.org/conference/osdi-2000/overcast-reliable-multicasting-overlay-network)
+- [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
+- [Consistent network updates](https://reitblatt.com/downloads/consistent-updates-hotnets11.pdf)

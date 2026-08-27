@@ -69,12 +69,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-1. Collect annotated production freeze/pause samples from strict
-   `screener-v13` without active route changes.
-2. Finish the Android Chrome and iOS Safari Viewer lifecycle matrix.
-3. Finish representative public-network direct, peer-relay, SFU, recovery,
-   Pause/Resume, screen-audio, real-game A/V, and all-UDP-blocked acceptance
-   without adding another transport or quality controller.
+The documentation truth architecture is at its acceptance boundary. Product and
+source implementation remain parked pending owner direction.
 
 ## Active Boundaries
 
@@ -85,11 +81,12 @@ This is the current execution index. Git history owns completed timelines;
 - Current-path quality is diagnostic. High loss, RTT, jitter, low bitrate,
   resolution, FPS, or freeze counters do not trigger relay abdication or parent
   switching.
+- Repository simplification does not change or deploy product behavior beyond
+  deleting proven dead private surfaces.
 - Native/executable senders, shared encode, distribution packages, broad UI
-  polish, bilingual support, and repository-wide simplification are outside the
-  current release.
+  polish, and bilingual support remain outside the current release.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Representative real-network and mobile
-physical evidence remains required before route acceptance is complete.
+No source or deployment P0/P1 is open. Product evidence work is parked in TODO
+while the truth and mechanism ownership is simplified.

@@ -1,53 +1,84 @@
 # Project Instructions
 
-## 1. Decision And Durable Truth
+## Authority And Scope
 
-- Every task and action in this repository must follow the complete repo-tracked [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md). Read it before work; that file is the Screener authority for generic task boundaries, and any installed copy must stay synchronized with it rather than becoming a divergent variant.
-- Core summary: within higher-priority instructions, the latest explicit user decision defines the task; take only requested actions and proven necessary consequences, and do not treat review/research/implementation as authority for implementation/deployment/cleanup beyond its task type. Broad words such as improve or optimize add no unnamed scope. Prefer standards and one owning invariant over example-specific mechanisms, while preserving unrelated work and necessary callers/tests/security. Reconstruct each deliverable from the accepted current result so it stands alone without rejected alternatives, process narration, or modification traces; inspect only the pending changes and report the result with completion evidence. The full skill governs when this summary is incomplete.
-- Model recovery and failure handling from the smallest underlying authority and connection state. A concrete cause such as a graceful restart, crash, timeout, or network loss may improve diagnostics only when it changes a reachable decision; it must not create a parallel state, retry loop, fallback, or user-facing branch when the required recovery action is the same.
-- Before a material product-contract, route-model, security, infrastructure, or irreversible change, settle the meaning against the whole product model and evidence, challenge contradictions or needless complexity, and update its single owning truth document. An ordinary scoped implementation or bug fix does not require a truth checkpoint unless it actually changes durable semantics or a current production/execution snapshot.
-- Until the owner explicitly declares a public release, maintain only the current internal product contract. Do not preserve backward or forward compatibility, legacy wire/config aliases, dual parsers or writers, translators, deprecated APIs, migration shims, or tests whose only consumer is an older release. Upgrade the private deployment atomically, reject stale clients before authority, delete replaced surfaces, and use Git history for rollback. Reassess compatibility only when public release requirements are explicitly opened.
-- Use the lean path by default for ordinary scoped work: inspect the affected code and owner, make the smallest change, run focused checks, inspect the diff, stage the requested files, and report. Do not automatically expand a small change into broad research, multiple truth-document edits, a full test suite, independent reviews, PR/merge, deployment, worktree cleanup, or a release postflight. Use the full integration/release path only when the owner explicitly asks for it or when closing a major phase or changing a public contract, route/security model, infrastructure, persistent/irreversible state, or release boundary.
-- When durable semantics do change, update the single actual owner among requirement, design, ADR or research, and update `docs/project-memory.md` or `docs/status.md` only when its snapshot materially changes. Do not create parallel owners or mirror source details across documents. Ordinary UI details, self-evident code behavior, one-off fixes, routine validation, and completed history stay in code, tests, pull requests, and Git.
-- If semantics remain disputed, record the hold in `docs/todo.md` and freeze only dependent work. Do not encode a guess as accepted truth.
-- Queue new observations in their owner and continue the active milestone unless the user requests immediate investigation or the evidence reveals a P0 blocker.
+- Read and follow the complete repo-tracked
+  [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md) before work.
+  It is the generic authority for scope, smallest-correct-result, and clean
+  delivery; installed copies must remain synchronized with it.
+- Within higher-priority instructions, the latest explicit user decision defines
+  the task. Review, research, implementation, deployment, and cleanup grant only
+  the authority inherent in that task type.
+- Model recovery from the smallest underlying authority and connection state.
+  Restart, crash, timeout, and network loss do not justify parallel states or
+  case-specific fallbacks when their required action is the same.
+- Ordinary scoped work uses the lean path: inspect the affected owner and code,
+  make the smallest coherent change, run focused checks, inspect the diff, and
+  stage the requested files. Use the full integration/release path only for an
+  explicitly requested release or a material contract, route/security,
+  infrastructure, persistence, or irreversible change.
+- Until a public release is explicitly declared, keep one current internal
+  contract. Delete replaced wire/config/API surfaces; do not add compatibility
+  aliases, dual readers/writers, migrations, or tests for stale private clients.
 
-## 2. Safety And Privacy
+## Product Contract
 
-- Never commit credentials, TLS private keys, access tokens, or real user data. Commit only placeholder configuration and document local secret injection.
-- Server-assisted media credentials are short-lived and narrowly authorized; rooms use authentication or unguessable expiring invitations. Do not log or persist private media-path identifiers beyond their accepted owner.
-- Block the current phase on P0 security, privacy, authorization, irreversible-data, generation, bounded-resource, or rollback failures and on P1 failures of its core path.
+- Screener is private game screen sharing for one Host and up to 20 authenticated
+  Viewers, with Web Host/Viewer/relay as the current product surface.
+- Current product truth is split by owner:
+  [rooms/access](./docs/product/rooms-access.md),
+  [routing/transport](./docs/product/routing-transport.md),
+  [media quality](./docs/product/media-quality.md), and
+  [presentation/lifecycle](./docs/product/presentation-lifecycle.md).
+- Media stays automatic and P2P-first; central services provide room authority,
+  signaling, STUN, observability, and bounded LiveKit SFU/UDP fallback. Route
+  changes must preserve the single-graph, single-operation model in
+  [ADR-0005](./docs/adr/0005-automatic-hybrid-media-routing.md).
+- WebRTC and LiveKit own network and media adaptation. Do not add custom quality
+  scores, ladders, all-pairs probes, periodic rebalancing, or hand-built SFU
+  representations without a new accepted decision backed by primary evidence.
 
-## 3. Product Contract
+## Durable Truth
 
-- Build private, low-latency game screen sharing for one broadcaster and up to `20` authenticated Viewers, not a public or large-scale streaming service.
-- A normal desktop or mobile browser is the initial Viewer target. A packaged sender or native capture helper is a later optimization.
-- Keep media distributed and automatic. Central services own rooms, authentication, signaling, STUN, observability, and bounded fallback resources; do not silently make the product always-SFU.
-- Ordinary peer ICE remains STUN-only and direct/peer UDP remains first; the only application fallback is the dedicated LiveKit SFU over UDP. Browser SFU publisher and subscriber PCs retain LiveKit-signaled UDP candidates but do not inherit external STUN/TURN ICE servers; deployment STUN remains available to ordinary peers and LiveKit server-side public-IP discovery. Screener configures no TURN, ICE/TCP, media TCP, or TLS-relayed media path. Every accepted path ends in bounded success or clear failure, and HTTPS/WSS transport is independent of media transport.
-- Every non-server endpoint uses one server-authoritative steady outbound media-copy cap: default `2`, configurable as `1`, `2`, or `3`. A peer child or the Host's single SFU publication consumes one slot; upstream receive is free, and SFU subscriber egress is accounted at the server. Browser role, UA, visibility, and client advertisement do not create another tier.
-- The accepted route model is one committed graph, one event-driven reconciliation loop, and at most one room-serial child operation. That operation owns one deterministic candidate list/cursor, one current candidate with its reservations, one route-demand owner, and one total deadline; its exact media child commits on the first newly decoded frame. Exact direct transport-connected progress may keep the current candidate until that total deadline but cannot commit or change the graph. Join/waiting, child reparent, relay ingress repair with subtree retention, confirmed departure, and effective-capacity reduction all use this operation. Initial acquisition gives direct candidates one bounded foreground window, then uses SFU for availability while any remaining direct candidates converge behind working media; a failed exact candidate is tried only for that operation and creates no persistent parent blacklist.
-- WebRTC and LiveKit own ICE/DTLS/consent, congestion control, transient reconnect, and SFU stream state. Screener does not add all-pairs endpoint probing, parent-wide quality inference, a weighted route score, periodic rebalancing, or an independent depth cap. SFU is one Host publication with per-Viewer subscriptions, and endpoint overlap plus SFU resources remain independently admitted and bounded. Any future strict-firewall transport must be accepted as a LiveKit-internal capability from real evidence, not added as another application route candidate.
-- WebRTC and LiveKit also own media-quality adaptation, bandwidth estimation, representation/layer selection, and recovery. Screener may express standard content intent, user-selected ceilings, codec choice, and documented component options, but it does not invent or maintain an application resolution/FPS/bitrate ladder, representation formula, quality score, hysteresis loop, periodic media controller, or manual SFU selector. Browser game-screen video uses the standard `contentHint = "motion"`; do not silently unset it or replace native adaptation unless the owner explicitly accepts a primary-source-supported mature alternative. Prefer pinned component defaults over hand-built SFU layers.
+- Start substantial work by reading [project memory](./docs/project-memory.md),
+  [status](./docs/status.md), [TODO](./docs/todo.md), and only the relevant
+  product module, ADR, research, or operations document. Then inspect branch,
+  HEAD, status, staged diff, and worktrees.
+- Product modules own current behavior; ADRs own non-obvious decisions and
+  consequences; research owns evidence and license boundaries; deployment owns
+  operational reference. Status is the current execution/deployment index, TODO
+  is the only work ledger, and Git/PRs own completed history.
+- Give every durable fact one owner. Update memory or status only when its compact
+  snapshot materially changes. Ordinary UI detail, protocol field listings,
+  self-evident code, test inventories, routine validation, and agent process do
+  not belong in long-lived product truth.
+- If semantics remain disputed, record the hold in TODO and freeze only dependent
+  work. Never encode a guess as accepted truth.
 
-## 4. Canonical Repository And Integration
+## Safety
 
-- Keep the canonical repository root on a clean, current `main` at audit and integration boundaries. Create branches and worktrees from that exact commit; an auxiliary worktree or old branch is never a truth source.
-- Merge an accepted truth checkpoint before integrating dependent candidates. Rebase or rebuild each retained candidate from that exact `main` once, preserve main's owning truth on conflicts, and transplant only approved scoped code, tests, and new facts.
-- Routine application-only releases verify a new immutable artifact, switch to it atomically, and guarantee the pre-cutover application release only through bounded health and postflight checks; it has no retention contract afterward and is not a maintained backup. A task that changes infrastructure, configuration, secrets, persistent state, or an irreversible surface must define recovery for only those touched surfaces before changing them.
-- Cleanup is last. Preserve user work and verify integration, open references, branch equivalence, and link/reparse safety before removing a worktree or branch.
-- Follow `CONTRIBUTING.md` for branch, research, validation, PR, merge, cleanup, and local-hook details.
+- Never commit credentials, TLS private keys, raw access tokens, or real user
+  data. Commit placeholders and document local secret injection.
+- Keep media credentials short-lived and narrowly authorized. Do not log or
+  persist private media-path identifiers beyond their accepted owner.
+- Block the current phase on P0 security, privacy, authorization, irreversible-
+  data, generation, bounded-resource, or rollback failure, and on P1 failure of
+  that phase's core path.
 
-## 5. Truth Map
+## Repository And Delivery
 
-- Start substantial work by reading `docs/project-memory.md`, `docs/status.md`, `docs/todo.md`, the relevant requirement/design, ADR, and research documents, then inspect the current branch and Git state.
-- Current requirements and design live in `docs/需求理解.md` and `docs/方案设计.md`; decisions live in `docs/adr/`; evidence lives in `docs/research/`.
-- `docs/project-memory.md` is the durable product snapshot, `docs/status.md` is the current execution/deployment index, and `docs/todo.md` is the only current work ledger. Git history owns the completed timeline.
-- Give each durable fact one owner and replace stale text in place. Long-lived documents record product contracts, non-obvious invariants, algorithms/models, key tradeoffs, external evidence, and current execution boundaries; ordinary UI, self-evident implementation, routine validation process, and completed history stay in code, tests, pull requests, and Git. Keep status as an index rather than an archive, and update `docs/README.md` when documents move or change status.
+- Canonical root must be clean current `main` at audit/integration boundaries.
+  Create branches/worktrees from that exact commit; old branches and worktrees
+  are never truth sources.
+- Preserve user work. Branch, truth-checkpoint, PR, release, recovery, and
+  cleanup rules are owned by [CONTRIBUTING.md](./CONTRIBUTING.md); do not mirror
+  that workflow here.
 
-## 6. Engineering Defaults
+## Engineering Defaults
 
-- Research non-trivial design, implementation, and bug fixes from current primary sources. Record durable findings and license boundaries under `docs/research/`.
-- Add focused tests in proportion to the changed risk. Full-suite tests, independent review, expensive browser/network/endurance checks, and deployment validation belong at an explicitly requested or major acceptance boundary; use reproducible WebRTC measurements for performance claims.
-- Keep scripts and hooks deterministic, fast, cross-platform, and CI-runnable.
-- Support Windows, macOS, and Linux; avoid absolute paths and OS-specific separators. Text files use LF, and new filenames use ASCII unless an established user-facing convention requires otherwise.
-- Before finishing material work, inspect Git status, report untracked project artifacts, and stage requested files unless told otherwise.
+- Use primary sources for non-trivial design and bugs. Add focused tests in
+  proportion to risk; batch full browser/network/endurance checks at acceptance.
+- Keep scripts deterministic, fast, cross-platform, and CI-runnable. Support
+  Windows, macOS, and Linux; use LF and ASCII filenames for new files.
+- Before finishing material work, inspect status, report untracked artifacts,
+  and stage requested files unless told otherwise.
