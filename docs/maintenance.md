@@ -13,7 +13,7 @@
 | 每次都必须遵守的硬约束和导航 | `AGENTS.md` | 保持短、单义、稳定；不复制流程手册或临时状态 |
 | 分支、研究、验证、PR、合并和清理流程 | `CONTRIBUTING.md` | 维护可执行的日常流程 |
 | 产品总览和领域导航 | `docs/project-memory.md` | 只保留每次 substantial task 都需要的摘要与链接 |
-| 当前生产、里程碑、阻塞项和明细索引 | `docs/status.md` | 只保留 current/index，最多 100 行且不超过 10 KB |
+| 当前生产、里程碑、阻塞项和明细索引 | `docs/status.md` | 只保留 current/index；接近 120 行或 12 KB 时提示园艺审查 |
 | 当前未决、已授权或待用户决策的工作 | `docs/todo.md` | 不是完成记录；不把 checkbox、实验或 agent 建议自动升级为 TODO |
 | 当前产品合同 | `docs/product/` | 每个领域一个 owner；只写行为、边界和非显然不变量 |
 | 架构取舍 | `docs/adr/` | 明确状态；新决定替代冲突旧决定 |
@@ -61,5 +61,6 @@ TURN 的减负证据由 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md)
 
 - 迭代中运行覆盖当前改动的最小定向检查；完整套件、真实浏览器矩阵、网络整形、跨设备、长时稳定性和部署检查在相关候选的验收边界批量运行。
 - 文档改动默认运行本地 Markdown 链接、whitespace、diff 和 repository-hygiene 检查；不因无关文档变化重跑媒体基准。
+- 断链、缺失必需 owner 和格式损坏是 hard failure。行数与字节阈值只是 warning：它提示检查是否应拆分二级 owner、删除历史或移出过程信息，不要求为通过门禁压缩合理正文，也不是交付质量指标。
 - 昂贵证据记录 commit、环境、结果和适用边界。只有相关路径、协议、配置、依赖、环境或门槛改变，或旧证据失败/含糊时才重跑。
 - `.githooks/pre-commit`、`scripts/check-project-state.sh` 和 PowerShell 等价入口共享 `scripts/required-project-paths.txt`。Hook 只做快速、确定、可复现的检查；工程判断留给评审和测试。

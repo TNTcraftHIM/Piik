@@ -16,22 +16,23 @@ const repositoryFiles = execFileSync(
   .filter((file) => file && existsSync(resolve(root, file)));
 const markdownFiles = repositoryFiles.filter((file) => file.endsWith(".md"));
 const failures = [];
+const warnings = [];
 const anchorCache = new Map();
 
-const exactBudgets = new Map([
-  ["AGENTS.md", [100, 8_000]],
-  ["docs/README.md", [120, 10_000]],
-  ["docs/deployment.md", [150, 12_000]],
-  ["docs/project-memory.md", [100, 8_000]],
-  ["docs/status.md", [100, 10_000]],
-  ["docs/todo.md", [120, 12_000]],
+const exactWarningBudgets = new Map([
+  ["AGENTS.md", [140, 12_000]],
+  ["docs/README.md", [180, 16_000]],
+  ["docs/deployment.md", [250, 20_000]],
+  ["docs/project-memory.md", [120, 12_000]],
+  ["docs/status.md", [120, 12_000]],
+  ["docs/todo.md", [160, 16_000]],
 ]);
-const prefixBudgets = [
-  ["docs/product/", 120, 8_000],
-  ["docs/adr/", 250, 20_000],
-  ["docs/research/", 450, 30_000],
-  ["docs/operations/", 150, 12_000],
-  ["docs/reference/", 150, 12_000],
+const prefixWarningBudgets = [
+  ["docs/product/", 180, 16_000],
+  ["docs/adr/", 350, 30_000],
+  ["docs/research/", 650, 50_000],
+  ["docs/operations/", 250, 20_000],
+  ["docs/reference/", 250, 20_000],
 ];
 
 for (const file of markdownFiles) {
@@ -49,6 +50,9 @@ for (const file of markdownFiles) {
   for (const raw of targets) checkLink(file, absolute, raw);
 }
 
+if (warnings.length > 0) {
+  process.stderr.write(`${warnings.map((warning) => `warning: ${warning}`).join("\n")}\n`);
+}
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);
@@ -67,8 +71,8 @@ function checkFormat(file, text) {
 
 function checkBudget(file, text) {
   const budget =
-    exactBudgets.get(file) ??
-    prefixBudgets
+    exactWarningBudgets.get(file) ??
+    prefixWarningBudgets
       .filter(([prefix]) => file.startsWith(prefix))
       .map(([, maxLines, maxBytes]) => [maxLines, maxBytes])[0];
   if (!budget) return;
@@ -77,8 +81,8 @@ function checkBudget(file, text) {
   const lines = logicalLines(text);
   const bytes = Buffer.byteLength(text);
   if (lines > maxLines || bytes > maxBytes) {
-    failures.push(
-      `${file}: exceeds ${maxLines}-line/${maxBytes}-byte budget ` +
+    warnings.push(
+      `${file}: exceeds ${maxLines}-line/${maxBytes}-byte gardening threshold ` +
         `(${lines} lines, ${bytes} bytes)`,
     );
   }
