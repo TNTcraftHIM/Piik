@@ -151,7 +151,8 @@ function sameCandidate(
   return (
     left?.childPeerId === right.childPeerId &&
     left.connectionId === right.connectionId &&
-    left.transport === right.transport
+    left.transport === right.transport &&
+    left.qualityProbe === right.qualityProbe
   );
 }
 

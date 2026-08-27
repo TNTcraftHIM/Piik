@@ -3,6 +3,7 @@ import { debuglog } from "node:util";
 
 import {
   MAX_MEDIA_ROUTE_REVISION,
+  PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS,
   VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
   type RouteDemandReason,
   type RouteDiagnosticFinalRoute,
@@ -126,6 +127,9 @@ interface Attempt<Resource> {
   mediaReady: boolean;
   senderQualityState?: "healthy" | "degraded";
   senderQualityAcceptedAtMs?: number;
+  senderQualityConsecutiveHealthyWindows?: number;
+  senderQualitySampleTimestampMs?: number;
+  senderQualityIdentity?: string;
 }
 
 interface ChildOperation<Resource> {
@@ -252,6 +256,8 @@ interface SenderQualityObservation {
   connectionId: string;
   senderIdentity: string;
   state: "healthy" | "degraded";
+  consecutiveDegradedWindows: number;
+  lastSampleTimestampMs: number;
   lastAcceptedAtMs: number;
   consumedAtFactVersion?: number;
 }
@@ -263,6 +269,7 @@ export interface SenderQualityEvidenceInput {
   routeRevision: number;
   connectionId: string;
   senderIdentity: string | null;
+  sampleTimestampMs: number | null;
   state: "unknown" | "healthy" | "degraded";
   acceptedAtMs: number;
 }
@@ -279,6 +286,8 @@ interface SfuPublisherQualityObservation {
   hostSessionId: string;
   publicationGeneration: string;
   state: "healthy" | "degraded";
+  consecutiveHealthyWindows: number;
+  lastSampleTimestampMs: number;
   lastAcceptedAtMs: number;
 }
 
@@ -288,6 +297,7 @@ export interface SfuPublisherQualityEvidenceInput {
   publicationGeneration: string;
   routeRevision: number;
   state: "unknown" | "healthy" | "degraded";
+  sampleTimestampMs: number | null;
   acceptedAtMs: number;
 }
 
@@ -941,6 +951,7 @@ export class RoomRouteController<Resource = unknown> {
         input.state,
         input.acceptedAtMs,
         input.senderIdentity,
+        input.sampleTimestampMs,
         commitReservation,
       );
     }
@@ -959,6 +970,12 @@ export class RoomRouteController<Resource = unknown> {
       return rejected();
     }
     if (input.state === "unknown") {
+      if (this.senderQualityObservations.has(input.childPeerId)) {
+        this.debug("sender-quality-reset", {
+          parent: this.debugPeer(input.parentPeerId),
+          child: this.debugPeer(input.childPeerId),
+        });
+      }
       this.senderQualityObservations.delete(input.childPeerId);
       this.senderQualityBaselines.set(
         input.childPeerId,
@@ -977,7 +994,7 @@ export class RoomRouteController<Resource = unknown> {
         released,
       };
     }
-    if (!input.senderIdentity) {
+    if (!input.senderIdentity || input.sampleTimestampMs === null) {
       return rejected();
     }
     const previous = this.senderQualityObservations.get(input.childPeerId);
@@ -988,6 +1005,24 @@ export class RoomRouteController<Resource = unknown> {
       previous.connectionId === input.connectionId;
     const sameSenderIdentity =
       sameIdentity && previous?.senderIdentity === input.senderIdentity;
+    if (
+      sameSenderIdentity &&
+      previous !== undefined &&
+      input.sampleTimestampMs <= previous.lastSampleTimestampMs
+    ) {
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released: [],
+      };
+    }
+    const sameFreshSenderIdentity =
+      sameSenderIdentity &&
+      previous !== undefined &&
+      input.acceptedAtMs <
+        previous.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
     const senderIdentityChanged =
       sameIdentity && previous?.senderIdentity !== input.senderIdentity;
     const wasFreshHealthy =
@@ -1003,6 +1038,12 @@ export class RoomRouteController<Resource = unknown> {
     if (input.state === "healthy") {
       this.senderQualityBaselines.delete(input.childPeerId);
     }
+    const consecutiveDegradedWindows =
+      input.state === "degraded"
+        ? sameFreshSenderIdentity && previous.state === "degraded"
+          ? safeAdd(previous.consecutiveDegradedWindows, 1)
+          : 1
+        : 0;
     this.senderQualityObservations.set(input.childPeerId, {
       childSessionId: child.sessionId,
       parentPeerId: input.parentPeerId,
@@ -1010,6 +1051,8 @@ export class RoomRouteController<Resource = unknown> {
       connectionId: input.connectionId,
       senderIdentity: input.senderIdentity,
       state: input.state,
+      consecutiveDegradedWindows,
+      lastSampleTimestampMs: input.sampleTimestampMs,
       lastAcceptedAtMs: input.acceptedAtMs,
       consumedAtFactVersion:
         (baselineRequired || senderIdentityChanged) &&
@@ -1021,6 +1064,19 @@ export class RoomRouteController<Resource = unknown> {
             ? previous.consumedAtFactVersion
             : undefined,
     });
+    if (
+      !sameFreshSenderIdentity ||
+      previous.state !== input.state ||
+      consecutiveDegradedWindows ===
+        PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+    ) {
+      this.debug("sender-quality-observed", {
+        parent: this.debugPeer(input.parentPeerId),
+        child: this.debugPeer(input.childPeerId),
+        state: input.state,
+        consecutiveDegradedWindows,
+      });
+    }
     if (
       input.state === "healthy" &&
       !wasFreshHealthy &&
@@ -1089,6 +1145,7 @@ export class RoomRouteController<Resource = unknown> {
         input.state,
         input.acceptedAtMs,
         input.publicationGeneration,
+        input.sampleTimestampMs,
         commitReservation,
       );
     }
@@ -1102,6 +1159,9 @@ export class RoomRouteController<Resource = unknown> {
       return rejected();
     }
     if (input.state === "unknown") {
+      if (this.sfuPublisherQualityObservation) {
+        this.debug("sfu-publisher-quality-reset", {});
+      }
       this.sfuPublisherQualityObservation = undefined;
       return {
         accepted: true,
@@ -1111,21 +1171,101 @@ export class RoomRouteController<Resource = unknown> {
         released: [],
       };
     }
+    if (input.sampleTimestampMs === null) {
+      return rejected();
+    }
     const previous = this.sfuPublisherQualityObservation;
-    const wasFreshHealthy =
+    if (
       previous?.hostSessionId === input.hostSessionId &&
       previous.publicationGeneration === input.publicationGeneration &&
-      previous.state === "healthy" &&
+      input.sampleTimestampMs <= previous.lastSampleTimestampMs
+    ) {
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released: [],
+      };
+    }
+    const sameFreshPublication =
+      previous?.hostSessionId === input.hostSessionId &&
+      previous.publicationGeneration === input.publicationGeneration &&
       input.acceptedAtMs <
         previous.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
+    const consecutiveHealthyWindows =
+      input.state === "healthy"
+        ? sameFreshPublication && previous.state === "healthy"
+          ? safeAdd(previous.consecutiveHealthyWindows, 1)
+          : 1
+        : 0;
+    const wasPersistentlyHealthy =
+      sameFreshPublication &&
+      previous.state === "healthy" &&
+      previous.consecutiveHealthyWindows >=
+        PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS;
     this.sfuPublisherQualityObservation = {
       hostSessionId: input.hostSessionId,
       publicationGeneration: input.publicationGeneration,
       state: input.state,
+      consecutiveHealthyWindows,
+      lastSampleTimestampMs: input.sampleTimestampMs,
       lastAcceptedAtMs: input.acceptedAtMs,
     };
-    if (input.state === "healthy" && !wasFreshHealthy) {
+    if (
+      previous?.hostSessionId !== input.hostSessionId ||
+      previous.publicationGeneration !== input.publicationGeneration ||
+      previous.state !== input.state ||
+      consecutiveHealthyWindows ===
+        PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+    ) {
+      this.debug("sfu-publisher-quality-observed", {
+        state: input.state,
+        consecutiveHealthyWindows,
+      });
+    }
+    if (
+      input.state === "healthy" &&
+      consecutiveHealthyWindows >=
+        PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS &&
+      !wasPersistentlyHealthy
+    ) {
       this.touchFacts();
+    }
+    if (
+      operation?.reason === "quality-convergence" &&
+      attempt?.tuple.kind === "sfu" &&
+      attempt.tuple.publication === "reuse" &&
+      attempt.hostSessionId === input.hostSessionId &&
+      attempt.publicationGeneration === input.publicationGeneration &&
+      attempt.mediaReady
+    ) {
+      const guard = {
+        childPeerId: operation.childPeerId,
+        childSessionId: operation.childSessionId,
+        revision: attempt.revision,
+        connectionId: attempt.connectionId,
+      };
+      const settled =
+        input.state === "degraded"
+          ? this.candidateFailed(guard, input.acceptedAtMs)
+          : consecutiveHealthyWindows >=
+              PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+            ? this.candidateReady(
+                guard,
+                input.acceptedAtMs,
+                commitReservation,
+              )
+            : null;
+      if (settled) {
+        return {
+          accepted: settled.accepted,
+          committed: settled.committed === true,
+          failedPeerIds: settled.failedPeerIds,
+          activeRevision: settled.activeRevision,
+          released: settled.released,
+        };
+      }
     }
     return {
       accepted: true,
@@ -1142,13 +1282,23 @@ export class RoomRouteController<Resource = unknown> {
     state: "unknown" | "healthy" | "degraded",
     acceptedAtMs: number,
     senderIdentity: string | null,
+    sampleTimestampMs: number | null,
     commitReservation: (
       reservation: CandidateReservation<Resource>,
     ) => boolean,
   ): SenderQualityEvidenceResult<Resource> {
+    if (attempt.senderQualityState !== state) {
+      this.debug("candidate-quality-observed", {
+        child: this.debugPeer(operation.childPeerId),
+        candidate: this.debugTuple(attempt.tuple),
+        state,
+      });
+    }
     if (state === "unknown") {
       attempt.senderQualityState = undefined;
       attempt.senderQualityAcceptedAtMs = undefined;
+      attempt.senderQualityConsecutiveHealthyWindows = undefined;
+      attempt.senderQualitySampleTimestampMs = undefined;
       return {
         accepted: true,
         committed: false,
@@ -1157,7 +1307,7 @@ export class RoomRouteController<Resource = unknown> {
         released: [],
       };
     }
-    if (!senderIdentity) {
+    if (!senderIdentity || sampleTimestampMs === null) {
       return {
         accepted: false,
         committed: false,
@@ -1166,8 +1316,60 @@ export class RoomRouteController<Resource = unknown> {
         released: [],
       };
     }
+    if (
+      attempt.senderQualityIdentity !== undefined &&
+      attempt.senderQualityIdentity !== senderIdentity
+    ) {
+      const failed = this.candidateFailed(
+        {
+          childPeerId: operation.childPeerId,
+          childSessionId: operation.childSessionId,
+          revision: attempt.revision,
+          connectionId: attempt.connectionId,
+        },
+        acceptedAtMs,
+      );
+      return {
+        accepted: failed.accepted,
+        committed: failed.committed === true,
+        failedPeerIds: failed.failedPeerIds,
+        activeRevision: failed.activeRevision,
+        released: failed.released,
+      };
+    }
+    if (
+      attempt.senderQualitySampleTimestampMs !== undefined &&
+      sampleTimestampMs <= attempt.senderQualitySampleTimestampMs
+    ) {
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released: [],
+      };
+    }
+    const consecutiveHealthyWindows =
+      attempt.tuple.kind === "sfu" && state === "healthy"
+        ? attempt.senderQualityState === "healthy" &&
+          attempt.senderQualityAcceptedAtMs !== undefined &&
+          acceptedAtMs <
+            attempt.senderQualityAcceptedAtMs +
+              VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
+          ? safeAdd(
+              attempt.senderQualityConsecutiveHealthyWindows ?? 0,
+              1,
+            )
+          : 1
+        : state === "healthy"
+          ? 1
+          : 0;
     attempt.senderQualityState = state;
     attempt.senderQualityAcceptedAtMs = acceptedAtMs;
+    attempt.senderQualityConsecutiveHealthyWindows =
+      consecutiveHealthyWindows;
+    attempt.senderQualitySampleTimestampMs = sampleTimestampMs;
+    attempt.senderQualityIdentity = senderIdentity;
     const guard = {
       childPeerId: operation.childPeerId,
       childSessionId: operation.childSessionId,
@@ -1177,7 +1379,10 @@ export class RoomRouteController<Resource = unknown> {
     const settled =
       state === "degraded"
         ? this.candidateFailed(guard, acceptedAtMs)
-        : attempt.mediaReady
+        : attempt.mediaReady &&
+            (attempt.tuple.kind !== "sfu" ||
+              consecutiveHealthyWindows >=
+                PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS)
           ? this.candidateReady(guard, acceptedAtMs, commitReservation)
           : null;
     return {
@@ -1470,16 +1675,6 @@ export class RoomRouteController<Resource = unknown> {
     if (tuple.kind === "sfu" && tuple.publication !== "reuse" && !input.publicationConnectionId) {
       throw new Error("SFU publication candidate needs an ingress connection identity");
     }
-    const initialSfuQuality =
-      publicationGeneration &&
-      this.sfuPublisherQualityObservation?.publicationGeneration ===
-        publicationGeneration &&
-      this.sfuPublisherQualityObservation.hostSessionId === hostSessionId &&
-      input.nowMs <
-        this.sfuPublisherQualityObservation.lastAcceptedAtMs +
-          VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
-        ? this.sfuPublisherQualityObservation
-        : undefined;
     operation.current = {
       tuple,
       revision: this.allocateRevision(),
@@ -1495,12 +1690,6 @@ export class RoomRouteController<Resource = unknown> {
       reservation: input.reservation,
       transportConnected: false,
       mediaReady: false,
-      ...(tuple.kind === "sfu" && initialSfuQuality
-        ? {
-            senderQualityState: initialSfuQuality.state,
-            senderQualityAcceptedAtMs: initialSfuQuality.lastAcceptedAtMs,
-          }
-        : {}),
     };
     this.debug("candidate-started", {
       child: this.debugPeer(operation.childPeerId),
@@ -1694,7 +1883,20 @@ export class RoomRouteController<Resource = unknown> {
           ],
         };
       }
-      if (attempt.senderQualityState === undefined) {
+      const candidateQualityState =
+        attempt.tuple.kind === "sfu" && attempt.tuple.publication === "reuse"
+          ? this.sfuPublisherQualityState(
+              attempt.publicationGeneration!,
+              nowMs,
+            )
+          : attempt.senderQualityState ?? "unknown";
+      const candidateQualityReady =
+        candidateQualityState === "healthy" &&
+        (attempt.tuple.kind !== "sfu" ||
+          attempt.tuple.publication === "reuse" ||
+          (attempt.senderQualityConsecutiveHealthyWindows ?? 0) >=
+            PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS);
+      if (!candidateQualityReady && candidateQualityState === "unknown") {
         return {
           accepted: true,
           committed: false,
@@ -1704,10 +1906,12 @@ export class RoomRouteController<Resource = unknown> {
         };
       }
       if (
-        attempt.senderQualityAcceptedAtMs === undefined ||
-        nowMs >=
-          attempt.senderQualityAcceptedAtMs +
-            VIEWER_QUALITY_EVIDENCE_EXPIRY_MS ||
+        ((attempt.tuple.kind !== "sfu" ||
+            attempt.tuple.publication !== "reuse") &&
+          (attempt.senderQualityAcceptedAtMs === undefined ||
+            nowMs >=
+              attempt.senderQualityAcceptedAtMs +
+                VIEWER_QUALITY_EVIDENCE_EXPIRY_MS)) ||
         (attempt.tuple.kind === "peer" &&
           !this.qualitySourcePathHealthy(
             attempt.tuple.parentPeerId,
@@ -1716,7 +1920,7 @@ export class RoomRouteController<Resource = unknown> {
       ) {
         return this.candidateFailed(guard, nowMs);
       }
-      if (attempt.senderQualityState === "degraded") {
+      if (candidateQualityState === "degraded") {
         return this.candidateFailed(guard, nowMs);
       }
     }
@@ -1916,6 +2120,13 @@ export class RoomRouteController<Resource = unknown> {
       this.operation = undefined;
       return result;
     }
+    if (
+      operation.reason === "quality-convergence" &&
+      !this.qualityOperationStillEligible(operation, nowMs)
+    ) {
+      released.push(...this.abortOperation(nowMs, "aborted"));
+      return result;
+    }
     if (nowMs >= operation.deadlineAtMs) {
       const directConvergence = operation.reason === "direct-convergence";
       const sfuBootstrap = operation.reason === "sfu-bootstrap";
@@ -2017,7 +2228,18 @@ export class RoomRouteController<Resource = unknown> {
       if (attempt) {
         const guardFailed = failedGuard && this.guardMatches(failedGuard, operation, attempt);
         const plan = operation.candidates[operation.cursor];
-        if (!guardFailed && plan && this.candidateValid(operation.childPeerId, plan, attempt)) return result;
+        const qualityPeerSourceInvalid =
+          operation.reason === "quality-convergence" &&
+          attempt.tuple.kind === "peer" &&
+          !this.qualitySourcePathHealthy(attempt.tuple.parentPeerId, nowMs);
+        if (
+          !guardFailed &&
+          !qualityPeerSourceInvalid &&
+          plan &&
+          this.candidateValid(operation.childPeerId, plan, attempt)
+        ) {
+          return result;
+        }
         if (!guardFailed) {
           this.noteRejection(operation.demandPeerId, "stale");
         }
@@ -2319,7 +2541,11 @@ export class RoomRouteController<Resource = unknown> {
       observation.publicationGeneration === publicationGeneration &&
       observation.hostSessionId === this.hostPublication?.hostSessionId &&
       nowMs < observation.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
-      ? observation.state
+      ? observation.state === "healthy" &&
+        observation.consecutiveHealthyWindows <
+          PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+        ? "unknown"
+        : observation.state
       : "unknown";
   }
 
@@ -2404,7 +2630,8 @@ export class RoomRouteController<Resource = unknown> {
       (candidate) => candidate.tuple.kind === "peer",
     );
     const sfu =
-      current.parentPeerId === this.options.hostPeerId
+      current.parentPeerId === this.options.hostPeerId &&
+      this.hostFanoutNeedsSfuRelief(nowMs)
         ? candidates.filter((candidate) => candidate.tuple.kind === "sfu")
         : [];
     return [...peers, ...sfu];
@@ -2421,7 +2648,7 @@ export class RoomRouteController<Resource = unknown> {
         return Boolean(
           edge?.kind === "peer" &&
             observation?.consumedAtFactVersion !== this.factVersion &&
-            this.senderQualityState(peerId, edge, nowMs) === "degraded",
+            this.senderQualityPersistentlyDegraded(peerId, edge, nowMs),
         );
       })
       .sort(
@@ -2429,6 +2656,62 @@ export class RoomRouteController<Resource = unknown> {
           this.depth(left.peerId) - this.depth(right.peerId) ||
           compareParticipant(left, right),
       )[0]?.peerId;
+  }
+
+  private senderQualityPersistentlyDegraded(
+    childPeerId: string,
+    edge: CommittedEdge<Resource>,
+    nowMs: number,
+  ): boolean {
+    const observation = this.senderQualityObservations.get(childPeerId);
+    return (
+      this.senderQualityState(childPeerId, edge, nowMs) === "degraded" &&
+      observation !== undefined &&
+      observation.consecutiveDegradedWindows >=
+        PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+    );
+  }
+
+  private qualityOperationStillEligible(
+    operation: ChildOperation<Resource>,
+    nowMs: number,
+  ): boolean {
+    const currentEdge = this.upstreamByViewer.get(operation.childPeerId);
+    const tuple =
+      operation.current?.tuple ??
+      operation.candidates[operation.cursor]?.tuple;
+    if (
+      !currentEdge ||
+      !tuple ||
+      !this.senderQualityPersistentlyDegraded(
+        operation.childPeerId,
+        currentEdge,
+        nowMs,
+      )
+    ) {
+      return false;
+    }
+    return tuple.kind === "peer" || this.hostFanoutNeedsSfuRelief(nowMs);
+  }
+
+  private hostFanoutNeedsSfuRelief(nowMs: number): boolean {
+    const hostPeerEdges = [...this.upstreamByViewer].filter(
+      (entry): entry is [string, Extract<CommittedEdge<Resource>, { kind: "peer" }>] => {
+        const edge = entry[1];
+        return (
+          edge.kind === "peer" &&
+          edge.parentPeerId === this.options.hostPeerId &&
+          edge.usable &&
+          edge.physicalActive
+        );
+      },
+    );
+    return (
+      hostPeerEdges.length >= 2 &&
+      hostPeerEdges.every(([childPeerId, edge]) =>
+        this.senderQualityPersistentlyDegraded(childPeerId, edge, nowMs),
+      )
+    );
   }
 
   private selectNextChild(): string | undefined {

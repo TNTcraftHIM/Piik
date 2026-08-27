@@ -1,4 +1,8 @@
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import {
+  PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS,
+  type IceConfig,
+  type SignalPayload,
+} from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import {
   audioSenderParameterWarning,
@@ -671,7 +675,9 @@ export class HostPeer {
   }
 
   private persistentLimitationWarning(): string | null {
-    if (this.limitationSamples < 3) {
+    if (
+      this.limitationSamples < PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+    ) {
       return null;
     }
     switch (this.limitationReason) {

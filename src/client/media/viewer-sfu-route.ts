@@ -8,6 +8,7 @@ import type {
 import { SfuSubscriber } from "../sfu/subscriber";
 import type { ConnectionMetrics } from "../types";
 import type { SfuConnectionConfig } from "../sfu/publisher";
+import { SfuQualityProbe } from "./sfu-quality-probe";
 import {
   MediaRouteTransition,
   reportActivePeerRouteFailure,
@@ -35,6 +36,8 @@ interface ViewerSubscriberSlot {
   stream: MediaStream | null;
   decodedFrame: boolean;
   readySent: boolean;
+  qualityProbe: SfuQualityProbe | null;
+  qualityApproved: boolean;
   failed: boolean;
   activationToken: RouteOperationToken | null;
 }
@@ -68,6 +71,8 @@ interface ViewerSfuRouteEvents {
   ) => void;
   onSfuVideoAvailability?: (available: boolean, revision: number) => void;
   onSfuUpdate?: (metrics: ConnectionMetrics | null, revision: number) => void;
+  currentPeerMetrics?: () => ConnectionMetrics | null;
+  qualityProbeEligible?: () => boolean;
   onSfuDecodedFrameSample?: (
     framesDecodedDelta: number | null,
     revision: number,
@@ -208,7 +213,20 @@ export class ViewerSfuRoute {
   setPaused(paused: boolean): void {
     this.paused = paused;
     if (paused) {
+      this.pending?.qualityProbe?.reset();
+      if (this.pending) {
+        this.pending.qualityApproved = false;
+      }
+    }
+    if (paused) {
       this.discardPending();
+    }
+  }
+
+  resetQualityProbe(): void {
+    this.pending?.qualityProbe?.reset();
+    if (this.pending) {
+      this.pending.qualityApproved = false;
     }
   }
 
@@ -379,6 +397,23 @@ export class ViewerSfuRoute {
       onStats: (metrics: ConnectionMetrics) => {
         if (this.active === slot && !slot.failed) {
           this.events.onSfuUpdate?.(metrics, slot.revision);
+        } else if (
+          this.pending === slot &&
+          !slot.failed &&
+          slot.qualityProbe
+        ) {
+          if (this.events.qualityProbeEligible?.() === false) {
+            slot.qualityProbe.reset();
+            slot.qualityApproved = false;
+          } else if (
+            slot.qualityProbe.observe(
+              this.events.currentPeerMetrics?.() ?? null,
+              metrics,
+            )
+          ) {
+            slot.qualityApproved = true;
+            this.sendPendingReady(slot);
+          }
         }
       },
       onDecodedFrameSample: (framesDecodedDelta: number | null) => {
@@ -400,6 +435,7 @@ export class ViewerSfuRoute {
     const subscriber =
       this.events.createSubscriber?.(subscriberEvents) ??
       new SfuSubscriber(subscriberEvents);
+    const preparedCandidate = this.route.getPreparedCandidate();
     slot = {
       revision: message.revision,
       publicationGeneration,
@@ -410,6 +446,12 @@ export class ViewerSfuRoute {
       stream: null,
       decodedFrame: false,
       readySent: false,
+      qualityProbe:
+        preparedCandidate?.transport === "sfu" &&
+        preparedCandidate.qualityProbe
+          ? new SfuQualityProbe()
+          : null,
+      qualityApproved: false,
       failed: false,
       activationToken: null,
     };
@@ -653,15 +695,33 @@ export class ViewerSfuRoute {
       return true;
     }
     slot.decodedFrame = true;
-    if (phase === "prepare" && !slot.readySent) {
-      slot.readySent = this.events.send({
-        type: "route-ready",
-        revision: slot.revision,
-        phase: "prepare",
-      });
+    if (phase === "prepare") {
+      this.sendPendingReady(slot);
+      return slot.qualityProbe !== null || slot.readySent;
     }
     void this.queueTransition(() => this.promotePendingSfu(slot));
-    return phase !== "prepare" || slot.readySent;
+    return true;
+  }
+
+  private sendPendingReady(slot: ViewerSubscriberSlot): void {
+    if (
+      this.pending !== slot ||
+      slot.failed ||
+      slot.readySent ||
+      !slot.decodedFrame ||
+      (slot.qualityProbe !== null && !slot.qualityApproved) ||
+      (slot.qualityProbe !== null &&
+        this.events.qualityProbeEligible?.() === false) ||
+      this.route.getPhase() !== "prepare" ||
+      this.route.getRevision() !== slot.revision
+    ) {
+      return;
+    }
+    slot.readySent = this.events.send({
+      type: "route-ready",
+      revision: slot.revision,
+      phase: "prepare",
+    });
   }
 
   private async promotePendingSfu(slot: ViewerSubscriberSlot): Promise<void> {

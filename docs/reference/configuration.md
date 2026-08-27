@@ -39,6 +39,11 @@ Removed access, room TTL, endpoint-tier, room-rollout, and TURN variables fail
 startup even when blank. The private deployment is upgraded atomically; there
 are no compatibility aliases or dual configuration readers.
 
+During pre-release route canaries, standard Node `NODE_DEBUG=screener-route`
+enables sanitized room and participant-ordinal events. It records route reasons,
+candidates, revisions, quality states and commit/failure outcomes, but not raw
+Peer IDs, SDP, ICE candidates, tokens or media credentials.
+
 ## Public And Private Ports
 
 | Port | Scope | Owner |

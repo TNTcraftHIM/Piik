@@ -209,6 +209,24 @@ One report is still not a future guarantee, so a candidate must carry real media
 while the working route remains and prove a complete healthy delta before
 commit. Failure remains inconclusive without cutting the old route.
 
+Production observation on 2026-08-27 showed that one two-second degraded delta
+could move an otherwise usable Host Peer edge to an already-active SFU whose
+Viewer experience was worse. The SFU proof established healthy publication
+ingress and decoded progress, not superiority over the old path. Active routing
+therefore needs the existing persistent-limitation semantic, and SFU quality use
+must be limited to multi-edge Host fanout relief rather than ordinary edge
+replacement.
+
+LiveKit exposes one participant-level `ConnectionQualityInfo` with no direction
+field, while stream state only identifies an SFU-paused subscription. Neither
+proves that a candidate SFU path is visually better than a retained P2P path.
+The bounded canary therefore compares the same Viewer's simultaneous inbound
+WebRTC windows by strict non-regression of delivered dimensions, frame rate, and
+bitrate, with decoded progress and no freeze or pause. It does not combine them
+into a scalar score or infer unconnected path quality. The single SFU
+publication does not imply one quality node: Host ingress is generation-scoped,
+and every Viewer subscription needs its own candidate proof.
+
 SFU has asymmetric evidence. The Browser publication proves shared Host-to-SFU
 ingress, while exact SFU-to-Viewer sending and layer selection live inside
 LiveKit. The accepted model therefore keeps SFU as a bounded suffix: LiveKit
@@ -250,6 +268,7 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [LiveKit screen-share encodings](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit Dynacast and simulcast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit server forwarder](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
+- [LiveKit connection-quality protocol](https://github.com/livekit/protocol/blob/main/protobufs/livekit_rtc.proto)
 - [Screego codec ordering](https://github.com/screego/server/blob/v1.12.4/ui/src/useRoom.ts)
 - [Screego VP9 regression](https://github.com/screego/server/pull/132)
 - [Media Capabilities](https://www.w3.org/TR/media-capabilities/)

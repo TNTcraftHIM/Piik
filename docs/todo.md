@@ -7,7 +7,10 @@ topics are not implementation authority.
 
 ## Now
 
-No implementation task is currently authorized.
+1. **Correct native-edge convergence.** Require persistent degraded evidence,
+   keep ordinary quality moves P2P-only, reserve SFU quality work for multi-edge
+   Host fanout relief, require same-Viewer SFU non-regression before commit, and
+   retain sanitized route-event evidence for the canary.
 
 ## Parked Repository Work
 

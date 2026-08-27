@@ -299,6 +299,7 @@ export class HybridMediaRouter {
         message.rtpStatsId && message.trackIdentifier
           ? `${message.rtpStatsId}\u0000${message.trackIdentifier}`
           : null,
+      sampleTimestampMs: message.sampleTimestampMs,
       state: message.state,
       acceptedAtMs: this.now(),
     };
@@ -351,6 +352,7 @@ export class HybridMediaRouter {
       publicationGeneration: message.publicationGeneration,
       routeRevision: message.routeRevision,
       state: message.state,
+      sampleTimestampMs: message.sampleTimestampMs,
       acceptedAtMs: this.now(),
     };
     const result = controller.observeSfuPublisherQualityEvidence(
@@ -1951,6 +1953,7 @@ function preparedRouteCandidate(
     childPeerId: operation.childPeerId,
     connectionId,
     transport: tuple.kind === "peer" ? tuple.transport : "sfu",
+    qualityProbe: operation.reason === "quality-convergence",
   };
 }
 

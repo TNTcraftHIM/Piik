@@ -420,6 +420,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let currentRouteRevision = 0;
     let currentRouteAssignment: ParticipantRouteAssignment | null = null;
     let currentRouteConnectionId: string | null = null;
+    let activePeerMetrics: ConnectionMetrics | null = null;
     let pendingRouteConnection: {
       revision: number;
       connectionId: string;
@@ -456,6 +457,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       invalidatePresentedMedia();
       const newlySuspended = !pageSuspended;
       pageSuspended = true;
+      viewerSfuRoute?.resetQualityProbe();
       syncDecodedFrameStallPause();
       if (newlySuspended) {
         invalidateSenderQualityEvidence();
@@ -610,6 +612,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       currentRouteAssignment = assignment;
       currentRouteConnectionId =
         assignment.upstream.kind === "none" ? null : connectionId;
+      if (assignment.upstream.kind !== "peer") {
+        activePeerMetrics = null;
+      }
       pendingRouteConnection = null;
     }
 
@@ -980,6 +985,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             );
           }
         },
+        currentPeerMetrics: () => activePeerMetrics,
+        qualityProbeEligible: () => !pageSuspended,
         onSfuState: (state, revision) => {
           if (active && viewerSfuRoute === route) {
             const connected = state === "connected";
@@ -1101,6 +1108,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       const peer = peerRef.current;
       peer?.dispose();
       peerRef.current = null;
+      activePeerMetrics = null;
       setPeerSnapshot(null);
       if (clearMedia) {
         clearRemoteMedia();
@@ -1159,6 +1167,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               probe.snapshot = snapshot;
               provePendingPeer();
             } else if (active && peerRef.current === peer) {
+              activePeerMetrics = snapshot.metrics;
               observeActiveDecodedFrames(
                 "peer",
                 `${probe.parentPeerId}:${snapshot.connectionId}`,
@@ -1245,6 +1254,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           },
           onUpdate: (snapshot) => {
             if (active) {
+              activePeerMetrics = snapshot.metrics;
               observeActiveDecodedFrames(
                 "peer",
                 `${snapshot.peerId}:${snapshot.connectionId}`,

@@ -45,7 +45,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical source uses the strict `screener-v14` Browser/server contract.
+- Canonical source uses the strict `screener-v15` Browser/server contract.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector remain implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -72,9 +72,10 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-Native-edge local convergence is implemented and deployed behind its default-off
-per-share policy. Automated route invariants and release postflight pass;
-representative public-network benefit remains a physical evidence boundary.
+Native-edge local convergence is deployed behind its default-off per-share
+policy. Production evidence found that one limitation window could move a usable
+Host Peer edge to a worse SFU path. The active correction requires persistent
+degradation and reserves SFU quality work for multi-edge Host fanout relief.
 
 ## Active Boundaries
 
@@ -91,4 +92,8 @@ representative public-network benefit remains a physical evidence boundary.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Broader product evidence remains parked.
+The opt-in quality path has a P1 misrouting hold until the persistence and SFU
+eligibility correction is deployed. Availability routing remains operational;
+Hosts should leave topology optimization disabled meanwhile. Sanitized route
+event logging is enabled for the canary. Broader product evidence remains
+parked.

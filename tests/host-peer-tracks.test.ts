@@ -1468,6 +1468,7 @@ function hostProvisionalInput(
       childPeerId: childPeerIds.at(-1) ?? "candidate-child",
       connectionId: `candidate-connection-${revision}`,
       transport: "direct" as const,
+      qualityProbe: false,
     },
     assignment: hostAssignment(
       childPeerIds,
@@ -1609,6 +1610,7 @@ describe("ViewerRelay downstream ownership", () => {
     childPeerId,
     connectionId: `relay-candidate-${revision}`,
     transport: "direct" as const,
+    qualityProbe: false,
   });
 
   it("keeps a completed H264 decision across source replacement", async () => {
