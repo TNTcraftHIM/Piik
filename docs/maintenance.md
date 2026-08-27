@@ -61,6 +61,6 @@ TURN 的减负证据由 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md)
 
 - 迭代中运行覆盖当前改动的最小定向检查；完整套件、真实浏览器矩阵、网络整形、跨设备、长时稳定性和部署检查在相关候选的验收边界批量运行。
 - 文档改动默认运行本地 Markdown 链接、whitespace、diff 和 repository-hygiene 检查；不因无关文档变化重跑媒体基准。
-- 断链、缺失必需 owner 和格式损坏是 hard failure。行数与字节阈值只是 warning：它提示检查是否应拆分二级 owner、删除历史或移出过程信息，不要求为通过门禁压缩合理正文，也不是交付质量指标。
+- 断链、缺失必需 owner 和格式损坏是 hard failure。每次注入的 `AGENTS.md`、repo STS skill 与只负责导入的 `CLAUDE.md` 也使用 hard context budget，避免规则稀释。Product、ADR、research、operations 等按需文档的行数/字节阈值只是 warning：它提示检查是否应拆分二级 owner、删除历史或移出过程信息，不要求为通过门禁压缩合理正文，也不是交付质量指标。
 - 昂贵证据记录 commit、环境、结果和适用边界。只有相关路径、协议、配置、依赖、环境或门槛改变，或旧证据失败/含糊时才重跑。
 - `.githooks/pre-commit`、`scripts/check-project-state.sh` 和 PowerShell 等价入口共享 `scripts/required-project-paths.txt`。Hook 只做快速、确定、可复现的检查；工程判断留给评审和测试。

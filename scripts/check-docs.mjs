@@ -19,8 +19,12 @@ const failures = [];
 const warnings = [];
 const anchorCache = new Map();
 
+const exactHardBudgets = new Map([
+  ["AGENTS.md", [100, 8_000]],
+  ["CLAUDE.md", [10, 1_000]],
+  [".agents/skills/stop-that-shit/SKILL.md", [140, 8_000]],
+]);
 const exactWarningBudgets = new Map([
-  ["AGENTS.md", [140, 12_000]],
   ["docs/README.md", [180, 16_000]],
   ["docs/deployment.md", [250, 20_000]],
   ["docs/project-memory.md", [120, 12_000]],
@@ -70,17 +74,26 @@ function checkFormat(file, text) {
 }
 
 function checkBudget(file, text) {
-  const budget =
+  const hardBudget = exactHardBudgets.get(file);
+  const warningBudget =
     exactWarningBudgets.get(file) ??
     prefixWarningBudgets
       .filter(([prefix]) => file.startsWith(prefix))
       .map(([, maxLines, maxBytes]) => [maxLines, maxBytes])[0];
-  if (!budget) return;
-
-  const [maxLines, maxBytes] = budget;
   const lines = logicalLines(text);
   const bytes = Buffer.byteLength(text);
-  if (lines > maxLines || bytes > maxBytes) {
+  if (hardBudget) {
+    const [maxLines, maxBytes] = hardBudget;
+    if (lines > maxLines || bytes > maxBytes) {
+      failures.push(
+        `${file}: exceeds required ${maxLines}-line/${maxBytes}-byte ` +
+          `top-level context budget (${lines} lines, ${bytes} bytes)`,
+      );
+    }
+  }
+  if (warningBudget) {
+    const [maxLines, maxBytes] = warningBudget;
+    if (lines <= maxLines && bytes <= maxBytes) return;
     warnings.push(
       `${file}: exceeds ${maxLines}-line/${maxBytes}-byte gardening threshold ` +
         `(${lines} lines, ${bytes} bytes)`,
