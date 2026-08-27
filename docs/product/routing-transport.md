@@ -20,6 +20,21 @@ The flagship deployment enables the all-room controller. A lightweight
 deployment may disable peer assistance and keep only bounded direct Host edges;
 it does not gain another transport or compatibility protocol.
 
+## Per-Share Route Policy
+
+The Host chooses route policy before sharing and it remains fixed for that
+share generation:
+
+- default hybrid mode keeps P2P first and permits the bounded SFU suffix;
+- peer-only mode excludes SFU publication, subscription, bootstrap, and quality
+  candidates, while retaining the same bounded Peer graph and clear exhausted
+  failure; and
+- native-edge topology convergence is initially opt-in. When disabled, quality
+  evidence stays diagnostic and availability routing is unchanged.
+
+These are route-policy gates, not new routing algorithms. Changing either
+policy requires stopping the current share and starting another generation.
+
 ## Endpoint And Server Capacity
 
 Every non-server endpoint has one server-authoritative steady outbound media-

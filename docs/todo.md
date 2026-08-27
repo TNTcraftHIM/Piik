@@ -9,7 +9,8 @@ topics are not implementation authority.
 
 1. **Native-edge topology convergence.** Implement ADR-0005's categorical
    `unknown | healthy | degraded` evidence, availability-first local moves, one
-   serial candidate, and bounded Host-to-SFU suffix. Current production remains
+   serial candidate, bounded Host-to-SFU suffix, default-off pre-share rollout
+   gate, and default-off peer-only policy. Current production remains
    observation-only until focused route and Browser gates pass.
 
 ## Parked Repository Work
@@ -33,23 +34,21 @@ topics are not implementation authority.
 3. **Representative network acceptance.** Complete public-network direct,
    Browser relay, SFU, recovery, Pause/Resume, screen-audio, real-game A/V,
    two-room SFU, 20-Viewer endurance, and all-UDP-blocked bounded failure.
-4. **Per-share peer-only mode.** Add one default-off pre-share Host setting that
-   excludes SFU for that share and ends in the existing bounded failure.
-5. **Whole-product UI and bilingual decision.** Review copy, responsive
+4. **Whole-product UI and bilingual decision.** Review copy, responsive
    hierarchy, visual consistency, restrained motion, rendering cost, terminal
    navigation, and Chinese/English scope once media behavior stabilizes.
-6. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
+5. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
    authorization, rate/body/resource bounds, errors, logs, and secrets without
    adding a parallel security framework.
-7. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
+6. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-8. **Fully local package.** Package Host capture, application server, and local
+7. **Fully local package.** Package Host capture, application server, and local
    state for Windows/macOS/Linux with honest TLS, gateway, NAT, and firewall
    limits.
-9. **Native Host and shared encode.** Revisit Windows first only after capture,
+8. **Native Host and shared encode.** Revisit Windows first only after capture,
    hardware encode, audio, RTP feedback, resources, packaging, licensing, and
    Browser interoperability are proved.
-10. **Platform output.** Revisit AirPlay/Cast only when a target Browser and
+9. **Platform output.** Revisit AirPlay/Cast only when a target Browser and
     physical receiver prove the live `MediaStream` contract.
 
 ## Decision Needed
