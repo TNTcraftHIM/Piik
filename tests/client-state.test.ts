@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_ROUTE_POLICY,
   SIGNALING_PROTOCOL,
   type QualitySettings,
 } from "../src/shared/protocol.ts";
@@ -872,6 +873,7 @@ describe("client signaling recovery policy", () => {
         role: "host",
         token: "h".repeat(43),
         clientId: "host-client",
+        routePolicy: DEFAULT_ROUTE_POLICY,
         shareGeneration: "share_generation_12345678",
         sharingPaused: true,
       },
@@ -891,7 +893,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v13",
+        protocol: SIGNALING_PROTOCOL,
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -927,7 +929,7 @@ describe("client signaling recovery policy", () => {
     });
     receive(sockets[1]!, {
       type: "authenticated",
-      protocol: "screener-v13",
+      protocol: SIGNALING_PROTOCOL,
       role: "host",
       peerId: "host_12345678",
       roomExpiresAt: null,
@@ -1010,6 +1012,7 @@ describe("client signaling recovery policy", () => {
         role: "host",
         token: "h".repeat(43),
         clientId: "host-client",
+        routePolicy: DEFAULT_ROUTE_POLICY,
         shareGeneration,
         qualitySettings: initialQuality,
       },
@@ -1054,6 +1057,7 @@ describe("client signaling recovery policy", () => {
           viewerPasswordEnabled: false,
           viewerAuthorizationGeneration: "viewer_generation_12345678",
           mediaMode: "peer-assisted",
+          shareGeneration,
           mediaAssignment: { parentPeerId: null, childPeerIds: [] },
           routeRevision: 1,
           routeAssignment: {
@@ -1062,6 +1066,7 @@ describe("client signaling recovery policy", () => {
             sfuPublicationGeneration: null,
           },
           qualitySettings,
+          routePolicy: DEFAULT_ROUTE_POLICY,
         }),
       });
       socket.dispatchEvent(event);
@@ -1148,6 +1153,7 @@ describe("client signaling recovery policy", () => {
         role: "host",
         token: "h".repeat(43),
         clientId: "host-client",
+        routePolicy: DEFAULT_ROUTE_POLICY,
       },
       {
         onMessage,
@@ -1166,7 +1172,7 @@ describe("client signaling recovery policy", () => {
       socket.dispatchEvent(new Event("open"));
       receive(socket, {
         type: "authenticated",
-        protocol: "screener-v13",
+        protocol: SIGNALING_PROTOCOL,
         role: "host",
         peerId: "host_12345678",
         roomExpiresAt: null,
@@ -1292,7 +1298,7 @@ describe("client signaling recovery policy", () => {
     sockets[0]!.dispatchEvent(new Event("open"));
     receive({
       type: "authenticated",
-      protocol: "screener-v13",
+      protocol: SIGNALING_PROTOCOL,
       role: "viewer",
       peerId: "viewer_12345678",
       roomExpiresAt: null,
@@ -1305,6 +1311,7 @@ describe("client signaling recovery policy", () => {
       codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       mediaMode: "peer-assisted",
+      shareGeneration: "share_generation_12345678",
       mediaAssignment: { parentPeerId: null, childPeerIds: [] },
       routeRevision: 1,
       routeAssignment: {
@@ -1319,6 +1326,7 @@ describe("client signaling recovery policy", () => {
         degradationPreference: "balanced",
         screenAudioQuality: "music",
       },
+      routePolicy: DEFAULT_ROUTE_POLICY,
     });
     advance(5_000);
     expect(sockets[0]!.send).toHaveBeenCalledTimes(1);
@@ -1419,7 +1427,7 @@ describe("client signaling recovery policy", () => {
         JSON.parse(String(sockets[0]!.send.mock.calls[0]![0])),
       ).toMatchObject({
         type: "authenticate",
-        protocol: "screener-v13",
+        protocol: SIGNALING_PROTOCOL,
       });
       const message = new Event("message");
       Object.defineProperty(message, "data", { value: payload });
@@ -1466,6 +1474,7 @@ describe("client signaling recovery policy", () => {
         role: "host",
         token: "h".repeat(43),
         clientId: "host-client",
+        routePolicy: DEFAULT_ROUTE_POLICY,
       },
       {
         onMessage,

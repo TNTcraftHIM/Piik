@@ -42,10 +42,10 @@ Still required:
   admission at the 20-Viewer bound.
 
 Current controlled Browser evidence supports the H.264/VP8 gate, `motion`
-content intent, startup-quality workaround, and LiveKit-owned SFU adaptation.
-It does not establish a quality-driven topology trigger. See
-[media quality](./product/media-quality.md) and
-[realtime quality research](./research/realtime-quality-adaptation.md).
+content intent, startup-quality workaround, LiveKit-owned SFU adaptation, and
+the native-edge convergence invariants. It does not establish their quality or
+resource benefit on heterogeneous public networks. See [media quality](./product/media-quality.md)
+and [realtime quality research](./research/realtime-quality-adaptation.md).
 
 ## Browser Lifecycle
 

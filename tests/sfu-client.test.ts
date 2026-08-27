@@ -550,6 +550,7 @@ describe("SfuPublisher", () => {
       encoderImplementation: "ExternalEncoder",
       powerEfficientEncoder: true,
       qualityLimitationReason: "bandwidth",
+      nativeEdgeQualityState: "unknown",
     });
 
     sender.getStats.mockResolvedValueOnce(

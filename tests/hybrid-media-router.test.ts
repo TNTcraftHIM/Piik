@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ServerMessage } from "../src/shared/protocol.ts";
+import type { RoutePolicy, ServerMessage } from "../src/shared/protocol.ts";
 import {
   HybridMediaRouter,
   type AuthenticatedRouteParticipant,
@@ -20,7 +20,11 @@ function createStore(maxViewersPerRoom = 20) {
   });
 }
 
-function connectHost(store: RoomStore, room: CreatedRoom) {
+function connectHost(
+  store: RoomStore,
+  room: CreatedRoom,
+  routePolicy?: RoutePolicy,
+) {
   const connected = store.connectParticipant({
     roomId: room.roomId,
     role: "host",
@@ -33,6 +37,7 @@ function connectHost(store: RoomStore, room: CreatedRoom) {
     role: "host" as const,
     peerId: connected.peerId,
     sessionId: "host_session_12345678",
+    ...(routePolicy ? { routePolicy } : {}),
   };
 }
 
@@ -204,6 +209,213 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
+  it("commits topology convergence only after candidate media and native health", async () => {
+    const { store, sent, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room, {
+        peerOnly: false,
+        topologyOptimization: true,
+      });
+      complete(router, host);
+      const first = connectViewer(store, room, "quality-first");
+      complete(router, first);
+      await vi.waitFor(() => expect(preparedFor(sent, first.sessionId)).toBeDefined());
+      const firstPrepare = preparedFor(sent, first.sessionId)!;
+      router.handleRouteReady(first, {
+        type: "route-ready",
+        revision: firstPrepare.revision,
+        phase: "prepare",
+      });
+      const second = connectViewer(store, room, "quality-second");
+      complete(router, second);
+      await vi.waitFor(() => expect(preparedFor(sent, second.sessionId)).toBeDefined());
+      const secondPrepare = preparedFor(sent, second.sessionId)!;
+      router.handleRouteReady(second, {
+        type: "route-ready",
+        revision: secondPrepare.revision,
+        phase: "prepare",
+      });
+      router.setViewerRelayCapacity(second, 2);
+
+      const firstEdge = router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)!;
+      const secondEdge = router.resolveActiveViewerMediaEdge(room.roomId, second.peerId)!;
+      expect(firstEdge.upstream).toEqual({ kind: "peer", peerId: host.peerId });
+      expect(secondEdge.upstream).toEqual({ kind: "peer", peerId: host.peerId });
+      expect(
+        router.observeSenderQualityEvidence(host, {
+          type: "sender-quality-evidence",
+          childPeerId: second.peerId,
+          connectionId: secondEdge.connectionId,
+          rtpStatsId: "second-rtp",
+          trackIdentifier: "track",
+          routeRevision: secondEdge.revision,
+          state: "healthy",
+        }),
+      ).toBe(true);
+      expect(
+        router.observeSenderQualityEvidence(host, {
+          type: "sender-quality-evidence",
+          childPeerId: first.peerId,
+          connectionId: firstEdge.connectionId,
+          rtpStatsId: "first-rtp",
+          trackIdentifier: "track",
+          routeRevision: firstEdge.revision,
+          state: "healthy",
+        }),
+      ).toBe(true);
+      expect(
+        router.observeSenderQualityEvidence(host, {
+          type: "sender-quality-evidence",
+          childPeerId: first.peerId,
+          connectionId: firstEdge.connectionId,
+          rtpStatsId: "first-rtp",
+          trackIdentifier: "track",
+          routeRevision: firstEdge.revision,
+          state: "degraded",
+        }),
+      ).toBe(true);
+
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, first.sessionId)?.revision).toBeGreaterThan(
+          firstEdge.revision,
+        ),
+      );
+      const qualityPrepare = preparedFor(sent, first.sessionId)!;
+      router.handleRouteReady(first, {
+        type: "route-ready",
+        revision: qualityPrepare.revision,
+        phase: "prepare",
+      });
+      expect(
+        router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)?.upstream,
+      ).toEqual({ kind: "peer", peerId: host.peerId });
+
+      expect(
+        router.observeSenderQualityEvidence(second, {
+          type: "sender-quality-evidence",
+          childPeerId: first.peerId,
+          connectionId: qualityPrepare.candidate.connectionId,
+          rtpStatsId: "candidate-rtp",
+          trackIdentifier: "track",
+          routeRevision: qualityPrepare.revision,
+          state: "healthy",
+        }),
+      ).toBe(true);
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)?.upstream,
+        ).toEqual({ kind: "peer", peerId: second.peerId }),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("keeps peer-only shares out of configured SFU fallback", async () => {
+    const { store, sent, router } = harness(1, true);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room, {
+        peerOnly: true,
+        topologyOptimization: false,
+      });
+      complete(router, host);
+      const first = connectViewer(store, room, "peer-only-first");
+      complete(router, first);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, first.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const direct = preparedFor(sent, first.sessionId)!;
+      router.handleRouteReady(first, {
+        type: "route-ready",
+        revision: direct.revision,
+        phase: "prepare",
+      });
+
+      const blocked = connectViewer(store, room, "peer-only-blocked");
+      complete(router, blocked);
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(blocked.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({ state: "failed", reason: "route-exhausted" }),
+      );
+      expect(
+        [...sent.values()]
+          .flat()
+          .some((message) => message.type === "sfu-config"),
+      ).toBe(false);
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("silently keeps working media when quality-only SFU admission is denied", async () => {
+    const { store, sent, admission, router } = harness(1, true, undefined, 1);
+    const occupied = {
+      roomId: "9001",
+      shareGeneration: "occupied_share_12345678",
+      publicationGeneration: "occupied_publication_12345678",
+    };
+    try {
+      expect(admission?.reservePublication(occupied)).toBe(true);
+      const room = await store.createRoom();
+      const host = connectHost(store, room, {
+        peerOnly: false,
+        topologyOptimization: true,
+      });
+      complete(router, host);
+      const viewer = connectViewer(store, room, "quality-sfu-denied");
+      complete(router, viewer);
+      await vi.waitFor(() => expect(preparedFor(sent, viewer.sessionId)).toBeDefined());
+      const prepared = preparedFor(sent, viewer.sessionId)!;
+      router.handleRouteReady(viewer, {
+        type: "route-ready",
+        revision: prepared.revision,
+        phase: "prepare",
+      });
+      const active = router.resolveActiveViewerMediaEdge(room.roomId, viewer.peerId)!;
+      for (const state of ["healthy", "degraded"] as const) {
+        expect(
+          router.observeSenderQualityEvidence(host, {
+            type: "sender-quality-evidence",
+            childPeerId: viewer.peerId,
+            connectionId: active.connectionId,
+            rtpStatsId: "viewer-rtp",
+            trackIdentifier: "track",
+            routeRevision: active.revision,
+            state,
+          }),
+        ).toBe(true);
+      }
+      await vi.waitFor(() =>
+        expect(router.routeDiagnosticSnapshot(room.roomId).operation).toBeNull(),
+      );
+      expect(
+        sent
+          .get(viewer.sessionId)
+          ?.some((message) => message.type === "route-status"),
+      ).toBe(false);
+      expect(
+        router.resolveActiveViewerMediaEdge(room.roomId, viewer.peerId),
+      ).toMatchObject({
+        connectionId: active.connectionId,
+        upstream: { kind: "peer", peerId: host.peerId },
+      });
+    } finally {
+      if (admission) {
+        admission.beginDrain(occupied);
+        admission.completeDrain(occupied);
+      }
+      await router.close();
+    }
+  });
+
+
   it("reports active SFU viewers as one authoritative snapshot", async () => {
     const { store, sent, router, onViewerMediaSnapshot } = harness(1, true);
     try {

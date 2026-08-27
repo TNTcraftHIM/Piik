@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
+  DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
   viewerPasswordSchema,
   type IceConfig,
@@ -22,6 +23,7 @@ import {
   type ParticipantPresenceEntry,
   type ParticipantRouteAssignment,
   type ServerMessage,
+  type RoutePolicy,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
@@ -47,6 +49,10 @@ import { DecodedFrameStallDetector } from "../media/decoded-frame-stall";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
+import {
+  invalidateSenderQualityEvidence,
+  senderQualityEvidenceFromSnapshot,
+} from "../media/sender-quality-evidence";
 import {
   metricsFromQualityEvidence,
   nextViewerQualityEvidencePresentationExpiryAt,
@@ -421,6 +427,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     let endpointMediaCopyCapacity = MAX_ENDPOINT_MEDIA_CHILDREN;
     let viewerAuthorizationGeneration: string | null = null;
     let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
+    let currentRoutePolicy: RoutePolicy = DEFAULT_ROUTE_POLICY;
+    let currentShareGeneration: string | null = null;
     let currentAssignment: MediaAssignment = {
       parentPeerId: null,
       childPeerIds: [],
@@ -446,8 +454,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     };
     const suspendForPageLifecycle = (): void => {
       invalidatePresentedMedia();
+      const newlySuspended = !pageSuspended;
       pageSuspended = true;
       syncDecodedFrameStallPause();
+      if (newlySuspended) {
+        invalidateSenderQualityEvidence();
+        if (currentRoutePolicy.topologyOptimization) {
+          signal.send({ type: "reset-sender-quality" });
+        }
+      }
     };
     const recoverFromPageLifecycle = (): void => {
       invalidatePresentedMedia();
@@ -691,6 +706,22 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   commitRelayChildEvidence(reconciled);
                 }
               }
+            }
+          },
+          onSenderUpdate: (snapshot, preparedRevision) => {
+            if (
+              !active ||
+              pageSuspended ||
+              !currentRoutePolicy.topologyOptimization
+            ) {
+              return;
+            }
+            const evidence = senderQualityEvidenceFromSnapshot(
+              snapshot,
+              preparedRevision ?? currentRouteRevision,
+            );
+            if (evidence) {
+              signal.send(evidence);
             }
           },
         },
@@ -1340,6 +1371,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         });
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
+          currentRoutePolicy = message.routePolicy;
+          currentShareGeneration = message.shareGeneration;
           void viewerRelay?.updateProfile(currentQualitySettings);
           const route = ensureViewerSfuRoute();
           route.setPaused(sharingPaused);
@@ -1494,6 +1527,18 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         }
         return;
       }
+      if (message.type === "route-policy") {
+        if (
+          peerAssisted &&
+          (currentShareGeneration === null ||
+            currentShareGeneration === message.shareGeneration)
+        ) {
+          currentShareGeneration = message.shareGeneration;
+          currentRoutePolicy = message.routePolicy;
+          setSfuStandbyUrl(message.sfuStandbyUrl ?? null);
+        }
+        return;
+      }
       if (message.type === "signal") {
         if (peerAssisted && pendingPeer?.parentPeerId === message.fromPeerId) {
           if (currentAssignment.parentPeerId !== message.fromPeerId) {
@@ -1597,6 +1642,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         currentRouteAssignment = null;
         currentRouteConnectionId = null;
         pendingRouteConnection = null;
+        currentShareGeneration = null;
+        currentRoutePolicy = DEFAULT_ROUTE_POLICY;
         setSfuStandbyUrl(null);
         setAssignedRoute(null);
         currentHostOnline = false;

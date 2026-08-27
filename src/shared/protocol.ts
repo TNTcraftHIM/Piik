@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v13";
+export const SIGNALING_PROTOCOL = "screener-v14";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -213,6 +213,18 @@ export const DEFAULT_QUALITY_SETTINGS = {
   screenAudioQuality: "music",
 } as const satisfies QualitySettings;
 
+export const routePolicySchema = z
+  .object({
+    peerOnly: z.boolean(),
+    topologyOptimization: z.boolean(),
+  })
+  .strict();
+export type RoutePolicy = z.infer<typeof routePolicySchema>;
+export const DEFAULT_ROUTE_POLICY = {
+  peerOnly: false,
+  topologyOptimization: false,
+} as const satisfies RoutePolicy;
+
 export const relayDownstreamEdgesSchema = z
   .number()
   .int()
@@ -348,6 +360,7 @@ export const routeDemandReasonSchema = z.enum([
   "capacity-reduction",
   "sfu-bootstrap",
   "direct-convergence",
+  "quality-convergence",
 ]);
 export type RouteDemandReason = z.infer<typeof routeDemandReasonSchema>;
 
@@ -441,7 +454,7 @@ const routeDiagnosticOperationSchema = z
   .object({
     childOrdinal: routeDiagnosticOrdinalSchema,
     reason: routeDemandReasonSchema,
-    stage: z.enum(["admission", "first-frame"]),
+    stage: z.enum(["admission", "first-frame", "quality-proof"]),
     cursor: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT),
     candidateCount: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT + 1),
   })
@@ -642,6 +655,40 @@ export const viewerQualityEvidenceMessageSchema = z
   })
   .strict();
 
+export const senderQualityEvidenceMessageSchema = z
+  .object({
+    type: z.literal("sender-quality-evidence"),
+    childPeerId: opaqueIdSchema,
+    connectionId: opaqueIdSchema,
+    rtpStatsId: z.string().min(1).max(256).nullable(),
+    trackIdentifier: z.string().min(1).max(256).nullable(),
+    routeRevision: mediaRouteRevisionSchema,
+    state: z.enum(["unknown", "healthy", "degraded"]),
+  })
+  .strict()
+  .superRefine((message, context) => {
+    if (
+      (message.state !== "unknown" &&
+        (message.rtpStatsId === null ||
+          message.trackIdentifier === null))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Known sender quality needs exact RTP identity",
+        path: ["rtpStatsId"],
+      });
+    }
+  });
+
+export const sfuPublisherQualityEvidenceMessageSchema = z
+  .object({
+    type: z.literal("sfu-publisher-quality-evidence"),
+    publicationGeneration: opaqueIdSchema,
+    routeRevision: mediaRouteRevisionSchema,
+    state: z.enum(["unknown", "healthy", "degraded"]),
+  })
+  .strict();
+
 const authenticateMessageSchema = z.discriminatedUnion("role", [
   z
     .object({
@@ -654,6 +701,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       shareGeneration: opaqueIdSchema.optional(),
       sharingPaused: z.boolean().optional(),
       qualitySettings: qualitySettingsSchema.optional(),
+      routePolicy: routePolicySchema.default(DEFAULT_ROUTE_POLICY),
       viewerPresence: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
     })
@@ -750,6 +798,9 @@ export const clientMessageSchema = z.union([
     .strict(),
   z.object({ type: z.literal("request-route-diagnostic") }).strict(),
   viewerQualityEvidenceMessageSchema,
+  senderQualityEvidenceMessageSchema,
+  sfuPublisherQualityEvidenceMessageSchema,
+  z.object({ type: z.literal("reset-sender-quality") }).strict(),
   z
     .object({
       type: z.literal("set-display-name"),
@@ -820,10 +871,12 @@ const authenticatedViewerMessageShape = {
 
 const peerAssistedAuthenticatedShape = {
   mediaMode: z.literal("peer-assisted"),
+  shareGeneration: opaqueIdSchema.nullable(),
   mediaAssignment: mediaAssignmentSchema,
   routeRevision: mediaRouteRevisionSchema,
   routeAssignment: participantRouteAssignmentSchema,
   qualitySettings: qualitySettingsSchema,
+  routePolicy: routePolicySchema,
   sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
 };
 
@@ -946,6 +999,14 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("quality-settings"),
       qualitySettings: qualitySettingsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("route-policy"),
+      shareGeneration: opaqueIdSchema,
+      routePolicy: routePolicySchema,
+      sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
     })
     .strict(),
   z

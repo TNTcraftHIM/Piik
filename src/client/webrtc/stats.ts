@@ -10,6 +10,11 @@ type StatsRecord = Record<string, unknown> & {
   timestamp: number;
 };
 
+type QualityLimitationDurations = Record<
+  "none" | "bandwidth" | "cpu" | "other",
+  number
+>;
+
 export interface StatsAccumulator {
   mediaId: string | null;
   ssrc: number | null;
@@ -32,6 +37,7 @@ export interface StatsAccumulator {
   previousRetransmittedBytes: number | null;
   previousVideoJitterBufferDelay: number | null;
   previousVideoJitterBufferEmittedCount: number | null;
+  previousQualityLimitationDurations: QualityLimitationDurations | null;
   audioMediaId: string | null;
   audioSsrc: number | null;
   audioTrackIdentifier: string | null;
@@ -51,6 +57,114 @@ export interface StatsMediaSelector {
   trackIdentifier: string | null;
   rid?: string | null;
   audioTrackIdentifier?: string | null;
+}
+
+interface NativeSenderQualityPrevious {
+  timestamp: number;
+  durations: QualityLimitationDurations;
+  framesEncoded: number;
+}
+
+export interface NativeSenderQualityAccumulator {
+  previousByStatsId: Map<string, NativeSenderQualityPrevious>;
+}
+
+export function createNativeSenderQualityAccumulator(): NativeSenderQualityAccumulator {
+  return { previousByStatsId: new Map() };
+}
+
+export function collectNativeSenderQualityFromReport(
+  report: RTCStatsReport,
+  trackIdentifier: string,
+  accumulator: NativeSenderQualityAccumulator,
+): Pick<
+  ConnectionMetrics,
+  | "nativeEdgeQualityState"
+  | "qualityLimitationReason"
+  | "sampleWindowMs"
+  | "intervalFramesEncoded"
+> {
+  const records: StatsRecord[] = [];
+  report.forEach((raw) => {
+    const record = raw as StatsRecord;
+    if (
+      record.type === "outbound-rtp" &&
+      record.kind === "video" &&
+      record.isRemote !== true &&
+      record.active !== false &&
+      mediaTrackIdentifier(report, record, "send") === trackIdentifier
+    ) {
+      records.push(record);
+    }
+  });
+  const activeIds = new Set(records.map((record) => record.id));
+  for (const id of accumulator.previousByStatsId.keys()) {
+    if (!activeIds.has(id)) accumulator.previousByStatsId.delete(id);
+  }
+  const samples = records.map((record) => {
+    const timestamp = numberValue(record, "timestamp");
+    const durations = qualityLimitationDurationsValue(record);
+    const reason = stringValue(record, "qualityLimitationReason");
+    const framesEncoded = numberValue(record, "framesEncoded");
+    const previous = accumulator.previousByStatsId.get(record.id);
+    const windowMs =
+      timestamp !== null && previous && timestamp > previous.timestamp
+        ? timestamp - previous.timestamp
+        : null;
+    const state = nativeEdgeQualityState(
+      reason,
+      durations,
+      previous?.durations ?? null,
+      windowMs !== null,
+    );
+    const intervalFramesEncoded =
+      previous &&
+      framesEncoded !== null &&
+      framesEncoded >= previous.framesEncoded
+        ? framesEncoded - previous.framesEncoded
+        : null;
+    if (timestamp !== null && durations && framesEncoded !== null) {
+      accumulator.previousByStatsId.set(record.id, {
+        timestamp,
+        durations,
+        framesEncoded,
+      });
+    } else {
+      accumulator.previousByStatsId.delete(record.id);
+    }
+    return { state, reason, windowMs, intervalFramesEncoded };
+  });
+  if (
+    samples.length === 0 ||
+    samples.some(
+      (sample) =>
+        sample.state === "unknown" ||
+        sample.windowMs === null ||
+        sample.intervalFramesEncoded === null,
+    )
+  ) {
+    return {
+      nativeEdgeQualityState: "unknown",
+      qualityLimitationReason: null,
+      sampleWindowMs: null,
+      intervalFramesEncoded: null,
+    };
+  }
+  const degraded = samples.filter((sample) => sample.state === "degraded");
+  return {
+    nativeEdgeQualityState: degraded.length > 0 ? "degraded" : "healthy",
+    qualityLimitationReason:
+      degraded.some((sample) => sample.reason === "bandwidth")
+        ? "bandwidth"
+        : degraded.length > 0
+          ? "cpu"
+          : "none",
+    sampleWindowMs: Math.min(...samples.map((sample) => sample.windowMs!)),
+    intervalFramesEncoded: samples.reduce(
+      (total, sample) => total + sample.intervalFramesEncoded!,
+      0,
+    ),
+  };
 }
 
 export function captureMetrics(
@@ -100,6 +214,7 @@ export function createStatsAccumulator(): StatsAccumulator {
     previousRetransmittedBytes: null,
     previousVideoJitterBufferDelay: null,
     previousVideoJitterBufferEmittedCount: null,
+    previousQualityLimitationDurations: null,
     audioMediaId: null,
     audioSsrc: null,
     audioTrackIdentifier: null,
@@ -208,6 +323,62 @@ function numberValue(record: StatsRecord | null, key: string): number | null {
 function stringValue(record: StatsRecord | null, key: string): string | null {
   const value = record?.[key];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function qualityLimitationDurationsValue(
+  record: StatsRecord | null,
+): QualityLimitationDurations | null {
+  const value = record?.qualityLimitationDurations;
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const durations = value as Record<string, unknown>;
+  const result = {} as QualityLimitationDurations;
+  for (const reason of ["none", "bandwidth", "cpu", "other"] as const) {
+    const duration = durations[reason];
+    if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
+      return null;
+    }
+    result[reason] = duration;
+  }
+  return result;
+}
+
+function nativeEdgeQualityState(
+  reason: string | null,
+  current: QualityLimitationDurations | null,
+  previous: QualityLimitationDurations | null,
+  hasInterval: boolean,
+): ConnectionMetrics["nativeEdgeQualityState"] {
+  if (!hasInterval || !current || !previous) {
+    return "unknown";
+  }
+  const deltas = {} as QualityLimitationDurations;
+  for (const key of ["none", "bandwidth", "cpu", "other"] as const) {
+    if (current[key] < previous[key]) {
+      return "unknown";
+    }
+    deltas[key] = current[key] - previous[key];
+  }
+  if (
+    reason === "none" &&
+    deltas.none > 0 &&
+    deltas.bandwidth === 0 &&
+    deltas.cpu === 0 &&
+    deltas.other === 0
+  ) {
+    return "healthy";
+  }
+  if (
+    (reason === "bandwidth" || reason === "cpu") &&
+    deltas[reason] > 0 &&
+    deltas.none === 0 &&
+    deltas.other === 0 &&
+    deltas[reason === "bandwidth" ? "cpu" : "bandwidth"] === 0
+  ) {
+    return "degraded";
+  }
+  return "unknown";
 }
 
 function booleanValue(record: StatsRecord | null, key: string): boolean | null {
@@ -516,6 +687,11 @@ export function collectConnectionMetricsFromReport(
     media,
     "jitterBufferEmittedCount",
   );
+  const qualityLimitationReason = stringValue(
+    media,
+    "qualityLimitationReason",
+  );
+  const qualityLimitationDurations = qualityLimitationDurationsValue(media);
   let bitrateKbps: number | null = null;
   let derivedFps: number | null = null;
   const sampleWindowMs =
@@ -650,6 +826,12 @@ export function collectConnectionMetricsFromReport(
           previous.previousVideoJitterBufferEmittedCount,
         )
       : null;
+  const currentNativeEdgeQualityState = nativeEdgeQualityState(
+    qualityLimitationReason,
+    qualityLimitationDurations,
+    previous.previousQualityLimitationDurations,
+    sampleWindowMs !== null,
+  );
   previous.mediaId = mediaId;
   previous.ssrc = ssrc;
   previous.trackIdentifier = trackIdentifier;
@@ -672,6 +854,7 @@ export function collectConnectionMetricsFromReport(
   previous.previousVideoJitterBufferDelay = videoJitterBufferDelay;
   previous.previousVideoJitterBufferEmittedCount =
     videoJitterBufferEmittedCount;
+  previous.previousQualityLimitationDurations = qualityLimitationDurations;
 
   const linkedCodec = linkedMediaCodec(report, media, transport, "video");
   const codecEvidence = deriveCodecEvidence(linkedCodec);
@@ -902,6 +1085,7 @@ export function collectConnectionMetricsFromReport(
       encodeTimeDelta === null ? null : encodeTimeDelta * 1_000,
     intervalEncodeMs,
     intervalDecodeMs,
-    qualityLimitationReason: stringValue(media, "qualityLimitationReason"),
+    qualityLimitationReason,
+    nativeEdgeQualityState: currentNativeEdgeQualityState,
   };
 }

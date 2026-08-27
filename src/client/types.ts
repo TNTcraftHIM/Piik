@@ -5,6 +5,7 @@ export type SignalConnectionState =
   | "offline";
 
 export type MediaPath = "direct" | "unknown";
+export type NativeEdgeQualityState = "unknown" | "healthy" | "degraded";
 
 export interface ConnectionMetrics {
   sampleTimestampMs: number | null;
@@ -72,6 +73,7 @@ export interface ConnectionMetrics {
   intervalEncodeMs: number | null;
   intervalDecodeMs: number | null;
   qualityLimitationReason: string | null;
+  nativeEdgeQualityState: NativeEdgeQualityState;
 }
 
 export interface PeerSnapshot {
@@ -154,4 +156,5 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   intervalEncodeMs: null,
   intervalDecodeMs: null,
   qualityLimitationReason: null,
+  nativeEdgeQualityState: "unknown",
 };

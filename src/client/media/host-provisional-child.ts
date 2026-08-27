@@ -29,6 +29,11 @@ interface HostProvisionalChildEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   activeConnectionId?: (peerId: string) => string | null;
   onPromotedStreamFailure?: (peer: HostPeer) => void;
+  onPreparedUpdate?: (
+    peer: HostPeer,
+    snapshot: PeerSnapshot,
+    revision: number,
+  ) => void;
   onPromotedUpdate?: (peer: HostPeer, snapshot: PeerSnapshot) => void;
 }
 
@@ -111,6 +116,7 @@ export class HostProvisionalChild {
             if (snapshot.connectionState === "failed") {
               this.fail(peer);
             }
+            this.events.onPreparedUpdate?.(peer, snapshot, revision);
             return;
           }
           if (this.promotedPeer === peer) {

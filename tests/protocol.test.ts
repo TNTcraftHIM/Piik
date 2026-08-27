@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_QUALITY_SETTINGS,
+  DEFAULT_ROUTE_POLICY,
   DEFAULT_VIEWER_DISPLAY_NAME,
   MAX_DISPLAY_NAME_CODE_POINTS,
   MAX_MEDIA_ROUTE_REVISION,
@@ -96,7 +97,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v13");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v14");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -861,6 +862,34 @@ describe("client signaling protocol", () => {
     }
   });
 
+  it("accepts only native sender quality state with exact known identity", () => {
+    const sender = {
+      type: "sender-quality-evidence",
+      childPeerId: "viewer_12345678",
+      connectionId: "connection_12345678",
+      rtpStatsId: "rtp-stats-1",
+      trackIdentifier: "track-1",
+      routeRevision: 3,
+      state: "degraded",
+    } as const;
+    expect(clientMessageSchema.safeParse(sender).success).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        ...sender,
+        state: "healthy",
+        rtpStatsId: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "sfu-publisher-quality-evidence",
+        publicationGeneration: "publication_generation_12345678",
+        routeRevision: 4,
+        state: "healthy",
+      }).success,
+    ).toBe(true);
+  });
+
   it.each([
     ["video/VP8", null, "max-fr=60; max-fs=8160"],
     ["video/VP9", "profile-id=2", "max-fs=8160"],
@@ -1331,6 +1360,7 @@ describe("server signaling protocol", () => {
     const peerAssisted = {
       ...authenticatedMessage(8),
       mediaMode: "peer-assisted",
+      shareGeneration: "share_generation_12345678",
       mediaAssignment: {
         parentPeerId: null,
         childPeerIds: ["viewer_12345678", "viewer_87654321"],
@@ -1342,6 +1372,7 @@ describe("server signaling protocol", () => {
         sfuPublicationGeneration: null,
       },
       qualitySettings,
+      routePolicy: DEFAULT_ROUTE_POLICY,
     };
 
     expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);

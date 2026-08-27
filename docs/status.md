@@ -42,10 +42,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical `main` and production use the same evidence-only strict
-  `screener-v13` quality-shadow application tree deployed from `73ed920`.
+- Canonical source uses the strict `screener-v14` Browser/server contract.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
-  room replacement and the Host codec selector are implemented; production
+  room replacement and the Host codec selector remain implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
   one reconnect state. LiveKit room teardown cannot stop Host-owned capture.
 - One event-driven controller owns the committed graph and one room-serial child
@@ -54,14 +53,15 @@ This is the current execution index. Git history owns completed timelines;
   total deadline, while first decoded frame remains the only commit proof. SFU
   provides working media before finite background direct convergence. Healthy
   decoded edges remain sticky.
-- WebRTC/LiveKit own media adaptation. Screener has no custom SFU layer list,
-  quality score, layer selector, periodic rebalancing, or quality-driven parent
-  change. P2P and SFU recover their current route before actual failure enters
-  normal reassignment.
-- Current Viewer freeze/pause evidence requires decoded progress and exact
-  foreground presentation authority. The controller retains one bounded,
-  fresh current-edge aggregate per child for the Host-only on-demand snapshot;
-  it does not change route facts, capacity, candidates, SFU usage or reconcile.
+- WebRTC/LiveKit own media adaptation. With the per-share convergence gate
+  enabled, one fresh degraded native edge may enter the existing serial route
+  operation after availability work. A candidate commits only after first-frame
+  readiness and fresh healthy native proof while the old edge remains degraded.
+  Peer candidates stay first and bounded SFU is only the suffix after healthy
+  Peer escape fails. The gate defaults off.
+- Screener has no custom SFU layer list, quality score, layer selector,
+  all-pairs probe, parent-wide prediction or periodic rebalancing. P2P and SFU
+  still recover their current route before actual failure enters reassignment.
 - Viewer hidden/freeze/pagehide suppress decoded-stall routing authority;
   visible/resume/pageshow rebaseline and rearm current-frame proof. SFU
   pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
@@ -69,9 +69,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-The native-edge local-convergence design is accepted at its truth boundary.
-Current source and production remain on the evidence-only shadow;
-implementation has not started.
+Native-edge local convergence is implemented and locally accepted in source.
+Production remains on the evidence-only `screener-v13` release until the current
+application release and scoped postflight complete.
 
 ## Active Boundaries
 
@@ -79,8 +79,8 @@ implementation has not started.
   screening did not reproduce a Host-page drop; accepted Viewer lifecycle work
   prevents frozen JavaScript wall time from becoming an immediate route failure
   but is not capture keepalive.
-- Current-path quality is diagnostic in source and production. The accepted next
-  slice is ADR-0005 native-edge local convergence; weighted/global optimization
+- Current-path quality can drive opt-in local convergence in source and remains
+  diagnostic in production until deployment. Weighted/global optimization
   remains parked.
 - Repository simplification does not change or deploy product behavior beyond
   deleting proven dead private surfaces.
@@ -89,5 +89,5 @@ implementation has not started.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Native-edge convergence is the next
-source task in TODO; broader product evidence remains parked.
+No source or deployment P0/P1 is open. Native-edge convergence release and
+postflight are the current task; broader product evidence remains parked.

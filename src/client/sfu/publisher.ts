@@ -27,10 +27,13 @@ import type { BrowserVideoCodec } from "../webrtc/video-codec";
 import {
   captureMetrics,
   collectConnectionMetricsFromReport,
+  collectNativeSenderQualityFromReport,
+  createNativeSenderQualityAccumulator,
   createStatsAccumulator,
   maxEncodedVideoFrames,
   mergeStatsReports,
   type StatsAccumulator,
+  type NativeSenderQualityAccumulator,
 } from "../webrtc/stats";
 import { sfuRoomConnectOptions } from "./connection-options";
 
@@ -76,6 +79,7 @@ interface PublisherStatsIdentity {
   audioSender: RTCRtpSender | null;
   audioTrack: MediaStreamTrack | null;
   accumulator: StatsAccumulator;
+  nativeQualityAccumulator: NativeSenderQualityAccumulator;
 }
 
 type LiveKit = typeof import("livekit-client");
@@ -1027,6 +1031,7 @@ export class SfuPublisher {
         audioSender,
         audioTrack,
         accumulator: createStatsAccumulator(),
+        nativeQualityAccumulator: createNativeSenderQualityAccumulator(),
       };
       this.statsIdentity = identity;
     }
@@ -1058,16 +1063,31 @@ export class SfuPublisher {
       ) {
         return;
       }
+      const nativeQuality = collectNativeSenderQualityFromReport(
+        report,
+        identity.videoTrack.id,
+        identity.nativeQualityAccumulator,
+      );
+      const connectionMetrics = collectConnectionMetricsFromReport(
+        report,
+        "send",
+        identity.accumulator,
+        {
+          trackIdentifier: identity.videoTrack.id,
+          audioTrackIdentifier: identity.audioTrack?.id ?? null,
+        },
+      );
       const metrics = {
-        ...collectConnectionMetricsFromReport(
-          report,
-          "send",
-          identity.accumulator,
-          {
-            trackIdentifier: identity.videoTrack.id,
-            audioTrackIdentifier: identity.audioTrack?.id ?? null,
-          },
-        ),
+        ...connectionMetrics,
+        nativeEdgeQualityState: nativeQuality.nativeEdgeQualityState,
+        ...(nativeQuality.nativeEdgeQualityState === "unknown"
+          ? {}
+          : {
+              qualityLimitationReason:
+                nativeQuality.qualityLimitationReason,
+              sampleWindowMs: nativeQuality.sampleWindowMs,
+              intervalFramesEncoded: nativeQuality.intervalFramesEncoded,
+            }),
         ...captureMetrics(identity.videoTrack),
       };
       if (

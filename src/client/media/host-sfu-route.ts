@@ -62,6 +62,11 @@ interface HostSfuRouteEvents {
   getVideoCodec: () => BrowserVideoCodec;
   reconcileChildren: (childPeerIds: string[]) => void;
   send: (message: ClientMessage) => boolean;
+  onSenderUpdate?: (
+    metrics: ConnectionMetrics,
+    revision: number,
+    publicationGeneration: string,
+  ) => void;
   onPublisherUpdate?: (snapshot: HostSfuPublisherSnapshot | null) => void;
   createPublisher?: (
     onDisconnected: () => void,
@@ -675,6 +680,20 @@ export class HostSfuRoute {
     slot: HostPublisherSlot,
     metrics: ConnectionMetrics | null,
   ): void {
+    if (
+      metrics !== null &&
+      !this.closed &&
+      !slot.failed &&
+      slot.active &&
+      (this.pending === slot || this.active === slot) &&
+      this.ownsPublisherSlot(slot)
+    ) {
+      this.events.onSenderUpdate?.(
+        metrics,
+        slot.revision,
+        slot.publicationGeneration,
+      );
+    }
     if (
       metrics === null ||
       this.closed ||

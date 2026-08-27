@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: accepted; base route and quality shadow deployed; native-edge convergence not implemented
+- Status: accepted; native-edge convergence implemented in source, not yet deployed
 - Date: 2026-08-20
 - Last updated: 2026-08-27
 
@@ -177,11 +177,11 @@ the committed graph, suppresses decoded-stall authority, and leaves new Viewers
 waiting. Resume starts reconciliation from the current graph. Page-hidden wall
 time is rebaselined before it can contribute to a stall decision.
 
-Deployed quality evidence remains observation-only. The accepted next slice is
-continuous local convergence inside the same graph, reconcile loop, and
-room-serial child operation. Availability first gets every Viewer usable media;
-quality work runs only while no join, failure, pause, identity, departure,
-capacity, or SFU-resource work needs that operation.
+Native-edge convergence runs inside the same graph, reconcile loop, and
+room-serial child operation when its per-share gate is enabled. Availability
+first gets every Viewer usable media; quality work runs only while no join,
+failure, pause, identity, departure, capacity, or SFU-resource work needs that
+operation. With the gate disabled, quality evidence remains observation-only.
 
 Each exact current or pending edge has one native state: `unknown`, `healthy`, or
 `degraded`. For ordinary P2P, the parent reports the exact outbound sender's

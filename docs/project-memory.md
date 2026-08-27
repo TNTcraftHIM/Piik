@@ -38,11 +38,10 @@ implementation and routine UI detail.
   one serial child operation. First decoded frame commits availability work;
   accepted quality work adds native edge proof before commit in that operation.
 - WebRTC and LiveKit own congestion control, media adaptation, reconnect, and SFU
-  layers. Current source keeps route quality diagnostic. The accepted next slice
-  is event-driven local topology convergence from their native edge state, with
-  bounded SFU only after healthy Peer escape fails. Its initial per-share gate is
-  opt-in; no weighted score, all-pairs probe, parent-wide prediction, or periodic
-  rebalance is accepted.
+  layers. Current source implements opt-in, event-driven local topology
+  convergence from their native edge state, with bounded SFU only after healthy
+  Peer escape fails. No weighted score, all-pairs probe, parent-wide prediction,
+  or periodic rebalance is accepted.
 - Browser video uses `motion`; each share chooses H.264 with VP8 fallback through
   an actual sender probe unless the Host explicitly selects VP8 or H264. Screen
   audio uses 64/128/192 kbps ceilings with 128 default.
@@ -52,10 +51,12 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Canonical source and production use the strict `screener-v13` Browser/server
-contract, optional SQLite room authority, the H.264/VP8 sender gate, and the
-evidence-only quality shadow. [Status](./status.md) is the sole owner of exact
-source, artifact, deployment, milestone, and blocker identity.
+Canonical source uses the strict `screener-v14` Browser/server contract with the
+opt-in native-edge convergence controller. Production remains on
+`screener-v13` until the current application release completes. Both retain
+optional SQLite room authority and the H.264/VP8 sender gate. [Status](./status.md)
+is the sole owner of exact source, artifact, deployment, milestone, and blocker
+identity.
 
 Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
 owned by [verification status](./verification-status.md). Environment and initial

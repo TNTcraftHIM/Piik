@@ -17,6 +17,7 @@ import { preferredVideoCodecForTrack } from "./video-codec-preflight";
 interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
+  onSenderUpdate?: (snapshot: PeerSnapshot, revision: number | null) => void;
 }
 interface PreparedChild {
   revision: number;
@@ -513,6 +514,10 @@ export class ViewerRelay {
             if (snapshot.connectionState === "failed") {
               this.failPreparedChild(peer);
             }
+            this.events.onSenderUpdate?.(
+              snapshot,
+              this.preparedChild?.revision ?? null,
+            );
             return;
           }
           if (
@@ -526,6 +531,7 @@ export class ViewerRelay {
               ...snapshot,
               metrics: { ...snapshot.metrics },
             });
+            this.events.onSenderUpdate?.(snapshot, null);
             this.events.onUpdate?.(this.getSnapshot());
           }
         },

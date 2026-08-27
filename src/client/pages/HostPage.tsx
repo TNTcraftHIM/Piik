@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_QUALITY_SETTINGS,
+  DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
   viewerPasswordSchema,
   type CreateRoomResponse,
@@ -31,6 +32,7 @@ import {
   type PreparedRouteCandidate,
   type ServerMessage,
   type CodeEntryPolicy,
+  type RoutePolicy,
 } from "../../shared/protocol";
 import { AppHeader } from "../components/AppHeader";
 import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
@@ -107,6 +109,11 @@ import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
 import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
+import {
+  invalidateSenderQualityEvidence,
+  senderQualityEvidenceFromSnapshot,
+  sfuPublisherQualityEvidenceFromMetrics,
+} from "../media/sender-quality-evidence";
 import {
   classifyHostViewerQualityEvidence,
   metricsFromQualityEvidence,
@@ -187,6 +194,7 @@ function closeAbandonedRoom(room: HostRoomIdentity): void {
         token: room.hostToken,
         clientId: getStableClientId("host", room.roomId),
         shareGeneration: createOpaqueId(),
+        routePolicy: DEFAULT_ROUTE_POLICY,
       },
       {
         onMessage: () => undefined,
@@ -255,6 +263,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   );
   const [advancedQuality, setAdvancedQuality] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
+  );
+  const [routePolicy, setRoutePolicy] = useState<RoutePolicy>(
+    DEFAULT_ROUTE_POLICY,
   );
   const [videoCodecMode, setVideoCodecMode] =
     useState<BrowserVideoCodecMode>("auto");
@@ -340,6 +351,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const qualityChangeRef = useRef<object | null>(null);
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
+  const routePolicyRef = useRef<RoutePolicy>(DEFAULT_ROUTE_POLICY);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
   const videoCodecModeRef = useRef<BrowserVideoCodecMode>(videoCodecMode);
   const roomMutationRef = useRef<object | null>(null);
@@ -386,6 +398,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }, [stream]);
 
   useEffect(() => {
+    let senderQualitySuspended = false;
+    const resetSenderQualityAuthority = () => {
+      if (senderQualitySuspended) {
+        return;
+      }
+      senderQualitySuspended = true;
+      invalidateSenderQualityEvidence();
+      if (routePolicyRef.current.topologyOptimization) {
+        signalRef.current?.send({ type: "reset-sender-quality" });
+      }
+    };
     const syncPreviewPlayback = () => {
       const video = videoRef.current;
       if (!video) {
@@ -395,6 +418,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         document.visibilityState,
         document.hasFocus(),
       );
+      if (document.visibilityState !== "visible") {
+        resetSenderQualityAuthority();
+      } else {
+        senderQualitySuspended = false;
+      }
       setLocalPreviewPaused(shouldPause);
       if (shouldPause) {
         video.pause();
@@ -408,11 +436,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     document.addEventListener("visibilitychange", syncPreviewPlayback);
     window.addEventListener("blur", syncPreviewPlayback);
     window.addEventListener("focus", syncPreviewPlayback);
+    window.addEventListener("pagehide", resetSenderQualityAuthority);
     syncPreviewPlayback();
     return () => {
       document.removeEventListener("visibilitychange", syncPreviewPlayback);
       window.removeEventListener("blur", syncPreviewPlayback);
       window.removeEventListener("focus", syncPreviewPlayback);
+      window.removeEventListener("pagehide", resetSenderQualityAuthority);
     };
   }, [stream]);
 
@@ -508,6 +538,23 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         isCurrentGeneration(generation) && hostSfuRouteRef.current === route
           ? signalRef.current?.send(message) === true
           : false,
+      onSenderUpdate: (metrics, revision, publicationGeneration) => {
+        if (
+          !isCurrentGeneration(generation) ||
+          !routePolicyRef.current.topologyOptimization ||
+          document.visibilityState !== "visible"
+        ) {
+          return;
+        }
+        const evidence = sfuPublisherQualityEvidenceFromMetrics(
+          metrics,
+          revision,
+          publicationGeneration,
+        );
+        if (evidence) {
+          signalRef.current?.send(evidence);
+        }
+      },
     });
     hostSfuRouteRef.current = route;
     return route;
@@ -860,6 +907,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setResolvedVideoCodec(null);
   }
 
+  function changeRoutePolicy(patch: Partial<RoutePolicy>): void {
+    if (phase === "starting" || phase === "live") {
+      return;
+    }
+    const next = { ...routePolicyRef.current, ...patch };
+    routePolicyRef.current = next;
+    setRoutePolicy(next);
+  }
+
   function changeAdvancedQuality(
     patch: Partial<QualitySettings>,
   ): void {
@@ -1061,6 +1117,22 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     provisional?.discard();
   }
 
+  function reportSenderQuality(
+    snapshot: PeerSnapshot,
+    revision: number,
+  ): void {
+    if (
+      !routePolicyRef.current.topologyOptimization ||
+      document.visibilityState !== "visible"
+    ) {
+      return;
+    }
+    const evidence = senderQualityEvidenceFromSnapshot(snapshot, revision);
+    if (evidence) {
+      signalRef.current?.send(evidence);
+    }
+  }
+
   function prepareHostChild(
     revision: number,
     assignment: HostRouteAssignment,
@@ -1100,6 +1172,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           peersRef.current.get(peer.peerId) === peer
         ) {
           updatePeerSnapshot(snapshot);
+          reportSenderQuality(snapshot, activeRouteRevisionRef.current);
+        }
+      },
+      onPreparedUpdate: (_peer, snapshot, revision) => {
+        if (isCurrentGeneration(generation)) {
+          reportSenderQuality(snapshot, revision);
         }
       },
     });
@@ -1184,6 +1262,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             peersRef.current.get(peerId) === peer
           ) {
             updatePeerSnapshot(snapshot);
+            reportSenderQuality(snapshot, activeRouteRevisionRef.current);
           }
         },
       },
@@ -1333,6 +1412,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         "mediaMode" in message &&
         message.mediaMode === "peer-assisted"
       ) {
+        routePolicyRef.current = { ...message.routePolicy };
+        setRoutePolicy({ ...message.routePolicy });
         const currentQualitySettings =
           pendingQualitySettings ?? message.qualitySettings;
         activeRouteRevisionRef.current = message.routeRevision;
@@ -1625,6 +1706,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             shareGeneration,
             sharingPaused: false,
             qualitySettings: qualitySettingsRef.current,
+            routePolicy: routePolicyRef.current,
             viewerPresence: true,
             displayName: initialDisplayName,
           },
@@ -1818,6 +1900,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
 
     retiringStreamRef.current = previousStream;
+    invalidateSenderQualityEvidence();
+    if (routePolicyRef.current.topologyOptimization) {
+      signalRef.current?.send({ type: "reset-sender-quality" });
+    }
     setMediaPaused(captured, sharingPausedRef.current);
     streamRef.current = captured;
     setStream(captured);
@@ -2495,34 +2581,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     </div>
                   </label>
                   <fieldset className="control-group quality-priority">
-                    <legend>视频编码</legend>
-                    <div className="segmented-control">
-                      {(["vp8", "auto", "h264"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          className={
-                            videoCodecMode === mode ? "is-selected" : undefined
-                          }
-                          aria-pressed={videoCodecMode === mode}
-                          disabled={phase === "starting" || phase === "live"}
-                          onClick={() => changeVideoCodecMode(mode)}
-                        >
-                          <span>{mode === "auto" ? "自动" : mode.toUpperCase()}</span>
-                          <small>
-                            {mode === "vp8"
-                              ? "兼容优先"
-                              : mode === "h264"
-                                ? "硬件优先"
-                                : resolvedVideoCodec
-                                  ? resolvedVideoCodec.toUpperCase()
-                                  : "自动选择"}
-                          </small>
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <fieldset className="control-group quality-priority">
                     <legend>画面偏好</legend>
                     <div className="segmented-control">
                       {(
@@ -2595,6 +2653,67 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           </span>
                           <small>
                             {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000} kbps
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <fieldset className="control-group route-policy-controls">
+                    <legend>路由策略</legend>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={routePolicy.topologyOptimization}
+                        disabled={phase === "starting" || phase === "live"}
+                        onChange={(event) =>
+                          changeRoutePolicy({
+                            topologyOptimization: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>
+                        自动优化拓扑
+                        <small>观看中逐步选择更健康的连接</small>
+                      </span>
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={routePolicy.peerOnly}
+                        disabled={phase === "starting" || phase === "live"}
+                        onChange={(event) =>
+                          changeRoutePolicy({ peerOnly: event.target.checked })
+                        }
+                      />
+                      <span>
+                        纯 P2P
+                        <small>不使用媒体服务器，无法直连时停止尝试</small>
+                      </span>
+                    </label>
+                  </fieldset>
+                  <fieldset className="control-group quality-priority">
+                    <legend>视频编码</legend>
+                    <div className="segmented-control">
+                      {(["vp8", "auto", "h264"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={
+                            videoCodecMode === mode ? "is-selected" : undefined
+                          }
+                          aria-pressed={videoCodecMode === mode}
+                          disabled={phase === "starting" || phase === "live"}
+                          onClick={() => changeVideoCodecMode(mode)}
+                        >
+                          <span>{mode === "auto" ? "自动" : mode.toUpperCase()}</span>
+                          <small>
+                            {mode === "vp8"
+                              ? "兼容优先"
+                              : mode === "h264"
+                                ? "硬件优先"
+                                : resolvedVideoCodec
+                                  ? resolvedVideoCodec.toUpperCase()
+                                  : "自动选择"}
                           </small>
                         </button>
                       ))}
