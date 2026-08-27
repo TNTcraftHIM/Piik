@@ -25,7 +25,9 @@
 
 ## 顶级指令卫生
 
-[官方调研](./research/agent-context-governance.md)的共同结论是：顶层指令应是短而稳定的地图，流程和专业细节按需加载，并定期删除冲突或陈旧规则。因此本仓库的 `AGENTS.md` 保持在 100 行内，而不是把公开上限当作填充目标。模块特有规则只有在对应代码存在且每次读取确有必要时，才放到最近目录的 `AGENTS.md`；流程说明进入 `CONTRIBUTING.md`，当前工作进入 `docs/todo.md`，证据与理由进入其 owner。
+[官方调研](./research/agent-context-governance.md)的共同结论是：顶层指令应是短而稳定的地图，流程和专业细节按需加载，并定期删除冲突或陈旧规则。检查器把官方边界分成推荐线和硬顶：Codex 项目指令链在默认 32 KiB 上限的 80% 提示、到上限失败；Claude 的有效启动指令在官方建议的 200 行提示，并容许到 250 行的项目缓冲；Hermes 在动态下限 20,000 字符的 80% 提示、到下限失败。`CLAUDE.md` 导入的 `AGENTS.md` 计入有效行数；每次任务必读的 repo STS skill 使用同一保守包络。
+
+推荐线只触发园艺提醒，不是压缩目标。硬顶失败时应把目录专属规则迁到嵌套或 path-scoped context，把流程和参考资料迁到按需 skill/文档，简化重复措辞，并删除已完成历史或陈旧结论；不要为了过闸损失仍有消费者的约束。模块特有规则只有在对应代码存在且每次读取确有必要时，才放到最近目录的 `AGENTS.md`；流程说明进入 `CONTRIBUTING.md`，当前工作进入 `docs/todo.md`，证据与理由进入其 owner。
 
 ## 真相更新顺序
 
@@ -61,6 +63,6 @@ TURN 的减负证据由 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md)
 
 - 迭代中运行覆盖当前改动的最小定向检查；完整套件、真实浏览器矩阵、网络整形、跨设备、长时稳定性和部署检查在相关候选的验收边界批量运行。
 - 文档改动默认运行本地 Markdown 链接、whitespace、diff 和 repository-hygiene 检查；不因无关文档变化重跑媒体基准。
-- 断链、缺失必需 owner 和格式损坏是 hard failure。每次注入的 `AGENTS.md`、repo STS skill 与只负责导入的 `CLAUDE.md` 也使用 hard context budget，避免规则稀释。Product、ADR、research、operations 等按需文档的行数/字节阈值只是 warning：它提示检查是否应拆分二级 owner、删除历史或移出过程信息，不要求为通过门禁压缩合理正文，也不是交付质量指标。
+- 断链、缺失必需 owner 和格式损坏是 hard failure。每次注入的有效 `AGENTS.md`/`CLAUDE.md` 上下文与每次必读的 repo STS skill 使用“推荐线 warning、硬顶 failure”，避免把建议值误当死线，也避免超过工具加载边界。Product、ADR、research、operations 等按需文档的行数/字节阈值始终只是 warning：它提示检查是否应拆分二级 owner、删除历史或移出过程信息，不要求为通过门禁压缩合理正文，也不是交付质量指标。
 - 昂贵证据记录 commit、环境、结果和适用边界。只有相关路径、协议、配置、依赖、环境或门槛改变，或旧证据失败/含糊时才重跑。
 - `.githooks/pre-commit`、`scripts/check-project-state.sh` 和 PowerShell 等价入口共享 `scripts/required-project-paths.txt`。Hook 只做快速、确定、可复现的检查；工程判断留给评审和测试。
