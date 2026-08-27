@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-27
+Last updated: 2026-08-28
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `b2cbf20530fc841de4e78529c20407832d658af3`, release `b2cbf20`, wire
-  `screener-v16`, from `/opt/screener/releases/b2cbf20`. The immutable runtime
+  `fdc18d48cef15abd531e0066a07bc7650b4082a3`, release `fdc18d4`, wire
+  `screener-v16`, from `/opt/screener/releases/fdc18d4`. The immutable runtime
   tar SHA-256 is
-  `df388e612f0fb9c7300ec8f8203d92fc4088082b0d06a419d5194ebf7c92a9a5`;
+  `930f6ae45fce35da54941b081138a2a9fa35ba933d543ff4ed82e93aebd70070`;
   its 41-file manifest SHA-256 is
-  `78843929f9b8d0c9e7eb05075ac584c82199fd56e2f4041c41713b3a477972f9`.
-- The served Browser entry references `assets/index-BY7ke8PT.js`; the public
+  `72e3758805ff0deb28084da9d0a6eb5a131e69397ecce52c917fb02b153e881d`.
+- The served Browser entry references `assets/index-BLS925La.js`; the public
   asset SHA-256 is
-  `1e8ab0ca54fba1f9bda7f4bc8252bb63f63e4e3e3a61761b4425e2f30c71e24a`.
+  `a8048291d98d21b0bab9e14599f8d5f7425d59052ff0867e62d1640411941987`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -58,10 +58,11 @@ This is the current execution index. Git history owns completed timelines;
   decoded edges remain sticky.
 - WebRTC/LiveKit own media adaptation. With the per-share convergence gate
   enabled, one fresh degraded native edge may enter the existing serial route
-  operation after availability work. A candidate commits only after first-frame
-  readiness and fresh healthy native proof while the old edge remains degraded.
-  Peer candidates stay first and bounded SFU is only the suffix after healthy
-  Peer escape fails. The gate defaults off.
+  operation after availability work. A P2P candidate commits only after the same
+  Viewer sees first-frame readiness plus three fresh windows that strictly
+  improve delivered resolution or rounded FPS without regressing either. Peer
+  candidates stay first; bounded SFU is only the suffix for whole-Host-root
+  degradation and retains native publication proof. The gate defaults off.
 - Screener has no custom SFU layer list, quality score, layer selector,
   all-pairs probe, parent-wide prediction or periodic rebalancing. P2P and SFU
   still recover their current route before actual failure enters reassignment.
@@ -72,10 +73,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-The 6020 canary correction is deployed. Host roster state follows committed
-media, each no-progress Peer candidate is bounded by the existing five-second
-window, and a newly committed empty Host root gets one one-shot healthy fanout
-convergence opportunity. Sanitized canary identity is stable within a room.
+Measured route convergence and generation-owned Viewer presentation are
+deployed. A compatible `screener-v16` application restart retained the active
+6020 Host capture and rebuilt six Viewer routes without a page reload.
 
 ## Active Boundaries
 
