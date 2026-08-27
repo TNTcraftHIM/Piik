@@ -101,6 +101,11 @@ export function senderQualityEvidenceFromSnapshot(
     sampleTimestampMs,
     routeRevision,
     state,
+    diagnostics: {
+      reason: state === "unknown" ? null : snapshot.metrics.qualityLimitationReason,
+      framesPerSecond: snapshot.metrics.framesPerSecond,
+      bitrateKbps: snapshot.metrics.bitrateKbps,
+    },
   });
   if (!parsed.success) {
     return null;
@@ -153,6 +158,11 @@ export function sfuPublisherQualityEvidenceFromMetrics(
     publicationGeneration,
     state,
     sampleTimestampMs,
+    diagnostics: {
+      reason: state === "unknown" ? null : metrics.qualityLimitationReason,
+      framesPerSecond: metrics.framesPerSecond,
+      bitrateKbps: metrics.bitrateKbps,
+    },
   });
   if (!parsed.success) {
     return null;

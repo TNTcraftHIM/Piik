@@ -43,6 +43,9 @@ must continuously show a truthful accessible connection stage rather than a
 black screen, ICE-connected state, or unproved `playing` event.
 
 - A proved current frame remains visible behind non-terminal recovery state.
+- Host roster connection state follows the server's committed physical media
+  path. A pending candidate or temporarily stale quality sample may annotate
+  optimization, but cannot downgrade an active Viewer to routing.
 - Host pause retains the current frame and waits for resume.
 - Host signaling loss alone does not invalidate media that is still healthy.
 - Exact media failure or terminal route failure invalidates current-frame proof

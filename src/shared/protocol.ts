@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v15";
+export const SIGNALING_PROTOCOL = "screener-v16";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -104,7 +104,7 @@ export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
       peerId: opaqueIdSchema,
       displayName: displayNameSchema,
       upstream: mediaRouteUpstreamSchema,
-      sfuMediaReady: z.literal(true).optional(),
+      mediaReady: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -118,7 +118,7 @@ export const viewerPresenceEntrySchema = z
     peerId: opaqueIdSchema,
     displayName: displayNameSchema,
     upstream: mediaRouteUpstreamSchema,
-    sfuMediaReady: z.literal(true).optional(),
+    mediaReady: z.literal(true).optional(),
   })
   .strict();
 export type ViewerPresenceEntry = z.infer<typeof viewerPresenceEntrySchema>;
@@ -363,6 +363,7 @@ export const routeDemandReasonSchema = z.enum([
   "sfu-bootstrap",
   "direct-convergence",
   "quality-convergence",
+  "root-convergence",
 ]);
 export type RouteDemandReason = z.infer<typeof routeDemandReasonSchema>;
 
@@ -649,6 +650,14 @@ const viewerQualityEvidenceWindowShape = {
   metrics: viewerQualityEvidenceMetricsSchema,
 };
 
+const senderQualityDiagnosticsSchema = z
+  .object({
+    reason: z.enum(["none", "bandwidth", "cpu"]).nullable(),
+    framesPerSecond: nullableEvidenceNumber(240),
+    bitrateKbps: nullableEvidenceNumber(100_000),
+  })
+  .strict();
+
 export const viewerQualityEvidenceMessageSchema = z
   .object({
     type: z.literal("viewer-quality-evidence"),
@@ -672,6 +681,7 @@ export const senderQualityEvidenceMessageSchema = z
       .nullable(),
     routeRevision: mediaRouteRevisionSchema,
     state: z.enum(["unknown", "healthy", "degraded"]),
+    diagnostics: senderQualityDiagnosticsSchema,
   })
   .strict()
   .superRefine((message, context) => {
@@ -685,6 +695,20 @@ export const senderQualityEvidenceMessageSchema = z
         code: "custom",
         message: "Known sender quality needs exact RTP identity",
         path: ["rtpStatsId"],
+      });
+    }
+    const reason = message.diagnostics.reason;
+    if (
+      (message.state === "healthy" && reason !== "none") ||
+      (message.state === "degraded" &&
+        reason !== "bandwidth" &&
+        reason !== "cpu") ||
+      (message.state === "unknown" && reason !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Sender quality reason must match its native state",
+        path: ["diagnostics", "reason"],
       });
     }
   });
@@ -701,6 +725,7 @@ export const sfuPublisherQualityEvidenceMessageSchema = z
       .min(0)
       .max(Number.MAX_SAFE_INTEGER)
       .nullable(),
+    diagnostics: senderQualityDiagnosticsSchema,
   })
   .strict()
   .superRefine((message, context) => {
@@ -709,6 +734,20 @@ export const sfuPublisherQualityEvidenceMessageSchema = z
         code: "custom",
         message: "Known SFU publisher quality needs an exact sample",
         path: ["sampleTimestampMs"],
+      });
+    }
+    const reason = message.diagnostics.reason;
+    if (
+      (message.state === "healthy" && reason !== "none") ||
+      (message.state === "degraded" &&
+        reason !== "bandwidth" &&
+        reason !== "cpu") ||
+      (message.state === "unknown" && reason !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "SFU publisher reason must match its native state",
+        path: ["diagnostics", "reason"],
       });
     }
   });

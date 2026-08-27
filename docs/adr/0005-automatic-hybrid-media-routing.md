@@ -76,6 +76,13 @@ There is no independent depth cap. Room admission and acyclicity bound the graph
 shallowest-first is a preference, not a periodic balancing mandate. IP address,
 geography, NAT guess, UA, and scalar quality score do not select a parent.
 
+One structural exception is event-driven Host-root capacity convergence. After a
+new Host-root edge commits, if that root has zero direct children and another
+Host root has at least two, one deterministic direct child may prepare against the new
+root. A fresh healthy candidate sender proof is required before make-before-break
+commit. Success moves one branch toward even fanout; failure consumes that one-shot intent. No timer,
+continuous rebalance or general load score is introduced.
+
 A failed exact tuple is consumed only for its current operation. A later external
 fact may make it eligible again; there is no persistent parent blacklist.
 
@@ -118,6 +125,11 @@ before unresolved direct candidates. After an SFU route commits, finite remainin
 Peer candidates converge behind working media, one at a time and round-robin
 across SFU Viewers. New join or repair work preempts this background convergence.
 Exhausting direct candidates simply keeps the working SFU route.
+
+The five-second no-transport-progress window is candidate-relative across every
+Peer operation. A new candidate receives its own window within the unchanged
+total operation deadline; exact transport progress retains it until media proof
+or that deadline.
 
 If the Host is full and no publication exists, one bounded SFU-bootstrap intent
 owns the original waiting demand and a finite cursor of eligible Host-direct

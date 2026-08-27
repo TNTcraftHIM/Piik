@@ -227,6 +227,20 @@ into a scalar score or infer unconnected path quality. The single SFU
 publication does not imply one quality node: Host ingress is generation-scoped,
 and every Viewer subscription needs its own candidate proof.
 
+The 2026-08-27 room-6020 canary observed 21 successful Peer candidates, all
+within two seconds, and 19 failed candidates with a 15-second median. Reusing the
+existing five-second no-progress window for each background Peer candidate
+therefore removes measured queue tail without adding a new threshold; candidates
+with transport progress still retain the total deadline. The same run showed
+that native sender health can recover while a Viewer still reports low delivered
+FPS, so receiver-quality routing remains an evidence problem rather than grounds
+for an uncalibrated FPS threshold.
+
+Canary logs use stable room-scoped anonymous ordinals. They may record native
+limitation reason and bounded sender/receiver FPS and bitrate already collected
+by the application, but never display names, raw Peer IDs, SDP, ICE candidates,
+tokens or media credentials.
+
 SFU has asymmetric evidence. The Browser publication proves shared Host-to-SFU
 ingress, while exact SFU-to-Viewer sending and layer selection live inside
 LiveKit. The accepted model therefore keeps SFU as a bounded suffix: LiveKit

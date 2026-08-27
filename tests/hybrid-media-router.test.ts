@@ -12,6 +12,15 @@ import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
 const SHARE_GENERATION = "share_generation_12345678";
 
+function senderDiagnostics(state: "unknown" | "healthy" | "degraded") {
+  return {
+    reason:
+      state === "unknown" ? null : state === "healthy" ? "none" : "bandwidth",
+    framesPerSecond: null,
+    bitrateKbps: null,
+  } as const;
+}
+
 function createStore(maxViewersPerRoom = 20) {
   return new RoomStore({
     leaseMs: 60_000,
@@ -113,7 +122,7 @@ function harness(
       })
     : undefined;
   const roomControl = withSfu ? new FakeSfuRoomControl() : undefined;
-  const onViewerMediaSnapshot = vi.fn();
+  const onRoutesChanged = vi.fn();
   let nextTokenIssueError: Error | null = null;
   const router = new HybridMediaRouter({
     roomStore: store,
@@ -153,14 +162,14 @@ function harness(
       connections.delete(`${roomId}:${viewerPeerId}`);
     },
     getShareGeneration: () => SHARE_GENERATION,
-    onViewerMediaSnapshot,
+    onRoutesChanged,
   });
   return {
     store,
     sent,
     admission,
     roomControl,
-    onViewerMediaSnapshot,
+    onRoutesChanged,
     failNextTokenIssue() {
       nextTokenIssueError = new Error("token issue failed");
     },
@@ -253,6 +262,7 @@ describe("HybridMediaRouter v9 runtime", () => {
           sampleTimestampMs: 100,
           routeRevision: secondEdge.revision,
           state: "healthy",
+          diagnostics: senderDiagnostics("healthy"),
         }),
       ).toBe(true);
       expect(
@@ -265,6 +275,7 @@ describe("HybridMediaRouter v9 runtime", () => {
           sampleTimestampMs: 100,
           routeRevision: firstEdge.revision,
           state: "healthy",
+          diagnostics: senderDiagnostics("healthy"),
         }),
       ).toBe(true);
       for (let window = 0; window < 3; window += 1) {
@@ -278,6 +289,7 @@ describe("HybridMediaRouter v9 runtime", () => {
             sampleTimestampMs: 101 + window,
             routeRevision: firstEdge.revision,
             state: "degraded",
+            diagnostics: senderDiagnostics("degraded"),
           }),
         ).toBe(true);
       }
@@ -308,6 +320,7 @@ describe("HybridMediaRouter v9 runtime", () => {
           sampleTimestampMs: 200,
           routeRevision: qualityPrepare.revision,
           state: "healthy",
+          diagnostics: senderDiagnostics("healthy"),
         }),
       ).toBe(true);
       await vi.waitFor(() =>
@@ -400,6 +413,7 @@ describe("HybridMediaRouter v9 runtime", () => {
             sampleTimestampMs: 100 + index,
             routeRevision: active.revision,
             state,
+            diagnostics: senderDiagnostics(state),
           }),
         ).toBe(true);
       }
@@ -427,11 +441,11 @@ describe("HybridMediaRouter v9 runtime", () => {
   });
 
 
-  it("reports active SFU viewers as one authoritative snapshot", async () => {
-    const { store, sent, router, onViewerMediaSnapshot } = harness(1, true);
+  it("notifies the presence owner after the committed graph changes", async () => {
+    const { store, sent, router, onRoutesChanged } = harness(1, true);
     try {
       const room = await store.createRoom();
-      const { first, second } = await establishSfuRoom(
+      await establishSfuRoom(
         store,
         sent,
         router,
@@ -439,23 +453,7 @@ describe("HybridMediaRouter v9 runtime", () => {
       );
 
       await vi.waitFor(() => {
-        const [reportedRoomId, viewers] =
-          onViewerMediaSnapshot.mock.calls.at(-1) ?? [];
-        expect(reportedRoomId).toBe(room.roomId);
-        expect(
-          new Set(
-            (viewers ?? []).map(
-              (viewer: { viewerPeerId: string }) => viewer.viewerPeerId,
-            ),
-          ),
-        ).toEqual(new Set([first.peerId, second.peerId]));
-        expect(
-          new Set(
-            (viewers ?? []).map(
-              (viewer: { revision: number }) => viewer.revision,
-            ),
-          ).size,
-        ).toBe(1);
+        expect(onRoutesChanged.mock.calls.at(-1)).toEqual([room.roomId]);
       });
     } finally {
       await router.close();

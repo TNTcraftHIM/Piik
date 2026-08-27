@@ -2951,17 +2951,15 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               const hasCurrentQualityEvidence =
                 hasMatchingQualityEvidence &&
                 qualityPresentation?.fresh === true;
-              const hasCurrentSfuEvidence =
-                viewer.upstream.kind === "sfu" &&
-                viewer.sfuMediaReady === true;
+              const hasCommittedMedia = viewer.mediaReady === true;
               const hasCurrentRouteEvidence =
                 hasPeerRouteEvidence(snapshot) ||
                 hasCurrentQualityEvidence ||
-                hasCurrentSfuEvidence;
+                hasCommittedMedia;
               const hasCurrentConnectionEvidence =
                 snapshot?.connectionState === "connected" ||
                 hasCurrentQualityEvidence ||
-                hasCurrentSfuEvidence;
+                hasCommittedMedia;
               const viewerState =
                 hasCurrentConnectionEvidence
                   ? "connected"
