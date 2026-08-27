@@ -8,12 +8,12 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `0bcf0ff47556f3d3fda65bde8bfb2152812d4b41`, release `0bcf0ff`, wire
-  `screener-v16`, from `/opt/screener/releases/0bcf0ff`. The immutable runtime
+  `aa3043b9059264963ef9206e1e606a6d3c83a873`, release `aa3043b`, wire
+  `screener-v16`, from `/opt/screener/releases/aa3043b`. The immutable runtime
   tar SHA-256 is
-  `4104f3f87205183e4246d75a6ad9044c8a4641072e8891050a20aebc993d7d77`;
+  `c1eb9e575a6865dc1b1ad9b9c79d5575a0e25592576c8362039c501a1e45647c`;
   its 41-file manifest SHA-256 is
-  `df284aa2d200fa9314fcd2c2459fea7680579c7692ceac7ed1c605080ec44a92`.
+  `7da8010103611f033a9c9bfe8a22f2645edf63b1d923459b3af7bd5ca5081f88`.
 - The served Browser entry references `assets/index-DvVz3_bv.js`; the public
   asset SHA-256 is
   `a75114ab543eb247822ac86fb4aec78ca03a6ded5032c9f9fb8b92a0c2cb271f`.
