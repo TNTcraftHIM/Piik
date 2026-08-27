@@ -7,7 +7,9 @@ topics are not implementation authority.
 
 ## Now
 
-No implementation task is currently authorized.
+1. **Release the 6020 canary follow-up.** Preserve committed Host roster state,
+   reuse the five-second candidate progress gate, perform one-shot healthy root
+   fanout convergence, and retain stable bounded canary evidence.
 
 ## Parked Repository Work
 

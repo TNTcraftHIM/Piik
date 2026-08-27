@@ -45,7 +45,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical source uses the strict `screener-v15` Browser/server contract.
+- Canonical source uses the strict `screener-v16` Browser/server contract.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector remain implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -72,10 +72,10 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-Native-edge local convergence is deployed behind its default-off per-share
-policy. Persistent exact sender windows drive ordinary P2P movement. SFU quality
-work is limited to multi-root Host fanout relief and requires independent
-Host-ingress and same-Viewer candidate proof before one move.
+The 6020 canary correction is implemented in source and awaits deployment. It
+keeps Host roster state on committed media, bounds each no-progress Peer
+candidate at five seconds, adds one-shot healthy Host-root fanout convergence,
+and stabilizes anonymized canary identity and metrics.
 
 ## Active Boundaries
 
@@ -92,5 +92,6 @@ Host-ingress and same-Viewer candidate proof before one move.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Sanitized route-event logging remains
-enabled for the pre-release canary. Broader product evidence remains parked.
+Production `screener-v15` can falsely show committed Viewers as routing and can
+spend 15 seconds on background candidates. `screener-v16` is the active P1
+correction. Sanitized route logging remains enabled.

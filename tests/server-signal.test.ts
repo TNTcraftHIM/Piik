@@ -905,6 +905,9 @@ describe("WebSocket signaling", () => {
           viewer.upstream.peerId === hostAuth.peerId,
       ),
     ).toHaveLength(2);
+    expect(
+      viewerPresenceEntries(full).every((viewer) => viewer.mediaReady === true),
+    ).toBe(true);
     const relay = viewerPresenceEntries(full).find(
       (viewer) =>
         viewer.upstream.kind === "peer" &&

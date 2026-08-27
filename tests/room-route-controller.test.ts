@@ -24,6 +24,7 @@ function controller(
   options: {
     sfuEnabled?: boolean;
     qualityConvergenceEnabled?: boolean;
+    operationTimeoutMs?: number;
   } = {},
 ) {
   const routes = new RoomRouteController<string>({
@@ -407,6 +408,101 @@ describe("RoomRouteController", () => {
     expect(observeMigrated("degraded", 112).accepted).toBe(true);
     expect(routes.reconcile(113).operation?.reason).toBe(
       "quality-convergence",
+    );
+  });
+
+  it("uses one healthy serial operation to distribute a newly committed Host root", () => {
+    const routes = controller(2, { qualityConvergenceEnabled: true });
+    addViewer(routes, B, 2);
+    addViewer(routes, C, 0);
+    addViewer(routes, D, 0);
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    routes.hydrateEdge(C, peerEdge(B, "c_from_b"));
+    routes.hydrateEdge(D, peerEdge(B, "d_from_b"));
+    addViewer(routes, A, 2, 10);
+
+    const joined = routes.reconcile(10).operation!;
+    expect(joined.candidates[0]?.tuple).toEqual({
+      kind: "peer",
+      parentPeerId: HOST,
+      transport: "direct",
+    });
+    commitCurrent(routes, 11, "a_from_host");
+
+    const convergence = routes.reconcile(13).operation!;
+    expect(convergence).toMatchObject({ reason: "root-convergence" });
+    expect(convergence.candidates).toHaveLength(1);
+    expect(convergence.candidates[0]?.tuple).toEqual({
+      kind: "peer",
+      parentPeerId: A,
+      transport: "direct",
+    });
+    const oldParent = (
+      routes.snapshot().upstreamByViewer.get(convergence.childPeerId) as {
+        parentPeerId: string;
+      }
+    ).parentPeerId;
+    expect(oldParent).toBe(B);
+
+    const prepared = beginCandidate(routes, {
+      nowMs: 14,
+      connectionId: "root_convergence_candidate",
+      reservation: { kind: "direct" },
+    }).operation!;
+    const guard = {
+      childPeerId: convergence.childPeerId,
+      childSessionId: convergence.childSessionId,
+      revision: prepared.current!.revision,
+      connectionId: "root_convergence_candidate",
+    };
+    expect(routes.candidateReady(guard, 15)).toMatchObject({
+      accepted: true,
+      committed: false,
+    });
+    expect(
+      routes.observeSenderQualityEvidence({
+        parentPeerId: A,
+        parentSessionId: `${A}_session`,
+        childPeerId: convergence.childPeerId,
+        routeRevision: prepared.current!.revision,
+        connectionId: "root_convergence_candidate",
+        senderIdentity: "root-rtp\u0000track",
+        sampleTimestampMs: 16,
+        state: "healthy",
+        acceptedAtMs: 16,
+      }).committed,
+    ).toBe(true);
+    expect(
+      routes.snapshot().upstreamByViewer.get(convergence.childPeerId),
+    ).toMatchObject({ parentPeerId: A });
+    expect(routes.reconcile(17).operation).toBeUndefined();
+  });
+
+  it("gives each unconnected Peer candidate its own bounded progress window", () => {
+    const routes = controller(2, { operationTimeoutMs: 20_000 });
+    addViewer(routes, B, 2);
+    addViewer(routes, C, 2);
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    routes.hydrateEdge(C, peerEdge(HOST, "c_from_host"));
+    addViewer(routes, A, 0, 0);
+
+    const operation = routes.reconcile(0).operation!;
+    beginCandidate(routes, {
+      nowMs: 100,
+      connectionId: "first_silent_candidate",
+      reservation: { kind: "direct" },
+    });
+    expect(routes.snapshot().operation?.wakeAtMs).toBe(5_100);
+    expect(routes.operationExpired(5_100).accepted).toBe(true);
+
+    beginCandidate(routes, {
+      nowMs: 5_200,
+      connectionId: "second_silent_candidate",
+      reservation: { kind: "direct" },
+    });
+    expect(routes.snapshot().operation?.wakeAtMs).toBe(10_200);
+    expect(routes.snapshot().operation?.deadlineAtMs).toBe(
+      operation.deadlineAtMs,
     );
   });
 
