@@ -7,11 +7,10 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Native-edge topology convergence.** Implement ADR-0005's categorical
-   `unknown | healthy | degraded` evidence, availability-first local moves, one
-   serial candidate, bounded Host-to-SFU suffix, default-off pre-share rollout
-   gate, and default-off peer-only policy. Current production remains
-   observation-only until focused route and Browser gates pass.
+1. **Release native-edge topology convergence.** Integrate the accepted
+   `screener-v14` implementation, deploy the immutable application artifact, and
+   complete scoped direct/SFU postflight. Production remains observation-only
+   until cutover succeeds.
 
 ## Parked Repository Work
 

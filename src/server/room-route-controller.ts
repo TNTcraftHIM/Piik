@@ -93,6 +93,7 @@ export interface ControllerOptions {
   endpointMediaCopyCapacity: number;
   operationTimeoutMs: number;
   sfuEnabled?: boolean;
+  qualityConvergenceEnabled?: boolean;
 }
 
 const routeDebug = debuglog("screener-route");
@@ -122,6 +123,9 @@ interface Attempt<Resource> {
   publicationConnectionId?: string;
   reservation: CandidateReservation<Resource>;
   transportConnected: boolean;
+  mediaReady: boolean;
+  senderQualityState?: "healthy" | "degraded";
+  senderQualityAcceptedAtMs?: number;
 }
 
 interface ChildOperation<Resource> {
@@ -191,6 +195,7 @@ export interface ReconcileResult<Resource> {
 
 export interface SettleResult<Resource> {
   accepted: boolean;
+  committed?: boolean;
   failedPeerIds: readonly string[];
   activeRevision: number;
   released: readonly Resource[];
@@ -237,6 +242,53 @@ interface RouteQualityObservation {
   pauseCount: number;
   pauseDurationMs: number;
   lastAcceptedAtMs: number;
+  lastDecodedProgressAtMs: number | null;
+}
+
+interface SenderQualityObservation {
+  childSessionId: string;
+  parentPeerId: string;
+  parentSessionId: string;
+  connectionId: string;
+  senderIdentity: string;
+  state: "healthy" | "degraded";
+  lastAcceptedAtMs: number;
+  consumedAtFactVersion?: number;
+}
+
+export interface SenderQualityEvidenceInput {
+  parentPeerId: string;
+  parentSessionId: string;
+  childPeerId: string;
+  routeRevision: number;
+  connectionId: string;
+  senderIdentity: string | null;
+  state: "unknown" | "healthy" | "degraded";
+  acceptedAtMs: number;
+}
+
+export interface SenderQualityEvidenceResult<Resource> {
+  accepted: boolean;
+  committed: boolean;
+  failedPeerIds: readonly string[];
+  activeRevision: number;
+  released: readonly Resource[];
+}
+
+interface SfuPublisherQualityObservation {
+  hostSessionId: string;
+  publicationGeneration: string;
+  state: "healthy" | "degraded";
+  lastAcceptedAtMs: number;
+}
+
+export interface SfuPublisherQualityEvidenceInput {
+  hostPeerId: string;
+  hostSessionId: string;
+  publicationGeneration: string;
+  routeRevision: number;
+  state: "unknown" | "healthy" | "degraded";
+  acceptedAtMs: number;
 }
 
 export interface RouteQualityEvidenceInput {
@@ -278,6 +330,12 @@ export class RoomRouteController<Resource = unknown> {
     string,
     RouteQualityObservation
   >();
+  private readonly senderQualityObservations = new Map<
+    string,
+    SenderQualityObservation
+  >();
+  private readonly senderQualityBaselines = new Map<string, boolean>();
+  private sfuPublisherQualityObservation?: SfuPublisherQualityObservation;
   private readonly qualityBaselinesPending = new Set<string>();
   private readonly directContinuations = new Map<string, DirectContinuation>();
   private sfuBootstrapIntent?: SfuBootstrapIntent;
@@ -292,6 +350,7 @@ export class RoomRouteController<Resource = unknown> {
       endpointCapacity: options.endpointMediaCopyCapacity,
       operationTimeoutMs: options.operationTimeoutMs,
       sfuEnabled: options.sfuEnabled === true,
+      qualityConvergenceEnabled: options.qualityConvergenceEnabled === true,
     });
   }
 
@@ -373,7 +432,11 @@ export class RoomRouteController<Resource = unknown> {
           ? {
               childOrdinal,
               reason: operation.reason,
-              stage: operation.current ? "first-frame" : "admission",
+              stage: operation.current?.mediaReady
+                ? "quality-proof"
+                : operation.current
+                  ? "first-frame"
+                  : "admission",
               cursor: operation.cursor,
               candidateCount: operation.candidates.length,
             }
@@ -540,6 +603,7 @@ export class RoomRouteController<Resource = unknown> {
       parentSessionId:
         this.participants.get(edge.parentPeerId)?.sessionId ?? "",
     } : { ...edge, childSessionId });
+    this.requireSenderQualityBaseline(childPeerId);
     this.assertGraph();
   }
 
@@ -692,6 +756,9 @@ export class RoomRouteController<Resource = unknown> {
     if (paused) {
       this.qualityObservations.clear();
       this.qualityBaselinesPending.clear();
+      this.senderQualityObservations.clear();
+      this.senderQualityBaselines.clear();
+      this.sfuPublisherQualityObservation = undefined;
     }
     this.touchFacts();
     return paused ? this.abortOperation(nowMs, "aborted") : [];
@@ -762,6 +829,7 @@ export class RoomRouteController<Resource = unknown> {
         pauseCount: 0,
         pauseDurationMs: 0,
         lastAcceptedAtMs: input.acceptedAtMs,
+        lastDecodedProgressAtMs: null,
       };
       this.qualityObservations.set(input.childPeerId, observation);
     }
@@ -769,7 +837,20 @@ export class RoomRouteController<Resource = unknown> {
     const metrics = input.metrics;
     if (
       metrics.framesDecodedDelta === null ||
-      metrics.framesDecodedDelta <= 0 ||
+      metrics.framesDecodedDelta <= 0
+    ) {
+      return "accepted";
+    }
+    const hadFreshDecodedProgress =
+      observation.lastDecodedProgressAtMs !== null &&
+      input.acceptedAtMs <
+        observation.lastDecodedProgressAtMs +
+          VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
+    observation.lastDecodedProgressAtMs = input.acceptedAtMs;
+    if (!hadFreshDecodedProgress && edge.kind === "sfu") {
+      this.touchFacts();
+    }
+    if (
       metrics.freezeCountDelta === null ||
       metrics.freezeDurationMsDelta === null ||
       metrics.pauseCountDelta === null ||
@@ -809,6 +890,339 @@ export class RoomRouteController<Resource = unknown> {
     return "observed";
   }
 
+  observeSenderQualityEvidence(
+    input: SenderQualityEvidenceInput,
+    commitReservation: (
+      reservation: CandidateReservation<Resource>,
+    ) => boolean = () => true,
+  ): SenderQualityEvidenceResult<Resource> {
+    const rejected = (): SenderQualityEvidenceResult<Resource> => ({
+      accepted: false,
+      committed: false,
+      failedPeerIds: [],
+      activeRevision: this.revision,
+      released: [],
+    });
+    if (
+      this.options.qualityConvergenceEnabled !== true ||
+      this.paused ||
+      !Number.isSafeInteger(input.acceptedAtMs) ||
+      input.acceptedAtMs < 0
+    ) {
+      return rejected();
+    }
+    const parent = this.participants.get(input.parentPeerId);
+    const child = this.participants.get(input.childPeerId);
+    if (
+      !parent?.sessionId ||
+      parent.sessionId !== input.parentSessionId ||
+      !child?.sessionId ||
+      child.departureConfirmed ||
+      parent.departureConfirmed
+    ) {
+      return rejected();
+    }
+
+    const operation = this.operation;
+    const attempt = operation?.current;
+    if (
+      operation?.reason === "quality-convergence" &&
+      attempt?.tuple.kind === "peer" &&
+      operation.childPeerId === input.childPeerId &&
+      operation.childSessionId === child.sessionId &&
+      attempt.tuple.parentPeerId === input.parentPeerId &&
+      attempt.parentSessionId === input.parentSessionId &&
+      attempt.connectionId === input.connectionId &&
+      attempt.revision === input.routeRevision
+    ) {
+      return this.settleCandidateQuality(
+        operation,
+        attempt,
+        input.state,
+        input.acceptedAtMs,
+        input.senderIdentity,
+        commitReservation,
+      );
+    }
+
+    const edge = this.upstreamByViewer.get(input.childPeerId);
+    if (
+      input.routeRevision !== this.revision ||
+      edge?.kind !== "peer" ||
+      !edge.usable ||
+      !edge.physicalActive ||
+      edge.parentPeerId !== input.parentPeerId ||
+      edge.parentSessionId !== input.parentSessionId ||
+      edge.childSessionId !== child.sessionId ||
+      edge.connectionId !== input.connectionId
+    ) {
+      return rejected();
+    }
+    if (input.state === "unknown") {
+      this.senderQualityObservations.delete(input.childPeerId);
+      this.senderQualityBaselines.set(
+        input.childPeerId,
+        this.senderQualityBaselines.get(input.childPeerId) ?? true,
+      );
+      const released =
+        operation?.reason === "quality-convergence" &&
+        operation.childPeerId === input.childPeerId
+          ? this.abortOperation(input.acceptedAtMs, "aborted")
+          : [];
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released,
+      };
+    }
+    if (!input.senderIdentity) {
+      return rejected();
+    }
+    const previous = this.senderQualityObservations.get(input.childPeerId);
+    const sameIdentity =
+      previous?.childSessionId === child.sessionId &&
+      previous.parentPeerId === input.parentPeerId &&
+      previous.parentSessionId === input.parentSessionId &&
+      previous.connectionId === input.connectionId;
+    const sameSenderIdentity =
+      sameIdentity && previous?.senderIdentity === input.senderIdentity;
+    const senderIdentityChanged =
+      sameIdentity && previous?.senderIdentity !== input.senderIdentity;
+    const wasFreshHealthy =
+      sameSenderIdentity &&
+      previous?.state === "healthy" &&
+      input.acceptedAtMs <
+        previous.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
+    const baselineRequired = this.senderQualityBaselines.has(
+      input.childPeerId,
+    );
+    const baselineSuppressesFact =
+      this.senderQualityBaselines.get(input.childPeerId) === true;
+    if (input.state === "healthy") {
+      this.senderQualityBaselines.delete(input.childPeerId);
+    }
+    this.senderQualityObservations.set(input.childPeerId, {
+      childSessionId: child.sessionId,
+      parentPeerId: input.parentPeerId,
+      parentSessionId: input.parentSessionId,
+      connectionId: input.connectionId,
+      senderIdentity: input.senderIdentity,
+      state: input.state,
+      lastAcceptedAtMs: input.acceptedAtMs,
+      consumedAtFactVersion:
+        (baselineRequired || senderIdentityChanged) &&
+        input.state === "degraded"
+          ? this.factVersion
+          : sameSenderIdentity &&
+              previous?.state === "degraded" &&
+              input.state === "degraded"
+            ? previous.consumedAtFactVersion
+            : undefined,
+    });
+    if (
+      input.state === "healthy" &&
+      !wasFreshHealthy &&
+      !baselineSuppressesFact
+    ) {
+      this.touchFacts();
+    }
+    if (
+      input.state === "healthy" &&
+      operation?.reason === "quality-convergence" &&
+      operation.childPeerId === input.childPeerId
+    ) {
+      const released = this.abortOperation(input.acceptedAtMs, "aborted");
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released,
+      };
+    }
+    return {
+      accepted: true,
+      committed: false,
+      failedPeerIds: [],
+      activeRevision: this.revision,
+      released: [],
+    };
+  }
+
+  observeSfuPublisherQualityEvidence(
+    input: SfuPublisherQualityEvidenceInput,
+    commitReservation: (
+      reservation: CandidateReservation<Resource>,
+    ) => boolean = () => true,
+  ): SenderQualityEvidenceResult<Resource> {
+    const rejected = (): SenderQualityEvidenceResult<Resource> => ({
+      accepted: false,
+      committed: false,
+      failedPeerIds: [],
+      activeRevision: this.revision,
+      released: [],
+    });
+    const host = this.participants.get(this.options.hostPeerId);
+    if (
+      this.options.qualityConvergenceEnabled !== true ||
+      this.paused ||
+      input.hostPeerId !== this.options.hostPeerId ||
+      !host?.sessionId ||
+      host.sessionId !== input.hostSessionId
+    ) {
+      return rejected();
+    }
+    const operation = this.operation;
+    const attempt = operation?.current;
+    if (
+      operation?.reason === "quality-convergence" &&
+      attempt?.tuple.kind === "sfu" &&
+      attempt.hostSessionId === input.hostSessionId &&
+      attempt.publicationGeneration === input.publicationGeneration &&
+      attempt.revision === input.routeRevision
+    ) {
+      return this.settleCandidateQuality(
+        operation,
+        attempt,
+        input.state,
+        input.acceptedAtMs,
+        input.publicationGeneration,
+        commitReservation,
+      );
+    }
+    if (
+      input.routeRevision !== this.revision ||
+      !this.hostPublication?.usable ||
+      !this.hostPublication.physicalActive ||
+      this.hostPublication.hostSessionId !== input.hostSessionId ||
+      this.hostPublication.generation !== input.publicationGeneration
+    ) {
+      return rejected();
+    }
+    if (input.state === "unknown") {
+      this.sfuPublisherQualityObservation = undefined;
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released: [],
+      };
+    }
+    const previous = this.sfuPublisherQualityObservation;
+    const wasFreshHealthy =
+      previous?.hostSessionId === input.hostSessionId &&
+      previous.publicationGeneration === input.publicationGeneration &&
+      previous.state === "healthy" &&
+      input.acceptedAtMs <
+        previous.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
+    this.sfuPublisherQualityObservation = {
+      hostSessionId: input.hostSessionId,
+      publicationGeneration: input.publicationGeneration,
+      state: input.state,
+      lastAcceptedAtMs: input.acceptedAtMs,
+    };
+    if (input.state === "healthy" && !wasFreshHealthy) {
+      this.touchFacts();
+    }
+    return {
+      accepted: true,
+      committed: false,
+      failedPeerIds: [],
+      activeRevision: this.revision,
+      released: [],
+    };
+  }
+
+  private settleCandidateQuality(
+    operation: ChildOperation<Resource>,
+    attempt: Attempt<Resource>,
+    state: "unknown" | "healthy" | "degraded",
+    acceptedAtMs: number,
+    senderIdentity: string | null,
+    commitReservation: (
+      reservation: CandidateReservation<Resource>,
+    ) => boolean,
+  ): SenderQualityEvidenceResult<Resource> {
+    if (state === "unknown") {
+      attempt.senderQualityState = undefined;
+      attempt.senderQualityAcceptedAtMs = undefined;
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released: [],
+      };
+    }
+    if (!senderIdentity) {
+      return {
+        accepted: false,
+        committed: false,
+        failedPeerIds: [],
+        activeRevision: this.revision,
+        released: [],
+      };
+    }
+    attempt.senderQualityState = state;
+    attempt.senderQualityAcceptedAtMs = acceptedAtMs;
+    const guard = {
+      childPeerId: operation.childPeerId,
+      childSessionId: operation.childSessionId,
+      revision: attempt.revision,
+      connectionId: attempt.connectionId,
+    };
+    const settled =
+      state === "degraded"
+        ? this.candidateFailed(guard, acceptedAtMs)
+        : attempt.mediaReady
+          ? this.candidateReady(guard, acceptedAtMs, commitReservation)
+          : null;
+    return {
+      accepted: true,
+      committed: settled?.committed === true,
+      failedPeerIds: settled?.failedPeerIds ?? [],
+      activeRevision: settled?.activeRevision ?? this.revision,
+      released: settled?.released ?? [],
+    };
+  }
+
+  resetSenderQuality(
+    parentPeerId: string,
+    parentSessionId: string,
+    nowMs: number,
+  ): readonly Resource[] {
+    const parent = this.participants.get(parentPeerId);
+    if (parent?.sessionId !== parentSessionId) {
+      return [];
+    }
+    for (const [childPeerId, observation] of this.senderQualityObservations) {
+      if (
+        observation.parentPeerId === parentPeerId &&
+        observation.parentSessionId === parentSessionId
+      ) {
+        this.senderQualityObservations.delete(childPeerId);
+        this.senderQualityBaselines.set(childPeerId, true);
+      }
+    }
+    if (parentPeerId === this.options.hostPeerId) {
+      this.sfuPublisherQualityObservation = undefined;
+    }
+    const operation = this.operation;
+    const attempt = operation?.current;
+    const ownsCandidate =
+      operation?.reason === "quality-convergence" &&
+      attempt &&
+      (attempt.tuple.kind === "peer"
+        ? attempt.tuple.parentPeerId === parentPeerId &&
+          attempt.parentSessionId === parentSessionId
+        : parentPeerId === this.options.hostPeerId &&
+          attempt.hostSessionId === parentSessionId);
+    return ownsCandidate ? this.abortOperation(nowMs, "aborted") : [];
+  }
+
   reconcile(nowMs: number): ReconcileResult<Resource> {
     const released: Resource[] = [];
     const validation = this.validateOrAdvance(nowMs);
@@ -819,6 +1233,15 @@ export class RoomRouteController<Resource = unknown> {
       (this.hasSfuBootstrapWork() || this.selectNextChild())
     ) {
       this.debug("direct-convergence-preempted", {
+        child: this.debugPeer(this.operation.childPeerId),
+      });
+      released.push(...this.abortOperation(nowMs, "aborted"));
+    }
+    if (
+      this.operation?.reason === "quality-convergence" &&
+      (this.hasSfuBootstrapWork() || this.selectNextChild())
+    ) {
+      this.debug("quality-convergence-preempted", {
         child: this.debugPeer(this.operation.childPeerId),
       });
       released.push(...this.abortOperation(nowMs, "aborted"));
@@ -841,14 +1264,23 @@ export class RoomRouteController<Resource = unknown> {
         : bootstrap
           ? undefined
         : this.selectDirectContinuation();
+      const qualityChildPeerId =
+        routeChildPeerId || bootstrap || continuation
+          ? undefined
+          : this.selectQualityChild(nowMs);
       const childPeerId =
-        routeChildPeerId ?? bootstrap?.carrierPeerId ?? continuation?.childPeerId;
+        routeChildPeerId ??
+        bootstrap?.carrierPeerId ??
+        continuation?.childPeerId ??
+        qualityChildPeerId;
       if (!childPeerId) return { removedPeerIds, failedPeerIds, released };
       const child = this.participants.get(childPeerId)!;
       const reason: RouteDemandReason = continuation
         ? "direct-convergence"
         : bootstrap
           ? "sfu-bootstrap"
+          : qualityChildPeerId
+            ? "quality-convergence"
           : (this.routeTimings.get(childPeerId)?.reason ??
             this.routeDemandReason(childPeerId));
       const demandPeerId = bootstrap?.demandPeerId ?? childPeerId;
@@ -856,7 +1288,9 @@ export class RoomRouteController<Resource = unknown> {
       this.ensureDemand(demandPeerId, nowMs, reason);
       let candidates = continuation
         ? [continuation.plan]
-        : this.buildCandidates(childPeerId, bootstrap !== undefined);
+        : qualityChildPeerId
+          ? this.buildQualityCandidates(childPeerId, nowMs)
+          : this.buildCandidates(childPeerId, bootstrap !== undefined);
       if (!bootstrap && !continuation && demand.sfuFirstAtNextRoute) {
         const sfuIndex = candidates.findIndex(
           (candidate) => candidate.tuple.kind === "sfu",
@@ -878,6 +1312,19 @@ export class RoomRouteController<Resource = unknown> {
         });
         if (reason === "direct-convergence") {
           this.directContinuations.delete(childPeerId);
+          continue;
+        }
+        if (reason === "quality-convergence") {
+          const observation = this.senderQualityObservations.get(childPeerId);
+          if (observation) {
+            observation.consumedAtFactVersion = this.factVersion;
+          }
+          this.finishTiming(
+            childPeerId,
+            nowMs,
+            this.currentFinalRoute(childPeerId),
+            "candidate-failed",
+          );
           continue;
         }
         if (reason === "sfu-bootstrap") {
@@ -968,6 +1415,26 @@ export class RoomRouteController<Resource = unknown> {
         failedPeerIds: failedPeerIdsFrom(validation),
       };
     }
+    if (
+      operation.reason === "quality-convergence" &&
+      plan.tuple.kind === "peer" &&
+      !this.qualitySourcePathHealthy(plan.tuple.parentPeerId, input.nowMs)
+    ) {
+      this.noteRejection(operation.demandPeerId, "stale");
+      operation.cursor += 1;
+      this.clearCandidateTiming(operation.demandPeerId);
+      const advanced = this.validateOrAdvance(input.nowMs);
+      return {
+        accepted: true,
+        operation: this.operationSnapshot(),
+        released: [
+          ...validation.released,
+          ...reservationResources(input.reservation),
+          ...advanced.released,
+        ],
+        failedPeerIds: failedPeerIdsFrom(validation, advanced),
+      };
+    }
     if (plan.endpointTransition.kind === "bounded-gap") {
       return {
         accepted: false,
@@ -1003,6 +1470,16 @@ export class RoomRouteController<Resource = unknown> {
     if (tuple.kind === "sfu" && tuple.publication !== "reuse" && !input.publicationConnectionId) {
       throw new Error("SFU publication candidate needs an ingress connection identity");
     }
+    const initialSfuQuality =
+      publicationGeneration &&
+      this.sfuPublisherQualityObservation?.publicationGeneration ===
+        publicationGeneration &&
+      this.sfuPublisherQualityObservation.hostSessionId === hostSessionId &&
+      input.nowMs <
+        this.sfuPublisherQualityObservation.lastAcceptedAtMs +
+          VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
+        ? this.sfuPublisherQualityObservation
+        : undefined;
     operation.current = {
       tuple,
       revision: this.allocateRevision(),
@@ -1017,6 +1494,13 @@ export class RoomRouteController<Resource = unknown> {
       publicationConnectionId: input.publicationConnectionId,
       reservation: input.reservation,
       transportConnected: false,
+      mediaReady: false,
+      ...(tuple.kind === "sfu" && initialSfuQuality
+        ? {
+            senderQualityState: initialSfuQuality.state,
+            senderQualityAcceptedAtMs: initialSfuQuality.lastAcceptedAtMs,
+          }
+        : {}),
     };
     this.debug("candidate-started", {
       child: this.debugPeer(operation.childPeerId),
@@ -1188,6 +1672,54 @@ export class RoomRouteController<Resource = unknown> {
         released: validation.released,
       };
     }
+    if (operation.reason === "quality-convergence") {
+      attempt.mediaReady = true;
+      const currentEdge = this.upstreamByViewer.get(operation.childPeerId);
+      if (
+        !currentEdge ||
+        this.senderQualityState(
+          operation.childPeerId,
+          currentEdge,
+          nowMs,
+        ) !== "degraded"
+      ) {
+        return {
+          accepted: true,
+          committed: false,
+          failedPeerIds: failedPeerIdsFrom(validation),
+          activeRevision: this.revision,
+          released: [
+            ...validation.released,
+            ...this.abortOperation(nowMs, "aborted"),
+          ],
+        };
+      }
+      if (attempt.senderQualityState === undefined) {
+        return {
+          accepted: true,
+          committed: false,
+          failedPeerIds: failedPeerIdsFrom(validation),
+          activeRevision: this.revision,
+          released: validation.released,
+        };
+      }
+      if (
+        attempt.senderQualityAcceptedAtMs === undefined ||
+        nowMs >=
+          attempt.senderQualityAcceptedAtMs +
+            VIEWER_QUALITY_EVIDENCE_EXPIRY_MS ||
+        (attempt.tuple.kind === "peer" &&
+          !this.qualitySourcePathHealthy(
+            attempt.tuple.parentPeerId,
+            nowMs,
+          ))
+      ) {
+        return this.candidateFailed(guard, nowMs);
+      }
+      if (attempt.senderQualityState === "degraded") {
+        return this.candidateFailed(guard, nowMs);
+      }
+    }
     if (!commitReservation(attempt.reservation)) {
       this.debug("candidate-commit-rejected", {
         child: this.debugPeer(operation.childPeerId),
@@ -1233,6 +1765,7 @@ export class RoomRouteController<Resource = unknown> {
     }
     return {
       accepted: true,
+      committed: true,
       failedPeerIds: failedPeerIdsFrom(validation),
       activeRevision: this.revision,
       released,
@@ -1338,6 +1871,9 @@ export class RoomRouteController<Resource = unknown> {
     this.upstreamByViewer.clear();
     this.qualityObservations.clear();
     this.qualityBaselinesPending.clear();
+    this.senderQualityObservations.clear();
+    this.senderQualityBaselines.clear();
+    this.sfuPublisherQualityObservation = undefined;
     this.hostPublication = null;
     this.participants.clear();
     this.routeTimings.clear();
@@ -1383,6 +1919,7 @@ export class RoomRouteController<Resource = unknown> {
     if (nowMs >= operation.deadlineAtMs) {
       const directConvergence = operation.reason === "direct-convergence";
       const sfuBootstrap = operation.reason === "sfu-bootstrap";
+      const qualityConvergence = operation.reason === "quality-convergence";
       if (directConvergence) {
         this.consumeDirectContinuationCandidate(operation);
       }
@@ -1400,17 +1937,21 @@ export class RoomRouteController<Resource = unknown> {
       const bootstrapAvailable =
         !directConvergence &&
         !sfuBootstrap &&
+        !qualityConvergence &&
         !factsChanged &&
         this.bootstrapCandidateAvailable(operation.demandPeerId);
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
-        : !directConvergence && !factsChanged && !bootstrapAvailable;
+        : !directConvergence &&
+          !qualityConvergence &&
+          !factsChanged &&
+          !bootstrapAvailable;
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
       if (!sfuBootstrap) {
         this.finishTiming(
           operation.demandPeerId,
           nowMs,
-          directConvergence
+          directConvergence || qualityConvergence
             ? this.currentFinalRoute(operation.demandPeerId)
             : exhausted
               ? "failed"
@@ -1418,9 +1959,20 @@ export class RoomRouteController<Resource = unknown> {
           factsChanged ? "stale" : "operation-deadline",
         );
       }
+      if (qualityConvergence) {
+        const observation = this.senderQualityObservations.get(
+          operation.childPeerId,
+        );
+        if (observation) {
+          observation.consumedAtFactVersion = this.factVersion;
+        }
+      }
       this.blockAndClear(
         operation,
-        !directConvergence && !sfuBootstrap && !factsChanged,
+        !directConvergence &&
+          !sfuBootstrap &&
+          !qualityConvergence &&
+          !factsChanged,
         released,
         revisionAdvanced,
       );
@@ -1429,7 +1981,8 @@ export class RoomRouteController<Resource = unknown> {
       }
       return {
         ...result,
-        exhausted: directConvergence ? undefined : exhausted,
+        exhausted:
+          directConvergence || qualityConvergence ? undefined : exhausted,
         exhaustedChildPeerId: failedBootstrapDemand ??
           (exhausted ? operation.demandPeerId : undefined),
         expired: true,
@@ -1491,6 +2044,7 @@ export class RoomRouteController<Resource = unknown> {
       if (operation.cursor < operation.candidates.length) return result;
       const directConvergence = operation.reason === "direct-convergence";
       const sfuBootstrap = operation.reason === "sfu-bootstrap";
+      const qualityConvergence = operation.reason === "quality-convergence";
       const factsChanged = operation.builtAtFactVersion !== this.factVersion;
       const rejectionBucket = factsChanged
         ? "stale"
@@ -1509,17 +2063,21 @@ export class RoomRouteController<Resource = unknown> {
       const bootstrapAvailable =
         !directConvergence &&
         !sfuBootstrap &&
+        !qualityConvergence &&
         !factsChanged &&
         this.bootstrapCandidateAvailable(operation.demandPeerId);
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
-        : !directConvergence && !factsChanged && !bootstrapAvailable;
+        : !directConvergence &&
+          !qualityConvergence &&
+          !factsChanged &&
+          !bootstrapAvailable;
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
       if (!sfuBootstrap) {
         this.finishTiming(
           operation.demandPeerId,
           nowMs,
-          directConvergence
+          directConvergence || qualityConvergence
             ? this.currentFinalRoute(operation.demandPeerId)
             : exhausted
               ? "failed"
@@ -1527,13 +2085,25 @@ export class RoomRouteController<Resource = unknown> {
           rejectionBucket,
         );
       }
+      if (qualityConvergence) {
+        const observation = this.senderQualityObservations.get(
+          operation.childPeerId,
+        );
+        if (observation) {
+          observation.consumedAtFactVersion = this.factVersion;
+        }
+      }
       this.blockAndClear(
         operation,
-        !directConvergence && !sfuBootstrap && !factsChanged,
+        !directConvergence &&
+          !sfuBootstrap &&
+          !qualityConvergence &&
+          !factsChanged,
         released,
         this.revision !== activeRevisionAtStart,
       );
-      result.exhausted = directConvergence ? undefined : exhausted;
+      result.exhausted =
+        directConvergence || qualityConvergence ? undefined : exhausted;
       if (failedBootstrapDemand) {
         result.exhaustedChildPeerId = failedBootstrapDemand;
       } else if (exhausted) {
@@ -1617,6 +2187,23 @@ export class RoomRouteController<Resource = unknown> {
         this.directContinuations.delete(operation.childPeerId);
       }
     }
+    const producerPeerIds = new Set<string>();
+    if (old?.kind === "peer") {
+      producerPeerIds.add(old.parentPeerId);
+    }
+    producerPeerIds.add(
+      attempt.tuple.kind === "peer"
+        ? attempt.tuple.parentPeerId
+        : this.options.hostPeerId,
+    );
+    for (const producerPeerId of producerPeerIds) {
+      for (const childPeerId of this.childrenOf(producerPeerId)) {
+        this.senderQualityObservations.delete(childPeerId);
+        this.senderQualityBaselines.set(childPeerId, true);
+      }
+    }
+    this.requireSenderQualityBaseline(operation.childPeerId, true);
+    this.senderQualityBaselines.set(operation.childPeerId, false);
     this.revision = attempt.revision;
     this.operation = undefined;
     this.touchFacts();
@@ -1699,6 +2286,149 @@ export class RoomRouteController<Resource = unknown> {
       .map((candidate) => this.planCandidate(childPeerId, candidate))
       .filter((candidate): candidate is CandidatePlan => candidate !== null &&
         this.candidateValid(childPeerId, candidate));
+  }
+
+  private senderQualityState(
+    childPeerId: string,
+    edge: CommittedEdge<Resource>,
+    nowMs: number,
+  ): "unknown" | "healthy" | "degraded" {
+    if (edge.kind !== "peer") {
+      return this.sourceUsableForQuality(edge) ? "healthy" : "unknown";
+    }
+    const observation = this.senderQualityObservations.get(childPeerId);
+    const child = this.participants.get(childPeerId);
+    return observation &&
+      nowMs < observation.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS &&
+      child?.sessionId === observation.childSessionId &&
+      edge.childSessionId === observation.childSessionId &&
+      edge.parentPeerId === observation.parentPeerId &&
+      edge.parentSessionId === observation.parentSessionId &&
+      edge.connectionId === observation.connectionId &&
+      this.sourceUsableForQuality(edge)
+      ? observation.state
+      : "unknown";
+  }
+
+  private sfuPublisherQualityState(
+    publicationGeneration: string,
+    nowMs: number,
+  ): "unknown" | "healthy" | "degraded" {
+    const observation = this.sfuPublisherQualityObservation;
+    return observation &&
+      observation.publicationGeneration === publicationGeneration &&
+      observation.hostSessionId === this.hostPublication?.hostSessionId &&
+      nowMs < observation.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
+      ? observation.state
+      : "unknown";
+  }
+
+  private qualitySourcePathHealthy(peerId: string, nowMs: number): boolean {
+    if (peerId === this.options.hostPeerId) {
+      return true;
+    }
+    const seen = new Set<string>();
+    while (!seen.has(peerId)) {
+      seen.add(peerId);
+      const edge = this.upstreamByViewer.get(peerId);
+      if (!edge?.usable || !edge.physicalActive) {
+        return false;
+      }
+      if (edge.kind === "sfu") {
+        return (
+          this.sourceUsableForQuality(edge) &&
+          this.decodedProgressFresh(peerId, edge, nowMs) &&
+          this.sfuPublisherQualityState(
+            edge.publicationGeneration,
+            nowMs,
+          ) === "healthy"
+        );
+      }
+      if (this.senderQualityState(peerId, edge, nowMs) !== "healthy") {
+        return false;
+      }
+      if (edge.parentPeerId === this.options.hostPeerId) {
+        return true;
+      }
+      peerId = edge.parentPeerId;
+    }
+    return false;
+  }
+
+  private decodedProgressFresh(
+    childPeerId: string,
+    edge: CommittedEdge<Resource>,
+    nowMs: number,
+  ): boolean {
+    const observation = this.qualityObservations.get(childPeerId);
+    const participant = this.participants.get(childPeerId);
+    return Boolean(
+      observation &&
+        observation.lastDecodedProgressAtMs !== null &&
+        nowMs <
+          observation.lastDecodedProgressAtMs +
+            VIEWER_QUALITY_EVIDENCE_EXPIRY_MS &&
+        participant?.sessionId === observation.childSessionId &&
+        edge.childSessionId === observation.childSessionId &&
+        edge.connectionId === observation.connectionId &&
+        this.qualityObservationMatchesEdge(observation, edge) &&
+        this.sourceUsableForQuality(edge),
+    );
+  }
+
+  private buildQualityCandidates(
+    childPeerId: string,
+    nowMs: number,
+  ): CandidatePlan[] {
+    const current = this.upstreamByViewer.get(childPeerId);
+    if (current?.kind !== "peer") {
+      return [];
+    }
+    const currentKey = edgeTupleKey(current);
+    const candidates = this.buildCandidates(childPeerId, false).filter(
+      (candidate) =>
+        candidate.endpointTransition.kind !== "bounded-gap" &&
+        tupleKey(candidate.tuple) !== currentKey &&
+        (candidate.tuple.kind === "peer"
+          ? this.qualitySourcePathHealthy(candidate.tuple.parentPeerId, nowMs)
+          : candidate.tuple.publication !== "reuse" ||
+            Boolean(
+              this.hostPublication &&
+                this.sfuPublisherQualityState(
+                  this.hostPublication.generation,
+                  nowMs,
+                ) === "healthy",
+            )),
+    );
+    const peers = candidates.filter(
+      (candidate) => candidate.tuple.kind === "peer",
+    );
+    const sfu =
+      current.parentPeerId === this.options.hostPeerId
+        ? candidates.filter((candidate) => candidate.tuple.kind === "sfu")
+        : [];
+    return [...peers, ...sfu];
+  }
+
+  private selectQualityChild(nowMs: number): string | undefined {
+    if (this.options.qualityConvergenceEnabled !== true) {
+      return undefined;
+    }
+    return this.availableViewers()
+      .filter(({ peerId }) => {
+        const edge = this.upstreamByViewer.get(peerId);
+        const observation = this.senderQualityObservations.get(peerId);
+        return Boolean(
+          edge?.kind === "peer" &&
+            observation?.consumedAtFactVersion !== this.factVersion &&
+            this.senderQualityState(peerId, edge, nowMs) === "degraded",
+        );
+      })
+      .sort(
+        (left, right) =>
+          this.depth(left.peerId) - this.depth(right.peerId) ||
+          compareParticipant(left, right),
+      )[0]?.peerId;
   }
 
   private selectNextChild(): string | undefined {
@@ -2252,6 +2982,16 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private advanceActiveRevision(operation: ChildOperation<Resource>): void {
+    if (operation.reason === "quality-convergence" && operation.current) {
+      const producerPeerId =
+        operation.current.tuple.kind === "peer"
+          ? operation.current.tuple.parentPeerId
+          : this.options.hostPeerId;
+      for (const childPeerId of this.childrenOf(producerPeerId)) {
+        this.senderQualityObservations.delete(childPeerId);
+        this.senderQualityBaselines.set(childPeerId, true);
+      }
+    }
     this.revision = this.allocateRevision();
     operation.baseRevision = this.revision;
   }
@@ -2411,7 +3151,12 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private foregroundSfuIndex(operation: ChildOperation<Resource>): number {
-    if (operation.reason === "direct-convergence") return -1;
+    if (
+      operation.reason === "direct-convergence" ||
+      operation.reason === "quality-convergence"
+    ) {
+      return -1;
+    }
     const index = operation.candidates.findIndex(
       (candidate, candidateIndex) =>
         candidateIndex >= operation.cursor && candidate.tuple.kind === "sfu",
@@ -2662,15 +3407,35 @@ export class RoomRouteController<Resource = unknown> {
         : this.descendantsOf(peerId).add(peerId);
     affected.forEach((childPeerId) => {
       this.qualityObservations.delete(childPeerId);
+      this.senderQualityObservations.delete(childPeerId);
+      this.senderQualityBaselines.delete(childPeerId);
       if (this.upstreamByViewer.has(childPeerId)) {
         this.qualityBaselinesPending.add(childPeerId);
+        this.senderQualityBaselines.set(childPeerId, true);
       } else {
         this.qualityBaselinesPending.delete(childPeerId);
+        this.senderQualityBaselines.delete(childPeerId);
       }
     });
   }
 
+  private requireSenderQualityBaseline(
+    peerId: string,
+    suppressFact = false,
+  ): void {
+    for (const childPeerId of this.descendantsOf(peerId).add(peerId)) {
+      if (this.upstreamByViewer.has(childPeerId)) {
+        this.senderQualityObservations.delete(childPeerId);
+        this.senderQualityBaselines.set(
+          childPeerId,
+          suppressFact || this.senderQualityBaselines.get(childPeerId) === true,
+        );
+      }
+    }
+  }
+
   private clearSfuQuality(): void {
+    this.sfuPublisherQualityObservation = undefined;
     for (const [childPeerId, edge] of this.upstreamByViewer) {
       if (edge.kind === "sfu") {
         this.clearQualityForParticipant(childPeerId);

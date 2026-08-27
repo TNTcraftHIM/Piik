@@ -89,11 +89,13 @@ credentials cannot recreate off-ledger media. ADR-0005 owns that lifecycle.
 ## Quality And Privacy Boundaries
 
 WebRTC and LiveKit own ICE, consent, congestion control, bitrate, frame rate,
-resolution, retransmission, reconnect, and SFU layer selection. Current route
-quality is diagnostic: Screener has no weighted route score, parent-wide quality
-inference, all-pairs probe, periodic rebalance, persistent parent blacklist, NAT
-classification, or independent depth cap. Open quality work remains in the
-[TODO ledger](../todo.md).
+resolution, retransmission, reconnect, and SFU layer selection. When the
+per-share convergence gate is enabled, Screener uses their exact categorical
+edge state only to move one degraded local edge through the existing serial
+operation; disabling the gate leaves that state diagnostic. Screener has no
+weighted route score, parent-wide quality inference, all-pairs probe, periodic
+rebalance, persistent parent blacklist, NAT classification, or independent
+depth cap.
 
 Direct P2P exposes endpoint network addresses to the trusted peer. SFU media is
 encrypted hop-by-hop with DTLS-SRTP but terminates at the SFU; the product does

@@ -7,6 +7,7 @@ import type {
   MediaRouteUpstream,
   ParticipantRouteAssignment,
   PreparedRouteCandidate,
+  RoutePolicy,
   Role,
   ServerMessage,
 } from "../shared/protocol.js";
@@ -21,6 +22,8 @@ import {
   type OperationSnapshot,
   type RouteQualityEvidenceInput,
   type RouteQualityEvidenceResult,
+  type SenderQualityEvidenceInput,
+  type SfuPublisherQualityEvidenceInput,
   type RouteSnapshot,
 } from "./room-route-controller.js";
 import type { RoomStore } from "./room-store.js";
@@ -158,6 +161,7 @@ export interface AuthenticatedRouteParticipant {
   role: Role;
   peerId: string;
   sessionId: string;
+  routePolicy?: RoutePolicy;
 }
 
 export class HybridMediaRouter {
@@ -273,6 +277,131 @@ export class HybridMediaRouter {
       this.rooms.get(roomId)?.controller?.observeQualityEvidence(evidence) ??
       "rejected"
     );
+  }
+
+  observeSenderQualityEvidence(
+    participant: AuthenticatedRouteParticipant,
+    message: Extract<ClientMessage, { type: "sender-quality-evidence" }>,
+  ): boolean {
+    const room = this.rooms.get(participant.roomId);
+    const controller = room?.controller;
+    if (!room || !controller) {
+      return false;
+    }
+    const before = controller.snapshot().revision;
+    const input: SenderQualityEvidenceInput = {
+      parentPeerId: participant.peerId,
+      parentSessionId: participant.sessionId,
+      childPeerId: message.childPeerId,
+      routeRevision: message.routeRevision,
+      connectionId: message.connectionId,
+      senderIdentity:
+        message.rtpStatsId && message.trackIdentifier
+          ? `${message.rtpStatsId}\u0000${message.trackIdentifier}`
+          : null,
+      state: message.state,
+      acceptedAtMs: this.now(),
+    };
+    const result = controller.observeSenderQualityEvidence(
+      input,
+      (reservation) => this.commitReservation(reservation),
+    );
+    this.releaseResources(result.released);
+    if (result.committed) {
+      this.resourceWaiters.delete(participant.roomId);
+      this.options.setConnectionId(
+        participant.roomId,
+        message.childPeerId,
+        message.connectionId,
+      );
+    }
+    if (controller.snapshot().revision !== before) {
+      this.broadcastActive(participant.roomId, room);
+    }
+    this.sendRouteFailures(
+      participant.roomId,
+      result.failedPeerIds,
+      controller.snapshot().revision,
+    );
+    if (result.accepted) {
+      this.requestPump(participant.roomId);
+    }
+    return result.accepted;
+  }
+
+  observeSfuPublisherQualityEvidence(
+    participant: AuthenticatedRouteParticipant,
+    message: Extract<
+      ClientMessage,
+      { type: "sfu-publisher-quality-evidence" }
+    >,
+  ): boolean {
+    const room = this.rooms.get(participant.roomId);
+    const controller = room?.controller;
+    if (!room || !controller || participant.role !== "host") {
+      return false;
+    }
+    const operation = controller.snapshot().operation;
+    const candidateChildPeerId = operation?.childPeerId;
+    const candidateConnectionId = operation?.current?.connectionId;
+    const before = controller.snapshot().revision;
+    const input: SfuPublisherQualityEvidenceInput = {
+      hostPeerId: participant.peerId,
+      hostSessionId: participant.sessionId,
+      publicationGeneration: message.publicationGeneration,
+      routeRevision: message.routeRevision,
+      state: message.state,
+      acceptedAtMs: this.now(),
+    };
+    const result = controller.observeSfuPublisherQualityEvidence(
+      input,
+      (reservation) => this.commitReservation(reservation),
+    );
+    this.releaseResources(result.released);
+    if (
+      result.committed &&
+      candidateChildPeerId &&
+      candidateConnectionId
+    ) {
+      this.resourceWaiters.delete(participant.roomId);
+      this.options.setConnectionId(
+        participant.roomId,
+        candidateChildPeerId,
+        candidateConnectionId,
+      );
+    }
+    if (controller.snapshot().revision !== before) {
+      this.broadcastActive(participant.roomId, room);
+    }
+    this.sendRouteFailures(
+      participant.roomId,
+      result.failedPeerIds,
+      controller.snapshot().revision,
+    );
+    if (result.accepted) {
+      this.requestPump(participant.roomId);
+    }
+    return result.accepted;
+  }
+
+  resetSenderQuality(participant: AuthenticatedRouteParticipant): void {
+    const room = this.rooms.get(participant.roomId);
+    const controller = room?.controller;
+    if (!room || !controller) {
+      return;
+    }
+    const before = controller.snapshot().revision;
+    this.releaseResources(
+      controller.resetSenderQuality(
+        participant.peerId,
+        participant.sessionId,
+        this.now(),
+      ),
+    );
+    if (controller.snapshot().revision !== before) {
+      this.broadcastActive(participant.roomId, room);
+    }
+    this.requestPump(participant.roomId);
   }
 
   isActivePeerParentOf(
@@ -503,7 +632,7 @@ export class HybridMediaRouter {
       exhausted: settled.failedPeerIds.length > 0,
     });
     this.releaseResources(settled.released);
-    if (settled.accepted) {
+    if (settled.committed !== false && settled.accepted) {
       this.resourceWaiters.delete(participant.roomId);
       this.options.setConnectionId(
         participant.roomId,
@@ -785,13 +914,16 @@ export class HybridMediaRouter {
     room: RoomRuntime,
     host: AuthenticatedRouteParticipant,
   ): void {
+    const routePolicy = host.routePolicy;
     room.controller = new RoomRouteController<RouteResource>({
       hostPeerId: host.peerId,
       debugRoomId: roomId,
       endpointMediaCopyCapacity: this.options.endpointMediaCopyCapacity,
       operationTimeoutMs:
         this.options.sfuFallback?.prepareTimeoutMs ?? DEFAULT_ROUTE_OPERATION_TIMEOUT_MS,
-      sfuEnabled: Boolean(this.options.sfuFallback),
+      sfuEnabled: Boolean(this.options.sfuFallback) && routePolicy?.peerOnly !== true,
+      qualityConvergenceEnabled:
+        routePolicy?.topologyOptimization === true,
     });
     room.controller.upsertParticipant({
       peerId: host.peerId,
@@ -877,6 +1009,15 @@ export class HybridMediaRouter {
           rejectionBucket: preparation.rejectionBucket,
           cursor: operation.cursor,
         });
+        if (operation.reason === "quality-convergence") {
+          const skipped = controller.skipCurrentCandidate(
+            guard,
+            this.now(),
+            preparation.rejectionBucket,
+          );
+          this.releaseResources(skipped.released);
+          continue;
+        }
         if (preparation.rejectionBucket !== "sfu-admission") {
           this.resourceWaiters.delete(roomId);
         }

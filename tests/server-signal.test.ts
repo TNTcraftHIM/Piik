@@ -11,6 +11,7 @@ import {
   SIGNALING_PROTOCOL,
   decodeServerMessage,
   type QualitySettings,
+  type RoutePolicy,
   type RoomAccessUpdateRequest,
   type Role,
   type ServerMessage,
@@ -290,6 +291,7 @@ async function authenticate(
     codeOnly?: true;
     sharingPaused?: boolean;
     qualitySettings?: QualitySettings;
+    routePolicy?: RoutePolicy;
   } = {},
 ) {
   client.socket.send(
@@ -308,6 +310,9 @@ async function authenticate(
               : {}),
             ...(presence.qualitySettings
               ? { qualitySettings: presence.qualitySettings }
+              : {}),
+            ...(presence.routePolicy
+              ? { routePolicy: presence.routePolicy }
               : {}),
             ...(presence.viewerPresence ? { viewerPresence: true } : {}),
             ...(presence.displayName
@@ -455,6 +460,44 @@ async function closeClient(client: TestClient): Promise<void> {
 }
 
 describe("WebSocket signaling", () => {
+  it("echoes the exact per-share route policy authority", async () => {
+    const harness = await startHarness({ peerAssistedMedia: true });
+    const viewer = await openClient(harness.webSocketUrl);
+    const waiting = peerAssisted(
+      await authenticate(
+        viewer,
+        harness.room,
+        "viewer",
+        "route-policy-viewer",
+        1,
+      ),
+    );
+    expect(waiting.shareGeneration).toBeNull();
+    const host = await openClient(harness.webSocketUrl);
+    const routePolicy = {
+      peerOnly: true,
+      topologyOptimization: true,
+    } as const;
+    const authenticated = peerAssisted(
+      await authenticate(
+        host,
+        harness.room,
+        "host",
+        "route-policy-host",
+        1,
+        "route_policy_share_generation_12345678",
+        { routePolicy },
+      ),
+    );
+    expect(authenticated.routePolicy).toEqual(routePolicy);
+    expect("sfuStandbyUrl" in authenticated).toBe(false);
+    expect(await viewer.inbox.next("route-policy")).toEqual({
+      type: "route-policy",
+      shareGeneration: "route_policy_share_generation_12345678",
+      routePolicy,
+    });
+  });
+
   it("rebuilds a route when a Viewer reconnects before the Host after restart", async () => {
     const directory = mkdtempSync(join(tmpdir(), "screener-route-restart-"));
     const path = join(directory, "rooms.sqlite");

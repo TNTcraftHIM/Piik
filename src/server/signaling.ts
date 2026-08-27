@@ -8,6 +8,7 @@ import {
   DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_VIEWER_DISPLAY_NAME,
   DEFAULT_QUALITY_SETTINGS,
+  DEFAULT_ROUTE_POLICY,
   MAX_SIGNAL_BYTES,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   SIGNAL_CLOSE_CODES,
@@ -17,6 +18,7 @@ import {
   type CodeEntryPolicy,
   type ClientMessage,
   type QualitySettings,
+  type RoutePolicy,
   type RoomAccessUpdateRequest,
   type RoomAccessUpdateResponse,
   type Role,
@@ -83,6 +85,11 @@ interface ViewerMediaReadyState {
   sfuPublicationGeneration: string;
 }
 
+interface SenderQualityRateWindow {
+  startedAtMs: number;
+  count: number;
+}
+
 export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
@@ -118,11 +125,16 @@ export class SignalingServer {
     ViewerQualityEvidenceGate
   >();
   private readonly viewerQualityEvidenceAttemptAtMs = new Map<string, number>();
+  private readonly senderQualityRateBySession = new Map<
+    string,
+    SenderQualityRateWindow
+  >();
   private readonly viewerMediaReadyByRoom = new Map<
     string,
     Map<string, ViewerMediaReadyState>
   >();
   private readonly qualitySettingsByRoom = new Map<string, QualitySettings>();
+  private readonly routePolicyByRoom = new Map<string, RoutePolicy>();
   private readonly shareGenerationsByRoom = new Map<string, string>();
   private readonly pausedShareGenerationsByRoom = new Map<string, string>();
   private readonly deferredViewerPresenceRooms = new Set<string>();
@@ -252,7 +264,9 @@ export class SignalingServer {
     }
     this.viewerQualityEvidenceGates.clear();
     this.viewerQualityEvidenceAttemptAtMs.clear();
+    this.senderQualityRateBySession.clear();
     this.viewerMediaReadyByRoom.clear();
+    this.routePolicyByRoom.clear();
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
     this.ordinaryActiveHostChildrenByRoom.clear();
@@ -577,6 +591,27 @@ export class SignalingServer {
           });
         }
       }
+      if (
+        currentGeneration !== shareGeneration ||
+        !this.routePolicyByRoom.has(participant.roomId)
+      ) {
+        const routePolicy = {
+          ...(message.routePolicy ?? DEFAULT_ROUTE_POLICY),
+        };
+        this.routePolicyByRoom.set(participant.roomId, routePolicy);
+        for (const viewer of this.options.roomStore.getConnectedViewers(
+          participant.roomId,
+        )) {
+          this.sendToSession(viewer.sessionId, {
+            type: "route-policy",
+            shareGeneration,
+            routePolicy,
+            ...(this.options.sfuFallback && !routePolicy.peerOnly
+              ? { sfuStandbyUrl: this.options.sfuFallback.url }
+              : {}),
+          });
+        }
+      }
       this.shareGenerationsByRoom.set(participant.roomId, shareGeneration);
       if (
         message.sharingPaused === true ||
@@ -621,6 +656,13 @@ export class SignalingServer {
       role: participant.role,
       peerId: participant.peerId,
       sessionId: state.sessionId,
+      ...(participant.role === "host"
+        ? {
+            routePolicy:
+              this.routePolicyByRoom.get(participant.roomId) ??
+              DEFAULT_ROUTE_POLICY,
+          }
+        : {}),
     };
     let hybridState;
     try {
@@ -687,17 +729,23 @@ export class SignalingServer {
             ...authenticatedMessageBase,
             role: "viewer" as const,
           };
+    const routePolicy =
+      this.routePolicyByRoom.get(participant.roomId) ?? DEFAULT_ROUTE_POLICY;
+    const hasRoutePolicy = this.routePolicyByRoom.has(participant.roomId);
     if (hybridState) {
       this.send(socket, {
         ...authenticatedMessage,
         mediaMode: "peer-assisted",
+        shareGeneration:
+          this.shareGenerationsByRoom.get(participant.roomId) ?? null,
         mediaAssignment: hybridState.mediaAssignment,
         routeRevision: hybridState.routeRevision,
         routeAssignment: hybridState.routeAssignment,
         qualitySettings:
           this.qualitySettingsByRoom.get(participant.roomId) ??
           DEFAULT_QUALITY_SETTINGS,
-        ...(this.options.sfuFallback
+        routePolicy,
+        ...(this.options.sfuFallback && hasRoutePolicy && !routePolicy.peerOnly
           ? { sfuStandbyUrl: this.options.sfuFallback.url }
           : {}),
       });
@@ -973,6 +1021,25 @@ export class SignalingServer {
         return;
       case "viewer-quality-evidence":
         this.handleViewerQualityEvidence(socket, authenticated, message);
+        return;
+      case "sender-quality-evidence":
+        this.handleSenderQualityEvidence(socket, authenticated, message);
+        return;
+      case "sfu-publisher-quality-evidence":
+        this.handleSfuPublisherQualityEvidence(socket, authenticated, message);
+        return;
+      case "reset-sender-quality":
+        if (this.isHybridMediaEnabled()) {
+          const state = this.socketStates.get(socket);
+          if (state?.authenticated === authenticated) {
+            this.hybridMediaRouter!.resetSenderQuality({
+              roomId: authenticated.roomId,
+              role: authenticated.role,
+              peerId: authenticated.peerId,
+              sessionId: state.sessionId,
+            });
+          }
+        }
         return;
       case "set-display-name":
         if (
@@ -1272,6 +1339,87 @@ export class SignalingServer {
     }
   }
 
+  private handleSenderQualityEvidence(
+    socket: WebSocket,
+    source: AuthenticatedSession,
+    message: Extract<ClientMessage, { type: "sender-quality-evidence" }>,
+  ): void {
+    if (!this.isHybridMediaEnabled() || source.peerId === message.childPeerId) {
+      return;
+    }
+    const state = this.socketStates.get(socket);
+    if (!state || state.authenticated !== source) {
+      return;
+    }
+    const now = this.now();
+    if (!this.consumeSenderQualityBudget(state.sessionId, now)) {
+      return;
+    }
+    this.hybridMediaRouter!.observeSenderQualityEvidence(
+      {
+        roomId: source.roomId,
+        role: source.role,
+        peerId: source.peerId,
+        sessionId: state.sessionId,
+      },
+      message,
+    );
+  }
+
+  private handleSfuPublisherQualityEvidence(
+    socket: WebSocket,
+    source: AuthenticatedSession,
+    message: Extract<
+      ClientMessage,
+      { type: "sfu-publisher-quality-evidence" }
+    >,
+  ): void {
+    if (!this.isHybridMediaEnabled() || source.role !== "host") {
+      return;
+    }
+    const state = this.socketStates.get(socket);
+    if (!state || state.authenticated !== source) {
+      return;
+    }
+    const now = this.now();
+    if (!this.consumeSenderQualityBudget(state.sessionId, now)) {
+      return;
+    }
+    this.hybridMediaRouter!.observeSfuPublisherQualityEvidence(
+      {
+        roomId: source.roomId,
+        role: source.role,
+        peerId: source.peerId,
+        sessionId: state.sessionId,
+      },
+      message,
+    );
+  }
+
+  private consumeSenderQualityBudget(
+    sessionId: string,
+    nowMs: number,
+  ): boolean {
+    const maximumReports =
+      Math.min(this.options.endpointMediaCopyCapacity + 1, 3) * 2;
+    const current = this.senderQualityRateBySession.get(sessionId);
+    if (
+      !current ||
+      nowMs - current.startedAtMs >= VIEWER_QUALITY_EVIDENCE_INTERVAL_MS
+    ) {
+      this.senderQualityRateBySession.set(sessionId, {
+        startedAtMs: nowMs,
+        count: 1,
+      });
+      return true;
+    }
+    if (current.count >= maximumReports) {
+      return false;
+    }
+    current.count += 1;
+    return true;
+  }
+
   private routeSignal(
     sourceSocket: WebSocket,
     source: AuthenticatedSession,
@@ -1473,6 +1621,7 @@ export class SignalingServer {
       return;
     }
     clearTimeout(state.authenticationTimer);
+    this.senderQualityRateBySession.delete(state.sessionId);
     this.socketStates.delete(socket);
     if (this.socketsBySessionId.get(state.sessionId) === socket) {
       this.socketsBySessionId.delete(state.sessionId);
@@ -1559,6 +1708,7 @@ export class SignalingServer {
 
   private stopSharing(roomId: string): void {
     this.qualitySettingsByRoom.delete(roomId);
+    this.routePolicyByRoom.delete(roomId);
     this.pausedShareGenerationsByRoom.delete(roomId);
     this.clearRoomConnectionIds(roomId);
     if (this.isHybridMediaEnabled()) {
@@ -1590,6 +1740,7 @@ export class SignalingServer {
       this.hybridMediaRouter!.deleteRoom(closed.roomId);
     }
     this.qualitySettingsByRoom.delete(closed.roomId);
+    this.routePolicyByRoom.delete(closed.roomId);
     this.shareGenerationsByRoom.delete(closed.roomId);
     this.pausedShareGenerationsByRoom.delete(closed.roomId);
     for (const sessionId of closed.sessionIds) {
@@ -1611,6 +1762,7 @@ export class SignalingServer {
         this.hybridMediaRouter!.deleteRoom(expired.roomId);
       }
       this.qualitySettingsByRoom.delete(expired.roomId);
+      this.routePolicyByRoom.delete(expired.roomId);
       this.shareGenerationsByRoom.delete(expired.roomId);
       this.pausedShareGenerationsByRoom.delete(expired.roomId);
       for (const sessionId of expired.sessionIds) {
