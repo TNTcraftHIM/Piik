@@ -7,9 +7,8 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Release the 6020 canary follow-up.** Preserve committed Host roster state,
-   reuse the five-second candidate progress gate, perform one-shot healthy root
-   fanout convergence, and retain stable bounded canary evidence.
+No implementation task is currently authorized. Continue bounded production
+observation of the deployed route canary; new code requires new evidence.
 
 ## Parked Repository Work
 

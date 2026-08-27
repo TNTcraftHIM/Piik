@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `17bd1e46fea7d391ce5df18a2bccf7a316bde693`, release `17bd1e4`, wire
-  `screener-v15`, from `/opt/screener/releases/17bd1e4`. The immutable runtime
+  `b2cbf20530fc841de4e78529c20407832d658af3`, release `b2cbf20`, wire
+  `screener-v16`, from `/opt/screener/releases/b2cbf20`. The immutable runtime
   tar SHA-256 is
-  `74d75741ce25fe8989fd51f5ba217ee3f6b98cee7bffa1c703fe6d49a7d6e1b0`;
+  `df388e612f0fb9c7300ec8f8203d92fc4088082b0d06a419d5194ebf7c92a9a5`;
   its 41-file manifest SHA-256 is
-  `ffe118ec1d9d14baaf6fdc0d8df0abbfab2e4ce083be9c71eba5ae7eb2805461`.
-- The served Browser entry references `assets/index-DSw6oypG.js`; the public
+  `78843929f9b8d0c9e7eb05075ac584c82199fd56e2f4041c41713b3a477972f9`.
+- The served Browser entry references `assets/index-BY7ke8PT.js`; the public
   asset SHA-256 is
-  `fcca56647ce4c50766b0271e111a7a4ccfa8bd28b778f71865d62de9d7743515`.
+  `1e8ab0ca54fba1f9bda7f4bc8252bb63f63e4e3e3a61761b4425e2f30c71e24a`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -72,10 +72,10 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Milestone
 
-The 6020 canary correction is implemented in source and awaits deployment. It
-keeps Host roster state on committed media, bounds each no-progress Peer
-candidate at five seconds, adds one-shot healthy Host-root fanout convergence,
-and stabilizes anonymized canary identity and metrics.
+The 6020 canary correction is deployed. Host roster state follows committed
+media, each no-progress Peer candidate is bounded by the existing five-second
+window, and a newly committed empty Host root gets one one-shot healthy fanout
+convergence opportunity. Sanitized canary identity is stable within a room.
 
 ## Active Boundaries
 
@@ -92,6 +92,5 @@ and stabilizes anonymized canary identity and metrics.
 
 ## Current Hold
 
-Production `screener-v15` can falsely show committed Viewers as routing and can
-spend 15 seconds on background candidates. `screener-v16` is the active P1
-correction. Sanitized route logging remains enabled.
+No source or deployment P0/P1 is open. Sanitized route logging remains enabled
+for the pre-release canary.
