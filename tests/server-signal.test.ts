@@ -920,6 +920,19 @@ describe("WebSocket signaling", () => {
         (viewer) => viewer.peerId === relayParentPeerId,
       ),
     ).toBe(true);
+    host.inbox.ignore("route-update");
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: relay.peerId,
+        payload: {
+          kind: "candidate",
+          connectionId: "stale_connection_12345678",
+          candidate: null,
+        },
+      }),
+    );
+    await host.inbox.expectNone(40);
 
     viewers[2].socket.send(
       JSON.stringify({ type: "set-display-name", displayName: "后来改名" }),

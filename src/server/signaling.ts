@@ -1530,11 +1530,6 @@ export class SignalingServer {
       : parentToChild || childToParent;
     const authorized = candidateAuthorized ?? assignedEdgeAuthorized;
     if (!authorized) {
-      this.sendError(
-        sourceSocket,
-        "FORBIDDEN",
-        "Signal target is not authorized by the media assignment",
-      );
       return;
     }
 
