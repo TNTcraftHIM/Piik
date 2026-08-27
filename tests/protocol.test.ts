@@ -941,6 +941,22 @@ describe("client signaling protocol", () => {
     ).toBe(true);
     expect(
       clientMessageSchema.safeParse({
+        type: "route-ready",
+        revision: 7,
+        phase: "prepare",
+        qualityApproved: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "route-ready",
+        revision: 7,
+        phase: "prepare",
+        qualityApproved: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      clientMessageSchema.safeParse({
         type: "route-transport-connected",
         revision: 7,
         connectionId: "connection_12345678",

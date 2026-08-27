@@ -724,6 +724,135 @@ describe("minimal route transition contracts", () => {
     await route.disconnect();
   });
 
+  it("keeps an active SFU subscriber across same-publication resync", async () => {
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    const streams: MediaStream[] = [];
+    const resetMedia = vi.fn();
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      resetMedia,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: (stream) => streams.push(stream),
+      send: () => true,
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(events, [], "active");
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+    const assignment = viewerSfuAssignment();
+    route.accept({ revision: 7, phase: "active", assignment });
+    await route.acceptConfig(sfuConfig(7));
+    const initialStream = {} as MediaStream;
+    subscribers[0]?.events.onStream(initialStream);
+    subscribers[0]?.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(streams).toEqual([initialStream]));
+
+    await expect(
+      route.resyncAuthoritative(
+        { revision: 8, phase: "active", assignment },
+        "viewer_12345678",
+      ),
+    ).resolves.toBe("accepted");
+    expect(subscribers).toHaveLength(1);
+    expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
+    expect(subscribers[0]?.disconnect).not.toHaveBeenCalled();
+    expect(resetMedia).not.toHaveBeenCalled();
+    await route.disconnect();
+  });
+
+  it("retargets manual SFU recovery after an unrelated room revision", async () => {
+    const messages: ClientMessage[] = [];
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    const streams: MediaStream[] = [];
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: (stream) => streams.push(stream),
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(events, [], "active");
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+    const assignment = viewerSfuAssignment();
+    route.accept({ revision: 7, phase: "active", assignment });
+    await route.acceptConfig(sfuConfig(7));
+    const initialStream = {} as MediaStream;
+    subscribers[0]?.events.onStream(initialStream);
+    subscribers[0]?.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(streams).toEqual([initialStream]));
+    messages.length = 0;
+    expect(route.reconnectActive()).toBe(true);
+
+    route.accept({ revision: 8, phase: "active", assignment });
+    await vi.waitFor(() =>
+      expect(
+        messages.filter((message) => message.type === "refresh-sfu"),
+      ).toEqual([
+        { type: "refresh-sfu", revision: 7 },
+        { type: "refresh-sfu", revision: 8 },
+      ]),
+    );
+    expect(subscribers[0]?.disconnect).not.toHaveBeenCalled();
+    await route.disconnect();
+  });
+
+  it("keeps an in-flight SFU recovery across an unrelated room revision", async () => {
+    let releaseRecovery!: (connected: boolean) => void;
+    const recoveryConnected = new Promise<boolean>((resolve) => {
+      releaseRecovery = resolve;
+    });
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    const streams: MediaStream[] = [];
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: (stream) => streams.push(stream),
+      send: () => true,
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(events, [], "subscriber");
+        if (subscribers.length === 1) {
+          subscriber.connect.mockImplementation(() => recoveryConnected);
+        }
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+    const assignment = viewerSfuAssignment();
+    route.accept({ revision: 7, phase: "active", assignment });
+    await route.acceptConfig(sfuConfig(7));
+    const initialStream = {} as MediaStream;
+    subscribers[0]?.events.onStream(initialStream);
+    subscribers[0]?.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(streams).toEqual([initialStream]));
+
+    expect(route.reconnectActive()).toBe(true);
+    const recovery = route.acceptConfig({
+      ...sfuConfig(7),
+      token: "recovery-token",
+    });
+    await vi.waitFor(() => expect(subscribers).toHaveLength(2));
+    route.accept({ revision: 8, phase: "active", assignment });
+    expect(subscribers).toHaveLength(2);
+    expect(subscribers[1]?.disconnect).not.toHaveBeenCalled();
+
+    releaseRecovery(true);
+    await recovery;
+    const recoveredStream = {} as MediaStream;
+    subscribers[1]?.events.onStream(recoveredStream);
+    subscribers[1]?.events.onFirstDecodedFrame();
+    await vi.waitFor(() =>
+      expect(streams).toEqual([initialStream, recoveredStream]),
+    );
+    expect(subscribers[0]?.disconnect).toHaveBeenCalledOnce();
+    await route.disconnect();
+  });
+
   it("discards a paused pending subscriber and ignores its later evidence", async () => {
     const messages: ClientMessage[] = [];
     let subscriber!: ReturnType<typeof createFakeSubscriber>;

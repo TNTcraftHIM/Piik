@@ -8,7 +8,7 @@ import type {
 import { SfuSubscriber } from "../sfu/subscriber";
 import type { ConnectionMetrics } from "../types";
 import type { SfuConnectionConfig } from "../sfu/publisher";
-import { SfuQualityProbe } from "./sfu-quality-probe";
+import { SfuQualityProbe } from "./candidate-quality-probe";
 import {
   MediaRouteTransition,
   reportActivePeerRouteFailure,
@@ -28,6 +28,7 @@ interface ViewerSubscriberTransport {
 
 interface ViewerSubscriberSlot {
   revision: number;
+  phase: MediaRoutePhase;
   publicationGeneration: string;
   subscriber: ViewerSubscriberTransport;
   connected: boolean;
@@ -118,9 +119,38 @@ export class ViewerSfuRoute {
       return "stale";
     }
     const previousRevision = this.route.getRevision();
+    const previousMediaAssignment = this.route.getMediaAssignment();
+    const sameCommittedMedia =
+      update.phase === "active" &&
+      sameUpstream(previousMediaAssignment, update.assignment);
+    const continuingRecovery =
+      previousRevision !== update.revision && sameCommittedMedia
+        ? this.manualReconnectRevision !== null
+          ? "manual"
+          : this.recovery !== null
+            ? "automatic"
+            : null
+        : null;
     const result = this.route.accept(update);
     if (result === "stale") {
       return result;
+    }
+    if (continuingRecovery) {
+      if (this.active) {
+        this.active.revision = update.revision;
+      }
+      if (this.pending?.phase === "active") {
+        this.pending.revision = update.revision;
+      }
+      if (this.manualReconnectRevision !== null) {
+        this.manualReconnectRevision = update.revision;
+      }
+      if (this.recovery) {
+        this.recovery.revision = update.revision;
+        if (this.pending === null) {
+          this.recovery.refreshed = false;
+        }
+      }
     }
     const pausedActiveReconciliation =
       this.paused && update.phase === "active" && result !== "duplicate";
@@ -142,7 +172,7 @@ export class ViewerSfuRoute {
         this.disconnectRetiredSubscriber(retiredActive),
       );
     }
-    if (previousRevision !== update.revision) {
+    if (previousRevision !== update.revision && !sameCommittedMedia) {
       this.recovery = null;
       this.manualReconnectRevision = null;
       if (
@@ -206,7 +236,22 @@ export class ViewerSfuRoute {
     if (this.resyncing) {
       return result;
     }
-    void this.queueActiveRoute(token, acknowledge, this.paused);
+    const transition = this.queueActiveRoute(token, acknowledge, this.paused);
+    if (continuingRecovery === "manual" && this.pending === null) {
+      void transition.then(() => {
+        if (
+          this.closed ||
+          this.paused ||
+          this.route.getRevision() !== update.revision ||
+          this.route.getPhase() !== "active"
+        ) {
+          return;
+        }
+        if (this.manualReconnectRevision === update.revision) {
+          this.events.send({ type: "refresh-sfu", revision: update.revision });
+        }
+      });
+    }
     return result;
   }
 
@@ -281,9 +326,24 @@ export class ViewerSfuRoute {
       this.viewerPeerId = viewerPeerId;
     }
     this.pendingPeerRevision = null;
-    if (!identityChanged && !this.active && !this.pending) {
+    const currentMediaAssignment = this.route.getMediaAssignment();
+    const preservesActiveMedia = Boolean(
+      !identityChanged &&
+        update.phase === "active" &&
+        sameUpstream(currentMediaAssignment, update.assignment) &&
+        (update.assignment.upstream.kind !== "sfu" ||
+          (this.active?.activated &&
+            !this.active.failed &&
+            this.active.publicationGeneration ===
+              update.assignment.sfuPublicationGeneration)),
+    );
+    if (
+      !identityChanged &&
+      ((!this.active && !this.pending) || preservesActiveMedia)
+    ) {
       const result = this.accept(update, false);
       if (result !== "stale") {
+        await this.transitionTail;
         return result;
       }
     }
@@ -438,6 +498,7 @@ export class ViewerSfuRoute {
     const preparedCandidate = this.route.getPreparedCandidate();
     slot = {
       revision: message.revision,
+      phase,
       publicationGeneration,
       subscriber,
       connected: false,
@@ -462,16 +523,20 @@ export class ViewerSfuRoute {
         token: message.token,
       });
       if (!connected) {
-        if (this.pending === slot && this.route.owns(token)) {
+        const currentToken = this.currentPendingToken(slot, token);
+        if (this.pending === slot && currentToken) {
+          slot.revision = currentToken.revision;
           this.handleFailure(slot);
         }
         await disconnectSubscriber(subscriber);
         return;
       }
-      if (this.pending !== slot || !this.route.owns(token)) {
+      const currentToken = this.currentPendingToken(slot, token);
+      if (this.pending !== slot || !currentToken) {
         await disconnectSubscriber(subscriber);
         return;
       }
+      slot.revision = currentToken.revision;
       slot.connected = true;
       if (!subscriber.activate()) {
         this.handleFailure(slot);
@@ -482,8 +547,8 @@ export class ViewerSfuRoute {
       if (!this.paused) {
         subscriber.armDecodedFrameProof();
       }
-      if (phase === "active" && !this.resyncing) {
-        await this.queueActiveRoute(token, true);
+      if (slot.phase === "active" && !this.resyncing) {
+        await this.queueActiveRoute(currentToken, true);
       }
     } catch {
       await disconnectSubscriber(subscriber);
@@ -652,7 +717,11 @@ export class ViewerSfuRoute {
       pending.publicationGeneration !== publicationGeneration ||
       !pending.connected
     ) {
-      if (acknowledge && this.route.owns(token, "active")) {
+      if (
+        acknowledge &&
+        this.route.owns(token, "active") &&
+        pending === null
+      ) {
         this.requestRecovery(token.revision);
       }
       return;
@@ -888,6 +957,13 @@ export class ViewerSfuRoute {
     if (!matchesPlannedRoute) {
       return;
     }
+    if (
+      this.recovery?.revision === revision &&
+      this.recovery.refreshed
+    ) {
+      this.routeFailed(revision, "active");
+      return;
+    }
     this.requestRecovery(revision);
   }
 
@@ -901,7 +977,26 @@ export class ViewerSfuRoute {
         return;
       }
     }
-    this.routeFailed(revision, "active");
+  }
+
+  private currentPendingToken(
+    slot: ViewerSubscriberSlot,
+    original: RouteOperationToken,
+  ): RouteOperationToken | null {
+    if (this.route.owns(original)) {
+      return original;
+    }
+    if (slot.phase !== "active") {
+      return null;
+    }
+    const current = this.route.token();
+    const assignment = this.route.getActiveAssignment();
+    return current &&
+      this.route.owns(current, "active") &&
+      assignment?.upstream.kind === "sfu" &&
+      assignment.sfuPublicationGeneration === slot.publicationGeneration
+      ? current
+      : null;
   }
 
   private routeFailed(revision: number, phase: MediaRoutePhase): void {
@@ -913,6 +1008,24 @@ export class ViewerSfuRoute {
     });
   }
 
+}
+
+function sameUpstream(
+  current: ParticipantRouteAssignment | null,
+  next: ParticipantRouteAssignment,
+): boolean {
+  if (!current || current.upstream.kind !== next.upstream.kind) {
+    return false;
+  }
+  if (current.upstream.kind === "peer" && next.upstream.kind === "peer") {
+    return current.upstream.peerId === next.upstream.peerId;
+  }
+  if (current.upstream.kind === "sfu" && next.upstream.kind === "sfu") {
+    return (
+      current.sfuPublicationGeneration === next.sfuPublicationGeneration
+    );
+  }
+  return current.upstream.kind === "none";
 }
 
 async function disconnectSubscriber(

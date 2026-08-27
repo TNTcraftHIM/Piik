@@ -27,6 +27,12 @@ Direct commits to `main` are reserved for an explicit user-approved exception. N
 
 For deployment work, a routine application-only release verifies a new immutable artifact, switches to it atomically, and guarantees the pre-cutover application release only through bounded health and postflight checks; it has no retention contract afterward and is not a maintained backup. Define recovery only for the infrastructure, configuration, secrets, persistent state, or irreversible surfaces the task actually touches, before changing them.
 
+Do not change `SIGNALING_PROTOCOL` for compatible internal, UI, routing, or
+release work. A wire change makes existing pages stale and forces an active
+Browser Host to reload, which ends its capture. Bump it only for an actually
+incompatible message contract whose atomic cutover and capture interruption are
+explicitly accepted.
+
 Clean up worktrees and branches only after semantic review and integration are complete and the normal merged-head, open-reference, clean-tree, and non-following link checks pass. Never merge an old branch wholesale after a newer truth checkpoint.
 
 ## Research Standard

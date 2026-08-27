@@ -66,7 +66,7 @@ interface ViewerRouteStatusFact {
 
 interface ViewerMediaFact {
   generation: number;
-  revision: number;
+  boundAtRevision: number;
   framePresented: boolean;
 }
 
@@ -102,7 +102,6 @@ export type ViewerPresentationAction =
       revision: number;
       phase: "prepare" | "active";
       kind: ViewerRouteKind;
-      preserveMedia?: boolean;
     }
   | {
       type: "route-status";
@@ -137,6 +136,10 @@ export interface ViewerPresentation {
   hasCurrentFrame: boolean;
   hasRetainedFrame: boolean;
   failureCode: ViewerFailureCode | null;
+  connectionState:
+    | "routing"
+    | "waiting"
+    | Exclude<ViewerPresentationState["connection"], "idle">;
 }
 
 export const INITIAL_VIEWER_PRESENTATION_STATE: ViewerPresentationState = {
@@ -197,11 +200,11 @@ export function reduceViewerPresentation(
         return state;
       }
       const revisionChanged = state.revision !== action.revision;
-      const currentFrame = hasCurrentFrame(state);
-      const preserveMedia =
-        revisionChanged &&
-        action.preserveMedia === true &&
-        state.media?.revision === state.revision;
+      const committedRoute = action.phase === "active" && action.kind !== "none";
+      const reactivatingTerminalRoute =
+        committedRoute &&
+        (state.routeStatus?.state === "failed" ||
+          state.failure === "ROUTE_EXHAUSTED");
       return {
         ...state,
         revision: action.revision,
@@ -211,29 +214,20 @@ export function reduceViewerPresentation(
           kind: action.kind,
         },
         routeStatus:
-          state.routeStatus?.revision === action.revision
+          !committedRoute && state.routeStatus?.revision === action.revision
             ? state.routeStatus
             : null,
-        media: preserveMedia
-          ? { ...state.media!, revision: action.revision }
-          : state.media,
-        autoplayBlockedGeneration: revisionChanged && !preserveMedia
-          ? null
-          : state.autoplayBlockedGeneration,
-        retainedFrame:
-          preserveMedia
-            ? state.retainedFrame
-            : state.retainedFrame || (revisionChanged && currentFrame),
-        connection: revisionChanged && !preserveMedia
-          ? action.kind === "none"
-            ? "idle"
+        connection: reactivatingTerminalRoute
+          ? state.media
+            ? "reconnecting"
             : "connecting"
-          : state.connection,
+          : revisionChanged && state.media === null
+            ? action.kind === "none"
+              ? "idle"
+              : "connecting"
+            : state.connection,
         failure:
-          revisionChanged &&
-          (state.failure === "ROUTE_EXHAUSTED" ||
-            state.failure === "AUTOPLAY_BLOCKED" ||
-            state.failure === "PLAYBACK_FAILED")
+          committedRoute && state.failure === "ROUTE_EXHAUSTED"
             ? null
             : state.failure,
       };
@@ -246,11 +240,9 @@ export function reduceViewerPresentation(
       const terminal = action.state === "failed";
       const currentFrame = hasCurrentFrame(state);
       const currentMedia =
-        terminal && state.media?.revision === action.revision
+        terminal && state.media
           ? { ...state.media, framePresented: false }
-          : terminal
-            ? null
-            : state.media;
+          : state.media;
       return {
         ...state,
         revision: action.revision,
@@ -258,6 +250,11 @@ export function reduceViewerPresentation(
           revision: action.revision,
           state: action.state,
         },
+        connection: terminal
+          ? "failed"
+          : state.media
+            ? state.connection
+            : "connecting",
         media: currentMedia,
         autoplayBlockedGeneration: revisionChanged || terminal
           ? null
@@ -287,7 +284,6 @@ export function reduceViewerPresentation(
       };
     case "media-bound": {
       if (
-        (state.revision !== null && action.revision < state.revision) ||
         (state.media && action.generation <= state.media.generation) ||
         (state.routeStatus?.revision === action.revision &&
           state.routeStatus.state === "failed") ||
@@ -298,10 +294,9 @@ export function reduceViewerPresentation(
       }
       return {
         ...state,
-        revision: Math.max(state.revision ?? 0, action.revision),
         media: {
           generation: action.generation,
-          revision: action.revision,
+          boundAtRevision: action.revision,
           framePresented: false,
         },
         retainedFrame: state.retainedFrame || hasCurrentFrame(state),
@@ -318,8 +313,6 @@ export function reduceViewerPresentation(
       if (
         !state.media ||
         state.media.generation !== action.generation ||
-        state.media.revision !== action.revision ||
-        state.revision !== action.revision ||
         state.routeStatus?.state === "failed" ||
         state.failure === "ROUTE_EXHAUSTED"
       ) {
@@ -338,8 +331,6 @@ export function reduceViewerPresentation(
       if (
         !state.media ||
         state.media.generation !== action.generation ||
-        state.media.revision !== action.revision ||
-        state.revision !== action.revision ||
         !state.media.framePresented
       ) {
         return state;
@@ -352,9 +343,7 @@ export function reduceViewerPresentation(
     case "autoplay-blocked":
       if (
         !state.media ||
-        state.media.generation !== action.generation ||
-        state.media.revision !== action.revision ||
-        state.revision !== action.revision
+        state.media.generation !== action.generation
       ) {
         return state;
       }
@@ -376,9 +365,7 @@ export function reduceViewerPresentation(
     case "playback-failed":
       if (
         !state.media ||
-        state.media.generation !== action.generation ||
-        state.media.revision !== action.revision ||
-        state.revision !== action.revision
+        state.media.generation !== action.generation
       ) {
         return state;
       }
@@ -423,13 +410,9 @@ export function reduceViewerPresentation(
       }
       const terminalRoute = action.failure === "ROUTE_EXHAUSTED";
       const terminalMedia =
-        terminalRoute &&
-        action.revision !== undefined &&
-        state.media?.revision === action.revision
+        terminalRoute && state.media
           ? { ...state.media, framePresented: false }
-          : terminalRoute
-            ? null
-            : state.media;
+          : state.media;
       return {
         ...state,
         revision:
@@ -437,6 +420,7 @@ export function reduceViewerPresentation(
             ? state.revision
             : Math.max(state.revision ?? 0, action.revision),
         media: terminalMedia,
+        connection: terminalRoute ? "failed" : state.connection,
         retainedFrame:
           state.retainedFrame || (terminalRoute && hasCurrentFrame(state)),
         autoplayBlockedGeneration: terminalRoute
@@ -528,7 +512,6 @@ export function deriveViewerPresentation(
 
   if (
     state.media &&
-    state.media.revision === state.revision &&
     state.autoplayBlockedGeneration === state.media.generation &&
     state.connection === "connected"
   ) {
@@ -646,7 +629,7 @@ export function deriveViewerPresentation(
       state,
     );
   }
-  if (state.media && state.media.revision === state.revision) {
+  if (state.media) {
     return presentation(
       "receiving",
       "正在接收画面",
@@ -725,9 +708,7 @@ export function viewerFailureFromServerCode(
 }
 
 function hasCurrentFrame(state: ViewerPresentationState): boolean {
-  return Boolean(
-    state.media?.framePresented && state.media.revision === state.revision,
-  );
+  return state.media?.framePresented === true;
 }
 
 function presentation(
@@ -744,5 +725,11 @@ function presentation(
     hasCurrentFrame: hasCurrentFrame(state),
     hasRetainedFrame: state.retainedFrame,
     failureCode: state.failure,
+    connectionState:
+      state.connection === "idle"
+        ? state.host === "online" || state.host === "paused"
+          ? "routing"
+          : "waiting"
+        : state.connection,
   };
 }

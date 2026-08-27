@@ -218,7 +218,7 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
-  it("commits topology convergence only after candidate media and native health", async () => {
+  it("commits P2P quality convergence after client relative approval", async () => {
     const { store, sent, router } = harness(2);
     try {
       const room = await store.createRoom();
@@ -309,25 +309,15 @@ describe("HybridMediaRouter v9 runtime", () => {
       expect(
         router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)?.upstream,
       ).toEqual({ kind: "peer", peerId: host.peerId });
-
+      router.handleRouteReady(first, {
+        type: "route-ready",
+        revision: qualityPrepare.revision,
+        phase: "prepare",
+        qualityApproved: true,
+      });
       expect(
-        router.observeSenderQualityEvidence(second, {
-          type: "sender-quality-evidence",
-          childPeerId: first.peerId,
-          connectionId: qualityPrepare.candidate.connectionId,
-          rtpStatsId: "candidate-rtp",
-          trackIdentifier: "track",
-          sampleTimestampMs: 200,
-          routeRevision: qualityPrepare.revision,
-          state: "healthy",
-          diagnostics: senderDiagnostics("healthy"),
-        }),
-      ).toBe(true);
-      await vi.waitFor(() =>
-        expect(
-          router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)?.upstream,
-        ).toEqual({ kind: "peer", peerId: second.peerId }),
-      );
+        router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)?.upstream,
+      ).toEqual({ kind: "peer", peerId: second.peerId });
     } finally {
       await router.close();
     }
@@ -1240,7 +1230,7 @@ describe("HybridMediaRouter v9 runtime", () => {
           ?.filter((message) => message.type === "sfu-config").length ?? 0;
       const initialCount = configCount();
 
-      router.refreshSfu(first, active!.revision);
+      router.refreshSfu(first, 0);
       await vi.waitFor(() => expect(configCount()).toBe(initialCount + 1));
       router.refreshSfu(first, active!.revision);
       await vi.waitFor(() => expect(configCount()).toBe(initialCount + 2));

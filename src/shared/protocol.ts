@@ -655,6 +655,13 @@ const senderQualityDiagnosticsSchema = z
     reason: z.enum(["none", "bandwidth", "cpu"]).nullable(),
     framesPerSecond: nullableEvidenceNumber(240),
     bitrateKbps: nullableEvidenceNumber(100_000),
+    captureFramesPerSecond: nullableEvidenceNumber(240).optional(),
+    mediaSourceFramesPerSecond: nullableEvidenceNumber(240).optional(),
+    width: nullableEvidenceInteger(16_384).optional(),
+    height: nullableEvidenceInteger(16_384).optional(),
+    availableOutgoingKbps: nullableEvidenceNumber(100_000).optional(),
+    rttMs: nullableEvidenceNumber(60_000).optional(),
+    packetLossPercent: nullableEvidenceNumber(100).optional(),
   })
   .strict();
 
@@ -830,6 +837,7 @@ export const clientMessageSchema = z.union([
       type: z.literal("route-ready"),
       revision: mediaRouteRevisionSchema,
       phase: mediaRoutePhaseSchema,
+      qualityApproved: z.literal(true).optional(),
     })
     .strict(),
   z

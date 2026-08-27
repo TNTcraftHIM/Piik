@@ -323,7 +323,7 @@ describe("RoomRouteController", () => {
     });
   });
 
-  it("keeps the old edge until one native-healthy quality candidate commits", () => {
+  it("commits only after the Viewer approves a P2P receive improvement", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
     addViewer(routes, B, 2);
@@ -358,29 +358,19 @@ describe("RoomRouteController", () => {
       revision: current.revision,
       connectionId: "a_from_b",
     };
-    expect(routes.candidateReady(guard, 105)).toMatchObject({
-      accepted: true,
-      committed: false,
-    });
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
       kind: "peer",
       parentPeerId: HOST,
       connectionId: "a_from_host",
     });
-
     expect(
-      routes.observeSenderQualityEvidence({
-        parentPeerId: B,
-        parentSessionId: `${B}_session`,
-        childPeerId: A,
-        routeRevision: current.revision,
-        connectionId: "a_from_b",
-        senderIdentity: "a-from-b-rtp\u0000a-track",
-        sampleTimestampMs: 106,
-        state: "healthy",
-        acceptedAtMs: 106,
-      }).committed,
-    ).toBe(true);
+      routes.candidateReady(guard, 105, undefined, {
+        relativeQualityApproved: true,
+      }),
+    ).toMatchObject({
+      accepted: true,
+      committed: true,
+    });
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
       kind: "peer",
       parentPeerId: B,
@@ -591,7 +581,7 @@ describe("RoomRouteController", () => {
     expect(routes.routeDiagnosticSnapshot(7_301).children[0]?.quality).toBeNull();
   });
 
-  it("commits when native health arrives before candidate media", () => {
+  it("does not require a P2P candidate sender category after client approval", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
     addViewer(routes, B, 2);
@@ -614,6 +604,17 @@ describe("RoomRouteController", () => {
     });
     const current = begin.operation!.current!;
     expect(
+      routes.candidateTransportConnected(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: current.revision,
+          connectionId: "a_from_b",
+        },
+        105,
+      ).accepted,
+    ).toBe(true);
+    expect(
       routes.observeSenderQualityEvidence({
         parentPeerId: B,
         parentSessionId: `${B}_session`,
@@ -622,9 +623,9 @@ describe("RoomRouteController", () => {
         connectionId: "a_from_b",
         senderIdentity: "a-from-b-rtp\u0000track",
         sampleTimestampMs: 105,
-        state: "healthy",
+        state: "degraded",
         acceptedAtMs: 105,
-      }).committed,
+      }).accepted,
     ).toBe(false);
     expect(
       routes.candidateReady(
@@ -635,11 +636,13 @@ describe("RoomRouteController", () => {
           connectionId: "a_from_b",
         },
         106,
+        undefined,
+        { relativeQualityApproved: true },
       ).committed,
     ).toBe(true);
   });
 
-  it("rejects a candidate whose sender identity changes during proof", () => {
+  it("leaves P2P candidate sender identity out of relative approval", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
     addViewer(routes, B, 2);
@@ -672,15 +675,28 @@ describe("RoomRouteController", () => {
         acceptedAtMs: sampleTimestampMs,
       });
     expect(candidateEvidence("candidate-rtp-1\u0000track", 105).accepted).toBe(
-      true,
-    );
-    expect(candidateEvidence("candidate-rtp-2\u0000track", 106).committed).toBe(
       false,
     );
+    expect(candidateEvidence("candidate-rtp-2\u0000track", 106).accepted).toBe(
+      false,
+    );
+    expect(
+      routes.candidateReady(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: current.revision,
+          connectionId: "a_from_b",
+        },
+        107,
+        undefined,
+        { relativeQualityApproved: true },
+      ).committed,
+    ).toBe(true);
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
       kind: "peer",
-      parentPeerId: HOST,
-      connectionId: "a_from_host",
+      parentPeerId: B,
+      connectionId: "a_from_b",
     });
   });
 
@@ -722,34 +738,25 @@ describe("RoomRouteController", () => {
     });
   });
 
-  it("reconsiders an exhausted edge when an existing parent becomes healthy", () => {
+  it("keeps a usable parent eligible before native state becomes clear", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
     addViewer(routes, B, 2);
     routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
     routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
     observePersistentDegraded(routes, A, "a_from_host", 99);
-    expect(routes.reconcile(103).operation).toBeUndefined();
-    expect(
-      routes.observeSenderQualityEvidence({
-        parentPeerId: HOST,
-        parentSessionId: "host_session",
-        childPeerId: B,
-        routeRevision: routes.snapshot().revision,
-        connectionId: "b_from_host",
-        senderIdentity: "b-rtp\u0000track",
-        sampleTimestampMs: 104,
-        state: "healthy",
-        acceptedAtMs: 104,
-      }).accepted,
-    ).toBe(true);
-    expect(routes.reconcile(105).operation).toMatchObject({
+    expect(routes.reconcile(103).operation).toMatchObject({
       childPeerId: A,
       reason: "quality-convergence",
+      candidates: [
+        {
+          tuple: { kind: "peer", parentPeerId: B, transport: "direct" },
+        },
+      ],
     });
   });
 
-  it("rejects stale candidate proof and a parent whose source degrades", () => {
+  it("uses client relative proof even when candidate native state is limited", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
     addViewer(routes, B, 2);
@@ -788,12 +795,23 @@ describe("RoomRouteController", () => {
       true,
     );
     routes.reconcile(103);
-    let begin = beginCandidate(routes, {
+    const begin = beginCandidate(routes, {
       nowMs: 104,
       connectionId: "a_from_b_stale",
       reservation: { kind: "direct" },
     });
-    let current = begin.operation!.current!;
+    const current = begin.operation!.current!;
+    expect(
+      routes.candidateTransportConnected(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: current.revision,
+          connectionId: "a_from_b_stale",
+        },
+        105,
+      ).accepted,
+    ).toBe(true);
     expect(
       routes.observeSenderQualityEvidence({
         parentPeerId: B,
@@ -806,10 +824,12 @@ describe("RoomRouteController", () => {
         state: "healthy",
         acceptedAtMs: 104,
       }).accepted,
-    ).toBe(true);
-    expect(observeCurrent(A, "a_from_host", "degraded", 5_103).accepted).toBe(
-      true,
-    );
+    ).toBe(false);
+    for (const acceptedAtMs of [5_101, 5_102, 5_103]) {
+      expect(
+        observeCurrent(A, "a_from_host", "degraded", acceptedAtMs).accepted,
+      ).toBe(true);
+    }
     expect(
       routes.candidateReady(
         {
@@ -819,67 +839,17 @@ describe("RoomRouteController", () => {
           connectionId: "a_from_b_stale",
         },
         5_104,
+        undefined,
+        { relativeQualityApproved: true },
       ).committed,
-    ).not.toBe(true);
-    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
-      parentPeerId: HOST,
-    });
-
-    expect(observeCurrent(A, "a_from_host", "healthy", 5_200).accepted).toBe(
-      true,
-    );
-    expect(observeCurrent(A, "a_from_host", "degraded", 5_201).accepted).toBe(
-      true,
-    );
-    expect(observeCurrent(A, "a_from_host", "degraded", 5_202).accepted).toBe(
-      true,
-    );
-    expect(observeCurrent(A, "a_from_host", "degraded", 5_203).accepted).toBe(
-      true,
-    );
-    expect(observeCurrent(B, "b_from_host", "healthy", 5_203).accepted).toBe(
-      true,
-    );
-    routes.reconcile(5_204);
-    begin = beginCandidate(routes, {
-      nowMs: 5_205,
-      connectionId: "a_from_b_bad_source",
-      reservation: { kind: "direct" },
-    });
-    current = begin.operation!.current!;
-    expect(
-      routes.observeSenderQualityEvidence({
-        parentPeerId: B,
-        parentSessionId: `${B}_session`,
-        childPeerId: A,
-        routeRevision: current.revision,
-        connectionId: "a_from_b_bad_source",
-        senderIdentity: "a-bad-source-rtp\u0000a-track",
-        sampleTimestampMs: 5_206,
-        state: "healthy",
-        acceptedAtMs: 5_206,
-      }).accepted,
     ).toBe(true);
-    expect(observeCurrent(B, "b_from_host", "degraded", 5_207).accepted).toBe(
-      true,
-    );
-    expect(
-      routes.candidateReady(
-        {
-          childPeerId: A,
-          childSessionId: `${A}_session`,
-          revision: current.revision,
-          connectionId: "a_from_b_bad_source",
-        },
-        5_208,
-      ).committed,
-    ).not.toBe(true);
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
-      parentPeerId: HOST,
+      parentPeerId: B,
+      connectionId: "a_from_b_stale",
     });
   });
 
-  it("consumes a candidate whose source expires before begin", () => {
+  it("keeps a usable candidate when its native source category expires", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
     addViewer(routes, B, 2);
@@ -899,29 +869,47 @@ describe("RoomRouteController", () => {
       reservation: { kind: "direct" },
     });
     expect(begin.accepted).toBe(true);
-    expect(begin.operation).toBeUndefined();
-    expect(routes.snapshot().operation).toBeUndefined();
+    expect(begin.operation?.current?.connectionId).toBe("expired_candidate");
   });
 
-  it("uses bounded SFU only when every Host root is persistently degraded", () => {
+  it("keeps bounded SFU after direct candidates when every Host root is degraded", () => {
     const routes = controller(2, {
       sfuEnabled: true,
       qualityConvergenceEnabled: true,
     });
     addViewer(routes, A, 1);
-    addViewer(routes, B, 1);
+    addViewer(routes, B, 0);
     routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
     routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
     observePersistentDegraded(routes, A, "a_from_host", 99);
     expect(routes.reconcile(103).operation).toBeUndefined();
     observePersistentDegraded(routes, B, "b_from_host", 104);
     const operation = routes.reconcile(108).operation!;
+    const childPeerId = operation.childPeerId;
     expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual([
+      { kind: "peer", parentPeerId: A, transport: "direct" },
       { kind: "sfu", publication: "create" },
     ]);
-    const begin = beginCandidate(routes, {
+    const direct = beginCandidate(routes, {
       nowMs: 109,
-      connectionId: "a_from_sfu",
+      connectionId: "quality_peer_candidate",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(
+      routes.candidateFailed(
+        {
+          childPeerId,
+          childSessionId: `${childPeerId}_session`,
+          revision: direct.current!.revision,
+          connectionId: "quality_peer_candidate",
+        },
+        110,
+      ),
+    ).toMatchObject({ accepted: true, failedPeerIds: [] });
+
+    const begin = beginCandidate(routes, {
+      nowMs: 111,
+      connectionId: "quality_sfu_candidate",
       reservation: {
         kind: "sfu-create",
         edge: "sfu-edge",
@@ -936,12 +924,12 @@ describe("RoomRouteController", () => {
     expect(
       routes.candidateReady(
         {
-          childPeerId: A,
-          childSessionId: `${A}_session`,
+          childPeerId,
+          childSessionId: `${childPeerId}_session`,
           revision: current.revision,
-          connectionId: "a_from_sfu",
+          connectionId: "quality_sfu_candidate",
         },
-        110,
+        112,
       ),
     ).toMatchObject({ accepted: true, committed: false });
     expect(
@@ -949,12 +937,12 @@ describe("RoomRouteController", () => {
         routes,
         "publication_generation_12345678",
         current.revision,
-        111,
+        113,
       ).committed,
     ).toBe(true);
-    expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
+    expect(routes.snapshot().upstreamByViewer.get(childPeerId)).toMatchObject({
       kind: "sfu",
-      connectionId: "a_from_sfu",
+      connectionId: "quality_sfu_candidate",
     });
   });
 
@@ -964,7 +952,7 @@ describe("RoomRouteController", () => {
       qualityConvergenceEnabled: true,
     });
     addViewer(routes, A, 1);
-    addViewer(routes, B, 1);
+    addViewer(routes, B, 0);
     routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
     routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
     observePersistentDegraded(routes, A, "a_from_host", 99);
@@ -1016,8 +1004,8 @@ describe("RoomRouteController", () => {
       sfuEnabled: true,
       qualityConvergenceEnabled: true,
     });
-    addViewer(routes, A, 1);
-    addViewer(routes, B, 1);
+    addViewer(routes, A, 0);
+    addViewer(routes, B, 0);
     routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
     routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
     routes.hydrateHostPublication(
