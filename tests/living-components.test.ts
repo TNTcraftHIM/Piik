@@ -42,6 +42,7 @@ describe("living-room presentation", () => {
 
     expect(html).toContain("TNT · Recovering");
     expect(html).toContain("lr-pawn-led is-wait");
+    expect(html).toContain('aria-label="Viewers 1"');
   });
 
   it("keeps the current display name visible in visual mode", () => {
@@ -68,5 +69,28 @@ describe("living-room presentation", () => {
     expect(html).toContain("lr-comic-tip");
     expect(html).toContain(">Share</button>");
     expect(html).not.toContain('viewBox="0 0 320 96"');
+  });
+
+  it("keeps every crowded and relay Viewer name visible in visual mode", () => {
+    setCopy({ lang: "en", vis: true });
+    const html = renderToStaticMarkup(
+      createElement(Couch, {
+        entries: Array.from({ length: 12 }, (_, index) => ({
+          key: `viewer-${index}`,
+          name:
+            index === 11
+              ? "Relay Viewer With A Full Name"
+              : `Viewer ${index}`,
+          connected: true,
+          child: index === 11,
+        })),
+      }),
+    );
+
+    expect(html).toContain("lr-pawns is-crowded");
+    expect(html).toContain(
+      '<span class="lr-pawn-name is-mini">Relay Viewer With A Full Name</span>',
+    );
+    expect(html).not.toContain("max-width:72px");
   });
 });

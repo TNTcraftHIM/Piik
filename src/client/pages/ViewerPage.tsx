@@ -42,7 +42,6 @@ import {
   NameTag,
   Pill,
   Row,
-  RowGroup,
   StatusText,
 } from "../components/living/primitives";
 import { Glyph, type GlyphName } from "../ui/icons";
@@ -136,16 +135,6 @@ interface RemoteMediaBinding {
   boundAtRevision: number;
   videoTrackKey: string;
 }
-
-const CONNECTING_STAGES: readonly ViewerStage[] = [
-  "joining",
-  "preparing-p2p",
-  "preparing-sfu",
-  "waiting-sfu",
-  "receiving",
-  "allocating",
-  "recovering",
-];
 
 function stageOverlayGlyph(stage: ViewerStage): { icon: GlyphName; spin: boolean } {
   switch (stage) {
@@ -299,17 +288,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       ),
     [peerSnapshot, relaySnapshot],
   );
-  const hostDisplayName = useMemo(
-    () =>
-      participantPresence?.find(
-        (participant) => participant.role === "host",
-      )?.displayName ?? null,
-    [participantPresence],
-  );
   const { host: labeledHostPresence, viewers } = useMemo(
     () => labelParticipantSnapshot(participantPresence ?? []),
     [participantPresence],
   );
+  const hostDisplayName = labeledHostPresence?.label ?? null;
 
   function clearParticipantPresence(): void {
     setParticipantPresence(null);
@@ -2367,25 +2350,26 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               onClose={() => setSelectedPawn(null)}
             />
           ) : null}
-          <Row>
-            <RowGroup>
+          <div className="lr-row lr-viewer-summary-row">
+            <div className="lr-row-group lr-viewer-room-slot">
               <FieldCap k="common.roomCode" />
               <Lcd code={roomId} />
-            </RowGroup>
-            <RowGroup>
-              <StatusText>
-                {hostDisplayName
-                  ? `${t("viewer.title", { name: hostDisplayName })} · `
-                  : ""}
-                {t(presentation.messageKey)}
-                {participantPresence
-                  ? ` · ${t("viewer.onlineCount", { n: String(viewers.length) })}`
-                  : ""}
-              </StatusText>
-            </RowGroup>
-            <span className="lr-spacer" />
+            </div>
+            <div
+              className="lr-row-group lr-viewer-host-slot"
+              aria-label={t(
+                hostDisplayName ? "viewer.title" : "viewer.titleFallback",
+                hostDisplayName ? { name: hostDisplayName } : undefined,
+              )}
+            >
+              <Glyph name="tv" size={17} />
+              <b>{hostDisplayName ?? t("common.host")}</b>
+            </div>
+            <div className="lr-row-group lr-viewer-state-slot">
+              <StatusText>{t(presentation.messageKey)}</StatusText>
+            </div>
             <form
-              className="lr-row-group lr-group-name"
+              className="lr-row-group lr-group-name lr-viewer-self-slot"
               onSubmit={(event) => {
                 event.preventDefault();
                 commitDisplayName();
@@ -2448,7 +2432,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 <Pill icon="alert" tone="bad" label={t("host.nameError")} alert />
               )}
             </form>
-            <RowGroup actions>
+            <div className="lr-row-group lr-group-actions lr-viewer-actions-slot">
               {labeledHostPresence
                 ? hintWrap(
                     "hint-topology",
@@ -2492,8 +2476,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 }
                 onClick={() => setShowConnectionDetails((current) => !current)}
               />
-            </RowGroup>
-          </Row>
+            </div>
+          </div>
           {presentation.noticeKey ? (
             <Pill icon="alert" label={t(presentation.noticeKey)} />
           ) : null}
@@ -2552,7 +2536,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 hostLabel={labeledHostPresence.label}
                 viewers={viewers}
                 selfPeerId={selfPeerId}
-                flowing={CONNECTING_STAGES.includes(presentation.stage)}
+                selectedPeerId={selectedPawn}
               />
             </Row>
           ) : null}

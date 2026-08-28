@@ -1,11 +1,19 @@
 // The connection topology as a real tree: host (crowned) roots direct P2P
 // viewers and the SFU node; relay children hang off their parent viewer.
 // Data comes from deriveParticipantTopology.
-import { memo } from "react";
-import { PawnSvg, pawnColor } from "./Couch";
-import { useCopy } from "../../ui/copy";
+import { memo, useSyncExternalStore } from "react";
+
 import type { LabeledViewerPresence } from "../../lib/viewer-presence";
-import { deriveParticipantTopology, type TopologyBranch } from "../../lib/participant-topology";
+import {
+  deriveParticipantTopology,
+  type TopologyBranch,
+} from "../../lib/participant-topology";
+import { useCopy } from "../../ui/copy";
+import { PawnSvg, pawnColor } from "./Couch";
+import {
+  topologyLayoutForViewport,
+  type TopologyLayout,
+} from "./route-tree-layout";
 
 interface TreeNode {
   key: string;
@@ -13,15 +21,58 @@ interface TreeNode {
   via: string | null;
   sfu: boolean;
   you: boolean;
+  ready: boolean;
 }
 
-const HOST_X = 40;
-const COLUMN_GAP = 190;
 const ROW_BASE = 40;
-const PENDING_COLOR = "#d98e04";
+const NARROW_TOPOLOGY_QUERY = "(max-width: 640px)";
 
-function xForDepth(depth: number): number {
-  return HOST_X + (depth + 1) * COLUMN_GAP;
+function subscribeToNarrowViewport(listener: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const query = window.matchMedia(NARROW_TOPOLOGY_QUERY);
+  query.addEventListener("change", listener);
+  return () => query.removeEventListener("change", listener);
+}
+
+function narrowViewportSnapshot(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.matchMedia?.(NARROW_TOPOLOGY_QUERY).matches)
+  );
+}
+
+function useNarrowViewport(): boolean {
+  return useSyncExternalStore(
+    subscribeToNarrowViewport,
+    narrowViewportSnapshot,
+    () => false,
+  );
+}
+
+function compactVisibleLabel(label: string, maximumCodePoints: number): string {
+  const codePoints = Array.from(label);
+  if (codePoints.length <= maximumCodePoints) return label;
+
+  const suffix = label.match(/ \([^()]+\)$/u)?.[0] ?? null;
+  if (suffix) {
+    const suffixCodePoints = Array.from(suffix);
+    const nameCodePoints = Array.from(label.slice(0, -suffix.length));
+    const visibleNameLength = Math.max(
+      0,
+      maximumCodePoints - suffixCodePoints.length - 1,
+    );
+    return `${nameCodePoints.slice(0, visibleNameLength).join("")}…${suffix}`;
+  }
+
+  return `${codePoints.slice(0, maximumCodePoints - 1).join("")}…`;
+}
+
+function xForDepth(depth: number, layout: TopologyLayout): number {
+  return layout.hostX + (depth + 1) * layout.columnGap;
+}
+
+function edgeClass(kind: "p2p" | "sfu", ready = true): string {
+  return `lr-route-edge is-${kind}${ready ? "" : " is-recovering"}`;
 }
 
 export const RouteTree = memo(function RouteTree({
@@ -29,15 +80,17 @@ export const RouteTree = memo(function RouteTree({
   hostLabel,
   viewers,
   selfPeerId,
-  flowing = false,
+  selectedPeerId,
 }: {
   hostPeerId: string | null;
   hostLabel: string;
   viewers: readonly LabeledViewerPresence[];
   selfPeerId?: string | null;
-  flowing?: boolean;
+  selectedPeerId?: string | null;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
+  const narrowViewport = useNarrowViewport();
+  const layoutConfig = topologyLayoutForViewport(narrowViewport);
   const topology = deriveParticipantTopology(hostPeerId, viewers);
 
   const nodes: TreeNode[] = [];
@@ -48,8 +101,11 @@ export const RouteTree = memo(function RouteTree({
       via,
       sfu,
       you: selfPeerId === branch.viewer.peerId,
+      ready: branch.viewer.mediaReady === true,
     });
-    branch.children.forEach((child) => collect(child, branch.viewer.peerId, false));
+    branch.children.forEach((child) =>
+      collect(child, branch.viewer.peerId, false),
+    );
   };
   topology.peerRoots.forEach((root) => collect(root, null, false));
   topology.sfuRoots.forEach((root) => collect(root, null, true));
@@ -65,258 +121,324 @@ export const RouteTree = memo(function RouteTree({
     else if (node.sfu) add("sfu", node);
     else add(null, node);
   }
-  const hasSfu = nodes.some((n) => n.sfu);
 
-  const spacing = nodes.length > 10 ? 32 : 42;
+  const spacing = nodes.length > 10 ? 42 : 44;
   let row = 0;
   const pos = new Map<string, { x: number; y: number }>();
   function layout(node: TreeNode, depth: number): void {
-    const kids = childrenOf.get(node.key) ?? [];
+    const children = childrenOf.get(node.key) ?? [];
     let y: number;
-    if (kids.length === 0) {
+    if (children.length === 0) {
       y = ROW_BASE + row * spacing;
       row += 1;
     } else {
-      kids.forEach((kid) => layout(kid, depth + 1));
-      y = kids.reduce((sum, kid) => sum + pos.get(kid.key)!.y, 0) / kids.length;
+      children.forEach((child) => layout(child, depth + 1));
+      y =
+        children.reduce((sum, child) => sum + pos.get(child.key)!.y, 0) /
+        children.length;
     }
-    pos.set(node.key, { x: xForDepth(depth), y });
-  }
-  (childrenOf.get(null) ?? []).forEach((node) => layout(node, 0));
-  let sfuPos: { x: number; y: number } | null = null;
-  if (hasSfu) {
-    const sfuKids = (childrenOf.get("sfu") ?? []);
-    sfuKids.forEach((node) => layout(node, 1));
-    sfuPos = {
-      x: xForDepth(0),
-      y: sfuKids.reduce((sum, kid) => sum + pos.get(kid.key)!.y, 0) / sfuKids.length,
-    };
+    pos.set(node.key, { x: xForDepth(depth, layoutConfig), y });
   }
 
-  // Pending viewers (upstream not yet in the tree) dangle off the host as
-  // dashed amber edges — visible in every language mode, not just text.
+  (childrenOf.get(null) ?? []).forEach((node) => layout(node, 0));
+  const sfuChildren = childrenOf.get("sfu") ?? [];
+  sfuChildren.forEach((node) => layout(node, 1));
+  let sfuPos: { x: number; y: number } | null =
+    sfuChildren.length > 0
+      ? {
+          x: xForDepth(0, layoutConfig),
+          y:
+            sfuChildren.reduce(
+              (sum, child) => sum + pos.get(child.key)!.y,
+              0,
+            ) / sfuChildren.length,
+        }
+      : null;
+
   const pendingPos = topology.pending.map((viewer) => {
-    const p = { x: xForDepth(0), y: ROW_BASE + row * spacing };
+    const point = {
+      x: xForDepth(0, layoutConfig),
+      y: ROW_BASE + row * spacing,
+    };
     row += 1;
-    return { viewer, ...p };
+    return { viewer, ...point };
   });
 
   const height = Math.max(140, row * spacing + 64);
-
   const rootYs = [
     ...(childrenOf.get(null) ?? []).map((node) => pos.get(node.key)!.y),
     ...(sfuPos ? [sfuPos.y] : []),
-    ...pendingPos.map((p) => p.y),
+    ...pendingPos.map((point) => point.y),
   ];
   const hostPos = {
-    x: HOST_X,
+    x: layoutConfig.hostX,
     y:
       rootYs.length > 0
-        ? rootYs.reduce((a, b) => a + b, 0) / rootYs.length
+        ? rootYs.reduce((sum, y) => sum + y, 0) / rootYs.length
         : height / 2,
   };
   const width = Math.max(
-    640,
-    ...[...pos.values(), ...pendingPos, ...(sfuPos ? [sfuPos] : [])].map(
-      ({ x }) => x + 70,
-    ),
+    layoutConfig.baseWidth,
+    ...[
+      ...pos.values(),
+      ...pendingPos,
+      ...(sfuPos ? [sfuPos] : []),
+    ].map(({ x }) => x + layoutConfig.rightLabelReserve),
   );
 
-  // Center the whole composition vertically inside the panel.
   const allYs = [
-    ...[...pos.values()].map((p) => p.y),
+    ...[...pos.values()].map((point) => point.y),
     ...(sfuPos ? [sfuPos.y] : []),
-    ...pendingPos.map((p) => p.y),
+    ...pendingPos.map((point) => point.y),
     hostPos.y,
   ];
   const minY = Math.min(...allYs) - 26;
-  const maxY = Math.max(...allYs) + (vis ? 22 : 34);
+  const maxY = Math.max(...allYs) + 34;
   const shift = Math.max(0, (height - (maxY - minY)) / 2 - minY + 4);
   if (shift > 0) {
-    pos.forEach((p) => {
-      p.y += shift;
+    pos.forEach((point) => {
+      point.y += shift;
     });
-    pendingPos.forEach((p) => {
-      p.y += shift;
+    pendingPos.forEach((point) => {
+      point.y += shift;
     });
     if (sfuPos) sfuPos.y += shift;
     hostPos.y += shift;
   }
 
-  const flowClass = flowing ? "flow" : undefined;
-
-  const labelText = (name: string, x: number, y: number) =>
-    vis ? null : (
-      <text x={x} y={y} textAnchor="middle">
-        {name}
-      </text>
-    );
-
-  const pendingLabel = `${t("host.topology.pending")}: ${topology.pending
-    .map((viewer) => viewer.label)
-    .join(", ")}`;
-
-  const srSummary = [
-    `${t("common.host")} ${hostLabel}`,
-    ...nodes.map(
-      (node) =>
-        `${node.label} (${t(node.sfu ? "state.route.sfu" : "state.route.p2p")})`,
-    ),
-    ...topology.pending.map(
-      (viewer) => `${viewer.label} (${t("host.topology.pending")})`,
-    ),
-  ].join(" · ");
+  const labelByPeer = new Map(nodes.map((node) => [node.key, node.label]));
+  const topologyTitleId = "room-topology-title";
+  const scrollableCanvas = width > layoutConfig.baseWidth;
+  const sfuChildPoints = sfuChildren.map((child) => ({
+    child,
+    point: pos.get(child.key)!,
+  }));
+  const sfuRail =
+    sfuPos && sfuChildPoints.length > 1
+      ? {
+          x: sfuPos.x + layoutConfig.columnGap * 0.45,
+          minY: Math.min(...sfuChildPoints.map(({ point }) => point.y)),
+          maxY: Math.max(...sfuChildPoints.map(({ point }) => point.y)),
+        }
+      : null;
 
   return (
     <div
       className="lr-route"
       role="group"
-      aria-label={`${t("host.topology")}: ${srSummary}`}
+      aria-labelledby={topologyTitleId}
       id="room-topology"
+      tabIndex={0}
     >
+      <span id={topologyTitleId} className="visually-hidden">
+        {t("host.topology")}
+      </span>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        style={{ width, minWidth: "100%", maxWidth: "none" }}
+        aria-hidden="true"
+        focusable="false"
+        style={
+          narrowViewport || scrollableCanvas
+            ? { width, maxWidth: "none" }
+            : {
+                width: "100%",
+                maxWidth: nodes.length > 10 ? layoutConfig.baseWidth : 880,
+              }
+        }
       >
-        {/* In vis mode <title> doubles as a native hover tooltip, leaking
-            human-language UI text into the zero-text mode; accessible names
-            ride on aria-label instead, which never becomes hover text. */}
-        {vis ? null : <title>{t("host.topology")}</title>}
-        {/* edges first, nodes on top */}
-        {nodes.map((node) => {
-          const p = pos.get(node.key)!;
-          const parentNode = node.via ? pos.get(node.via) : undefined;
-          const parent = parentNode ?? (node.sfu && sfuPos ? sfuPos : hostPos);
-          const color = node.sfu ? "#8ea3b8" : "#2fa66a";
-          return (
+        {nodes
+          .filter((node) => !node.sfu)
+          .map((node) => {
+            const point = pos.get(node.key)!;
+            const parent = node.via ? pos.get(node.via)! : hostPos;
+            return (
+              <path
+                key={`edge-${node.key}`}
+                d={`M ${parent.x + 20} ${parent.y} Q ${(parent.x + point.x) / 2} ${parent.y + (point.y - parent.y) * 0.55}, ${point.x - 18} ${point.y}`}
+                className={edgeClass("p2p", node.ready)}
+              />
+            );
+          })}
+
+        {sfuPos ? (
+          <>
             <path
-              key={`edge-${node.key}`}
-              d={`M ${parent.x + 20} ${parent.y} Q ${(parent.x + p.x) / 2} ${parent.y + (p.y - parent.y) * 0.55}, ${p.x - 18} ${p.y}`}
-              fill="none"
-              stroke={color}
-              strokeWidth={2.5}
-              className={flowClass}
+              d={`M ${hostPos.x + 20} ${hostPos.y} L ${sfuPos.x - 20} ${sfuPos.y}`}
+              className={edgeClass("sfu")}
             />
-          );
-        })}
-        {pendingPos.map((p) => (
+            {sfuChildren.length === 1 ? (
+              <path
+                d={`M ${sfuPos.x + 20} ${sfuPos.y} L ${pos.get(sfuChildren[0]!.key)!.x - 18} ${pos.get(sfuChildren[0]!.key)!.y}`}
+                className={edgeClass("sfu", sfuChildren[0]!.ready)}
+              />
+            ) : sfuRail ? (
+              <>
+                <path
+                  d={`M ${sfuPos.x + 20} ${sfuPos.y} H ${sfuRail.x}`}
+                  className={edgeClass("sfu")}
+                />
+                <path
+                  d={`M ${sfuRail.x} ${sfuRail.minY} V ${sfuRail.maxY}`}
+                  className={edgeClass("sfu")}
+                />
+                {sfuChildPoints.map(({ child, point }) => (
+                  <path
+                    key={`edge-${child.key}`}
+                    d={`M ${sfuRail.x} ${point.y} H ${point.x - 18}`}
+                    className={edgeClass("sfu", child.ready)}
+                  />
+                ))}
+              </>
+            ) : null}
+          </>
+        ) : null}
+
+        {pendingPos.map((point) => (
           <path
-            key={`edge-pending-${p.viewer.peerId}`}
-            d={`M ${hostPos.x + 20} ${hostPos.y} Q ${(hostPos.x + p.x) / 2} ${hostPos.y + (p.y - hostPos.y) * 0.55}, ${p.x - 18} ${p.y}`}
-            fill="none"
-            stroke={PENDING_COLOR}
-            strokeWidth={2.5}
-            strokeDasharray="6 7"
-            className={flowClass}
+            key={`edge-pending-${point.viewer.peerId}`}
+            d={`M ${hostPos.x + 20} ${hostPos.y} Q ${(hostPos.x + point.x) / 2} ${hostPos.y + (point.y - hostPos.y) * 0.55}, ${point.x - 18} ${point.y}`}
+            className="lr-route-edge is-pending"
           />
         ))}
-        {sfuPos ? (
-          <path
-            d={`M ${hostPos.x + 20} ${hostPos.y} L ${sfuPos.x - 20} ${sfuPos.y}`}
-            fill="none"
-            stroke="#8ea3b8"
-            strokeWidth={2.5}
-            className={flowClass}
-          />
-        ) : null}
+
         <g
+          className="lr-route-node is-host"
           transform={`translate(${hostPos.x - 4}, ${hostPos.y - 20}) scale(0.85)`}
-          role={vis ? "img" : undefined}
-          aria-label={vis ? `${hostLabel} · ${t("common.host")}` : undefined}
         >
-          {vis ? null : <title>{`${hostLabel} · ${t("common.host")}`}</title>}
           <PawnSvg color="var(--couch)" crown />
         </g>
-        {labelText(hostLabel, hostPos.x + 14, hostPos.y + 30)}
+        <text
+          className="lr-route-label is-host"
+          x={hostPos.x + 14}
+          y={hostPos.y + 30}
+          textAnchor="middle"
+        >
+          {compactVisibleLabel(
+            hostLabel,
+            layoutConfig.maxVisibleLabelCodePoints,
+          )}
+        </text>
+
         {sfuPos ? (
-          <g
-            transform={`translate(${sfuPos.x - 20}, ${sfuPos.y - 16})`}
-            role={vis ? "img" : undefined}
-            aria-label={vis ? t("host.sfu") : undefined}
-          >
-            {vis ? null : <title>{t("host.sfu")}</title>}
-            <rect width="40" height="32" rx="7" fill="none" stroke="#8ea3b8" strokeWidth="2.5" />
-            <path d="M8 12h24M8 20h24" stroke="#8ea3b8" strokeWidth="2.5" strokeLinecap="round" />
-          </g>
+          <>
+            <g
+              className="lr-route-sfu"
+              transform={`translate(${sfuPos.x - 20}, ${sfuPos.y - 16})`}
+            >
+              <rect width="40" height="32" rx="7" />
+              <path d="M8 12h24M8 20h24" />
+            </g>
+            <text
+              className="lr-route-label is-sfu"
+              x={sfuPos.x}
+              y={sfuPos.y + 32}
+              textAnchor="middle"
+            >
+              SFU
+            </text>
+          </>
         ) : null}
-        {sfuPos ? labelText(t("host.sfu"), sfuPos.x, sfuPos.y + 32) : null}
+
         {nodes.map((node) => {
-          const p = pos.get(node.key)!;
-          const isChild = node.via !== null && !node.sfu;
-          const nodeLabel = node.you ? `${node.label} · ${t("common.you")}` : node.label;
+          const point = pos.get(node.key)!;
+          const child = node.via !== null && !node.sfu;
+          const selected = selectedPeerId === node.key;
           return (
             <g
               key={node.key}
-              transform={`translate(${p.x - 14}, ${p.y - 15}) scale(${isChild ? 0.52 : 0.72})`}
-              role={vis ? "img" : undefined}
-              aria-label={vis ? nodeLabel : undefined}
+              className={`lr-route-node${node.ready ? "" : " is-recovering"}${selected ? " is-selected" : ""}`}
+              transform={`translate(${point.x - 14}, ${point.y - 15}) scale(${child ? 0.52 : 0.72})`}
             >
-              {vis ? null : <title>{nodeLabel}</title>}
               <PawnSvg color={pawnColor(node.key, node.you)} />
+              {selected ? (
+                <circle className="lr-route-selection" cx="20" cy="26" r="25" />
+              ) : null}
               {node.you ? (
-                <circle cx="20" cy="26" r="22" fill="none" stroke="var(--you)" strokeWidth="3" />
+                <circle className="lr-route-you" cx="20" cy="26" r="21" />
               ) : null}
             </g>
           );
         })}
-        {pendingPos.map((p) => (
+
+        {pendingPos.map((point) => (
           <g
-            key={`pending-${p.viewer.peerId}`}
-            transform={`translate(${p.x - 14}, ${p.y - 15}) scale(0.72)`}
-            opacity={0.55}
-            role={vis ? "img" : undefined}
-            aria-label={vis ? `${p.viewer.label} · ${t("host.topology.pending")}` : undefined}
+            key={`pending-${point.viewer.peerId}`}
+            className={`lr-route-node is-recovering${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
+            transform={`translate(${point.x - 14}, ${point.y - 15}) scale(0.72)`}
           >
-            {vis ? null : <title>{`${p.viewer.label} · ${t("host.topology.pending")}`}</title>}
-            <PawnSvg color={pawnColor(p.viewer.peerId, selfPeerId === p.viewer.peerId)} />
+            <PawnSvg
+              color={pawnColor(
+                point.viewer.peerId,
+                selfPeerId === point.viewer.peerId,
+              )}
+            />
+            {selectedPeerId === point.viewer.peerId ? (
+              <circle className="lr-route-selection" cx="20" cy="26" r="25" />
+            ) : null}
+            {selfPeerId === point.viewer.peerId ? (
+              <circle className="lr-route-you" cx="20" cy="26" r="21" />
+            ) : null}
           </g>
         ))}
-        {vis
-          ? null
-          : nodes.map((node) => {
-              const p = pos.get(node.key)!;
-              const isChild = node.via !== null && !node.sfu;
-              return (
-                <text key={`label-${node.key}`} x={p.x + 4} y={p.y + (isChild ? 20 : 26)} textAnchor="middle">
-                  {node.label}
-                </text>
-              );
-            })}
-        {vis
-          ? null
-          : pendingPos.map((p) => (
-              <text
-                key={`label-pending-${p.viewer.peerId}`}
-                x={p.x + 4}
-                y={p.y + 26}
-                textAnchor="middle"
-                opacity={0.7}
-              >
-                {p.viewer.label}
-              </text>
-            ))}
-      </svg>
-      <ul className="visually-hidden">
-        {nodes.map((node) => (
-          <li key={`sr-${node.key}`}>
-            {node.label} {node.sfu ? "SFU" : "P2P"}
-          </li>
+
+        {nodes.map((node) => {
+          const point = pos.get(node.key)!;
+          const child = node.via !== null && !node.sfu;
+          return (
+            <text
+              key={`label-${node.key}`}
+              className={`lr-route-label${selectedPeerId === node.key ? " is-selected" : ""}`}
+              x={point.x + 4}
+              y={point.y + (child ? 20 : 26)}
+              textAnchor="middle"
+            >
+              {compactVisibleLabel(
+                node.label,
+                layoutConfig.maxVisibleLabelCodePoints,
+              )}
+            </text>
+          );
+        })}
+        {pendingPos.map((point) => (
+          <text
+            key={`label-pending-${point.viewer.peerId}`}
+            className={`lr-route-label is-recovering${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
+            x={point.x + 4}
+            y={point.y + 26}
+            textAnchor="middle"
+          >
+            {compactVisibleLabel(
+              point.viewer.label,
+              layoutConfig.maxVisibleLabelCodePoints,
+            )}
+          </text>
         ))}
+      </svg>
+
+      <ul className="visually-hidden">
+        <li>
+          {hostLabel} · {t("common.host")}
+        </li>
+        {nodes.map((node) => {
+          const parentLabel = node.via
+            ? (labelByPeer.get(node.via) ?? hostLabel)
+            : node.sfu
+              ? "SFU"
+              : hostLabel;
+          return (
+            <li key={`sr-${node.key}`}>
+              {node.label} ← {parentLabel} ·{" "}
+              {t(node.sfu ? "state.route.sfu" : "state.route.p2p")}
+              {node.ready ? "" : ` · ${t("host.topology.pending")}`}
+            </li>
+          );
+        })}
         {topology.pending.map((viewer) => (
           <li key={`sr-pending-${viewer.peerId}`}>
-            {viewer.label} {t("host.topology.pending")}
+            {viewer.label} · {t("host.topology.pending")}
           </li>
         ))}
       </ul>
-      {topology.pending.length > 0 ? (
-        vis ? (
-          <span className="visually-hidden">{pendingLabel}</span>
-        ) : (
-          <div className="lr-status-text" style={{ padding: "4px 6px" }}>
-            {pendingLabel}
-          </div>
-        )
-      ) : null}
     </div>
   );
 });

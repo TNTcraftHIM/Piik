@@ -333,7 +333,6 @@ const zh = {
   "stats.warn.audioCodec": "音频编码为 {codec}，预期 Opus",
 
   "viewer.msg.joinUnavailable": "暂时无法加入房间",
-  "viewer.onlineCount": "在线 {n}",
   "viewer.stageAria": "共享画面",
 
   "host.warn.audioUnread": "浏览器未读回音频码率上限",
@@ -680,7 +679,6 @@ const en: Record<keyof typeof zh, string> = {
   "stats.warn.audioCodec": "Audio codec is {codec}; expected Opus",
 
   "viewer.msg.joinUnavailable": "Cannot join the room right now",
-  "viewer.onlineCount": "{n} online",
   "viewer.stageAria": "Shared picture",
 
   "host.warn.audioUnread": "The browser did not report the audio bitrate ceiling",
