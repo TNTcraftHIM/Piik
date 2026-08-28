@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `aa3043b9059264963ef9206e1e606a6d3c83a873`, release `aa3043b`, wire
-  `screener-v16`, from `/opt/screener/releases/aa3043b`. The immutable runtime
+  `24cb780b54744af6e1bd5549254fa94c84adac96`, release `24cb780`, wire
+  `screener-v16`, from `/opt/screener/releases/24cb780`. The immutable runtime
   tar SHA-256 is
-  `c1eb9e575a6865dc1b1ad9b9c79d5575a0e25592576c8362039c501a1e45647c`;
+  `45041f9796b1d62f49c408782335835a5e3c07238f9b532c8954ff5f5545b24c`;
   its 41-file manifest SHA-256 is
-  `7da8010103611f033a9c9bfe8a22f2645edf63b1d923459b3af7bd5ca5081f88`.
-- The served Browser entry references `assets/index-DvVz3_bv.js`; the public
+  `a1d0608f518b1fb0e4874e10e1eac9c731716b508f08569579f001668543c6f8`.
+- The served Browser entry references `assets/index-Bo3ApbkQ.js`; the public
   asset SHA-256 is
-  `a75114ab543eb247822ac86fb4aec78ca03a6ded5032c9f9fb8b92a0c2cb271f`.
+  `87d074f43abf4b769d4930b52b6a21f1383c1d7229773a958feb22d592c08df7`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -39,9 +39,9 @@ This is the current execution index. Git history owns completed timelines;
 - Screen audio provides live 64/128/192 kbps ceilings with 128 default. SFU
   publication uses stereo, DTX off, and RED off. Early autoplay presentation is
   gated by current media connection state.
-- Native-edge local convergence is available behind the default-off pre-share
-  topology policy. The adjacent default-off peer-only policy excludes all SFU
-  paths for that share generation. Both policies lock while sharing.
+- Native-edge local convergence defaults on for each new share and remains a
+  pre-share Host opt-out. The adjacent default-off peer-only policy excludes all
+  SFU paths for that share generation. Both policies lock while sharing.
 
 ## Current Source
 
@@ -88,8 +88,8 @@ subscribers back to P2P, and retired the Host SFU publication.
   prevents frozen JavaScript wall time from becoming an immediate route failure
   but is not capture keepalive.
 - Current-path quality can drive local convergence in source and production.
-  Source defaults it on; production remains default-off until a later release.
-  Weighted/global optimization remains parked.
+  Both default it on with a pre-share Host opt-out. Weighted/global optimization
+  remains parked.
 - Repository simplification does not change or deploy product behavior beyond
   deleting proven dead private surfaces.
 - Native/executable senders, shared encode, distribution packages, broad UI
