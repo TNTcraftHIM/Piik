@@ -1,9 +1,13 @@
 import type {
   ClientMessage,
-  MediaAssignment,
   SignalPayload,
 } from "../../shared/protocol";
 import { MAX_ENDPOINT_MEDIA_COPY_CAPACITY } from "../../shared/media-copy-accounting";
+
+export interface MediaAssignment {
+  parentPeerId: string | null;
+  childPeerIds: string[];
+}
 
 export const MAX_ENDPOINT_MEDIA_CHILDREN = MAX_ENDPOINT_MEDIA_COPY_CAPACITY;
 

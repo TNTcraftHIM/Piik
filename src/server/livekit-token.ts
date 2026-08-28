@@ -19,7 +19,6 @@ export interface SfuTokenRequest {
   peerId: string;
   shareGeneration: string;
   publicationGeneration: string;
-  allowlistedRootPeerIds: readonly string[];
 }
 
 export interface SfuTokenIssuer {
@@ -47,7 +46,7 @@ export class LiveKitTokenIssuer implements SfuTokenIssuer {
   }
 
   async issueToken(request: SfuTokenRequest): Promise<string> {
-    validateTokenRequest(request, this.options.maxViewersPerRoom);
+    validateTokenRequest(request);
 
     const isHost = request.role === "host";
     const room = managedSfuRoomName(request);
@@ -74,10 +73,7 @@ export class LiveKitTokenIssuer implements SfuTokenIssuer {
   }
 }
 
-function validateTokenRequest(
-  request: SfuTokenRequest,
-  maxViewersPerRoom: number,
-): void {
+function validateTokenRequest(request: SfuTokenRequest): void {
   if (!ROOM_ID_PATTERN.test(request.roomId)) {
     throw new Error("LiveKit room ID is invalid");
   }
@@ -87,21 +83,5 @@ function validateTokenRequest(
     !OPAQUE_ID_PATTERN.test(request.publicationGeneration)
   ) {
     throw new Error("LiveKit participant identity is invalid");
-  }
-  if (
-    request.allowlistedRootPeerIds.length > maxViewersPerRoom ||
-    request.allowlistedRootPeerIds.some(
-      (peerId) => !OPAQUE_ID_PATTERN.test(peerId),
-    )
-  ) {
-    throw new Error("LiveKit SFU root allowlist is invalid");
-  }
-
-  const roots = new Set(request.allowlistedRootPeerIds);
-  if (roots.size !== request.allowlistedRootPeerIds.length) {
-    throw new Error("LiveKit SFU root allowlist contains duplicates");
-  }
-  if (request.role === "viewer" && !roots.has(request.peerId)) {
-    throw new Error("LiveKit viewer is not an allowlisted SFU root");
   }
 }

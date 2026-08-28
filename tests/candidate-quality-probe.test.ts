@@ -116,6 +116,50 @@ describe("SFU quality probe", () => {
     ).toBe(false);
   });
 
+  it("keeps nearby but non-overlapping samples pending", () => {
+    const probe = new P2pQualityProbe();
+    const current = (timestampMs: number) =>
+      metrics(timestampMs, {
+        sampleWindowMs: 1_000,
+        frameWidth: 320,
+        frameHeight: 180,
+        framesPerSecond: 10,
+      });
+    const candidate = (timestampMs: number) =>
+      metrics(timestampMs, {
+        sampleWindowMs: 1_000,
+        frameWidth: 1_280,
+        frameHeight: 720,
+        framesPerSecond: 30,
+      });
+
+    expect(
+      p2pCandidateStrictlyImproves(current(10_000), candidate(11_100)),
+    ).toBeNull();
+    for (const timestampMs of [10_000, 13_000, 16_000]) {
+      expect(
+        probe.observe(current(timestampMs), candidate(timestampMs + 1_100)),
+      ).toBe("pending");
+    }
+  });
+
+  it("keeps the original comparison for overlapping samples", () => {
+    const current = metrics(10_000, {
+      sampleWindowMs: 1_000,
+      frameWidth: 320,
+      frameHeight: 180,
+      framesPerSecond: 10,
+    });
+    const candidate = metrics(10_900, {
+      sampleWindowMs: 1_000,
+      frameWidth: 1_280,
+      frameHeight: 720,
+      framesPerSecond: 30,
+    });
+
+    expect(p2pCandidateStrictlyImproves(current, candidate)).toBe(true);
+  });
+
   it("requires three consecutive strict P2P improvements", () => {
     const probe = new P2pQualityProbe();
     const current = (timestampMs: number) =>

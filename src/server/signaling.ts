@@ -713,7 +713,6 @@ export class SignalingServer {
         mediaMode: "peer-assisted",
         shareGeneration:
           this.shareGenerationsByRoom.get(participant.roomId) ?? null,
-        mediaAssignment: hybridState.mediaAssignment,
         routeRevision: hybridState.routeRevision,
         routeAssignment: hybridState.routeAssignment,
         qualitySettings:

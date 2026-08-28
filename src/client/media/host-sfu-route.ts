@@ -11,11 +11,7 @@ import {
 } from "../sfu/publisher";
 import type { ConnectionMetrics } from "../types";
 import type { BrowserVideoCodec } from "../webrtc/video-codec";
-import type {
-  AudioSenderParameterReadback,
-  QualityProfile,
-  VideoSenderParameterReadback,
-} from "./quality";
+import type { QualityProfile } from "./quality";
 import { qualitySettingsEqual } from "./quality";
 import {
   MediaRouteTransition,
@@ -36,8 +32,6 @@ interface HostPublisherTransport {
   updateProfile(profile: QualityProfile): Promise<boolean>;
   getQualityWarning?(): string | null;
   getFailureStage?(): SfuPublisherFailureStage | null;
-  getSenderParameters?(): VideoSenderParameterReadback | null;
-  getAudioSenderParameters?(): AudioSenderParameterReadback | null;
   disconnect(): Promise<void>;
 }
 
@@ -48,12 +42,6 @@ interface HostPublisherSlot {
   connected: boolean;
   active: boolean;
   failed: boolean;
-}
-
-export interface HostSfuPublisherSnapshot {
-  metrics: ConnectionMetrics;
-  senderParameters: VideoSenderParameterReadback | null;
-  audioSenderParameters: AudioSenderParameterReadback | null;
 }
 
 interface HostSfuRouteEvents {
@@ -67,7 +55,6 @@ interface HostSfuRouteEvents {
     revision: number,
     publicationGeneration: string,
   ) => void;
-  onPublisherUpdate?: (snapshot: HostSfuPublisherSnapshot | null) => void;
   createPublisher?: (
     onDisconnected: () => void,
     onStats: (metrics: ConnectionMetrics | null) => void,
@@ -171,7 +158,6 @@ export class HostSfuRoute {
     const active = this.active;
     this.pending = null;
     this.active = null;
-    this.events.onPublisherUpdate?.(null);
     if (pending) {
       pending.failed = true;
     }
@@ -332,12 +318,6 @@ export class HostSfuRoute {
       : null;
   }
 
-  getSenderParameters(): VideoSenderParameterReadback | null {
-    return this.active?.active
-      ? (this.active.publisher.getSenderParameters?.() ?? null)
-      : null;
-  }
-
   replaceStream(stream: MediaStream): Promise<boolean> {
     const slots = this.publishingSlots();
     return slots.length === 0
@@ -362,7 +342,6 @@ export class HostSfuRoute {
       if (!slot) {
         return;
       }
-      this.events.onPublisherUpdate?.(null);
       this.active = null;
       await disconnectPublisher(slot.publisher);
       this.handleFailure(slot);
@@ -383,7 +362,6 @@ export class HostSfuRoute {
       const active = this.active;
       this.pending = null;
       this.active = null;
-      this.events.onPublisherUpdate?.(null);
       if (active?.active) {
         await active.publisher.deactivate().catch(() => false);
       }
@@ -543,22 +521,6 @@ export class HostSfuRoute {
     );
   }
 
-  private currentActiveToken(
-    slot: HostPublisherSlot,
-  ): RouteOperationToken | null {
-    const token = this.route.token();
-    const assignment = this.route.getActiveAssignment();
-    if (
-      this.active !== slot ||
-      !token ||
-      this.route.getPhase() !== "active" ||
-      assignment?.sfuPublicationGeneration !== slot.publicationGeneration
-    ) {
-      return null;
-    }
-    return token;
-  }
-
   private commitMedia(token: RouteOperationToken): void {
     if (!this.route.markMediaActive(token)) {
       return;
@@ -581,7 +543,6 @@ export class HostSfuRoute {
       return;
     }
     const active = this.active;
-    this.events.onPublisherUpdate?.(null);
     this.active = null;
     await this.disconnectRetiredPublisher(active);
   }
@@ -597,7 +558,6 @@ export class HostSfuRoute {
     }
     const active = this.active;
     this.active = null;
-    this.events.onPublisherUpdate?.(null);
     return active;
   }
 
@@ -631,7 +591,6 @@ export class HostSfuRoute {
       this.pending = null;
     }
     if (wasActive) {
-      this.events.onPublisherUpdate?.(null);
       this.active = null;
     }
 
@@ -694,25 +653,6 @@ export class HostSfuRoute {
         slot.publicationGeneration,
       );
     }
-    if (
-      metrics === null ||
-      this.closed ||
-      slot.failed ||
-      !slot.active ||
-      this.active !== slot ||
-      !this.currentActiveToken(slot)
-    ) {
-      if (metrics === null && this.active === slot) {
-        this.events.onPublisherUpdate?.(null);
-      }
-      return;
-    }
-    this.events.onPublisherUpdate?.({
-      metrics: { ...metrics },
-      senderParameters: slot.publisher.getSenderParameters?.() ?? null,
-      audioSenderParameters:
-        slot.publisher.getAudioSenderParameters?.() ?? null,
-    });
   }
 }
 

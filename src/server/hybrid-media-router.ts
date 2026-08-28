@@ -3,7 +3,6 @@ import { debuglog } from "node:util";
 
 import type {
   ClientMessage,
-  MediaAssignment,
   MediaRouteUpstream,
   ParticipantRouteAssignment,
   PreparedRouteCandidate,
@@ -148,7 +147,6 @@ export interface HybridMediaRouterOptions {
 export interface HybridAuthenticationState {
   routeRevision: number;
   routeAssignment: ParticipantRouteAssignment;
-  mediaAssignment: MediaAssignment;
 }
 
 export interface AuthenticatedRouteParticipant {
@@ -232,7 +230,6 @@ export class HybridMediaRouter {
     return {
       routeRevision: snapshot?.revision ?? 0,
       routeAssignment: assignment,
-      mediaAssignment: mediaAssignment(assignment),
     };
   }
 
@@ -935,6 +932,7 @@ export class HybridMediaRouter {
   removeViewer(roomId: string, peerId: string): void {
     const room = this.rooms.get(roomId);
     room?.advertisedCapacityByViewer.delete(peerId);
+    room?.debugOrdinalByPeerId.delete(peerId);
     this.options.deleteConnectionId(roomId, peerId);
     if (room?.controller?.confirmDeparture(peerId, this.now())) {
       this.requestPump(roomId);
@@ -1257,7 +1255,6 @@ export class HybridMediaRouter {
           peerId: operation.childPeerId,
           shareGeneration,
           publicationGeneration: publication.generation,
-          allowlistedRootPeerIds: [operation.childPeerId],
         });
         return {
           kind: "ready",
@@ -1335,7 +1332,6 @@ export class HybridMediaRouter {
           peerId: host.peerId,
           shareGeneration,
           publicationGeneration,
-          allowlistedRootPeerIds: [operation.childPeerId],
         }),
         fallback.tokenIssuer.issueToken({
           roomId,
@@ -1343,7 +1339,6 @@ export class HybridMediaRouter {
           peerId: operation.childPeerId,
           shareGeneration,
           publicationGeneration,
-          allowlistedRootPeerIds: [operation.childPeerId],
         }),
       ]);
       return {
@@ -1773,11 +1768,6 @@ export class HybridMediaRouter {
       peerId: participant.peerId,
       shareGeneration,
       publicationGeneration: publication.generation,
-      allowlistedRootPeerIds: isHost
-        ? [...snapshot.upstreamByViewer]
-            .filter(([, candidate]) => candidate.kind === "sfu" && candidate.physicalActive)
-            .map(([peerId]) => peerId)
-        : [participant.peerId],
     });
     const current = room.controller?.snapshot();
     if (
@@ -2035,14 +2025,6 @@ function emptyAssignment(): ParticipantRouteAssignment {
     upstream: { kind: "none" },
     childPeerIds: [],
     sfuPublicationGeneration: null,
-  };
-}
-
-function mediaAssignment(assignment: ParticipantRouteAssignment): MediaAssignment {
-  return {
-    parentPeerId:
-      assignment.upstream.kind === "peer" ? assignment.upstream.peerId : null,
-    childPeerIds: [...assignment.childPeerIds],
   };
 }
 

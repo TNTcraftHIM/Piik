@@ -232,8 +232,8 @@ deterministic candidate filters, ordering, cursor, reservations, and total
 deadline. Candidate Peer parents need a usable source path and available steady
 capacity; clear native paths are tried before the remaining deterministic Peer
 candidates but are not a hard eligibility tier. Only one candidate runs at a
-time and the old route keeps playing. The same Viewer compares fresh old and
-candidate receive windows. A P2P candidate commits only after first decoded
+time and the old route keeps playing. The same Viewer compares fresh,
+overlapping old and candidate receive windows. A P2P candidate commits only after first decoded
 frame and three consecutive windows with no freeze/pause, no lower pixel area or
 rounded FPS, and a strict improvement in at least one of those dimensions.
 Bitrate does not rank P2P candidates because codec and content phase make it

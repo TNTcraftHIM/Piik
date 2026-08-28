@@ -1058,7 +1058,6 @@ describe("client signaling recovery policy", () => {
           viewerAuthorizationGeneration: "viewer_generation_12345678",
           mediaMode: "peer-assisted",
           shareGeneration,
-          mediaAssignment: { parentPeerId: null, childPeerIds: [] },
           routeRevision: 1,
           routeAssignment: {
             upstream: { kind: "none" },
@@ -1312,7 +1311,6 @@ describe("client signaling recovery policy", () => {
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       mediaMode: "peer-assisted",
       shareGeneration: "share_generation_12345678",
-      mediaAssignment: { parentPeerId: null, childPeerIds: [] },
       routeRevision: 1,
       routeAssignment: {
         upstream: { kind: "none" },

@@ -9,7 +9,6 @@ import type {
 const MANAGED_ROOM_PREFIX = "screener-v1.";
 const ROOM_ID_PATTERN = /^[1-9]\d{0,11}$/;
 const OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const LEGACY_MANAGED_ROOM_PATTERN = /^screener-[1-9]\d{0,11}-[A-Za-z0-9_-]{8,128}$/;
 const ROOM_SERVICE_TIMEOUT_SECONDS = 5;
 
 interface LiveKitRoomRecord {
@@ -206,9 +205,6 @@ function managedSfuViewerIdentity(peerId: string): string {
 }
 
 export function isManagedSfuRoomName(roomName: string): boolean {
-  if (LEGACY_MANAGED_ROOM_PATTERN.test(roomName)) {
-    return true;
-  }
   if (!roomName.startsWith(MANAGED_ROOM_PREFIX)) {
     return false;
   }

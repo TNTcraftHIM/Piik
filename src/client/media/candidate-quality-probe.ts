@@ -1,11 +1,9 @@
-import {
-  PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS,
-  VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
-} from "../../shared/protocol";
+import { PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS } from "../../shared/protocol";
 import type { ConnectionMetrics } from "../types";
 
 interface DeliveredVideoSample {
   timestampMs: number;
+  windowMs: number;
   pixels: number;
   framesPerSecond: number;
   bitrateKbps: number | null;
@@ -46,6 +44,7 @@ function deliveredVideoSample(
   }
   return {
     timestampMs: sampleTimestampMs,
+    windowMs: sampleWindowMs,
     pixels: frameWidth * frameHeight,
     framesPerSecond: Math.round(framesPerSecond),
     bitrateKbps:
@@ -66,8 +65,10 @@ function comparableSamples(
   if (
     !currentVideo ||
     !candidateVideo ||
-    Math.abs(candidateVideo.timestampMs - currentVideo.timestampMs) >
-      VIEWER_QUALITY_EVIDENCE_EXPIRY_MS ||
+    Math.max(
+      currentVideo.timestampMs - currentVideo.windowMs,
+      candidateVideo.timestampMs - candidateVideo.windowMs,
+    ) >= Math.min(currentVideo.timestampMs, candidateVideo.timestampMs) ||
     candidate.intervalFreezeCount === null ||
     candidate.intervalFreezeDurationMs === null ||
     candidate.intervalPauseCount === null ||
