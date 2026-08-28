@@ -234,6 +234,124 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
+  it("keeps the controller diagnostic label until a departed relay is pruned", async () => {
+    const { store, sent, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const parent = connectViewer(store, room, "diagnostic-label-parent");
+      complete(router, parent);
+      const parentPrepare = await vi.waitFor(() => {
+        const prepared = preparedFor(sent, parent.sessionId);
+        expect(prepared).toBeDefined();
+        return prepared!;
+      });
+      router.handleRouteReady(parent, {
+        type: "route-ready",
+        revision: parentPrepare.revision,
+        phase: "prepare",
+      });
+      router.setViewerRelayCapacity(parent, 1);
+
+      const temporaryRoot = connectViewer(
+        store,
+        room,
+        "diagnostic-label-temporary-root",
+      );
+      complete(router, temporaryRoot);
+      const temporaryPrepare = await vi.waitFor(() => {
+        const prepared = preparedFor(sent, temporaryRoot.sessionId);
+        expect(prepared?.assignment.upstream).toEqual({
+          kind: "peer",
+          peerId: host.peerId,
+        });
+        return prepared!;
+      });
+      router.handleRouteReady(temporaryRoot, {
+        type: "route-ready",
+        revision: temporaryPrepare.revision,
+        phase: "prepare",
+      });
+
+      const child = connectViewer(store, room, "diagnostic-label-child");
+      complete(router, child);
+      const childPrepare = await vi.waitFor(() => {
+        const prepared = preparedFor(sent, child.sessionId);
+        expect(prepared?.assignment.upstream).toEqual({
+          kind: "peer",
+          peerId: parent.peerId,
+        });
+        return prepared!;
+      });
+      router.handleRouteReady(child, {
+        type: "route-ready",
+        revision: childPrepare.revision,
+        phase: "prepare",
+      });
+
+      store.disconnectParticipant(
+        room.roomId,
+        temporaryRoot.peerId,
+        temporaryRoot.sessionId,
+      );
+      router.disconnectParticipant(
+        room.roomId,
+        temporaryRoot.peerId,
+        temporaryRoot.sessionId,
+      );
+      router.removeViewer(room.roomId, temporaryRoot.peerId);
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(
+            room.roomId,
+            temporaryRoot.peerId,
+          ),
+        ).toBeUndefined(),
+      );
+
+      const internal = router as unknown as {
+        debugPeer(roomId: string, peerId: string): string;
+      };
+      const label = internal.debugPeer(room.roomId, parent.peerId);
+
+      store.disconnectParticipant(
+        room.roomId,
+        parent.peerId,
+        parent.sessionId,
+      );
+      router.disconnectParticipant(
+        room.roomId,
+        parent.peerId,
+        parent.sessionId,
+      );
+      router.removeViewer(room.roomId, parent.peerId);
+      expect(internal.debugPeer(room.roomId, parent.peerId)).toBe(label);
+
+      const recovery = await vi.waitFor(() => {
+        const prepared = preparedFor(sent, child.sessionId);
+        expect(prepared?.revision).toBeGreaterThan(childPrepare.revision);
+        expect(prepared?.assignment.upstream).toEqual({
+          kind: "peer",
+          peerId: host.peerId,
+        });
+        return prepared!;
+      });
+      router.handleRouteReady(child, {
+        type: "route-ready",
+        revision: recovery.revision,
+        phase: "prepare",
+      });
+      await vi.waitFor(() =>
+        expect(internal.debugPeer(room.roomId, parent.peerId)).toBe(
+          "viewer-unknown",
+        ),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
   it("maps an exact Host active failure to its committed direct edge", async () => {
     const { store, sent, router } = harness(2);
     try {

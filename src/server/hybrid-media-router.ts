@@ -88,8 +88,6 @@ interface RoomRuntime {
   pump?: Promise<void>;
   deadlineTimer?: NodeJS.Timeout;
   sfuRefreshesInFlight: Set<string>;
-  debugOrdinalByPeerId: Map<string, number>;
-  nextDebugOrdinal: number;
 }
 
 interface PreparedCandidate {
@@ -201,7 +199,6 @@ export class HybridMediaRouter {
         room.advertisedCapacityByViewer.get(input.peerId) ?? 0,
       );
     }
-    this.debugPeer(input.roomId, input.peerId);
     if (room.controller) {
       this.releaseResources(
         room.controller.upsertParticipant({
@@ -932,7 +929,6 @@ export class HybridMediaRouter {
   removeViewer(roomId: string, peerId: string): void {
     const room = this.rooms.get(roomId);
     room?.advertisedCapacityByViewer.delete(peerId);
-    room?.debugOrdinalByPeerId.delete(peerId);
     this.options.deleteConnectionId(roomId, peerId);
     if (room?.controller?.confirmDeparture(peerId, this.now())) {
       this.requestPump(roomId);
@@ -965,8 +961,6 @@ export class HybridMediaRouter {
         advertisedCapacityByViewer: new Map(),
         requested: false,
         sfuRefreshesInFlight: new Set(),
-        debugOrdinalByPeerId: new Map(),
-        nextDebugOrdinal: 1,
       };
       this.rooms.set(roomId, room);
     }
@@ -1952,14 +1946,9 @@ export class HybridMediaRouter {
   private debugPeer(roomId: string, peerId: string): string {
     const room = this.rooms.get(roomId);
     if (peerId === room?.hostPeerId) return "host";
-    if (!room) return "viewer-unknown";
-    let ordinal = room.debugOrdinalByPeerId.get(peerId);
-    if (ordinal === undefined) {
-      ordinal = room.nextDebugOrdinal;
-      room.nextDebugOrdinal += 1;
-      room.debugOrdinalByPeerId.set(peerId, ordinal);
-    }
-    return `viewer-${ordinal}`;
+    return (
+      room?.controller?.diagnosticParticipantLabel(peerId) ?? "viewer-unknown"
+    );
   }
 
   private debugTuple(roomId: string, tuple: CandidateTuple): string {

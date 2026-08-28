@@ -353,6 +353,41 @@ function qualityMetrics(
 }
 
 describe("RoomRouteController", () => {
+  it("keeps one diagnostic label until a departed relay is finally pruned", () => {
+    const routes = controller(2);
+    addViewer(routes, A, 1);
+    addViewer(routes, B, 0);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
+    routes.hydrateEdge(B, peerEdge(A, "b_from_a"));
+    const label = routes.diagnosticParticipantLabel(A);
+    expect(label).toMatch(/^viewer-\d+$/);
+
+    routes.upsertParticipant({
+      peerId: A,
+      role: "viewer",
+      sessionId: "a_replacement_session",
+      effectiveDownstreamCapacity: 1,
+    });
+    expect(routes.diagnosticParticipantLabel(A)).toBe(label);
+    expect(routes.disconnectSession(A, "a_replacement_session")).toBe(true);
+    expect(routes.diagnosticParticipantLabel(A)).toBe(label);
+    expect(routes.confirmDeparture(A, 0)).toBe(true);
+    expect(routes.diagnosticParticipantLabel(A)).toBe(label);
+
+    const repair = routes.reconcile(1).operation!;
+    expect(repair).toMatchObject({
+      childPeerId: B,
+      reason: "parent-departed",
+    });
+    commitCurrent(routes, 2, "b_from_host");
+    const pruned = routes.reconcile(4);
+    expect(pruned.removedPeerIds).toContain(A);
+    expect(routes.diagnosticParticipantLabel(A)).toBe("viewer-unknown");
+
+    addViewer(routes, C, 0);
+    expect(routes.diagnosticParticipantLabel(C)).not.toBe(label);
+  });
+
   it("keeps isolated limitation windows diagnostic", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
