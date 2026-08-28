@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `a9f28facd4ba7575135ebfefec76908edfbab6aa`, release `a9f28fa`, wire
-  `screener-v17`, from `/opt/screener/releases/a9f28fa`. The immutable runtime
+  `91816accf61c5c225e387e907fa86c6069052bda`, release `91816ac`, wire
+  `screener-v17`, from `/opt/screener/releases/91816ac`. The immutable runtime
   tar SHA-256 is
-  `c4245c9859748540f473c811139598fe876506535d75a2a381dbf0aafe83b08f`;
+  `fd6170beba1e1d4c2762e6d5ed9726de5f684cd46544cd0fdc564797cc2dfde7`;
   its 41-file manifest SHA-256 is
-  `0583482dd91421a7dd540d7240b42085b3832f57a3b3a52eb38fca807b8890d0`.
-- The served Browser entry references `assets/index-Blf-F9pb.js`; the public
+  `3a4c787e995a6e5270064ed22b31d2bb4cc685ab92851ad14e45d83ba25c049c`.
+- The served Browser entry references `assets/index-84bQnZrP.js`; the public
   asset SHA-256 is
-  `22f2e7a44db86b37e58f0c37dd05be457434a0ea9aeb86145b63f78ad04e220c`.
+  `d6c8890bebb1e612d822c7e2fd9a8525be004176ab489f6b66da1ac0cc8e1d62`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -42,6 +42,10 @@ This is the current execution index. Git history owns completed timelines;
 - Screen audio provides live 64/128/192 kbps ceilings with 128 default. SFU
   publication uses stereo, DTX off, and RED off. Early autoplay presentation is
   gated by current media connection state.
+- The living-room presentation is deployed with Chinese, English, and
+  pure-visual modes, light/dark themes, one Host/Viewer stage language,
+  progressive per-Viewer diagnostics, and reduced-motion behavior. Fresh
+  Browsers start in visual mode; explicit choices persist locally.
 - Native-edge local convergence defaults on for each new share and remains a
   pre-share Host opt-out. The adjacent default-off peer-only policy excludes all
   SFU paths for that share generation. Both policies lock while sharing.
@@ -76,19 +80,22 @@ This is the current execution index. Git history owns completed timelines;
   visible/resume/pageshow rebaseline and rearm current-frame proof. SFU
   pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
   controls still own playback, and manual reconnect stays on the current route.
+- Host, Viewer, join, and access surfaces share the living-room presentation
+  model. Room codes, invitation URLs, the current display name, selected
+  participant details, route labels, and metrics remain visible in visual mode;
+  full couch/tree identity presentation remains current TODO work.
 
 ## Source/Production Delta
 
 - Production application code and current source behavior are aligned at
-  `a9f28facd4ba7575135ebfefec76908edfbab6aa`; the following truth checkpoint
+  `91816accf61c5c225e387e907fa86c6069052bda`; the following truth checkpoint
   changes documentation only.
 
 ## Current Milestone
 
-Measured route convergence, generation-owned Viewer presentation and
-endpoint-owned capacity are deployed. The 6020 postflight restored four Viewer
-capacities, used P2P relays after one bounded direct miss, converged both SFU
-subscribers back to P2P, and retired the Host SFU publication.
+The living-room Host/Viewer UI, bilingual and visual expression modes, and
+progressive diagnostics are deployed on the existing measured route,
+generation-owned presentation, and endpoint-capacity model.
 
 ## Active Boundaries
 
@@ -101,8 +108,9 @@ subscribers back to P2P, and retired the Host SFU publication.
   remains parked.
 - Repository simplification does not change or deploy product behavior beyond
   deleting proven dead private surfaces.
-- Native/executable senders, shared encode, distribution packages, broad UI
-  polish, and bilingual support remain outside the current release.
+- Native/executable senders, shared encode, and distribution packages remain
+  outside the current release. Current UI refinement is presentation-only and
+  does not authorize route or media-model changes.
 
 ## Current Hold
 
