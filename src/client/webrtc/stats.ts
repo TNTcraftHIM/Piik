@@ -61,8 +61,9 @@ export interface StatsMediaSelector {
 
 interface NativeSenderQualityPrevious {
   timestamp: number;
-  durations: QualityLimitationDurations;
-  framesEncoded: number;
+  durations: QualityLimitationDurations | null;
+  framesEncoded: number | null;
+  bytesSent: number | null;
 }
 
 export interface NativeSenderQualityAccumulator {
@@ -83,6 +84,7 @@ export function collectNativeSenderQualityFromReport(
   | "qualityLimitationReason"
   | "sampleWindowMs"
   | "intervalFramesEncoded"
+  | "bitrateKbps"
 > {
   const records: StatsRecord[] = [];
   report.forEach((raw) => {
@@ -106,6 +108,7 @@ export function collectNativeSenderQualityFromReport(
     const durations = qualityLimitationDurationsValue(record);
     const reason = stringValue(record, "qualityLimitationReason");
     const framesEncoded = numberValue(record, "framesEncoded");
+    const bytesSent = numberValue(record, "bytesSent");
     const previous = accumulator.previousByStatsId.get(record.id);
     const windowMs =
       timestamp !== null && previous && timestamp > previous.timestamp
@@ -120,20 +123,34 @@ export function collectNativeSenderQualityFromReport(
     const intervalFramesEncoded =
       previous &&
       framesEncoded !== null &&
+      previous.framesEncoded !== null &&
       framesEncoded >= previous.framesEncoded
         ? framesEncoded - previous.framesEncoded
         : null;
-    if (timestamp !== null && durations && framesEncoded !== null) {
+    const bitrateKbps =
+      previous &&
+      windowMs !== null &&
+      bytesSent !== null &&
+      previous.bytesSent !== null &&
+      bytesSent >= previous.bytesSent
+        ? ((bytesSent - previous.bytesSent) * 8) / (windowMs / 1_000) / 1_000
+        : null;
+    if (timestamp !== null) {
       accumulator.previousByStatsId.set(record.id, {
         timestamp,
         durations,
         framesEncoded,
+        bytesSent,
       });
     } else {
       accumulator.previousByStatsId.delete(record.id);
     }
-    return { state, reason, windowMs, intervalFramesEncoded };
+    return { state, reason, windowMs, intervalFramesEncoded, bitrateKbps };
   });
+  const bitrateKbps =
+    samples.length > 0 && samples.every((sample) => sample.bitrateKbps !== null)
+      ? samples.reduce((total, sample) => total + sample.bitrateKbps!, 0)
+      : null;
   if (
     samples.length === 0 ||
     samples.some(
@@ -148,6 +165,7 @@ export function collectNativeSenderQualityFromReport(
       qualityLimitationReason: null,
       sampleWindowMs: null,
       intervalFramesEncoded: null,
+      bitrateKbps,
     };
   }
   const degraded = samples.filter((sample) => sample.state === "degraded");
@@ -164,6 +182,7 @@ export function collectNativeSenderQualityFromReport(
       (total, sample) => total + sample.intervalFramesEncoded!,
       0,
     ),
+    bitrateKbps,
   };
 }
 

@@ -1079,6 +1079,8 @@ export class SfuPublisher {
       );
       const metrics = {
         ...connectionMetrics,
+        bitrateKbps:
+          connectionMetrics.bitrateKbps ?? nativeQuality.bitrateKbps,
         nativeEdgeQualityState: nativeQuality.nativeEdgeQualityState,
         ...(nativeQuality.nativeEdgeQualityState === "unknown"
           ? {}
