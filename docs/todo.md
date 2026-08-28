@@ -7,17 +7,8 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Topology presentation refinement.** Improve the current tree's identity,
-   branch legibility, selected-node continuity, deep-tree scrolling, and
-   responsive/accessibility behavior without changing route selection,
-   protocol, or graph ownership.
-2. **Browser and P2P resource investigation.** Use controlled RTCStats and
-   primary Browser evidence to separate capture cadence, encoder saturation,
-   congestion control, and multi-sender cost. Do not add keepalive tricks,
-   process-priority claims, or custom congestion control.
-3. **UI adversarial and performance audit.** Fix only reproduced functional,
-   visual, accessibility, or rendering-cost defects while preserving the
-   accepted visual language and motion.
+No executable product work is currently accepted. Items below remain parked
+until their stated boundary is met.
 
 ## Parked Product Work
 
