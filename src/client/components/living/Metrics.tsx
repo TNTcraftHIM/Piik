@@ -82,21 +82,23 @@ function secondaryMetrics(
       });
     }
     const captureParts: string[] = [];
-    let captureDiffersFromDelivery = false;
     if (metrics.captureWidth !== null && metrics.captureHeight !== null) {
       const captureResolution = `${metrics.captureWidth}x${metrics.captureHeight}`;
-      captureParts.push(captureResolution);
-      captureDiffersFromDelivery ||= captureResolution !== metrics.resolution;
+      if (captureResolution !== metrics.resolution) {
+        captureParts.push(captureResolution);
+      }
     }
     if (metrics.captureFramesPerSecond !== null) {
       const captureFps = readable(metrics.captureFramesPerSecond, 1);
-      captureParts.push(`${captureFps} fps`);
-      captureDiffersFromDelivery ||=
+      if (
         metrics.framesPerSecond === null ||
         !Number.isFinite(metrics.framesPerSecond) ||
-        captureFps !== metrics.framesPerSecond.toFixed(1);
+        captureFps !== metrics.framesPerSecond.toFixed(1)
+      ) {
+        captureParts.push(`${captureFps} fps`);
+      }
     }
-    if (captureParts.length > 0 && captureDiffersFromDelivery) {
+    if (captureParts.length > 0) {
       values.push({ icon: "expand", label: "stats.capture", value: captureParts.join(" · ") });
     }
     addNumber("stats.inputFps", "wave", metrics.mediaSourceFramesPerSecond, "fps", 1);

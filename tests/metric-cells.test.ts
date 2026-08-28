@@ -234,4 +234,25 @@ describe("MetricCells progressive disclosure", () => {
 
     expect(html).not.toContain("捕获设置");
   });
+
+  it("shows only the capture dimension that differs from delivery", () => {
+    const html = renderToStaticMarkup(
+      createElement(MetricCells, {
+        metrics: {
+          ...metrics,
+          resolution: "1280x720",
+          framesPerSecond: 60,
+          captureWidth: 1920,
+          captureHeight: 1080,
+          captureFramesPerSecond: 60,
+        },
+        direction: "send",
+        expanded: true,
+        onToggle: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("1920x1080");
+    expect(html).not.toContain("1920x1080 · 60.0 fps");
+  });
 });
