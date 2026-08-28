@@ -3601,7 +3601,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 hostPeerId={hostPeerId}
                 hostLabel={labeledHostPresence?.label ?? displayName}
                 viewers={viewers}
-                flowing={phase === "starting"}
+                selectedPeerId={selectedPawn}
               />
             </Row>
           ) : null}
