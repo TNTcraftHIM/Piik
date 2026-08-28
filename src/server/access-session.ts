@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-const DEFAULT_SESSION_TTL_SECONDS = 12 * 60 * 60;
+const DEFAULT_SESSION_TTL_SECONDS = 24 * 60 * 60;
 const COOKIE_VERSION = "v1";
 
 export interface SiteAccessOptions {

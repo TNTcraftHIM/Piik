@@ -97,7 +97,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v16");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v17");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
