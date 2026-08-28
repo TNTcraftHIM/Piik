@@ -1,6 +1,6 @@
 # Realtime Screen-Share Quality Evidence
 
-- Reviewed: 2026-08-27
+- Reviewed: 2026-08-29
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
 - Status: current evidence; product behavior is owned by
   [media quality](../product/media-quality.md) and
@@ -57,6 +57,29 @@ cadence/resolution. Web VP8 still competes materially with a game for CPU.
 Reproduction uses `npx tsx scripts/peer-assisted-benchmark.ts`; retained commit
 and environment details remain in Git history rather than this current evidence
 summary.
+
+### Concurrent Sender Cost
+
+A Chrome 151 Windows loopback compared one and three simultaneous high-motion
+VP8 senders at 1080p30. One sender sustained 29.7 fps at 4.9 Mbps with median
+encode time near 5.0 ms/frame. With three senders, one measured path fell to a
+28.7 fps median and 18-22 fps short-window lows while median encode time rose to
+14.9 ms/frame; renderer CPU rose from about 88% to 423%. Stopping the other two
+senders restored 29.8 fps and closed every retired PeerConnection and sender.
+RTT stayed below 4 ms, resolution stayed 1080p, loss/NACK/PLI stayed zero, and
+`qualityLimitationReason` remained `none` throughout.
+
+This proves independent Browser encode/render contention that native limitation
+classification may not expose. It does not prove a stale sender leak or justify
+deriving endpoint capacity from one RTCStats field. A low-motion control also
+sustained 29.8 fps while using only about 0.24 Mbps, so payload bitrate alone is
+not a quality measure.
+
+An additional same-track versus per-sender `MediaStreamTrack.clone()` A/B gave
+no material isolation benefit. A constrained sender fell near 320x180 at 9-10
+fps while the healthy sender stayed near 960x540 at 28-30 fps in both arms; both
+returned to 720p30 after the constrained sender closed. Clone stop did not stop
+the original capture, but source cloning is not an accepted resource remedy.
 
 ## H.264 Root Cause And Gate
 
@@ -165,6 +188,28 @@ mobile suspension, page reclamation, and relay survival remain platform evidence
 in [background capture research](./browser-background-capture.md), not Web
 keepalive features.
 
+Web content has no supported API for raising capture, encoder, renderer-process,
+GPU, or operating-system scheduling priority. WebRTC sender `priority` allocates
+bandwidth relative to other RTP senders and `networkPriority` requests DSCP;
+neither reserves encoder CPU. `scheduler.postTask()` orders JavaScript work,
+Screen Wake Lock prevents display sleep while visible, and Picture-in-Picture
+does not change page visibility. Silent audio, animation loops, or command-line
+throttling flags are therefore not product keepalive mechanisms.
+
+The mature resource choices remain bounded Browser P2P copies, one bounded SFU
+publication when its accepted route condition applies, or a future native/shared
+encoder. LiveKit Dynacast can stop unused SFU representations; it cannot combine
+independent P2P encoders.
+
+Production room 4521 supplied a separate network/source boundary. It used one
+stable Host-to-Viewer P2P edge with no reparent or SFU activity, yet Chromium
+reported `bandwidth` for 112 consecutive sender windows, estimated only
+0.42-1.78 Mbps available outgoing bandwidth, and adapted through 960p, 640p and
+480p. At the same time, media-source cadence periodically fell to 1-7 fps while
+track settings remained 30 fps, and Viewer freeze intervals followed those
+lows. The event therefore contained both native BWE degradation and source
+cadence loss; topology churn and CSS presentation were not required causes.
+
 ## Quality Shadow
 
 Strict v13 reports renderer-derived freeze/pause deltas only for exact current
@@ -259,6 +304,12 @@ percentages, and tuning loops are not adopted for this Browser product.
 
 - Real games and sustained CPU/GPU contention across weaker Hosts and operating
   systems.
+- Public-network and game-content resource behavior with two Host P2P copies,
+  one LiveKit publication, and bounded candidate overlap. Current evidence does
+  not calibrate a safe dynamic endpoint-capacity rule.
+- Background SFU-to-P2P convergence currently proves availability before
+  replacement; comparative non-regression remains a route decision to validate,
+  not an accepted weighted quality policy.
 - Exact Chrome 153+ Intel and AMD default H.264 behavior without diagnostic
   feature overrides.
 - Codec cost and quality after stock BWE reaches steady state.
@@ -269,6 +320,7 @@ percentages, and tuning loops are not adopted for this Browser product.
 
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
+- [WebRTC Priority](https://www.w3.org/TR/webrtc-priority/)
 - [MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [libwebrtc adaptation](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
@@ -281,6 +333,11 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [LiveKit publish options](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/track/options.ts)
 - [LiveKit screen-share encodings](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
 - [LiveKit Dynacast and simulcast](https://docs.livekit.io/transport/media/advanced/)
+- [Scheduling APIs](https://wicg.github.io/scheduling-apis/)
+- [Screen Wake Lock](https://www.w3.org/TR/screen-wake-lock/)
+- [Picture-in-Picture](https://www.w3.org/TR/picture-in-picture/)
+- [Chrome timer throttling](https://developer.chrome.com/blog/timer-throttling-in-chrome-88)
+- [Chrome Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)
 - [LiveKit server forwarder](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
 - [LiveKit connection-quality protocol](https://github.com/livekit/protocol/blob/main/protobufs/livekit_rtc.proto)
 - [Screego codec ordering](https://github.com/screego/server/blob/v1.12.4/ui/src/useRoom.ts)
