@@ -29,8 +29,9 @@ share generation:
 - peer-only mode excludes SFU publication, subscription, bootstrap, and quality
   candidates, while retaining the same bounded Peer graph and clear exhausted
   failure; and
-- native-edge topology convergence is initially opt-in. When disabled, quality
-  evidence stays diagnostic and availability routing is unchanged.
+- native-edge topology convergence is enabled by default. The Host may disable
+  it before sharing; when disabled, quality evidence stays diagnostic and
+  availability routing is unchanged.
 
 These are route-policy gates, not new routing algorithms. Changing either
 policy requires stopping the current share and starting another generation.

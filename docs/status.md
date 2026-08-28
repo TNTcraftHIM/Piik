@@ -64,7 +64,8 @@ This is the current execution index. Git history owns completed timelines;
   Viewer sees first-frame readiness plus three fresh windows that strictly
   improve delivered resolution or rounded FPS without regressing either. Peer
   candidates stay first; bounded SFU is only the suffix for whole-Host-root
-  degradation and retains native publication proof. The gate defaults off.
+  degradation and retains native publication proof. The gate defaults on in
+  source and remains a locked pre-share opt-out.
 - Screener has no custom SFU layer list, quality score, layer selector,
   all-pairs probe, parent-wide prediction or periodic rebalancing. P2P and SFU
   still recover their current route before actual failure enters reassignment.
@@ -86,8 +87,9 @@ subscribers back to P2P, and retired the Host SFU publication.
   screening did not reproduce a Host-page drop; accepted Viewer lifecycle work
   prevents frozen JavaScript wall time from becoming an immediate route failure
   but is not capture keepalive.
-- Current-path quality can drive opt-in local convergence in source and
-  production. Weighted/global optimization remains parked.
+- Current-path quality can drive local convergence in source and production.
+  Source defaults it on; production remains default-off until a later release.
+  Weighted/global optimization remains parked.
 - Repository simplification does not change or deploy product behavior beyond
   deleting proven dead private surfaces.
 - Native/executable senders, shared encode, distribution packages, broad UI

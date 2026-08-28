@@ -38,11 +38,11 @@ implementation and routine UI detail.
   one serial child operation. First decoded frame commits availability work;
   accepted quality work adds native edge proof before commit in that operation.
 - WebRTC and LiveKit own congestion control, media adaptation, reconnect, and SFU
-  layers. Current source uses persistent native edge state for opt-in local P2P
-  convergence. SFU quality work is limited to multi-root Host fanout relief and
-  each Viewer must prove its own candidate non-regression before commit. No
-  weighted score, all-pairs probe, general parent-wide prediction, or periodic
-  rebalance is accepted.
+  layers. Current source defaults persistent native-edge local P2P convergence
+  on, with a pre-share Host opt-out. SFU quality work is limited to multi-root
+  Host fanout relief and each Viewer must prove its own candidate non-regression
+  before commit. No weighted score, all-pairs probe, general parent-wide
+  prediction, or periodic rebalance is accepted.
 - Browser video uses `motion`; each share chooses H.264 with VP8 fallback through
   an actual sender probe unless the Host explicitly selects VP8 or H264. Screen
   audio uses 64/128/192 kbps ceilings with 128 default.

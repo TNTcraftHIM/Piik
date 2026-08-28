@@ -273,6 +273,10 @@ describe("client signaling protocol", () => {
   });
 
   it("accepts a bounded authentication message", () => {
+    expect(DEFAULT_ROUTE_POLICY).toEqual({
+      peerOnly: false,
+      topologyOptimization: true,
+    });
     expect(
       decodeClientMessage(
         JSON.stringify({
@@ -313,6 +317,10 @@ describe("client signaling protocol", () => {
       role: "host",
       shareGeneration: "share_generation_12345678",
       qualitySettings: qualitySettingsWithAudio,
+      routePolicy: {
+        peerOnly: false,
+        topologyOptimization: true,
+      },
     });
     expect(
       clientMessageSchema.safeParse({

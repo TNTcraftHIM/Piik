@@ -223,7 +223,7 @@ export const routePolicySchema = z
 export type RoutePolicy = z.infer<typeof routePolicySchema>;
 export const DEFAULT_ROUTE_POLICY = {
   peerOnly: false,
-  topologyOptimization: false,
+  topologyOptimization: true,
 } as const satisfies RoutePolicy;
 
 export const relayDownstreamEdgesSchema = z

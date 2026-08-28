@@ -1,8 +1,8 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: accepted and deployed; native-edge convergence is opt-in per share
+- Status: accepted; route model deployed; default-on policy pending release
 - Date: 2026-08-20
-- Last updated: 2026-08-27
+- Last updated: 2026-08-28
 
 ## Context
 
@@ -268,9 +268,10 @@ does not promise a static mathematical global optimum.
 
 Two pre-share gates constrain this same controller. Peer-only policy removes
 every SFU tuple and bootstrap path before reservation, so exhaustion keeps the
-existing explicit failure. The initial topology-convergence rollout is opt-in;
-when disabled, native evidence never creates quality work. Both gates are bound
-to share generation and cannot change while sharing.
+existing explicit failure. Topology convergence is enabled by default and may
+be disabled before sharing; when disabled, native evidence never creates
+quality work. Both gates are bound to share generation and cannot change while
+sharing.
 
 ## Consequences
 
