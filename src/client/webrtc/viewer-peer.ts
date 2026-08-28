@@ -1,3 +1,4 @@
+import { say } from "../ui/copy";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import {
   EMPTY_METRICS,
@@ -108,7 +109,7 @@ export class ViewerPeer {
         iceServers: iceConfig.iceServers,
       });
     } catch (error) {
-      this.setError(error, "更新网络配置失败");
+      this.setError(error, say("host.fail.connection"));
     }
   }
 
@@ -306,7 +307,7 @@ export class ViewerPeer {
           sdp: connection.localDescription.sdp,
         },
       })) {
-        throw new Error("服务器连接暂时不可用");
+        throw new Error(say("viewer.msg.serverError"));
       }
       this.offerRecoveryAttempts = 0;
       this.scheduleInitialConnectionDeadline(connection, connectionId);
@@ -314,7 +315,7 @@ export class ViewerPeer {
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
-      this.setError(error, "建立分享连接失败");
+      this.setError(error, say("host.fail.connection"));
       if (
         this.offerRecoveryAttempts < 1 &&
         this.events.sendRestartRequest(parentPeerId, connectionId, true)
@@ -347,7 +348,7 @@ export class ViewerPeer {
       await connection.addIceCandidate(payload.candidate);
     } catch (error) {
       if (this.isCurrentConnection(connection, connectionId)) {
-        this.setError(error, "建立分享连接失败");
+        this.setError(error, say("host.fail.connection"));
       }
     }
   }

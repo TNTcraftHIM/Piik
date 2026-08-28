@@ -1,3 +1,4 @@
+import { say } from "../ui/copy";
 import {
   PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS,
   type IceConfig,
@@ -107,7 +108,7 @@ export class HostPeer {
   async start(): Promise<boolean> {
     const videoTrack = this.stream.getVideoTracks()[0];
     if (!videoTrack) {
-      this.setError(new Error("共享流缺少视频轨道"), "创建连接失败");
+      this.setError(new Error(say("host.capture.noSource")), say("host.err.createConnection"));
       return false;
     }
     const audioTrack = this.stream.getAudioTracks()[0] ?? null;
@@ -116,7 +117,7 @@ export class HostPeer {
       streams: [this.stream],
     });
     if (!applyVideoCodecPreference(videoTransceiver, this.videoCodec)) {
-      this.setError(null, "当前浏览器无法使用支持的视频编码");
+      this.setError(null, say("host.err.codecUnsupported"));
       return false;
     }
     this.videoSender = videoTransceiver.sender;
@@ -173,7 +174,7 @@ export class HostPeer {
             videoSender.replaceTrack(previousVideoTrack),
             audioSender.replaceTrack(previousAudioTrack),
           ]);
-          this.setError(error, "切换共享源失败");
+          this.setError(error, say("host.fail.source"));
           return false;
         }
 
@@ -292,7 +293,7 @@ export class HostPeer {
         this.pendingCandidates.push(payload.candidate);
       }
     } catch (error) {
-      this.setError(error, "建立观看连接失败");
+      this.setError(error, say("host.err.createConnection"));
     }
   }
 
@@ -325,7 +326,7 @@ export class HostPeer {
         iceServers: iceConfig.iceServers,
       });
     } catch (error) {
-      this.setError(error, "更新网络配置失败");
+      this.setError(error, say("host.err.createConnection"));
     }
   }
 
@@ -424,7 +425,7 @@ export class HostPeer {
           },
         })
       ) {
-        throw new Error("服务器暂时离线，等待重新连接");
+        throw new Error(say("host.err.serverError"));
       }
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();
@@ -436,7 +437,7 @@ export class HostPeer {
       if (this.ordinaryAnswerEpoch === epoch) {
         this.ordinaryAnswerEpoch = null;
       }
-      this.setError(error, restart ? "恢复连接失败" : "创建连接失败");
+      this.setError(error, restart ? say("host.err.createConnection") : say("host.err.createConnection"));
       return false;
     }
   }
@@ -592,7 +593,7 @@ export class HostPeer {
         videoWarning = senderParameterWarning(senderParameters);
       } catch {
         videoSucceeded = false;
-        videoWarning = "应用发送参数失败";
+        videoWarning = say("host.err.applySender");
       }
     }
 
@@ -614,7 +615,7 @@ export class HostPeer {
           audioWarning = audioSenderParameterWarning(audioSenderParameters);
         } catch {
           audioSucceeded = false;
-          audioWarning = "应用音频发送参数失败";
+          audioWarning = say("host.err.applyAudioSender");
         }
       } else {
         audioSenderParameters = null;
@@ -682,14 +683,14 @@ export class HostPeer {
     }
     switch (this.limitationReason) {
       case "bandwidth":
-        return "当前连接带宽受限，画质已自动降低";
+        return say("host.warn.bandwidth");
       case "cpu":
-        return "编码性能受限，画质已自动降低";
+        return say("host.warn.encoding");
       case "other":
-        return "浏览器持续报告其他画质限制";
+        return say("host.warn.other");
       default:
         return this.limitationReason
-          ? "浏览器持续报告未分类的画质限制"
+          ? say("host.warn.unclassified")
           : null;
     }
   }

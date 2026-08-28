@@ -2,11 +2,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { StatsGrid } from "../src/client/components/StatsGrid.tsx";
+import { MetricCells } from "../src/client/components/living/Metrics.tsx";
+import { setCopy } from "../src/client/ui/copy.ts";
 import {
   EMPTY_METRICS,
   type ConnectionMetrics,
 } from "../src/client/types.ts";
+
+setCopy({ lang: "zh", vis: false });
 
 const metrics = {
   ...EMPTY_METRICS,
@@ -40,28 +43,33 @@ const metrics = {
   qualityLimitationReason: "bandwidth",
 } satisfies ConnectionMetrics;
 
-describe("StatsGrid progressive disclosure", () => {
-  it("keeps one-glance picture results above an accessible detail panel", () => {
-    const html = renderToStaticMarkup(
-      createElement(StatsGrid, {
+describe("MetricCells progressive disclosure", () => {
+  it("keeps one-glance picture results above an accessible detail expansion", () => {
+    const collapsed = renderToStaticMarkup(
+      createElement(MetricCells, {
         metrics,
         direction: "send",
-        progressive: true,
+        expanded: false,
+        onToggle: () => undefined,
       }),
     );
 
     for (const label of ["分辨率", "帧率", "码率", "丢包率"]) {
-      expect(html).toContain(label);
+      expect(collapsed).toContain(label);
     }
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('title="展开详细指标"');
-    const controlId = html.match(/aria-controls="([^"]+)"/)?.[1];
-    expect(controlId).toBeTruthy();
-    const panelStart = html.indexOf(`<dl id="${controlId}"`);
-    expect(panelStart).toBeGreaterThan(0);
-    expect(html.slice(panelStart, html.indexOf(">", panelStart))).toContain(
-      'hidden=""',
+    expect(collapsed).toContain('aria-expanded="false"');
+    expect(collapsed).toContain('title="详细指标"');
+    expect(collapsed).not.toContain("可用上行");
+
+    const expanded = renderToStaticMarkup(
+      createElement(MetricCells, {
+        metrics,
+        direction: "send",
+        expanded: true,
+        onToggle: () => undefined,
+      }),
     );
+    expect(expanded).toContain('aria-expanded="true"');
     for (const label of [
       "RTT",
       "视频编码",
@@ -73,18 +81,23 @@ describe("StatsGrid progressive disclosure", () => {
       "编码耗时/帧",
       "音频码率",
     ]) {
-      expect(html.indexOf(label)).toBeGreaterThan(panelStart);
+      expect(expanded).toContain(label);
     }
-    expect(html).toContain("58.5 fps");
-    expect(html).toContain("VP8");
+    expect(expanded).toContain("58.5 fps");
+    expect(expanded).toContain("VP8");
   });
 
   it("shows the negotiated video codec but omits browser-internal transport details", () => {
     const html = renderToStaticMarkup(
-      createElement(StatsGrid, { metrics, direction: "send" }),
+      createElement(MetricCells, {
+        metrics,
+        direction: "send",
+        expanded: true,
+        onToggle: () => undefined,
+      }),
     );
 
-    expect(html).toContain("<dt>视频编码</dt><dd>VP8</dd>");
+    expect(html).toContain("VP8");
     for (const omitted of [
       "音频 Codec",
       "候选路径",
@@ -94,42 +107,43 @@ describe("StatsGrid progressive disclosure", () => {
       "STUN 响应",
       "candidate-pair-7",
       "192.0.2.10",
+      "2001:db8::10",
       "当前 RID",
       "max-fs=8160",
       "请求 / 应用",
     ]) {
       expect(html).not.toContain(omitted);
     }
-    expect(html).not.toContain("详细指标");
-    expect(html).not.toContain("aria-expanded");
   });
 
   it("shows codecs only when the negotiated contract is unexpected", () => {
     const html = renderToStaticMarkup(
-      createElement(StatsGrid, {
+      createElement(MetricCells, {
         metrics: {
           ...metrics,
           codec: "video/VP9",
           audioCodec: "audio/PCMU",
         },
         direction: "receive",
+        expanded: false,
+        onToggle: () => undefined,
       }),
     );
 
     expect(html).toContain("视频编码为 VP9，预期 H264 或 VP8");
     expect(html).toContain("音频编码为 PCMU，预期 Opus");
-    expect(html).not.toContain("视频 Codec");
-    expect(html).not.toContain("音频 Codec");
   });
 
   it("does not expose an unknown browser quality-limitation value", () => {
     const html = renderToStaticMarkup(
-      createElement(StatsGrid, {
+      createElement(MetricCells, {
         metrics: {
           ...metrics,
           qualityLimitationReason: "browser-internal-sentinel",
         },
         direction: "send",
+        expanded: true,
+        onToggle: () => undefined,
       }),
     );
 
@@ -152,15 +166,19 @@ describe("StatsGrid progressive disclosure", () => {
       intervalAudioConcealmentEvents: 3,
     } satisfies ConnectionMetrics;
     const receiveHtml = renderToStaticMarkup(
-      createElement(StatsGrid, {
+      createElement(MetricCells, {
         metrics: receiverMetrics,
         direction: "receive",
+        expanded: true,
+        onToggle: () => undefined,
       }),
     );
     const sendHtml = renderToStaticMarkup(
-      createElement(StatsGrid, {
+      createElement(MetricCells, {
         metrics: receiverMetrics,
         direction: "send",
+        expanded: true,
+        onToggle: () => undefined,
       }),
     );
 
@@ -185,14 +203,35 @@ describe("StatsGrid progressive disclosure", () => {
 
   it("does not render an empty second level", () => {
     const html = renderToStaticMarkup(
-      createElement(StatsGrid, {
+      createElement(MetricCells, {
         metrics: EMPTY_METRICS,
         direction: "receive",
-        progressive: true,
+        expanded: false,
+        onToggle: () => undefined,
       }),
     );
 
     expect(html).not.toContain("详细指标");
     expect(html).not.toContain("aria-expanded");
+  });
+
+  it("omits capture input when it matches the delivered picture", () => {
+    const html = renderToStaticMarkup(
+      createElement(MetricCells, {
+        metrics: {
+          ...metrics,
+          resolution: "1920x1080",
+          framesPerSecond: 60,
+          captureWidth: 1920,
+          captureHeight: 1080,
+          captureFramesPerSecond: 60,
+        },
+        direction: "send",
+        expanded: true,
+        onToggle: () => undefined,
+      }),
+    );
+
+    expect(html).not.toContain("捕获设置");
   });
 });

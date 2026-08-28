@@ -1,3 +1,4 @@
+import { say } from "../ui/copy";
 import type {
   LocalTrackPublication,
   Room,
@@ -440,7 +441,7 @@ export class SfuPublisher {
         if (!this.owns(room, generation)) {
           return false;
         }
-        const failureWarning = "切换 SFU 分享来源失败";
+        const failureWarning = say("host.fail.sfuSwitch");
 
         // A rejected publish/unpublish may have changed server state without
         // returning enough ownership information to undo it safely.
@@ -591,7 +592,7 @@ export class SfuPublisher {
             return false;
           }
           videoSucceeded = false;
-          const failureWarning = "应用 SFU 发送参数失败";
+          const failureWarning = say("host.fail.sfuParams");
           try {
             const rolledBack = await configurePublishedVideo(
               video,
@@ -1268,7 +1269,7 @@ function retainPublishedAudioOptions(
 }
 
 function audioSenderFailureWarning(_error: unknown): string {
-  return "应用 SFU 音频发送参数失败";
+  return say("host.fail.sfuAudioParams");
 }
 
 function mergeQualityWarnings(...warnings: Array<string | null>): string | null {
@@ -1332,7 +1333,7 @@ async function safeDisconnect(room: Room): Promise<void> {
 function requiredVideoTrack(stream: MediaStream): MediaStreamTrack {
   const track = stream.getVideoTracks()[0];
   if (!track) {
-    throw new Error("屏幕共享没有视频轨道");
+    throw new Error(say("host.capture.noSource"));
   }
   return track;
 }

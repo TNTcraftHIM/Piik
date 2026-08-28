@@ -1,13 +1,7 @@
 import type { ParticipantRouteAssignment } from "../../shared/protocol";
 import type { ConnectionMetrics, PeerSnapshot } from "../types";
 
-export const MEDIA_ROUTE_PRESENTATION = {
-  p2p: { tone: "good", label: "P2P", icon: "network" },
-  sfu: { tone: "warning", label: "SFU fallback", icon: "server" },
-} as const;
-export const ROUTING_STATUS_PRESENTATION = { tone: "neutral", label: "线路分配中" } as const;
-
-export type PresentedMediaRoute = keyof typeof MEDIA_ROUTE_PRESENTATION;
+export type PresentedMediaRoute = "p2p" | "sfu";
 
 export function hasPeerRouteEvidence(
   peer: PeerSnapshot | null | undefined,

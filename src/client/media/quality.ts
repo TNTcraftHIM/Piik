@@ -6,6 +6,7 @@ import {
   type QualitySettings,
   type ScreenAudioQuality,
 } from "../../shared/protocol";
+import { joinItems, say, type CopyKey } from "../ui/copy";
 import { displayMediaOptions } from "./audio-capture";
 
 export type {
@@ -37,11 +38,11 @@ export const QUALITY_PROFILES = {
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
-export const QUALITY_PROFILE_LABELS = {
-  "720p30": "720p · 30 帧",
-  "1080p30": "1080p · 30 帧",
-  "1080p60": "1080p · 60 帧",
-} as const satisfies Record<QualityProfileId, string>;
+const QUALITY_PROFILE_KEYS = {
+  "720p30": "host.quality.720p30",
+  "1080p30": "host.quality.1080p30",
+  "1080p60": "host.quality.1080p60",
+} as const satisfies Record<QualityProfileId, CopyKey>;
 
 export const QUALITY_RESOLUTIONS = {
   "480p": { width: 854, height: 480, label: "480p" },
@@ -53,23 +54,11 @@ export const QUALITY_RESOLUTIONS = {
   { width: number; height: number; label: string }
 >;
 
-export const DEGRADATION_PREFERENCE_LABELS = {
-  "maintain-resolution": "清晰",
-  balanced: "均衡",
-  "maintain-framerate": "流畅",
-} as const satisfies Record<DegradationPreference, string>;
-
-export const DEGRADATION_PREFERENCE_HINTS = {
-  "maintain-resolution": "保留细节",
-  balanced: "自动权衡",
-  "maintain-framerate": "优先帧率",
-} as const satisfies Record<DegradationPreference, string>;
-
-export const SCREEN_AUDIO_QUALITY_LABELS = {
-  saver: "普通",
-  music: "音乐",
-  "very-high": "保真",
-} as const satisfies Record<ScreenAudioQuality, string>;
+const DEGRADATION_PREFERENCE_KEYS = {
+  "maintain-resolution": "host.advanced.preference.resolution",
+  balanced: "host.advanced.preference.balanced",
+  "maintain-framerate": "host.advanced.preference.framerate",
+} as const satisfies Record<DegradationPreference, CopyKey>;
 
 export const DEFAULT_SCREEN_AUDIO_QUALITY: ScreenAudioQuality = "music";
 export const SCREEN_AUDIO_BITRATES = {
@@ -176,9 +165,9 @@ export function matchingQualityProfileId(
 export function qualitySettingsLabel(settings: QualitySettings): string {
   const profileId = matchingQualityProfileId(settings);
   if (profileId) {
-    return QUALITY_PROFILE_LABELS[profileId];
+    return say(QUALITY_PROFILE_KEYS[profileId]);
   }
-  return `${QUALITY_RESOLUTIONS[settings.resolution].label} ${settings.maxFramerate} · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${DEGRADATION_PREFERENCE_LABELS[settings.degradationPreference]}`;
+  return `${QUALITY_RESOLUTIONS[settings.resolution].label} ${settings.maxFramerate} · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${say(DEGRADATION_PREFERENCE_KEYS[settings.degradationPreference])}`;
 }
 
 function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
@@ -197,7 +186,7 @@ export async function captureDisplay(
   profile: QualityProfile,
 ): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    throw new Error("当前浏览器不支持屏幕共享");
+    throw new Error(say("host.capture.unavailable"));
   }
 
   const stream = await navigator.mediaDevices.getDisplayMedia(
@@ -207,7 +196,7 @@ export async function captureDisplay(
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
     stream.getTracks().forEach((track) => track.stop());
-    throw new Error("浏览器没有返回可分享的视频轨道");
+    throw new Error(say("host.capture.noSource"));
   }
   videoTrack.contentHint = "motion";
   for (const audioTrack of stream.getAudioTracks()) {
@@ -222,7 +211,7 @@ export async function applyCaptureProfile(
 ): Promise<void> {
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
-    throw new Error("共享流缺少视频轨道");
+    throw new Error(say("host.capture.noSource"));
   }
   await videoTrack.applyConstraints(captureConstraints(profile));
 }
@@ -368,24 +357,26 @@ export function audioSenderParameterWarning(
     return null;
   }
   return readback.appliedMaxBitrate === null
-    ? "浏览器未读回音频码率上限"
-    : `浏览器将音频码率上限改写为 ${Math.round(readback.appliedMaxBitrate / 1_000)} kbps`;
+    ? say("host.warn.audioUnread")
+    : say("host.warn.audioRewritten", { kbps: String(Math.round(readback.appliedMaxBitrate / 1_000)) });
 }
 
-const PARAMETER_LABELS = {
-  maxBitrate: "码率上限",
-  maxFramerate: "帧率上限",
-  scaleResolutionDownBy: "分辨率缩放",
-  degradationPreference: "质量优先级",
-  scalabilityMode: "伸缩模式",
-} as const satisfies Record<keyof VideoSenderParameterValues, string>;
+const PARAMETER_KEYS = {
+  maxBitrate: "host.warn.param.maxBitrate",
+  maxFramerate: "host.warn.param.maxFramerate",
+  scaleResolutionDownBy: "host.warn.param.scaleResolutionDownBy",
+  degradationPreference: "host.warn.param.degradationPreference",
+  scalabilityMode: "host.warn.param.scalabilityMode",
+} as const satisfies Record<keyof VideoSenderParameterValues, CopyKey>;
 
 export function senderParameterWarning(
   readback: VideoSenderParameterReadback,
 ): string | null {
   return readback.mismatches.length > 0
-    ? `浏览器未完整接受${readback.mismatches
-        .map((key) => PARAMETER_LABELS[key])
-        .join("、")}`
+    ? say("host.warn.senderPartial", {
+        params: joinItems(
+          readback.mismatches.map((key) => say(PARAMETER_KEYS[key])),
+        ),
+      })
     : null;
 }

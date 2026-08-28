@@ -1,4 +1,3 @@
-import { KeyRound, LoaderCircle } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ApiError,
@@ -10,6 +9,11 @@ import { parseAppRoute, readViewerRoute } from "./lib/session";
 import { HostPage } from "./pages/HostPage";
 import { JoinPage } from "./pages/JoinPage";
 import { ViewerPage } from "./pages/ViewerPage";
+import { AppHeader } from "./components/living/Header";
+import { Btn, Pill } from "./components/living/primitives";
+import { ComicTooltip } from "./components/living/ComicTooltip";
+import { Glyph, type GlyphName } from "./ui/icons";
+import { useCopy } from "./ui/copy";
 
 const appRoute = parseAppRoute(window.location.pathname);
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
@@ -27,10 +31,8 @@ function stateFromStatus(status: SiteAccessStatus): AccessState {
     : { kind: "required", error: null };
 }
 
-function readableError(error: unknown): string {
-  return error instanceof ApiError
-    ? error.message
-    : "无法连接站点访问服务，请重试";
+function readableError(error: unknown, t: (key: "gate.connectFailed") => string): string {
+  return error instanceof ApiError ? error.message : t("gate.connectFailed");
 }
 
 export function App() {
@@ -48,9 +50,49 @@ export function App() {
     return <SiteAccessGate surface="join" />;
   }
   return appRoute.kind === "malformed-room" ? (
-    <MalformedRoomRoute />
+    <StaticRoute icon="door" titleKey="gate.malformed" hintKey="gate.malformedHint" />
   ) : (
-    <UnavailableRoute />
+    <StaticRoute icon="alert" titleKey="gate.unavailableRoute" />
+  );
+}
+
+function StaticRoute({
+  icon,
+  titleKey,
+  hintKey,
+}: {
+  icon: GlyphName;
+  titleKey: "gate.malformed" | "gate.unavailableRoute";
+  hintKey?: "gate.malformedHint";
+}) {
+  const { t, vis } = useCopy();
+  const panelIcon = (
+    <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
+      <Glyph name={icon} size={30} />
+    </span>
+  );
+  return (
+    <div className="lr-app">
+      <AppHeader />
+      <main className="lr-join">
+        <div className="lr-join-panel">
+          {vis ? (
+            <ComicTooltip kind="warning">{panelIcon}</ComicTooltip>
+          ) : (
+            panelIcon
+          )}
+          {vis ? null : (
+            <div className="lr-access-text">
+              <h1>{t(titleKey)}</h1>
+              {hintKey ? <p>{t(hintKey)}</p> : null}
+            </div>
+          )}
+          <span className="visually-hidden" role="alert">
+            {t(titleKey)}
+          </span>
+        </div>
+      </main>
+    </div>
   );
 }
 
@@ -59,6 +101,7 @@ function SiteAccessGate({
 }: {
   surface: "host" | "join" | "viewer";
 }) {
+  const { t, vis } = useCopy();
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -69,7 +112,7 @@ function SiteAccessGate({
       (status) => active && setAccess(stateFromStatus(status)),
       (error: unknown) =>
         active &&
-        setAccess({ kind: "unavailable", message: readableError(error) }),
+        setAccess({ kind: "unavailable", message: readableError(error, t) }),
     );
     return () => {
       active = false;
@@ -111,7 +154,7 @@ function SiteAccessGate({
     try {
       setAccess(stateFromStatus(await getSiteAccess()));
     } catch (error) {
-      setAccess({ kind: "unavailable", message: readableError(error) });
+      setAccess({ kind: "unavailable", message: readableError(error, t) });
     }
   }
 
@@ -120,7 +163,7 @@ function SiteAccessGate({
     const submittedPassword = password;
     setPassword("");
     if (!submittedPassword.trim()) {
-      setAccess({ kind: "required", error: "请输入站点口令" });
+      setAccess({ kind: "required", error: t("gate.hint") });
       return;
     }
 
@@ -134,8 +177,8 @@ function SiteAccessGate({
         kind: "required",
         error:
           error instanceof ApiError && error.status === 401
-            ? "站点口令不正确，请重试"
-            : readableError(error),
+            ? t("gate.wrong")
+            : readableError(error, t),
       });
     } finally {
       setSubmitting(false);
@@ -152,93 +195,78 @@ function SiteAccessGate({
     return (
       <HostPage
         onAuthorizationRequired={() =>
-          setAccess({ kind: "required", error: "站点访问已失效，请重新验证" })
+          setAccess({ kind: "required", error: t("gate.expired") })
         }
       />
     );
   }
 
   return (
-    <div className="app-shell">
-      <main className="access-workspace access-workspace-full">
+    <div className="lr-app">
+      <AppHeader />
+      <main className="lr-join">
         {access.kind === "checking" ? (
-          <div className="access-loading" role="status">
-            <LoaderCircle size={20} className="spin" aria-hidden="true" />
-            正在验证站点访问
+          <div className="lr-loading" role="status">
+            <Glyph name="loader" size={22} className="lr-spin" />
+            {vis ? null : (
+              <span className="lr-tv-msg" style={{ color: "var(--ink)", textShadow: "none" }}>
+                {t("gate.checking")}
+              </span>
+            )}
           </div>
         ) : access.kind === "unavailable" ? (
-          <section className="access-panel" aria-labelledby="access-heading">
-            <h1 id="access-heading">暂时无法验证站点访问</h1>
-            <p className="access-error" role="alert">
-              {access.message}
-            </p>
-            <button
-              className="button button-secondary"
-              type="button"
-              onClick={() => void retry()}
-            >
-              重试
-            </button>
-          </section>
-        ) : (
-          <form className="access-panel" onSubmit={(event) => void submit(event)}>
-            <div>
-              <h1>站点访问</h1>
-              <p className="section-meta">请输入站点口令</p>
-            </div>
-            <label className="token-field">
-              <span>站点口令</span>
-              <span className="input-with-icon">
-                <KeyRound size={16} aria-hidden="true" />
-                <input
-                  type="password"
-                  value={password}
-                  disabled={submitting}
-                  autoComplete="current-password"
-                  autoFocus
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </span>
-            </label>
-            {access.error && (
-              <p className="access-error" role="alert">
-                {access.error}
-              </p>
+          <div className="lr-join-panel">
+            <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
+              <Glyph name="wifiOff" size={30} />
+            </span>
+            {vis ? (
+              <span className="visually-hidden" role="alert">{access.message}</span>
+            ) : (
+              <div className="lr-access-text">
+                <h1>{t("gate.unavailable")}</h1>
+                <p role="alert">{access.message}</p>
+              </div>
             )}
-            <button
-              className="button button-primary"
+            <Btn icon="refresh" title="common.retry" cap="common.retry" onClick={() => void retry()} />
+          </div>
+        ) : (
+          <form className="lr-join-panel" onSubmit={(event) => void submit(event)}>
+            <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
+              <Glyph name="key" size={30} draw="gate-key" />
+            </span>
+            {vis ? null : (
+              <div className="lr-access-text">
+                <h1>{t("gate.title")}</h1>
+                <p>{t("gate.hint")}</p>
+              </div>
+            )}
+            <span className="lr-input" style={{ minWidth: 240 }}>
+              <Glyph name="lock" size={17} />
+              <input
+                type="password"
+                value={password}
+                disabled={submitting}
+                autoComplete="current-password"
+                autoFocus
+                aria-label={t("gate.password")}
+                placeholder={vis ? "····" : t("gate.password")}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </span>
+            {access.error ? (
+              <Pill icon="alert" tone="bad" label={access.error} alert comic="warning" />
+            ) : null}
+            <Btn
+              icon="arrowRight"
+              title="gate.submit"
+              cap="gate.submit"
+              tone="primary"
               type="submit"
+              hint="hint-password"
               disabled={submitting}
-            >
-              {submitting ? "正在验证" : "进入站点"}
-            </button>
+            />
           </form>
         )}
-      </main>
-    </div>
-  );
-}
-
-function UnavailableRoute() {
-  return (
-    <div className="app-shell">
-      <main className="access-workspace access-workspace-full">
-        <section className="access-panel">
-          <h1>无法访问</h1>
-        </section>
-      </main>
-    </div>
-  );
-}
-
-function MalformedRoomRoute() {
-  return (
-    <div className="app-shell">
-      <main className="access-workspace access-workspace-full">
-        <section className="access-panel">
-          <h1>房间号格式不正确</h1>
-          <p className="section-meta">请输入 1000 至 9999 的四位房间号</p>
-        </section>
       </main>
     </div>
   );
