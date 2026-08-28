@@ -445,8 +445,10 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-row.is-sub .lr-divider { background: #c3d4cb; }
 .lr-field-cap { opacity: .55; font-size: 12px; font-weight: 600; }
 .lr-invite-url {
+  width: 100%;
   min-width: 0;
   max-width: 340px;
+  flex: 1 1 240px;
   overflow: hidden;
   padding: 7px 10px;
   border: 1.5px dashed var(--wall-2);
@@ -911,6 +913,10 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-tv-big { width: 72px; height: 72px; }
   .lr-leds-label { display: none; }
   .lr-header-controls .lr-btn .lr-cap { display: none; }
+}
+@media (max-width: 360px) {
+  .lr-tiles .lr-tile { padding-inline: 4px; }
+  .lr-tile small { font-size: 10px; letter-spacing: 0; }
 }
 
 /* ---------- comic tooltip ---------- */
