@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `24cb780b54744af6e1bd5549254fa94c84adac96`, release `24cb780`, wire
-  `screener-v16`, from `/opt/screener/releases/24cb780`. The immutable runtime
+  `a48ea4cd36e47a653e749fb28858472cf3e37a42`, release `a48ea4c`, wire
+  `screener-v17`, from `/opt/screener/releases/a48ea4c`. The immutable runtime
   tar SHA-256 is
-  `45041f9796b1d62f49c408782335835a5e3c07238f9b532c8954ff5f5545b24c`;
+  `ad61465396c42eaed0a0ec34db358ecd6bfca4419dc2c3b7dcea295cb7fcdcc9`;
   its 41-file manifest SHA-256 is
-  `a1d0608f518b1fb0e4874e10e1eac9c731716b508f08569579f001668543c6f8`.
-- The served Browser entry references `assets/index-Bo3ApbkQ.js`; the public
+  `531b103e735c8313a7613adc71af695a8a8d231eb278b34bdbd0078f039ae7c6`.
+- The served Browser entry references `assets/index-C2joXJTB.js`; the public
   asset SHA-256 is
-  `87d074f43abf4b769d4930b52b6a21f1383c1d7229773a958feb22d592c08df7`.
+  `ae22eed100252bc4c149885f198ea693a3d2868ac9ffc86f64b662a45c5f3924`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -25,6 +25,9 @@ This is the current execution index. Git history owns completed timelines;
   capture while the Viewer rebuilt media without a page refresh. Lightweight
   mode remains available when `ROOM_DATABASE_PATH` is unset and reacquires a
   room rather than persisting the old authority.
+- Site access uses a stateless 24-hour rolling idle cookie. An active
+  site-authorized page renews it hourly through the existing status request;
+  Viewer-grant admission remains independent and cannot create or renew it.
 - Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. Web
   ingress is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are
   private. TURN, ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are
@@ -74,21 +77,6 @@ This is the current execution index. Git history owns completed timelines;
   pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
   controls still own playback, and manual reconnect stays on the current route.
 
-## Source/Production Delta
-
-- Current source uses 24-hour rolling site-access authorization and the v17
-  single wire contract; production remains on the v16 contract until release.
-- Current source replaces aggregate route-fact retries with exact session,
-  publication and transition opportunities; advances proved non-improving
-  candidates; binds stall and recovery reports to physical media identities;
-  and removes exact retired LiveKit Viewers while retaining generation-owned
-  resource charges.
-- Current source also keeps lease authority in `RoomStore`, batches stable-room
-  expiry persistence, serializes share start with room replacement, binds Web
-  release artifacts to their source revision, and retains Native sender code as
-  research rather than a distribution surface. These corrections are not
-  deployed; production remains exact release `24cb780` above.
-
 ## Current Milestone
 
 Measured route convergence, generation-owned Viewer presentation and
@@ -112,6 +100,5 @@ subscribers back to P2P, and retired the Host SFU publication.
 
 ## Current Hold
 
-No source P0/P1 is known. Production does not contain the current source
-corrections until an explicitly authorized deployment. Sanitized route logging
-remains enabled for the pre-release canary.
+No source or deployment P0/P1 is open. Sanitized route logging remains enabled
+for the pre-release canary.

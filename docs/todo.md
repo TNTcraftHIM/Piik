@@ -7,8 +7,7 @@ topics are not implementation authority.
 
 ## Now
 
-Release the accepted current source with 24-hour rolling site access and the
-strict v17 Browser/server contract, then record exact production identity.
+No implementation task is currently authorized.
 
 ## Parked Product Work
 
