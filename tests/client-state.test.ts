@@ -47,6 +47,8 @@ import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-qua
 import {
   collectConnectionMetrics,
   collectConnectionMetricsFromReport,
+  collectNativeSenderQualityFromReport,
+  createNativeSenderQualityAccumulator,
   createStatsAccumulator,
 } from "../src/client/webrtc/stats.ts";
 
@@ -1508,6 +1510,71 @@ describe("client signaling recovery policy", () => {
 });
 
 describe("WebRTC stats parsing", () => {
+  it("sums sender layers and rebases incomplete bitrate windows", () => {
+    const accumulator = createNativeSenderQualityAccumulator();
+    const sample = (
+      timestamp: number,
+      bytesByLayer: Readonly<Record<string, number>>,
+    ): number | null => {
+      const records: Array<[string, Record<string, unknown>]> = [
+        [
+          "source",
+          {
+            id: "source",
+            type: "media-source",
+            timestamp,
+            trackIdentifier: "track",
+          },
+        ],
+      ];
+      for (const [id, bytesSent] of Object.entries(bytesByLayer)) {
+        records.push([
+          id,
+          {
+            id,
+            type: "outbound-rtp",
+            kind: "video",
+            timestamp,
+            mediaSourceId: "source",
+            bytesSent,
+            framesEncoded: timestamp / 20,
+            qualityLimitationReason: "none",
+            qualityLimitationDurations: {
+              none: timestamp / 1_000,
+              bandwidth: 0,
+              cpu: 0,
+              other: 0,
+            },
+          },
+        ]);
+      }
+      return collectNativeSenderQualityFromReport(
+        new Map(records) as unknown as RTCStatsReport,
+        "track",
+        accumulator,
+      ).bitrateKbps;
+    };
+
+    expect(sample(1_000, { low: 10_000, high: 20_000 })).toBeNull();
+    expect(sample(3_000, { low: 110_000, high: 220_000 })).toBe(1_200);
+    expect(
+      sample(5_000, { low: 210_000, high: 420_000, mid: 50_000 }),
+    ).toBeNull();
+    expect(
+      sample(7_000, { low: 310_000, high: 620_000, mid: 150_000 }),
+    ).toBe(1_600);
+    expect(
+      sample(9_000, { low: 10_000, high: 820_000, mid: 250_000 }),
+    ).toBeNull();
+    expect(
+      sample(11_000, {
+        low: 110_000,
+        high: 1_020_000,
+        mid: 350_000,
+      }),
+    ).toBe(1_600);
+  });
+
   it("binds media, remote evidence, transport, and pair without guessing", async () => {
     const entry = (
       id: string,

@@ -413,6 +413,40 @@ function senderReport(
   ]);
 }
 
+function simulcastSenderReport(
+  trackId: string,
+  timestamp: number,
+  lowBytesSent: number,
+  highBytesSent: number,
+): RTCStatsReport {
+  const layer = (id: string, bytesSent: number, framesEncoded: number) => ({
+    id,
+    type: "outbound-rtp",
+    timestamp,
+    kind: "video",
+    mediaSourceId: "video-source",
+    bytesSent,
+    framesEncoded,
+    qualityLimitationReason: "none",
+    qualityLimitationDurations: {
+      none: timestamp / 1_000,
+      bandwidth: 0,
+      cpu: 0,
+      other: 0,
+    },
+  });
+  return statsReport([
+    layer("video-low", lowBytesSent, timestamp / 40),
+    layer("video-high", highBytesSent, timestamp / 20),
+    {
+      id: "video-source",
+      type: "media-source",
+      timestamp,
+      trackIdentifier: trackId,
+    },
+  ]);
+}
+
 function audioSenderReport(
   trackId: string,
   timestamp: number,
@@ -481,6 +515,31 @@ afterEach(() => {
 });
 
 describe("SfuPublisher", () => {
+  it("reports the aggregate bitrate of active simulcast layers", async () => {
+    vi.useFakeTimers();
+    const updates: Array<ConnectionMetrics | null> = [];
+    const publisher = new SfuPublisher({
+      onStats: (metrics) => updates.push(metrics),
+    });
+    const video = track("video", "video-1");
+    await publisher.connect(connection);
+    await publisher.activate(stream(video), qualityProfile);
+    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
+      .sender;
+    sender.getStats
+      .mockResolvedValueOnce(
+        simulcastSenderReport(video.id, 1_000, 100_000, 200_000),
+      )
+      .mockResolvedValueOnce(
+        simulcastSenderReport(video.id, 3_000, 300_000, 600_000),
+      );
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)?.bitrateKbps).toBeNull();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(updates.at(-1)?.bitrateKbps).toBe(2_400);
+  });
+
   it("enables balanced SFU adaptation after startup frames", async () => {
     vi.useFakeTimers();
     const publisher = new SfuPublisher();

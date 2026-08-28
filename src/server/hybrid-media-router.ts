@@ -107,6 +107,32 @@ type PrepareResult =
     }
   | { kind: "ready"; prepared: PreparedCandidate };
 
+type QualitySampleReference =
+  | {
+      kind: "peer";
+      childPeerId: string;
+      routeRevision: number;
+      connectionId: string;
+    }
+  | {
+      kind: "sfu";
+      routeRevision: number;
+      publicationGeneration: string;
+      hostSessionId: string;
+    };
+
+interface QualityCopyContext {
+  committedCopies: number;
+  candidateReservedCopies: number;
+  possibleCopies: number;
+  endpointCapacity: number;
+  operationReason: OperationSnapshot["reason"] | null;
+  candidateTransition:
+    | CandidatePlan["endpointTransition"]["kind"]
+    | null;
+  sampleRole: "active" | "candidate" | "unknown";
+}
+
 export type ActiveViewerMediaEdge =
   | {
       revision: number;
@@ -296,7 +322,25 @@ export class HybridMediaRouter {
     if (!room || !controller) {
       return false;
     }
-    const before = controller.snapshot().revision;
+    const snapshot = controller.snapshot();
+    const before = snapshot.revision;
+    const copyContext = this.qualityCopyContext(
+      snapshot,
+      room.hostPeerId ?? "",
+      participant.peerId,
+      participant.role === "host"
+        ? this.options.endpointMediaCopyCapacity
+        : Math.min(
+            room.advertisedCapacityByViewer.get(participant.peerId) ?? 0,
+            this.options.endpointMediaCopyCapacity,
+          ),
+      {
+        kind: "peer",
+        childPeerId: message.childPeerId,
+        routeRevision: message.routeRevision,
+        connectionId: message.connectionId,
+      },
+    );
     const input: SenderQualityEvidenceInput = {
       parentPeerId: participant.peerId,
       parentSessionId: participant.sessionId,
@@ -319,6 +363,8 @@ export class HybridMediaRouter {
       this.debug(participant.roomId, "sender-quality-evidence", {
         parent: this.debugPeer(participant.roomId, participant.peerId),
         child: this.debugPeer(participant.roomId, message.childPeerId),
+        routeRevision: message.routeRevision,
+        ...copyContext,
         state: message.state,
         reason: message.diagnostics.reason,
         framesPerSecond: message.diagnostics.framesPerSecond,
@@ -370,10 +416,23 @@ export class HybridMediaRouter {
     if (!room || !controller || participant.role !== "host") {
       return false;
     }
-    const operation = controller.snapshot().operation;
+    const snapshot = controller.snapshot();
+    const operation = snapshot.operation;
     const candidateChildPeerId = operation?.childPeerId;
     const candidateConnectionId = operation?.current?.connectionId;
-    const before = controller.snapshot().revision;
+    const before = snapshot.revision;
+    const copyContext = this.qualityCopyContext(
+      snapshot,
+      participant.peerId,
+      participant.peerId,
+      this.options.endpointMediaCopyCapacity,
+      {
+        kind: "sfu",
+        routeRevision: message.routeRevision,
+        publicationGeneration: message.publicationGeneration,
+        hostSessionId: participant.sessionId,
+      },
+    );
     const input: SfuPublisherQualityEvidenceInput = {
       hostPeerId: participant.peerId,
       hostSessionId: participant.sessionId,
@@ -389,6 +448,8 @@ export class HybridMediaRouter {
     );
     if (result.accepted) {
       this.debug(participant.roomId, "sfu-publisher-quality-evidence", {
+        routeRevision: message.routeRevision,
+        ...copyContext,
         state: message.state,
         reason: message.diagnostics.reason,
         framesPerSecond: message.diagnostics.framesPerSecond,
@@ -1949,6 +2010,89 @@ export class HybridMediaRouter {
     return (
       room?.controller?.diagnosticParticipantLabel(peerId) ?? "viewer-unknown"
     );
+  }
+
+  private qualityCopyContext(
+    snapshot: RouteSnapshot<RouteResource>,
+    hostPeerId: string,
+    observedPeerId: string,
+    endpointCapacity: number,
+    sample: QualitySampleReference,
+  ): QualityCopyContext {
+    let committedCopies = 0;
+    for (const edge of snapshot.upstreamByViewer.values()) {
+      if (
+        edge.kind === "peer" &&
+        edge.parentPeerId === observedPeerId &&
+        edge.physicalActive
+      ) {
+        committedCopies += 1;
+      }
+    }
+    if (
+      observedPeerId === hostPeerId &&
+      snapshot.hostPublication?.physicalActive
+    ) {
+      committedCopies += 1;
+    }
+
+    const operation = snapshot.operation;
+    const current = operation?.current;
+    const currentPlan = current
+      ? operation.candidates[operation.cursor]
+      : undefined;
+    const candidateReservedCopies =
+      current?.tuple.kind === "peer" &&
+      current.tuple.parentPeerId === observedPeerId
+        ? 1
+        : current?.tuple.kind === "sfu" &&
+            observedPeerId === hostPeerId &&
+            current.tuple.publication !== "reuse"
+          ? 1
+          : 0;
+
+    const candidateSample =
+      sample.kind === "peer"
+        ? current?.tuple.kind === "peer" &&
+          operation?.childPeerId === sample.childPeerId &&
+          current.tuple.parentPeerId === observedPeerId &&
+          current.revision === sample.routeRevision &&
+          current.connectionId === sample.connectionId
+        : current?.tuple.kind === "sfu" &&
+          observedPeerId === hostPeerId &&
+          current.revision === sample.routeRevision;
+    const activeEdge =
+      sample.kind === "peer"
+        ? snapshot.upstreamByViewer.get(sample.childPeerId)
+        : undefined;
+    const activeSample =
+      sample.kind === "peer"
+        ? sample.routeRevision === snapshot.revision &&
+          activeEdge?.kind === "peer" &&
+          activeEdge.physicalActive &&
+          activeEdge.usable &&
+          activeEdge.parentPeerId === observedPeerId &&
+          activeEdge.connectionId === sample.connectionId
+        : sample.routeRevision === snapshot.revision &&
+          snapshot.hostPublication?.physicalActive === true &&
+          snapshot.hostPublication.usable &&
+          snapshot.hostPublication.generation ===
+            sample.publicationGeneration &&
+          snapshot.hostPublication.hostSessionId === sample.hostSessionId;
+
+    return {
+      committedCopies,
+      candidateReservedCopies,
+      possibleCopies: committedCopies + candidateReservedCopies,
+      endpointCapacity,
+      operationReason: operation?.reason ?? null,
+      candidateTransition: currentPlan?.endpointTransition.kind ?? null,
+      sampleRole: candidateSample
+        ? "candidate"
+        : activeSample
+          ? "active"
+          : "unknown",
+    };
   }
 
   private debugTuple(roomId: string, tuple: CandidateTuple): string {
