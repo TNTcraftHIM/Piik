@@ -257,6 +257,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-tv-overlay.is-dim { background: rgba(10, 16, 28, .62); }
 
 .lr-tv-big {
+  position: relative;
   display: grid;
   width: 84px; height: 84px;
   place-items: center;
@@ -270,11 +271,21 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-tv-big:active { transform: scale(.94); }
 .lr-tv-big.is-action { border-color: var(--action); background: var(--action); cursor: pointer; }
 .lr-tv-big.is-action:hover { background: var(--action-deep); }
-.lr-tv-big.is-ripple { animation: lr-ripple 2s ease-out infinite; }
+.lr-tv-big.is-ripple::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 22px rgba(47, 111, 237, .45);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(.66);
+  will-change: transform, opacity;
+  animation: lr-ripple 2s ease-out infinite;
+}
 @keyframes lr-ripple {
-  0% { box-shadow: 0 0 0 0 rgba(47, 111, 237, .45); }
-  70% { box-shadow: 0 0 0 22px rgba(47, 111, 237, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0); }
+  0% { opacity: .45; transform: scale(.66); }
+  70%, 100% { opacity: 0; transform: scale(1); }
 }
 
 .lr-tv-msg {

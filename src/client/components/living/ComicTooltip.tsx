@@ -17,6 +17,7 @@ import { HintComic, isHintKind, type HintKind } from "./hints";
 
 const LONG_PRESS_MS = 500;
 const TOUCH_HIDE_MS = 1500;
+const COMIC_EXIT_MS = 160;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
 
@@ -39,10 +40,23 @@ export function ComicTooltip({
   const tipRef = useRef<HTMLSpanElement | null>(null);
   const pressTimer = useRef<number | null>(null);
   const hideTimer = useRef<number | null>(null);
+  const comicUnmountTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   const pressPoint = useRef<{ x: number; y: number } | null>(null);
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
   const [touchOpen, setTouchOpen] = useState(false);
+  const [comicMounted, setComicMounted] = useState(false);
   const [liveAlign, setLiveAlign] = useState<Align | null>(null);
+  const interactionOpen = hoverOpen || focusOpen || touchOpen;
+
+  const mountComic = () => {
+    if (comicUnmountTimer.current !== null) {
+      window.clearTimeout(comicUnmountTimer.current);
+      comicUnmountTimer.current = null;
+    }
+    setComicMounted(true);
+  };
 
   // Re-pick alignment from the trigger's live geometry. The configured align
   // wins whenever it fits; otherwise the first alignment that keeps the whole
@@ -54,7 +68,7 @@ export function ComicTooltip({
     const vw = window.innerWidth;
     if (!vw) return; // no layout (SSR/test): keep the prop alignment
     const rect = wrap.getBoundingClientRect();
-    const measured = tipRef.current?.offsetWidth ?? 0;
+    const measured = comicMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
     const center = rect.left + rect.width / 2;
     const boxes: Record<Align, { left: number; right: number }> = {
@@ -82,48 +96,13 @@ export function ComicTooltip({
   const pickAlignRef = useRef(pickAlign);
   pickAlignRef.current = pickAlign;
   useEffect(() => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    let frame = 0;
-    let listening = false;
-    const schedulePick = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => pickAlignRef.current());
-    };
-    const open = () => {
-      if (listening) return;
-      listening = true;
-      window.addEventListener("resize", schedulePick);
-      window.addEventListener("scroll", schedulePick, true);
-    };
-    const close = () => {
-      if (!listening) return;
-      listening = false;
-      window.removeEventListener("resize", schedulePick);
-      window.removeEventListener("scroll", schedulePick, true);
-    };
-    wrap.addEventListener("pointerenter", open);
-    wrap.addEventListener("pointerleave", close);
-    wrap.addEventListener("focusin", open);
-    wrap.addEventListener("focusout", close);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      close();
-      wrap.removeEventListener("pointerenter", open);
-      wrap.removeEventListener("pointerleave", close);
-      wrap.removeEventListener("focusin", open);
-      wrap.removeEventListener("focusout", close);
-    };
-  }, []);
-
-  // The long-press channel outlives the touch contact: listen while open.
-  useEffect(() => {
-    if (!touchOpen) return;
+    if (!interactionOpen || !comicMounted) return;
     let frame = 0;
     const schedulePick = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => pickAlignRef.current());
     };
+    schedulePick();
     window.addEventListener("resize", schedulePick);
     window.addEventListener("scroll", schedulePick, true);
     return () => {
@@ -131,12 +110,29 @@ export function ComicTooltip({
       window.removeEventListener("resize", schedulePick);
       window.removeEventListener("scroll", schedulePick, true);
     };
-  }, [touchOpen]);
+  }, [comicMounted, interactionOpen]);
+
+  useEffect(() => {
+    if (interactionOpen || !comicMounted) return;
+    comicUnmountTimer.current = window.setTimeout(() => {
+      comicUnmountTimer.current = null;
+      setComicMounted(false);
+    }, COMIC_EXIT_MS);
+    return () => {
+      if (comicUnmountTimer.current !== null) {
+        window.clearTimeout(comicUnmountTimer.current);
+        comicUnmountTimer.current = null;
+      }
+    };
+  }, [comicMounted, interactionOpen]);
 
   useEffect(
     () => () => {
       if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+      if (comicUnmountTimer.current !== null) {
+        window.clearTimeout(comicUnmountTimer.current);
+      }
     },
     [],
   );
@@ -168,8 +164,28 @@ export function ComicTooltip({
     <span
       ref={wrapRef}
       className={`lr-comic-tip-wrap${touchOpen ? " is-tip-open" : ""}`}
-      onPointerEnter={pickAlign}
-      onFocus={pickAlign}
+      onPointerEnter={(event) => {
+        pickAlign();
+        if (event.pointerType !== "touch") {
+          mountComic();
+          setHoverOpen(true);
+        }
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== "touch") setHoverOpen(false);
+      }}
+      onFocus={(event) => {
+        pickAlign();
+        if ((event.target as HTMLElement).matches(":focus-visible")) {
+          mountComic();
+          setFocusOpen(true);
+        }
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setFocusOpen(false);
+        }
+      }}
       onPointerDown={(event) => {
         if (event.pointerType !== "touch") return;
         cancelPress();
@@ -177,6 +193,7 @@ export function ComicTooltip({
         pressTimer.current = window.setTimeout(() => {
           pressTimer.current = null;
           longPressed.current = true;
+          mountComic();
           pickAlign();
           setTouchOpen(true);
         }, LONG_PRESS_MS);
@@ -187,6 +204,7 @@ export function ComicTooltip({
         if (longPressed.current) {
           if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
           hideTimer.current = window.setTimeout(() => {
+            hideTimer.current = null;
             longPressed.current = false;
             setTouchOpen(false);
           }, TOUCH_HIDE_MS);
@@ -229,17 +247,21 @@ export function ComicTooltip({
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           setTouchOpen(false);
+          setFocusOpen(false);
           (document.activeElement as HTMLElement | null)?.blur?.();
+        } else if ((event.target as HTMLElement).matches(":focus-visible")) {
+          mountComic();
+          setFocusOpen(true);
         }
       }}
     >
       {children}
       <span ref={tipRef} className={`lr-comic-tip${placeClass}${alignClass}`} role="note">
-        {isHintKind(kind) ? (
-          <HintComic kind={kind} size={240} />
-        ) : (
-          <Comic kind={kind} theme="paper" size={240} />
-        )}
+        {comicMounted
+          ? isHintKind(kind)
+            ? <HintComic kind={kind} size={240} />
+            : <Comic kind={kind} theme="paper" size={240} />
+          : null}
       </span>
     </span>
   );

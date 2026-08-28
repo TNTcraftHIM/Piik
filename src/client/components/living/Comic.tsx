@@ -5,7 +5,7 @@
 // constitution: state-change beats only, loops rest >=40%, max 2 movers per
 // panel, stamps play once and hold. SSR-safe: pure static markup, no hooks.
 
-import type { CSSProperties, ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 
 export type ComicKind =
   | "waiting-for-host"
@@ -1267,7 +1267,7 @@ const SCENES: Record<ComicKind, (props: { theme: ComicTheme }) => ReactNode> = {
  * width min(320px, 86%). The SVG is aria-hidden: wrap it in a role="status"
  * container with a localized aria-label (README §4).
  */
-export function Comic({
+export const Comic = memo(function Comic({
   kind,
   size,
   theme,
@@ -1293,4 +1293,4 @@ export function Comic({
       {SCENES[kind]({ theme: resolvedTheme })}
     </svg>
   );
-}
+});
