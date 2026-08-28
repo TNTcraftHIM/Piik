@@ -99,6 +99,7 @@ export interface ControllerOptions {
 
 const routeDebug = debuglog("screener-route");
 const MAX_DIRECT_HEAD_START_MS = 5_000;
+const SFU_OPPORTUNITY_PREFIX = "sfu\0";
 
 interface Participant {
   peerId: string;
@@ -2541,7 +2542,6 @@ export class RoomRouteController<Resource = unknown> {
       participant.bootstrapFailureReported = undefined;
     }
     if (old?.kind === "sfu" && !this.hasSfuSubscribers() && this.hostPublication) {
-      this.clearSfuCandidateOpportunities();
       this.hostPublication = null;
     }
     if (
@@ -2553,7 +2553,6 @@ export class RoomRouteController<Resource = unknown> {
         demand.sfuFirstAtNextRoute = true;
       }
       this.sfuBootstrapIntent = undefined;
-      this.consumedSfuBootstrapOpportunities.clear();
     } else if (this.usableRoute(operation.demandPeerId)) {
       this.clearSfuBootstrapForDemand(operation.demandPeerId);
     }
@@ -2649,13 +2648,9 @@ export class RoomRouteController<Resource = unknown> {
         this.participants.get(plan.tuple.parentPeerId)?.sessionId ?? ""
       }`;
     }
-    const publicationGeneration =
-      plan.tuple.publication === "create"
-        ? ""
-        : (this.hostPublication?.generation ?? "");
-    return `${tupleKey(plan.tuple)}\0${childSessionId}\0${
+    return `${SFU_OPPORTUNITY_PREFIX}${childSessionId}\0${
       this.participants.get(this.options.hostPeerId)?.sessionId ?? ""
-    }\0${publicationGeneration}`;
+    }`;
   }
 
   private consumeCandidateOpportunity(
@@ -2677,15 +2672,20 @@ export class RoomRouteController<Resource = unknown> {
     child: Participant,
     edge: CommittedEdge<Resource>,
   ): void {
-    const base =
-      edge.kind === "peer"
-        ? `peer:${edge.parentPeerId}\0${child.sessionId ?? ""}\0${
-            edge.parentSessionId
-          }`
-        : `sfu:reuse\0${child.sessionId ?? ""}\0${
-            this.hostPublication?.hostSessionId ?? ""
-          }\0${edge.publicationGeneration}`;
-    consumeOpportunity(child.consumedCandidateOpportunities, base, 0);
+    if (edge.kind === "peer") {
+      consumeOpportunity(
+        child.consumedCandidateOpportunities,
+        `peer:${edge.parentPeerId}\0${child.sessionId ?? ""}\0${
+          edge.parentSessionId
+        }`,
+        0,
+      );
+      return;
+    }
+    this.consumeCandidateOpportunity(child.peerId, {
+      tuple: { kind: "sfu", publication: "reuse" },
+      endpointTransition: { kind: "none" },
+    });
   }
 
   private consumeAvailabilityOperation(
@@ -3257,8 +3257,16 @@ export class RoomRouteController<Resource = unknown> {
     return Boolean(
       this.sfuBootstrapGloballyNeeded() &&
         this.participants.get(demandPeerId)?.sessionId &&
-        !this.usableRoute(demandPeerId),
+        !this.usableRoute(demandPeerId) &&
+        this.sfuOpportunityAvailable(demandPeerId),
     );
+  }
+
+  private sfuOpportunityAvailable(demandPeerId: string): boolean {
+    return this.candidateOpportunityAvailable(demandPeerId, {
+      tuple: { kind: "sfu", publication: "reuse" },
+      endpointTransition: { kind: "none" },
+    });
   }
 
   private sfuBootstrapGloballyNeeded(): boolean {
@@ -3598,7 +3606,6 @@ export class RoomRouteController<Resource = unknown> {
       if (!this.hasSfuSubscribers() && this.hostPublication) {
         this.clearSfuQuality();
         if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
-        this.clearSfuCandidateOpportunities();
         this.hostPublication = null;
       }
       this.revision = this.allocateRevision();
@@ -4108,10 +4115,13 @@ export class RoomRouteController<Resource = unknown> {
       for (const key of child.consumedCandidateOpportunities.keys()) {
         if (
           key.startsWith(parentPrefix) ||
-          (role === "host" && key.startsWith("sfu:"))
+          (role === "host" && key.startsWith(SFU_OPPORTUNITY_PREFIX))
         ) {
           child.consumedCandidateOpportunities.delete(key);
         }
+      }
+      if (role === "host") {
+        child.bootstrapFailureReported = undefined;
       }
     }
     if (role === "host") {
@@ -4129,7 +4139,7 @@ export class RoomRouteController<Resource = unknown> {
   private clearSfuCandidateOpportunities(): void {
     for (const participant of this.participants.values()) {
       for (const key of participant.consumedCandidateOpportunities.keys()) {
-        if (key.startsWith("sfu:")) {
+        if (key.startsWith(SFU_OPPORTUNITY_PREFIX)) {
           participant.consumedCandidateOpportunities.delete(key);
         }
       }
@@ -4307,7 +4317,6 @@ export class RoomRouteController<Resource = unknown> {
       if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
       this.hostPublication = null;
     }
-    this.clearSfuCandidateOpportunities();
     return released;
   }
 
