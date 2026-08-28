@@ -761,6 +761,185 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
+  it("does not recreate SFU after an exhausted reuse and carrier teardown", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { store, sent, admission, roomControl, router } = harness(
+      2,
+      true,
+      300,
+    );
+    const sfuConfigCount = () =>
+      [...sent.values()]
+        .flat()
+        .filter((message) => message.type === "sfu-config").length;
+    const ownPrepare = (participant: AuthenticatedRouteParticipant) =>
+      sent
+        .get(participant.sessionId)
+        ?.findLast(
+          (
+            message,
+          ): message is Extract<
+            ServerMessage,
+            { type: "route-update"; phase: "prepare" }
+          > =>
+            message.type === "route-update" &&
+            message.phase === "prepare" &&
+            message.candidate.childPeerId === participant.peerId,
+        );
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+
+      const firstRoot = connectViewer(store, room, "reuse-loop-first-root");
+      complete(router, firstRoot);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, firstRoot.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const firstDirect = preparedFor(sent, firstRoot.sessionId)!;
+      router.handleRouteReady(firstRoot, {
+        type: "route-ready",
+        revision: firstDirect.revision,
+        phase: "prepare",
+      });
+      router.setViewerRelayCapacity(firstRoot, 1);
+
+      const secondRoot = connectViewer(store, room, "reuse-loop-second-root");
+      complete(router, secondRoot);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, secondRoot.sessionId)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      const secondDirect = preparedFor(sent, secondRoot.sessionId)!;
+      router.handleRouteReady(secondRoot, {
+        type: "route-ready",
+        revision: secondDirect.revision,
+        phase: "prepare",
+      });
+
+      const departedParent = connectViewer(
+        store,
+        room,
+        "reuse-loop-departed-parent",
+      );
+      complete(router, departedParent);
+      await vi.waitFor(() =>
+        expect(
+          preparedFor(sent, departedParent.sessionId)?.assignment.upstream,
+        ).toEqual({ kind: "peer", peerId: firstRoot.peerId }),
+      );
+      const parentDirect = preparedFor(sent, departedParent.sessionId)!;
+      router.handleRouteReady(departedParent, {
+        type: "route-ready",
+        revision: parentDirect.revision,
+        phase: "prepare",
+      });
+      router.setViewerRelayCapacity(departedParent, 1);
+
+      const demand = connectViewer(store, room, "reuse-loop-demand");
+      complete(router, demand);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, demand.sessionId)?.assignment.upstream).toEqual(
+          { kind: "peer", peerId: departedParent.peerId },
+        ),
+      );
+      const demandDirect = preparedFor(sent, demand.sessionId)!;
+      router.handleRouteReady(demand, {
+        type: "route-ready",
+        revision: demandDirect.revision,
+        phase: "prepare",
+      });
+
+      const departureAt = Date.now();
+      store.disconnectParticipant(
+        room.roomId,
+        departedParent.peerId,
+        departedParent.sessionId,
+      );
+      router.disconnectParticipant(
+        room.roomId,
+        departedParent.peerId,
+        departedParent.sessionId,
+      );
+      router.removeViewer(room.roomId, departedParent.peerId);
+      router.setViewerRelayCapacity(secondRoot, 1);
+
+      await vi.waitFor(() => {
+        const recovery = ownPrepare(demand);
+        expect(recovery?.revision).toBeGreaterThan(demandDirect.revision);
+        expect(recovery?.candidate).toMatchObject({
+          childPeerId: demand.peerId,
+          transport: "direct",
+        });
+      });
+      await vi.advanceTimersByTimeAsync(
+        Math.max(0, departureAt + 150 - Date.now()),
+      );
+
+      const carrier = await vi.waitFor(() => {
+        const value = [firstRoot, secondRoot].find(
+          (viewer) =>
+            ownPrepare(viewer)?.candidate.transport === "sfu",
+        );
+        expect(value).toBeDefined();
+        return value!;
+      });
+      const bootstrap = ownPrepare(carrier)!;
+      router.handleRouteReady(carrier, {
+        type: "route-ready",
+        revision: bootstrap.revision,
+        phase: "prepare",
+      });
+
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, demand.sessionId)?.candidate.transport).toBe(
+          "sfu",
+        ),
+      );
+      expect(roomControl?.created).toHaveLength(1);
+      const configCountAfterBootstrap = sfuConfigCount();
+      expect(configCountAfterBootstrap).toBeGreaterThanOrEqual(3);
+
+      await vi.advanceTimersByTimeAsync(
+        Math.max(0, departureAt + 300 - Date.now()),
+      );
+      await vi.waitFor(() =>
+        expect(ownPrepare(carrier)?.candidate.transport).toBe(
+          "direct",
+        ),
+      );
+      expect(router.routeDiagnosticSnapshot(room.roomId).operation).toMatchObject({
+        reason: "direct-convergence",
+      });
+      const carrierDirect = ownPrepare(carrier)!;
+      router.handleRouteReady(carrier, {
+        type: "route-ready",
+        revision: carrierDirect.revision,
+        phase: "prepare",
+      });
+
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, carrier.peerId)
+            ?.upstream,
+        ).toEqual({ kind: "peer", peerId: host.peerId }),
+      );
+      await vi.waitFor(() => expect(roomControl?.deleted).toHaveLength(1));
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(roomControl?.created).toHaveLength(1);
+      expect(sfuConfigCount()).toBe(configCountAfterBootstrap);
+      expect(admission?.usage()).toEqual({ ingress: 0, egress: 0 });
+    } finally {
+      await router.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("reports a late final SFU bootstrap ready only to the waiting demand", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

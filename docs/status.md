@@ -77,6 +77,13 @@ This is the current execution index. Git history owns completed timelines;
   pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
   controls still own playback, and manual reconnect stays on the current route.
 
+## Source/Production Delta
+
+- Current source preserves failed SFU opportunities across controller-owned
+  publication generations, preventing an exhausted Viewer from repeatedly
+  bootstrapping and tearing down the same SFU path. Production release
+  `a48ea4c` predates this correction.
+
 ## Current Milestone
 
 Measured route convergence, generation-owned Viewer presentation and

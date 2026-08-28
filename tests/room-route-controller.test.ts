@@ -130,6 +130,130 @@ function peerEdge(
   };
 }
 
+function retireLastSfuPublicationAfterReuseDeadline(): {
+  routes: RoomRouteController<string>;
+  nowMs: number;
+} {
+  const routes = controller(2, { sfuEnabled: true });
+  for (const [peerId, connectionId] of [
+    [B, "b_from_host"],
+    [C, "c_from_host"],
+  ] as const) {
+    addViewer(routes, peerId, 0);
+    routes.hydrateEdge(peerId, peerEdge(HOST, connectionId));
+  }
+  addViewer(routes, A, 0, 0);
+
+  const bootstrap = routes.reconcile(0).operation!;
+  expect(bootstrap).toMatchObject({
+    demandPeerId: A,
+    reason: "sfu-bootstrap",
+    candidates: [
+      {
+        tuple: { kind: "sfu", publication: "create" },
+      },
+    ],
+  });
+  const carrierPeerId = bootstrap.childPeerId;
+  const carrier = beginCandidate(routes, {
+    nowMs: 1,
+    connectionId: "carrier_sfu",
+    publicationGeneration: "publication_generation",
+    publicationConnectionId: "publication_connection",
+    reservation: {
+      kind: "sfu-create",
+      edge: "carrier_subscription",
+      publication: "publication_resource",
+      overlap: "publication_overlap",
+    },
+  }).operation!;
+  expect(
+    routes.candidateReady(
+      {
+        childPeerId: carrier.childPeerId,
+        childSessionId: carrier.childSessionId,
+        revision: carrier.current!.revision,
+        connectionId: "carrier_sfu",
+      },
+      2,
+    ).accepted,
+  ).toBe(true);
+
+  const demand = routes.reconcile(3).operation!;
+  expect(demand).toMatchObject({
+    childPeerId: A,
+    demandPeerId: A,
+    candidates: [
+      {
+        tuple: { kind: "sfu", publication: "reuse" },
+      },
+    ],
+  });
+  beginCandidate(routes, {
+    nowMs: 4,
+    connectionId: "demand_sfu_reuse",
+    reservation: { kind: "sfu-reuse", edge: "demand_subscription" },
+  });
+  expect(routes.operationExpired(demand.deadlineAtMs).failedPeerIds).toEqual([
+    A,
+  ]);
+
+  const convergence = routes.reconcile(demand.deadlineAtMs + 1).operation!;
+  expect(convergence).toMatchObject({
+    childPeerId: carrierPeerId,
+    reason: "direct-convergence",
+    candidates: [
+      {
+        tuple: { kind: "peer", parentPeerId: HOST, transport: "direct" },
+      },
+    ],
+  });
+  const direct = beginCandidate(routes, {
+    nowMs: demand.deadlineAtMs + 2,
+    connectionId: "carrier_direct",
+    reservation: { kind: "direct", overlap: "carrier_direct_overlap" },
+  }).operation!;
+  const committed = routes.candidateReady(
+    {
+      childPeerId: direct.childPeerId,
+      childSessionId: direct.childSessionId,
+      revision: direct.current!.revision,
+      connectionId: "carrier_direct",
+    },
+    demand.deadlineAtMs + 3,
+  );
+  expect(committed.accepted).toBe(true);
+  expect(committed.released).toEqual(
+    expect.arrayContaining(["carrier_subscription", "publication_resource"]),
+  );
+  expect(routes.snapshot().hostPublication).toBeNull();
+  return { routes, nowMs: demand.deadlineAtMs + 4 };
+}
+
+function invalidateActiveSfuEdge(): RoomRouteController<string> {
+  const routes = controller(1, { sfuEnabled: true });
+  addViewer(routes, A, 0);
+  routes.hydrateHostPublication("active_publication", "publication_resource");
+  routes.hydrateEdge(A, {
+    kind: "sfu",
+    publicationGeneration: "active_publication",
+    transport: "sfu",
+    connectionId: "active_sfu_edge",
+    usable: true,
+    physicalActive: true,
+    resource: "active_subscription",
+  });
+  expect(
+    routes.invalidateEdge({
+      childPeerId: A,
+      childSessionId: `${A}_session`,
+      routeRevision: routes.snapshot().revision,
+      connectionId: "active_sfu_edge",
+    }),
+  ).toBe(true);
+  return routes;
+}
+
 function observeSenderState(
   routes: RoomRouteController<string>,
   input: {
@@ -3374,7 +3498,7 @@ describe("RoomRouteController", () => {
     expect(routes.snapshot().hostPublication).toBeNull();
   });
 
-  it("does not reopen a consumed none transition when it worsens to overlap", () => {
+  it("does not reopen consumed none transitions after capacity reduction", () => {
     const routes = controller(2, { sfuEnabled: true });
     addViewer(routes, A, 0);
     routes.hydrateHostPublication("publication", "publication_resource");
@@ -3403,20 +3527,7 @@ describe("RoomRouteController", () => {
     expect(routes.operationExpired(operation.deadlineAtMs).failedPeerIds).toEqual([
       A,
     ]);
-    const retry = routes.reconcile(operation.deadlineAtMs + 1).operation!;
-    expect(retry.candidates).toEqual([
-      {
-        tuple: { kind: "sfu", publication: "replace" },
-        endpointTransition: { kind: "none", producerPeerId: HOST },
-      },
-    ]);
-    expect(
-      retry.candidates.some(
-        (candidate) =>
-          candidate.tuple.kind === "peer" &&
-          candidate.tuple.parentPeerId === HOST,
-      ),
-    ).toBe(false);
+    expect(routes.reconcile(operation.deadlineAtMs + 1).operation).toBeUndefined();
   });
 
   it("does not unblock an exhausted demand for an unrelated join", () => {
@@ -3596,6 +3707,144 @@ describe("RoomRouteController", () => {
       reason: "sfu-bootstrap",
       childPeerId: failedCarrier,
     });
+  });
+
+  it("does not bootstrap a new SFU generation after the last reuse opportunity expires", () => {
+    const { routes, nowMs } = retireLastSfuPublicationAfterReuseDeadline();
+
+    const reconciled = routes.reconcile(nowMs);
+    expect(reconciled.operation).toBeUndefined();
+    expect(reconciled.failedPeerIds).toEqual([]);
+  });
+
+  it.each(["child-session", "host-session", "external-resource"] as const)(
+    "reopens the exhausted SFU opportunity for a new %s authority",
+    (authority) => {
+      const { routes, nowMs } = retireLastSfuPublicationAfterReuseDeadline();
+      if (authority === "child-session") {
+        routes.upsertParticipant({
+          peerId: A,
+          role: "viewer",
+          sessionId: "replacement_child_session",
+          effectiveDownstreamCapacity: 0,
+        });
+      } else if (authority === "host-session") {
+        routes.upsertParticipant({
+          peerId: HOST,
+          role: "host",
+          sessionId: "replacement_host_session",
+          effectiveDownstreamCapacity: 2,
+        });
+      } else {
+        routes.touchExternalFacts();
+      }
+
+      expect(routes.reconcile(nowMs).operation).toMatchObject({
+        demandPeerId: A,
+        reason: "sfu-bootstrap",
+        candidates: [
+          {
+            tuple: { kind: "sfu", publication: "create" },
+          },
+        ],
+      });
+    },
+  );
+
+  it("consumes the canonical SFU opportunity when an active edge fails", () => {
+    const routes = invalidateActiveSfuEdge();
+
+    const operation = routes.reconcile(0).operation;
+    expect(
+      operation?.candidates.some((candidate) => candidate.tuple.kind === "sfu"),
+    ).toBe(false);
+  });
+
+  it.each(["child-session", "host-session", "external-resource"] as const)(
+    "reopens an active-edge SFU opportunity for a new %s authority",
+    (authority) => {
+      const routes = invalidateActiveSfuEdge();
+      if (authority === "child-session") {
+        routes.upsertParticipant({
+          peerId: A,
+          role: "viewer",
+          sessionId: "active_edge_child_replacement",
+          effectiveDownstreamCapacity: 0,
+        });
+      } else if (authority === "host-session") {
+        routes.upsertParticipant({
+          peerId: HOST,
+          role: "host",
+          sessionId: "active_edge_host_replacement",
+          effectiveDownstreamCapacity: 1,
+        });
+      } else {
+        routes.touchExternalFacts();
+      }
+
+      expect(
+        routes
+          .reconcile(0)
+          .operation?.candidates.some(
+            (candidate) =>
+              candidate.tuple.kind === "sfu" &&
+              candidate.tuple.publication === "reuse",
+          ),
+      ).toBe(true);
+    },
+  );
+
+  it("does not turn a failed same-rank SFU replace into a create retry", () => {
+    const routes = controller(2, { sfuEnabled: true });
+    routes.hydrateHostPublication(
+      "failed_publication",
+      "failed_publication_resource",
+    );
+    expect(
+      routes.invalidateHostPublication({
+        hostSessionId: "host_session",
+        routeRevision: routes.snapshot().revision,
+        generation: "failed_publication",
+        connectionId: "publication:failed_publication",
+      }),
+    ).toBe(true);
+    addViewer(routes, A, 0);
+    const operation = routes.reconcile(0).operation!;
+    expect(operation.candidates[0]?.tuple).toMatchObject({ kind: "peer" });
+    skipCandidate(routes, 1);
+    expect(routes.snapshot().operation?.candidates[1]).toMatchObject({
+      tuple: { kind: "sfu", publication: "replace" },
+      endpointTransition: { kind: "none", producerPeerId: HOST },
+    });
+    const replace = beginCandidate(routes, {
+      nowMs: 2,
+      connectionId: "failed_replace",
+      publicationGeneration: "replacement_publication",
+      publicationConnectionId: "replacement_ingress",
+      reservation: {
+        kind: "sfu-create",
+        edge: "replacement_subscription",
+        publication: "replacement_publication_resource",
+      },
+    }).operation!;
+    expect(
+      routes.candidateFailed(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: replace.current!.revision,
+          connectionId: "failed_replace",
+        },
+        3,
+      ).failedPeerIds,
+    ).toEqual([A]);
+
+    addViewer(routes, B, 0);
+    expect(routes.confirmDeparture(B)).toBe(true);
+    const reconciled = routes.reconcile(4);
+    expect(routes.snapshot().hostPublication).toBeNull();
+    expect(reconciled.operation).toBeUndefined();
+    expect(reconciled.failedPeerIds).toEqual([]);
   });
 
   it("reopens only SFU opportunities for a new external fact", () => {
