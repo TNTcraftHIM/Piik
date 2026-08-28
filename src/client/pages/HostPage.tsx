@@ -1,27 +1,14 @@
 import {
-  Check,
-  Copy,
-  Eye,
-  EyeOff,
-  Globe2,
-  KeyRound,
-  Link2Off,
-  LoaderCircle,
-  LockKeyhole,
-  MonitorUp,
-  Network,
-  Pause,
-  Pencil,
-  Play,
-  RefreshCw,
-  Save,
-  Square,
-  Users,
-  X,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
-  DEFAULT_HOST_DISPLAY_NAME_PREFIX,
   DEFAULT_QUALITY_SETTINGS,
   DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
@@ -34,20 +21,38 @@ import {
   type CodeEntryPolicy,
   type RoutePolicy,
 } from "../../shared/protocol";
-import { AppHeader } from "../components/AppHeader";
-import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
-import { RoomCode } from "../components/RoomCode";
-import { StageEntryActions } from "../components/StageEntryActions";
 import { qualityLimitationSummary } from "../components/connection-details";
+import { AppHeader, LedStrip, type LedState } from "../components/living/Header";
+import { Couch, type CouchEntry } from "../components/living/Couch";
+import { useMetricsExpanded } from "../components/living/Metrics";
+import { PawnDetail } from "../components/living/PawnDetail";
+import { RoomChip } from "../components/living/RoomChip";
+import { RouteTree } from "../components/living/RouteTree";
+import type { ComicKind } from "../components/living/Comic";
+import { ComicTooltip } from "../components/living/ComicTooltip";
+import type { HintKind } from "../components/living/hints";
 import {
-  MediaRouteBadge,
-  PeerStatusBadge,
-  SignalStatusBadge,
-  WarningBanner,
-} from "../components/StatusBadge";
-import { StatsGrid } from "../components/StatsGrid";
-import { TopologyView } from "../components/TopologyView";
+  StageOverlay,
+  StageTv,
+  StaticNoise,
+  StoryBoard,
+} from "../components/living/Stage";
+import {
+  Btn,
+  Cap,
+  Chip,
+  FieldCap,
+  NameTag,
+  Pill,
+  Row,
+  RowGroup,
+  StatusText,
+  SwitchItem,
+  VisGlyph,
+} from "../components/living/primitives";
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
+import { Glyph, type GlyphName } from "../ui/icons";
+import { say, useCopy, type CopyKey } from "../ui/copy";
 import {
   ApiError,
   createRoom,
@@ -75,6 +80,7 @@ import {
   readPreferredRoomId,
   readViewerGrant,
   replaceViewerInvite,
+  roomRouteForExplicitEntry,
   writeHostRoom,
   writePreferredRoom,
 } from "../lib/session";
@@ -86,21 +92,18 @@ import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import {
   applyCaptureProfile,
   captureDisplay,
-  DEGRADATION_PREFERENCE_HINTS,
-  DEGRADATION_PREFERENCE_LABELS,
   matchingQualityProfileId,
   QUALITY_PROFILES,
-  QUALITY_PROFILE_LABELS,
   QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   qualitySettingsLabel,
   resolveScreenAudioQuality,
   SCREEN_AUDIO_BITRATES,
-  SCREEN_AUDIO_QUALITY_LABELS,
   setMediaPaused,
   videoQualitySettingsEqual,
   type DegradationPreference,
   type QualityProfileId,
+  type QualityResolution,
   type QualitySettings,
   type ScreenAudioQuality,
 } from "../media/quality";
@@ -125,6 +128,7 @@ import {
   type ViewerQualityEvidencePresentation,
 } from "../media/viewer-quality-evidence";
 import type {
+  ConnectionMetrics,
   PeerSnapshot,
   SignalConnectionState,
 } from "../types";
@@ -152,6 +156,98 @@ import {
 
 type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
 
+type NoticeValue =
+  | { kind: "text"; text: string }
+  | { kind: "key"; key: CopyKey; vars?: Record<string, string> };
+
+const SIGNAL_LED_STATE: Record<SignalConnectionState, LedState> = {
+  connected: "live",
+  connecting: "busy",
+  reconnecting: "warn",
+  offline: "off",
+};
+
+const SIGNAL_LED_LABEL: Record<SignalConnectionState, CopyKey> = {
+  connected: "state.signal.connected",
+  connecting: "state.signal.connecting",
+  reconnecting: "state.signal.reconnecting",
+  offline: "state.signal.offline",
+};
+
+const QUALITY_PROFILE_CAPTIONS: Record<QualityProfileId, CopyKey> = {
+  "720p30": "host.quality.720p30",
+  "1080p30": "host.quality.1080p30",
+  "1080p60": "host.quality.1080p60",
+};
+
+const PREFERENCE_PRESENTATION: Record<
+  DegradationPreference,
+  { icon: GlyphName; cap: CopyKey; hint: CopyKey }
+> = {
+  "maintain-resolution": {
+    icon: "mountain",
+    cap: "host.advanced.preference.resolution",
+    hint: "host.advanced.preference.resolutionHint",
+  },
+  balanced: {
+    icon: "balance",
+    cap: "host.advanced.preference.balanced",
+    hint: "host.advanced.preference.balancedHint",
+  },
+  "maintain-framerate": {
+    icon: "zap",
+    cap: "host.advanced.preference.framerate",
+    hint: "host.advanced.preference.framerateHint",
+  },
+};
+
+const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioQuality, CopyKey> = {
+  saver: "host.advanced.audio.saver",
+  music: "host.advanced.audio.music",
+  "very-high": "host.advanced.audio.veryHigh",
+};
+
+const PEER_STATE_CAPTIONS: Record<string, CopyKey> = {
+  new: "state.peer.new",
+  connecting: "state.peer.connecting",
+  routing: "state.peer.routing",
+  waiting: "state.peer.waiting",
+  reconnecting: "state.peer.reconnecting",
+  failed: "state.peer.failed",
+  disconnected: "state.peer.disconnected",
+  closed: "state.peer.closed",
+};
+
+// Scanline glyph on each quality tile: denser scanlines (plus a motion wave
+// at 60 fps) read as a higher preset without any text.
+function QualityTileGlyph({ density }: { density: number }) {
+  const lines = [2, 3, 4][density] ?? 3;
+  return (
+    <svg width={28} height={38} viewBox="0 0 28 38" fill="none" aria-hidden="true">
+      <rect x={2} y={3} width={24} height={26} rx={4} stroke="currentColor" strokeWidth={2.2} />
+      {Array.from({ length: lines }, (_, index) => (
+        <path
+          key={index}
+          d={`M6 ${13 + index * 6}h16`}
+          stroke="currentColor"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          opacity={0.45 + index * 0.2}
+        />
+      ))}
+      {density === 2 ? (
+        <path
+          d="M7 25.5c1.4 0 1.4-2 2.8-2s1.4 2 2.8 2 1.4-2 2.8-2 1.4 2 2.8 2"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          fill="none"
+          strokeLinecap="round"
+        />
+      ) : null}
+    </svg>
+  );
+}
+
 type ViewerQualityEvidence = Extract<
   ServerMessage,
   { type: "viewer-quality-evidence" }
@@ -162,7 +258,10 @@ type HostRouteAssignment = Extract<
 >["assignment"];
 
 interface CaptureDetails {
-  resolution: string;
+  /** null = source reported no usable width/height; mapped to a localized
+   *  "unknown" (or the vis dash) at render time so language switches and vis
+   *  mode never see a baked-in string from capture time. */
+  resolution: string | null;
   frameRate: number | null;
   hasAudio: boolean;
 }
@@ -173,7 +272,7 @@ function captureDetails(stream: MediaStream): CaptureDetails {
     resolution:
       settings?.width && settings.height
         ? `${settings.width}x${settings.height}`
-        : "未知",
+        : null,
     frameRate: settings?.frameRate ?? null,
     hasAudio: stream.getAudioTracks().length > 0,
   };
@@ -242,14 +341,14 @@ function hostRoomFromCreated(room: CreateRoomResponse): HostRoomState {
   };
 }
 
-function hostTerminationMessage(reason: SignalingTerminationReason): string {
+function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
   switch (reason) {
     case "STALE_CLIENT":
-      return "页面版本已更新，请刷新后重试";
+      return "host.terminated.stale";
     case "SESSION_REPLACED":
-      return "此页面的会话已被另一个标签页接管";
+      return "host.terminated.session";
     case "SIGNAL_TERMINATED":
-      return "服务器连接已终止，请刷新后重试";
+      return "host.terminated.signal";
   }
 }
 
@@ -315,7 +414,28 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
     Map<string, ViewerQualityEvidencePresentation>
   >(() => new Map());
-  const [notice, setNotice] = useState<string | null>(null);
+  const [noticeValue, setNoticeValue] = useState<NoticeValue | null>(null);
+  const [noticeComic, setNoticeComic] = useState<ComicKind | null>(null);
+  function setNotice(value: string | null, comic: ComicKind | null = null): void {
+    setNoticeValue(value ? { kind: "text", text: value } : null);
+    setNoticeComic(comic);
+  }
+  function setNoticeKey(key: CopyKey, vars?: Record<string, string>): void {
+    setNoticeValue({ kind: "key", key, vars });
+    setNoticeComic(null);
+  }
+  function setNoticeError(error: unknown, action: HostAction): void {
+    setNoticeValue({ kind: "text", text: readableError(error, action) });
+    setNoticeComic(action === "connection" ? "route-failed" : "warning");
+  }
+  function setNoticeErrorKey(
+    key: CopyKey,
+    comic: ComicKind = "warning",
+    vars?: Record<string, string>,
+  ): void {
+    setNoticeValue({ kind: "key", key, vars });
+    setNoticeComic(comic);
+  }
   const [copied, setCopied] = useState(false);
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
@@ -324,6 +444,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
+  const { vis, t } = useCopy();
+  const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
+  const [joinRoomCode, setJoinRoomCode] = useState("");
+  const [joinRoomError, setJoinRoomError] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [metricsExpanded, setMetricsExpanded] = useMetricsExpanded();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -594,7 +721,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     ) {
       const warning = route.getQualityWarning();
       if (warning) {
-        setNotice(warning);
+        setNotice(warning, "route-failed");
       }
     }
   }
@@ -697,7 +824,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setRoomMutation(null);
   }
 
-  function endSharing(message: string, notifyServer = true): void {
+  function endSharing(
+    message: string | { key: CopyKey; vars?: Record<string, string> },
+    notifyServer = true,
+  ): void {
     const generation = activeGenerationRef.current;
     if (generation === null || generationRef.current !== generation) {
       return;
@@ -709,7 +839,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       writePreferredRoom(currentRoom.roomId);
     }
     disposeResources(notifyServer);
-    setNotice(message);
+    if (typeof message === "string") {
+      setNotice(message);
+    } else {
+      setNoticeKey(message.key, message.vars);
+    }
     setPhase("ended");
   }
 
@@ -733,7 +867,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       );
       const replacement = hostRoomFromCreated(response);
       if (wasSharing) {
-        endSharing("房间号已更换", false);
+        endSharing({ key: "host.roomReplaced" }, false);
       }
       replaceViewerInvite(activeRoom.roomId, null);
       writeHostRoom(replacement);
@@ -744,15 +878,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordEnabled(profile.roomPassword !== null);
       setViewerPasswordDraft(profile.roomPassword ?? "");
       setViewerPasswordVisible(false);
-      setNotice(null);
+      if (!wasSharing) {
+        setNoticeKey("host.roomReplaced");
+      }
       setPhase(wasSharing ? "ended" : "idle");
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         if (forgetRoom(activeRoom)) {
-          endSharing("房间已失效，再次点击将创建新房", false);
+          endSharing({ key: "host.roomInvalid" }, false);
         }
       }
-      setNotice(readableError(error, "room"));
+      setNoticeError(error, "room");
     } finally {
       finishRoomMutation(mutation);
     }
@@ -863,7 +999,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           isCurrentGeneration(generation) &&
           streamRef.current === captured
         ) {
-          endSharing("已停止分享");
+          endSharing({ key: "host.stopNotice" });
         }
       },
       { once: true },
@@ -1012,15 +1148,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             : null;
         const connectionWarning =
           failed > 0 || !sfuUpdated
-            ? "分享设置已更新，但部分观看连接未能应用新参数"
+            ? say("host.notice.partialApply")
             : null;
         const warning = sfuWarning ?? connectionWarning;
         const successNotice =
           audioChanged && !videoChanged
-            ? `音频质量已切换为 ${SCREEN_AUDIO_QUALITY_LABELS[resolveScreenAudioQuality(nextProfile.screenAudioQuality)]}`
+            ? say("host.notice.audioSet", { label: say(AUDIO_QUALITY_CAPTIONS[resolveScreenAudioQuality(nextProfile.screenAudioQuality)]) })
             : videoChanged && audioChanged
-              ? "分享设置已应用"
-              : `画质已切换为 ${qualitySettingsLabel(nextProfile)}`;
+              ? say("host.notice.qualityApplied")
+              : say("host.notice.qualitySet", {
+                  label: qualitySettingsLabel(nextProfile),
+                });
         setNotice(warning || successNotice);
       }
     } catch (error) {
@@ -1032,7 +1170,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           advancedQualityRef.current = qualitySettingsRef.current;
           setAdvancedQuality(qualitySettingsRef.current);
         }
-        setNotice(readableError(error, "quality"));
+        setNoticeError(error, "quality");
       }
     } finally {
       if (qualityChangeRef.current === token) {
@@ -1059,7 +1197,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     }
     if (sharingPausedRef.current) {
       if (!setMediaPaused(activeStream, false)) {
-        setNotice("当前分享没有可恢复的媒体轨道");
+        setNoticeKey("host.pause.noTracksResume");
         return;
       }
       hostSfuRouteRef.current?.setPaused(false);
@@ -1067,27 +1205,27 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         setMediaPaused(activeStream, true);
         hostSfuRouteRef.current?.setPaused(true);
         signalRef.current?.confirmSharingPaused();
-        setNotice("服务器连接正在恢复，分享仍保持暂停");
+        setNoticeKey("host.pause.signalRecovering");
         return;
       }
       sharingPausedRef.current = false;
       setSharingPaused(false);
-      setNotice("音视频分享已恢复");
+      setNoticeKey("host.resumeNotice");
       return;
     }
     if (!setMediaPaused(activeStream, true)) {
-      setNotice("当前分享没有可暂停的媒体轨道");
+      setNoticeKey("host.pause.noTracksPause");
       return;
     }
     sharingPausedRef.current = true;
     setSharingPaused(true);
     hostSfuRouteRef.current?.setPaused(true);
     discardPreparedHostChild();
-    setNotice(
-      signalRef.current?.setSharingPaused(true) === true
-        ? "音视频分享已暂停"
-        : "服务器连接正在恢复，分享保持暂停",
-    );
+    if (signalRef.current?.setSharingPaused(true) === true) {
+      setNoticeKey("host.pauseNotice");
+    } else {
+      setNoticeKey("host.pause.signalRecovering");
+    }
   }
 
   function removePeer(peerId: string): void {
@@ -1301,7 +1439,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               isCurrentGeneration(generation) &&
               hostChildIsAssigned(peerId)
             ) {
-              setNotice(readableError(error, "connection"));
+              setNoticeError(error, "connection");
             }
           },
         );
@@ -1364,7 +1502,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       (peerId) => {
         void startPeer(peerId, generation).catch((error: unknown) => {
           if (isCurrentGeneration(generation)) {
-            setNotice(readableError(error, "connection"));
+            setNoticeError(error, "connection");
           }
         });
       },
@@ -1490,7 +1628,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       sharingPausedRef.current = true;
       setSharingPaused(true);
       signalRef.current?.confirmSharingPaused();
-      setNotice("分享仍保持暂停");
+      setNoticeKey("host.pause.stillPaused");
       return;
     }
     if (message.type === "route-update") {
@@ -1588,7 +1726,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         generation,
       ).catch((error: unknown) => {
         if (isCurrentGeneration(generation)) {
-          setNotice(readableError(error, "connection"));
+          setNoticeError(error, "connection");
         }
       });
       return;
@@ -1598,7 +1736,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         return;
       }
       endSharing(
-        message.reason === "expired" ? "房间已过期" : "房间已关闭",
+        message.reason === "expired" ? say("host.roomExpired") : say("host.roomClosed"),
         false,
       );
       return;
@@ -1608,7 +1746,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         if (!forgetRoom(activeRoom)) {
           return;
         }
-        endSharing("房间已失效，再次点击将创建新房", false);
+        endSharing({ key: "host.roomInvalid" }, false);
         return;
       }
       if (message.code === "AUTH_REQUIRED") {
@@ -1618,7 +1756,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         endSharing(hostServerErrorNotice(message.code), false);
         return;
       }
-      setNotice(hostServerErrorNotice(message.code));
+      setNotice(hostServerErrorNotice(message.code), "warning");
     }
   }
 
@@ -1655,7 +1793,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       activeGenerationRef.current = null;
       shareGenerationRef.current = null;
-      setNotice(readableError(error, "capture"));
+      setNoticeError(error, "capture");
       setPhase("error");
       return;
     }
@@ -1741,7 +1879,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
-                endSharing(hostTerminationMessage(reason), false);
+                endSharing({ key: hostTerminationKey(reason) }, false);
               }
             },
             onAccessRequired: () => {
@@ -1749,7 +1887,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
-                endSharing("站点访问已失效，请重新验证", false);
+                endSharing({ key: "gate.expired" }, false);
                 onAuthorizationRequired?.();
               }
             },
@@ -1839,7 +1977,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             onAuthorizationRequired();
             return;
           }
-          setNotice(readableError(error, "room"));
+          setNoticeError(error, "room");
           setPhase("error");
         }
       };
@@ -1864,7 +2002,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         onAuthorizationRequired();
         return;
       }
-      setNotice(readableError(error, "room"));
+      setNoticeError(error, "room");
       setPhase("error");
     }
     } finally {
@@ -1898,7 +2036,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         isCurrentGeneration(generation) &&
         sourceSwitchRef.current === token
       ) {
-        setNotice(readableError(error, "source"));
+        setNoticeError(error, "source");
       }
       finishSourceSwitch(token);
       return;
@@ -1915,7 +2053,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     const previousStream = streamRef.current;
     if (!previousStream) {
       captured.getTracks().forEach((track) => track.stop());
-      setNotice("当前分享已经结束");
+      setNoticeKey("host.shareEnded");
       finishSourceSwitch(token);
       return;
     }
@@ -2000,7 +2138,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               isCurrentGeneration(generation) &&
               sourceSwitchRef.current === token
             ) {
-              setNotice(readableError(error, "connection"));
+              setNoticeError(error, "connection");
             }
           }
         }),
@@ -2016,6 +2154,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             sfuReplaced,
             sfuWarning,
           }),
+          sfuWarning || !sfuReplaced || failedPeerIds.length > 0
+            ? "warning"
+            : null,
         );
       }
     } finally {
@@ -2039,7 +2180,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         setCopied(false);
       }, 1_500);
     } catch {
-      setNotice("无法复制邀请链接，请稍后重试");
+      setNoticeKey("host.invite.copyFailed");
     }
   }
 
@@ -2056,11 +2197,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     if (!isCurrentRoomAuthority(activeRoom) && roomRef.current !== null) {
       return;
     }
-    setNotice(
-      error instanceof ApiError
-        ? error.message
-        : "当前无法更新房间设置，请稍后重试",
-    );
+    if (error instanceof ApiError) {
+      setNotice(error.message, "warning");
+    } else {
+      setNoticeErrorKey("host.accessFailed", "warning");
+    }
   }
 
   async function changeCodeEntryPolicy(policy: CodeEntryPolicy): Promise<void> {
@@ -2103,12 +2244,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       };
       roomRef.current = updatedRoom;
       setRoom(updatedRoom);
-      setNotice(
+      setNoticeKey(
         response.codeEntryPolicy === "open"
-          ? "房间已设为公开"
+          ? "host.policy.setOpen"
           : response.viewerPasswordEnabled
-            ? "房间已设为私密，可凭邀请或密码加入"
-            : "房间已设为私密，仅限邀请加入",
+            ? "host.policy.setPrivatePassword"
+            : "host.policy.setPrivateInvite",
       );
     } catch (error) {
       handleRoomAccessFailure(error, activeRoom);
@@ -2150,10 +2291,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       };
       roomRef.current = updatedRoom;
       setRoom(updatedRoom);
-      setNotice(
-        response.inviteUrl
-          ? "邀请链接已更新"
-          : "邀请链接已撤销",
+      setNoticeKey(
+        response.inviteUrl ? "host.invite.updated" : "host.invite.revoked",
       );
     } catch (error) {
       handleRoomAccessFailure(error, activeRoom);
@@ -2167,9 +2306,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       password !== null &&
       !viewerPasswordSchema.safeParse(password).success
     ) {
-      setNotice(
-        `房间密码只需 1-${MAX_VIEWER_PASSWORD_LENGTH} 个可见字符`,
-      );
+      setNoticeKey("host.password.rule", {
+        max: String(MAX_VIEWER_PASSWORD_LENGTH),
+      });
       return;
     }
     const activeRoom = roomRef.current;
@@ -2205,12 +2344,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setViewerPasswordEnabled(response.enabled);
       setViewerPasswordDraft(password ?? "");
       setViewerPasswordVisible(false);
-      setNotice(
+      setNoticeKey(
         password === null
-          ? "房间密码已移除，仅限邀请加入"
+          ? "host.password.removed"
           : hadPassword
-            ? "房间密码已更新"
-            : "房间密码已设置",
+            ? "host.password.updated"
+            : "host.password.saved",
       );
     } catch (error) {
       handleRoomAccessFailure(error, activeRoom);
@@ -2222,10 +2361,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function commitDisplayName(): void {
     const hostFallback = hostClientIdRef.current
       ? defaultHostDisplayName(hostClientIdRef.current)
-      : DEFAULT_HOST_DISPLAY_NAME_PREFIX;
+      : defaultHostDisplayName("");
     const saved = saveDisplayName(displayNameDraft, hostFallback);
     if (!saved) {
-      setDisplayNameError("名称格式无效或超过 24 个字符");
+      setDisplayNameError(say("host.nameError"));
       return;
     }
     displayNameRef.current = saved;
@@ -2234,622 +2373,699 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDisplayNameError(null);
     setEditingDisplayName(false);
     if (!signalRef.current?.setDisplayName(saved)) {
-      setNotice("开始分享并连接后才能修改昵称");
+      setNoticeKey("host.nameOffline");
     }
+  }
+
+  function joinRoomFromStage(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const route = roomRouteForExplicitEntry(joinRoomCode);
+    if (!route) {
+      setJoinRoomError(true);
+      return;
+    }
+    window.location.assign(route);
   }
 
   const activeCodeEntryPolicy =
     room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
+  const hostPeerId = hostPresence?.peerId ?? hostPeerIdRef.current;
+
+  const couchEntries: CouchEntry[] = viewers.map((viewer) => {
+    const snapshot =
+      viewer.upstream.kind === "peer" && viewer.upstream.peerId === hostPeerId
+        ? peerSnapshots.get(viewer.peerId)
+        : undefined;
+    const qualityPresentation = viewerQualityEvidence.get(viewer.peerId);
+    const qualityEvidence = qualityPresentation?.evidence;
+    const hasCurrentQualityEvidence =
+      qualityEvidence !== undefined &&
+      qualityEvidenceUpstreamMatches(qualityEvidence, viewer.upstream) &&
+      qualityPresentation?.fresh === true;
+    const hasCommittedMedia = viewer.mediaReady === true;
+    const connected =
+      snapshot?.connectionState === "connected" ||
+      hasCurrentQualityEvidence ||
+      hasCommittedMedia;
+    const viewerState = connected
+      ? "connected"
+      : (snapshot?.connectionState ??
+        (viewer.upstream.kind === "none" ? "routing" : "connecting"));
+    return {
+      key: viewer.peerId,
+      name: viewer.label,
+      connected,
+      statusLabel: t(
+        PEER_STATE_CAPTIONS[viewerState] ?? "state.peer.connecting",
+      ),
+    };
+  });
+
+  const selectedViewer = selectedPawn
+    ? (viewers.find((viewer) => viewer.peerId === selectedPawn) ?? null)
+    : null;
+  let selectedDetail: {
+    route: "p2p" | "sfu" | null;
+    metrics: ConnectionMetrics | null;
+    direction: "send" | "receive";
+    tag?: { icon: "loader"; label: string };
+    error: string | null;
+  } | null = null;
+  if (selectedViewer) {
+    const snapshot =
+      selectedViewer.upstream.kind === "peer" &&
+      selectedViewer.upstream.peerId === hostPeerId
+        ? peerSnapshots.get(selectedViewer.peerId)
+        : undefined;
+    const qualityPresentation = viewerQualityEvidence.get(
+      selectedViewer.peerId,
+    );
+    const qualityEvidence = qualityPresentation?.evidence;
+    const hasMatchingQualityEvidence =
+      qualityEvidence !== undefined &&
+      qualityEvidenceUpstreamMatches(qualityEvidence, selectedViewer.upstream);
+    const hasCurrentQualityEvidence =
+      hasMatchingQualityEvidence && qualityPresentation?.fresh === true;
+    const hasCommittedMedia = selectedViewer.mediaReady === true;
+    const hasCurrentRouteEvidence =
+      hasPeerRouteEvidence(snapshot) ||
+      hasCurrentQualityEvidence ||
+      hasCommittedMedia;
+    const connected =
+      snapshot?.connectionState === "connected" ||
+      hasCurrentQualityEvidence ||
+      hasCommittedMedia;
+    const viewerState = connected
+      ? "connected"
+      : (snapshot?.connectionState ?? "routing");
+    const detailMetrics = hasMatchingQualityEvidence
+      ? metricsFromQualityEvidence(qualityEvidence)
+      : snapshot && hasPeerRouteEvidence(snapshot)
+        ? snapshot.metrics
+        : null;
+    selectedDetail = {
+      route:
+        hasCurrentRouteEvidence && selectedViewer.upstream.kind !== "none"
+          ? selectedViewer.upstream.kind === "peer"
+            ? "p2p"
+            : "sfu"
+          : null,
+      metrics: detailMetrics,
+      direction: hasMatchingQualityEvidence ? "receive" : "send",
+      tag: connected
+        ? undefined
+        : {
+            icon: "loader",
+            label: t(
+              PEER_STATE_CAPTIONS[viewerState] ?? "state.peer.connecting",
+            ),
+          },
+      error: snapshot?.error ?? null,
+    };
+  }
+
+  const noticeText = noticeValue
+    ? noticeValue.kind === "text"
+      ? noticeValue.text
+      : t(noticeValue.key, noticeValue.vars)
+    : null;
+
+  const phaseLine =
+    phase === "live"
+      ? t("host.onlineCount", {
+          n: String(viewers.length),
+          max: String(maxViewers ?? "-"),
+        })
+      : phase === "starting"
+        ? `${t("host.starting")}…`
+        : phase === "ended" && room
+          ? t("host.ended")
+          : room
+            ? t("host.roomReady")
+            : t("host.notStarted");
+
+  // Vis mode swaps native title tooltips for 2-panel hint comics; text modes
+  // render the trigger unchanged, so markup structure stays identical.
+  // wrapStyle adds a layout span around the tooltip wrapper (vis mode only)
+  // for triggers whose flex context would otherwise stretch the wrapper away
+  // from the trigger it must hug, or collapse a control's text-mode geometry.
+  const hintWrap = (
+    kind: HintKind,
+    node: ReactNode,
+    align: "start" | "center" | "end" = "center",
+    wrapStyle?: CSSProperties,
+  ): ReactNode =>
+    vis ? (
+      wrapStyle ? (
+        <span style={wrapStyle}>
+          <ComicTooltip kind={kind} align={align}>
+            {node}
+          </ComicTooltip>
+        </span>
+      ) : (
+        <ComicTooltip kind={kind} align={align}>
+          {node}
+        </ComicTooltip>
+      )
+    ) : (
+      node
+    );
+
   return (
-    <div className="app-shell">
+    <div className="lr-app">
       <AppHeader
-        status={
-          showConnectionDetails ? (
-            <SignalStatusBadge state={signalStatus} />
-          ) : null
+        led={
+          <LedStrip
+            state={SIGNAL_LED_STATE[signalStatus]}
+            label={t(SIGNAL_LED_LABEL[signalStatus])}
+          />
         }
       />
 
-      <main className="host-workspace">
-        <section className="broadcast-area" aria-labelledby="broadcast-heading">
-          <div className="section-heading">
-            <div>
-              <div className="title-line">
-                <h1 id="broadcast-heading">
-                  {hostPresence?.displayName ?? displayName} 的屏幕
-                </h1>
-                {room && (
-                  <RoomCode
-                    roomId={room.roomId}
-                    onReplace={replaceCurrentRoom}
-                    replaceDisabled={phase === "starting" || roomMutating}
-                  />
-                )}
-              </div>
-              <p className="section-meta">
-                {phase === "live"
-                  ? `${viewers.length}/${maxViewers ?? "-"} 人在线`
-                  : phase === "starting"
-                    ? "正在连接"
-                    : phase === "ended" && room
-                      ? "已停止分享"
-                      : room
-                        ? "房间已就绪"
-                        : "尚未开始"}
-              </p>
-            </div>
-            {(phase === "live" || phase === "starting") && (
-              <div className="broadcast-actions">
-                {phase === "live" && (
-                  <button
-                    className="button button-secondary"
-                    type="button"
-                    disabled={
-                      switchingSource ||
-                      changingQuality
-                    }
-                    onClick={toggleSharingPause}
-                  >
-                    {sharingPaused ? (
-                      <Play size={16} fill="currentColor" aria-hidden="true" />
-                    ) : (
-                      <Pause size={16} fill="currentColor" aria-hidden="true" />
-                    )}
-                    {sharingPaused ? "恢复分享" : "暂停分享"}
-                  </button>
-                )}
-                {phase === "live" && (
-                  <button
-                    className="button button-secondary"
-                    type="button"
-                    disabled={
-                      switchingSource ||
-                      changingQuality
-                    }
-                    onClick={() => void switchSource()}
-                  >
-                    <RefreshCw size={16} aria-hidden="true" />
-                    {switchingSource ? "正在选择" : "切换来源"}
-                  </button>
-                )}
-                <button
-                  className="button button-danger"
-                  type="button"
-                  onClick={() =>
-                    endSharing(
-                      phase === "starting"
-                        ? "启动已取消"
-                        : "已停止分享",
-                    )
-                  }
-                >
-                  <Square size={16} fill="currentColor" aria-hidden="true" />
-                  {phase === "starting" ? "取消" : "停止分享"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <form
-            className={`viewer-name-control host-name-control${
-              editingDisplayName ? " is-editing" : ""
-            }`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              commitDisplayName();
-            }}
-          >
-            <label
-              htmlFor={editingDisplayName ? "host-display-name" : undefined}
-            >
-              昵称
-            </label>
-            {editingDisplayName ? (
-              <>
-                <input
-                  id="host-display-name"
-                  type="text"
-                  value={displayNameDraft}
-                  maxLength={96}
-                  autoComplete="nickname"
-                  autoFocus
-                  aria-invalid={displayNameError ? "true" : undefined}
-                  onChange={(event) => {
-                    setDisplayNameDraft(event.target.value);
-                    setDisplayNameError(null);
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="icon-button"
-                  title="保存昵称"
-                  aria-label="保存昵称"
-                  disabled={displayNameDraft === displayName}
-                >
-                  <Save size={17} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  title="取消编辑"
-                  aria-label="取消编辑昵称"
-                  onClick={() => {
-                    setDisplayNameDraft(displayName);
-                    setDisplayNameError(null);
-                    setEditingDisplayName(false);
-                  }}
-                >
-                  <X size={17} />
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="viewer-name-value">{displayName}</span>
-                <button
-                  type="button"
-                  className="icon-button"
-                  title="编辑昵称"
-                  aria-label="编辑昵称"
-                  onClick={() => {
-                    setDisplayNameDraft(displayName);
-                    setDisplayNameError(null);
-                    setEditingDisplayName(true);
-                  }}
-                >
-                  <Pencil size={17} />
-                </button>
-              </>
-            )}
-            {displayNameError && (
-              <span className="viewer-name-error" role="alert">
-                {displayNameError}
-              </span>
-            )}
-          </form>
-
-          <div
-            className="video-stage local-stage"
-            role="group"
-            aria-label="分享或加入房间"
+      <main className="lr-room">
+        <h1 className="visually-hidden">
+          {t("host.title", { name: hostPresence?.displayName ?? displayName })}
+        </h1>
+        <div className="lr-scene">
+          <StageTv
+            chin={
+              phase === "live"
+                ? sharingPaused
+                  ? "warn"
+                  : "on"
+                : phase === "starting"
+                  ? "busy"
+                  : "off"
+            }
+            live={phase === "live"}
+            hasEntry={
+              phase === "idle" || phase === "ended" || phase === "error"
+            }
+            label={t("host.stageAria")}
           >
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
-            ) : phase === "idle" ||
-              phase === "ended" ||
-              phase === "error" ? (
-              <div className="stage-placeholder stage-entry">
-                {phase === "ended" && room && (
-                  <span className="stage-status">已停止分享</span>
+            ) : null}
+            {!stream &&
+            (phase === "idle" || phase === "ended" || phase === "error") ? (
+              <div className="lr-tv-overlay">
+                {vis ? null : (
+                  <div className="lr-entry-text">
+                    <h1>{t("host.idle.heading")}</h1>
+                    <p>{t("host.idle.hint")}</p>
+                  </div>
                 )}
-                <StageEntryActions
-                  joiningRoom={joiningRoom}
-                  startSharingDisabled={roomMutating}
-                  onStartSharing={() => {
-                    setJoiningRoom(false);
-                    void startSharing();
-                  }}
-                  onJoinToggle={() =>
-                    setJoiningRoom((current) => !current)
-                  }
-                />
-              </div>
-            ) : (
-              <div className="stage-placeholder">
-                <MonitorUp size={36} strokeWidth={1.5} aria-hidden="true" />
-              </div>
-            )}
-            {(phase === "starting" ||
-              switchingSource ||
-              sharingPaused ||
-              (stream !== null && localPreviewPaused)) && (
-              <div className="stage-overlay" role="status">
-                {switchingSource ? (
-                  <RefreshCw
-                    size={36}
-                    strokeWidth={1.5}
-                    className="spin"
-                    aria-hidden="true"
-                  />
-                ) : sharingPaused ? (
-                  <Pause size={36} strokeWidth={1.5} aria-hidden="true" />
-                ) : phase === "starting" ? (
-                  <LoaderCircle
-                    size={36}
-                    strokeWidth={1.5}
-                    className="spin"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <EyeOff size={36} strokeWidth={1.5} aria-hidden="true" />
-                )}
-                <span>
-                  {switchingSource
-                    ? "正在切换来源"
-                    : sharingPaused
-                      ? "音视频分享已暂停"
-                      : phase === "starting"
-                        ? "正在连接"
-                        : "本地预览已暂停，分享仍在继续"}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {showConnectionDetails && details && stream && (
-            <div className="capture-strip" aria-label="实际捕获参数">
-              <span>{details.resolution}</span>
-              <span>{details.frameRate ? `${details.frameRate.toFixed(0)} fps` : "帧率未知"}</span>
-              <span>{resolvedVideoCodec?.toUpperCase() ?? "编码待定"}</span>
-              <span>{details.hasAudio ? "含音频" : "无音频"}</span>
-            </div>
-          )}
-
-          {!details?.hasAudio && stream && (
-            <WarningBanner>当前来源没有可共享音频</WarningBanner>
-          )}
-          {qualityLimitation && (
-            <WarningBanner>{qualityLimitation}</WarningBanner>
-          )}
-          {notice && (
-            <div className="notice" role="status" aria-live="polite">
-              {notice}
-            </div>
-          )}
-
-          <ConnectionDetailsToggle
-            checked={showConnectionDetails}
-            onChange={setShowConnectionDetails}
-          />
-
-          <div className="setup-controls">
-            <div className="quality-controls">
-              <fieldset className="control-group">
-                <legend>视频预设</legend>
-                <div className="segmented-control">
-                  {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
-                    (id) => (
+                {phase === "ended" && room && !vis ? (
+                  <span className="lr-tv-msg">{t("host.ended")}</span>
+                ) : null}
+                <div className="lr-entry-actions">
+                  <span className="lr-entry-action">
+                    {hintWrap(
+                      "hint-share-start",
                       <button
-                        key={id}
                         type="button"
-                        className={
-                          selectedQualityProfileId === id
-                            ? "is-selected"
-                            : undefined
-                        }
-                        aria-pressed={selectedQualityProfileId === id}
-                        title={`${QUALITY_PROFILE_LABELS[id]} · ${(QUALITY_PROFILES[id].maxBitrate / 1_000_000).toFixed(0)} Mbps`}
-                        disabled={
-                          phase === "starting" ||
-                          switchingSource
-                        }
-                        onClick={() =>
-                          void changeQuality({
-                            ...QUALITY_PROFILES[id],
-                            screenAudioQuality: resolveScreenAudioQuality(
-                              advancedQualityRef.current.screenAudioQuality,
-                            ),
-                          })
-                        }
+                        className="lr-tv-big is-action is-ripple"
+                        title={vis ? undefined : t("host.start")}
+                        aria-label={t("host.start")}
+                        disabled={roomMutating}
+                        onClick={() => {
+                          setJoiningRoom(false);
+                          void startSharing();
+                        }}
                       >
-                        {QUALITY_PROFILE_LABELS[id]}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </fieldset>
-
-              <details className="advanced-quality">
-                <summary>高级设置</summary>
-                <div className="advanced-quality-grid">
-                  <label>
-                    <span>分辨率上限</span>
-                    <select
-                      value={advancedQuality.resolution}
-                      disabled={phase === "starting" || switchingSource}
-                      onChange={(event) =>
-                        changeAdvancedQuality({
-                          resolution: event.target
-                            .value as QualitySettings["resolution"],
-                        })
-                      }
-                    >
-                      {Object.entries(QUALITY_RESOLUTIONS).map(
-                        ([resolution, option]) => (
-                          <option key={resolution} value={resolution}>
-                            {option.label}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                  <label>
-                    <span>帧率上限</span>
-                    <div className="range-control">
-                      <input
-                        type="range"
-                        min="15"
-                        max="60"
-                        step="5"
-                        value={advancedQuality.maxFramerate}
-                        disabled={phase === "starting" || switchingSource}
-                        onChange={(event) =>
-                          changeAdvancedQuality({
-                            maxFramerate: Number(event.target.value),
-                          })
-                        }
-                      />
-                      <output>{advancedQuality.maxFramerate} fps</output>
-                    </div>
-                  </label>
-                  <label>
-                    <span>视频码率上限</span>
-                    <div className="range-control">
-                      <input
-                        type="range"
-                        min="2000000"
-                        max="12000000"
-                        step="500000"
-                        value={advancedQuality.maxBitrate}
-                        disabled={phase === "starting" || switchingSource}
-                        onChange={(event) =>
-                          changeAdvancedQuality({
-                            maxBitrate: Number(event.target.value),
-                          })
-                        }
-                      />
-                      <output>
-                        {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)} Mbps
-                      </output>
-                    </div>
-                  </label>
-                  <fieldset className="control-group quality-priority">
-                    <legend>画面偏好</legend>
-                    <div className="segmented-control">
-                      {(
-                        Object.keys(
-                          DEGRADATION_PREFERENCE_LABELS,
-                        ) as DegradationPreference[]
-                      ).map((preference) => (
-                        <button
-                          key={preference}
-                          type="button"
-                          className={
-                            advancedQuality.degradationPreference === preference
-                              ? "is-selected"
-                              : undefined
-                          }
-                          aria-pressed={
-                            advancedQuality.degradationPreference === preference
-                          }
-                          disabled={phase !== "live" || switchingSource}
-                          onClick={() =>
-                            changeAdvancedQuality({
-                              degradationPreference: preference,
-                            })
-                          }
-                        >
-                          <span>
-                            {DEGRADATION_PREFERENCE_LABELS[preference]}
-                          </span>
-                          <small>
-                            {DEGRADATION_PREFERENCE_HINTS[preference]}
-                          </small>
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <fieldset className="control-group quality-priority">
-                    <legend>音频质量</legend>
-                    <div className="segmented-control">
-                      {(
-                        Object.keys(
-                          SCREEN_AUDIO_QUALITY_LABELS,
-                        ) as ScreenAudioQuality[]
-                      ).map((audioQuality) => (
-                        <button
-                          key={audioQuality}
-                          type="button"
-                          className={
-                            resolveScreenAudioQuality(
-                              advancedQuality.screenAudioQuality,
-                            ) === audioQuality
-                              ? "is-selected"
-                              : undefined
-                          }
-                          aria-pressed={
-                            resolveScreenAudioQuality(
-                              advancedQuality.screenAudioQuality,
-                            ) === audioQuality
-                          }
-                          title={`${SCREEN_AUDIO_QUALITY_LABELS[audioQuality]} · ${SCREEN_AUDIO_BITRATES[audioQuality] / 1_000} kbps 上限`}
-                          disabled={
-                            phase === "starting" ||
-                            switchingSource
-                          }
-                          onClick={() =>
-                            changeScreenAudioQuality(audioQuality)
-                          }
-                        >
-                          <span>
-                            {SCREEN_AUDIO_QUALITY_LABELS[audioQuality]}
-                          </span>
-                          <small>
-                            {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000} kbps
-                          </small>
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <fieldset className="control-group route-policy-controls">
-                    <legend>路由策略</legend>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={routePolicy.topologyOptimization}
-                        disabled={phase === "starting" || phase === "live"}
-                        onChange={(event) =>
-                          changeRoutePolicy({
-                            topologyOptimization: event.target.checked,
-                          })
-                        }
-                      />
-                      <span>
-                        自动优化拓扑
-                        <small>观看中逐步选择更健康的连接</small>
-                      </span>
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={routePolicy.peerOnly}
-                        disabled={phase === "starting" || phase === "live"}
-                        onChange={(event) =>
-                          changeRoutePolicy({ peerOnly: event.target.checked })
-                        }
-                      />
-                      <span>
-                        纯 P2P
-                        <small>不使用媒体服务器，无法直连时停止尝试</small>
-                      </span>
-                    </label>
-                  </fieldset>
-                  <fieldset className="control-group quality-priority">
-                    <legend>视频编码</legend>
-                    <div className="segmented-control">
-                      {(["vp8", "auto", "h264"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          className={
-                            videoCodecMode === mode ? "is-selected" : undefined
-                          }
-                          aria-pressed={videoCodecMode === mode}
-                          disabled={phase === "starting" || phase === "live"}
-                          onClick={() => changeVideoCodecMode(mode)}
-                        >
-                          <span>{mode === "auto" ? "自动" : mode.toUpperCase()}</span>
-                          <small>
-                            {mode === "vp8"
-                              ? "兼容优先"
-                              : mode === "h264"
-                                ? "硬件优先"
-                                : resolvedVideoCodec
-                                  ? resolvedVideoCodec.toUpperCase()
-                                  : "自动选择"}
-                          </small>
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                </div>
-              </details>
-            </div>
-          </div>
-          {room && (
-            <div className="invite-bar">
-              <div className="invite-primary">
-                <div className="invite-heading">
-                  <div className="invite-heading-copy">
-                    <span className="field-label">邀请链接</span>
-                    <span className="invite-status">
-                      {room.inviteUrl ? "可用" : "暂无"}
-                    </span>
-                  </div>
-                  <div className="invite-icon-actions">
-                    <button
-                      className="icon-button invite-icon-action"
-                      type="button"
-                      title="更新邀请链接"
-                      aria-label="更新邀请链接"
-                      disabled={roomMutating}
-                      onClick={() => void changeViewerGrant("rotate")}
-                    >
-                      <RefreshCw size={17} aria-hidden="true" />
-                    </button>
-                    <button
-                      className="icon-button invite-icon-action is-danger"
-                      type="button"
-                      title="撤销邀请链接"
-                      aria-label="撤销邀请链接"
-                      disabled={!room.inviteUrl || roomMutating}
-                      onClick={() => void changeViewerGrant("revoke")}
-                    >
-                      <Link2Off size={17} aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-                <div className="invite-copy-row">
-                  <span
-                    className="invite-url"
-                    title={room.inviteUrl ?? undefined}
-                  >
-                    {room.inviteUrl ??
-                      (activeCodeEntryPolicy === "open"
-                        ? "暂无邀请链接，仍可凭房间号加入"
-                        : viewerPasswordEnabled
-                          ? "暂无邀请链接，仍可凭房间号和密码加入"
-                          : "暂无邀请链接，请先更新链接再邀请他人")}
+                        <VisGlyph name="cast" size={34} draw="entry-cast" />
+                      </button>,
+                      "start",
+                    )}
+                    {vis ? null : (
+                      <span className="lr-tv-msg">{t("host.start")}</span>
+                    )}
                   </span>
-                  <button
-                    className="button button-primary invite-copy-action"
-                    type="button"
+                  <span className="lr-entry-action">
+                    {hintWrap(
+                      "hint-join-go",
+                      <button
+                        type="button"
+                        className="lr-tv-big"
+                        title={vis ? undefined : t("host.join")}
+                        aria-label={t("host.join")}
+                        aria-expanded={joiningRoom}
+                        aria-controls="host-room-code-entry"
+                        onClick={() => setJoiningRoom((current) => !current)}
+                      >
+                        <VisGlyph name="door" size={30} draw="entry-door" />
+                      </button>,
+                      "end",
+                    )}
+                    {vis ? null : (
+                      <span className="lr-tv-msg">{t("host.join")}</span>
+                    )}
+                  </span>
+                </div>
+                {joiningRoom ? (
+                  <form
+                    id="host-room-code-entry"
+                    className="lr-join-panel"
+                    style={{ gap: 12 }}
+                    onSubmit={joinRoomFromStage}
+                  >
+                    <div
+                      className={`lr-dials-wrap${
+                        joinRoomError ? " lr-join-door is-shake" : ""
+                      }`}
+                    >
+                      <div className="lr-dials" aria-hidden="true">
+                        {[0, 1, 2, 3].map((index) => (
+                          <span
+                            key={index}
+                            className={`lr-dial${
+                              joinRoomCode[index] ? " is-filled" : ""
+                            }${index === joinRoomCode.length ? " is-active" : ""}`}
+                          >
+                            {joinRoomCode[index] ?? ""}
+                          </span>
+                        ))}
+                      </div>
+                      <input
+                        value={joinRoomCode}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={4}
+                        autoFocus
+                        aria-label={t("join.field")}
+                        aria-invalid={joinRoomError ? "true" : undefined}
+                        onChange={(event) => {
+                          setJoinRoomCode(
+                            event.target.value.replace(/\D/g, "").slice(0, 4),
+                          );
+                          setJoinRoomError(false);
+                        }}
+                      />
+                    </div>
+                    {joinRoomError ? (
+                      <>
+                        <span
+                          className="lr-join-error"
+                          role="alert"
+                          aria-label={t("join.invalid")}
+                        >
+                          <Glyph name="x" size={22} />
+                        </span>
+                        {vis ? null : (
+                          <span className="lr-cap" style={{ color: "var(--danger)" }}>
+                            {t("join.invalid")}
+                          </span>
+                        )}
+                      </>
+                    ) : null}
+                    {hintWrap(
+                      "hint-join-go",
+                      <button
+                        className="lr-join-go"
+                        type="submit"
+                        title={vis ? undefined : t("join.submit")}
+                        aria-label={t("join.submit")}
+                        disabled={joinRoomCode.length !== 4}
+                      >
+                        <Glyph name="arrowRight" size={24} />
+                      </button>,
+                    )}
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
+            {switchingSource ? (
+              <StageOverlay
+                icon="refresh"
+                spin
+                dim
+                message={t("host.switchingSource")}
+              />
+            ) : sharingPaused ? (
+              <StageOverlay icon="pause" dim comic="host-paused" message={t("host.pauseNotice")} />
+            ) : phase === "starting" ? (
+              <>
+                <StaticNoise />
+                <div
+                  className="lr-tv-overlay"
+                  role="status"
+                  aria-label={t("host.starting")}
+                >
+                  <StoryBoard step={1} />
+                </div>
+              </>
+            ) : stream && localPreviewPaused ? (
+              <StageOverlay
+                icon="eyeOff"
+                dim
+                message={t("host.localPreviewPaused")}
+              />
+            ) : null}
+          </StageTv>
+          <div className="lr-shelf" aria-hidden="true" />
+          <Couch
+            entries={couchEntries}
+            selectedKey={selectedPawn}
+            onSelect={(key) =>
+              setSelectedPawn((current) => (current === key ? null : key))
+            }
+            emptyHint={t(
+              phase === "live" ? "host.viewers.waiting" : "host.viewers.empty",
+            )}
+          />
+        </div>
+
+        <div className="lr-deck">
+          {selectedViewer && selectedDetail ? (
+            <PawnDetail
+              pawnKey={selectedViewer.peerId}
+              name={selectedViewer.label}
+              route={selectedDetail.route}
+              metrics={selectedDetail.metrics}
+              direction={selectedDetail.direction}
+              tag={selectedDetail.tag}
+              error={selectedDetail.error}
+              expanded={metricsExpanded}
+              onToggleMetrics={setMetricsExpanded}
+              onClose={() => setSelectedPawn(null)}
+            />
+          ) : null}
+
+          <Row>
+            {room ? (
+              <RowGroup>
+                <FieldCap k="common.roomCode" />
+                <RoomChip
+                  roomId={room.roomId}
+                  onReplace={replaceCurrentRoom}
+                  replaceDisabled={phase === "starting" || roomMutating}
+                />
+              </RowGroup>
+            ) : null}
+            <RowGroup>
+              <StatusText>{phaseLine}</StatusText>
+              {!details?.hasAudio && stream ? (
+                <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
+              ) : null}
+              {qualityLimitation ? (
+                <Pill icon="alert" label={qualityLimitation} comic="warning" />
+              ) : null}
+              {noticeText && (vis || noticeText !== phaseLine) ? (
+                <Pill
+                  icon={noticeComic ? "alert" : "check"}
+                  tone={noticeComic ? undefined : "good"}
+                  label={noticeText}
+                  comic={noticeComic ?? undefined}
+                />
+              ) : null}
+            </RowGroup>
+            <span className="lr-spacer" />
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 12,
+                minWidth: 0,
+              }}
+            >
+            <RowGroup>
+              {editingDisplayName ? (
+                <form
+                  style={{ display: "contents" }}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    commitDisplayName();
+                  }}
+                >
+                  <span className="lr-input" style={{ minWidth: 150 }}>
+                    <input
+                      id="host-display-name"
+                      type="text"
+                      value={displayNameDraft}
+                      maxLength={96}
+                      autoComplete="nickname"
+                      autoFocus
+                      aria-label={t("host.name")}
+                      aria-invalid={displayNameError ? "true" : undefined}
+                      onChange={(event) => {
+                        setDisplayNameDraft(event.target.value);
+                        setDisplayNameError(null);
+                      }}
+                    />
+                  </span>
+                  <Btn
+                    icon="check"
+                    title="host.nameSave"
+                    hint="hint-rename"
+                    type="submit"
+                    disabled={displayNameDraft === displayName}
+                  />
+                  {hintWrap(
+                    "hint-close",
+                    <Btn
+                      icon="x"
+                      title="host.nameCancel"
+                      onClick={() => {
+                        setDisplayNameDraft(displayName);
+                        setDisplayNameError(null);
+                        setEditingDisplayName(false);
+                      }}
+                    />,
+                    "end",
+                  )}
+                </form>
+              ) : (
+                <>
+                  <NameTag name={hostPresence?.displayName ?? displayName} />
+                  {hintWrap(
+                    "hint-rename",
+                    <Btn
+                      icon="pencil"
+                      cap="common.edit"
+                      title="host.nameEdit"
+                      onClick={() => {
+                        setDisplayNameDraft(displayName);
+                        setDisplayNameError(null);
+                        setEditingDisplayName(true);
+                      }}
+                    />,
+                    "end",
+                  )}
+                </>
+              )}
+              {displayNameError ? (
+                <Pill icon="alert" tone="bad" label={displayNameError} alert comic="warning" />
+              ) : null}
+            </RowGroup>
+            <RowGroup actions>
+              {phase === "live" ? (
+                <>
+                  <Btn
+                    icon={sharingPaused ? "play" : "pause"}
+                    cap={sharingPaused ? "host.resume" : "host.pause"}
+                    title={sharingPaused ? "host.resume" : "host.pause"}
+                    hint={sharingPaused ? "hint-resume" : "hint-pause"}
+                    draw="host-share-toggle"
+                    disabled={switchingSource || changingQuality}
+                    onClick={toggleSharingPause}
+                  />
+                  {hintWrap(
+                    "hint-switch-source",
+                    <Btn
+                      icon="refresh"
+                      cap={switchingSource ? "host.switching" : "host.switchSource"}
+                      title="host.switchSource"
+                      disabled={switchingSource || changingQuality}
+                      onClick={() => void switchSource()}
+                    />,
+                    "end",
+                  )}
+                  {hintWrap(
+                    "hint-share-stop",
+                    <Btn
+                      icon="stop"
+                      tone="danger"
+                      cap="host.stop"
+                      title="host.stop"
+                      onClick={() => endSharing({ key: "host.stopNotice" })}
+                    />,
+                    "end",
+                  )}
+                </>
+              ) : phase === "starting" ? (
+                hintWrap(
+                  "hint-share-stop",
+                  <Btn
+                    icon="x"
+                    tone="danger"
+                    cap="host.cancelStart"
+                    title="host.cancelStart"
+                    onClick={() => endSharing({ key: "host.startCancelled" })}
+                  />,
+                  "end",
+                )
+              ) : null}
+            </RowGroup>
+            </div>
+          </Row>
+
+          {room ? (
+            <Row label={t("host.invite")}>
+              <RowGroup actions>
+                {hintWrap(
+                  "hint-copy-invite",
+                  <Btn
+                    icon={copied ? "check" : "link"}
+                    tone={room.inviteUrl ? "primary" : undefined}
+                    cap="common.copy"
+                    title={copied ? "common.copied" : "host.invite.copy"}
                     disabled={!room.inviteUrl || roomMutating}
                     onClick={() => void copyInvite()}
-                  >
-                    {copied ? (
-                      <Check size={16} aria-hidden="true" />
-                    ) : (
-                      <Copy size={16} aria-hidden="true" />
-                    )}
-                    {copied ? "已复制" : "复制邀请链接"}
-                  </button>
-                </div>
-              </div>
-              <div className="room-entry-policy">
-                <div className="room-entry-heading">
-                  <span className="field-label">准入方式</span>
-                </div>
-                <div className="segmented-control room-policy-control">
-                  {(
-                    [
-                      ["open", "公开", Globe2],
-                      ["private", "私密", LockKeyhole],
-                    ] as const
-                  ).map(([policy, label, Icon]) => (
+                  />,
+                  "start",
+                )}
+                <Btn
+                  icon="refresh"
+                  cap="host.invite.rotateShort"
+                  title="host.invite.rotate"
+                  hint="hint-rotate-invite"
+                  disabled={roomMutating}
+                  onClick={() => void changeViewerGrant("rotate")}
+                />
+                <Btn
+                  icon="linkOff"
+                  tone="danger"
+                  cap="host.invite.revokeShort"
+                  title="host.invite.revoke"
+                  hint="hint-revoke-invite"
+                  disabled={!room.inviteUrl || roomMutating}
+                  onClick={() => void changeViewerGrant("revoke")}
+                />
+              </RowGroup>
+              {room.inviteUrl ? (
+                <code className="lr-invite-url" title={room.inviteUrl}>
+                  {room.inviteUrl}
+                </code>
+              ) : null}
+              <span className="lr-divider" aria-hidden="true" />
+              <RowGroup>
+                <span
+                  className="lr-toggle"
+                  role="group"
+                  aria-label={t("host.policy")}
+                  data-selected={activeCodeEntryPolicy}
+                >
+                  {hintWrap(
+                    "hint-policy-open",
                     <button
-                      key={policy}
                       type="button"
-                      className={`room-policy-option policy-${policy}${
-                        activeCodeEntryPolicy === policy
-                          ? " is-selected"
-                          : ""
-                      }`}
-                      aria-pressed={activeCodeEntryPolicy === policy}
+                      className={
+                        activeCodeEntryPolicy === "open" ? "is-selected" : undefined
+                      }
+                      title={
+                        vis
+                          ? undefined
+                          : `${t("host.policy.open")} · ${t("host.policy.openHint")}`
+                      }
+                      aria-label={t("host.policy.open")}
+                      aria-pressed={activeCodeEntryPolicy === "open"}
                       disabled={roomMutating}
-                      onClick={() => void changeCodeEntryPolicy(policy)}
+                      onClick={() => void changeCodeEntryPolicy("open")}
                     >
-                      <Icon size={16} aria-hidden="true" />
-                      <span>{label}</span>
-                    </button>
-                  ))}
-                </div>
-                {activeCodeEntryPolicy === "private" && (
+                      <VisGlyph name="globe" size={19} />
+                      <Cap k="host.policy.open" />
+                    </button>,
+                    "center",
+                    // Vis mode interposes the tooltip wrapper between the
+                    // toggle and its buttons, breaking the text-mode
+                    // `.lr-toggle button { flex: 1 }` halves (and the sliding
+                    // thumb's 50% geometry). Give each wrapper its half back.
+                    { flex: 1, display: "grid" },
+                  )}
+                  {hintWrap(
+                    "hint-policy-private",
+                    <button
+                      type="button"
+                      className={
+                        activeCodeEntryPolicy === "private"
+                          ? "is-selected"
+                          : undefined
+                      }
+                      title={
+                        vis
+                          ? undefined
+                          : `${t("host.policy.private")} · ${t("host.policy.privateHint")}`
+                      }
+                      aria-label={t("host.policy.private")}
+                      aria-pressed={activeCodeEntryPolicy === "private"}
+                      disabled={roomMutating}
+                      onClick={() => void changeCodeEntryPolicy("private")}
+                    >
+                      <VisGlyph name="lock" size={19} />
+                      <Cap k="host.policy.private" />
+                    </button>,
+                    "center",
+                    { flex: 1, display: "grid" },
+                  )}
+                </span>
+                {activeCodeEntryPolicy === "private" ? (
+                  hintWrap(
+                    "hint-password",
+                    <button
+                      type="button"
+                      className="lr-btn"
+                      title={
+                        vis
+                          ? undefined
+                          : t(
+                              viewerPasswordEnabled
+                                ? "host.password.set"
+                                : "host.password.unset",
+                            )
+                      }
+                      aria-label={t("host.password.setAction")}
+                      aria-expanded={passwordOpen}
+                      aria-controls="host-password-form"
+                      onClick={() => setPasswordOpen((current) => !current)}
+                    >
+                      <VisGlyph name="key" size={19} />
+                      {viewerPasswordEnabled ? (
+                        <i className="lr-chip-dot" aria-hidden="true" />
+                      ) : null}
+                      <Cap k="join.password" />
+                    </button>,
+                    "end",
+                  )
+                ) : null}
+                {!room.inviteUrl ? (
+                  <Pill
+                    icon="link"
+                    label={t(
+                      activeCodeEntryPolicy === "open"
+                        ? "host.invite.emptyOpen"
+                        : viewerPasswordEnabled
+                          ? "host.invite.emptyPassword"
+                          : "host.invite.emptyPrivate",
+                    )}
+                  />
+                ) : null}
+              </RowGroup>
+              {activeCodeEntryPolicy === "private" && passwordOpen ? (
+                <RowGroup>
                   <form
-                    className={`viewer-password-control${
-                      viewerPasswordEnabled ? " has-password" : ""
-                    }`}
+                    id="host-password-form"
+                    style={{ display: "contents" }}
                     onSubmit={(event) => {
                       event.preventDefault();
                       void changeViewerPassword(viewerPasswordDraft);
                     }}
                   >
-                    <label htmlFor="viewer-password">
-                      {viewerPasswordEnabled
-                        ? "房间密码已设置"
-                        : "房间密码未设置"}
-                    </label>
-                    <span className="input-with-icon">
-                      <KeyRound size={16} aria-hidden="true" />
+                    <span
+                      className="lr-input"
+                      style={{ flex: 1, minWidth: 180 }}
+                    >
+                      <Glyph name="key" size={17} />
                       <input
                         id="viewer-password"
                         type={viewerPasswordVisible ? "text" : "password"}
@@ -2857,181 +3073,539 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         maxLength={MAX_VIEWER_PASSWORD_LENGTH}
                         autoComplete="new-password"
                         placeholder={
-                          viewerPasswordEnabled
-                            ? "输入密码"
-                            : "设置后可凭房间号加入"
+                          vis
+                            ? ""
+                            : viewerPasswordEnabled
+                              ? t("host.password.inputPlaceholder")
+                              : t("host.password.placeholder")
                         }
+                        aria-label={t("join.password")}
                         autoFocus={!viewerPasswordEnabled}
                         disabled={roomMutating}
                         onChange={(event) =>
                           setViewerPasswordDraft(event.target.value)
                         }
                       />
-                      {viewerPasswordEnabled && viewerPasswordDraft.length > 0 && (
-                        <button
-                          className="password-visibility-action"
-                          type="button"
-                          title={viewerPasswordVisible ? "隐藏密码" : "显示密码"}
-                          aria-label={
-                            viewerPasswordVisible ? "隐藏房间密码" : "显示房间密码"
-                          }
-                          aria-pressed={viewerPasswordVisible}
-                          disabled={roomMutating}
-                          onClick={() =>
-                            setViewerPasswordVisible((current) => !current)
-                          }
-                        >
-                          {viewerPasswordVisible ? (
-                            <EyeOff size={17} aria-hidden="true" />
-                          ) : (
-                            <Eye size={17} aria-hidden="true" />
-                          )}
-                        </button>
-                      )}
                     </span>
-                    <button
-                      className="icon-button"
+                    {viewerPasswordEnabled && viewerPasswordDraft.length > 0 ? (
+                      <Btn
+                        icon={viewerPasswordVisible ? "eyeOff" : "eye"}
+                        title={
+                          viewerPasswordVisible
+                            ? "host.password.hide"
+                            : "host.password.show"
+                        }
+                        draw="host-password-eye"
+                        pressed={viewerPasswordVisible}
+                        disabled={roomMutating}
+                        onClick={() =>
+                          setViewerPasswordVisible((current) => !current)
+                        }
+                      />
+                    ) : null}
+                    <Btn
+                      icon="check"
                       type="submit"
-                      title={viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"}
-                      aria-label={
-                        viewerPasswordEnabled ? "更改房间密码" : "设置房间密码"
+                      title={
+                        viewerPasswordEnabled
+                          ? "host.password.changeAction"
+                          : "host.password.setAction"
                       }
+                      hint="hint-password"
                       disabled={
                         roomMutating ||
                         viewerPasswordDraft.length === 0 ||
                         (viewerPasswordEnabled &&
-                          viewerPasswordDraft ===
-                            creationProfile.roomPassword)
+                          viewerPasswordDraft === creationProfile.roomPassword)
                       }
-                    >
-                      <Check size={18} aria-hidden="true" />
-                    </button>
-                    {viewerPasswordEnabled && (
-                      <button
-                        className="icon-button"
-                        type="button"
-                        title="移除房间密码"
-                        aria-label="移除房间密码"
+                    />
+                    {viewerPasswordEnabled ? (
+                      <Btn
+                        icon="x"
+                        tone="danger"
+                        title="host.password.remove"
                         disabled={roomMutating}
                         onClick={() => void changeViewerPassword(null)}
-                      >
-                        <X size={18} aria-hidden="true" />
-                      </button>
-                    )}
+                      />
+                    ) : null}
                   </form>
+                </RowGroup>
+              ) : null}
+            </Row>
+          ) : null}
+
+          <Row label={t("host.quality")}>
+            <RowGroup>
+              <div className="lr-tiles">
+                {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
+                  (id, index) => (
+                    <Fragment key={id}>
+                      {hintWrap(
+                        "hint-quality",
+                        <button
+                          type="button"
+                          className={`lr-tile${
+                            selectedQualityProfileId === id ? " is-selected" : ""
+                          }`}
+                          aria-pressed={selectedQualityProfileId === id}
+                          title={
+                            vis
+                              ? undefined
+                              : t("host.quality.title", {
+                                  label: t(QUALITY_PROFILE_CAPTIONS[id]),
+                                  mbps: (
+                                    QUALITY_PROFILES[id].maxBitrate / 1_000_000
+                                  ).toFixed(0),
+                                })
+                          }
+                          aria-label={t(QUALITY_PROFILE_CAPTIONS[id])}
+                          disabled={phase === "starting" || switchingSource}
+                          onClick={() =>
+                            void changeQuality({
+                              ...QUALITY_PROFILES[id],
+                              screenAudioQuality: resolveScreenAudioQuality(
+                                advancedQualityRef.current.screenAudioQuality,
+                              ),
+                            })
+                          }
+                        >
+                          <QualityTileGlyph density={index} />
+                          <small>
+                            {vis
+                              ? `${QUALITY_PROFILES[id].resolution.replace("p", "")}·${QUALITY_PROFILES[id].maxFramerate}`
+                              : t(QUALITY_PROFILE_CAPTIONS[id])}
+                          </small>
+                        </button>,
+                        index === 0 ? "start" : "center",
+                      )}
+                    </Fragment>
+                  ),
                 )}
               </div>
-            </div>
-          )}
-        </section>
-
-        <aside className="viewer-panel" aria-labelledby="viewer-heading">
-          <div className="viewer-panel-heading">
+            </RowGroup>
+            <span className="lr-spacer" />
+            {hintWrap(
+              "hint-advanced",
+              <Btn
+                icon="sliders"
+                cap="host.advanced"
+                title="host.advanced"
+                tone={showAdvanced ? "on" : undefined}
+                expanded={showAdvanced}
+                controls="host-advanced-door"
+                onClick={() => setShowAdvanced((current) => !current)}
+              />,
+              "end",
+              // Mobile stacks `.lr-row` into a stretch column, which would
+              // stretch the tooltip wrapper to full row width and leave its
+              // wrapper-centered caret (and end-aligned panel) floating in
+              // empty card space away from the button. Take the stretch on a
+              // layout span instead and park the wrapper at the row's end,
+              // matching the desktop row-right placement; in the desktop row
+              // layout the span shrink-wraps and this is a no-op.
+              { display: "flex", justifyContent: "flex-end" },
+            )}
+          </Row>
+          <div
+            id="host-advanced-door"
+            className={`lr-door-reveal${showAdvanced ? " is-open" : ""}`}
+          >
             <div>
-              <h2 id="viewer-heading">观看者</h2>
-              <span>在线 {viewers.length}/{maxViewers ?? "-"}</span>
-            </div>
-            <button
-              className="icon-button"
-              type="button"
-              title={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
-              aria-label={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
-              aria-controls="room-topology"
-              aria-expanded={showTopology}
-              onClick={() => setShowTopology((current) => !current)}
-            >
-              <Network size={17} aria-hidden="true" />
-            </button>
-          </div>
-
-          {showTopology && (
-            <TopologyView
-              hostPeerId={hostPresence?.peerId ?? hostPeerIdRef.current}
-              hostLabel={labeledHostPresence?.label ?? displayName}
-              viewers={viewers}
-            />
-          )}
-
-          <div className="viewer-list">
-            {viewers.map((viewer) => {
-              const snapshot =
-                viewer.upstream.kind === "peer" &&
-                viewer.upstream.peerId ===
-                  (hostPresence?.peerId ?? hostPeerIdRef.current)
-                  ? peerSnapshots.get(viewer.peerId)
-                  : undefined;
-              const qualityPresentation = viewerQualityEvidence.get(
-                viewer.peerId,
-              );
-              const qualityEvidence = qualityPresentation?.evidence;
-              const hasMatchingQualityEvidence =
-                qualityEvidence !== undefined &&
-                qualityEvidenceUpstreamMatches(
-                  qualityEvidence,
-                  viewer.upstream,
-                );
-              const hasCurrentQualityEvidence =
-                hasMatchingQualityEvidence &&
-                qualityPresentation?.fresh === true;
-              const hasCommittedMedia = viewer.mediaReady === true;
-              const hasCurrentRouteEvidence =
-                hasPeerRouteEvidence(snapshot) ||
-                hasCurrentQualityEvidence ||
-                hasCommittedMedia;
-              const hasCurrentConnectionEvidence =
-                snapshot?.connectionState === "connected" ||
-                hasCurrentQualityEvidence ||
-                hasCommittedMedia;
-              const viewerState =
-                hasCurrentConnectionEvidence
-                  ? "connected"
-                  : (snapshot?.connectionState ?? "routing");
-              const detailMetrics = hasMatchingQualityEvidence
-                ? metricsFromQualityEvidence(qualityEvidence)
-                : snapshot && hasPeerRouteEvidence(snapshot)
-                  ? snapshot.metrics
-                  : null;
-              const detailDirection = hasMatchingQualityEvidence
-                ? "receive"
-                : "send";
-              return (
-                <article className="viewer-item" key={viewer.peerId}>
-                  <div className="viewer-item-heading">
-                    <div>
-                      <h3 title={viewer.label}>{viewer.label}</h3>
-                      <PeerStatusBadge state={viewerState} />
+              {showAdvanced ? (
+                <div
+                  className="lr-door-body"
+                  role="group"
+                  aria-label={t("host.advanced")}
+                >
+                  <div className="lr-door-group">
+                    <span
+                      className="lr-door-glyph"
+                      title={vis ? undefined : t("host.advanced.resolution")}
+                    >
+                      <VisGlyph name="expand" size={19} />
+                      <Cap k="host.advanced.resolution" />
+                    </span>
+                    <div
+                      className="lr-row-group"
+                      role="group"
+                      aria-label={t("host.advanced.resolution")}
+                    >
+                      {(
+                        Object.keys(QUALITY_RESOLUTIONS) as QualityResolution[]
+                      ).map((resolution) => (
+                        <Chip
+                          key={resolution}
+                          selected={advancedQuality.resolution === resolution}
+                          disabled={phase === "starting" || switchingSource}
+                          title={QUALITY_RESOLUTIONS[resolution].label}
+                          hint="hint-quality"
+                          onClick={() =>
+                            changeAdvancedQuality({ resolution })
+                          }
+                        >
+                          {QUALITY_RESOLUTIONS[resolution].label}
+                        </Chip>
+                      ))}
                     </div>
                   </div>
-                  {showConnectionDetails &&
-                    hasCurrentRouteEvidence &&
-                    viewer.upstream.kind !== "none" && (
-                    <div className="viewer-transport-heading">
-                      <MediaRouteBadge
-                        route={viewer.upstream.kind === "peer" ? "p2p" : "sfu"}
+                  <div className="lr-door-group">
+                    <span
+                      className="lr-door-glyph"
+                      title={vis ? undefined : t("host.advanced.framerate")}
+                    >
+                      <VisGlyph name="wave" size={19} />
+                      <Cap k="host.advanced.framerate" />
+                    </span>
+                    <span className="lr-slider">
+                      <input
+                        type="range"
+                        min={15}
+                        max={60}
+                        step={5}
+                        value={advancedQuality.maxFramerate}
+                        disabled={phase === "starting" || switchingSource}
+                        aria-label={t("host.advanced.framerate")}
+                        onChange={(event) =>
+                          changeAdvancedQuality({
+                            maxFramerate: Number(event.target.value),
+                          })
+                        }
+                      />
+                      <output>{advancedQuality.maxFramerate} fps</output>
+                    </span>
+                  </div>
+                  <div className="lr-door-group">
+                    <span
+                      className="lr-door-glyph"
+                      title={vis ? undefined : t("host.advanced.bitrate")}
+                    >
+                      <VisGlyph name="gauge" size={19} />
+                      <Cap k="host.advanced.bitrate" />
+                    </span>
+                    <span className="lr-slider">
+                      <input
+                        type="range"
+                        min={2000000}
+                        max={12000000}
+                        step={500000}
+                        value={advancedQuality.maxBitrate}
+                        disabled={phase === "starting" || switchingSource}
+                        aria-label={t("host.advanced.bitrate")}
+                        onChange={(event) =>
+                          changeAdvancedQuality({
+                            maxBitrate: Number(event.target.value),
+                          })
+                        }
+                      />
+                      <output>
+                        {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)}{" "}
+                        Mbps
+                      </output>
+                    </span>
+                  </div>
+                  <div className="lr-door-group">
+                    <span
+                      className="lr-door-glyph"
+                      title={vis ? undefined : t("host.advanced.preference")}
+                    >
+                      <VisGlyph name="mountain" size={19} />
+                      <Cap k="host.advanced.preference" />
+                    </span>
+                    <div
+                      className="lr-row-group"
+                      role="group"
+                      aria-label={t("host.advanced.preference")}
+                    >
+                      {(
+                        Object.keys(
+                          PREFERENCE_PRESENTATION,
+                        ) as DegradationPreference[]
+                      ).map((preference) => (
+                        <Chip
+                          key={preference}
+                          selected={
+                            advancedQuality.degradationPreference === preference
+                          }
+                          disabled={phase !== "live" || switchingSource}
+                          title={`${t(PREFERENCE_PRESENTATION[preference].cap)} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
+                          hint="hint-degrade-pref"
+                          onClick={() =>
+                            changeAdvancedQuality({
+                              degradationPreference: preference,
+                            })
+                          }
+                        >
+                          <Glyph
+                            name={PREFERENCE_PRESENTATION[preference].icon}
+                            size={18}
+                          />
+                          <Cap k={PREFERENCE_PRESENTATION[preference].cap} />
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="lr-door-group">
+                    <span
+                      className="lr-door-glyph"
+                      title={vis ? undefined : t("host.advanced.audio")}
+                    >
+                      <VisGlyph name="speaker" size={19} />
+                      <Cap k="host.advanced.audio" />
+                    </span>
+                    <div
+                      className="lr-row-group"
+                      role="group"
+                      aria-label={t("host.advanced.audio")}
+                    >
+                      {(
+                        Object.keys(
+                          AUDIO_QUALITY_CAPTIONS,
+                        ) as ScreenAudioQuality[]
+                      ).map((audioQuality) => (
+                        <Chip
+                          key={audioQuality}
+                          selected={
+                            resolveScreenAudioQuality(
+                              advancedQuality.screenAudioQuality,
+                            ) === audioQuality
+                          }
+                          disabled={phase === "starting" || switchingSource}
+                          title={t("host.audio.title", {
+                            label: t(AUDIO_QUALITY_CAPTIONS[audioQuality]),
+                            kbps: String(
+                              SCREEN_AUDIO_BITRATES[audioQuality] / 1_000,
+                            ),
+                          })}
+                          hint="hint-audio-quality"
+                          onClick={() => changeScreenAudioQuality(audioQuality)}
+                        >
+                          <Cap k={AUDIO_QUALITY_CAPTIONS[audioQuality]} />
+                          <small>
+                            {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000}
+                          </small>
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="lr-door-group">
+                    <span
+                      className="lr-door-glyph"
+                      title={vis ? undefined : t("host.advanced.route")}
+                    >
+                      <VisGlyph name="branch" size={19} />
+                      <Cap k="host.advanced.route" />
+                    </span>
+                    <div className="lr-row-group">
+                      <SwitchItem
+                        checked={routePolicy.topologyOptimization}
+                        disabled={phase === "starting" || phase === "live"}
+                        onChange={(checked) =>
+                          changeRoutePolicy({ topologyOptimization: checked })
+                        }
+                        label={t("host.advanced.route.topo")}
+                        note={t("host.advanced.route.topoHint")}
+                        hint="hint-topology"
+                      />
+                      <SwitchItem
+                        checked={routePolicy.peerOnly}
+                        disabled={phase === "starting" || phase === "live"}
+                        onChange={(checked) =>
+                          changeRoutePolicy({ peerOnly: checked })
+                        }
+                        label={t("host.advanced.route.peerOnly")}
+                        note={t("host.advanced.route.peerOnlyHint")}
+                        hint="hint-route-p2p"
                       />
                     </div>
-                  )}
-                  {showConnectionDetails && detailMetrics && (
-                    <StatsGrid
-                      metrics={detailMetrics}
-                      direction={detailDirection}
-                      progressive
-                    />
-                  )}
-                  {snapshot?.error && (
-                    <p className="inline-error">{snapshot.error}</p>
-                  )}
-                </article>
-              );
-            })}
-            {viewers.length === 0 && (
-              <div className="empty-viewers">
-                <Users size={24} strokeWidth={1.5} aria-hidden="true" />
-                <span>{phase === "live" ? "等待朋友加入" : "暂无观看者"}</span>
-              </div>
-            )}
+                  </div>
+                  <div className="lr-door-group">
+                    <span
+                      className="lr-door-glyph"
+                      title={vis ? undefined : t("host.advanced.codec")}
+                    >
+                      <VisGlyph name="cpu" size={19} />
+                      <Cap k="host.advanced.codec" />
+                    </span>
+                    <div
+                      className="lr-row-group"
+                      role="group"
+                      aria-label={t("host.advanced.codec")}
+                    >
+                      {(["vp8", "auto", "h264"] as const).map((mode) => (
+                        <Chip
+                          key={mode}
+                          selected={videoCodecMode === mode}
+                          disabled={phase === "starting" || phase === "live"}
+                          title={
+                            mode === "auto"
+                              ? resolvedVideoCodec
+                                ? `${t("host.advanced.codec.auto")} · ${resolvedVideoCodec.toUpperCase()}`
+                                : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
+                              : `${mode.toUpperCase()} · ${t(
+                                  mode === "vp8"
+                                    ? "host.advanced.codec.vp8Hint"
+                                    : "host.advanced.codec.h264Hint",
+                                )}`
+                          }
+                          hint="hint-codec"
+                          onClick={() => changeVideoCodecMode(mode)}
+                        >
+                          {mode.toUpperCase()}
+                          {mode === "auto" && resolvedVideoCodec ? (
+                            <i
+                              className="lr-chip-dot"
+                              title={
+                                vis
+                                  ? undefined
+                                  : resolvedVideoCodec.toUpperCase()
+                              }
+                            />
+                          ) : null}
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
-        </aside>
+
+          <Row label={t("host.details")}>
+            <RowGroup actions>
+              {hintWrap(
+                "hint-details",
+                <Btn
+                  icon="gauge"
+                  cap={showConnectionDetails ? "host.details.hide" : "host.details"}
+                  title={showConnectionDetails ? "host.details.hide" : "host.details"}
+                  tone={showConnectionDetails ? "on" : undefined}
+                  expanded={showConnectionDetails}
+                  controls="host-details-panel"
+                  disabled={!details || !stream}
+                  onClick={() => setShowConnectionDetails((current) => !current)}
+                />,
+                "start",
+              )}
+              {hintWrap(
+                "hint-topology",
+                <Btn
+                  icon="network"
+                  cap="host.topology"
+                  title={showTopology ? "host.topology.hide" : "host.topology.show"}
+                  tone={showTopology ? "on" : undefined}
+                  expanded={showTopology}
+                  controls="room-topology"
+                  onClick={() => setShowTopology((current) => !current)}
+                />,
+                "end",
+              )}
+            </RowGroup>
+          </Row>
+          {showConnectionDetails && details && stream ? (
+            <Row sub>
+              <div id="host-details-panel" style={{ display: "contents" }}>
+              <span
+                className="lr-meter-tag"
+                title={vis ? undefined : t("host.captureAria")}
+              >
+                <Glyph name="arrowUp" size={17} />
+                {vis ? null : (
+                  <span className="lr-cap">{t("stats.capture")}</span>
+                )}
+              </span>
+              <div
+                className="lr-meter"
+                role="group"
+                aria-label={t("host.captureAria")}
+              >
+                <span
+                  className="lr-meter-cell"
+                  title={vis ? undefined : t("stats.resolution")}
+                >
+                  <Glyph name="expand" size={16} />
+                  <b>
+                    {details.resolution ?? (vis ? "—" : t("stats.unknown"))}
+                  </b>
+                </span>
+                <span
+                  className="lr-meter-cell"
+                  title={vis ? undefined : t("stats.fps")}
+                >
+                  <Glyph name="wave" size={16} />
+                  <b>
+                    {details.frameRate
+                      ? `${details.frameRate.toFixed(0)} fps`
+                      : vis
+                        ? "—"
+                        : t("host.capture.fpsUnknown")}
+                  </b>
+                </span>
+                <span
+                  className="lr-meter-cell"
+                  title={vis ? undefined : t("stats.codec")}
+                >
+                  <Glyph name="cpu" size={16} />
+                  <b>
+                    {resolvedVideoCodec?.toUpperCase() ??
+                      (vis ? "—" : t("host.capture.codecPending"))}
+                  </b>
+                </span>
+                <span
+                  className="lr-meter-cell"
+                  title={vis ? undefined : t("stats.audio")}
+                >
+                  {vis ? (
+                    <span
+                      style={{ position: "relative", display: "inline-flex" }}
+                    >
+                      <Glyph name="speaker" size={16} />
+                      {details.hasAudio ? null : (
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            position: "absolute",
+                            top: -3,
+                            bottom: -3,
+                            left: "50%",
+                            width: 2.5,
+                            borderRadius: 2,
+                            background: "currentColor",
+                            transform: "translateX(-50%) rotate(45deg)",
+                          }}
+                        />
+                      )}
+                      <span className="visually-hidden">
+                        {details.hasAudio
+                          ? t("host.capture.hasAudio")
+                          : t("host.capture.noAudio")}
+                      </span>
+                    </span>
+                  ) : (
+                    <>
+                      <Glyph name="speaker" size={16} />
+                      <b>
+                        {details.hasAudio
+                          ? t("host.capture.hasAudio")
+                          : t("host.capture.noAudio")}
+                      </b>
+                    </>
+                  )}
+                </span>
+              </div>
+              </div>
+            </Row>
+          ) : null}
+          {showTopology ? (
+            <Row sub>
+              <RouteTree
+                hostPeerId={hostPeerId}
+                hostLabel={labeledHostPresence?.label ?? displayName}
+                viewers={viewers}
+                flowing={phase === "starting"}
+              />
+            </Row>
+          ) : null}
+        </div>
       </main>
     </div>
   );

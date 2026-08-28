@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { setCopy } from "../src/client/ui/copy.ts";
 import {
   hostActionErrorNotice,
   hostServerErrorNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
 } from "../src/client/pages/host-page-notices.ts";
+
+setCopy({ lang: "zh" });
 
 describe("host error notices", () => {
   it("maps every server error code without exposing server text", () => {

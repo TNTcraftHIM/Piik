@@ -17,6 +17,33 @@ room identity, current state, roster, and one manual media-reconnect action.
 Controls and text must remain usable without overlap or horizontal overflow on
 desktop and mobile viewports.
 
+## Visual Language
+
+The interface presents one small shared living room rather than an operations
+dashboard. The television is the media stage, the couch and pawns make presence
+spatial, the shelf separates watching from controls, and the room display keeps
+the four-digit code prominent. This metaphor must clarify the same product
+state on Host and Viewer pages; decoration never creates a second state model.
+
+Chinese, English, and pure-visual modes are three expressions of the same typed
+state and command catalog. A fresh Browser starts in visual mode and persists
+an explicit later choice. Text modes use concise copy. Visual mode uses one
+consistent stroke language for single concepts, small panel comics for causes
+and sequences, and literal scene objects for people, rooms, and media. Glyphs do
+not form sentences. Universal digits, transport symbols, URLs, and measured
+values remain literal when users need the data.
+
+Motion explains entry, transition, progress, and control feedback. Stable state
+stays still; ambient animation and motion added only for ornament are outside
+the language. All meaning remains available with reduced motion. Functional
+controls remain native buttons or inputs with localized accessible names, and
+hover, keyboard focus, and touch receive equivalent guidance.
+
+The visual hierarchy, interaction ownership, and information order remain the
+same across themes and viewport sizes. Responsive layout may reflow or scroll a
+bounded visualization, but it must not hide a primary action, truncate an
+essential value, overlap controls, or change product semantics.
+
 ## Playback Ownership
 
 One native `<video>` element owns Viewer play/pause, volume, mute, and fullscreen.

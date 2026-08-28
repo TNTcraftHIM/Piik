@@ -1,8 +1,11 @@
 import type { PeerSnapshot } from "../types";
 
-export function formatPacketLossPercent(value: number | null): string {
+export function formatPacketLossPercent(
+  value: number | null,
+  unknownLabel: string,
+): string {
   return value === null || !Number.isFinite(value)
-    ? "未知"
+    ? unknownLabel
     : `${value.toFixed(1)}%`;
 }
 

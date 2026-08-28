@@ -1,9 +1,8 @@
 import {
-  DEFAULT_HOST_DISPLAY_NAME_PREFIX,
-  DEFAULT_VIEWER_DISPLAY_NAME,
   normalizeDisplayName,
   type DisplayName,
 } from "../../shared/protocol";
+import { say } from "../ui/copy";
 
 const DISPLAY_NAME_STORAGE_KEY = "screener:display-name:v1";
 
@@ -25,22 +24,23 @@ export function readStoredDisplayName(): DisplayName | null {
 }
 
 export function readDisplayName(
-  fallback: DisplayName = DEFAULT_VIEWER_DISPLAY_NAME,
+  fallback: DisplayName = say("common.name.viewerDefault") as DisplayName,
 ): DisplayName {
   return readStoredDisplayName() ?? fallback;
 }
 
 export function defaultHostDisplayName(clientId: string): DisplayName {
   const suffix = clientId.slice(-6);
+  const prefix = say("common.name.hostDefault");
   return (
-    normalizeDisplayName(`${DEFAULT_HOST_DISPLAY_NAME_PREFIX}-${suffix}`) ??
-    DEFAULT_HOST_DISPLAY_NAME_PREFIX
+    normalizeDisplayName(suffix ? `${prefix}-${suffix}` : prefix) ??
+    (prefix as DisplayName)
   );
 }
 
 export function saveDisplayName(
   value: string,
-  fallback: DisplayName = DEFAULT_VIEWER_DISPLAY_NAME,
+  fallback: DisplayName = say("common.name.viewerDefault") as DisplayName,
 ): DisplayName | null {
   const normalized = normalizeDisplayName(value);
   const useFallback = value.length === 0 || /^\p{Zs}+$/u.test(value);

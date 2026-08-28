@@ -1,0 +1,149 @@
+// The couch: the roster as pawns watching the TV. Joining pawns hop in,
+// self carries the green pointer, the host wears a crown (topology only).
+import { Glyph } from "../../ui/icons";
+import { useCopy } from "../../ui/copy";
+
+const PAWN_COLORS = [
+  "var(--pawn-1)", "var(--pawn-2)", "var(--pawn-3)", "var(--pawn-4)",
+  "var(--pawn-5)", "var(--pawn-6)", "var(--pawn-7)", "var(--pawn-8)",
+];
+const YOU_COLOR = "var(--you)";
+
+export function pawnColor(key: string, you = false): string {
+  if (you) return YOU_COLOR;
+  let hash = 0;
+  for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return PAWN_COLORS[Math.abs(hash) % PAWN_COLORS.length]!;
+}
+
+export function PawnSvg({ color, crown }: { color: string; crown?: boolean }) {
+  return (
+    <svg viewBox="0 0 40 48" width="40" height="48" aria-hidden="true">
+      {crown ? (
+        <path
+          d="M11 12.5 L8.5 2 L14 6.5 L17 0 L20 6.5 L25.5 2 L23 12.5 Z"
+          fill="var(--pawn-2)"
+        />
+      ) : null}
+      <circle cx="20" cy="14" r="8.5" fill={color} />
+      <path d="M5 46c0-13 6.5-17 15-17s15 4 15 17Z" fill={color} />
+      <circle cx="17" cy="13" r="1.6" fill="var(--stage)" />
+      <circle cx="23" cy="13" r="1.6" fill="var(--stage)" />
+    </svg>
+  );
+}
+
+export interface CouchEntry {
+  key: string;
+  name: string;
+  connected: boolean;
+  statusLabel?: string;
+  you?: boolean;
+  child?: boolean;
+  selectable?: boolean;
+}
+
+export function Couch({
+  entries,
+  selectedKey,
+  onSelect,
+  emptyHint,
+}: {
+  entries: CouchEntry[];
+  selectedKey?: string | null;
+  onSelect?: (key: string) => void;
+  emptyHint?: string;
+}) {
+  const { vis, t } = useCopy();
+  const crowded = entries.length > 10;
+
+  return (
+    <div className="lr-couch">
+      <svg viewBox="0 0 640 132" aria-hidden="true">
+        <rect x="70" y="110" width="18" height="16" rx="5" fill="var(--frame)" />
+        <rect x="552" y="110" width="18" height="16" rx="5" fill="var(--frame)" />
+        <rect x="28" y="28" width="58" height="80" rx="24" fill="var(--couch-dark)" />
+        <rect x="554" y="28" width="58" height="80" rx="24" fill="var(--couch-dark)" />
+        <rect x="56" y="18" width="528" height="58" rx="27" fill="var(--couch)" />
+        <rect x="44" y="62" width="552" height="50" rx="23" fill="var(--couch)" />
+        <path d="M212 64v46M428 64v46" stroke="var(--couch-dark)" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+      <div
+        className={`lr-pawns${crowded ? " is-crowded" : ""}`}
+        role="group"
+        aria-label={t("common.viewers")}
+      >
+        {entries.map((entry, index) => {
+          const stateLabel = entry.connected
+            ? t("state.peer.connected")
+            : (entry.statusLabel ?? t("state.peer.connecting"));
+          const label = entry.you
+            ? `${entry.name} · ${t("common.you")}`
+            : `${entry.name} · ${stateLabel}`;
+          const showName = !vis && !entry.child && !crowded;
+          const inner = (
+            <>
+              <PawnSvg color={pawnColor(entry.key, entry.you)} />
+              <i
+                className={`lr-pawn-led${entry.connected ? "" : " is-wait"}`}
+                // With a name pill the default bottom:4px lands on the pill's
+                // right end; lift the LED onto the figure instead. Scoped here
+                // because the living-room stylesheet is owned elsewhere.
+                style={showName ? { bottom: 20 } : undefined}
+                aria-hidden="true"
+              />
+              {showName ? (
+                // 58px ellipsizes the EN default "Visitor"; 72px fits it.
+                <span className="lr-pawn-name" style={{ maxWidth: 72 }}>
+                  {entry.name}
+                </span>
+              ) : null}
+            </>
+          );
+          // Hop stagger derives from position only, so render stays pure
+          // (a seen-keys map mutates during render: StrictMode's discarded
+          // first pass pre-fills it and the committed render gets 0ms).
+          const style = { animationDelay: `${Math.min(index, 12) * 70}ms` };
+          const className = `lr-pawn${entry.you ? " is-you" : ""}${entry.child ? " is-child" : ""}${
+            entry.selectable === false ? " is-static" : ""
+          }${selectedKey === entry.key ? " is-selected" : ""}`;
+          if (entry.selectable === false) {
+            return (
+              <span
+                key={entry.key}
+                className={className}
+                style={style}
+                title={vis ? undefined : label}
+                aria-label={label}
+              >
+                {inner}
+              </span>
+            );
+          }
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              className={className}
+              style={style}
+              title={vis ? undefined : label}
+              aria-label={label}
+              aria-pressed={selectedKey === entry.key}
+              onClick={() => onSelect?.(entry.key)}
+            >
+              {inner}
+            </button>
+          );
+        })}
+      </div>
+      {entries.length === 0 ? (
+        <div
+          className="lr-couch-empty"
+          title={vis ? undefined : (emptyHint ?? t("host.viewers.empty"))}
+        >
+          <Glyph name="users" size={22} />
+        </div>
+      ) : null}
+    </div>
+  );
+}

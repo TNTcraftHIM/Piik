@@ -1,3 +1,4 @@
+import { say } from "../ui/copy";
 import {
   createRoomResponseSchema,
   roomAccessUpdateResponseSchema,
@@ -26,20 +27,20 @@ async function responseBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch {
-    throw new ApiError("服务返回了无法识别的响应", response.status);
+    throw new ApiError(say("host.err.serverError"), response.status);
   }
 }
 
 function parseSiteAccessStatus(value: unknown): SiteAccessStatus {
   if (!value || typeof value !== "object") {
-    throw new ApiError("验证服务返回的数据格式不正确", 502);
+    throw new ApiError(say("host.err.serverError"), 502);
   }
   const record = value as Record<string, unknown>;
   if (
     typeof record.required !== "boolean" ||
     typeof record.authenticated !== "boolean"
   ) {
-    throw new ApiError("验证服务返回的数据格式不正确", 502);
+    throw new ApiError(say("host.err.serverError"), 502);
   }
   return {
     required: record.required,
@@ -55,8 +56,10 @@ export async function getSiteAccess(): Promise<SiteAccessStatus> {
   if (!response.ok) {
     throw new ApiError(
       response.status === 401
-        ? "站点访问已失效，请重新验证"
-        : `站点验证服务暂时不可用 (${response.status})`,
+        ? say("gate.expired")
+        : say("gate.serviceUnavailable", {
+            status: String(response.status),
+          }),
       response.status,
     );
   }
@@ -77,8 +80,10 @@ export async function authenticateSiteAccess(
   if (!response.ok) {
     throw new ApiError(
       response.status === 401
-        ? "站点口令不正确，请重试"
-        : `站点验证服务暂时不可用 (${response.status})`,
+        ? say("gate.wrong")
+        : say("gate.serviceUnavailable", {
+            status: String(response.status),
+          }),
       response.status,
     );
   }
@@ -108,15 +113,17 @@ export async function createRoom(
   if (!response.ok) {
     throw new ApiError(
       response.status === 401
-        ? "站点访问已失效，请重新验证"
-        : `当前无法创建房间 (${response.status})`,
+        ? say("gate.expired")
+        : say("host.err.createRoomStatus", {
+            status: String(response.status),
+          }),
       response.status,
     );
   }
 
   const parsed = createRoomResponseSchema.safeParse(body);
   if (!parsed.success) {
-    throw new ApiError("建房服务返回的数据格式不正确", 502);
+    throw new ApiError(say("host.err.serverError"), 502);
   }
   return parsed.data;
 }
@@ -143,14 +150,16 @@ export async function replaceOwnedRoom(
   if (!response.ok) {
     throw new ApiError(
       response.status === 404
-        ? "房间不存在或已过期"
-        : `当前无法更换房间 (${response.status})`,
+        ? say("viewer.msg.notFound")
+        : say("host.err.replaceRoomStatus", {
+            status: String(response.status),
+          }),
       response.status,
     );
   }
   const parsed = createRoomResponseSchema.safeParse(body);
   if (!parsed.success) {
-    throw new ApiError("换房服务返回的数据格式不正确", 502);
+    throw new ApiError(say("host.err.serverError"), 502);
   }
   return parsed.data;
 }
@@ -173,17 +182,19 @@ export async function updateRoomAccess(
   if (!response.ok) {
     throw new ApiError(
       response.status === 401
-        ? "站点访问已失效，请重新验证"
+        ? say("gate.expired")
         : response.status === 404
-          ? "房间不存在或已过期"
-          : `当前无法更新房间设置 (${response.status})`,
+          ? say("viewer.msg.notFound")
+          : say("host.err.updateRoomStatus", {
+              status: String(response.status),
+            }),
       response.status,
     );
   }
 
   const parsed = roomAccessUpdateResponseSchema.safeParse(body);
   if (!parsed.success) {
-    throw new ApiError("房间设置服务返回的数据格式不正确", 502);
+    throw new ApiError(say("host.err.serverError"), 502);
   }
   return parsed.data;
 }
