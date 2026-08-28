@@ -7,9 +7,8 @@ topics are not implementation authority.
 
 ## Now
 
-No implementation task is currently authorized. The audit root-cause
-corrections are integrated and verified in current source but remain undeployed;
-deployment requires explicit authority.
+Release the accepted current source with 24-hour rolling site access and the
+strict v17 Browser/server contract, then record exact production identity.
 
 ## Parked Product Work
 

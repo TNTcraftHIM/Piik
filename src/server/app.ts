@@ -622,7 +622,11 @@ function handleSiteAccessRequest(
   response.setHeader("X-Content-Type-Options", "nosniff");
 
   if (request.method === "GET") {
-    sendJson(response, 200, siteAccessStatus(request, siteAccess));
+    const status = siteAccessStatus(request, siteAccess);
+    if (status.required && status.authenticated) {
+      response.setHeader("Set-Cookie", siteAccess.createCookie()!);
+    }
+    sendJson(response, 200, status);
     return;
   }
 
