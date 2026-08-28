@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `a48ea4cd36e47a653e749fb28858472cf3e37a42`, release `a48ea4c`, wire
-  `screener-v17`, from `/opt/screener/releases/a48ea4c`. The immutable runtime
+  `a9f28facd4ba7575135ebfefec76908edfbab6aa`, release `a9f28fa`, wire
+  `screener-v17`, from `/opt/screener/releases/a9f28fa`. The immutable runtime
   tar SHA-256 is
-  `ad61465396c42eaed0a0ec34db358ecd6bfca4419dc2c3b7dcea295cb7fcdcc9`;
+  `c4245c9859748540f473c811139598fe876506535d75a2a381dbf0aafe83b08f`;
   its 41-file manifest SHA-256 is
-  `531b103e735c8313a7613adc71af695a8a8d231eb278b34bdbd0078f039ae7c6`.
-- The served Browser entry references `assets/index-C2joXJTB.js`; the public
+  `0583482dd91421a7dd540d7240b42085b3832f57a3b3a52eb38fca807b8890d0`.
+- The served Browser entry references `assets/index-Blf-F9pb.js`; the public
   asset SHA-256 is
-  `ae22eed100252bc4c149885f198ea693a3d2868ac9ffc86f64b662a45c5f3924`.
+  `22f2e7a44db86b37e58f0c37dd05be457434a0ea9aeb86145b63f78ad04e220c`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -79,10 +79,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Source/Production Delta
 
-- Current source preserves failed SFU opportunities across controller-owned
-  publication generations, preventing an exhausted Viewer from repeatedly
-  bootstrapping and tearing down the same SFU path. Production release
-  `a48ea4c` predates this correction.
+- Production application code and current source behavior are aligned at
+  `a9f28facd4ba7575135ebfefec76908edfbab6aa`; the following truth checkpoint
+  changes documentation only.
 
 ## Current Milestone
 

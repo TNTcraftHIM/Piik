@@ -1,15 +1,13 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-08-28
+Last reviewed: 2026-08-29
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
 
 ## Now
 
-No implementation task is currently authorized. The SFU opportunity lifecycle
-correction is integrated and verified in current source but remains undeployed;
-deployment requires explicit authority.
+No implementation task is currently authorized.
 
 ## Parked Product Work
 
