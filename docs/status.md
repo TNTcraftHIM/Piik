@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `91816accf61c5c225e387e907fa86c6069052bda`, release `91816ac`, wire
-  `screener-v17`, from `/opt/screener/releases/91816ac`. The immutable runtime
+  `7631d6fd4725e28896ebd5ab5c0910f2da95afa6`, release `7631d6f`, wire
+  `screener-v17`, from `/opt/screener/releases/7631d6f`. The immutable runtime
   tar SHA-256 is
-  `fd6170beba1e1d4c2762e6d5ed9726de5f684cd46544cd0fdc564797cc2dfde7`;
+  `a746a415792118171aadea98197b998fa89a611e20dd7d60b0b60bad16498768`;
   its 41-file manifest SHA-256 is
-  `3a4c787e995a6e5270064ed22b31d2bb4cc685ab92851ad14e45d83ba25c049c`.
-- The served Browser entry references `assets/index-84bQnZrP.js`; the public
+  `74ae4c57a9e5a1fd3d34ccff59c6fef98af3b73a3d363ec1108923c42c774c40`.
+- The served Browser entry references `assets/index-HdB9fvu6.js`; the public
   asset SHA-256 is
-  `d6c8890bebb1e612d822c7e2fd9a8525be004176ab489f6b66da1ac0cc8e1d62`.
+  `7dd79ea6dfe3f6f88525dae33daa88bd288b4544d4e415679a4ef145e97fc4f4`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -44,8 +44,9 @@ This is the current execution index. Git history owns completed timelines;
   gated by current media connection state.
 - The living-room presentation is deployed with Chinese, English, and
   pure-visual modes, light/dark themes, one Host/Viewer stage language,
-  progressive per-Viewer diagnostics, and reduced-motion behavior. Fresh
-  Browsers start in visual mode; explicit choices persist locally.
+  progressive per-Viewer diagnostics, responsive identity topology, and
+  reduced-motion behavior. Fresh Browsers start in visual mode; explicit
+  choices persist locally.
 - Native-edge local convergence defaults on for each new share and remains a
   pre-share Host opt-out. The adjacent default-off peer-only policy excludes all
   SFU paths for that share generation. Both policies lock while sharing.
@@ -83,18 +84,19 @@ This is the current execution index. Git history owns completed timelines;
 - Host, Viewer, join, and access surfaces share the living-room presentation
   model. Room codes, invitation URLs, the current display name, selected
   participant details, route labels, and metrics remain visible in visual mode;
-  full couch/tree identity presentation remains current TODO work.
+  couch and topology identities remain visible across expression modes and
+  bounded deep trees scroll within their own surface.
 
 ## Source/Production Delta
 
-- Production application code and current source behavior are aligned at
-  `91816accf61c5c225e387e907fa86c6069052bda`; the following truth checkpoint
+- Production application code is exact revision
+  `7631d6fd4725e28896ebd5ab5c0910f2da95afa6`; the following truth checkpoint
   changes documentation only.
 
 ## Current Milestone
 
-The living-room Host/Viewer UI, bilingual and visual expression modes, and
-progressive diagnostics are deployed on the existing measured route,
+The living-room Host/Viewer presentation, expression modes, diagnostics, and
+responsive identity topology are deployed on the measured route,
 generation-owned presentation, and endpoint-capacity model.
 
 ## Active Boundaries
