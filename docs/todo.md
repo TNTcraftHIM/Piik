@@ -7,7 +7,17 @@ topics are not implementation authority.
 
 ## Now
 
-No implementation task is currently authorized.
+1. **Topology presentation refinement.** Improve the current tree's identity,
+   branch legibility, selected-node continuity, deep-tree scrolling, and
+   responsive/accessibility behavior without changing route selection,
+   protocol, or graph ownership.
+2. **Browser and P2P resource investigation.** Use controlled RTCStats and
+   primary Browser evidence to separate capture cadence, encoder saturation,
+   congestion control, and multi-sender cost. Do not add keepalive tricks,
+   process-priority claims, or custom congestion control.
+3. **UI adversarial and performance audit.** Fix only reproduced functional,
+   visual, accessibility, or rendering-cost defects while preserving the
+   accepted visual language and motion.
 
 ## Parked Product Work
 
@@ -36,21 +46,18 @@ No implementation task is currently authorized.
 7. **Representative network acceptance.** Complete public-network direct,
    Browser relay, SFU, recovery, Pause/Resume, screen-audio, real-game A/V,
    two-room SFU, 20-Viewer endurance, and all-UDP-blocked bounded failure.
-8. **Whole-product UI and bilingual decision.** Review copy, responsive
-   hierarchy, visual consistency, restrained motion, rendering cost, terminal
-   navigation, and Chinese/English scope once media behavior stabilizes.
-9. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
+8. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
    authorization, rate/body/resource bounds, errors, logs, and secrets without
    adding a parallel security framework.
-10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
+9. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-11. **Fully local package.** Package Host capture, application server, and local
+10. **Fully local package.** Package Host capture, application server, and local
    state for Windows/macOS/Linux with honest TLS, gateway, NAT, and firewall
    limits.
-12. **Native Host and shared encode.** Revisit Windows first only after capture,
+11. **Native Host and shared encode.** Revisit Windows first only after capture,
    hardware encode, audio, RTP feedback, resources, packaging, licensing, and
    Browser interoperability are proved.
-13. **Platform output.** Revisit AirPlay/Cast only when a target Browser and
+12. **Platform output.** Revisit AirPlay/Cast only when a target Browser and
     physical receiver prove the live `MediaStream` contract.
 
 ## Decision Needed
