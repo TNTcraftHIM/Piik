@@ -32,7 +32,7 @@ describe("Viewer presentation reducer", () => {
     );
     expect(deriveViewerPresentation(preparing)).toMatchObject({
       stage: "preparing-p2p",
-      message: "正在建立 P2P",
+      messageKey: "viewer.msg.preparingP2p",
       overlay: "blocking",
     });
 
@@ -67,7 +67,7 @@ describe("Viewer presentation reducer", () => {
     );
     expect(deriveViewerPresentation(blocked)).toMatchObject({
       stage: "needs-play",
-      message: "点击播放",
+      messageKey: "viewer.msg.needsPlay",
       overlay: "status",
       failureCode: "AUTOPLAY_BLOCKED",
     });
@@ -293,7 +293,7 @@ describe("Viewer presentation reducer", () => {
     expect(deriveViewerPresentation(state)).toMatchObject({
       stage: "recovering",
       overlay: "none",
-      notice: "服务器连接正在恢复，画面仍在播放",
+      noticeKey: "viewer.notice.signalRecovering",
     });
   });
 
@@ -315,8 +315,8 @@ describe("Viewer presentation reducer", () => {
     expect(resumed.connection).toBe("connected");
     expect(deriveViewerPresentation(resumed)).toMatchObject({
       stage: "playing",
-      message: "正在播放",
-      notice: null,
+      messageKey: "viewer.msg.playing",
+      noticeKey: null,
     });
   });
 
@@ -388,7 +388,7 @@ describe("Viewer presentation reducer", () => {
       stage: "playing",
       overlay: "none",
       hasCurrentFrame: true,
-      notice: "分享者连接已中断，画面可能冻结",
+      noticeKey: "viewer.notice.hostOffline",
     });
     expect(
       reduceViewerPresentation(offlineWithMedia, {
@@ -423,9 +423,9 @@ describe("Viewer presentation reducer", () => {
 
     expect(deriveViewerPresentation(reconnecting)).toMatchObject({
       stage: "recovering",
-      message: "正在恢复连接",
+      messageKey: "viewer.msg.recovering",
       overlay: "none",
-      notice: "服务器连接正在恢复，画面仍在播放",
+      noticeKey: "viewer.notice.signalRecovering",
     });
   });
 
@@ -490,7 +490,7 @@ describe("Viewer presentation reducer", () => {
 
     expect(deriveViewerPresentation(failed)).toMatchObject({
       stage: "route-failed",
-      message: "没有可用的媒体线路",
+      messageKey: "viewer.msg.routeFailed",
       overlay: "status",
       hasCurrentFrame: false,
       hasRetainedFrame: true,
@@ -577,7 +577,7 @@ describe("Viewer presentation reducer", () => {
     });
     expect(deriveViewerPresentation(denied)).toMatchObject({
       stage: "access-denied",
-      message: "当前无法通过房间号加入",
+      messageKey: "viewer.msg.denied",
     });
 
     const notFound = reduceViewerPresentation(failed, {
@@ -587,7 +587,7 @@ describe("Viewer presentation reducer", () => {
     });
     expect(deriveViewerPresentation(notFound)).toMatchObject({
       stage: "room-not-found",
-      message: "房间不存在或已过期",
+      messageKey: "viewer.msg.notFound",
     });
   });
 
@@ -630,7 +630,7 @@ describe("Viewer presentation reducer", () => {
     );
     expect(deriveViewerPresentation(restarted)).toMatchObject({
       stage: "playing",
-      message: "正在播放",
+      messageKey: "viewer.msg.playing",
       overlay: "none",
     });
   });

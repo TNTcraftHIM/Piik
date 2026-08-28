@@ -1,18 +1,11 @@
 import {
-  CirclePlay,
-  KeyRound,
-  LoaderCircle,
-  Network,
-  Pause,
-  Pencil,
-  RefreshCw,
-  Save,
-  TriangleAlert,
-  VideoOff,
-  WifiOff,
-  X,
-} from "lucide-react";
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
   DEFAULT_ROUTE_POLICY,
@@ -24,22 +17,36 @@ import {
   type ServerMessage,
   type RoutePolicy,
 } from "../../shared/protocol";
-import { AppHeader } from "../components/AppHeader";
-import { ConnectionDetailsToggle } from "../components/ConnectionDetailsToggle";
-import { RoomCode } from "../components/RoomCode";
 import { qualityLimitationSummary } from "../components/connection-details";
-import {
-  MediaRouteBadge,
-  PeerStatusBadge,
-  SignalStatusBadge,
-  WarningBanner,
-} from "../components/StatusBadge";
-import { StatsGrid } from "../components/StatsGrid";
-import { TopologyView } from "../components/TopologyView";
 import {
   viewerReconnectRoute,
   viewerRouteEvidence,
 } from "../components/status-badge-model";
+import { AppHeader, LedStrip, type LedState } from "../components/living/Header";
+import { Couch, type CouchEntry } from "../components/living/Couch";
+import { MetricCells, useMetricsExpanded } from "../components/living/Metrics";
+import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
+import { Lcd } from "../components/living/RoomChip";
+import { RouteTree } from "../components/living/RouteTree";
+import { Comic, type ComicKind } from "../components/living/Comic";
+import { ComicTooltip } from "../components/living/ComicTooltip";
+import type { HintKind } from "../components/living/hints";
+import {
+  StageOverlay,
+  StageTv,
+  type ChinState,
+} from "../components/living/Stage";
+import {
+  Btn,
+  FieldCap,
+  NameTag,
+  Pill,
+  Row,
+  RowGroup,
+  StatusText,
+} from "../components/living/primitives";
+import { Glyph, type GlyphName } from "../ui/icons";
+import { useCopy, type CopyKey } from "../ui/copy";
 import { readDisplayName, saveDisplayName } from "../lib/display-name";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
@@ -130,44 +137,110 @@ interface RemoteMediaBinding {
   videoTrackKey: string;
 }
 
-function StageOverlayIcon({ stage }: { stage: ViewerStage }) {
-  if (stage === "needs-play") {
-    return <CirclePlay size={36} strokeWidth={1.5} aria-hidden="true" />;
+const CONNECTING_STAGES: readonly ViewerStage[] = [
+  "joining",
+  "preparing-p2p",
+  "preparing-sfu",
+  "waiting-sfu",
+  "receiving",
+  "allocating",
+  "recovering",
+];
+
+function stageOverlayGlyph(stage: ViewerStage): { icon: GlyphName; spin: boolean } {
+  switch (stage) {
+    case "needs-play":
+      return { icon: "play", spin: false };
+    case "host-paused":
+      return { icon: "pause", spin: false };
+    case "host-offline":
+      return { icon: "wifiOff", spin: false };
+    case "route-failed":
+    case "playback-failed":
+    case "server-error":
+      return { icon: "alert", spin: false };
+    case "recovering":
+    case "waiting-sfu":
+    case "preparing-p2p":
+    case "preparing-sfu":
+    case "receiving":
+    case "allocating":
+      return { icon: "loader", spin: true };
+    case "waiting-host":
+      return { icon: "moon", spin: false };
+    default:
+      return { icon: "tv", spin: false };
   }
-  if (stage === "host-paused") {
-    return <Pause size={36} strokeWidth={1.5} aria-hidden="true" />;
+}
+
+// Visual mode tells the stage as a panel comic; the glyph stays as its marker.
+function stageOverlayComic(
+  stage: ViewerStage,
+  route: "p2p" | "sfu" | null,
+): ComicKind | undefined {
+  switch (stage) {
+    case "waiting-host":
+      return "waiting-for-host";
+    case "preparing-p2p":
+      return "connecting-p2p";
+    case "preparing-sfu":
+    case "waiting-sfu":
+      return "connecting-sfu";
+    case "needs-play":
+      return "tap-to-play";
+    case "host-paused":
+      return "host-paused";
+    case "recovering":
+      return "recovering";
+    case "route-failed":
+    case "server-error":
+      return "route-failed";
+    case "playback-failed":
+      return "playback-failed";
+    case "host-offline":
+      return "host-offline";
+    case "receiving":
+    case "allocating":
+      return route === "sfu" ? "connecting-sfu" : "connecting-p2p";
+    default:
+      return undefined;
   }
-  if (stage === "host-offline") {
-    return <WifiOff size={36} strokeWidth={1.5} aria-hidden="true" />;
+}
+
+function stageChin(stage: ViewerStage): ChinState {
+  switch (stage) {
+    case "playing":
+      return "on";
+    case "host-paused":
+    case "recovering":
+      return "warn";
+    case "route-failed":
+    case "playback-failed":
+    case "host-offline":
+    case "server-error":
+    case "stale-client":
+    case "session-replaced":
+    case "signal-terminated":
+      return "bad";
+    case "waiting-host":
+      return "off";
+    default:
+      return "busy";
   }
-  if (
-    stage === "route-failed" ||
-    stage === "playback-failed" ||
-    stage === "server-error"
-  ) {
-    return <TriangleAlert size={36} strokeWidth={1.5} aria-hidden="true" />;
-  }
-  if (
-    stage === "recovering" ||
-    stage === "waiting-sfu" ||
-    stage === "preparing-p2p" ||
-    stage === "preparing-sfu" ||
-    stage === "receiving" ||
-    stage === "allocating"
-  ) {
-    return (
-      <LoaderCircle
-        size={36}
-        strokeWidth={1.5}
-        className="spin"
-        aria-hidden="true"
-      />
-    );
-  }
-  return <VideoOff size={36} strokeWidth={1.5} aria-hidden="true" />;
+}
+
+function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
+  const { vis } = useCopy();
+  return (
+    <span className="lr-meter-tag" title={vis ? undefined : label} role="img" aria-label={label}>
+      <Glyph name={icon} size={17} />
+      {vis ? null : <span className="lr-cap">{label}</span>}
+    </span>
+  );
 }
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
+  const { t, vis } = useCopy();
   const [presentationState, dispatchPresentationState] = useReducer(
     reduceViewerPresentation,
     INITIAL_VIEWER_PRESENTATION_STATE,
@@ -192,13 +265,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [showTopology, setShowTopology] = useState(false);
   const [displayName, setDisplayName] = useState(() => readDisplayName());
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
-  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [displayNameError, setDisplayNameError] = useState(false);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [participantPresence, setParticipantPresence] = useState<
     ParticipantPresenceEntry[] | null
   >(null);
   const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
-  const [viewerPasswordError, setViewerPasswordError] = useState<string | null>(
+  const [viewerPasswordError, setViewerPasswordError] = useState<CopyKey | null>(
     null,
   );
   const [viewerPasswordAttempt, setViewerPasswordAttempt] = useState<{
@@ -207,6 +280,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   } | null>(null);
   const [viewerPasswordExpanded, setViewerPasswordExpanded] = useState(false);
   const [frameProofEpoch, setFrameProofEpoch] = useState(0);
+  // Presentation-only: which couch pawn is drilled into, and this viewer's
+  // own peer id (mirrors the authenticated message for couch/route-tree).
+  const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
+  const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
+  const [routeMetricsExpanded, setRouteMetricsExpanded] = useMetricsExpanded();
+  const [relayMetricsExpanded, setRelayMetricsExpanded] = useMetricsExpanded();
+  const [downstreamMetricsExpanded, setDownstreamMetricsExpanded] =
+    useMetricsExpanded();
+  const [pawnMetricsExpanded, setPawnMetricsExpanded] = useMetricsExpanded();
 
   const qualityLimitation = useMemo(
     () =>
@@ -217,14 +299,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       ),
     [peerSnapshot, relaySnapshot],
   );
-  const hostPresence = useMemo(
+  const hostDisplayName = useMemo(
     () =>
       participantPresence?.find(
-        (participant): participant is Extract<
-          ParticipantPresenceEntry,
-          { role: "host" }
-        > => participant.role === "host",
-      ) ?? null,
+        (participant) => participant.role === "host",
+      )?.displayName ?? null,
     [participantPresence],
   );
   const { host: labeledHostPresence, viewers } = useMemo(
@@ -278,7 +357,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     signalStatus === "connected" &&
     reconnectRoute !== null &&
     presentationState.connection !== "reconnecting";
-  const routeConnectionState = presentation.connectionState;
   const routeMetrics = routePresentation.evidence?.metrics ?? null;
 
   function bindRemoteStream(stream: MediaStream, revision: number): void {
@@ -1379,6 +1457,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         setViewerPasswordError(null);
         clearRelayChildEvidence();
         currentPeerId = message.peerId;
+        setSelfPeerId(message.peerId);
         endpointMediaCopyCapacity = message.endpointMediaCopyCapacity;
         currentAssignment = limitMediaAssignment(
           currentAssignment,
@@ -1786,13 +1865,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         if (message.code === "INVALID_TOKEN") {
           clearViewerGrant(roomId);
           if (!viewerGrant && viewerPasswordAttempt) {
-            setViewerPasswordError("无法加入房间，请重试");
+            setViewerPasswordError("join.passwordError");
           }
           return;
         }
         if (message.code === "ROOM_ACCESS_DENIED") {
           if (viewerPasswordAttempt) {
-            setViewerPasswordError("当前无法通过房间号加入");
+            setViewerPasswordError("viewer.msg.denied");
             setViewerPasswordExpanded(true);
           }
           return;
@@ -1920,13 +1999,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   function commitDisplayName(): void {
     const saved = saveDisplayName(displayNameDraft);
     if (!saved) {
-      setDisplayNameError("名称格式无效或超过 24 个字符");
+      setDisplayNameError(true);
       return;
     }
     displayNameRef.current = saved;
     setDisplayName(saved);
     setDisplayNameDraft(saved);
-    setDisplayNameError(null);
+    setDisplayNameError(false);
     setEditingDisplayName(false);
     signalRef.current?.setViewerDisplayName(saved);
   }
@@ -1934,9 +2013,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   function submitViewerPassword(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (!viewerPasswordSchema.safeParse(viewerPasswordDraft).success) {
-      setViewerPasswordError(
-        `请输入 1-${MAX_VIEWER_PASSWORD_LENGTH} 个可见字符`,
-      );
+      setViewerPasswordError("join.passwordRule");
       return;
     }
     setViewerPasswordError(null);
@@ -1960,373 +2037,526 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       "SESSION_REPLACED",
       "SIGNAL_TERMINATED",
     ].includes(presentationState.failure ?? "");
+    const deniedComic: ComicKind =
+      presentationState.failure === "ROOM_FULL"
+        ? "room-full"
+        : codeOnlyDenied
+          ? "access-denied"
+          : presentationState.failure === "INVALID_TOKEN"
+            ? "invalid-invite"
+            : presentationState.failure === "ROOM_NOT_FOUND" ||
+                presentationState.failure === "ROOM_EXPIRED" ||
+                presentationState.failure === "ROOM_CLOSED"
+              ? "room-not-found"
+              : "warning";
+    const deniedIcon: GlyphName =
+      presentationState.failure === "ROOM_NOT_FOUND" ||
+      presentationState.failure === "ROOM_EXPIRED" ||
+      presentationState.failure === "ROOM_CLOSED"
+        ? "door"
+        : presentationState.failure === "ROOM_ACCESS_DENIED"
+          ? "lock"
+          : presentationState.failure === "ROOM_FULL"
+            ? "users"
+            : "alert";
+    const deniedHintKey: CopyKey = codeOnlyDenied
+      ? "viewer.hint.denied"
+      : presentationState.failure === "ROOM_NOT_FOUND" ||
+          presentationState.failure === "ROOM_EXPIRED" ||
+          presentationState.failure === "ROOM_CLOSED"
+        ? "viewer.hint.notFound"
+        : presentationState.failure === "INVALID_TOKEN"
+          ? "viewer.hint.invite"
+          : "viewer.hint.generic";
     return (
-      <div className="app-shell">
-        <main className="access-workspace access-workspace-full">
+      <div className="lr-app">
+        <AppHeader
+          led={
+            accessState === "checking" ? (
+              <LedStrip state="busy" label={t(presentation.messageKey)} />
+            ) : undefined
+          }
+        />
+        <main className="lr-join">
           {accessState === "checking" ? (
-            <div className="access-loading" role="status">
-              <LoaderCircle size={20} className="spin" aria-hidden="true" />
-              正在加入房间
+            <div className="lr-join-panel">
+              <span
+                className="lr-tv-big lr-spin"
+                role="status"
+                aria-label={t(presentation.messageKey)}
+              >
+                <Glyph name="loader" size={30} />
+              </span>
+              {vis ? null : (
+                <span className="lr-tv-msg">{t(presentation.messageKey)}</span>
+              )}
             </div>
           ) : (
-            <section className="access-panel">
-              <div>
-                <h1>{presentation.message}</h1>
-                <p className="section-meta">
-                  {codeOnlyDenied
-                    ? "请使用分享者提供的邀请链接，或尝试房间密码。"
-                    : presentationState.failure === "ROOM_NOT_FOUND"
-                      ? "请确认房间号，或向分享者获取新的邀请链接。"
-                    : viewerGrant
-                      ? "请向分享者获取新的邀请链接。"
-                      : "请检查入口后重试。"}
-                </p>
-              </div>
-              {codeOnlyDenied && !viewerPasswordExpanded && (
-                <button
-                  className="button button-secondary"
-                  type="button"
-                  aria-expanded="false"
-                  aria-controls="viewer-password-retry"
-                  onClick={() => setViewerPasswordExpanded(true)}
-                >
-                  <KeyRound size={16} aria-hidden="true" />
-                  输入房间密码
-                </button>
+            <div className="lr-join-panel">
+              {vis ? (
+                <>
+                  <Comic kind={deniedComic} theme="paper" />
+                  <span className="visually-hidden" role="alert">
+                    {t(presentation.messageKey)}
+                  </span>
+                </>
+              ) : (
+              <span
+                className="lr-tv-big"
+                style={{
+                  borderColor: "var(--ink)",
+                  color: "var(--ink)",
+                  background: "var(--paper)",
+                }}
+                title={t(presentation.messageKey)}
+                role="img"
+                aria-label={t(presentation.messageKey)}
+              >
+                <Glyph name={deniedIcon} size={30} />
+              </span>
               )}
-              {codeOnlyDenied && viewerPasswordExpanded && (
-                <form
-                  id="viewer-password-retry"
-                  className="access-password-retry"
-                  onSubmit={submitViewerPassword}
-                >
-                  <label className="token-field">
-                    <span>房间密码</span>
-                    <span className="input-with-icon">
-                      <KeyRound size={16} aria-hidden="true" />
-                      <input
-                        type="password"
-                        value={viewerPasswordDraft}
-                        maxLength={MAX_VIEWER_PASSWORD_LENGTH}
-                        autoComplete="current-password"
-                        autoFocus
-                        onChange={(event) => {
-                          setViewerPasswordDraft(event.target.value);
-                          setViewerPasswordError(null);
-                        }}
-                      />
-                    </span>
-                  </label>
+              {vis ? (
+                <Pill icon="alert" tone="bad" label={t(deniedHintKey)} />
+              ) : (
+                <div className="lr-access-text">
+                  <h1>{t(presentation.messageKey)}</h1>
+                  <p>{t(deniedHintKey)}</p>
+                </div>
+              )}
+              {codeOnlyDenied && (
+                <>
+                  <Btn
+                    icon="key"
+                    cap="join.passwordAction"
+                    title="join.passwordAction"
+                    expanded={viewerPasswordExpanded}
+                    controls="viewer-password-retry"
+                    onClick={() => setViewerPasswordExpanded((current) => !current)}
+                  />
+                  {viewerPasswordExpanded ? (
+                    <div id="viewer-password-retry">
+                      <form
+                      style={{ display: "grid", justifyItems: "center", gap: 14 }}
+                      onSubmit={submitViewerPassword}
+                    >
+                  <span className="lr-input" style={{ minWidth: 220 }}>
+                    <Glyph name="key" size={17} />
+                    <input
+                      type="password"
+                      value={viewerPasswordDraft}
+                      maxLength={MAX_VIEWER_PASSWORD_LENGTH}
+                      autoComplete="current-password"
+                      autoFocus
+                      aria-label={t("join.password")}
+                      onChange={(event) => {
+                        setViewerPasswordDraft(event.target.value);
+                        setViewerPasswordError(null);
+                      }}
+                    />
+                  </span>
                   {viewerPasswordError && (
-                    <p className="access-error" role="alert">
-                      {viewerPasswordError}
-                    </p>
+                    <Pill icon="alert" tone="bad" label={t(viewerPasswordError, { max: String(MAX_VIEWER_PASSWORD_LENGTH) })} alert comic="access-denied" />
                   )}
-                  <button className="button button-primary" type="submit">
-                    加入
-                  </button>
-                </form>
+                  <Btn
+                    icon="arrowRight"
+                    tone="primary"
+                    cap="join.submit"
+                    title="join.submit"
+                    type="submit"
+                    hint="hint-password"
+                  />
+                      </form>
+                    </div>
+                  ) : null}
+                </>
               )}
               {canRefresh && (
-                <button
-                  className="button button-primary"
-                  type="button"
+                <Btn
+                  icon="refresh"
+                  cap="common.refresh"
+                  title="common.refresh"
                   onClick={() => window.location.reload()}
-                >
-                  <RefreshCw size={16} aria-hidden="true" />
-                  刷新页面
-                </button>
+                />
               )}
-            </section>
+            </div>
           )}
         </main>
       </div>
     );
   }
 
+  const chin = stageChin(presentation.stage);
+  const ledState: LedState = chin === "on" ? "live" : chin;
+  const overlayGlyph = stageOverlayGlyph(presentation.stage);
+  const assignedRouteKind =
+    assignedRoute?.upstream.kind === "sfu"
+      ? "sfu"
+      : assignedRoute?.upstream.kind === "peer"
+        ? "p2p"
+        : routePresentation.route;
+  const overlayComic = stageOverlayComic(
+    presentation.stage,
+    assignedRouteKind,
+  );
+  const selectedChildEvidence =
+    selectedPawn !== null &&
+    selectedPawn !== selfPeerId &&
+    relayChildEvidence?.evidence.viewerPeerId === selectedPawn
+      ? relayChildEvidence
+      : null;
+  const couchEntries: CouchEntry[] = viewers.map((viewer) => {
+    const isSelf = selfPeerId !== null && viewer.peerId === selfPeerId;
+    const isChild =
+      !isSelf &&
+      selfPeerId !== null &&
+      viewer.upstream.kind === "peer" &&
+      viewer.upstream.peerId === selfPeerId;
+    return {
+      key: viewer.peerId,
+      name: viewer.label,
+      connected: viewer.mediaReady === true,
+      statusLabel: t(
+        isSelf
+          ? (`state.peer.${presentation.connectionState}` as CopyKey)
+          : viewer.upstream.kind === "none"
+            ? "state.peer.routing"
+            : "state.peer.connecting",
+      ),
+      you: isSelf,
+      child: isChild,
+      selectable: isSelf || isChild ? undefined : false,
+    };
+  });
+
+  // Vis mode swaps native title tooltips for 2-panel hint comics; text modes
+  // render the trigger unchanged, so markup structure stays identical. Edge
+  // alignment keeps the panel on-screen for triggers near a viewport edge.
+  const hintWrap = (
+    kind: HintKind,
+    node: ReactNode,
+    align: "start" | "center" | "end" = "center",
+  ): ReactNode =>
+    vis ? (
+      <ComicTooltip kind={kind} align={align}>
+        {node}
+      </ComicTooltip>
+    ) : (
+      node
+    );
+
   return (
-    <div className="app-shell viewer-shell">
+    <div className="lr-app">
+      <style>{`
+/* The video fills the screen exactly, so its own :focus-visible outline is
+   clipped by .lr-tv-screen's overflow: hidden. Ring the screen container
+   instead; :focus-visible keeps mouse clicks ring-free like every control. */
+.lr-tv-screen:has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
+`}</style>
       <AppHeader
-        status={
-          showConnectionDetails ? (
-            <SignalStatusBadge state={signalStatus} />
-          ) : null
-        }
+        led={<LedStrip state={ledState} label={t(presentation.messageKey)} />}
       />
-
-      <main className="viewer-workspace">
-        <div className="viewer-title-row">
-          <div>
-            <div className="title-line">
-              <h1>
-                {hostPresence ? `${hostPresence.displayName} 的屏幕` : "好友屏幕"}
-              </h1>
-              <RoomCode roomId={roomId} />
-            </div>
-          </div>
-          <div className="viewer-badges">
-            <PeerStatusBadge
-              state={routeConnectionState}
-            />
-            {showConnectionDetails && routePresentation.route && (
-              <>
-                <MediaRouteBadge route={routePresentation.route} />
-              </>
-            )}
-          </div>
-        </div>
-
-        <form
-          className={`viewer-name-control${
-            editingDisplayName ? " is-editing" : ""
-          }`}
-          onSubmit={(event) => {
-            event.preventDefault();
-            commitDisplayName();
-          }}
-        >
-          <label
-            htmlFor={editingDisplayName ? "viewer-display-name" : undefined}
+      <main className="lr-room">
+        <h1 className="visually-hidden">
+          {hostDisplayName
+            ? t("viewer.title", { name: hostDisplayName })
+            : t("viewer.titleFallback")}
+        </h1>
+        <div className="lr-scene">
+          <StageTv
+            chin={chin}
+            live={presentation.stage === "playing"}
+            label={t("viewer.stageAria")}
           >
-            昵称
-          </label>
-          {editingDisplayName ? (
-            <>
-              <input
-                id="viewer-display-name"
-                type="text"
-                value={displayNameDraft}
-                maxLength={96}
-                autoComplete="nickname"
-                autoFocus
-                aria-invalid={displayNameError ? "true" : undefined}
-                onChange={(event) => {
-                  setDisplayNameDraft(event.target.value);
-                  setDisplayNameError(null);
-                }}
-              />
-              <button
-                type="submit"
-                className="icon-button"
-                title="保存昵称"
-                aria-label="保存昵称"
-                disabled={displayNameDraft === displayName}
-              >
-                <Save size={17} />
-              </button>
-              <button
-                type="button"
-                className="icon-button"
-                title="取消编辑"
-                aria-label="取消编辑昵称"
-                onClick={() => {
-                  setDisplayNameDraft(displayName);
-                  setDisplayNameError(null);
-                  setEditingDisplayName(false);
-                }}
-              >
-                <X size={17} />
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="viewer-name-value">{displayName}</span>
-              <button
-                type="button"
-                className="icon-button"
-                title="编辑昵称"
-                aria-label="编辑昵称"
-                onClick={() => {
-                  setDisplayNameDraft(displayName);
-                  setDisplayNameError(null);
-                  setEditingDisplayName(true);
-                }}
-              >
-                <Pencil size={17} />
-              </button>
-            </>
-          )}
-          {displayNameError && (
-            <span className="viewer-name-error" role="alert">
-              {displayNameError}
-            </span>
-          )}
-        </form>
-
-        <section className="video-stage remote-stage" aria-label="共享画面">
-          <video
-            ref={videoRef}
-            autoPlay
-            controls={
-              presentation.overlay === "none" ||
-              presentation.stage === "needs-play" ||
-              (presentation.stage === "receiving" &&
-                presentation.hasRetainedFrame)
-            }
-            playsInline
-            onPlay={() => {
-              invalidateQualityPresentation();
-              setFrameProofEpoch((current) => current + 1);
-              const binding = remoteMediaRef.current;
-              if (binding) {
-                dispatchPresentation({
-                  type: "autoplay-cleared",
-                  generation: binding.generation,
-                });
+            <video
+              ref={videoRef}
+              autoPlay
+              tabIndex={0}
+              aria-label={t("viewer.stageAria")}
+              controls={
+                presentation.overlay === "none" ||
+                presentation.stage === "needs-play" ||
+                (presentation.stage === "receiving" &&
+                  presentation.hasRetainedFrame)
               }
-            }}
-            onPause={invalidateQualityPresentation}
-            onEnded={invalidateQualityPresentation}
-          />
-          {presentation.overlay === "blocking" && (
-            <div className="stage-placeholder" role="status">
-              <StageOverlayIcon stage={presentation.stage} />
-              <span>{presentation.message}</span>
-            </div>
-          )}
-          {presentation.overlay === "status" &&
-            presentation.stage === "needs-play" && (
-            <button
-              className="stage-overlay is-interactive"
-              type="button"
-              onClick={() => {
-                const video = videoRef.current;
+              playsInline
+              onPlay={() => {
+                invalidateQualityPresentation();
+                setFrameProofEpoch((current) => current + 1);
                 const binding = remoteMediaRef.current;
-                if (video && binding) attemptPlayback(video, binding);
+                if (binding) {
+                  dispatchPresentation({
+                    type: "autoplay-cleared",
+                    generation: binding.generation,
+                  });
+                }
+              }}
+              onPause={invalidateQualityPresentation}
+              onEnded={invalidateQualityPresentation}
+            />
+            {presentation.overlay === "blocking" && (
+              <StageOverlay
+                dim
+                icon={overlayGlyph.icon}
+                spin={overlayGlyph.spin}
+                comic={overlayComic}
+                message={t(presentation.messageKey)}
+              />
+            )}
+            {presentation.overlay === "status" &&
+              presentation.stage === "needs-play" && (
+                <StageOverlay
+                  dim
+                  icon="play"
+                  comic="tap-to-play"
+                  message={t(presentation.messageKey)}
+                  onActivate={() => {
+                    const video = videoRef.current;
+                    const binding = remoteMediaRef.current;
+                    if (video && binding) attemptPlayback(video, binding);
+                  }}
+                />
+              )}
+            {presentation.overlay === "status" &&
+              presentation.stage !== "needs-play" && (
+                <StageOverlay
+                  dim
+                  icon={overlayGlyph.icon}
+                  spin={overlayGlyph.spin}
+                  comic={overlayComic}
+                  message={t(presentation.messageKey)}
+                />
+              )}
+          </StageTv>
+          <div className="lr-shelf" aria-hidden="true" />
+          <Couch
+            entries={couchEntries}
+            selectedKey={selectedPawn}
+            onSelect={(key) =>
+              setSelectedPawn((current) => (current === key ? null : key))
+            }
+          />
+        </div>
+        <div className="lr-deck">
+          {selectedPawn !== null &&
+          selectedPawn === selfPeerId ? (
+            <PawnDetail
+              pawnKey={selectedPawn}
+              name={vis ? displayName : `${displayName} · ${t("common.you")}`}
+              you
+              route={routePresentation.route}
+              metrics={routeMetrics}
+              direction="receive"
+              expanded={pawnMetricsExpanded}
+              onToggleMetrics={setPawnMetricsExpanded}
+              onClose={() => setSelectedPawn(null)}
+            />
+          ) : null}
+          {selectedPawn !== null && selectedChildEvidence ? (
+            <PawnDetail
+              pawnKey={selectedPawn}
+              name={
+                viewers.find((viewer) => viewer.peerId === selectedPawn)
+                  ?.label ?? selectedPawn
+              }
+              route={null}
+              metrics={metricsFromQualityEvidence(selectedChildEvidence.evidence)}
+              direction="receive"
+              tag={{ icon: "arrowUp", label: t("stats.downstream") }}
+              expanded={pawnMetricsExpanded}
+              onToggleMetrics={setPawnMetricsExpanded}
+              onClose={() => setSelectedPawn(null)}
+            />
+          ) : null}
+          <Row>
+            <RowGroup>
+              <FieldCap k="common.roomCode" />
+              <Lcd code={roomId} />
+            </RowGroup>
+            <RowGroup>
+              <StatusText>
+                {hostDisplayName
+                  ? `${t("viewer.title", { name: hostDisplayName })} · `
+                  : ""}
+                {t(presentation.messageKey)}
+                {participantPresence
+                  ? ` · ${t("viewer.onlineCount", { n: String(viewers.length) })}`
+                  : ""}
+              </StatusText>
+            </RowGroup>
+            <span className="lr-spacer" />
+            <form
+              className="lr-row-group lr-group-name"
+              onSubmit={(event) => {
+                event.preventDefault();
+                commitDisplayName();
               }}
             >
-              <StageOverlayIcon stage={presentation.stage} />
-              <span>{presentation.message}</span>
-            </button>
-          )}
-          {presentation.overlay === "status" &&
-            presentation.stage !== "needs-play" && (
-            <div className="stage-overlay" role="status">
-              <StageOverlayIcon stage={presentation.stage} />
-              <span>{presentation.message}</span>
-            </div>
-          )}
-        </section>
-
-        <div className="viewer-status-row">
-          <div className="toolbar-status" role="status" aria-live="polite">
-            {presentation.message}
-          </div>
-          <div className="viewer-status-actions">
-            {labeledHostPresence ? (
-              <button
-                className="icon-button viewer-status-action"
-                type="button"
-                title={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
-                aria-label={showTopology ? "隐藏连接拓扑" : "显示连接拓扑"}
-                aria-controls="room-topology"
-                aria-expanded={showTopology}
-                onClick={() => setShowTopology((current) => !current)}
-              >
-                <Network size={18} aria-hidden="true" />
-              </button>
-            ) : (
-              <span className="viewer-status-action-placeholder" aria-hidden="true" />
-            )}
-            <button
-              type="button"
-              className="icon-button viewer-status-action"
-              title="重新连接媒体"
-              aria-label="重新连接媒体"
-              disabled={!reconnectAvailable}
-              onClick={retryConnection}
-            >
-              <RefreshCw size={18} />
-            </button>
-          </div>
-        </div>
-
-        {presentation.notice && (
-          <div className="notice" role="status">
-            {presentation.notice}
-          </div>
-        )}
-        {participantPresence && (
-          <section
-            className="viewer-roster"
-            aria-labelledby="viewer-roster-heading"
-          >
-            <div className="viewer-roster-heading">
-              <div>
-                <h2 id="viewer-roster-heading">观看者</h2>
-                <span>在线 {viewers.length}</span>
+              {editingDisplayName ? (
+                <>
+                  <span className="lr-input" style={{ minWidth: 150 }}>
+                    <input
+                      id="viewer-display-name"
+                      type="text"
+                      value={displayNameDraft}
+                      maxLength={96}
+                      autoComplete="nickname"
+                      autoFocus
+                      aria-label={t("host.name")}
+                      aria-invalid={displayNameError ? "true" : undefined}
+                      onChange={(event) => {
+                        setDisplayNameDraft(event.target.value);
+                        setDisplayNameError(false);
+                      }}
+                    />
+                  </span>
+                  <Btn
+                    icon="check"
+                    title="host.nameSave"
+                    type="submit"
+                    disabled={displayNameDraft === displayName}
+                  />
+                  <Btn
+                    icon="x"
+                    title="host.nameCancel"
+                    onClick={() => {
+                      setDisplayNameDraft(displayName);
+                      setDisplayNameError(false);
+                      setEditingDisplayName(false);
+                    }}
+                  />
+                </>
+              ) : (
+                <>
+                  <NameTag name={displayName} />
+                  {hintWrap(
+                    "hint-rename",
+                    <Btn
+                      icon="pencil"
+                      cap="common.edit"
+                      title="host.nameEdit"
+                      onClick={() => {
+                        setDisplayNameDraft(displayName);
+                        setDisplayNameError(false);
+                        setEditingDisplayName(true);
+                      }}
+                    />,
+                    "end",
+                  )}
+                </>
+              )}
+              {displayNameError && (
+                <Pill icon="alert" tone="bad" label={t("host.nameError")} alert />
+              )}
+            </form>
+            <RowGroup actions>
+              {labeledHostPresence
+                ? hintWrap(
+                    "hint-topology",
+                    <Btn
+                      icon="network"
+                      cap="host.topology"
+                      title={
+                        showTopology ? "host.topology.hide" : "host.topology.show"
+                      }
+                      tone={showTopology ? "on" : undefined}
+                      expanded={showTopology}
+                      controls="room-topology"
+                      onClick={() => setShowTopology((current) => !current)}
+                    />,
+                    "start",
+                  )
+                : null}
+              {hintWrap(
+                "hint-reconnect",
+                <Btn
+                  icon="refresh"
+                  cap="viewer.reconnect"
+                  title="viewer.reconnect"
+                  disabled={!reconnectAvailable}
+                  onClick={retryConnection}
+                />,
+                "end",
+              )}
+              <Btn
+                icon="gauge"
+                cap="host.details"
+                title={showConnectionDetails ? "host.details.hide" : "host.details"}
+                hint="hint-details"
+                tone={showConnectionDetails ? "on" : undefined}
+                expanded={showConnectionDetails}
+                controls="viewer-details-panel"
+                disabled={
+                  !routePresentation.route &&
+                  !relaySnapshot &&
+                  !relayChildEvidence
+                }
+                onClick={() => setShowConnectionDetails((current) => !current)}
+              />
+            </RowGroup>
+          </Row>
+          {presentation.noticeKey ? (
+            <Pill icon="alert" label={t(presentation.noticeKey)} />
+          ) : null}
+          {routePresentation.evidence === peerSnapshot &&
+          peerSnapshot?.error ? (
+            <Pill icon="alert" tone="bad" label={t("viewer.error.p2p")} comic="route-failed" />
+          ) : null}
+          {relaySnapshot?.error ? (
+            <Pill icon="alert" tone="bad" label={t("viewer.error.relay")} comic="route-failed" />
+          ) : null}
+          {qualityLimitation ? (
+            <Pill icon="alert" label={qualityLimitation} comic="warning" />
+          ) : null}
+          {showConnectionDetails && routePresentation.route ? (
+            <Row sub>
+              <div id="viewer-details-panel" style={{ display: "contents" }}>
+                <MeterTag icon="arrowDown" label={t("stats.title")} />
+                <RouteGlyph route={routePresentation.route} />
+                {routeMetrics ? (
+                  <MetricCells
+                    metrics={routeMetrics}
+                    direction="receive"
+                    expanded={routeMetricsExpanded}
+                    onToggle={setRouteMetricsExpanded}
+                  />
+                ) : null}
               </div>
-            </div>
-            {showTopology && labeledHostPresence && (
-              <TopologyView
+            </Row>
+          ) : null}
+          {showConnectionDetails && relaySnapshot ? (
+            <Row sub>
+              <MeterTag icon="arrowUp" label={t("stats.relay")} />
+              <MetricCells
+                metrics={relaySnapshot.metrics}
+                direction="send"
+                expanded={relayMetricsExpanded}
+                onToggle={setRelayMetricsExpanded}
+              />
+            </Row>
+          ) : null}
+          {showConnectionDetails && relayChildEvidence ? (
+            <Row sub>
+              <MeterTag icon="arrowUp" label={t("stats.downstream")} />
+              <MetricCells
+                metrics={metricsFromQualityEvidence(relayChildEvidence.evidence)}
+                direction="receive"
+                expanded={downstreamMetricsExpanded}
+                onToggle={setDownstreamMetricsExpanded}
+              />
+            </Row>
+          ) : null}
+          {showTopology && labeledHostPresence ? (
+            <Row sub>
+              <RouteTree
                 hostPeerId={labeledHostPresence.peerId}
                 hostLabel={labeledHostPresence.label}
                 viewers={viewers}
+                selfPeerId={selfPeerId}
+                flowing={CONNECTING_STAGES.includes(presentation.stage)}
               />
-            )}
-            <ul className="viewer-roster-list">
-              {viewers.map((viewer) => (
-                <li key={viewer.peerId} title={viewer.label}>
-                  {viewer.label}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <ConnectionDetailsToggle
-          checked={showConnectionDetails}
-          onChange={setShowConnectionDetails}
-        />
-
-        {routePresentation.evidence === peerSnapshot && peerSnapshot?.error && (
-          <div className="notice notice-error" role="status">
-            P2P 媒体连接异常
-          </div>
-        )}
-        {relaySnapshot?.error && (
-          <div className="notice notice-error" role="status">
-            下游媒体连接异常
-          </div>
-        )}
-        {qualityLimitation && (
-          <WarningBanner>{qualityLimitation}</WarningBanner>
-        )}
-        {showConnectionDetails && routePresentation.route && (
-          <section className="viewer-stats" aria-labelledby="stats-heading">
-            <h2 id="stats-heading">连接数据</h2>
-            <div className="viewer-transport-heading">
-              <MediaRouteBadge route={routePresentation.route} />
-            </div>
-            {routeMetrics && (
-              <StatsGrid
-                metrics={routeMetrics}
-                direction="receive"
-              />
-            )}
-          </section>
-        )}
-        {showConnectionDetails && relaySnapshot && (
-          <section className="viewer-stats" aria-labelledby="relay-stats-heading">
-            <h2 id="relay-stats-heading">转发数据</h2>
-            <StatsGrid
-              metrics={relaySnapshot.metrics}
-              direction="send"
-            />
-          </section>
-        )}
-        {showConnectionDetails && relayChildEvidence && (
-          <section
-            className="viewer-stats"
-            aria-labelledby="relay-child-stats-heading"
-          >
-            <h2 id="relay-child-stats-heading">下游接收数据</h2>
-            <StatsGrid
-              metrics={metricsFromQualityEvidence(relayChildEvidence.evidence)}
-              direction="receive"
-            />
-          </section>
-        )}
+            </Row>
+          ) : null}
+        </div>
       </main>
     </div>
   );

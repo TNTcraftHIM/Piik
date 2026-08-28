@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasPeerRouteEvidence,
-  MEDIA_ROUTE_PRESENTATION,
-  ROUTING_STATUS_PRESENTATION,
   viewerReconnectRoute,
   viewerRouteEvidence,
 } from "../src/client/components/status-badge-model.ts";
@@ -18,20 +16,8 @@ const peerSnapshot: PeerSnapshot = {
   error: null,
 };
 
-describe("route status badges", () => {
-  it("uses distinct icon and color language for active P2P and SFU routes", () => {
-    expect(MEDIA_ROUTE_PRESENTATION.p2p).toEqual({
-      tone: "good", label: "P2P", icon: "network",
-    });
-    expect(MEDIA_ROUTE_PRESENTATION.sfu).toEqual({
-      tone: "warning", label: "SFU fallback", icon: "server",
-    });
-  });
-
+describe("route evidence models", () => {
   it("keeps an assigned route neutral before current media evidence", () => {
-    expect(ROUTING_STATUS_PRESENTATION).toEqual({
-      tone: "neutral", label: "线路分配中",
-    });
     expect(viewerRouteEvidence({ kind: "sfu" }, null, null)).toEqual({
       route: null,
       evidence: null,

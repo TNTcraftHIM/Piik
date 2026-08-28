@@ -1,3 +1,4 @@
+import { say, type CopyKey } from "../ui/copy";
 import type {
   ClientMessage,
   MediaRoutePhase,
@@ -663,13 +664,13 @@ async function disconnectPublisher(
 }
 
 function sfuFailureWarning(stage: SfuPublisherFailureStage): string {
-  const label: Record<SfuPublisherFailureStage, string> = {
-    connect: "连接",
-    source: "分享源",
-    "video-publish": "视频发布",
-    "sender-config": "视频参数配置",
-    "audio-publish": "音频发布",
-    transport: "传输",
+  const stageKey: Record<SfuPublisherFailureStage, CopyKey> = {
+    connect: "host.warn.sfuStage.connect",
+    source: "host.warn.sfuStage.source",
+    "video-publish": "host.warn.sfuStage.videoPublish",
+    "sender-config": "host.warn.sfuStage.senderConfig",
+    "audio-publish": "host.warn.sfuStage.audioPublish",
+    transport: "host.warn.sfuStage.transport",
   };
-  return `SFU ${label[stage]}失败，已启动自动恢复`;
+  return say("host.warn.sfuRecover", { stage: say(stageKey[stage]) });
 }

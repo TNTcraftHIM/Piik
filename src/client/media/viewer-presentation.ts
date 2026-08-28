@@ -1,4 +1,5 @@
 import type { ServerMessage } from "../../shared/protocol";
+import type { CopyKey } from "../ui/copy";
 import type { SignalConnectionState } from "../types";
 
 export type ViewerHostState =
@@ -26,6 +27,9 @@ export type ViewerFailureCode =
   | "ROUTE_EXHAUSTED"
   | "AUTOPLAY_BLOCKED"
   | "PLAYBACK_FAILED";
+
+export type ViewerMessageKey = Extract<CopyKey, `viewer.msg.${string}`>;
+export type ViewerNoticeKey = Extract<CopyKey, `viewer.notice.${string}`>;
 
 export type ViewerStage =
   | "joining"
@@ -130,8 +134,8 @@ export type ViewerPresentationAction =
 
 export interface ViewerPresentation {
   stage: ViewerStage;
-  message: string;
-  notice: string | null;
+  messageKey: ViewerMessageKey;
+  noticeKey: ViewerNoticeKey | null;
   overlay: "none" | "status" | "blocking";
   hasCurrentFrame: boolean;
   hasRetainedFrame: boolean;
@@ -439,62 +443,62 @@ export function deriveViewerPresentation(
   const frameOverlay = retainedFrame ? "status" : "blocking";
 
   if (state.access === "checking") {
-    return presentation("joining", "正在加入房间", "blocking", state);
+    return presentation("joining", "viewer.msg.joining", "blocking", state);
   }
   if (state.access === "denied") {
     switch (state.failure) {
       case "ROOM_NOT_FOUND":
         return presentation(
           "room-not-found",
-          "房间不存在或已过期",
+          "viewer.msg.notFound",
           "blocking",
           state,
         );
       case "ROOM_ACCESS_DENIED":
         return presentation(
           "access-denied",
-          "当前无法通过房间号加入",
+          "viewer.msg.denied",
           "blocking",
           state,
         );
       case "INVALID_TOKEN":
         return presentation(
           "invalid-invite",
-          "邀请链接无效或已失效",
+          "viewer.msg.invalidInvite",
           "blocking",
           state,
         );
       case "ROOM_EXPIRED":
-        return presentation("room-expired", "房间已过期", "blocking", state);
+        return presentation("room-expired", "viewer.msg.expired", "blocking", state);
       case "ROOM_CLOSED":
-        return presentation("room-closed", "房间已关闭", "blocking", state);
+        return presentation("room-closed", "viewer.msg.closed", "blocking", state);
       case "ROOM_FULL":
-        return presentation("room-full", "当前无法加入房间", "blocking", state);
+        return presentation("room-full", "viewer.msg.full", "blocking", state);
       case "STALE_CLIENT":
         return presentation(
           "stale-client",
-          "页面版本已更新，请刷新后重试",
+          "viewer.msg.stale",
           "blocking",
           state,
         );
       case "SESSION_REPLACED":
         return presentation(
           "session-replaced",
-          "此页面的会话已被另一个标签页接管",
+          "viewer.msg.sessionReplaced",
           "blocking",
           state,
         );
       case "SIGNAL_TERMINATED":
         return presentation(
           "signal-terminated",
-          "连接已终止，请刷新后重试",
+          "viewer.msg.signalTerminated",
           "blocking",
           state,
         );
       default:
         return presentation(
           "server-error",
-          "暂时无法加入房间",
+          "viewer.msg.joinUnavailable",
           "blocking",
           state,
         );
@@ -504,7 +508,7 @@ export function deriveViewerPresentation(
   if (state.host === "paused") {
     return presentation(
       "host-paused",
-      "分享者已暂停",
+      "viewer.msg.hostPaused",
       currentFrame || retainedFrame ? "status" : "blocking",
       state,
     );
@@ -515,7 +519,7 @@ export function deriveViewerPresentation(
     state.autoplayBlockedGeneration === state.media.generation &&
     state.connection === "connected"
   ) {
-    return presentation("needs-play", "点击播放", "status", state);
+    return presentation("needs-play", "viewer.msg.needsPlay", "status", state);
   }
 
   if (currentFrame) {
@@ -527,16 +531,16 @@ export function deriveViewerPresentation(
     return {
       ...presentation(
         signalRecovering || mediaRecovering ? "recovering" : "playing",
-        signalRecovering || mediaRecovering ? "正在恢复连接" : "正在播放",
+        signalRecovering || mediaRecovering ? "viewer.msg.recovering" : "viewer.msg.playing",
         "none",
         state,
       ),
-      notice: state.host === "offline"
-        ? "分享者连接已中断，画面可能冻结"
+      noticeKey: state.host === "offline"
+        ? "viewer.notice.hostOffline"
         : signalRecovering
-          ? "服务器连接正在恢复，画面仍在播放"
+          ? "viewer.notice.signalRecovering"
         : mediaRecovering
-          ? "媒体连接正在恢复"
+          ? "viewer.notice.mediaRecovering"
           : null,
     };
   }
@@ -544,7 +548,7 @@ export function deriveViewerPresentation(
   if (state.routeStatus?.state === "failed") {
     return presentation(
       "route-failed",
-      "没有可用的媒体线路",
+      "viewer.msg.routeFailed",
       frameOverlay,
       state,
     );
@@ -554,56 +558,56 @@ export function deriveViewerPresentation(
     case "ROUTE_EXHAUSTED":
       return presentation(
         "route-failed",
-        "没有可用的媒体线路",
+        "viewer.msg.routeFailed",
         frameOverlay,
         state,
       );
     case "PLAYBACK_FAILED":
       return presentation(
         "playback-failed",
-        "浏览器无法播放当前画面",
+        "viewer.msg.playbackFailed",
         frameOverlay,
         state,
       );
     case "SERVER_ERROR":
       return presentation(
         "server-error",
-        "连接服务暂时不可用",
+        "viewer.msg.serverError",
         frameOverlay,
         state,
       );
     case "STALE_CLIENT":
       return presentation(
         "stale-client",
-        "页面版本已更新，请刷新后重试",
+        "viewer.msg.stale",
         frameOverlay,
         state,
       );
     case "SESSION_REPLACED":
       return presentation(
         "session-replaced",
-        "此页面的会话已被另一个标签页接管",
+        "viewer.msg.sessionReplaced",
         frameOverlay,
         state,
       );
     case "SIGNAL_TERMINATED":
       return presentation(
         "signal-terminated",
-        "连接已终止，请刷新后重试",
+        "viewer.msg.signalTerminated",
         frameOverlay,
         state,
       );
     case "HOST_OFFLINE":
       return presentation(
         "host-offline",
-        "分享者连接已中断",
+        "viewer.msg.hostOffline",
         frameOverlay,
         state,
       );
     case "HOST_STOPPED":
       return presentation(
         "waiting-host",
-        "等待开始分享",
+        "viewer.msg.waitingHost",
         frameOverlay,
         state,
       );
@@ -612,7 +616,7 @@ export function deriveViewerPresentation(
   if (state.routeStatus?.state === "waiting") {
     return presentation(
       "waiting-sfu",
-      "正在连接备用线路",
+      "viewer.msg.preparingSfu",
       frameOverlay,
       state,
     );
@@ -624,7 +628,7 @@ export function deriveViewerPresentation(
   ) {
     return presentation(
       "recovering",
-      "正在恢复连接",
+      "viewer.msg.recovering",
       frameOverlay,
       state,
     );
@@ -632,7 +636,7 @@ export function deriveViewerPresentation(
   if (state.media) {
     return presentation(
       "receiving",
-      "正在接收画面",
+      "viewer.msg.receiving",
       frameOverlay,
       state,
     );
@@ -640,7 +644,7 @@ export function deriveViewerPresentation(
   if (state.route?.phase === "prepare") {
     return presentation(
       state.route.kind === "sfu" ? "preparing-sfu" : "preparing-p2p",
-      state.route.kind === "sfu" ? "正在连接备用线路" : "正在建立 P2P",
+      state.route.kind === "sfu" ? "viewer.msg.preparingSfu" : "viewer.msg.preparingP2p",
       frameOverlay,
       state,
     );
@@ -648,7 +652,7 @@ export function deriveViewerPresentation(
   if (state.host === "stopped" || state.host === "unknown") {
     return presentation(
       "waiting-host",
-      "等待开始分享",
+      "viewer.msg.waitingHost",
       frameOverlay,
       state,
     );
@@ -656,7 +660,7 @@ export function deriveViewerPresentation(
   if (state.host === "offline") {
     return presentation(
       "host-offline",
-      "分享者连接已中断",
+      "viewer.msg.hostOffline",
       frameOverlay,
       state,
     );
@@ -664,7 +668,7 @@ export function deriveViewerPresentation(
   if (state.route?.kind === "p2p") {
     return presentation(
       "preparing-p2p",
-      "正在建立 P2P",
+      "viewer.msg.preparingP2p",
       frameOverlay,
       state,
     );
@@ -672,14 +676,14 @@ export function deriveViewerPresentation(
   if (state.route?.kind === "sfu") {
     return presentation(
       "preparing-sfu",
-      "正在连接备用线路",
+      "viewer.msg.preparingSfu",
       frameOverlay,
       state,
     );
   }
   return presentation(
     "allocating",
-    "正在分配线路",
+    "viewer.msg.allocating",
     frameOverlay,
     state,
   );
@@ -713,14 +717,14 @@ function hasCurrentFrame(state: ViewerPresentationState): boolean {
 
 function presentation(
   stage: ViewerStage,
-  message: string,
+  messageKey: ViewerMessageKey,
   overlay: ViewerPresentation["overlay"],
   state: ViewerPresentationState,
 ): ViewerPresentation {
   return {
     stage,
-    message,
-    notice: null,
+    messageKey,
+    noticeKey: null,
     overlay,
     hasCurrentFrame: hasCurrentFrame(state),
     hasRetainedFrame: state.retainedFrame,
