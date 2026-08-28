@@ -375,6 +375,10 @@ export class RoomRouteController<Resource = unknown> {
     });
   }
 
+  diagnosticParticipantLabel(peerId: string): string {
+    return this.debugPeer(peerId);
+  }
+
   snapshot(): RouteSnapshot<Resource> {
     return {
       revision: this.revision,
