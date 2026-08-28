@@ -167,12 +167,13 @@ async function replaceRoom(
 }
 
 describe("site access", () => {
-  it("reports status and issues a stateless 12-hour cookie", async () => {
+  it("reports status and issues a stateless 24-hour cookie", async () => {
     const baseUrl = await start();
     const initial = await fetch(`${baseUrl}/api/site-access`);
 
     expect(initial.status).toBe(200);
     expect(initial.headers.get("cache-control")).toBe("no-store");
+    expect(initial.headers.get("set-cookie")).toBeNull();
     expect(await initial.json()).toEqual({
       required: true,
       authenticated: false,
@@ -193,19 +194,76 @@ describe("site access", () => {
     expect(authenticated.status).toBe(200);
     expect(setCookie).toContain("screener-site-access=v1.");
     expect(setCookie).toContain("Path=/");
-    expect(setCookie).toContain("Max-Age=43200");
+    expect(setCookie).toContain("Max-Age=86400");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
     expect(setCookie).not.toContain("Secure");
     expect(setCookie).not.toContain(siteAccessPassword);
 
+    const deniedRenewal = await fetch(`${baseUrl}/api/site-access`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer wrong-password",
+        Cookie: cookiePair(authenticated),
+        Origin: allowedOrigin,
+      },
+    });
+    expect(deniedRenewal.status).toBe(401);
+    expect(deniedRenewal.headers.get("set-cookie")).toBeNull();
+
     const status = await fetch(`${baseUrl}/api/site-access`, {
       headers: { Cookie: cookiePair(authenticated) },
     });
+    expect(status.headers.get("set-cookie")).toContain(
+      "screener-site-access=v1.",
+    );
     expect(await status.json()).toEqual({
       required: true,
       authenticated: true,
     });
+  });
+
+  it("renews an authenticated cookie across successive idle deadlines", async () => {
+    let now = 1_000;
+    const baseUrl = await start(testConfig(), {
+      now: () => now,
+      siteAccessTtlSeconds: 12,
+    });
+    const authenticated = await login(baseUrl);
+    const originalCookie = cookiePair(authenticated);
+
+    now = 7_000;
+    const firstRenewal = await fetch(`${baseUrl}/api/site-access`, {
+      headers: { Cookie: originalCookie },
+    });
+    const firstRenewedCookie = cookiePair(firstRenewal);
+    expect(firstRenewedCookie).not.toBe(originalCookie);
+
+    now = 13_000;
+    const expiredOriginal = await fetch(`${baseUrl}/api/site-access`, {
+      headers: { Cookie: originalCookie },
+    });
+    expect(expiredOriginal.headers.get("set-cookie")).toBeNull();
+    expect((await expiredOriginal.json()).authenticated).toBe(false);
+
+    const secondRenewal = await fetch(`${baseUrl}/api/site-access`, {
+      headers: { Cookie: firstRenewedCookie },
+    });
+    const secondRenewedCookie = cookiePair(secondRenewal);
+    expect(secondRenewedCookie).not.toBe(firstRenewedCookie);
+
+    now = 20_000;
+    const expiredFirstRenewal = await fetch(`${baseUrl}/api/site-access`, {
+      headers: { Cookie: firstRenewedCookie },
+    });
+    expect(expiredFirstRenewal.headers.get("set-cookie")).toBeNull();
+    expect((await expiredFirstRenewal.json()).authenticated).toBe(false);
+
+    const activeSecondRenewal = await fetch(`${baseUrl}/api/site-access`, {
+      headers: { Cookie: secondRenewedCookie },
+    });
+    expect(activeSecondRenewal.headers.get("set-cookie")).not.toBeNull();
+    expect((await activeSecondRenewal.json()).authenticated).toBe(true);
   });
 
   it("uses a secure __Host- cookie for production HTTPS", async () => {

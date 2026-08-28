@@ -27,9 +27,12 @@ the storage decision; implementation detail belongs in code and tests.
 Three independent authorities exist:
 
 1. **Site access.** Production requires an independent
-   `SITE_ACCESS_PASSWORD`. Successful entry creates a 12-hour stateless,
-   HttpOnly, `SameSite=Strict` cookie. It authorizes room creation, Host role,
-   and code-only Viewer attempts; it is not a room credential.
+   `SITE_ACCESS_PASSWORD`. Successful entry creates a stateless, HttpOnly,
+   `SameSite=Strict` cookie with a 24-hour rolling idle lifetime. An already
+   authorized page renews it through the site-access check while it remains
+   active. It authorizes room creation, Host role, and code-only Viewer
+   attempts; it is not a room credential, and Viewer-grant admission cannot
+   create or renew it.
 2. **Host ownership.** The exact Host token authorizes that room's Host and
    access-management operations. It cannot authorize another room.
 3. **Viewer invitation.** Every room creates a 128-bit, 22-character base64url

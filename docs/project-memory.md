@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-27
+Last updated: 2026-08-28
 
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -52,10 +52,11 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Canonical source and production use the strict `screener-v16` Browser/server
-contract with committed media readiness, bounded candidate-relative progress
-and one-shot Host-root convergence. Both retain optional SQLite room authority
-and the H.264/VP8 sender gate. [Status](./status.md) owns exact identity.
+Canonical source uses the strict `screener-v17` Browser/server contract with
+committed media readiness, bounded candidate-relative progress and one-shot
+Host-root convergence. It retains optional SQLite room authority and the
+H.264/VP8 sender gate. [Status](./status.md) owns exact source and production
+identity.
 
 Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
 owned by [verification status](./verification-status.md). Environment and initial

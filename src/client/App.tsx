@@ -13,16 +13,17 @@ import { ViewerPage } from "./pages/ViewerPage";
 
 const appRoute = parseAppRoute(window.location.pathname);
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
+const SITE_ACCESS_RENEWAL_INTERVAL_MS = 60 * 60 * 1_000;
 
 type AccessState =
   | { kind: "checking" }
-  | { kind: "ready" }
+  | { kind: "ready"; renewalRequired: boolean }
   | { kind: "required"; error: string | null }
   | { kind: "unavailable"; message: string };
 
 function stateFromStatus(status: SiteAccessStatus): AccessState {
   return !status.required || status.authenticated
-    ? { kind: "ready" }
+    ? { kind: "ready", renewalRequired: status.required }
     : { kind: "required", error: null };
 }
 
@@ -74,6 +75,36 @@ function SiteAccessGate({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (access.kind !== "ready" || !access.renewalRequired) {
+      return;
+    }
+    let active = true;
+    let checking = false;
+    const timer = window.setInterval(() => {
+      if (checking) {
+        return;
+      }
+      checking = true;
+      void getSiteAccess()
+        .then((status) => {
+          if (active && (!status.required || !status.authenticated)) {
+            setAccess(stateFromStatus(status));
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (active) {
+            checking = false;
+          }
+        });
+    }, SITE_ACCESS_RENEWAL_INTERVAL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [access]);
 
   async function retry(): Promise<void> {
     setAccess({ kind: "checking" });
