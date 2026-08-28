@@ -68,74 +68,77 @@ export function Couch({
         <rect x="44" y="62" width="552" height="50" rx="23" fill="var(--couch)" />
         <path d="M212 64v46M428 64v46" stroke="var(--couch-dark)" strokeWidth="4" strokeLinecap="round" />
       </svg>
-      <div
-        className={`lr-pawns${crowded ? " is-crowded" : ""}`}
-        role="group"
-        aria-label={t("common.viewers")}
-      >
-        {entries.map((entry, index) => {
-          const stateLabel = entry.connected
-            ? t("state.peer.connected")
-            : (entry.statusLabel ?? t("state.peer.connecting"));
-          const label = entry.you
-            ? `${entry.name} · ${t("common.you")}`
-            : `${entry.name} · ${stateLabel}`;
-          const showName = !vis && !entry.child && !crowded;
-          const inner = (
-            <>
-              <PawnSvg color={pawnColor(entry.key, entry.you)} />
-              <i
-                className={`lr-pawn-led${entry.connected ? "" : " is-wait"}`}
-                // With a name pill the default bottom:4px lands on the pill's
-                // right end; lift the LED onto the figure instead. Scoped here
-                // because the living-room stylesheet is owned elsewhere.
-                style={showName ? { bottom: 20 } : undefined}
-                aria-hidden="true"
-              />
-              {showName ? (
-                // 58px ellipsizes the EN default "Visitor"; 72px fits it.
-                <span className="lr-pawn-name" style={{ maxWidth: 72 }}>
+      <div className="lr-pawns-window">
+        <div
+          className={`lr-pawns${crowded ? " is-crowded" : ""}`}
+          role="group"
+          aria-label={t("common.viewers")}
+        >
+          {entries.map((entry, index) => {
+            const stateLabel = entry.connected
+              ? t("state.peer.connected")
+              : (entry.statusLabel ?? t("state.peer.connecting"));
+            const label = entry.you
+              ? `${entry.name} · ${t("common.you")}`
+              : `${entry.name} · ${stateLabel}`;
+            const inner = (
+              <>
+                <PawnSvg color={pawnColor(entry.key, entry.you)} />
+                <i
+                  className={`lr-pawn-led${entry.connected ? "" : " is-wait"}`}
+                  aria-hidden="true"
+                />
+                <span
+                  className={`lr-pawn-name${entry.child ? " is-mini" : ""}`}
+                >
                   {entry.name}
                 </span>
-              ) : null}
-            </>
-          );
-          // Hop stagger derives from position only, so render stays pure
-          // (a seen-keys map mutates during render: StrictMode's discarded
-          // first pass pre-fills it and the committed render gets 0ms).
-          const style = { animationDelay: `${Math.min(index, 12) * 70}ms` };
-          const className = `lr-pawn${entry.you ? " is-you" : ""}${entry.child ? " is-child" : ""}${
-            entry.selectable === false ? " is-static" : ""
-          }${selectedKey === entry.key ? " is-selected" : ""}`;
-          if (entry.selectable === false) {
+              </>
+            );
+            // Hop stagger derives from position only, so render stays pure.
+            const style = {
+              animationDelay: `${Math.min(index, 12) * 70}ms`,
+            };
+            const className = `lr-pawn${entry.you ? " is-you" : ""}${entry.child ? " is-child" : ""}${
+              entry.selectable === false ? " is-static" : ""
+            }${selectedKey === entry.key ? " is-selected" : ""}`;
+            if (entry.selectable === false) {
+              return (
+                <span
+                  key={entry.key}
+                  className={className}
+                  style={style}
+                  title={vis ? undefined : label}
+                  aria-label={label}
+                >
+                  {inner}
+                </span>
+              );
+            }
             return (
-              <span
+              <button
                 key={entry.key}
+                type="button"
                 className={className}
                 style={style}
                 title={vis ? undefined : label}
                 aria-label={label}
+                aria-pressed={selectedKey === entry.key}
+                onClick={() => onSelect?.(entry.key)}
               >
                 {inner}
-              </span>
+              </button>
             );
-          }
-          return (
-            <button
-              key={entry.key}
-              type="button"
-              className={className}
-              style={style}
-              title={vis ? undefined : label}
-              aria-label={label}
-              aria-pressed={selectedKey === entry.key}
-              onClick={() => onSelect?.(entry.key)}
-            >
-              {inner}
-            </button>
-          );
-        })}
+          })}
+        </div>
       </div>
+      <span
+        className="lr-couch-count"
+        aria-label={`${t("common.viewers")} ${entries.length}`}
+      >
+        <Glyph name="users" size={14} />
+        <b>{entries.length}</b>
+      </span>
       {entries.length === 0 ? (
         <div
           className="lr-couch-empty"
